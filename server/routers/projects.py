@@ -91,6 +91,14 @@ from ..services.boilerplate_manager import (
     load_project_config,
     save_project_config,
 )
+from ..services.style_manager import (
+    get_audience_profiles,
+    get_style_guide_markdown,
+    get_style_option,
+    get_style_registry,
+    recommend_styles,
+    save_style_guide,
+)
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -102,6 +110,49 @@ boilerplate_router = APIRouter(prefix="/api/boilerplates", tags=["boilerplates"]
 async def list_boilerplates():
     """Return the available boilerplate templates organized by category."""
     return get_boilerplate_registry()
+
+
+styles_router = APIRouter(prefix="/api/styles", tags=["styles"])
+
+
+@styles_router.get("")
+async def list_styles():
+    """Return all available UI design styles."""
+    return get_style_registry()
+
+
+@styles_router.get("/profiles")
+async def get_profiles():
+    """Return audience, vibe, and age group profiles for style recommendation."""
+    return get_audience_profiles()
+
+
+@styles_router.get("/recommend")
+async def get_recommendations(
+    audience: str | None = None,
+    vibe: str | None = None,
+    age_group: str | None = None,
+):
+    """Recommend UI styles based on audience, vibe, and age group."""
+    return recommend_styles(audience, vibe, age_group)
+
+
+@styles_router.get("/{style_id}")
+async def get_style(style_id: str):
+    """Return full details for a specific style including the complete style guide."""
+    style = get_style_option(style_id)
+    if not style:
+        raise HTTPException(status_code=404, detail=f"Style '{style_id}' not found")
+    return style
+
+
+@styles_router.get("/{style_id}/guide")
+async def get_style_guide(style_id: str):
+    """Return the generated Markdown style guide for a given style."""
+    guide = get_style_guide_markdown(style_id)
+    if not guide:
+        raise HTTPException(status_code=404, detail=f"Style '{style_id}' not found")
+    return {"style_id": style_id, "markdown": guide}
 
 
 def validate_project_name(name: str) -> str:
@@ -262,6 +313,10 @@ async def create_project(project: ProjectCreate):
     # Save project config (boilerplate + style choices)
     if boilerplate_id:
         save_project_config(project_path, boilerplate_id, style_id)
+
+    # Save style guide if a style was selected
+    if style_id:
+        save_style_guide(project_path, style_id)
 
     # Register in registry
     try:

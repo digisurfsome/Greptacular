@@ -41,6 +41,45 @@ export interface BoilerplateCategory {
   options: BoilerplateOption[]
 }
 
+// Style types
+export interface StyleOption {
+  id: string
+  name: string
+  category: 'core' | 'vibe'
+  description: string
+  best_for: string
+  philosophy: string
+}
+
+export interface StyleRecommendation {
+  style_id: string
+  score: number
+  reasons: string[]
+}
+
+export interface AudienceProfile {
+  label: string
+  recommended: string[]
+  avoid: string[]
+}
+
+export interface VibeProfile {
+  label: string
+  boost: string[]
+}
+
+export interface AgeProfile {
+  label: string
+  boost: string[]
+  penalize?: string[]
+}
+
+export interface StyleProfiles {
+  audiences: Record<string, AudienceProfile>
+  vibes: Record<string, VibeProfile>
+  age_groups: Record<string, AgeProfile>
+}
+
 // Filesystem types
 export interface DriveInfo {
   letter: string

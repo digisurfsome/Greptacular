@@ -8,6 +8,9 @@ import type {
   ProjectPrompts,
   ProjectSettingsUpdate,
   BoilerplateCategory,
+  StyleOption,
+  StyleRecommendation,
+  StyleProfiles,
   FeatureListResponse,
   Feature,
   FeatureCreate,
@@ -93,6 +96,31 @@ export async function createProject(
 
 export async function listBoilerplates(): Promise<BoilerplateCategory[]> {
   return fetchJSON('/boilerplates')
+}
+
+// ============================================================================
+// Styles API
+// ============================================================================
+
+export async function listStyles(): Promise<StyleOption[]> {
+  return fetchJSON('/styles')
+}
+
+export async function getStyleProfiles(): Promise<StyleProfiles> {
+  return fetchJSON('/styles/profiles')
+}
+
+export async function getStyleRecommendations(
+  audience?: string,
+  vibe?: string,
+  ageGroup?: string,
+): Promise<StyleRecommendation[]> {
+  const params = new URLSearchParams()
+  if (audience) params.set('audience', audience)
+  if (vibe) params.set('vibe', vibe)
+  if (ageGroup) params.set('age_group', ageGroup)
+  const query = params.toString()
+  return fetchJSON(`/styles/recommend${query ? `?${query}` : ''}`)
 }
 
 export async function getProject(name: string): Promise<ProjectDetail> {

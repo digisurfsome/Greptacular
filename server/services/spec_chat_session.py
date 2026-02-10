@@ -151,6 +151,28 @@ class SpecChatSession:
                     )
                     system_prompt = system_prompt + boilerplate_ctx
 
+        # Inject style context if a design style was selected
+        if project_config:
+            selected_style_id = project_config.get("style")
+            if selected_style_id:
+                from .style_manager import get_style_guide_markdown, get_style_option
+                style_option = get_style_option(selected_style_id)
+                style_guide_md = get_style_guide_markdown(selected_style_id)
+                if style_option and style_guide_md:
+                    style_ctx = (
+                        "\n\n## DESIGN STYLE CONTEXT\n\n"
+                        f"This project uses the **{style_option['name']}** design system.\n\n"
+                        f"**Philosophy:** {style_option['philosophy']}\n\n"
+                        "**Important:** When generating the app spec, include a Section 3: Style Guide "
+                        "with the complete design system below. The coding agent MUST follow these design "
+                        "tokens, typography, component patterns, and Tailwind CSS theme configuration "
+                        "exactly. Consistency is the #1 priority.\n\n"
+                        "**Do NOT ask the user about visual style preferences** — the style is decided.\n\n"
+                        "---\n\n"
+                        f"{style_guide_md}\n"
+                    )
+                    system_prompt = system_prompt + style_ctx
+
         # Write system prompt to CLAUDE.md file to avoid Windows command line length limit
         # The SDK will read this via setting_sources=["project"]
         claude_md_path = self.project_dir / "CLAUDE.md"

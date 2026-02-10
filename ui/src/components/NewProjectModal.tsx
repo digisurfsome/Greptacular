@@ -5,13 +5,13 @@
  * 1. Enter project name
  * 2. Select project folder
  * 3. Choose boilerplate (web, mobile, scratch, etc.)
- * 4. Choose design style (placeholder - coming soon)
+ * 4. Choose design style (with AI recommendation)
  * 5. Choose spec method (Claude or manual)
  * 6a. If Claude: Show SpecCreationChat
  * 6b. If manual: Create project and close
  */
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import {
   Bot,
@@ -25,12 +25,15 @@ import {
   Smartphone,
   Layers,
   Zap,
+  Sparkles,
+  Paintbrush,
+  Check,
 } from 'lucide-react'
-import { useCreateProject, useBoilerplates } from '../hooks/useProjects'
+import { useCreateProject, useBoilerplates, useStyles, useStyleProfiles, useStyleRecommendations } from '../hooks/useProjects'
 import { SpecCreationChat } from './SpecCreationChat'
 import { FolderBrowser } from './FolderBrowser'
 import { startAgent } from '../lib/api'
-import type { BoilerplateCategory } from '../lib/types'
+import type { BoilerplateCategory, StyleOption } from '../lib/types'
 import {
   Dialog,
   DialogContent,
@@ -50,6 +53,7 @@ type InitializerStatus = 'idle' | 'starting' | 'error'
 
 type Step = 'name' | 'folder' | 'boilerplate' | 'style' | 'method' | 'chat' | 'complete'
 type SpecMethod = 'claude' | 'manual'
+type StyleCategory = 'all' | 'core' | 'vibe'
 
 /** Map category IDs to lucide-react icons */
 const CATEGORY_ICONS: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
@@ -57,6 +61,22 @@ const CATEGORY_ICONS: Record<string, React.ComponentType<{ size?: number; classN
   mobile: Smartphone,
   web_mobile: Layers,
   scratch: Zap,
+}
+
+/** Preview color swatches for each style (brand + surface + accent) */
+const STYLE_SWATCHES: Record<string, string[]> = {
+  'flat-design': ['#3B82F6', '#F8FAFC', '#0F172A', '#22C55E'],
+  'minimalism': ['#111827', '#FFFFFF', '#6B7280', '#F9FAFB'],
+  'neumorphism': ['#6366F1', '#E0E5EC', '#2D3748', '#b8bec7'],
+  'glassmorphism': ['#A855F7', '#667eea', '#764ba2', '#FFFFFF'],
+  'skeuomorphism': ['#2563EB', '#F5F0EB', '#E8E0D8', '#1A1A1A'],
+  'neubrutalism': ['#FACC15', '#FFFBEB', '#18181B', '#EF4444'],
+  'bauhaus': ['#DC2626', '#FAFAFA', '#2563EB', '#FACC15'],
+  'claymorphism': ['#F59E0B', '#FFF7ED', '#292524', '#FEF3E2'],
+  'retro-futurism': ['#D946EF', '#0C0A1A', '#06B6D4', '#F97316'],
+  'cyberpunk': ['#06B6D4', '#09090B', '#F43F5E', '#FBBF24'],
+  'dark-mode': ['#3B82F6', '#0F172A', '#1E293B', '#F1F5F9'],
+  'warmer-shades': ['#D97706', '#FFFBF5', '#FFF8F0', '#292524'],
 }
 
 interface NewProjectModalProps {
@@ -83,11 +103,38 @@ export function NewProjectModal({
   const [initializerError, setInitializerError] = useState<string | null>(null)
   const [yoloModeSelected, setYoloModeSelected] = useState(false)
 
+  // Style picker state
+  const [styleCategory, setStyleCategory] = useState<StyleCategory>('all')
+  const [selectedAudience, setSelectedAudience] = useState<string>('')
+  const [selectedVibe, setSelectedVibe] = useState<string>('')
+  const [selectedAge, setSelectedAge] = useState<string>('')
+  const [showRecommender, setShowRecommender] = useState(false)
+
   // Suppress unused variable warning - specMethod may be used in future
   void _specMethod
 
   const createProject = useCreateProject()
   const { data: boilerplateCategories, isLoading: boilerplatesLoading } = useBoilerplates()
+  const { data: styles, isLoading: stylesLoading } = useStyles()
+  const { data: profiles } = useStyleProfiles()
+  const { data: recommendations } = useStyleRecommendations(
+    selectedAudience || undefined,
+    selectedVibe || undefined,
+    selectedAge || undefined,
+  )
+
+  // Filtered styles by category
+  const filteredStyles = useMemo(() => {
+    if (!styles) return []
+    if (styleCategory === 'all') return styles
+    return styles.filter((s: StyleOption) => s.category === styleCategory)
+  }, [styles, styleCategory])
+
+  // Get recommended style IDs for highlighting
+  const recommendedIds = useMemo(() => {
+    if (!recommendations || recommendations.length === 0) return new Set<string>()
+    return new Set(recommendations.slice(0, 3).map((r) => r.style_id))
+  }, [recommendations])
 
   // Wrapper to notify parent of step changes
   const changeStep = (newStep: Step) => {
@@ -148,7 +195,13 @@ export function NewProjectModal({
     }
   }
 
+  const handleStyleSelect = (id: string) => {
+    setStyleId(id)
+    changeStep('method')
+  }
+
   const handleStyleSkip = () => {
+    setStyleId(null)
     changeStep('method')
   }
 
@@ -248,6 +301,11 @@ export function NewProjectModal({
     setInitializerStatus('idle')
     setInitializerError(null)
     setYoloModeSelected(false)
+    setStyleCategory('all')
+    setSelectedAudience('')
+    setSelectedVibe('')
+    setSelectedAge('')
+    setShowRecommender(false)
     onClose()
   }
 
@@ -317,7 +375,7 @@ export function NewProjectModal({
 
   return (
     <Dialog open={true} onOpenChange={(open) => !open && handleClose()}>
-      <DialogContent className={step === 'boilerplate' ? 'sm:max-w-xl' : 'sm:max-w-lg'}>
+      <DialogContent className={step === 'style' ? 'sm:max-w-2xl max-h-[85vh] overflow-hidden flex flex-col' : step === 'boilerplate' ? 'sm:max-w-xl' : 'sm:max-w-lg'}>
         <DialogHeader>
           <DialogTitle>
             {step === 'name' && 'Create New Project'}
@@ -472,29 +530,164 @@ export function NewProjectModal({
           </div>
         )}
 
-        {/* Step 4: Design Style (Placeholder) */}
+        {/* Step 4: Design Style Selection */}
         {step === 'style' && (
-          <div className="space-y-4">
-            <Card>
-              <CardContent className="p-6 text-center space-y-3">
-                <p className="text-muted-foreground">
-                  This feature is coming soon. You'll be able to pick from graphic design styles, each with their own stylesheet.
-                </p>
-                <div className="flex flex-wrap justify-center gap-2">
-                  <Badge variant="secondary">Neobrutalism</Badge>
-                  <Badge variant="secondary">Glassmorphism</Badge>
-                  <Badge variant="secondary">Swiss / International</Badge>
-                  <Badge variant="secondary">Material Design</Badge>
-                </div>
-              </CardContent>
-            </Card>
+          <div className="flex flex-col gap-3 min-h-0">
+            <DialogDescription>
+              Pick the design system for your app. Each style includes a complete Tailwind CSS theme, typography, and component patterns.
+            </DialogDescription>
 
-            <DialogFooter className="sm:justify-between">
+            {/* AI Recommender Toggle */}
+            <div className="flex items-center gap-2">
+              <Button
+                variant={showRecommender ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setShowRecommender(!showRecommender)}
+              >
+                <Sparkles size={14} />
+                {showRecommender ? 'Hide Recommender' : 'Help Me Choose'}
+              </Button>
+
+              {/* Category filter tabs */}
+              <div className="flex gap-1 ml-auto">
+                {(['all', 'core', 'vibe'] as StyleCategory[]).map((cat) => (
+                  <Button
+                    key={cat}
+                    variant={styleCategory === cat ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => setStyleCategory(cat)}
+                    className="text-xs px-2 h-7"
+                  >
+                    {cat === 'all' ? 'All' : cat === 'core' ? 'Core' : 'Vibe'}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            {/* AI Recommender Panel */}
+            {showRecommender && profiles && (
+              <Card className="border-primary/30 bg-primary/5">
+                <CardContent className="p-3">
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <Label className="text-xs">Audience</Label>
+                      <select
+                        value={selectedAudience}
+                        onChange={(e) => setSelectedAudience(e.target.value)}
+                        className="w-full mt-1 text-xs rounded-md border border-border bg-background px-2 py-1.5"
+                      >
+                        <option value="">Any</option>
+                        {Object.entries(profiles.audiences).map(([key, val]) => (
+                          <option key={key} value={key}>{val.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <Label className="text-xs">Vibe</Label>
+                      <select
+                        value={selectedVibe}
+                        onChange={(e) => setSelectedVibe(e.target.value)}
+                        className="w-full mt-1 text-xs rounded-md border border-border bg-background px-2 py-1.5"
+                      >
+                        <option value="">Any</option>
+                        {Object.entries(profiles.vibes).map(([key, val]) => (
+                          <option key={key} value={key}>{val.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <Label className="text-xs">Age Group</Label>
+                      <select
+                        value={selectedAge}
+                        onChange={(e) => setSelectedAge(e.target.value)}
+                        className="w-full mt-1 text-xs rounded-md border border-border bg-background px-2 py-1.5"
+                      >
+                        <option value="">Any</option>
+                        {Object.entries(profiles.age_groups).map(([key, val]) => (
+                          <option key={key} value={key}>{val.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  {recommendations && recommendations.length > 0 && (
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Top picks highlighted below. Best match: <span className="font-semibold text-primary">{styles?.find((s: StyleOption) => s.id === recommendations[0].style_id)?.name}</span>
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Style Grid */}
+            {stylesLoading && (
+              <div className="flex items-center justify-center gap-2 py-8 text-muted-foreground">
+                <Loader2 size={16} className="animate-spin" />
+                <span>Loading styles...</span>
+              </div>
+            )}
+
+            {!stylesLoading && filteredStyles.length > 0 && (
+              <div className="overflow-y-auto pr-1 -mr-1 flex-1 min-h-0">
+                <div className="grid grid-cols-2 gap-2">
+                  {filteredStyles.map((style: StyleOption) => {
+                    const swatches = STYLE_SWATCHES[style.id] || ['#3B82F6', '#FFFFFF', '#111827', '#22C55E']
+                    const isRecommended = recommendedIds.has(style.id)
+                    const isTopPick = recommendations && recommendations.length > 0 && recommendations[0].style_id === style.id
+
+                    return (
+                      <Card
+                        key={style.id}
+                        className={`cursor-pointer transition-all hover:border-primary ${
+                          isRecommended ? 'border-primary/50 ring-1 ring-primary/20' : ''
+                        } ${isTopPick ? 'ring-2 ring-primary/40' : ''}`}
+                        onClick={() => handleStyleSelect(style.id)}
+                      >
+                        <CardContent className="p-3">
+                          {/* Color swatches preview */}
+                          <div className="flex gap-1 mb-2">
+                            {swatches.map((color, i) => (
+                              <div
+                                key={i}
+                                className="h-5 flex-1 rounded-sm border border-black/10"
+                                style={{ backgroundColor: color }}
+                              />
+                            ))}
+                          </div>
+
+                          {/* Style name and badges */}
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <span className="font-semibold text-sm leading-tight">{style.name}</span>
+                            {isTopPick && (
+                              <Badge className="text-[10px] px-1.5 py-0 h-4">Best</Badge>
+                            )}
+                            {isRecommended && !isTopPick && (
+                              <Check size={12} className="text-primary" />
+                            )}
+                          </div>
+
+                          {/* Description */}
+                          <p className="text-xs text-muted-foreground leading-snug line-clamp-2">
+                            {style.description}
+                          </p>
+
+                          {/* Best for */}
+                          <p className="text-[10px] text-muted-foreground/70 mt-1 leading-snug">
+                            {style.best_for}
+                          </p>
+                        </CardContent>
+                      </Card>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            <DialogFooter className="sm:justify-between pt-1">
               <Button variant="ghost" onClick={handleBack}>
                 <ArrowLeft size={16} />
                 Back
               </Button>
-              <Button onClick={handleStyleSkip}>
+              <Button variant="outline" onClick={handleStyleSkip}>
                 Skip for Now
                 <ArrowRight size={16} />
               </Button>
@@ -508,6 +701,15 @@ export function NewProjectModal({
             <DialogDescription>
               How would you like to define your project?
             </DialogDescription>
+
+            {/* Show selected style summary */}
+            {styleId && styles && (
+              <div className="flex items-center gap-2 text-sm">
+                <Paintbrush size={14} className="text-primary" />
+                <span className="text-muted-foreground">Style:</span>
+                <Badge variant="secondary">{styles.find((s: StyleOption) => s.id === styleId)?.name}</Badge>
+              </div>
+            )}
 
             <div className="space-y-3">
               {/* Claude option */}

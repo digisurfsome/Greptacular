@@ -136,6 +136,14 @@ POLL_INTERVAL = 5  # seconds between checking for ready features
 MAX_FEATURE_RETRIES = 3  # Maximum times to retry a failed feature
 INITIALIZER_TIMEOUT = 1800  # 30 minutes timeout for initializer
 
+# Context budget constants for batch sizing.
+# Target 45% context usage per session. Each step is estimated at ~10 agent turns
+# (reading context, implementing, testing). Budget of 120 turns leaves room for
+# orientation (10 turns) and wrap-up (15 turns) within the 150 max_turns ceiling.
+BUDGET_USABLE_TURNS = 120  # Turns available for implementation (excluding orient/wrap-up)
+TURNS_PER_STEP = 10        # Conservative estimate: each feature step ~10 turns
+MIN_FEATURE_TURNS = 30     # Minimum turns even for tiny features (claim, implement, verify, commit)
+
 
 class ParallelOrchestrator:
     """Orchestrates parallel execution of independent features.
@@ -360,18 +368,38 @@ class ParallelOrchestrator:
 
         return selected
 
+    @staticmethod
+    def _estimate_feature_turns(feature: dict) -> int:
+        """Estimate the number of agent turns a feature will consume.
+
+        Uses step count as a complexity proxy. Each step typically requires
+        multiple turns (reading context, implementing, testing). Features with
+        more steps consume more context.
+
+        Args:
+            feature: Feature dict with 'steps' field (list of strings)
+
+        Returns:
+            Estimated number of turns for this feature
+        """
+        steps = feature.get("steps") or []
+        step_count = len(steps) if isinstance(steps, list) else 0
+        return max(step_count * TURNS_PER_STEP, MIN_FEATURE_TURNS)
+
     def build_feature_batches(
         self,
         ready: list[dict],
         all_features: list[dict],
         scheduling_scores: dict[int, float],
     ) -> list[list[dict]]:
-        """Build dependency-aware feature batches for coding agents.
+        """Build budget-aware, dependency-aware feature batches for coding agents.
 
-        Each batch contains up to `batch_size` features. The algorithm:
+        Each batch targets 45% context budget (~120 usable turns). The algorithm:
         1. Start with a ready feature (sorted by scheduling score)
-        2. Chain extension: find dependents whose deps are satisfied if earlier batch features pass
-        3. Same-category fill: fill remaining slots with ready features from the same category
+        2. Estimate turn cost using step count as a complexity proxy
+        3. Chain extension: add dependents if they fit within the turn budget
+        4. Same-category fill: fill remaining budget with same-category features
+        5. Respect both batch_size limit AND turn budget
 
         Args:
             ready: Ready features (sorted by scheduling score)
@@ -405,13 +433,18 @@ class ParallelOrchestrator:
 
             batch = [feature]
             used_ids.add(feature["id"])
+            batch_turns = self._estimate_feature_turns(feature)
             # Simulate passing set = real passing + batch features
             simulated_passing = passing_ids | {feature["id"]}
 
-            # Phase 1: Chain extension - find dependents whose deps are met
+            # Phase 1: Chain extension - find dependents whose deps are met AND fit in budget
             for _ in range(self.batch_size - 1):
+                if batch_turns >= BUDGET_USABLE_TURNS:
+                    break  # Budget exhausted
+
                 best_candidate = None
                 best_score = -1.0
+                best_turns = 0
                 # Check children of all features currently in the batch
                 candidate_ids: set[int] = set()
                 for bf in batch:
@@ -426,35 +459,50 @@ class ParallelOrchestrator:
                     # Check if ALL deps are satisfied by simulated passing set
                     deps = cf.get("dependencies") or []
                     if all(d in simulated_passing for d in deps):
-                        score = scheduling_scores.get(cid, 0)
-                        if score > best_score:
-                            best_score = score
-                            best_candidate = cf
+                        est_turns = self._estimate_feature_turns(cf)
+                        if batch_turns + est_turns <= BUDGET_USABLE_TURNS:
+                            score = scheduling_scores.get(cid, 0)
+                            if score > best_score:
+                                best_score = score
+                                best_candidate = cf
+                                best_turns = est_turns
 
                 if best_candidate:
                     batch.append(best_candidate)
                     used_ids.add(best_candidate["id"])
                     simulated_passing.add(best_candidate["id"])
+                    batch_turns += best_turns
                 else:
                     break
 
-            # Phase 2: Same-category fill
-            if len(batch) < self.batch_size:
+            # Phase 2: Same-category fill (respecting budget)
+            if len(batch) < self.batch_size and batch_turns < BUDGET_USABLE_TURNS:
                 category = feature.get("category", "")
                 for rf in ready:
                     if len(batch) >= self.batch_size:
                         break
+                    if batch_turns >= BUDGET_USABLE_TURNS:
+                        break
                     if rf["id"] in used_ids:
                         continue
                     if rf.get("category", "") == category:
-                        batch.append(rf)
-                        used_ids.add(rf["id"])
+                        est_turns = self._estimate_feature_turns(rf)
+                        if batch_turns + est_turns <= BUDGET_USABLE_TURNS:
+                            batch.append(rf)
+                            used_ids.add(rf["id"])
+                            batch_turns += est_turns
 
             batches.append(batch)
 
-        debug_log.log("BATCH", f"Built {len(batches)} batches from {len(ready)} ready features",
+        # Log batch details including estimated turn budgets
+        batch_turns_list = [
+            sum(self._estimate_feature_turns(f) for f in b) for b in batches
+        ]
+        debug_log.log("BATCH", f"Built {len(batches)} batches from {len(ready)} ready features"
+                       f" (budget: {BUDGET_USABLE_TURNS} turns/batch)",
             batch_sizes=[len(b) for b in batches],
-            batch_ids=[[f['id'] for f in b] for b in batches[:5]])
+            batch_ids=[[f['id'] for f in b] for b in batches[:5]],
+            batch_estimated_turns=batch_turns_list[:5])
 
         return batches
 

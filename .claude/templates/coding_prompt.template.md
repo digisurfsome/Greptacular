@@ -3,6 +3,38 @@
 You are continuing work on a long-running autonomous development task.
 This is a FRESH context window - you have no memory of previous sessions.
 
+---
+
+## CONTEXT BUDGET MANAGEMENT (ABSOLUTE RULE)
+
+You are operating under a strict context window budget. Your target is **45% context usage** per session with a **hard stop at 48%**. Going beyond 50% causes quality degradation -- your outputs become less reliable, you start making mistakes, and the software suffers. Staying under 45% is what makes this system produce perfect software.
+
+### How to Track Your Budget
+
+You don't have a token counter, so use these proxies:
+- **Turn count**: You have approximately **135 turns** total (45% of your capacity). Wrap-up should begin by **turn 120**. You MUST be committed and done by **turn 135**.
+- **Phase gates**: Orient (turns 1-10), Implement (turns 11-100), Verify (turns 100-120), Wrap-up (turns 120-135).
+- **Budget checkpoints**: The system prints `[Budget]` messages every 30 turns showing your estimated usage. Pay attention to these.
+- **If context compaction fires**: This means you've blown past your budget into the danger zone. **STOP IMMEDIATELY.** Commit everything, update progress notes, and end session.
+
+### The Golden Rules
+
+1. **Small features that fit under 45%**: Implement fully, verify, mark passing, commit. If time remains in your budget, the orchestrator will assign more work in the next session.
+2. **Large features that won't fit**: If after reading a feature's steps you estimate it will exceed your budget, use the `feature_split` tool to break it into two testable parts before you start implementing. Part 1 keeps the foundation steps, Part 2 gets the advanced behavior. Each part must be independently testable.
+3. **Batch assignments**: If you're assigned multiple features, work through them in order. After completing each one, check your budget. If you're past turn 120, stop and wrap up -- remaining features will be assigned to a fresh agent.
+4. **NEVER push past 48%**: It is better to commit partial but clean, tested progress than to rush through a complete feature with degraded quality. Incomplete-but-solid beats complete-but-buggy every time.
+
+### Wrap-Up Protocol (Start by Turn 120)
+
+1. Stop implementing new code
+2. Commit all working code with descriptive message
+3. Update claude-progress.txt with what's done and what's next
+4. Mark features passing ONLY if fully verified
+5. If feature is partially done, leave it as in_progress with clear notes about what remains
+6. Ensure no uncommitted changes, app in working state
+
+---
+
 ### STEP 1: GET YOUR BEARINGS (MANDATORY)
 
 Start by orienting yourself:
@@ -59,7 +91,7 @@ Use the feature_mark_in_progress tool with feature_id={your_assigned_id}
 
 If you get "already in-progress" error, that's OK - continue with implementation.
 
-Focus on completing one feature perfectly in this session. It's ok if you only complete one feature, as more sessions will follow.
+Focus on completing your assigned work within the 45% context budget. Quality and clean commits matter more than completing every assigned feature. More sessions will follow -- a fresh agent with full context will pick up where you left off.
 
 #### When to Skip a Feature (EXTREMELY RARE)
 
@@ -178,15 +210,17 @@ Update `claude-progress.txt` with:
 - What should be worked on next
 - Current completion status (e.g., "45/200 tests passing")
 
-### STEP 9: END SESSION CLEANLY
+### STEP 9: END SESSION CLEANLY (MANDATORY BY TURN 135)
 
-Before context fills up:
+Your context budget is at its limit. You MUST wrap up NOW:
 
 1. Commit all working code
-2. Update claude-progress.txt
-3. Mark features as passing if tests verified
+2. Update claude-progress.txt with what was accomplished and what remains
+3. Mark features as passing ONLY if tests verified
 4. Ensure no uncommitted changes
 5. Leave app in working state (no broken features)
+
+**DO NOT start new implementation work during wrap-up.** If you have uncommitted changes, commit them. If a feature is partially done, document the exact state clearly in claude-progress.txt so the next agent can continue seamlessly.
 
 ---
 
@@ -258,7 +292,7 @@ This allows you to fully test email-dependent flows without needing external ema
 
 ---
 
-**Remember:** One feature per session. Zero console errors. All data from real database. Leave codebase clean before ending session.
+**Remember:** Stay under 45% context budget. Commit clean, tested progress. Zero console errors. All data from real database. Quality over quantity -- a fresh agent continues where you leave off.
 
 ---
 

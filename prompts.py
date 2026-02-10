@@ -288,8 +288,12 @@ def get_single_feature_prompt(feature_id: int, project_dir: Path | None = None, 
     # Minimal header - the base prompt already contains the full workflow
     single_feature_header = f"""## ASSIGNED FEATURE: #{feature_id}
 
+**Context Budget: 45% target, 48% hard stop.** Wrap up by turn 120, done by turn 135.
+
 Work ONLY on this feature. Other agents are handling other features.
 Use `feature_claim_and_get` with ID {feature_id} to claim it and get details.
+Implement within your context budget. If the feature is too large to complete
+within budget, use `feature_split` to break it into two testable parts first.
 If blocked, use `feature_skip` and document the blocker.
 
 ---
@@ -321,22 +325,26 @@ def get_batch_feature_prompt(
 
     batch_header = f"""## ASSIGNED FEATURES (BATCH): {ids_str}
 
+**Context Budget: 45% target, 48% hard stop.** Wrap up by turn 120, done by turn 135.
+
 You have been assigned {len(feature_ids)} features to implement sequentially.
 Process them IN ORDER: {ids_str}
 
-### Workflow for each feature:
+### Budget-Aware Workflow for each feature:
 1. Call `feature_claim_and_get` with the feature ID to get its details
 2. Implement the feature fully
 3. Verify it works (browser testing if applicable)
 4. Call `feature_mark_passing` to mark it complete
 5. Git commit the changes
-6. Move to the next feature
+6. **CHECK YOUR BUDGET** - if you are past turn 120, wrap up and stop
+7. If budget remains, move to the next feature
 
 ### Important:
 - Complete each feature fully before starting the next
 - Mark each feature passing individually as you go
 - If blocked on a feature, use `feature_skip` and move to the next one
-- Other agents are handling other features - focus only on yours
+- **It is OK to not finish all assigned features** - quality within budget beats rushing through all features with degraded context
+- Unfinished features will be reassigned to a fresh agent in the next session
 
 ---
 

@@ -214,6 +214,24 @@ Ask about user roles:
 - Very long text inputs?
 - Empty states (what shows when there's no data)?
 
+**4l. Navigation & Interaction Patterns**
+
+For each type of "thing" users create or manage, confirm the navigation flow:
+
+- **List -> Detail -> Edit pattern**: Users see a list, click to view details (read-only), then click Edit to modify. Never open directly into edit mode.
+- **Destructive actions**: All delete/remove actions show a confirmation modal first ("Are you sure?"). Never delete on single click.
+- **Feedback**: Success shows a toast notification and navigates to the right view. Errors show a toast and keep the user where they are with their data intact.
+- **Loading states**: Lists show skeleton placeholders while loading. Buttons show a spinner inside during async actions.
+- **Empty states**: When a list has no items, show a helpful message with an icon and a "Create your first [item]" button - not just "No items found."
+
+> "For the things users create in your app, I'll implement:
+> - A list view, a detail view (read-only), a create form, and an edit form as separate pages
+> - Confirmation dialogs before any delete action
+> - Success/error notifications (toasts) for every action
+> - Skeleton loading states and helpful empty state screens
+>
+> Does that match your expectations, or do you have different preferences for any of these?"
+
 **Keep asking follow-up questions until you have a complete picture.** For each feature area, understand:
 
 - What the user sees

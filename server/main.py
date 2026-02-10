@@ -40,6 +40,7 @@ from .routers import (
     schedules_router,
     settings_router,
     spec_creation_router,
+    styles_router,
     terminal_router,
 )
 from .schemas import SetupStatus
@@ -150,6 +151,7 @@ if not ALLOW_REMOTE:
 
 app.include_router(projects_router)
 app.include_router(boilerplate_router)
+app.include_router(styles_router)
 app.include_router(features_router)
 app.include_router(agent_router)
 app.include_router(schedules_router)

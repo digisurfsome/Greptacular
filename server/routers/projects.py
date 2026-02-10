@@ -91,17 +91,38 @@ from ..services.boilerplate_manager import (
     load_project_config,
     save_project_config,
 )
+from ..services.style_registry import (
+    get_style_registry,
+    recommend_style,
+)
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
 
 boilerplate_router = APIRouter(prefix="/api/boilerplates", tags=["boilerplates"])
+styles_router = APIRouter(prefix="/api/styles", tags=["styles"])
 
 
 @boilerplate_router.get("")
 async def list_boilerplates():
     """Return the available boilerplate templates organized by category."""
     return get_boilerplate_registry()
+
+
+@styles_router.get("")
+async def list_styles():
+    """Return available UI design styles grouped by category."""
+    return get_style_registry()
+
+
+@styles_router.get("/recommend")
+async def get_style_recommendation(
+    audience: str = "",
+    vibe: str = "",
+    age_group: str = "",
+):
+    """Return ranked style recommendations based on audience/vibe/age."""
+    return recommend_style(audience, vibe, age_group)
 
 
 def validate_project_name(name: str) -> str:

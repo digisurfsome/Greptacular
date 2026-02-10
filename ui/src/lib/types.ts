@@ -41,6 +41,42 @@ export interface BoilerplateCategory {
   options: BoilerplateOption[]
 }
 
+// Style types
+export interface StyleOption {
+  id: string
+  name: string
+  description: string
+  best_for: string
+  category: string
+  css_preview: {
+    background: string
+    card_bg: string
+    card_border: string
+    card_shadow: string
+    card_radius: string
+    accent: string
+    text: string
+    text_muted: string
+    btn_radius: string
+    card_extra?: string
+    accent2?: string
+    accent3?: string
+  }
+}
+
+export interface StyleCategory {
+  category: string
+  label: string
+  styles: StyleOption[]
+}
+
+export interface StyleRecommendation {
+  style_id: string
+  style_name: string
+  score: number
+  reason: string
+}
+
 // Filesystem types
 export interface DriveInfo {
   letter: string

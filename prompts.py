@@ -134,15 +134,55 @@ This project was created from the **{option_name}** boilerplate.
 """
 
 
+def _get_style_context(project_dir: Path | None) -> str:
+    """Generate style design system context string for injection into prompts.
+
+    If the project was created with a style selection, returns a comprehensive
+    markdown section describing the design system so agents maintain consistent UI.
+
+    Args:
+        project_dir: The project directory to check for project_config.json.
+
+    Returns:
+        A markdown string with style context, or empty string if none.
+    """
+    if not project_dir:
+        return ""
+
+    config_path = project_dir / ".autoforge" / "project_config.json"
+    if not config_path.exists():
+        return ""
+
+    import json
+    try:
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return ""
+
+    style_id = config.get("style")
+    if not style_id:
+        return ""
+
+    try:
+        from server.services.style_registry import get_style_prompt_context
+        return get_style_prompt_context(style_id)
+    except ImportError:
+        return ""
+
+
 def get_initializer_prompt(project_dir: Path | None = None) -> str:
     """Load the initializer prompt (project-specific if available).
 
     If the project uses a boilerplate, injects context about pre-built features.
+    If the project has a style selected, injects design system context.
     """
     prompt = load_prompt("initializer_prompt", project_dir)
     boilerplate_ctx = _get_boilerplate_context(project_dir)
+    style_ctx = _get_style_context(project_dir)
     if boilerplate_ctx:
         prompt = boilerplate_ctx + prompt
+    if style_ctx:
+        prompt = style_ctx + prompt
     return prompt
 
 
@@ -223,8 +263,11 @@ def get_coding_prompt(project_dir: Path | None = None, yolo_mode: bool = False) 
         prompt = _strip_browser_testing_sections(prompt)
 
     boilerplate_ctx = _get_boilerplate_context(project_dir)
+    style_ctx = _get_style_context(project_dir)
     if boilerplate_ctx:
         prompt = boilerplate_ctx + prompt
+    if style_ctx:
+        prompt = style_ctx + prompt
 
     return prompt
 

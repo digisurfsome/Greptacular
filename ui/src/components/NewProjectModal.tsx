@@ -26,11 +26,11 @@ import {
   Layers,
   Zap,
 } from 'lucide-react'
-import { useCreateProject, useBoilerplates } from '../hooks/useProjects'
+import { useCreateProject, useBoilerplates, useStyles, useStyleRecommendations } from '../hooks/useProjects'
 import { SpecCreationChat } from './SpecCreationChat'
 import { FolderBrowser } from './FolderBrowser'
 import { startAgent } from '../lib/api'
-import type { BoilerplateCategory } from '../lib/types'
+import type { BoilerplateCategory, StyleOption } from '../lib/types'
 import {
   Dialog,
   DialogContent,
@@ -82,12 +82,17 @@ export function NewProjectModal({
   const [initializerStatus, setInitializerStatus] = useState<InitializerStatus>('idle')
   const [initializerError, setInitializerError] = useState<string | null>(null)
   const [yoloModeSelected, setYoloModeSelected] = useState(false)
+  const [recAudience, setRecAudience] = useState('')
+  const [recVibe, setRecVibe] = useState('')
+  const [recAge, setRecAge] = useState('')
 
   // Suppress unused variable warning - specMethod may be used in future
   void _specMethod
 
   const createProject = useCreateProject()
   const { data: boilerplateCategories, isLoading: boilerplatesLoading } = useBoilerplates()
+  const { data: styleCategories, isLoading: stylesLoading } = useStyles()
+  const { data: recommendations } = useStyleRecommendations(recAudience, recVibe, recAge)
 
   // Wrapper to notify parent of step changes
   const changeStep = (newStep: Step) => {
@@ -148,7 +153,13 @@ export function NewProjectModal({
     }
   }
 
+  const handleStyleSelect = (style: StyleOption) => {
+    setStyleId(style.id)
+    changeStep('method')
+  }
+
   const handleStyleSkip = () => {
+    setStyleId(null)
     changeStep('method')
   }
 
@@ -248,6 +259,9 @@ export function NewProjectModal({
     setInitializerStatus('idle')
     setInitializerError(null)
     setYoloModeSelected(false)
+    setRecAudience('')
+    setRecVibe('')
+    setRecAge('')
     onClose()
   }
 
@@ -317,7 +331,7 @@ export function NewProjectModal({
 
   return (
     <Dialog open={true} onOpenChange={(open) => !open && handleClose()}>
-      <DialogContent className={step === 'boilerplate' ? 'sm:max-w-xl' : 'sm:max-w-lg'}>
+      <DialogContent className={step === 'boilerplate' || step === 'style' ? 'sm:max-w-2xl' : 'sm:max-w-lg'}>
         <DialogHeader>
           <DialogTitle>
             {step === 'name' && 'Create New Project'}
@@ -472,29 +486,180 @@ export function NewProjectModal({
           </div>
         )}
 
-        {/* Step 4: Design Style (Placeholder) */}
+        {/* Step 4: Design Style */}
         {step === 'style' && (
           <div className="space-y-4">
-            <Card>
-              <CardContent className="p-6 text-center space-y-3">
-                <p className="text-muted-foreground">
-                  This feature is coming soon. You'll be able to pick from graphic design styles, each with their own stylesheet.
-                </p>
-                <div className="flex flex-wrap justify-center gap-2">
-                  <Badge variant="secondary">Neobrutalism</Badge>
-                  <Badge variant="secondary">Glassmorphism</Badge>
-                  <Badge variant="secondary">Swiss / International</Badge>
-                  <Badge variant="secondary">Material Design</Badge>
+            <DialogDescription>
+              Choose a visual design style. This will guide the AI to build a consistent UI.
+            </DialogDescription>
+
+            {/* AI Recommendation */}
+            <details className="group">
+              <summary className="cursor-pointer text-sm font-medium text-primary hover:underline">
+                Not sure? Let AI recommend a style
+              </summary>
+              <div className="mt-3 p-3 bg-muted rounded-lg space-y-2">
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground">Audience</label>
+                    <select
+                      value={recAudience}
+                      onChange={(e) => setRecAudience(e.target.value)}
+                      className="w-full mt-1 px-2 py-1.5 text-sm rounded-md border bg-background"
+                    >
+                      <option value="">Select...</option>
+                      <option value="health-conscious">Health-conscious</option>
+                      <option value="young-edgy">Young / Edgy</option>
+                      <option value="premium-luxury">Premium / Luxury</option>
+                      <option value="friendly-approachable">Friendly / Approachable</option>
+                      <option value="finance-dashboard">Finance / Dashboard</option>
+                      <option value="gaming-entertainment">Gaming / Entertainment</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground">Vibe</label>
+                    <select
+                      value={recVibe}
+                      onChange={(e) => setRecVibe(e.target.value)}
+                      className="w-full mt-1 px-2 py-1.5 text-sm rounded-md border bg-background"
+                    >
+                      <option value="">Select...</option>
+                      <option value="trustworthy">Trustworthy</option>
+                      <option value="fun">Fun</option>
+                      <option value="modern">Modern</option>
+                      <option value="nostalgic">Nostalgic</option>
+                      <option value="edgy">Edgy</option>
+                      <option value="warm">Warm</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground">Age Group</label>
+                    <select
+                      value={recAge}
+                      onChange={(e) => setRecAge(e.target.value)}
+                      className="w-full mt-1 px-2 py-1.5 text-sm rounded-md border bg-background"
+                    >
+                      <option value="">Select...</option>
+                      <option value="under-30">Under 30</option>
+                      <option value="30-50">30 - 50</option>
+                      <option value="50-plus">50+</option>
+                    </select>
+                  </div>
                 </div>
-              </CardContent>
-            </Card>
+                {recommendations && recommendations.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {recommendations.slice(0, 3).map((rec, i) => (
+                      <Badge
+                        key={rec.style_id}
+                        variant={i === 0 ? 'default' : 'secondary'}
+                        className="cursor-pointer"
+                        onClick={() => {
+                          setStyleId(rec.style_id)
+                          changeStep('method')
+                        }}
+                      >
+                        {i === 0 && '★ '}{rec.style_name}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </details>
+
+            {/* Style Grid */}
+            {stylesLoading && (
+              <div className="flex items-center justify-center gap-2 py-8 text-muted-foreground">
+                <Loader2 size={16} className="animate-spin" />
+                <span>Loading styles...</span>
+              </div>
+            )}
+
+            {!stylesLoading && styleCategories && (
+              <div className="space-y-4 max-h-[50vh] overflow-y-auto pr-1">
+                {styleCategories.map((cat) => (
+                  <div key={cat.category}>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                      {cat.label}
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {cat.styles.map((style: StyleOption) => {
+                        const isRec = recommendations?.some((r) => r.style_id === style.id && r.score >= 6)
+                        return (
+                          <Card
+                            key={style.id}
+                            className={`cursor-pointer transition-all hover:border-primary ${
+                              styleId === style.id ? 'border-primary ring-2 ring-primary/20' : ''
+                            } ${isRec ? 'ring-1 ring-yellow-400/50' : ''}`}
+                            onClick={() => handleStyleSelect(style)}
+                          >
+                            <CardContent className="p-3">
+                              <div className="flex gap-3">
+                                {/* Mini preview swatch */}
+                                <div
+                                  className="w-14 h-14 rounded-md flex-shrink-0 flex items-center justify-center overflow-hidden"
+                                  style={{
+                                    background: style.css_preview.background,
+                                    border: style.css_preview.card_border !== 'none'
+                                      ? style.css_preview.card_border
+                                      : '1px solid #e5e7eb',
+                                  }}
+                                >
+                                  {/* Inner card preview */}
+                                  <div
+                                    className="w-10 h-8"
+                                    style={{
+                                      background: style.css_preview.card_bg,
+                                      border: style.css_preview.card_border !== 'none'
+                                        ? style.css_preview.card_border
+                                        : undefined,
+                                      borderRadius: style.css_preview.card_radius,
+                                      boxShadow: style.css_preview.card_shadow !== 'none'
+                                        ? style.css_preview.card_shadow
+                                        : undefined,
+                                    }}
+                                  >
+                                    <div
+                                      className="w-6 h-1.5 mt-1.5 mx-auto rounded-full"
+                                      style={{ background: style.css_preview.accent }}
+                                    />
+                                    <div
+                                      className="w-4 h-1 mt-1 mx-auto rounded-full opacity-40"
+                                      style={{ background: style.css_preview.text }}
+                                    />
+                                  </div>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-semibold text-sm">{style.name}</span>
+                                    {isRec && <Badge variant="outline" className="text-[10px] px-1 py-0">Recommended</Badge>}
+                                  </div>
+                                  <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+                                    {style.best_for}
+                                  </p>
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {error && (
+              <Alert variant="destructive">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
 
             <DialogFooter className="sm:justify-between">
               <Button variant="ghost" onClick={handleBack}>
                 <ArrowLeft size={16} />
                 Back
               </Button>
-              <Button onClick={handleStyleSkip}>
+              <Button variant="outline" onClick={handleStyleSkip}>
                 Skip for Now
                 <ArrowRight size={16} />
               </Button>

@@ -51,6 +51,23 @@ export function useBoilerplates() {
   })
 }
 
+export function useStyles() {
+  return useQuery({
+    queryKey: ['styles'],
+    queryFn: api.listStyles,
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+export function useStyleRecommendations(audience: string, vibe: string, ageGroup: string) {
+  return useQuery({
+    queryKey: ['style-recommendations', audience, vibe, ageGroup],
+    queryFn: () => api.getStyleRecommendations(audience, vibe, ageGroup),
+    enabled: !!(audience || vibe || ageGroup),
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
 export function useDeleteProject() {
   const queryClient = useQueryClient()
 

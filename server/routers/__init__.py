@@ -11,7 +11,7 @@ from .devserver import router as devserver_router
 from .expand_project import router as expand_project_router
 from .features import router as features_router
 from .filesystem import router as filesystem_router
-from .projects import boilerplate_router
+from .projects import boilerplate_router, styles_router
 from .projects import router as projects_router
 from .schedules import router as schedules_router
 from .settings import router as settings_router
@@ -31,4 +31,5 @@ __all__ = [
     "settings_router",
     "terminal_router",
     "boilerplate_router",
+    "styles_router",
 ]

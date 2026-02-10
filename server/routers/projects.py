@@ -99,6 +99,7 @@ from ..services.style_manager import (
     recommend_styles,
     save_style_guide,
 )
+from ..services.style_modifiers import get_modifier_registry
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -135,6 +136,156 @@ async def get_recommendations(
 ):
     """Recommend UI styles based on audience, vibe, and age group."""
     return recommend_styles(audience, vibe, age_group)
+
+
+@styles_router.get("/modifiers")
+async def list_modifiers():
+    """Return all available accessibility modifiers."""
+    return get_modifier_registry()
+
+
+# ============================================================================
+# Description-based style recommendation helpers
+# ============================================================================
+
+
+def _extract_audience(description: str) -> str | None:
+    """Extract audience signal from app description using keyword matching."""
+    keywords: dict[str, list[str]] = {
+        "health_50plus": [
+            "health", "medical", "diabetes", "diabetic", "elderly", "senior", "blood pressure",
+            "medication", "prescription", "wellness", "fitness tracker", "heart rate",
+            "glucose", "sugar", "glycemic", "nutrition label", "barcode",
+        ],
+        "young_edgy": [
+            "gen z", "tiktok", "social", "meme", "trend", "viral", "influencer",
+            "streetwear", "sneaker", "music", "playlist", "festival",
+        ],
+        "premium_luxury": [
+            "luxury", "premium", "exclusive", "boutique", "high-end", "concierge",
+            "wealth", "investment", "portfolio", "vip", "membership",
+        ],
+        "friendly_approachable": [
+            "kids", "family", "community", "recipe", "cooking", "pet",
+            "garden", "hobby", "craft", "local", "neighborhood", "volunteer",
+        ],
+        "finance_dashboard": [
+            "finance", "banking", "budget", "expense", "invoice", "accounting",
+            "crypto", "stock", "trading", "analytics", "dashboard", "report",
+        ],
+        "gaming_entertainment": [
+            "game", "gaming", "quiz", "trivia", "stream", "entertainment",
+            "comic", "anime", "esport", "score", "leaderboard",
+        ],
+    }
+
+    best_match = None
+    best_score = 0
+    for audience_key, words in keywords.items():
+        score = sum(1 for w in words if w in description)
+        if score > best_score:
+            best_score = score
+            best_match = audience_key
+
+    return best_match if best_score > 0 else None
+
+
+def _extract_vibe(description: str) -> str | None:
+    """Extract vibe signal from app description."""
+    keywords: dict[str, list[str]] = {
+        "trustworthy": [
+            "trust", "secure", "reliable", "professional", "accurate", "verified",
+            "certified", "medical", "legal", "compliance", "safe",
+        ],
+        "fun": [
+            "fun", "playful", "exciting", "party", "celebrate", "game", "social",
+            "colorful", "creative", "silly", "casual",
+        ],
+        "modern": [
+            "modern", "sleek", "cutting-edge", "innovative", "smart", "ai",
+            "machine learning", "tech", "startup", "saas", "platform",
+        ],
+        "nostalgic": [
+            "retro", "vintage", "classic", "throwback", "old school", "traditional",
+            "heritage", "antique", "nostalgic",
+        ],
+        "edgy": [
+            "edgy", "bold", "disruptive", "underground", "rebel", "punk",
+            "dark", "gritty", "raw", "intense",
+        ],
+        "warm": [
+            "warm", "cozy", "comfort", "home", "family", "gentle", "caring",
+            "nurturing", "organic", "natural", "handmade",
+        ],
+    }
+
+    best_match = None
+    best_score = 0
+    for vibe_key, words in keywords.items():
+        score = sum(1 for w in words if w in description)
+        if score > best_score:
+            best_score = score
+            best_match = vibe_key
+
+    return best_match if best_score > 0 else None
+
+
+def _extract_age_group(description: str) -> str | None:
+    """Extract age group signal from app description."""
+    young_keywords = [
+        "teen", "student", "young", "gen z", "millennial", "college", "campus",
+        "youth", "kid", "child",
+    ]
+    middle_keywords = [
+        "professional", "adult", "working", "parent", "business", "enterprise",
+        "corporate", "office",
+    ]
+    older_keywords = [
+        "senior", "elderly", "retired", "aging", "50+", "60+", "70+", "older",
+        "grandparent", "accessible", "low vision", "diabetic", "diabetes",
+        "blood pressure", "medication",
+    ]
+
+    young_score = sum(1 for w in young_keywords if w in description)
+    middle_score = sum(1 for w in middle_keywords if w in description)
+    older_score = sum(1 for w in older_keywords if w in description)
+
+    if older_score > young_score and older_score > middle_score:
+        return "50plus"
+    if young_score > middle_score:
+        return "under_30"
+    if middle_score > 0:
+        return "30_50"
+
+    return None
+
+
+@styles_router.post("/recommend-from-description")
+async def recommend_from_description(body: dict):
+    """
+    Accept a brief app description and return style recommendations.
+
+    Uses keyword matching to map the description to audience/vibe/age signals,
+    then feeds those into the existing recommendation engine.
+    """
+    description = body.get("description", "").lower()
+    if not description or len(description) < 10:
+        raise HTTPException(status_code=400, detail="Please provide at least a brief description (10+ characters)")
+
+    audience = _extract_audience(description)
+    vibe = _extract_vibe(description)
+    age_group = _extract_age_group(description)
+
+    recommendations = recommend_styles(audience, vibe, age_group)
+
+    return {
+        "detected_signals": {
+            "audience": audience,
+            "vibe": vibe,
+            "age_group": age_group,
+        },
+        "recommendations": recommendations[:5],  # Top 5
+    }
 
 
 @styles_router.get("/{style_id}")
@@ -310,9 +461,14 @@ async def create_project(project: ProjectCreate):
     # Scaffold prompts
     _scaffold_project_prompts(project_path)
 
-    # Save project config (boilerplate + style choices)
+    # Save project config (boilerplate + style choices + modifiers)
     if boilerplate_id:
-        save_project_config(project_path, boilerplate_id, style_id)
+        save_project_config(
+            project_path,
+            boilerplate_id,
+            style_id,
+            modifier_ids=project.modifier_ids or None,
+        )
 
     # Save style guide if a style was selected
     if style_id:

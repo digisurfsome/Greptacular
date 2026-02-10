@@ -29,7 +29,7 @@ import {
   Paintbrush,
   Check,
 } from 'lucide-react'
-import { useCreateProject, useBoilerplates, useStyles, useStyleProfiles, useStyleRecommendations } from '../hooks/useProjects'
+import { useCreateProject, useBoilerplates, useStyles, useStyleProfiles, useStyleRecommendations, useStyleModifiers, useDescriptionRecommendation } from '../hooks/useProjects'
 import { SpecCreationChat } from './SpecCreationChat'
 import { FolderBrowser } from './FolderBrowser'
 import { startAgent } from '../lib/api'
@@ -109,6 +109,8 @@ export function NewProjectModal({
   const [selectedVibe, setSelectedVibe] = useState<string>('')
   const [selectedAge, setSelectedAge] = useState<string>('')
   const [showRecommender, setShowRecommender] = useState(false)
+  const [selectedModifiers, setSelectedModifiers] = useState<string[]>([])
+  const [appDescription, setAppDescription] = useState('')
 
   // Suppress unused variable warning - specMethod may be used in future
   void _specMethod
@@ -122,6 +124,8 @@ export function NewProjectModal({
     selectedVibe || undefined,
     selectedAge || undefined,
   )
+  const { data: modifiers } = useStyleModifiers()
+  const descriptionRec = useDescriptionRecommendation()
 
   // Filtered styles by category
   const filteredStyles = useMemo(() => {
@@ -197,6 +201,10 @@ export function NewProjectModal({
 
   const handleStyleSelect = (id: string) => {
     setStyleId(id)
+    // Don't advance - show modifier section below the style grid
+  }
+
+  const handleStyleConfirm = () => {
     changeStep('method')
   }
 
@@ -223,6 +231,7 @@ export function NewProjectModal({
           specMethod: 'manual',
           boilerplateId,
           styleId,
+          modifierIds: selectedModifiers,
         })
         changeStep('complete')
         setTimeout(() => {
@@ -241,6 +250,7 @@ export function NewProjectModal({
           specMethod: 'claude',
           boilerplateId,
           styleId,
+          modifierIds: selectedModifiers,
         })
         changeStep('chat')
       } catch (err: unknown) {
@@ -306,6 +316,8 @@ export function NewProjectModal({
     setSelectedVibe('')
     setSelectedAge('')
     setShowRecommender(false)
+    setSelectedModifiers([])
+    setAppDescription('')
     onClose()
   }
 
@@ -319,6 +331,7 @@ export function NewProjectModal({
     } else if (step === 'style') {
       changeStep('boilerplate')
       setStyleId(null)
+      setSelectedModifiers([])
     } else if (step === 'method') {
       changeStep('style')
       setSpecMethod(null)
@@ -567,7 +580,59 @@ export function NewProjectModal({
             {/* AI Recommender Panel */}
             {showRecommender && profiles && (
               <Card className="border-primary/30 bg-primary/5">
-                <CardContent className="p-3">
+                <CardContent className="p-3 space-y-3">
+                  {/* Quick description option */}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Describe your app (optional)</Label>
+                    <div className="flex gap-2">
+                      <textarea
+                        value={appDescription}
+                        onChange={(e) => setAppDescription(e.target.value)}
+                        placeholder="e.g., A sugar tracking app for diabetics aged 50-80 that scans nutrition labels..."
+                        className="flex-1 text-xs rounded-md border border-border bg-background px-2 py-1.5 resize-none h-14"
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={appDescription.length < 10 || descriptionRec.isPending}
+                        onClick={() => {
+                          descriptionRec.mutate(appDescription, {
+                            onSuccess: (data) => {
+                              // Auto-fill the dropdowns with detected signals
+                              if (data.detected_signals.audience) setSelectedAudience(data.detected_signals.audience)
+                              if (data.detected_signals.vibe) setSelectedVibe(data.detected_signals.vibe)
+                              if (data.detected_signals.age_group) setSelectedAge(data.detected_signals.age_group)
+                            }
+                          })
+                        }}
+                        className="self-end"
+                      >
+                        {descriptionRec.isPending ? (
+                          <Loader2 size={12} className="animate-spin" />
+                        ) : (
+                          <Sparkles size={12} />
+                        )}
+                        Analyze
+                      </Button>
+                    </div>
+                    {descriptionRec.data && (
+                      <p className="text-[10px] text-muted-foreground">
+                        Detected: {[
+                          descriptionRec.data.detected_signals.audience && `Audience: ${descriptionRec.data.detected_signals.audience}`,
+                          descriptionRec.data.detected_signals.vibe && `Vibe: ${descriptionRec.data.detected_signals.vibe}`,
+                          descriptionRec.data.detected_signals.age_group && `Age: ${descriptionRec.data.detected_signals.age_group}`,
+                        ].filter(Boolean).join(' | ')}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Divider */}
+                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                    <div className="flex-1 h-px bg-border" />
+                    <span>or choose manually</span>
+                    <div className="flex-1 h-px bg-border" />
+                  </div>
+
                   <div className="grid grid-cols-3 gap-2">
                     <div>
                       <Label className="text-xs">Audience</Label>
@@ -633,13 +698,16 @@ export function NewProjectModal({
                     const swatches = STYLE_SWATCHES[style.id] || ['#3B82F6', '#FFFFFF', '#111827', '#22C55E']
                     const isRecommended = recommendedIds.has(style.id)
                     const isTopPick = recommendations && recommendations.length > 0 && recommendations[0].style_id === style.id
+                    const isSelected = styleId === style.id
 
                     return (
                       <Card
                         key={style.id}
                         className={`cursor-pointer transition-all hover:border-primary ${
                           isRecommended ? 'border-primary/50 ring-1 ring-primary/20' : ''
-                        } ${isTopPick ? 'ring-2 ring-primary/40' : ''}`}
+                        } ${isTopPick ? 'ring-2 ring-primary/40' : ''} ${
+                          isSelected ? 'border-primary ring-2 ring-primary/30' : ''
+                        }`}
                         onClick={() => handleStyleSelect(style.id)}
                       >
                         <CardContent className="p-3">
@@ -679,6 +747,54 @@ export function NewProjectModal({
                     )
                   })}
                 </div>
+
+                {/* Modifier Selection (shown after picking a style) */}
+                {styleId && modifiers && modifiers.length > 0 && (
+                  <div className="space-y-2 border-t pt-3 mt-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">Accessibility Modifiers</span>
+                      <Badge variant="secondary" className="text-[10px]">Optional</Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Layer accessibility enhancements on top of your chosen style.
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {modifiers.map((mod) => {
+                        const isActive = selectedModifiers.includes(mod.id)
+                        return (
+                          <button
+                            key={mod.id}
+                            onClick={() => {
+                              setSelectedModifiers(prev =>
+                                isActive
+                                  ? prev.filter(id => id !== mod.id)
+                                  : prev.length < 3
+                                    ? [...prev, mod.id]
+                                    : prev
+                              )
+                            }}
+                            className={`text-left p-2.5 rounded-lg border transition-colors ${
+                              isActive
+                                ? 'border-primary bg-primary/10'
+                                : 'border-border hover:border-primary/50'
+                            }`}
+                          >
+                            <div className="flex items-center gap-1.5">
+                              {isActive && <Check size={12} className="text-primary" />}
+                              <span className="text-sm font-medium">{mod.name}</span>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
+                              {mod.description}
+                            </p>
+                          </button>
+                        )
+                      })}
+                    </div>
+                    {selectedModifiers.length >= 3 && (
+                      <p className="text-xs text-muted-foreground">Maximum 3 modifiers.</p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -687,10 +803,20 @@ export function NewProjectModal({
                 <ArrowLeft size={16} />
                 Back
               </Button>
-              <Button variant="outline" onClick={handleStyleSkip}>
-                Skip for Now
-                <ArrowRight size={16} />
-              </Button>
+              <div className="flex gap-2">
+                {!styleId && (
+                  <Button variant="outline" onClick={handleStyleSkip}>
+                    Skip for Now
+                    <ArrowRight size={16} />
+                  </Button>
+                )}
+                {styleId && (
+                  <Button onClick={handleStyleConfirm}>
+                    Continue
+                    <ArrowRight size={16} />
+                  </Button>
+                )}
+              </div>
             </DialogFooter>
           </div>
         )}

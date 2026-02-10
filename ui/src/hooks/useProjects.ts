@@ -29,14 +29,15 @@ export function useCreateProject() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ name, path, specMethod, boilerplateId, styleId }: {
+    mutationFn: ({ name, path, specMethod, boilerplateId, styleId, modifierIds }: {
       name: string
       path: string
       specMethod?: 'claude' | 'manual'
       boilerplateId?: string | null
       styleId?: string | null
+      modifierIds?: string[]
     }) =>
-      api.createProject(name, path, specMethod, boilerplateId, styleId),
+      api.createProject(name, path, specMethod, boilerplateId, styleId, modifierIds),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] })
     },
@@ -77,6 +78,20 @@ export function useStyleProfiles() {
     queryKey: ['style-profiles'],
     queryFn: api.getStyleProfiles,
     staleTime: 5 * 60 * 1000,
+  })
+}
+
+export function useStyleModifiers() {
+  return useQuery({
+    queryKey: ['style-modifiers'],
+    queryFn: api.listStyleModifiers,
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+export function useDescriptionRecommendation() {
+  return useMutation({
+    mutationFn: (description: string) => api.getStyleRecommendationsFromDescription(description),
   })
 }
 

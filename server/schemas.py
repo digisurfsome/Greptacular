@@ -31,6 +31,7 @@ class ProjectCreate(BaseModel):
     spec_method: Literal["claude", "manual"] = "claude"
     boilerplate_id: str | None = Field(None, description="Boilerplate option ID (e.g., 'web-supabase-stripe', 'scratch')")
     style_id: str | None = Field(None, description="UI style/theme ID (placeholder for future use)")
+    modifier_ids: list[str] = Field(default_factory=list, description="Accessibility/style modifier IDs")
 
 
 class ProjectStats(BaseModel):

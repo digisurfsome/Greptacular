@@ -1042,6 +1042,206 @@ STYLE_REGISTRY: list[dict] = [
 
 
 # =============================================================================
+# Style Do's and Don'ts (Practical Guidelines for Agents)
+# =============================================================================
+
+STYLE_DOS_AND_DONTS: dict[str, dict[str, list[str]]] = {
+    "flat-design": {
+        "dos": [
+            "Use solid, flat colors without gradients or textures",
+            "Rely on color contrast and whitespace for visual hierarchy",
+            "Keep icons simple, single-weight line or solid fill",
+            "Use clear typography hierarchy with consistent weights",
+            "Ensure touch targets are obvious through color differentiation",
+        ],
+        "donts": [
+            "Never add drop shadows, embossing, or 3D effects",
+            "Avoid gradients on backgrounds, buttons, or cards",
+            "Don't use realistic textures or photographic backgrounds",
+            "Avoid heavy border styling - use color blocks instead",
+            "Don't mix more than 3-4 colors in a single view",
+        ],
+    },
+    "minimalism": {
+        "dos": [
+            "Use generous whitespace (padding/margins at least 2x what feels 'enough')",
+            "Limit each view to one primary action and minimal secondary options",
+            "Use subtle, near-invisible borders (1px, low-opacity) or none at all",
+            "Stick to a single font family with only 2-3 weight variations",
+            "Let content breathe - section gaps should be 40-48px minimum",
+        ],
+        "donts": [
+            "Never crowd the interface with multiple competing CTAs",
+            "Avoid saturated or bold accent colors - use muted, desaturated tones",
+            "Don't add decorative elements (icons, illustrations) unless essential",
+            "Never use more than one box-shadow on the same element",
+            "Avoid using colored backgrounds for cards - prefer white or near-white",
+        ],
+    },
+    "neumorphism": {
+        "dos": [
+            "Always use dual shadows (one light, one dark) for the extruded effect",
+            "Keep the background color identical to the card/element color (same surface)",
+            "Use inset shadows for pressed/active states and input fields",
+            "Maintain generous spacing so shadow pairs don't overlap between elements",
+            "Use soft, muted brand colors - neumorphism works best with low saturation",
+        ],
+        "donts": [
+            "Never use flat borders - depth comes exclusively from shadow pairs",
+            "Don't place neumorphic elements on different-colored backgrounds",
+            "Avoid high-contrast text on neumorphic surfaces - keep it medium contrast",
+            "Never stack neumorphic cards on top of other neumorphic cards",
+            "Don't use neumorphism for small elements like badges or pills - it gets muddy",
+        ],
+    },
+    "glassmorphism": {
+        "dos": [
+            "Always apply backdrop-filter: blur() on translucent panels (12-20px blur)",
+            "Use a colorful or gradient background behind glass panels so blur is visible",
+            "Add subtle white/light border (1px, 15-25% opacity) to catch light on edges",
+            "Layer glass panels at different opacity levels to create depth hierarchy",
+            "Ensure text on glass panels has sufficient contrast - use text-shadow if needed",
+        ],
+        "donts": [
+            "Never use glassmorphism on a solid white or plain background - it looks broken",
+            "Don't make glass panels fully opaque - maintain at least some transparency",
+            "Avoid nesting glass panels inside glass panels (blur stacking kills readability)",
+            "Don't use glass effects on text-heavy content - body text needs solid backgrounds",
+            "Never skip the backdrop-filter - a transparent div without blur is not glassmorphism",
+        ],
+    },
+    "skeuomorphism": {
+        "dos": [
+            "Use subtle vertical gradients on buttons (lighter top, darker bottom)",
+            "Apply inset shadows on inputs to simulate recessed physical fields",
+            "Use realistic material textures (paper, leather, metal) for backgrounds",
+            "Add inner highlight (inset top border or shadow) to simulate light reflection",
+            "Use serif or classic fonts to reinforce the traditional, physical feeling",
+        ],
+        "donts": [
+            "Don't flatten elements - every interactive component needs visible depth cues",
+            "Avoid clean, minimal aesthetics - skeuomorphism thrives on visual richness",
+            "Never use monospaced or geometric sans-serif fonts - they feel too digital",
+            "Don't mix skeuomorphic elements with flat-design components in the same view",
+            "Avoid pure white backgrounds - use off-white, cream, or subtle texture",
+        ],
+    },
+    "neubrutalism": {
+        "dos": [
+            "Use thick black borders (2-3px minimum) on all interactive elements",
+            "Apply hard-offset box shadows (e.g., 4px 4px 0px black) instead of soft shadows",
+            "Use bold, clashing accent colors (yellow, pink, cyan) against white/cream",
+            "Keep border-radius at 0px for the raw, angular aesthetic",
+            "Make hover states shift the element position (translate) with shadow changes",
+        ],
+        "donts": [
+            "Never use soft/blurred shadows - all shadows must be hard-edged offset blocks",
+            "Don't round corners - neubrutalism demands sharp, angular geometry",
+            "Avoid subtle, muted color palettes - colors should be loud and unapologetic",
+            "Never use thin (1px) borders - the thick border is a defining characteristic",
+            "Don't add smooth transitions longer than 150ms - keep interactions snappy and raw",
+        ],
+    },
+    "bauhaus": {
+        "dos": [
+            "Restrict the palette to primary colors (red, blue, yellow) plus black and white",
+            "Use strong geometric shapes (circles, squares, triangles) as decorative elements",
+            "Align everything to a strict grid - asymmetry is intentional, not accidental",
+            "Use bold, sans-serif typography with large size contrasts between headings and body",
+            "Separate content areas with thick black lines or primary-color blocks",
+        ],
+        "donts": [
+            "Never use gradients, textures, or photographic backgrounds",
+            "Don't introduce secondary colors (greens, purples, oranges) into the palette",
+            "Avoid rounded corners - Bauhaus uses sharp geometry exclusively",
+            "Never add drop shadows or 3D effects - the style is strictly two-dimensional",
+            "Don't use decorative or script fonts - only geometric sans-serifs belong here",
+        ],
+    },
+    "claymorphism": {
+        "dos": [
+            "Use large border-radius values (16-24px) for that soft, rounded clay feel",
+            "Apply inner shadows (both top-light and bottom-dark) for the pillowy 3D effect",
+            "Choose warm, pastel color palettes (peach, cream, soft amber, blush pink)",
+            "Use rounded, friendly fonts with higher-than-normal font weights (500-700)",
+            "Add generous padding inside elements (20-28px) to enhance the puffy appearance",
+        ],
+        "donts": [
+            "Never use sharp corners or zero border-radius - everything must feel soft",
+            "Don't use dark or moody color schemes - claymorphism is warm and inviting",
+            "Avoid hard-edged flat shadows - shadows must be soft with inner-shadow layering",
+            "Never use thin, light font weights - they contradict the chunky clay aesthetic",
+            "Don't use visible borders on cards - rely on shadow layering for edge definition",
+        ],
+    },
+    "retro-futurism": {
+        "dos": [
+            "Apply neon glow effects (box-shadow with color spread) on interactive elements",
+            "Use dark backgrounds (#0C0A1A range) so neon accents pop with maximum contrast",
+            "Mix retro display fonts (Orbitron, Press Start) with monospace body text",
+            "Add subtle scan-line or grid-line overlays for CRT/arcade atmosphere",
+            "Use gradient color transitions between neon pink, cyan, and purple accents",
+        ],
+        "donts": [
+            "Never use light/white backgrounds - the dark canvas is essential for neon glow",
+            "Don't use more than 3 neon accent colors per view (too many glows = visual noise)",
+            "Avoid conventional corporate fonts (Inter, Helvetica) - use display/mono fonts",
+            "Never apply large border-radius - keep corners tight (4-8px) for a tech feel",
+            "Don't use flat, unlit colors for buttons or CTAs - they need glow or gradient",
+        ],
+    },
+    "cyberpunk": {
+        "dos": [
+            "Use monospaced fonts (JetBrains Mono, Fira Code) for all text, including headings",
+            "Keep layouts compact and data-dense, like terminal interfaces",
+            "Apply neon accent borders and glows sparingly for a high-tech hacker aesthetic",
+            "Use near-black backgrounds (#09090B) with high-contrast neon text accents",
+            "Add angular, sharp UI elements with minimal border-radius (0-2px)",
+        ],
+        "donts": [
+            "Never use rounded, friendly designs - cyberpunk is angular and harsh",
+            "Don't use warm, pastel, or earth-tone color palettes",
+            "Avoid generous whitespace - cyberpunk UIs feel dense and information-packed",
+            "Never use serif or handwritten fonts - everything is monospace or geometric sans",
+            "Don't apply soft shadows - use hard neon glows or no shadows at all",
+        ],
+    },
+    "dark-mode": {
+        "dos": [
+            "Use multiple gray surface levels (canvas, base, muted) for layered depth hierarchy",
+            "Ensure text contrast ratios meet WCAG AA (4.5:1 for body, 3:1 for large text)",
+            "Use slightly desaturated colors for accents - pure saturated hues are harsh on dark",
+            "Apply subtle (0.3 opacity) shadows to create layered card elevation",
+            "Test all status colors (success, error, warning) for readability on dark surfaces",
+        ],
+        "donts": [
+            "Never use pure black (#000000) as the main background - use dark gray (#0F172A range)",
+            "Don't use pure white (#FFFFFF) for body text - use off-white (#F1F5F9) to reduce glare",
+            "Avoid high-saturation accent colors that vibrate against dark backgrounds",
+            "Never rely on color alone for status indicators - add icons or text labels too",
+            "Don't mix warm and cool grays in the surface hierarchy - pick one temperature",
+        ],
+    },
+    "warmer-shades": {
+        "dos": [
+            "Replace pure whites with cream/off-white tones (#FFFBF5, #FFF8F0)",
+            "Use warm accent colors (amber, terracotta, sage, warm gold) instead of cool blues",
+            "Choose serif or rounded-serif fonts for a comfortable, literary reading feel",
+            "Apply warm-tinted shadows (rgba with amber/brown) instead of pure black shadows",
+            "Use generous line-height (1.6-1.7) for body text to enhance readability and calm",
+        ],
+        "donts": [
+            "Never use cool blue or gray as the primary brand color - stay in the warm spectrum",
+            "Don't use stark white (#FFFFFF) backgrounds - always shift toward cream/warm white",
+            "Avoid high-contrast neon or electric accent colors that clash with warm tones",
+            "Never use cold gray text colors - tint grays warm (stone/amber undertone)",
+            "Don't use geometric sans-serif fonts (Inter, Helvetica) - prefer serif or soft sans",
+        ],
+    },
+}
+
+
+# =============================================================================
 # Registry Lookup Functions
 # =============================================================================
 
@@ -1225,6 +1425,20 @@ def get_style_guide_markdown(style_id: str) -> str | None:
         "```",
         "",
     ])
+
+    # Append do's and don'ts if available for this style
+    dos_and_donts = STYLE_DOS_AND_DONTS.get(style_id)
+    if dos_and_donts:
+        lines.append("## 6. Style Guidelines (Do's and Don'ts)")
+        lines.append("")
+        lines.append("### DO:")
+        for item in dos_and_donts.get("dos", []):
+            lines.append(f"- {item}")
+        lines.append("")
+        lines.append("### DON'T:")
+        for item in dos_and_donts.get("donts", []):
+            lines.append(f"- {item}")
+        lines.append("")
 
     return "\n".join(lines)
 

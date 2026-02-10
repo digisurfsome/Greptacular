@@ -223,18 +223,21 @@ def save_project_config(
     project_dir: Path,
     option_id: str,
     style_id: str | None = None,
+    modifier_ids: list[str] | None = None,
 ) -> None:
     """
     Write a project_config.json file recording the boilerplate and style choices.
 
     The file is stored at ``{project_dir}/.autoforge/project_config.json`` and
     captures which boilerplate template was used to create the project, along
-    with an optional UI style identifier for future use.
+    with an optional UI style identifier and accessibility/style modifier IDs.
 
     Args:
         project_dir: Root directory of the project.
         option_id: The boilerplate option ID that was selected (e.g., "scratch").
         style_id: Optional style/theme identifier chosen during project creation.
+        modifier_ids: Optional list of style modifier IDs (e.g., accessibility options).
+                      Saved as ``style_modifiers`` in the config for prompt injection.
 
     Raises:
         OSError: If the configuration file cannot be written.
@@ -249,6 +252,7 @@ def save_project_config(
             "tech_summary": option["tech_summary"] if option else None,
         },
         "style": style_id,
+        "style_modifiers": modifier_ids if modifier_ids else [],
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
 

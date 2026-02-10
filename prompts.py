@@ -134,6 +134,75 @@ This project was created from the **{option_name}** boilerplate.
 """
 
 
+def _get_style_context(project_dir: Path | None) -> str:
+    """Generate style context string for injection into prompts.
+
+    If the project has a saved style guide, reads it and returns it as a prompt section.
+    This provides belt-and-suspenders style guidance alongside the spec-level injection.
+
+    Also includes accessibility modifier prompt additions if any modifiers are
+    active in the project's config (style_modifiers array in project_config.json).
+
+    Args:
+        project_dir: The project directory to check for style guide or config.
+
+    Returns:
+        A markdown string with style context, or empty string if none.
+    """
+    if not project_dir:
+        return ""
+
+    style_ctx = ""
+
+    # Check for saved style guide first
+    style_guide_path = project_dir / ".autoforge" / "style_guide.md"
+    if style_guide_path.exists():
+        try:
+            guide_content = style_guide_path.read_text(encoding="utf-8")
+            style_ctx = f"\n## DESIGN SYSTEM\n\nFollow this style guide for ALL UI implementation:\n\n{guide_content}\n"
+        except (OSError, PermissionError):
+            pass
+
+    # Fallback: try to generate from project config if no saved guide was loaded
+    config_path = project_dir / ".autoforge" / "project_config.json"
+    if not style_ctx and config_path.exists():
+        import json
+        try:
+            config = json.loads(config_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            config = {}
+
+        style_id = config.get("style")
+        if style_id:
+            try:
+                from server.services.style_manager import get_style_guide_markdown
+                guide = get_style_guide_markdown(style_id)
+                if guide:
+                    style_ctx = (
+                        f"\n## DESIGN SYSTEM\n\nFollow this style guide for ALL UI implementation:\n\n{guide}\n"
+                    )
+            except ImportError:
+                pass
+
+    # Include modifier prompt additions if any are active
+    modifier_ctx = ""
+    if config_path.exists():
+        import json
+        try:
+            config = json.loads(config_path.read_text(encoding="utf-8"))
+            modifier_ids = config.get("style_modifiers", [])
+            if modifier_ids:
+                try:
+                    from server.services.style_modifiers import get_modifier_prompt_additions
+                    modifier_ctx = get_modifier_prompt_additions(modifier_ids)
+                except ImportError:
+                    pass
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    return style_ctx + modifier_ctx
+
+
 def get_initializer_prompt(project_dir: Path | None = None) -> str:
     """Load the initializer prompt (project-specific if available).
 
@@ -143,6 +212,9 @@ def get_initializer_prompt(project_dir: Path | None = None) -> str:
     boilerplate_ctx = _get_boilerplate_context(project_dir)
     if boilerplate_ctx:
         prompt = boilerplate_ctx + prompt
+    style_ctx = _get_style_context(project_dir)
+    if style_ctx:
+        prompt = style_ctx + prompt
     return prompt
 
 
@@ -225,6 +297,10 @@ def get_coding_prompt(project_dir: Path | None = None, yolo_mode: bool = False) 
     boilerplate_ctx = _get_boilerplate_context(project_dir)
     if boilerplate_ctx:
         prompt = boilerplate_ctx + prompt
+
+    style_ctx = _get_style_context(project_dir)
+    if style_ctx:
+        prompt = style_ctx + prompt
 
     return prompt
 

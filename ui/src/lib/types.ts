@@ -80,6 +80,14 @@ export interface StyleProfiles {
   age_groups: Record<string, AgeProfile>
 }
 
+export interface StyleModifier {
+  id: string
+  name: string
+  description: string
+  category: string
+  icon: string  // lucide icon name
+}
+
 // Filesystem types
 export interface DriveInfo {
   letter: string

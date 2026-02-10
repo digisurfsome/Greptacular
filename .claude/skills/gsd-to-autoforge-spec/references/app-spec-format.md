@@ -15,6 +15,8 @@ Complete reference for the XML structure expected by AutoForge's Initializer age
   <api_endpoints_summary>...</api_endpoints_summary>
   <ui_layout>...</ui_layout>
   <design_system>...</design_system>
+  <ui_ux_standards>...</ui_ux_standards>
+  <coding_standards>...</coding_standards>
   <key_interactions>...</key_interactions>
   <implementation_steps>...</implementation_steps>
   <success_criteria>...</success_criteria>
@@ -199,6 +201,66 @@ This is where features are defined. Each feature becomes a test case in features
   </typography>
 </design_system>
 ```
+
+### ui_ux_standards
+```xml
+<ui_ux_standards>
+  <!-- Professional UI/UX guardrails applied to all features -->
+  <banned_patterns>
+    - alert(), confirm(), prompt() - Use modals and toasts instead
+    - Text-only empty states - Use EmptyState component with icon + CTA
+    - Loading states that just say "Loading..." - Use skeleton loaders
+    - Delete without confirmation - Always use ConfirmModal
+    - Raw timestamps - Format as relative time
+  </banned_patterns>
+  <required_components>
+    - Modal, ConfirmModal, Toast/notification system, Skeleton loader
+    - EmptyState, ErrorBoundary, Button with loading state, Avatar with fallback
+  </required_components>
+  <page_patterns>
+    - List View -> Detail View (read-only) -> Create View / Edit View
+    - Never open directly into edit mode from a list
+    - Separate view and edit concerns
+  </page_patterns>
+  <feedback_protocol>
+    - Success: toast + navigate. Error: toast + stay + keep data. Delete: confirm -> loading -> toast + redirect
+  </feedback_protocol>
+  <polish_requirements>
+    - Relative dates, text truncation, back navigation, hover states, focus states
+    - Autofocus, pluralization, search/filter, retry on error, unsaved changes warning
+  </polish_requirements>
+  <accessibility_basics>
+    - Focus rings, Escape closes modals, aria-labels on icon buttons, labels on inputs
+  </accessibility_basics>
+</ui_ux_standards>
+```
+Defines professional-grade UI/UX standards. Based on template in `app_spec.template.txt`. Customize per project.
+
+### coding_standards
+```xml
+<coding_standards>
+  <!-- Code quality rules to prevent common AI-generated code problems -->
+  <architecture>
+    - One component per file, feature folders for grouping
+    - Service layer: DB/API calls in services, not UI components
+    - TypeScript interfaces for all data types, no 'any'
+    - createdAt/updatedAt on all DB writes
+    - User data scoped by user ID
+  </architecture>
+  <routing>
+    - Public vs protected vs admin routes as separate concerns
+    - Route-level 404 catch-all
+    - Auth redirects
+  </routing>
+  <error_handling>
+    - ErrorBoundary wraps entire app
+    - User-friendly error messages, not raw errors
+    - Offline detection, session expiry handling
+    - Retry action on every error state
+  </error_handling>
+</coding_standards>
+```
+Defines coding guardrails. Based on template in `app_spec.template.txt`. Customize per project.
 
 ### key_interactions
 ```xml

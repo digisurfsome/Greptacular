@@ -167,56 +167,266 @@
   </ui_layout>
 
   <design_system>
-    <color_palette>
-      - Primary: #3B82F6 (blue)
-      - Secondary: #10B981 (green)
-      - Accent: #F59E0B (amber)
-      - Background: #FFFFFF (light), #1A1A1A (dark)
-      - Surface: #F5F5F5 (light), #2A2A2A (dark)
-      - Text: #1F2937 (light), #E5E5E5 (dark)
-      - Border: #E5E5E5 (light), #404040 (dark)
-      - Error: #EF4444
-      - Success: #10B981
-      - Warning: #F59E0B
-    </color_palette>
+    <!--
+      Use FUNCTIONAL token names, not content-specific names.
+      Name by role (surface-canvas, text-primary) not by context (sidebar-bg, title-color).
+      This makes the design system reusable and consistent.
+    -->
+
+    <color_tokens>
+      <!-- Name tokens by FUNCTION, not content -->
+      <brand>
+        - brand-light: [lighter tint for hover/active states]
+        - brand-DEFAULT: [primary interaction color]
+        - brand-dark: [darker shade for pressed states]
+      </brand>
+      <surfaces>
+        - surface-canvas: [main app background - e.g., #F9FAFB light, #0F172A dark]
+        - surface-base: [cards, nav, modals - e.g., #FFFFFF light, #1E293B dark]
+        - surface-muted: [inputs, hover states, secondary areas - e.g., #F3F4F6 light, #334155 dark]
+      </surfaces>
+      <text_hierarchy>
+        - text-primary: [headings, key values - high contrast]
+        - text-secondary: [body text, labels - medium contrast]
+        - text-tertiary: [placeholders, captions, inactive - low contrast]
+      </text_hierarchy>
+      <borders>
+        - border-subtle: [dividers, card borders]
+      </borders>
+      <status>
+        - error: #EF4444
+        - success: #10B981
+        - warning: #F59E0B
+      </status>
+    </color_tokens>
 
     <typography>
-      - Font family: Inter, system-ui, -apple-system, sans-serif
-      - Headings: font-semibold
-      - Body: font-normal, leading-relaxed
-      - Code: JetBrains Mono, Consolas, monospace
+      <!--
+        Define a strict hierarchy. Every text element maps to one level.
+        Include exact size, weight, and usage so agents never guess.
+      -->
+      <font_family>Inter, system-ui, -apple-system, sans-serif</font_family>
+      <code_font>JetBrains Mono, Consolas, monospace</code_font>
+      <hierarchy>
+        | Level   | Size  | Weight | Line-Height | Usage                    |
+        |---------|-------|--------|-------------|--------------------------|
+        | Display | 30px  | 700    | 1.2         | Large metrics, hero text |
+        | H1      | 24px  | 600    | 1.3         | Page titles              |
+        | H2      | 18px  | 600    | 1.4         | Section headers          |
+        | H3      | 16px  | 500    | 1.5         | Card titles, subtitles   |
+        | Body    | 14px  | 400    | 1.5         | Regular text, paragraphs |
+        | Small   | 12px  | 400    | 1.4         | Labels, captions, meta   |
+      </hierarchy>
     </typography>
 
-    <components>
-      <buttons>
-        - Primary: colored background, white text, rounded
-        - Secondary: border style, hover fill
-        - Ghost: transparent, hover background
-        - Icon buttons: square with hover state
-      </buttons>
-
-      <inputs>
-        - Rounded borders with focus ring
-        - Clear placeholder text
-        - Error states with red border
-        - Disabled state styling
-      </inputs>
-
+    <component_patterns>
+      <!--
+        Exact values for each component type. Agents must follow these,
+        not improvise spacing/radius/shadow on each component.
+      -->
       <cards>
-        - Subtle border or shadow
-        - Rounded corners (8px)
-        - Hover state for interactive cards
+        - Background: surface-base
+        - Border: 1px solid border-subtle
+        - Radius: 12px
+        - Shadow: 0 1px 3px rgba(0,0,0,0.05)
+        - Padding: 24px
+        - Hover (interactive): shadow increase + subtle lift (-translate-y-0.5)
       </cards>
-    </components>
+      <buttons>
+        <primary>Background: brand, Text: contrasting, Radius: 8px, Padding: 12px 24px</primary>
+        <secondary>Background: transparent, Border: 1px solid border-subtle, Radius: 8px</secondary>
+        <ghost>Background: transparent, Hover: surface-muted, Radius: 8px</ghost>
+        <icon_button>Padding: 8px, Radius: 8px, Hover: surface-muted, Min size: 44x44px touch target</icon_button>
+        <loading_state>Show spinner inside button, disable button, never just text "Loading..."</loading_state>
+      </buttons>
+      <inputs>
+        - Background: surface-muted
+        - Border: none by default, 2px ring on focus (brand color)
+        - Radius: 8px
+        - Padding: 12px 16px
+        - States: default, focused (ring), filled, error (red border + message), disabled (opacity 50%)
+      </inputs>
+      <icons>
+        - Use a consistent icon library (e.g., Lucide, Heroicons)
+        - Style: line/stroke, consistent weight (1.5-2px)
+        - Caps: rounded
+        - Standard size: 20x20 (w-5 h-5)
+        - All icon-only buttons must have aria-label
+      </icons>
+    </component_patterns>
+
+    <spacing_system>
+      <!--
+        Define the spacing scale so all spacing is consistent.
+        Pick ONE base unit and derive all spacing from it.
+      -->
+      <base_unit>8px</base_unit>
+      <density>Cozy (generous whitespace for readability)</density>
+      <scale>
+        - xs: 4px (tight gaps between related elements)
+        - sm: 8px (within groups)
+        - md: 16px (between elements)
+        - lg: 24px (section padding, card padding)
+        - xl: 32px (between sections)
+        - 2xl: 48px (page margins on desktop)
+      </scale>
+      <radius_rules>
+        - Small elements (badges, chips): 4px
+        - Medium elements (buttons, inputs): 8px
+        - Large containers (cards, modals): 12px
+        - Circular (avatars): 9999px
+      </radius_rules>
+    </spacing_system>
 
     <animations>
-      - Smooth transitions (150-300ms)
-      - Fade in for new content
-      - Slide animations for modals/sidebars
-      - Loading spinners
-      - Skeleton loaders
+      - Transitions: 150ms for micro-interactions (buttons, hover), 200-300ms for layout (modals, panels)
+      - Modals: fade in backdrop + scale up content
+      - Toasts: slide in from top-right
+      - Cards: subtle lift on hover (transition-all duration-200)
+      - Buttons: slight scale on press (active:scale-[0.98])
+      - Sidebar: slide in on mobile (transform translateX)
+      - Skeleton loaders: shimmer/pulse animation for loading states
     </animations>
   </design_system>
+
+  <ui_ux_standards>
+    <!--
+      These are non-negotiable standards extracted from professional production
+      development. They apply to ALL features regardless of tech stack.
+      Agents MUST follow these - they are not suggestions.
+    -->
+
+    <banned_patterns>
+      <!-- These fail the build. Never use them. -->
+      - alert() - Use toast notifications instead
+      - confirm() - Use a ConfirmModal component instead
+      - prompt() - Use a proper form/modal instead
+      - console.log for user feedback - Use toast/notification system
+      - Text-only empty states ("No items") - Use EmptyState component with icon + description + CTA button
+      - Browser default dialogs of any kind
+      - Loading states that just say "Loading..." - Use skeleton loaders for lists, spinner inside buttons
+      - Inline styles - Use the project's styling system (Tailwind, CSS modules, etc.)
+      - Delete without confirmation - Always use ConfirmModal for destructive actions
+      - Raw timestamps in UI - Always format as relative time ("5m ago", "Yesterday", "Jan 15")
+    </banned_patterns>
+
+    <required_components>
+      <!-- Every app MUST implement these. They are not optional. -->
+      - Modal: base modal with overlay, close button, title, content slots, Escape key to close
+      - ConfirmModal: "Are you sure?" dialog for all destructive actions
+      - Toast/notification system: slide-in notification (success, error, info variants)
+      - Skeleton loader: animated placeholder matching content shape for loading states
+      - EmptyState: icon + message + CTA button for empty lists/pages
+      - ErrorBoundary: catches crashes, shows fallback UI instead of white screen
+      - Button with loading state: shows spinner inside, disables during async actions
+      - Avatar with fallback: shows initials when image fails to load
+    </required_components>
+
+    <page_patterns>
+      <!-- User data MUST follow this navigation pattern -->
+      <list_view>Shows all items as cards/rows. Clicking navigates to Detail View. Has "Create New" button.</list_view>
+      <detail_view>Read-only display of single item. Action buttons: Edit, Delete, Share. Delete opens ConfirmModal.</detail_view>
+      <create_view>Form to create new item. Save navigates to Detail View. Cancel returns to List.</create_view>
+      <edit_view>Form pre-filled with existing data. Save returns to Detail View. Cancel returns to Detail View (not List).</edit_view>
+      <anti_patterns>
+        - NEVER: clicking saved item opens edit mode directly
+        - NEVER: single "smart" component handles both view and edit
+        - NEVER: create form doubles as edit form by pre-loading data
+        - NEVER: no way to view an item without editing it
+      </anti_patterns>
+    </page_patterns>
+
+    <feedback_protocol>
+      <!-- Every user action MUST have appropriate feedback -->
+      <on_success>Show success toast + navigate to appropriate view</on_success>
+      <on_error>Show error toast + stay on current view + keep form data intact</on_error>
+      <on_delete>ConfirmModal -> loading state on button -> success toast + redirect to list OR error toast + close modal</on_delete>
+      <on_loading>
+        - Lists: skeleton cards matching content shape (NOT spinner)
+        - Detail pages: skeleton matching content layout
+        - Buttons during action: spinner inside button + disable button
+        - Page transitions: brief skeleton or fade
+      </on_loading>
+    </feedback_protocol>
+
+    <polish_requirements>
+      <!-- These details separate amateur apps from professional ones -->
+      - Relative date formatting: "Just now", "5m ago", "2h ago", "Yesterday", "3d ago", "Jan 15"
+      - Text truncation: long text MUST be truncated (single-line ellipsis or multi-line clamp)
+      - Back navigation: every detail/edit page has a back button or breadcrumb
+      - Hover states: every clickable element visually responds to hover
+      - Focus states: visible focus ring on all interactive elements (for keyboard navigation)
+      - Autofocus: first input focused when page/modal loads
+      - Pluralization: "1 item" not "1 items" - handle singular/plural correctly
+      - Search/filter: any list that can grow beyond 5 items needs search or filter
+      - Retry on error: error states show a "Try Again" button, not just an error message
+      - Unsaved changes: warn before navigating away from dirty forms
+      - 404 handling: both route-level (unknown URLs) and data-level (deleted/missing items)
+      - Touch targets: minimum 44x44px for all clickable elements on mobile
+      - Dynamic page titles: document.title updates on each page/route
+      - Zero console errors: no console.log, no React key warnings, no TypeScript errors
+    </polish_requirements>
+
+    <accessibility_basics>
+      - Focus rings on all interactive elements (visible, not removed)
+      - Escape key closes all modals and overlays
+      - aria-label on all icon-only buttons
+      - Screen reader text (sr-only) for loading states and status updates
+      - Form inputs have associated labels (not just placeholder text)
+      - Color is not the only indicator of state (add icons or text alongside color)
+      - Minimum color contrast ratios (4.5:1 for text, 3:1 for large text)
+    </accessibility_basics>
+
+    <responsive_design>
+      <!-- Build mobile-first, then scale up -->
+      <breakpoints>
+        - Mobile: default styles (no prefix) - less than 640px
+        - Tablet: sm:640px and up
+        - Desktop: lg:1024px and up
+      </breakpoints>
+      <layout_rules>
+        - Mobile: full-width content, hamburger menu, cards stack vertically
+        - Desktop: sidebar navigation (240px), multi-column grids, contained forms
+        - Sidebar: hidden on mobile, slide-in overlay with hamburger toggle
+        - Modals: nearly full-screen on mobile, centered max-w-md on desktop
+        - Buttons: full-width for primary actions on mobile, auto-width on desktop
+        - Text: minimum 16px on mobile to prevent zoom on iOS
+      </layout_rules>
+    </responsive_design>
+  </ui_ux_standards>
+
+  <coding_standards>
+    <!--
+      Code quality rules that prevent common AI-generated code problems.
+      These apply regardless of framework or language.
+    -->
+
+    <architecture>
+      - One component per file. Group related components in feature folders.
+      - Service layer pattern: all database/API operations go through service files, never called directly from UI components.
+      - Separate concerns: UI components handle rendering, hooks handle logic, services handle data.
+      - Define TypeScript interfaces for ALL data types - no 'any' types.
+      - All database writes include createdAt/updatedAt timestamps.
+      - All user data scoped by user ID - no cross-user data leaks.
+    </architecture>
+
+    <routing>
+      - Public routes (landing, login) are unprotected
+      - Authenticated routes wrapped in ProtectedRoute guard
+      - Admin routes wrapped in AdminRoute guard (if roles exist)
+      - Route-level 404 catch-all for unknown paths
+      - Auth redirects: unauthenticated -> login, unauthorized -> dashboard
+    </routing>
+
+    <error_handling>
+      - ErrorBoundary wraps the entire app to prevent white screen of death
+      - Network errors show user-friendly messages, not raw error objects
+      - Offline detection with banner when connection lost
+      - Session expiry handled gracefully (redirect to login with message)
+      - Form submission errors keep form data intact
+      - Every error state has a retry action
+    </error_handling>
+  </coding_standards>
 
   <key_interactions>
     <!-- Describe the main user flows -->

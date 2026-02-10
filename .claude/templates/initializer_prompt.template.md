@@ -257,7 +257,7 @@ The feature_list.json **MUST** include tests from ALL 20 categories. Minimum cou
 
 **D. Workflow Completeness** - Test end-to-end CRUD for every entity, state transitions, multi-step wizards, bulk operations, and form submission feedback.
 
-**E. Error Handling** - Test network failures, invalid input, API errors, 404/500 responses, loading states, timeouts, and user-friendly error messages.
+**E. Error Handling** - Test network failures, invalid input, API errors, 404/500 responses, loading states, timeouts, user-friendly error messages, retry buttons on error states, ErrorBoundary fallback UI (app crash recovery), offline detection banner, and session expiry redirect.
 
 **F. UI-Backend Integration** - Test request/response format matching, database-driven dropdowns, cascading updates, filters/sorts with real data, and API error display.
 
@@ -273,13 +273,13 @@ The feature_list.json **MUST** include tests from ALL 20 categories. Minimum cou
 
 **L. Search & Filter Edge Cases** - Test empty search, whitespace-only, special characters, quotes, long strings, zero-result combinations, and filter persistence.
 
-**M. Form Validation** - Test required fields, email/password/numeric/date formats, min/max constraints, uniqueness, specific error messages, and server-side validation.
+**M. Form Validation** - Test required fields, email/password/numeric/date formats, min/max constraints, uniqueness, specific error messages, server-side validation, form field visual states (default/focused/error/disabled), error messages displayed below fields (not alert()), autofocus on first input, and unsaved changes warning on navigation away.
 
-**N. Feedback & Notification** - Test success/error feedback for all actions, loading spinners, disabled buttons during submit, progress indicators, and toast behavior.
+**N. Feedback & Notification** - Test success toast on create/update/delete, error toast on failures (not alert()), loading spinner inside buttons during async actions, skeleton loaders for list loading (not "Loading..." text), disabled buttons during submit, ConfirmModal before all destructive actions, EmptyState component with icon + CTA for empty lists (not just "No items" text), and proper navigation after success (create -> detail view, delete -> list view).
 
-**O. Responsive & Layout** - Test layouts at desktop (1920px), tablet (768px), and mobile (375px), no horizontal scroll, touch targets, modal fit, and text overflow.
+**O. Responsive & Layout** - Test layouts at desktop (1920px), tablet (768px), and mobile (375px), no horizontal scroll, minimum 44x44px touch targets on mobile, modal nearly full-screen on mobile, text overflow with truncation/ellipsis, sidebar hidden on mobile with hamburger toggle, cards stack vertically on mobile, buttons full-width on mobile, and minimum 16px text on mobile (prevents iOS zoom).
 
-**P. Accessibility** - Test tab navigation, focus rings, screen reader compatibility, ARIA labels, color contrast, labels on form fields, and error announcements.
+**P. Accessibility** - Test tab navigation through all interactive elements, visible focus rings (not removed), Escape key closes modals/overlays, aria-label on all icon-only buttons, sr-only text for loading states, form inputs have labels (not just placeholders), color not the only state indicator (add icons/text alongside color), and minimum 4.5:1 color contrast for text.
 
 **Q. Temporal & Timezone** - Test timezone-aware display, accurate timestamps, date picker constraints, overdue detection, and date sorting across boundaries.
 

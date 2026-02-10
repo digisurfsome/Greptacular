@@ -149,6 +149,8 @@ Use browser automation tools:
 - **Server Restart:** For data features, run STEP 5.7 - data persists across server restart
 - **Navigation:** All buttons link to existing routes, no 404s, back button works, edit/view/delete links have correct IDs
 - **Integration:** Zero JS console errors, no 500s in network tab, API data matches UI, loading/error states work
+- **UI Polish:** No `alert()`/`confirm()`/`prompt()` calls; loading states use skeletons (not "Loading..." text); all destructive actions have confirmation modals; all success/error actions show toast/notification feedback; empty lists show EmptyState with icon + CTA (not just text); dates displayed as relative time (not raw timestamps); long text truncated with ellipsis
+- **Accessibility:** Visible focus rings on interactive elements; icon-only buttons have aria-label; modals close with Escape key; form inputs have labels (not just placeholders)
 
 ### STEP 5.6: MOCK DATA DETECTION (Before marking passing)
 

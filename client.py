@@ -203,6 +203,7 @@ CODING_AGENT_TOOLS = [
     "mcp__features__feature_mark_failing",
     "mcp__features__feature_skip",
     "mcp__features__feature_clear_in_progress",
+    "mcp__features__feature_split",  # Split oversized features to stay within 45% context budget
 ]
 
 TESTING_AGENT_TOOLS = [
@@ -317,15 +318,18 @@ def create_client(
     }
     feature_tools = feature_tools_map.get(agent_type, CODING_AGENT_TOOLS)
 
-    # Select max_turns based on agent type:
-    #   - coding/initializer: 300 turns (complex multi-step implementation)
-    #   - testing: 100 turns (focused verification of a single feature)
+    # Select max_turns based on agent type.
+    # Context budget targets 45% usage per session (hard stop 48%).
+    # Reduced turn limits act as a safety net to prevent context degradation:
+    #   - coding: 150 turns (~45% context budget, prompt says wrap up by 120-135)
+    #   - testing: 75 turns (proportional reduction for focused verification)
+    #   - initializer: 200 turns (needs more for bulk feature creation)
     max_turns_map = {
-        "coding": 300,
-        "testing": 100,
-        "initializer": 300,
+        "coding": 150,
+        "testing": 75,
+        "initializer": 200,
     }
-    max_turns = max_turns_map.get(agent_type, 300)
+    max_turns = max_turns_map.get(agent_type, 150)
 
     # Build allowed tools list based on mode and agent type.
     # In YOLO mode, exclude Playwright tools for faster prototyping.
@@ -504,7 +508,15 @@ def create_client(
         custom_instructions = input_data.get("custom_instructions")
 
         if trigger == "auto":
-            print("[Context] Auto-compaction triggered (context approaching limit)")
+            print("\n" + "=" * 70)
+            print("CONTEXT BUDGET EXCEEDED - EMERGENCY WRAP-UP REQUIRED")
+            print("=" * 70)
+            print("Context compaction triggered. You have EXCEEDED the 48% hard stop.")
+            print("STOP ALL IMPLEMENTATION IMMEDIATELY.")
+            print("1. Commit all current work")
+            print("2. Update claude-progress.txt")
+            print("3. End session NOW")
+            print("=" * 70 + "\n")
         else:
             print("[Context] Manual compaction requested")
 
@@ -517,6 +529,12 @@ def create_client(
         # The summarizer receives these instructions and uses them to decide
         # what to keep vs. discard during context compaction.
         compaction_guidance = "\n".join([
+            "## CRITICAL: CONTEXT BUDGET EXCEEDED - SESSION MUST END",
+            "- Context has exceeded the 48% hard stop budget",
+            "- After compaction completes: commit all work, update progress notes, end session",
+            "- Do NOT continue implementing new code after compaction",
+            "- Leave the codebase in a clean, working state for the next agent",
+            "",
             "## PRESERVE (critical workflow state)",
             "- Current feature ID, feature name, and feature status (pending/in_progress/passing/failing)",
             "- List of all files created or modified during this session, with their paths",
@@ -594,7 +612,7 @@ def create_client(
             # parameters. Instead, context is managed via:
             # 1. betas=["context-1m-2025-08-07"] - Extended context window
             # 2. PreCompact hook - Intercept and customize compaction behavior
-            # 3. max_turns - Limit conversation turns (per agent type: coding=300, testing=100)
+            # 3. max_turns - Limit conversation turns (per agent type: coding=150, testing=75)
             #
             # Future SDK versions may add explicit compaction controls. When available,
             # consider adding:

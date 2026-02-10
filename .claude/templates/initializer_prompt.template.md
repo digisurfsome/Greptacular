@@ -46,6 +46,25 @@ Use the feature_create_bulk tool to add all features at once. You can create fea
 - Cover every feature in the spec exhaustively
 - **MUST include tests from ALL 20 mandatory categories below**
 
+### FEATURE SIZING FOR CONTEXT BUDGET (CRITICAL)
+
+Each coding agent operates under a strict **45% context window budget** per session with a **hard stop at 48%**. Features must be sized so that a single feature can be implemented, tested, and verified within that budget. Staying under this threshold prevents quality degradation and produces perfect software.
+
+**Sizing Guidelines:**
+- **Small features (2-5 steps)**: These fit easily within budget. The orchestrator may batch 2-3 of these per session.
+- **Medium features (6-10 steps)**: One per session. Should be self-contained and fully testable.
+- **Large features (10+ steps)**: Must be decomposable. If a feature has 15+ complex steps, **split it into two sequential features** with a dependency between them: Part 1 builds the foundation, Part 2 adds the advanced behavior. Each part must be independently testable.
+
+**The Rule:** No single feature should require more than ~120 agent turns to implement and verify. Features with 15+ complex implementation steps will likely exceed the context budget and cause quality degradation.
+
+**Examples of good splitting:**
+- "User can create and edit posts" → "User can create posts" + "User can edit posts" (with dependency)
+- "Full dashboard with charts, filters, and export" → "Dashboard displays charts" + "Dashboard filters work" + "Dashboard export works"
+- "Complete authentication flow" → "User can register" + "User can login" + "User can reset password"
+- "Admin panel with user management" → "Admin can view users list" + "Admin can edit user roles" + "Admin can deactivate users"
+
+**Why this matters:** An agent that exceeds 50% context usage starts making mistakes -- wrong variable names, broken imports, incomplete logic. Features sized within budget get implemented perfectly on the first pass, which is far more efficient than debugging degraded output across multiple sessions.
+
 ---
 
 ## FEATURE DEPENDENCIES (MANDATORY)

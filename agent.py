@@ -48,6 +48,13 @@ from rate_limit_utils import (
 # Configuration
 AUTO_CONTINUE_DELAY_SECONDS = 3
 
+# Context budget constants (45% target, 48% hard stop)
+# These are used for turn-count-based budget estimation printed to agent output.
+BUDGET_TARGET_TURNS = 135       # 45% of max context capacity (~150 max_turns)
+BUDGET_WARN_TURNS = 120         # Start wrap-up warning
+BUDGET_CHECKPOINT_INTERVAL = 30  # Print budget checkpoint every N turns
+MAX_CODING_TURNS = 150           # Hard ceiling (matches client.py max_turns for coding)
+
 
 async def run_agent_session(
     client: ClaudeSDKClient,
@@ -74,12 +81,26 @@ async def run_agent_session(
         await client.query(message)
 
         # Collect response text and show tool use
+        # Track turn count for context budget estimation
         response_text = ""
+        turn_count = 0
         async for msg in client.receive_response():
             msg_type = type(msg).__name__
 
             # Handle AssistantMessage (text and tool use)
             if msg_type == "AssistantMessage" and hasattr(msg, "content"):
+                turn_count += 1
+                # Print budget checkpoints so the agent can track its context usage
+                if turn_count > 0 and turn_count % BUDGET_CHECKPOINT_INTERVAL == 0:
+                    budget_pct = round((turn_count / MAX_CODING_TURNS) * 45, 1)
+                    print(f"\n[Budget] Turn {turn_count}/{MAX_CODING_TURNS}"
+                          f" (~{budget_pct}% context used)")
+                if turn_count == BUDGET_WARN_TURNS:
+                    print(f"\n[Budget] Turn {turn_count}/{MAX_CODING_TURNS}"
+                          " - WRAP UP NOW (approaching 45% context budget)")
+                if turn_count >= BUDGET_TARGET_TURNS:
+                    print(f"\n[Budget] Turn {turn_count}/{MAX_CODING_TURNS}"
+                          " - HARD STOP approaching (48% context budget)")
                 for block in msg.content:
                     block_type = type(block).__name__
 

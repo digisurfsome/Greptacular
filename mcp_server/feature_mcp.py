@@ -22,6 +22,7 @@ Tools:
 - feature_get_ready: Get features ready to implement
 - feature_get_blocked: Get features blocked by dependencies (with limit)
 - feature_get_graph: Get the dependency graph
+- feature_split: Split a large feature into two parts at a step boundary
 
 Note: Feature selection (which feature to work on) is handled by the
 orchestrator, not by agents. Agents receive pre-assigned feature IDs.
@@ -982,6 +983,105 @@ def feature_set_dependencies(
             })
     except Exception as e:
         return json.dumps({"error": f"Failed to set dependencies: {str(e)}"})
+
+
+@mcp.tool()
+def feature_split(
+    feature_id: Annotated[int, Field(ge=1, description="The ID of the feature to split")],
+    split_after_step: Annotated[int, Field(ge=1, description="Split after this step index (1-based). Part 1 keeps steps 1..N, Part 2 gets the remaining steps.")],
+    part2_name: Annotated[str, Field(min_length=1, max_length=255, description="Name for the new Part 2 feature")],
+) -> str:
+    """Split a feature into two parts at a given step boundary.
+
+    Use this when a feature is too large to complete within the 45% context budget.
+    Part 1 retains the original feature's steps up to split_after_step.
+    Part 2 is created as a new feature with the remaining steps and depends on Part 1.
+
+    The original feature keeps its ID, name (with ' (Part 1)' appended), and dependencies.
+    Part 2 gets a new ID and depends on Part 1 plus all of Part 1's original dependencies.
+
+    Args:
+        feature_id: The ID of the feature to split
+        split_after_step: Split after this step number (1-based). Steps 1..N stay in Part 1,
+            remaining steps go to Part 2.
+        part2_name: Name for the new Part 2 feature
+
+    Returns:
+        JSON with both feature details, or error message
+    """
+    if _session_maker is None:
+        return json.dumps({"error": "Database not initialized"})
+
+    try:
+        with atomic_transaction(_session_maker) as session:
+            feature = session.query(Feature).filter(Feature.id == feature_id).first()
+            if not feature:
+                return json.dumps({"error": f"Feature {feature_id} not found"})
+
+            if feature.passes:
+                return json.dumps({"error": f"Feature {feature_id} is already passing, cannot split"})
+
+            steps = feature.steps or []
+            if not isinstance(steps, list) or len(steps) < 2:
+                return json.dumps({"error": "Feature must have at least 2 steps to split"})
+
+            if split_after_step < 1 or split_after_step >= len(steps):
+                return json.dumps({
+                    "error": f"split_after_step must be between 1 and {len(steps) - 1} "
+                             f"(feature has {len(steps)} steps)"
+                })
+
+            # Split the steps
+            part1_steps = steps[:split_after_step]
+            part2_steps = steps[split_after_step:]
+
+            # Update Part 1 (original feature)
+            original_name = feature.name
+            feature.name = f"{original_name} (Part 1)"
+            feature.steps = part1_steps
+
+            # Get the original dependencies for Part 2
+            original_deps = list(feature.get_dependencies_safe())
+
+            # Determine Part 2's priority (right after Part 1)
+            max_priority = session.query(Feature).count()
+            part2_priority = max_priority + 1
+
+            # Create Part 2 with dependency on Part 1
+            part2_deps = sorted(set(original_deps + [feature_id]))
+            part2 = Feature(
+                priority=part2_priority,
+                category=feature.category,
+                name=part2_name,
+                description=f"Continuation of '{original_name}'. "
+                            f"This feature implements the remaining steps after Part 1 is complete.",
+                steps=part2_steps,
+                passes=False,
+                in_progress=False,
+                dependencies=part2_deps,
+            )
+            session.add(part2)
+            session.flush()  # Get the new ID
+
+            return json.dumps({
+                "success": True,
+                "part1": {
+                    "id": feature.id,
+                    "name": feature.name,
+                    "steps_count": len(part1_steps),
+                },
+                "part2": {
+                    "id": part2.id,
+                    "name": part2.name,
+                    "steps_count": len(part2_steps),
+                    "dependencies": part2_deps,
+                },
+                "message": f"Feature split successfully. Part 1 (#{feature.id}) has "
+                           f"{len(part1_steps)} steps, Part 2 (#{part2.id}) has "
+                           f"{len(part2_steps)} steps."
+            })
+    except Exception as e:
+        return json.dumps({"error": f"Failed to split feature: {str(e)}"})
 
 
 @mcp.tool()

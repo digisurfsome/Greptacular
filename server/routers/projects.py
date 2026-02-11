@@ -146,9 +146,14 @@ async def get_recommendations(
 
 
 @styles_router.get("/modifiers")
-async def list_modifiers():
-    """Return all available accessibility modifiers."""
-    return get_modifier_registry()
+async def list_modifiers(include_tokens: bool = False):
+    """Return all available accessibility modifiers.
+
+    Args:
+        include_tokens: If True, include full token_overrides for each modifier.
+            Used by the live preview engine to apply modifier effects visually.
+    """
+    return get_modifier_registry(include_tokens=include_tokens)
 
 
 @styles_router.get("/combinations")

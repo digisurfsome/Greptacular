@@ -342,11 +342,45 @@ ui/public/style-previews/
 
 Add a clean route at `/#/style-preview/:styleId/:page` that renders ONLY the preview component (no modal chrome, no header, no overlay). This makes it easy for Playwright to screenshot just the preview content. It also serves as a standalone preview URL that can be shared.
 
-### Usage in Grid Cards
+### Usage in Grid Cards - Fanned Card Stack
 
-The grid cards can use these static images as thumbnails for fast initial load:
-- Show the static `.png` in the grid card (instant, no rendering delay)
-- On hover/click, switch to the live HTML renderer for the full interactive experience
+Each style card in the grid shows its 4 page screenshots as a **fanned stack** - the front image (Landing page) is fully visible, with the other 3 pages peeking out behind it, offset slightly to the right and down. Like a deck of cards fanned out so you can see the edge of each one.
+
+```
+┌──────────────┐
+│  Landing     │ ← Front (fully visible)
+│  Page        │──┐
+│              │  │──┐
+│              │  │  │──┐
+└──────────────┘  │  │  │
+   └──────────────┘  │  │  ← Dashboard (edge visible)
+      └──────────────┘  │  ← Settings (edge visible)
+         └──────────────┘  ← Feed (edge visible)
+```
+
+**Interaction behavior:**
+
+1. **Default state**: Fanned stack showing front image + edges of 3 behind it
+2. **Hover**: Stack smoothly fans out/spreads - all 4 images become visible side by side or in a 2×2 grid, expanding to fill more space. CSS transition ~300ms ease-out.
+3. **Unhover**: Stack collapses back to fanned position
+4. **Click**: Stack fans out AND pins open. Stays expanded until user clicks again or clicks a close button. This lets users analyze all 4 pages without having to hold their cursor in place.
+5. **Click on a specific page image**: Opens the full-screen live renderer on that page
+
+**CSS implementation:**
+- Use `transform: translateX() translateY() rotate()` for the fanned offset on each card
+- On hover/click, transition to `transform: none` or grid positions
+- Add subtle `box-shadow` on each card for depth
+- Use `z-index` stacking so front card is on top
+- `transition: transform 0.3s ease-out` for smooth animation
+
+This makes each style card visually rich and interactive - you immediately see there's more to explore, and the fan-out animation is satisfying and functional.
+
+### Static images for fast grid loading
+
+The grid cards use the static `.png` screenshots as thumbnails for fast initial load:
+- Show the static `.png` in the fanned card stack (instant, no rendering delay)
+- On hover/click fan-out, still using static images (fast, smooth)
+- Clicking a specific page image opens the full-screen live HTML renderer for the interactive experience
 - Best of both worlds: fast grid browsing + interactive deep dive
 
 ### npm Script

@@ -312,3 +312,52 @@ Instead, the preview component renders LIVE based on current selections. One com
 - The preview is the SELLING POINT of this feature - it must look polished and real, not like a wireframe
 - Every preview must use the exact same page layout so differences between styles are immediately clear
 - Modifier and mixing previews update LIVE as the user toggles options - no page reload, no delay
+
+## Step 6: Automated Screenshot Generation
+
+After the live preview engine is built and working, use Playwright to automatically screenshot all 12 base styles across all 4 preview pages. This produces 48 polished images that can be used as static thumbnails in the grid cards for fast loading.
+
+### Script: `scripts/generate-style-screenshots.ts`
+
+Create a Playwright script that:
+1. Starts the dev server (or uses a running instance)
+2. Navigates to a dedicated preview route (e.g., `/#/style-preview/:styleId/:page`)
+3. Loops through all 12 styles × 4 pages
+4. Sets viewport to a consistent size (e.g., 1280×800)
+5. Screenshots each rendered page
+6. Saves to `ui/public/style-previews/{style-id}-{page}.png`
+
+```
+ui/public/style-previews/
+├── bauhaus-landing.png
+├── bauhaus-dashboard.png
+├── bauhaus-settings.png
+├── bauhaus-feed.png
+├── claymorphism-landing.png
+├── claymorphism-dashboard.png
+├── ... (48 total)
+```
+
+### Dedicated Preview Route
+
+Add a clean route at `/#/style-preview/:styleId/:page` that renders ONLY the preview component (no modal chrome, no header, no overlay). This makes it easy for Playwright to screenshot just the preview content. It also serves as a standalone preview URL that can be shared.
+
+### Usage in Grid Cards
+
+The grid cards can use these static images as thumbnails for fast initial load:
+- Show the static `.png` in the grid card (instant, no rendering delay)
+- On hover/click, switch to the live HTML renderer for the full interactive experience
+- Best of both worlds: fast grid browsing + interactive deep dive
+
+### npm Script
+
+Add to `ui/package.json`:
+```json
+{
+  "scripts": {
+    "generate:previews": "playwright test scripts/generate-style-screenshots.ts"
+  }
+}
+```
+
+This can be re-run anytime styles are updated to regenerate all 48 images automatically.

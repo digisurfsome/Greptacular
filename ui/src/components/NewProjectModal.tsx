@@ -388,7 +388,7 @@ export function NewProjectModal({
 
   return (
     <Dialog open={true} onOpenChange={(open) => !open && handleClose()}>
-      <DialogContent className={step === 'style' ? 'sm:max-w-2xl max-h-[85vh] overflow-hidden flex flex-col' : step === 'boilerplate' ? 'sm:max-w-xl' : 'sm:max-w-lg'}>
+      <DialogContent className={step === 'style' ? 'sm:max-w-2xl !top-[2rem] !translate-y-0 max-h-[calc(100vh-4rem)] overflow-hidden flex flex-col' : step === 'boilerplate' ? 'sm:max-w-xl' : 'sm:max-w-lg'}>
         <DialogHeader>
           <DialogTitle>
             {step === 'name' && 'Create New Project'}

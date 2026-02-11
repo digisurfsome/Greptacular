@@ -360,7 +360,7 @@ export function NewProjectModal({
   if (step === 'folder') {
     return (
       <Dialog open={true} onOpenChange={(open) => !open && handleClose()}>
-        <DialogContent className="sm:max-w-3xl !top-[2rem] !translate-y-0 max-h-[calc(100vh-4rem)] flex flex-col p-0">
+        <DialogContent className="sm:max-w-3xl !top-[2rem] !-translate-x-1/2 !translate-y-0 max-h-[calc(100vh-4rem)] flex flex-col p-0">
           {/* Header */}
           <DialogHeader className="p-6 pb-4 border-b">
             <div className="flex items-center gap-3">
@@ -388,7 +388,7 @@ export function NewProjectModal({
 
   return (
     <Dialog open={true} onOpenChange={(open) => !open && handleClose()}>
-      <DialogContent className={step === 'style' ? 'sm:max-w-2xl !top-[2rem] !translate-y-0 max-h-[calc(100vh-4rem)] overflow-hidden flex flex-col' : step === 'boilerplate' ? 'sm:max-w-xl' : 'sm:max-w-lg'}>
+      <DialogContent className={step === 'style' ? 'sm:max-w-2xl !top-[2rem] !-translate-x-1/2 !translate-y-0 max-h-[calc(100vh-4rem)] overflow-hidden flex flex-col' : step === 'boilerplate' ? 'sm:max-w-xl' : 'sm:max-w-lg'}>
         <DialogHeader>
           <DialogTitle>
             {step === 'name' && 'Create New Project'}

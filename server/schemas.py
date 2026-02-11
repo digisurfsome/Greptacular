@@ -31,6 +31,7 @@ class ProjectCreate(BaseModel):
     spec_method: Literal["claude", "manual"] = "claude"
     boilerplate_id: str | None = Field(None, description="Boilerplate option ID (e.g., 'web-supabase-stripe', 'scratch')")
     style_id: str | None = Field(None, description="UI style/theme ID (placeholder for future use)")
+    accent_style: str | None = Field(None, description="Accent style ID for interactive element overrides")
     modifier_ids: list[str] = Field(default_factory=list, description="Accessibility/style modifier IDs")
     custom_colors: dict[str, str] = Field(default_factory=dict, description="Custom color overrides keyed by role (primary, secondary, accent, background, surface, text)")
 

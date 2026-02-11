@@ -92,6 +92,8 @@ from ..services.boilerplate_manager import (
     save_project_config,
 )
 from ..services.style_manager import (
+    ACCENT_COMPATIBILITY,
+    get_accent_styles,
     get_audience_profiles,
     get_style_guide_markdown,
     get_style_option,
@@ -147,6 +149,27 @@ async def get_recommendations(
 async def list_modifiers():
     """Return all available accessibility modifiers."""
     return get_modifier_registry()
+
+
+@styles_router.get("/combinations")
+async def get_style_combinations():
+    """Return all pre-validated base+accent combinations."""
+    combos = []
+    for accent_id, compat in ACCENT_COMPATIBILITY.items():
+        accent_style = get_style_option(accent_id)
+        if not accent_style:
+            continue
+        for base_id in compat["works_as_accent_for"]:
+            base_style = get_style_option(base_id)
+            if not base_style:
+                continue
+            combos.append({
+                "base_id": base_id,
+                "base_name": base_style["name"],
+                "accent_id": accent_id,
+                "accent_name": accent_style["name"],
+            })
+    return combos
 
 
 # ============================================================================
@@ -293,6 +316,25 @@ async def recommend_from_description(body: dict):
     }
 
 
+@styles_router.post("/extract-from-screenshot")
+async def extract_from_screenshot(body: dict):
+    """Accept a base64 image and return extracted style analysis.
+
+    The image is sent to a vision-capable LLM which identifies the UI
+    design style and extracts design tokens using the Idea Code methodology.
+    """
+    image_data = body.get("image")
+    if not image_data:
+        raise HTTPException(status_code=400, detail="No image provided")
+
+    from ..services.style_extractor import extract_style_from_image
+    try:
+        result = await extract_style_from_image(image_data)
+        return result
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @styles_router.get("/{style_id}")
 async def get_style(style_id: str):
     """Return full details for a specific style including the complete style guide."""
@@ -309,6 +351,15 @@ async def get_style_guide(style_id: str):
     if not guide:
         raise HTTPException(status_code=404, detail=f"Style '{style_id}' not found")
     return {"style_id": style_id, "markdown": guide}
+
+
+@styles_router.get("/{style_id}/accent-compatibility")
+async def get_accent_compatibility(style_id: str):
+    """Return styles that work as accents for the given base style."""
+    style = get_style_option(style_id)
+    if not style:
+        raise HTTPException(status_code=404, detail=f"Style '{style_id}' not found")
+    return get_accent_styles(style_id)
 
 
 def validate_project_name(name: str) -> str:
@@ -466,8 +517,9 @@ async def create_project(project: ProjectCreate):
     # Scaffold prompts
     _scaffold_project_prompts(project_path)
 
-    # Save project config (boilerplate + style choices + modifiers + custom colors)
+    # Save project config (boilerplate + style choices + modifiers + custom colors + accent)
     custom_colors = project.custom_colors or None
+    accent_style = project.accent_style
     if boilerplate_id:
         save_project_config(
             project_path,
@@ -475,11 +527,12 @@ async def create_project(project: ProjectCreate):
             style_id,
             modifier_ids=project.modifier_ids or None,
             custom_colors=custom_colors if custom_colors else None,
+            accent_style=accent_style,
         )
 
-    # Save style guide if a style was selected (with custom color overrides)
+    # Save style guide if a style was selected (with custom color overrides and optional accent)
     if style_id:
-        save_style_guide(project_path, style_id, custom_colors=custom_colors)
+        save_style_guide(project_path, style_id, custom_colors=custom_colors, accent_id=accent_style)
 
     # Register in registry
     try:

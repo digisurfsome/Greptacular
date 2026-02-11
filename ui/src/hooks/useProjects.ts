@@ -29,7 +29,7 @@ export function useCreateProject() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ name, path, specMethod, boilerplateId, styleId, modifierIds, customColors }: {
+    mutationFn: ({ name, path, specMethod, boilerplateId, styleId, modifierIds, customColors, accentStyle }: {
       name: string
       path: string
       specMethod?: 'claude' | 'manual'
@@ -37,8 +37,9 @@ export function useCreateProject() {
       styleId?: string | null
       modifierIds?: string[]
       customColors?: Record<string, string>
+      accentStyle?: string | null
     }) =>
-      api.createProject(name, path, specMethod, boilerplateId, styleId, modifierIds, customColors),
+      api.createProject(name, path, specMethod, boilerplateId, styleId, modifierIds, customColors, accentStyle),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] })
     },
@@ -93,6 +94,21 @@ export function useStyleModifiers() {
 export function useDescriptionRecommendation() {
   return useMutation({
     mutationFn: (description: string) => api.getStyleRecommendationsFromDescription(description),
+  })
+}
+
+export function useAccentCompatibility(styleId: string | null) {
+  return useQuery({
+    queryKey: ['accent-compatibility', styleId],
+    queryFn: () => api.getAccentCompatibility(styleId!),
+    enabled: !!styleId,
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+export function useExtractStyleFromScreenshot() {
+  return useMutation({
+    mutationFn: (imageBase64: string) => api.extractStyleFromScreenshot(imageBase64),
   })
 }
 

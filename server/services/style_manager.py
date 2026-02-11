@@ -1242,6 +1242,263 @@ STYLE_DOS_AND_DONTS: dict[str, dict[str, list[str]]] = {
 
 
 # =============================================================================
+# Accent Style Compatibility Matrix
+# =============================================================================
+
+# Which styles work as accents for which base styles.
+# Key = accent style ID, Value = dict with "works_as_accent_for" list and "accent_token_overrides"
+# Only distinctive styles (neumorphism, neubrutalism, glassmorphism, claymorphism, skeuomorphism)
+# work well as accents. Simpler styles (flat, minimal, dark, warm) work best as bases.
+
+ACCENT_COMPATIBILITY: dict[str, dict] = {
+    "neumorphism": {
+        "works_as_accent_for": ["flat-design", "minimalism", "warmer-shades", "claymorphism"],
+        "accent_token_overrides": {
+            "buttons": {
+                "radius": "12px",
+                "shadow": "4px 4px 8px #b8bec7, -4px -4px 8px #ffffff",
+                "hover": "inset 4px 4px 8px #b8bec7, inset -4px -4px 8px #ffffff",
+                "border": "none",
+            },
+            "inputs": {
+                "radius": "12px",
+                "shadow": "inset 4px 4px 8px #b8bec7, inset -4px -4px 8px #ffffff",
+                "border": "none",
+            },
+            "toggles": {
+                "track_shadow": "inset 2px 2px 4px #b8bec7, inset -2px -2px 4px #ffffff",
+                "thumb_shadow": "2px 2px 4px #b8bec7, -2px -2px 4px #ffffff",
+            },
+            "focus_rings": {
+                "style": "0 0 0 3px rgba(99, 102, 241, 0.3)",
+            },
+            "hover_states": {
+                "transform": "none",
+                "shadow_change": "inset shadow transition",
+            },
+        },
+    },
+    "neubrutalism": {
+        "works_as_accent_for": ["flat-design", "minimalism", "dark-mode", "bauhaus"],
+        "accent_token_overrides": {
+            "buttons": {
+                "radius": "0px",
+                "border": "3px solid #18181B",
+                "shadow": "4px 4px 0px #18181B",
+                "hover": "translate(-2px, -2px) with 6px 6px 0px #18181B shadow",
+            },
+            "inputs": {
+                "radius": "0px",
+                "border": "3px solid #18181B",
+            },
+            "toggles": {
+                "track_border": "3px solid #18181B",
+                "track_radius": "0px",
+            },
+            "focus_rings": {
+                "style": "3px solid #18181B, offset 2px",
+            },
+            "hover_states": {
+                "transform": "translate(-2px, -2px)",
+                "shadow_change": "increase offset shadow",
+            },
+        },
+    },
+    "glassmorphism": {
+        "works_as_accent_for": ["minimalism", "retro-futurism", "cyberpunk", "dark-mode"],
+        "accent_token_overrides": {
+            "buttons": {
+                "background": "rgba(255, 255, 255, 0.2)",
+                "radius": "12px",
+                "backdrop_filter": "blur(8px)",
+                "border": "1px solid rgba(255,255,255,0.18)",
+                "hover": "rgba(255, 255, 255, 0.3)",
+            },
+            "inputs": {
+                "background": "rgba(255, 255, 255, 0.08)",
+                "radius": "12px",
+                "border": "1px solid rgba(255,255,255,0.15)",
+                "backdrop_filter": "blur(4px)",
+            },
+            "toggles": {
+                "track_bg": "rgba(255,255,255,0.15)",
+                "track_border": "1px solid rgba(255,255,255,0.2)",
+            },
+            "focus_rings": {
+                "style": "0 0 0 2px rgba(255,255,255,0.3)",
+            },
+            "hover_states": {
+                "transform": "none",
+                "shadow_change": "glow effect via backdrop-filter increase",
+            },
+        },
+    },
+    "claymorphism": {
+        "works_as_accent_for": ["flat-design", "minimalism", "warmer-shades"],
+        "accent_token_overrides": {
+            "buttons": {
+                "radius": "20px",
+                "shadow": "0 4px 12px rgba(0,0,0,0.08), inset 0 -2px 4px rgba(0,0,0,0.1), inset 0 2px 4px rgba(255,255,255,0.3)",
+                "border": "none",
+                "hover": "scale(1.02) with enhanced inner shadow",
+            },
+            "inputs": {
+                "radius": "16px",
+                "shadow": "inset 0 2px 6px rgba(0,0,0,0.06)",
+                "border": "none",
+            },
+            "toggles": {
+                "track_radius": "20px",
+                "track_shadow": "inset 0 2px 4px rgba(0,0,0,0.08)",
+            },
+            "focus_rings": {
+                "style": "0 0 0 3px rgba(245, 158, 11, 0.25)",
+            },
+            "hover_states": {
+                "transform": "scale(1.02)",
+                "shadow_change": "enhanced inner shadow depth",
+            },
+        },
+    },
+    "skeuomorphism": {
+        "works_as_accent_for": ["retro-futurism", "warmer-shades"],
+        "accent_token_overrides": {
+            "buttons": {
+                "background": "linear-gradient(180deg, lighten 10%, darken 10%)",
+                "radius": "6px",
+                "shadow": "0 2px 4px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.3)",
+                "border": "1px solid rgba(0,0,0,0.15)",
+                "hover": "reversed gradient (pressed feel)",
+            },
+            "inputs": {
+                "radius": "4px",
+                "shadow": "inset 0 2px 4px rgba(0,0,0,0.08)",
+                "border": "1px solid rgba(0,0,0,0.2)",
+            },
+            "toggles": {
+                "track_gradient": "linear-gradient(180deg, #ccc, #eee)",
+                "thumb_gradient": "linear-gradient(180deg, #fff, #ddd)",
+            },
+            "focus_rings": {
+                "style": "0 0 0 2px rgba(37, 99, 235, 0.4)",
+            },
+            "hover_states": {
+                "transform": "none",
+                "shadow_change": "gradient shift to simulate physical press",
+            },
+        },
+    },
+}
+
+
+def get_accent_styles(base_id: str) -> list[dict]:
+    """Return styles that work as accents for the given base style.
+
+    Args:
+        base_id: The base style ID to find compatible accents for.
+
+    Returns:
+        List of accent style dicts with id, name, and accent_token_overrides.
+    """
+    results = []
+    for accent_id, compat in ACCENT_COMPATIBILITY.items():
+        if base_id in compat["works_as_accent_for"]:
+            style = get_style_option(accent_id)
+            if style:
+                results.append({
+                    "id": accent_id,
+                    "name": style["name"],
+                    "description": style["description"],
+                    "accent_token_overrides": compat["accent_token_overrides"],
+                })
+    return results
+
+
+def get_mixed_style_prompt(base_id: str, accent_id: str) -> str | None:
+    """Generate a combined style prompt with base + accent overrides.
+
+    The base style guide is generated normally. Then an additional section
+    is appended that specifies the accent overrides for interactive elements only.
+
+    Args:
+        base_id: The dominant base style ID.
+        accent_id: The accent style ID for interactive elements.
+
+    Returns:
+        Combined markdown style guide, or None if styles are incompatible.
+    """
+    # Validate compatibility
+    compat = ACCENT_COMPATIBILITY.get(accent_id)
+    if not compat or base_id not in compat["works_as_accent_for"]:
+        return None
+
+    base_guide = get_style_guide_markdown(base_id)
+    if not base_guide:
+        return None
+
+    accent_style = get_style_option(accent_id)
+    if not accent_style:
+        return None
+
+    overrides = compat["accent_token_overrides"]
+
+    # Build the accent override section
+    accent_lines = [
+        "",
+        f"## 7. Accent Style: {accent_style['name']} (Interactive Elements Only)",
+        "",
+        f"**IMPORTANT:** Use {accent_style['name']} styling ONLY for buttons, inputs, toggles, and interactive feedback.",
+        "All other elements (cards, layout, backgrounds, typography) follow the base style above.",
+        "",
+    ]
+
+    if "buttons" in overrides:
+        accent_lines.append("### Button Override (from accent style):")
+        for key, val in overrides["buttons"].items():
+            accent_lines.append(f"- {key}: {val}")
+        accent_lines.append("")
+
+    if "inputs" in overrides:
+        accent_lines.append("### Input Override (from accent style):")
+        for key, val in overrides["inputs"].items():
+            accent_lines.append(f"- {key}: {val}")
+        accent_lines.append("")
+
+    if "toggles" in overrides:
+        accent_lines.append("### Toggle Override (from accent style):")
+        for key, val in overrides["toggles"].items():
+            accent_lines.append(f"- {key}: {val}")
+        accent_lines.append("")
+
+    if "focus_rings" in overrides:
+        accent_lines.append("### Focus Ring Override:")
+        for key, val in overrides["focus_rings"].items():
+            accent_lines.append(f"- {key}: {val}")
+        accent_lines.append("")
+
+    if "hover_states" in overrides:
+        accent_lines.append("### Hover State Override:")
+        for key, val in overrides["hover_states"].items():
+            accent_lines.append(f"- {key}: {val}")
+        accent_lines.append("")
+
+    accent_lines.extend([
+        "### DO (Accent Mixing):",
+        "- Keep ALL layout/typography/cards following the base style",
+        "- Apply accent treatment ONLY to interactive elements",
+        "- Ensure accent button colors still work with base color palette",
+        "",
+        "### DON'T (Accent Mixing):",
+        "- Don't apply accent card styles to layout containers",
+        "- Don't change the typography to match the accent style",
+        "- Don't use the accent style's background colors",
+        "",
+    ])
+
+    return base_guide + "\n".join(accent_lines)
+
+
+# =============================================================================
 # Registry Lookup Functions
 # =============================================================================
 
@@ -1549,15 +1806,28 @@ def save_style_guide(
     project_dir: Path,
     style_id: str,
     custom_colors: dict[str, str] | None = None,
+    accent_id: str | None = None,
 ) -> Path | None:
     """
     Generate and save the style guide markdown to the project's .autoforge directory.
 
     If custom_colors are provided, applies them as overrides to the base style.
+    If accent_id is provided, appends accent style overrides for interactive elements.
 
     Returns the path to the saved file, or None if the style was not found.
     """
-    if custom_colors:
+    if accent_id:
+        guide_md = get_mixed_style_prompt(style_id, accent_id)
+        if guide_md and custom_colors:
+            # Apply custom colors to the base portion only
+            custom_base = apply_custom_colors(style_id, custom_colors)
+            if custom_base:
+                # Re-append the accent section
+                accent_section_marker = "## 7. Accent Style:"
+                accent_idx = guide_md.find(accent_section_marker)
+                if accent_idx > 0:
+                    guide_md = custom_base + "\n" + guide_md[accent_idx:]
+    elif custom_colors:
         guide_md = apply_custom_colors(style_id, custom_colors)
     else:
         guide_md = get_style_guide_markdown(style_id)

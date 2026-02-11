@@ -1246,24 +1246,31 @@ STYLE_DOS_AND_DONTS: dict[str, dict[str, list[str]]] = {
 # =============================================================================
 
 
-def get_style_registry() -> list[dict]:
+def get_style_registry(include_tokens: bool = False) -> list[dict]:
     """
     Return the full style registry for the API.
 
     Returns a list of style objects with id, name, category, description,
     best_for, and philosophy. The full style_guide is included for the
     selected style but omitted from the list view for performance.
+
+    Args:
+        include_tokens: If True, include the full style_guide with color tokens,
+            typography, components, and spacing for rendering UI previews.
     """
     result = []
     for style in STYLE_REGISTRY:
-        result.append({
+        entry: dict = {
             "id": style["id"],
             "name": style["name"],
             "category": style["category"],
             "description": style["description"],
             "best_for": style["best_for"],
             "philosophy": style["philosophy"],
-        })
+        }
+        if include_tokens:
+            entry["style_guide"] = style.get("style_guide")
+        result.append(entry)
     return result
 
 
@@ -1443,13 +1450,118 @@ def get_style_guide_markdown(style_id: str) -> str | None:
     return "\n".join(lines)
 
 
-def save_style_guide(project_dir: Path, style_id: str) -> Path | None:
+def apply_custom_colors(style_id: str, custom_colors: dict[str, str]) -> str | None:
+    """
+    Apply user-supplied color overrides to a style's tokens and regenerate the markdown guide.
+
+    The custom_colors dict maps role names to hex values:
+    - primary -> brand.DEFAULT
+    - secondary -> brand.dark
+    - accent -> brand.light
+    - background -> surface.canvas
+    - surface -> surface.base
+    - text -> text.primary
+
+    Returns the modified style guide markdown, or None if style not found.
+    """
+    import copy
+
+    style = get_style_option(style_id)
+    if not style:
+        return None
+
+    if not custom_colors:
+        return get_style_guide_markdown(style_id)
+
+    # Deep copy the style so we don't mutate the registry
+    modified = copy.deepcopy(style)
+    tokens = modified["style_guide"]["color_tokens"]
+
+    mapping = {
+        "primary": ("brand", "DEFAULT"),
+        "secondary": ("brand", "dark"),
+        "accent": ("brand", "light"),
+        "background": ("surface", "canvas"),
+        "surface": ("surface", "base"),
+        "text": ("text", "primary"),
+    }
+
+    for role, hex_value in custom_colors.items():
+        if role in mapping:
+            group, key = mapping[role]
+            if group in tokens and isinstance(tokens[group], dict):
+                tokens[group][key] = hex_value
+
+    # Now regenerate the markdown using the modified tokens
+    color_tokens = modified["style_guide"]["color_tokens"]
+
+    lines = [
+        f"# {modified['name']} - Design System Style Guide (Customized)",
+        "",
+        f"**Philosophy:** {modified['philosophy']}",
+        "",
+        "---",
+        "",
+        "## 1. Abstract Color Tokens",
+        "",
+        "**Brand/Primary:**",
+        f"- brand-light: {color_tokens['brand']['light']}",
+        f"- brand-DEFAULT: {color_tokens['brand']['DEFAULT']}",
+        f"- brand-dark: {color_tokens['brand']['dark']}",
+        "",
+        "**Surfaces:**",
+        f"- surface-canvas: {color_tokens['surface']['canvas']} (main background)",
+        f"- surface-base: {color_tokens['surface']['base']} (cards, panels)",
+        f"- surface-muted: {color_tokens['surface']['muted']} (inputs, hover states)",
+        "",
+        "**Text:**",
+        f"- text-primary: {color_tokens['text']['primary']} (headings, key values)",
+        f"- text-secondary: {color_tokens['text']['secondary']} (body text, labels)",
+        f"- text-tertiary: {color_tokens['text']['tertiary']} (placeholders, inactive)",
+        "",
+        "**Borders:**",
+        f"- border-subtle: {color_tokens['border']['subtle']}",
+        "",
+        "**Status Colors:**",
+        f"- success: {color_tokens['status']['success']}",
+        f"- error: {color_tokens['status']['error']}",
+        f"- warning: {color_tokens['status']['warning']}",
+        f"- info: {color_tokens['status']['info']}",
+        "",
+    ]
+
+    # The rest of the guide (typography, components, spacing, tailwind) is unchanged
+    # Delegate to the standard generator for those sections by calling the full generator
+    # then replacing just the color section. For simplicity, just return the color section
+    # plus the standard non-color sections.
+    full_guide = get_style_guide_markdown(style_id)
+    if full_guide:
+        # Replace the color tokens section while keeping everything else
+        color_section_end = full_guide.find("## 2.")
+        if color_section_end > 0:
+            lines_str = "\n".join(lines)
+            return lines_str + "\n" + full_guide[color_section_end:]
+
+    return "\n".join(lines)
+
+
+def save_style_guide(
+    project_dir: Path,
+    style_id: str,
+    custom_colors: dict[str, str] | None = None,
+) -> Path | None:
     """
     Generate and save the style guide markdown to the project's .autoforge directory.
 
+    If custom_colors are provided, applies them as overrides to the base style.
+
     Returns the path to the saved file, or None if the style was not found.
     """
-    guide_md = get_style_guide_markdown(style_id)
+    if custom_colors:
+        guide_md = apply_custom_colors(style_id, custom_colors)
+    else:
+        guide_md = get_style_guide_markdown(style_id)
+
     if not guide_md:
         return None
 

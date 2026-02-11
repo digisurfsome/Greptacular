@@ -11,7 +11,7 @@
  * 6b. If manual: Create project and close
  */
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import {
   Bot,
@@ -32,6 +32,9 @@ import {
 import { useCreateProject, useBoilerplates, useStyles, useStyleProfiles, useStyleRecommendations, useStyleModifiers, useDescriptionRecommendation } from '../hooks/useProjects'
 import { SpecCreationChat } from './SpecCreationChat'
 import { FolderBrowser } from './FolderBrowser'
+import { StylePreview } from './StylePreview'
+import { StyleFullPreview } from './StyleFullPreview'
+import { ColorCustomizer } from './ColorCustomizer'
 import { startAgent } from '../lib/api'
 import type { BoilerplateCategory, StyleOption } from '../lib/types'
 import {
@@ -111,13 +114,28 @@ export function NewProjectModal({
   const [showRecommender, setShowRecommender] = useState(false)
   const [selectedModifiers, setSelectedModifiers] = useState<string[]>([])
   const [appDescription, setAppDescription] = useState('')
+  const [customColors, setCustomColors] = useState<Record<string, string>>({})
+  const [previewStyleId, setPreviewStyleId] = useState<string | null>(null)
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const handleCardHover = useCallback((id: string) => {
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
+    hoverTimerRef.current = setTimeout(() => setPreviewStyleId(id), 400)
+  }, [])
+
+  const handleCardHoverEnd = useCallback(() => {
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current)
+      hoverTimerRef.current = null
+    }
+  }, [])
 
   // Suppress unused variable warning - specMethod may be used in future
   void _specMethod
 
   const createProject = useCreateProject()
   const { data: boilerplateCategories, isLoading: boilerplatesLoading } = useBoilerplates()
-  const { data: styles, isLoading: stylesLoading } = useStyles()
+  const { data: styles, isLoading: stylesLoading } = useStyles(true)
   const { data: profiles } = useStyleProfiles()
   const { data: recommendations } = useStyleRecommendations(
     selectedAudience || undefined,
@@ -200,6 +218,7 @@ export function NewProjectModal({
   }
 
   const handleStyleSelect = (id: string) => {
+    if (id !== styleId) setCustomColors({}) // Reset colors when changing style
     setStyleId(id)
     // Don't advance - show modifier section below the style grid
   }
@@ -232,6 +251,7 @@ export function NewProjectModal({
           boilerplateId,
           styleId,
           modifierIds: selectedModifiers,
+          customColors: Object.keys(customColors).length > 0 ? customColors : undefined,
         })
         changeStep('complete')
         setTimeout(() => {
@@ -251,6 +271,7 @@ export function NewProjectModal({
           boilerplateId,
           styleId,
           modifierIds: selectedModifiers,
+          customColors: Object.keys(customColors).length > 0 ? customColors : undefined,
         })
         changeStep('chat')
       } catch (err: unknown) {
@@ -301,6 +322,7 @@ export function NewProjectModal({
   }
 
   const handleClose = () => {
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
     changeStep('name')
     setProjectName('')
     setProjectPath(null)
@@ -318,6 +340,8 @@ export function NewProjectModal({
     setShowRecommender(false)
     setSelectedModifiers([])
     setAppDescription('')
+    setCustomColors({})
+    setPreviewStyleId(null)
     onClose()
   }
 
@@ -332,6 +356,7 @@ export function NewProjectModal({
       changeStep('boilerplate')
       setStyleId(null)
       setSelectedModifiers([])
+      setCustomColors({})
     } else if (step === 'method') {
       changeStep('style')
       setSpecMethod(null)
@@ -388,7 +413,7 @@ export function NewProjectModal({
 
   return (
     <Dialog open={true} onOpenChange={(open) => !open && handleClose()}>
-      <DialogContent className={step === 'style' ? 'sm:max-w-2xl overflow-hidden flex flex-col' : step === 'boilerplate' ? 'sm:max-w-xl' : 'sm:max-w-lg'}>
+      <DialogContent className={step === 'style' ? 'sm:max-w-7xl overflow-hidden flex flex-col max-h-[90vh]' : step === 'boilerplate' ? 'sm:max-w-xl' : 'sm:max-w-lg'}>
         <DialogHeader>
           <DialogTitle>
             {step === 'name' && 'Create New Project'}
@@ -693,7 +718,7 @@ export function NewProjectModal({
 
             {!stylesLoading && filteredStyles.length > 0 && (
               <div className="overflow-y-auto pr-1 -mr-1 flex-1 min-h-0">
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                   {filteredStyles.map((style: StyleOption) => {
                     const swatches = STYLE_SWATCHES[style.id] || ['#3B82F6', '#FFFFFF', '#111827', '#22C55E']
                     const isRecommended = recommendedIds.has(style.id)
@@ -709,44 +734,75 @@ export function NewProjectModal({
                           isSelected ? 'border-primary ring-2 ring-primary/30' : ''
                         }`}
                         onClick={() => handleStyleSelect(style.id)}
+                        onMouseEnter={() => handleCardHover(style.id)}
+                        onMouseLeave={handleCardHoverEnd}
                       >
-                        <CardContent className="p-3">
-                          {/* Color swatches preview */}
-                          <div className="flex gap-1 mb-2">
-                            {swatches.map((color, i) => (
-                              <div
-                                key={i}
-                                className="h-5 flex-1 rounded-sm border border-black/10"
-                                style={{ backgroundColor: color }}
-                              />
-                            ))}
+                        <CardContent className="p-3 flex gap-3">
+                          {/* LEFT: Style info */}
+                          <div className="flex-1 min-w-0">
+                            {/* Color swatches preview */}
+                            <div className="flex gap-1 mb-2">
+                              {swatches.map((color, i) => (
+                                <div
+                                  key={i}
+                                  className="h-4 flex-1 rounded-sm border border-black/10"
+                                  style={{ backgroundColor: color }}
+                                />
+                              ))}
+                            </div>
+
+                            {/* Style name and badges */}
+                            <div className="flex items-center gap-1.5 mb-1">
+                              <span className="font-semibold text-sm leading-tight">{style.name}</span>
+                              {isTopPick && (
+                                <Badge className="text-[10px] px-1.5 py-0 h-4">Best</Badge>
+                              )}
+                              {isRecommended && !isTopPick && (
+                                <Check size={12} className="text-primary" />
+                              )}
+                            </div>
+
+                            {/* Description */}
+                            <p className="text-xs text-muted-foreground leading-snug line-clamp-2">
+                              {style.description}
+                            </p>
+
+                            {/* Best for */}
+                            <p className="text-[10px] text-muted-foreground/70 mt-1 leading-snug">
+                              {style.best_for}
+                            </p>
                           </div>
 
-                          {/* Style name and badges */}
-                          <div className="flex items-center gap-1.5 mb-1">
-                            <span className="font-semibold text-sm leading-tight">{style.name}</span>
-                            {isTopPick && (
-                              <Badge className="text-[10px] px-1.5 py-0 h-4">Best</Badge>
-                            )}
-                            {isRecommended && !isTopPick && (
-                              <Check size={12} className="text-primary" />
-                            )}
-                          </div>
-
-                          {/* Description */}
-                          <p className="text-xs text-muted-foreground leading-snug line-clamp-2">
-                            {style.description}
-                          </p>
-
-                          {/* Best for */}
-                          <p className="text-[10px] text-muted-foreground/70 mt-1 leading-snug">
-                            {style.best_for}
-                          </p>
+                          {/* RIGHT: UI Preview */}
+                          {style.style_guide && (
+                            <div className="w-[200px] shrink-0">
+                              <StylePreview guide={style.style_guide} size="compact" styleName={style.name} />
+                            </div>
+                          )}
                         </CardContent>
                       </Card>
                     )
                   })}
                 </div>
+
+                {/* Full-screen preview overlay */}
+                {previewStyleId && (() => {
+                  const previewStyle = filteredStyles.find((s: StyleOption) => s.id === previewStyleId)
+                  if (!previewStyle?.style_guide) return null
+                  return createPortal(
+                    <StyleFullPreview
+                      guide={previewStyle.style_guide}
+                      styleName={previewStyle.name}
+                      styleDescription={previewStyle.description}
+                      onSelect={() => {
+                        handleStyleSelect(previewStyleId)
+                        setPreviewStyleId(null)
+                      }}
+                      onClose={() => setPreviewStyleId(null)}
+                    />,
+                    document.body
+                  )
+                })()}
 
                 {/* Modifier Selection (shown after picking a style) */}
                 {styleId && modifiers && modifiers.length > 0 && (
@@ -795,6 +851,19 @@ export function NewProjectModal({
                     )}
                   </div>
                 )}
+
+                {/* Color Customization (shown after picking a style that has tokens) */}
+                {styleId && (() => {
+                  const selected = styles?.find((s: StyleOption) => s.id === styleId)
+                  if (!selected?.style_guide) return null
+                  return (
+                    <ColorCustomizer
+                      styleGuide={selected.style_guide}
+                      customColors={customColors}
+                      onChange={setCustomColors}
+                    />
+                  )
+                })()}
               </div>
             )}
 

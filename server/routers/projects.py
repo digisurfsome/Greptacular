@@ -117,9 +117,14 @@ styles_router = APIRouter(prefix="/api/styles", tags=["styles"])
 
 
 @styles_router.get("")
-async def list_styles():
-    """Return all available UI design styles."""
-    return get_style_registry()
+async def list_styles(include_tokens: bool = False):
+    """Return all available UI design styles.
+
+    Args:
+        include_tokens: If True, include full style_guide with color tokens,
+            typography, components, and spacing data for rendering UI previews.
+    """
+    return get_style_registry(include_tokens=include_tokens)
 
 
 @styles_router.get("/profiles")
@@ -461,18 +466,20 @@ async def create_project(project: ProjectCreate):
     # Scaffold prompts
     _scaffold_project_prompts(project_path)
 
-    # Save project config (boilerplate + style choices + modifiers)
+    # Save project config (boilerplate + style choices + modifiers + custom colors)
+    custom_colors = project.custom_colors or None
     if boilerplate_id:
         save_project_config(
             project_path,
             boilerplate_id,
             style_id,
             modifier_ids=project.modifier_ids or None,
+            custom_colors=custom_colors if custom_colors else None,
         )
 
-    # Save style guide if a style was selected
+    # Save style guide if a style was selected (with custom color overrides)
     if style_id:
-        save_style_guide(project_path, style_id)
+        save_style_guide(project_path, style_id, custom_colors=custom_colors)
 
     # Register in registry
     try:

@@ -1,7 +1,7 @@
 /**
  * New Project Modal Component
  *
- * Multi-step modal for creating new projects:
+ * Full-screen multi-step wizard for creating new projects:
  * 1. Enter project name
  * 2. Select project folder
  * 3. Choose boilerplate (web, mobile, scratch, etc.)
@@ -9,6 +9,9 @@
  * 5. Choose spec method (Claude or manual)
  * 6a. If Claude: Show SpecCreationChat
  * 6b. If manual: Create project and close
+ *
+ * All steps render as full-screen portals with a persistent step
+ * progress indicator at the top for a consistent, immersive UX.
  */
 
 import { useState, useMemo, useCallback } from 'react'
@@ -30,6 +33,7 @@ import {
   Check,
   Upload,
   ImageIcon,
+  X,
 } from 'lucide-react'
 import { useCreateProject, useBoilerplates, useStyles, useStyleProfiles, useStyleRecommendations, useStyleModifiers, useDescriptionRecommendation, useAccentCompatibility, useExtractStyleFromScreenshot } from '../hooks/useProjects'
 import { SpecCreationChat } from './SpecCreationChat'
@@ -39,14 +43,6 @@ import type { PreviewPage } from './StylePreview'
 import { ColorCustomizer } from './ColorCustomizer'
 import { startAgent } from '../lib/api'
 import type { BoilerplateCategory, StyleOption, AccentStyleOption, StyleExtractionResult } from '../lib/types'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -60,6 +56,16 @@ type Step = 'name' | 'folder' | 'boilerplate' | 'style' | 'method' | 'chat' | 'c
 type SpecMethod = 'claude' | 'manual'
 type StyleCategory = 'all' | 'core' | 'vibe'
 type StyleView = 'browse' | 'preview'
+
+/** Sequential step definitions for the progress bar */
+const STEP_ORDER: { id: Step; label: string }[] = [
+  { id: 'name', label: 'Project' },
+  { id: 'folder', label: 'Location' },
+  { id: 'boilerplate', label: 'Boilerplate' },
+  { id: 'style', label: 'Design' },
+  { id: 'method', label: 'Setup' },
+  { id: 'chat', label: 'Build' },
+]
 
 /** Map category IDs to lucide-react icons */
 const CATEGORY_ICONS: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
@@ -84,6 +90,113 @@ const STYLE_SWATCHES: Record<string, string[]> = {
   'dark-mode': ['#3B82F6', '#0F172A', '#1E293B', '#F1F5F9'],
   'warmer-shades': ['#D97706', '#FFFBF5', '#FFF8F0', '#292524'],
 }
+
+// ---------------------------------------------------------------------------
+// Step Progress Bar
+// ---------------------------------------------------------------------------
+
+/** Persistent top nav bar with logo and step progress indicator */
+function StepProgressBar({
+  currentStep,
+  onStepClick,
+  onClose,
+}: {
+  currentStep: Step
+  onStepClick: (step: Step) => void
+  onClose: () => void
+}) {
+  const currentIndex = STEP_ORDER.findIndex((s) => s.id === currentStep)
+
+  return (
+    <div className="h-14 border-b bg-background flex items-center px-6 shrink-0 z-10">
+      {/* Logo */}
+      <div className="flex items-center gap-2 shrink-0">
+        <img src="/logo.png" alt="AutoForge" className="h-8 w-8 rounded-full" />
+        <span className="font-semibold text-sm hidden sm:inline">AutoForge</span>
+      </div>
+
+      {/* Step progress indicator - centered */}
+      <div className="flex items-center gap-0 mx-auto">
+        {STEP_ORDER.map((stepDef, idx) => {
+          const isCompleted = idx < currentIndex
+          const isActive = idx === currentIndex
+          const isFuture = idx > currentIndex
+          // Allow navigating back to completed steps only
+          const isClickable = isCompleted
+
+          return (
+            <div key={stepDef.id} className="flex items-center">
+              {/* Connecting line before this dot (skip for first) */}
+              {idx > 0 && (
+                <div
+                  className={`w-8 sm:w-12 h-0.5 transition-colors ${
+                    idx <= currentIndex ? 'bg-primary' : 'bg-border'
+                  }`}
+                />
+              )}
+
+              {/* Step dot + label */}
+              <button
+                type="button"
+                disabled={!isClickable}
+                onClick={() => isClickable && onStepClick(stepDef.id)}
+                className={`flex flex-col items-center gap-1 group ${
+                  isClickable ? 'cursor-pointer' : isFuture ? 'cursor-default' : 'cursor-default'
+                }`}
+                title={isClickable ? `Go back to ${stepDef.label}` : stepDef.label}
+              >
+                {/* Circle */}
+                <div
+                  className={`flex items-center justify-center rounded-full transition-all ${
+                    isActive
+                      ? 'w-7 h-7 bg-primary text-primary-foreground ring-2 ring-primary/30'
+                      : isCompleted
+                        ? 'w-6 h-6 bg-primary text-primary-foreground group-hover:ring-2 group-hover:ring-primary/20'
+                        : 'w-6 h-6 border-2 border-muted-foreground/30 text-muted-foreground/40'
+                  }`}
+                >
+                  {isCompleted ? (
+                    <Check size={12} strokeWidth={3} />
+                  ) : (
+                    <span className={`text-[10px] font-bold ${isActive ? '' : ''}`}>
+                      {idx + 1}
+                    </span>
+                  )}
+                </div>
+                {/* Label */}
+                <span
+                  className={`text-[10px] font-medium leading-none whitespace-nowrap ${
+                    isActive
+                      ? 'text-primary'
+                      : isCompleted
+                        ? 'text-foreground/70'
+                        : 'text-muted-foreground/50'
+                  }`}
+                >
+                  {stepDef.label}
+                </span>
+              </button>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Close button */}
+      <button
+        type="button"
+        onClick={onClose}
+        className="shrink-0 p-1.5 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+        title="Close"
+      >
+        <X size={18} />
+      </button>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Main Component
+// ---------------------------------------------------------------------------
 
 interface NewProjectModalProps {
   isOpen: boolean
@@ -406,7 +519,49 @@ export function NewProjectModal({
     }
   }
 
-  // Full-screen chat view - use portal to render at body level
+  /**
+   * Handle clicking a completed step in the progress bar to navigate back.
+   * We need to reset intermediate state just like handleBack does, but
+   * potentially skip multiple steps.
+   */
+  const handleStepClick = (targetStep: Step) => {
+    const targetIndex = STEP_ORDER.findIndex((s) => s.id === targetStep)
+    const currentIndex = STEP_ORDER.findIndex((s) => s.id === step)
+    if (targetIndex >= currentIndex) return // Only navigate backwards
+
+    // Reset state for steps we are skipping over
+    if (targetIndex < 4) {
+      // Going before style: reset style state
+      setStyleId(null)
+      setSelectedModifiers([])
+      setCustomColors({})
+      setAccentStyleId(null)
+      setExtractionResult(null)
+      setStylePickerTab('browse')
+      setStyleView('browse')
+      setPreviewPage('landing')
+    }
+    if (targetIndex < 3) {
+      // Going before boilerplate: reset boilerplate
+      setBoilerplateId(null)
+    }
+    if (targetIndex < 2) {
+      // Going before folder: reset folder
+      setProjectPath(null)
+    }
+    if (targetIndex < 1) {
+      // Going to name: reset project path
+      setProjectPath(null)
+    }
+
+    setSpecMethod(null)
+    setError(null)
+    changeStep(targetStep)
+  }
+
+  // =========================================================================
+  // Chat step - full-screen, no nav bar (SpecCreationChat has its own header)
+  // =========================================================================
   if (step === 'chat') {
     return createPortal(
       <div className="fixed inset-0 z-50 bg-background flex flex-col">
@@ -424,206 +579,224 @@ export function NewProjectModal({
     )
   }
 
-  // Folder step uses larger modal
-  if (step === 'folder') {
-    return (
-      <Dialog open={true} onOpenChange={(open) => !open && handleClose()}>
-        <DialogContent className="sm:max-w-3xl flex flex-col p-0">
-          {/* Header */}
-          <DialogHeader className="p-6 pb-4 border-b">
-            <div className="flex items-center gap-3">
-              <Folder size={24} className="text-primary" />
-              <div>
-                <DialogTitle>Select Project Location</DialogTitle>
-                <DialogDescription>
-                  Select the folder to use for project <span className="font-semibold font-mono">{projectName}</span>. Create a new folder or choose an existing one.
-                </DialogDescription>
-              </div>
-            </div>
-          </DialogHeader>
+  // =========================================================================
+  // All other steps: full-screen portal with nav bar + step progress
+  // =========================================================================
+  return createPortal(
+    <div className="fixed inset-0 z-50 bg-background flex flex-col h-screen overflow-hidden">
+      {/* Top Navigation Bar with Step Progress */}
+      <StepProgressBar
+        currentStep={step}
+        onStepClick={handleStepClick}
+        onClose={handleClose}
+      />
 
-          {/* Folder Browser */}
-          <div className="flex-1 overflow-hidden">
-            <FolderBrowser
-              onSelect={handleFolderSelect}
-              onCancel={handleFolderCancel}
-            />
-          </div>
-        </DialogContent>
-      </Dialog>
-    )
-  }
-
-  return (
-    <Dialog open={true} onOpenChange={(open) => !open && handleClose()}>
-      <DialogContent className={step === 'style' ? 'sm:max-w-7xl overflow-hidden flex flex-col max-h-[90vh] p-4 gap-2' : step === 'boilerplate' ? 'sm:max-w-xl' : 'sm:max-w-lg'}>
-        <DialogHeader>
-          <DialogTitle>
-            {step === 'name' && 'Create New Project'}
-            {step === 'boilerplate' && 'Choose a Boilerplate'}
-            {step === 'style' && 'Choose a Design Style'}
-            {step === 'method' && 'Choose Setup Method'}
-            {step === 'complete' && 'Project Created!'}
-          </DialogTitle>
-        </DialogHeader>
-
-        {/* Step 1: Project Name */}
+      {/* Step Content Area - uses remaining viewport height */}
+      <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+        {/* ---------------------------------------------------------------- */}
+        {/* Step 1: Project Name                                             */}
+        {/* ---------------------------------------------------------------- */}
         {step === 'name' && (
-          <form onSubmit={handleNameSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="project-name">Project Name</Label>
-              <Input
-                id="project-name"
-                type="text"
-                value={projectName}
-                onChange={(e) => setProjectName(e.target.value)}
-                placeholder="my-awesome-app"
-                pattern="^[a-zA-Z0-9_-]+$"
-                autoFocus
-              />
-              <p className="text-sm text-muted-foreground">
-                Use letters, numbers, hyphens, and underscores only.
-              </p>
+          <div className="flex-1 flex items-center justify-center p-6">
+            <div className="w-full max-w-md">
+              <div className="mb-6">
+                <h2 className="text-2xl font-semibold mb-1">Create New Project</h2>
+                <p className="text-sm text-muted-foreground">
+                  Give your project a name to get started.
+                </p>
+              </div>
+
+              <form onSubmit={handleNameSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="project-name">Project Name</Label>
+                  <Input
+                    id="project-name"
+                    type="text"
+                    value={projectName}
+                    onChange={(e) => setProjectName(e.target.value)}
+                    placeholder="my-awesome-app"
+                    pattern="^[a-zA-Z0-9_-]+$"
+                    autoFocus
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    Use letters, numbers, hyphens, and underscores only.
+                  </p>
+                </div>
+
+                {error && (
+                  <Alert variant="destructive">
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
+                )}
+
+                <div className="flex justify-end">
+                  <Button type="submit" disabled={!projectName.trim()}>
+                    Next
+                    <ArrowRight size={16} />
+                  </Button>
+                </div>
+              </form>
             </div>
-
-            {error && (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-
-            <DialogFooter>
-              <Button type="submit" disabled={!projectName.trim()}>
-                Next
-                <ArrowRight size={16} />
-              </Button>
-            </DialogFooter>
-          </form>
+          </div>
         )}
 
-        {/* Step 3: Boilerplate Selection */}
-        {step === 'boilerplate' && (
-          <div className="space-y-4">
-            <DialogDescription>
-              Pick a starting point for your project.
-            </DialogDescription>
-
-            {boilerplatesLoading && (
-              <div className="flex items-center justify-center gap-2 py-8 text-muted-foreground">
-                <Loader2 size={16} className="animate-spin" />
-                <span>Loading boilerplates...</span>
+        {/* ---------------------------------------------------------------- */}
+        {/* Step 2: Folder Selection                                         */}
+        {/* ---------------------------------------------------------------- */}
+        {step === 'folder' && (
+          <div className="flex-1 flex flex-col min-h-0">
+            {/* Header */}
+            <div className="px-6 py-4 border-b shrink-0">
+              <div className="flex items-center gap-3">
+                <Folder size={24} className="text-primary" />
+                <div>
+                  <h2 className="text-lg font-semibold">Select Project Location</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Select the folder to use for project <span className="font-semibold font-mono">{projectName}</span>. Create a new folder or choose an existing one.
+                  </p>
+                </div>
               </div>
-            )}
+            </div>
 
-            {!boilerplatesLoading && boilerplateCategories && (
-              <div className="space-y-3">
-                {boilerplateCategories.map((category) => {
-                  const availableOptions = category.options.filter((opt) => opt.available)
-                  const isDisabled = availableOptions.length === 0
-                  const Icon = CATEGORY_ICONS[category.category] ?? Zap
+            {/* Folder Browser - takes remaining space */}
+            <div className="flex-1 overflow-hidden">
+              <FolderBrowser
+                onSelect={handleFolderSelect}
+                onCancel={handleFolderCancel}
+              />
+            </div>
+          </div>
+        )}
 
-                  return (
-                    <Card
-                      key={category.category}
-                      className={
-                        isDisabled
-                          ? 'opacity-60 cursor-not-allowed'
-                          : 'cursor-pointer hover:border-primary transition-colors'
-                      }
-                      onClick={() => !isDisabled && handleBoilerplateSelect(category)}
-                    >
-                      <CardContent className="p-4">
-                        <div className="flex items-start gap-4">
-                          <div className="p-2 bg-primary/10 rounded-lg">
-                            <Icon size={24} className="text-primary" />
-                          </div>
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="font-semibold">{category.label}</span>
-                              {isDisabled && (
-                                <Badge variant="secondary">Coming Soon</Badge>
+        {/* ---------------------------------------------------------------- */}
+        {/* Step 3: Boilerplate Selection                                    */}
+        {/* ---------------------------------------------------------------- */}
+        {step === 'boilerplate' && (
+          <div className="flex-1 flex items-center justify-center p-6">
+            <div className="w-full max-w-xl space-y-4">
+              <div className="mb-2">
+                <h2 className="text-2xl font-semibold mb-1">Choose a Boilerplate</h2>
+                <p className="text-sm text-muted-foreground">
+                  Pick a starting point for your project.
+                </p>
+              </div>
+
+              {boilerplatesLoading && (
+                <div className="flex items-center justify-center gap-2 py-8 text-muted-foreground">
+                  <Loader2 size={16} className="animate-spin" />
+                  <span>Loading boilerplates...</span>
+                </div>
+              )}
+
+              {!boilerplatesLoading && boilerplateCategories && (
+                <div className="space-y-3">
+                  {boilerplateCategories.map((category) => {
+                    const availableOptions = category.options.filter((opt) => opt.available)
+                    const isDisabled = availableOptions.length === 0
+                    const Icon = CATEGORY_ICONS[category.category] ?? Zap
+
+                    return (
+                      <Card
+                        key={category.category}
+                        className={
+                          isDisabled
+                            ? 'opacity-60 cursor-not-allowed'
+                            : 'cursor-pointer hover:border-primary transition-colors'
+                        }
+                        onClick={() => !isDisabled && handleBoilerplateSelect(category)}
+                      >
+                        <CardContent className="p-4">
+                          <div className="flex items-start gap-4">
+                            <div className="p-2 bg-primary/10 rounded-lg">
+                              <Icon size={24} className="text-primary" />
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="font-semibold">{category.label}</span>
+                                {isDisabled && (
+                                  <Badge variant="secondary">Coming Soon</Badge>
+                                )}
+                              </div>
+
+                              {/* Show available options with tech summaries */}
+                              {availableOptions.length > 0 && (
+                                <div className="mt-1 space-y-1">
+                                  {availableOptions.map((option) => (
+                                    <div key={option.id}>
+                                      <p className="text-sm text-muted-foreground">
+                                        {option.tech_summary}
+                                      </p>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+
+                              {/* For disabled categories, show a brief explanation */}
+                              {isDisabled && category.options.length > 0 && (
+                                <p className="text-sm text-muted-foreground mt-1">
+                                  {category.options[0].description}
+                                </p>
+                              )}
+                              {isDisabled && category.options.length === 0 && (
+                                <p className="text-sm text-muted-foreground mt-1">
+                                  More options coming soon.
+                                </p>
                               )}
                             </div>
-
-                            {/* Show available options with tech summaries */}
-                            {availableOptions.length > 0 && (
-                              <div className="mt-1 space-y-1">
-                                {availableOptions.map((option) => (
-                                  <div key={option.id}>
-                                    <p className="text-sm text-muted-foreground">
-                                      {option.tech_summary}
-                                    </p>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-
-                            {/* For disabled categories, show a brief explanation */}
-                            {isDisabled && category.options.length > 0 && (
-                              <p className="text-sm text-muted-foreground mt-1">
-                                {category.options[0].description}
-                              </p>
-                            )}
-                            {isDisabled && category.options.length === 0 && (
-                              <p className="text-sm text-muted-foreground mt-1">
-                                More options coming soon.
-                              </p>
-                            )}
                           </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )
-                })}
-              </div>
-            )}
-
-            {/* Show pre_built badges for the selected boilerplate */}
-            {boilerplateId && boilerplateCategories && (() => {
-              const selectedOption = boilerplateCategories
-                .flatMap((c) => c.options)
-                .find((opt) => opt.id === boilerplateId)
-              if (!selectedOption || selectedOption.pre_built.length === 0) return null
-              return (
-                <div className="space-y-2">
-                  <p className="text-sm font-medium">Included out of the box:</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {selectedOption.pre_built.map((item) => (
-                      <Badge key={item} variant="secondary">{item}</Badge>
-                    ))}
-                  </div>
+                        </CardContent>
+                      </Card>
+                    )
+                  })}
                 </div>
-              )
-            })()}
+              )}
 
-            {error && (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
+              {/* Show pre_built badges for the selected boilerplate */}
+              {boilerplateId && boilerplateCategories && (() => {
+                const selectedOption = boilerplateCategories
+                  .flatMap((c) => c.options)
+                  .find((opt) => opt.id === boilerplateId)
+                if (!selectedOption || selectedOption.pre_built.length === 0) return null
+                return (
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">Included out of the box:</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {selectedOption.pre_built.map((item) => (
+                        <Badge key={item} variant="secondary">{item}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })()}
 
-            <DialogFooter className="sm:justify-start">
-              <Button variant="ghost" onClick={handleBack}>
-                <ArrowLeft size={16} />
-                Back
-              </Button>
-            </DialogFooter>
+              {error && (
+                <Alert variant="destructive">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+
+              <div className="flex justify-start">
+                <Button variant="ghost" onClick={handleBack}>
+                  <ArrowLeft size={16} />
+                  Back
+                </Button>
+              </div>
+            </div>
           </div>
         )}
 
-        {/* Step 4: Design Style Selection */}
+        {/* ---------------------------------------------------------------- */}
+        {/* Step 4: Design Style Selection (full-screen layout)              */}
+        {/* ---------------------------------------------------------------- */}
         {step === 'style' && (
-          <div className="flex flex-col gap-3 min-h-0">
-            <DialogDescription>
-              Pick the design system for your app. Each style includes a complete Tailwind CSS theme, typography, and component patterns.
-            </DialogDescription>
-
-            {/* View toggle bar: Browse Styles vs Preview */}
-            <div className="flex items-center gap-2 pb-2 border-b shrink-0">
+          <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+            {/* Sub-header: view toggle + filters */}
+            <div className="flex items-center gap-2 px-4 py-2 border-b shrink-0">
+              {/* Browse / Preview toggle */}
               <div className="flex bg-muted rounded-lg p-0.5">
                 <button
                   onClick={() => setStyleView('browse')}
-                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                  className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
                     styleView === 'browse' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'
                   }`}
                 >
@@ -631,7 +804,7 @@ export function NewProjectModal({
                 </button>
                 <button
                   onClick={() => setStyleView('preview')}
-                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                  className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
                     styleView === 'preview' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'
                   }`}
                 >
@@ -641,7 +814,7 @@ export function NewProjectModal({
 
               {/* Category filter tabs (shown in browse view only) */}
               {styleView === 'browse' && (
-                <div className="flex gap-1 ml-auto">
+                <div className="flex gap-1 ml-2">
                   {(['all', 'core', 'vibe'] as StyleCategory[]).map((cat) => (
                     <Button
                       key={cat}
@@ -658,60 +831,65 @@ export function NewProjectModal({
 
               {/* Selected style indicator (shown in preview view) */}
               {styleView === 'preview' && styleId && styles && (
-                <span className="ml-auto text-sm text-muted-foreground">
+                <span className="ml-2 text-sm text-muted-foreground">
                   Previewing: <span className="font-medium text-foreground">{styles.find((s: StyleOption) => s.id === styleId)?.name}</span>
                 </span>
               )}
-            </div>
 
-            {/* ============================================================ */}
-            {/* BROWSE VIEW: card grid + recommender + modifiers + accent     */}
-            {/* ============================================================ */}
-            {styleView === 'browse' && (
-              <>
-                {/* AI Recommender Toggle */}
-                <div className="flex items-center gap-2">
+              {/* Right side: Help Me Choose + picker tabs */}
+              {styleView === 'browse' && (
+                <div className="ml-auto flex items-center gap-2">
+                  {/* Style Picker Mode Tabs */}
+                  <div className="flex border border-border rounded-md overflow-hidden">
+                    {(['browse', 'describe', 'screenshot'] as const).map((tab) => (
+                      <button
+                        key={tab}
+                        onClick={() => setStylePickerTab(tab)}
+                        className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                          stylePickerTab === tab
+                            ? 'bg-primary text-primary-foreground'
+                            : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                        }`}
+                      >
+                        {tab === 'browse' ? 'Browse' : tab === 'describe' ? 'Describe' : 'Screenshot'}
+                      </button>
+                    ))}
+                  </div>
+
                   <Button
                     variant={showRecommender ? 'default' : 'outline'}
                     size="sm"
                     onClick={() => setShowRecommender(!showRecommender)}
+                    className="h-7 text-xs"
                   >
-                    <Sparkles size={14} />
-                    {showRecommender ? 'Hide Recommender' : 'Help Me Choose'}
+                    <Sparkles size={12} />
+                    {showRecommender ? 'Hide' : 'Help Me Choose'}
                   </Button>
                 </div>
+              )}
+            </div>
 
-                {/* Style Picker Mode Tabs */}
-                <div className="flex border-b border-border">
-                  {(['browse', 'describe', 'screenshot'] as const).map((tab) => (
-                    <button
-                      key={tab}
-                      onClick={() => setStylePickerTab(tab)}
-                      className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors ${
-                        stylePickerTab === tab
-                          ? 'border-primary text-primary'
-                          : 'border-transparent text-muted-foreground hover:text-foreground'
-                      }`}
-                    >
-                      {tab === 'browse' ? 'Browse Styles' : tab === 'describe' ? 'Describe App' : 'Screenshot'}
-                    </button>
-                  ))}
-                </div>
-
-                {/* AI Recommender Panel */}
+            {/* ==================================================== */}
+            {/* BROWSE VIEW                                            */}
+            {/* ==================================================== */}
+            {styleView === 'browse' && (
+              <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+                {/* AI Recommender Panel (collapsible, compact) */}
                 {(stylePickerTab === 'browse' || stylePickerTab === 'describe') && showRecommender && profiles && (
-                  <Card className="border-primary/30 bg-primary/5">
-                    <CardContent className="p-3 space-y-3">
-                      {/* Quick description option */}
-                      <div className="space-y-1.5">
-                        <Label className="text-xs">Describe your app (optional)</Label>
-                        <div className="flex gap-2">
-                          <textarea
-                            value={appDescription}
-                            onChange={(e) => setAppDescription(e.target.value)}
-                            placeholder="e.g., A sugar tracking app for diabetics aged 50-80 that scans nutrition labels..."
-                            className="flex-1 text-xs rounded-md border border-border bg-background px-2 py-1.5 resize-none h-14"
-                          />
+                  <div className="shrink-0 px-4 py-2 border-b bg-primary/5">
+                    <div className="flex gap-4 items-start">
+                      {/* Description input */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex gap-2 items-end">
+                          <div className="flex-1">
+                            <Label className="text-[11px]">Describe your app (optional)</Label>
+                            <textarea
+                              value={appDescription}
+                              onChange={(e) => setAppDescription(e.target.value)}
+                              placeholder="e.g., A sugar tracking app for diabetics aged 50-80..."
+                              className="w-full text-xs rounded-md border border-border bg-background px-2 py-1.5 resize-none h-10 mt-0.5"
+                            />
+                          </div>
                           <Button
                             variant="outline"
                             size="sm"
@@ -725,7 +903,7 @@ export function NewProjectModal({
                                 }
                               })
                             }}
-                            className="self-end"
+                            className="h-7 text-xs mb-0.5"
                           >
                             {descriptionRec.isPending ? (
                               <Loader2 size={12} className="animate-spin" />
@@ -736,7 +914,7 @@ export function NewProjectModal({
                           </Button>
                         </div>
                         {descriptionRec.data && (
-                          <p className="text-[10px] text-muted-foreground">
+                          <p className="text-[10px] text-muted-foreground mt-0.5">
                             Detected: {[
                               descriptionRec.data.detected_signals.audience && `Audience: ${descriptionRec.data.detected_signals.audience}`,
                               descriptionRec.data.detected_signals.vibe && `Vibe: ${descriptionRec.data.detected_signals.vibe}`,
@@ -746,20 +924,14 @@ export function NewProjectModal({
                         )}
                       </div>
 
-                      {/* Divider */}
-                      <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                        <div className="flex-1 h-px bg-border" />
-                        <span>or choose manually</span>
-                        <div className="flex-1 h-px bg-border" />
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-2">
+                      {/* Manual selectors */}
+                      <div className="flex gap-2 shrink-0">
                         <div>
-                          <Label className="text-xs">Audience</Label>
+                          <Label className="text-[11px]">Audience</Label>
                           <select
                             value={selectedAudience}
                             onChange={(e) => setSelectedAudience(e.target.value)}
-                            className="w-full mt-1 text-xs rounded-md border border-border bg-background px-2 py-1.5"
+                            className="w-full mt-0.5 text-xs rounded-md border border-border bg-background px-2 py-1.5"
                           >
                             <option value="">Any</option>
                             {Object.entries(profiles.audiences).map(([key, val]) => (
@@ -768,11 +940,11 @@ export function NewProjectModal({
                           </select>
                         </div>
                         <div>
-                          <Label className="text-xs">Vibe</Label>
+                          <Label className="text-[11px]">Vibe</Label>
                           <select
                             value={selectedVibe}
                             onChange={(e) => setSelectedVibe(e.target.value)}
-                            className="w-full mt-1 text-xs rounded-md border border-border bg-background px-2 py-1.5"
+                            className="w-full mt-0.5 text-xs rounded-md border border-border bg-background px-2 py-1.5"
                           >
                             <option value="">Any</option>
                             {Object.entries(profiles.vibes).map(([key, val]) => (
@@ -781,11 +953,11 @@ export function NewProjectModal({
                           </select>
                         </div>
                         <div>
-                          <Label className="text-xs">Age Group</Label>
+                          <Label className="text-[11px]">Age Group</Label>
                           <select
                             value={selectedAge}
                             onChange={(e) => setSelectedAge(e.target.value)}
-                            className="w-full mt-1 text-xs rounded-md border border-border bg-background px-2 py-1.5"
+                            className="w-full mt-0.5 text-xs rounded-md border border-border bg-background px-2 py-1.5"
                           >
                             <option value="">Any</option>
                             {Object.entries(profiles.age_groups).map(([key, val]) => (
@@ -794,63 +966,61 @@ export function NewProjectModal({
                           </select>
                         </div>
                       </div>
-                      {recommendations && recommendations.length > 0 && (
-                        <p className="text-xs text-muted-foreground mt-2">
-                          Top picks highlighted below. Best match: <span className="font-semibold text-primary">{styles?.find((s: StyleOption) => s.id === recommendations[0].style_id)?.name}</span>
-                        </p>
-                      )}
-                    </CardContent>
-                  </Card>
+                    </div>
+                    {recommendations && recommendations.length > 0 && (
+                      <p className="text-[10px] text-muted-foreground mt-1">
+                        Top picks highlighted below. Best match: <span className="font-semibold text-primary">{styles?.find((s: StyleOption) => s.id === recommendations[0].style_id)?.name}</span>
+                      </p>
+                    )}
+                  </div>
                 )}
 
                 {/* Screenshot Extraction Tab */}
                 {stylePickerTab === 'screenshot' && (
-                  <div className="space-y-4 py-4">
-                    <div className="flex flex-col items-center gap-3">
-                      <div className="w-full max-w-md">
-                        <label
-                          className={`flex flex-col items-center gap-3 p-8 border-2 border-dashed rounded-xl cursor-pointer transition-colors ${
-                            screenshotExtracting
-                              ? 'border-primary/50 bg-primary/5'
-                              : 'border-border hover:border-primary/50 hover:bg-muted/50'
-                          }`}
-                        >
-                          <input
-                            type="file"
-                            accept="image/png,image/jpeg,image/webp"
-                            className="hidden"
-                            onChange={handleScreenshotUpload}
-                            disabled={screenshotExtracting}
-                          />
-                          {screenshotExtracting ? (
-                            <>
-                              <Loader2 size={32} className="text-primary animate-spin" />
-                              <span className="text-sm text-muted-foreground">Analyzing screenshot...</span>
-                            </>
-                          ) : (
-                            <>
-                              <Upload size={32} className="text-muted-foreground" />
-                              <div className="text-center">
-                                <p className="text-sm font-medium">Drop an image here or click to upload</p>
-                                <p className="text-xs text-muted-foreground mt-1">.png, .jpg, or .webp</p>
-                              </div>
-                            </>
-                          )}
-                        </label>
-                      </div>
+                  <div className="shrink-0 px-4 py-3 border-b">
+                    <div className="flex items-start gap-4 max-w-2xl mx-auto">
+                      <label
+                        className={`flex flex-col items-center gap-2 p-4 border-2 border-dashed rounded-xl cursor-pointer transition-colors flex-1 ${
+                          screenshotExtracting
+                            ? 'border-primary/50 bg-primary/5'
+                            : 'border-border hover:border-primary/50 hover:bg-muted/50'
+                        }`}
+                      >
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp"
+                          className="hidden"
+                          onChange={handleScreenshotUpload}
+                          disabled={screenshotExtracting}
+                        />
+                        {screenshotExtracting ? (
+                          <>
+                            <Loader2 size={24} className="text-primary animate-spin" />
+                            <span className="text-xs text-muted-foreground">Analyzing...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Upload size={24} className="text-muted-foreground" />
+                            <div className="text-center">
+                              <p className="text-xs font-medium">Drop an image or click to upload</p>
+                              <p className="text-[10px] text-muted-foreground">.png, .jpg, or .webp</p>
+                            </div>
+                          </>
+                        )}
+                      </label>
 
                       {/* Extraction Results */}
                       {extractionResult && (
-                        <Card className="w-full">
-                          <CardContent className="p-4 space-y-3">
+                        <Card className="flex-1">
+                          <CardContent className="p-3 space-y-2">
                             <div className="flex items-center gap-2">
-                              <ImageIcon size={16} className="text-primary" />
-                              <span className="font-medium text-sm">Style Analysis</span>
+                              <ImageIcon size={14} className="text-primary" />
+                              <span className="font-medium text-xs">Style Analysis</span>
                             </div>
 
                             {extractionResult.identified_style.primary && (
-                              <div className="space-y-1">
-                                <p className="text-sm">
+                              <div className="space-y-0.5">
+                                <p className="text-xs">
                                   <span className="text-muted-foreground">Detected: </span>
                                   <span className="font-semibold">
                                     {styles?.find(s => s.id === extractionResult.identified_style.primary)?.name || extractionResult.identified_style.primary}
@@ -865,7 +1035,7 @@ export function NewProjectModal({
                                     </span>
                                   )}
                                 </p>
-                                <p className="text-xs text-muted-foreground">
+                                <p className="text-[10px] text-muted-foreground">
                                   Confidence: {extractionResult.identified_style.primary_confidence}
                                 </p>
                               </div>
@@ -873,8 +1043,8 @@ export function NewProjectModal({
 
                             {/* Extracted color palette preview */}
                             {extractionResult.tailwind_config && !!(extractionResult.tailwind_config as Record<string, unknown>).colors && (
-                              <div className="space-y-1">
-                                <p className="text-xs text-muted-foreground">Extracted palette:</p>
+                              <div className="space-y-0.5">
+                                <p className="text-[10px] text-muted-foreground">Extracted palette:</p>
                                 <div className="flex gap-1">
                                   {(() => {
                                     const colors = (extractionResult.tailwind_config as Record<string, Record<string, Record<string, string>>>).colors || {}
@@ -886,7 +1056,7 @@ export function NewProjectModal({
                                     return swatches.slice(0, 6).map((c, i) => (
                                       <div
                                         key={i}
-                                        className="h-6 w-8 rounded border border-black/10"
+                                        className="h-5 w-6 rounded border border-black/10"
                                         style={{ backgroundColor: c }}
                                         title={c}
                                       />
@@ -896,8 +1066,8 @@ export function NewProjectModal({
                               </div>
                             )}
 
-                            <div className="flex gap-2 pt-1">
-                              <Button size="sm" onClick={() => {
+                            <div className="flex gap-2">
+                              <Button size="sm" className="h-7 text-xs" onClick={() => {
                                 if (extractionResult.identified_style.primary) {
                                   setStyleId(extractionResult.identified_style.primary)
                                   if (extractionResult.identified_style.accent) {
@@ -911,11 +1081,12 @@ export function NewProjectModal({
                               <Button
                                 size="sm"
                                 variant="outline"
+                                className="h-7 text-xs"
                                 onClick={() => {
                                   setExtractionResult(null)
                                 }}
                               >
-                                Try Another Image
+                                Try Another
                               </Button>
                             </div>
                           </CardContent>
@@ -923,8 +1094,8 @@ export function NewProjectModal({
                       )}
 
                       {extractScreenshot.isError && (
-                        <Alert variant="destructive" className="w-full">
-                          <AlertDescription>
+                        <Alert variant="destructive" className="flex-1">
+                          <AlertDescription className="text-xs">
                             Failed to analyze screenshot. Make sure you have a valid ANTHROPIC_API_KEY set.
                           </AlertDescription>
                         </Alert>
@@ -933,209 +1104,216 @@ export function NewProjectModal({
                   </div>
                 )}
 
-                {/* Style Grid */}
-                {stylePickerTab !== 'screenshot' && stylesLoading && (
-                  <div className="flex items-center justify-center gap-2 py-8 text-muted-foreground">
-                    <Loader2 size={16} className="animate-spin" />
-                    <span>Loading styles...</span>
-                  </div>
-                )}
+                {/* Main content area: style grid (+ optional right panel) */}
+                {stylePickerTab !== 'screenshot' && (
+                  <div className="flex-1 min-h-0 flex overflow-hidden">
+                    {/* Style Grid */}
+                    <div className={`flex-1 min-w-0 overflow-y-auto p-4 ${styleId ? 'pr-2' : ''}`}>
+                      {stylesLoading && (
+                        <div className="flex items-center justify-center gap-2 py-8 text-muted-foreground">
+                          <Loader2 size={16} className="animate-spin" />
+                          <span>Loading styles...</span>
+                        </div>
+                      )}
 
-                {stylePickerTab !== 'screenshot' && !stylesLoading && filteredStyles.length > 0 && (
-                  <div className="overflow-y-auto pr-1 -mr-1 flex-1 min-h-0">
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                      {filteredStyles.map((style: StyleOption) => {
-                        const swatches = STYLE_SWATCHES[style.id] || ['#3B82F6', '#FFFFFF', '#111827', '#22C55E']
-                        const isRecommended = recommendedIds.has(style.id)
-                        const isTopPick = recommendations && recommendations.length > 0 && recommendations[0].style_id === style.id
-                        const isSelected = styleId === style.id
+                      {!stylesLoading && filteredStyles.length > 0 && (
+                        <div className="grid grid-cols-2 gap-3">
+                          {filteredStyles.map((style: StyleOption) => {
+                            const swatches = STYLE_SWATCHES[style.id] || ['#3B82F6', '#FFFFFF', '#111827', '#22C55E']
+                            const isRecommended = recommendedIds.has(style.id)
+                            const isTopPick = recommendations && recommendations.length > 0 && recommendations[0].style_id === style.id
+                            const isSelected = styleId === style.id
 
-                        return (
-                          <Card
-                            key={style.id}
-                            className={`cursor-pointer transition-all hover:border-primary ${
-                              isRecommended ? 'border-primary/50 ring-1 ring-primary/20' : ''
-                            } ${isTopPick ? 'ring-2 ring-primary/40' : ''} ${
-                              isSelected ? 'border-primary ring-2 ring-primary/30' : ''
-                            }`}
-                            onClick={() => handleStyleSelect(style.id)}
-                          >
-                            <CardContent className="p-3 flex gap-3">
-                              {/* LEFT: Style info */}
-                              <div className="flex-1 min-w-0 flex flex-col">
-                                {/* Color swatches + name row */}
-                                <div className="flex items-center gap-2 mb-1.5">
-                                  <div className="flex gap-0.5">
-                                    {swatches.map((color, i) => (
-                                      <div
-                                        key={i}
-                                        className="h-5 w-5 rounded-sm border border-black/10"
-                                        style={{ backgroundColor: color }}
-                                      />
-                                    ))}
+                            return (
+                              <Card
+                                key={style.id}
+                                className={`cursor-pointer transition-all hover:border-primary ${
+                                  isRecommended ? 'border-primary/50 ring-1 ring-primary/20' : ''
+                                } ${isTopPick ? 'ring-2 ring-primary/40' : ''} ${
+                                  isSelected ? 'border-primary ring-2 ring-primary/30' : ''
+                                }`}
+                                onClick={() => handleStyleSelect(style.id)}
+                              >
+                                <CardContent className="p-3 flex gap-3">
+                                  {/* LEFT: Style info */}
+                                  <div className="flex-1 min-w-0 flex flex-col">
+                                    {/* Color swatches + name row */}
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <div className="flex gap-0.5">
+                                        {swatches.map((color, i) => (
+                                          <div
+                                            key={i}
+                                            className="h-4 w-4 rounded-sm border border-black/10"
+                                            style={{ backgroundColor: color }}
+                                          />
+                                        ))}
+                                      </div>
+                                      <span className="font-semibold text-sm leading-tight">{style.name}</span>
+                                      {isTopPick && (
+                                        <Badge className="text-[10px] px-1.5 py-0 h-4">Best</Badge>
+                                      )}
+                                      {isRecommended && !isTopPick && (
+                                        <Check size={12} className="text-primary" />
+                                      )}
+                                      <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4 ml-auto capitalize">
+                                        {style.category}
+                                      </Badge>
+                                    </div>
+
+                                    {/* Description */}
+                                    <p className="text-xs text-muted-foreground leading-snug line-clamp-2">
+                                      {style.description}
+                                    </p>
+
+                                    {/* Best for */}
+                                    <p className="text-[10px] text-muted-foreground/70 mt-auto pt-0.5 leading-snug">
+                                      <span className="font-medium text-muted-foreground/90">Best for:</span> {style.best_for}
+                                    </p>
                                   </div>
-                                  <span className="font-semibold text-sm leading-tight">{style.name}</span>
-                                  {isTopPick && (
-                                    <Badge className="text-[10px] px-1.5 py-0 h-4">Best</Badge>
+
+                                  {/* RIGHT: UI Preview */}
+                                  {style.style_guide && (
+                                    <div className="w-[180px] shrink-0">
+                                      <StylePreview
+                                        guide={style.style_guide}
+                                        size="compact"
+                                        styleName={style.name}
+                                        modifiers={isSelected ? selectedModifiers : undefined}
+                                        accentGuide={isSelected && accentStyleId
+                                          ? styles?.find((s: StyleOption) => s.id === accentStyleId)?.style_guide
+                                          : undefined}
+                                      />
+                                    </div>
                                   )}
-                                  {isRecommended && !isTopPick && (
-                                    <Check size={12} className="text-primary" />
-                                  )}
-                                  <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4 ml-auto capitalize">
-                                    {style.category}
-                                  </Badge>
-                                </div>
-
-                                {/* Description */}
-                                <p className="text-xs text-muted-foreground leading-snug">
-                                  {style.description}
-                                </p>
-
-                                {/* Philosophy */}
-                                <p className="text-[10px] text-muted-foreground/60 mt-1 leading-snug line-clamp-2 italic">
-                                  {style.philosophy}
-                                </p>
-
-                                {/* Best for */}
-                                <p className="text-[10px] text-muted-foreground/70 mt-auto pt-1 leading-snug">
-                                  <span className="font-medium text-muted-foreground/90">Best for:</span> {style.best_for}
-                                </p>
-                              </div>
-
-                              {/* RIGHT: UI Preview */}
-                              {style.style_guide && (
-                                <div className="w-[200px] shrink-0">
-                                  <StylePreview
-                                    guide={style.style_guide}
-                                    size="compact"
-                                    styleName={style.name}
-                                    modifiers={isSelected ? selectedModifiers : undefined}
-                                    accentGuide={isSelected && accentStyleId
-                                      ? styles?.find((s: StyleOption) => s.id === accentStyleId)?.style_guide
-                                      : undefined}
-                                  />
-                                </div>
-                              )}
-                            </CardContent>
-                          </Card>
-                        )
-                      })}
+                                </CardContent>
+                              </Card>
+                            )
+                          })}
+                        </div>
+                      )}
                     </div>
 
-                    {/* Modifier Selection (shown after picking a style) */}
-                    {styleId && modifiers && modifiers.length > 0 && (
-                      <div className="space-y-2 border-t pt-3 mt-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium">Accessibility Modifiers</span>
-                          <Badge variant="secondary" className="text-[10px]">Optional</Badge>
+                    {/* Right panel: modifiers, accent, colors (shown when a style is selected) */}
+                    {styleId && (
+                      <div className="w-[280px] shrink-0 border-l overflow-y-auto p-3 space-y-3">
+                        {/* Selected style name */}
+                        <div className="flex items-center gap-2 pb-2 border-b">
+                          <Paintbrush size={14} className="text-primary" />
+                          <span className="text-sm font-semibold">
+                            {styles?.find((s: StyleOption) => s.id === styleId)?.name}
+                          </span>
                         </div>
-                        <p className="text-xs text-muted-foreground">
-                          Layer accessibility enhancements on top of your chosen style.
-                        </p>
-                        <div className="grid grid-cols-2 gap-2">
-                          {modifiers.map((mod) => {
-                            const isActive = selectedModifiers.includes(mod.id)
-                            return (
-                              <button
-                                key={mod.id}
-                                onClick={() => {
-                                  setSelectedModifiers(prev =>
-                                    isActive
-                                      ? prev.filter(id => id !== mod.id)
-                                      : prev.length < 3
-                                        ? [...prev, mod.id]
-                                        : prev
-                                  )
-                                }}
-                                className={`text-left p-2.5 rounded-lg border transition-colors ${
-                                  isActive
-                                    ? 'border-primary bg-primary/10'
-                                    : 'border-border hover:border-primary/50'
-                                }`}
-                              >
-                                <div className="flex items-center gap-1.5">
-                                  {isActive && <Check size={12} className="text-primary" />}
-                                  <span className="text-sm font-medium">{mod.name}</span>
-                                </div>
-                                <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
-                                  {mod.description}
-                                </p>
-                              </button>
-                            )
-                          })}
-                        </div>
-                        {selectedModifiers.length >= 3 && (
-                          <p className="text-xs text-muted-foreground">Maximum 3 modifiers.</p>
+
+                        {/* Modifier Selection */}
+                        {modifiers && modifiers.length > 0 && (
+                          <div className="space-y-1.5">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Modifiers</span>
+                              <Badge variant="secondary" className="text-[9px] h-4">Optional</Badge>
+                            </div>
+                            <div className="space-y-1">
+                              {modifiers.map((mod) => {
+                                const isActive = selectedModifiers.includes(mod.id)
+                                return (
+                                  <button
+                                    key={mod.id}
+                                    onClick={() => {
+                                      setSelectedModifiers(prev =>
+                                        isActive
+                                          ? prev.filter(id => id !== mod.id)
+                                          : prev.length < 3
+                                            ? [...prev, mod.id]
+                                            : prev
+                                      )
+                                    }}
+                                    className={`w-full text-left p-2 rounded-md border transition-colors ${
+                                      isActive
+                                        ? 'border-primary bg-primary/10'
+                                        : 'border-border hover:border-primary/50'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-1.5">
+                                      {isActive && <Check size={10} className="text-primary" />}
+                                      <span className="text-xs font-medium">{mod.name}</span>
+                                    </div>
+                                    <p className="text-[10px] text-muted-foreground mt-0.5 leading-snug">
+                                      {mod.description}
+                                    </p>
+                                  </button>
+                                )
+                              })}
+                            </div>
+                            {selectedModifiers.length >= 3 && (
+                              <p className="text-[10px] text-muted-foreground">Maximum 3 modifiers.</p>
+                            )}
+                          </div>
                         )}
+
+                        {/* Accent Style Picker */}
+                        {accentStyles && accentStyles.length > 0 && (
+                          <div className="space-y-1.5">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Accent Style</span>
+                              <Badge variant="secondary" className="text-[9px] h-4">Optional</Badge>
+                            </div>
+                            <div className="space-y-1">
+                              {accentStyles.map((accent: AccentStyleOption) => {
+                                const isActive = accentStyleId === accent.id
+                                return (
+                                  <button
+                                    key={accent.id}
+                                    onClick={() => setAccentStyleId(isActive ? null : accent.id)}
+                                    className={`w-full text-left p-2 rounded-md border transition-colors ${
+                                      isActive
+                                        ? 'border-primary bg-primary/10'
+                                        : 'border-border hover:border-primary/50'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-1.5">
+                                      {isActive && <Check size={10} className="text-primary" />}
+                                      <span className="text-xs font-medium">{accent.name}</span>
+                                    </div>
+                                    <p className="text-[10px] text-muted-foreground mt-0.5 leading-snug line-clamp-2">
+                                      {accent.description}
+                                    </p>
+                                  </button>
+                                )
+                              })}
+                            </div>
+                            {accentStyleId && (
+                              <p className="text-[10px] text-muted-foreground">
+                                Base controls layout/colors. Accent controls buttons and inputs.
+                              </p>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Color Customization */}
+                        {(() => {
+                          const selected = styles?.find((s: StyleOption) => s.id === styleId)
+                          if (!selected?.style_guide) return null
+                          return (
+                            <ColorCustomizer
+                              styleGuide={selected.style_guide}
+                              customColors={customColors}
+                              onChange={setCustomColors}
+                            />
+                          )
+                        })()}
                       </div>
                     )}
-
-                    {/* Accent Style Picker (shown after picking a base style) */}
-                    {styleId && accentStyles && accentStyles.length > 0 && (
-                      <div className="space-y-2 border-t pt-3 mt-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium">Accent Style</span>
-                          <Badge variant="secondary" className="text-[10px]">Optional</Badge>
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          Add a secondary style for buttons, inputs, and interactive elements only.
-                        </p>
-                        <div className="grid grid-cols-2 gap-2">
-                          {accentStyles.map((accent: AccentStyleOption) => {
-                            const isActive = accentStyleId === accent.id
-                            return (
-                              <button
-                                key={accent.id}
-                                onClick={() => setAccentStyleId(isActive ? null : accent.id)}
-                                className={`text-left p-2.5 rounded-lg border transition-colors ${
-                                  isActive
-                                    ? 'border-primary bg-primary/10'
-                                    : 'border-border hover:border-primary/50'
-                                }`}
-                              >
-                                <div className="flex items-center gap-1.5">
-                                  {isActive && <Check size={12} className="text-primary" />}
-                                  <span className="text-sm font-medium">{accent.name}</span>
-                                </div>
-                                <p className="text-xs text-muted-foreground mt-0.5 leading-snug line-clamp-2">
-                                  {accent.description}
-                                </p>
-                              </button>
-                            )
-                          })}
-                        </div>
-                        {accentStyleId && (
-                          <p className="text-[10px] text-muted-foreground">
-                            Base style controls layout, colors, and typography. Accent controls buttons and inputs only.
-                          </p>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Color Customization (shown after picking a style that has tokens) */}
-                    {styleId && (() => {
-                      const selected = styles?.find((s: StyleOption) => s.id === styleId)
-                      if (!selected?.style_guide) return null
-                      return (
-                        <ColorCustomizer
-                          styleGuide={selected.style_guide}
-                          customColors={customColors}
-                          onChange={setCustomColors}
-                        />
-                      )
-                    })()}
                   </div>
                 )}
-              </>
+              </div>
             )}
 
-            {/* ============================================================ */}
-            {/* PREVIEW VIEW: sidebar + full render                          */}
-            {/* ============================================================ */}
+            {/* ==================================================== */}
+            {/* PREVIEW VIEW: sidebar + full render                    */}
+            {/* ==================================================== */}
             {styleView === 'preview' && (
-              <div className="flex flex-1 min-h-0 gap-0 border rounded-lg overflow-hidden">
-                {/* Left sidebar */}
-                <div className="w-[280px] shrink-0 border-r bg-muted/30 overflow-y-auto">
+              <div className="flex-1 min-h-0 flex overflow-hidden">
+                {/* Left sidebar - wider for full-screen */}
+                <div className="w-[320px] shrink-0 border-r bg-muted/30 overflow-y-auto">
                   {/* Styles section */}
                   <div className="p-3 border-b">
                     <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Styles</h4>
@@ -1306,140 +1484,153 @@ export function NewProjectModal({
               </div>
             )}
 
-            <DialogFooter className="sm:justify-between pt-1">
-              <Button variant="ghost" onClick={handleBack}>
-                <ArrowLeft size={16} />
+            {/* Footer: Back / Skip / Continue */}
+            <div className="flex items-center justify-between px-4 py-2 border-t shrink-0">
+              <Button variant="ghost" size="sm" onClick={handleBack}>
+                <ArrowLeft size={14} />
                 Back
               </Button>
               <div className="flex gap-2">
                 {!styleId && (
-                  <Button variant="outline" onClick={handleStyleSkip}>
+                  <Button variant="outline" size="sm" onClick={handleStyleSkip}>
                     Skip for Now
-                    <ArrowRight size={16} />
+                    <ArrowRight size={14} />
                   </Button>
                 )}
                 {styleId && (
-                  <Button onClick={handleStyleConfirm}>
+                  <Button size="sm" onClick={handleStyleConfirm}>
                     Continue
-                    <ArrowRight size={16} />
+                    <ArrowRight size={14} />
                   </Button>
                 )}
               </div>
-            </DialogFooter>
+            </div>
           </div>
         )}
 
-        {/* Step 5: Spec Method */}
+        {/* ---------------------------------------------------------------- */}
+        {/* Step 5: Spec Method                                              */}
+        {/* ---------------------------------------------------------------- */}
         {step === 'method' && (
-          <div className="space-y-4">
-            <DialogDescription>
-              How would you like to define your project?
-            </DialogDescription>
-
-            {/* Show selected style summary */}
-            {styleId && styles && (
-              <div className="flex items-center gap-2 text-sm">
-                <Paintbrush size={14} className="text-primary" />
-                <span className="text-muted-foreground">Style:</span>
-                <Badge variant="secondary">{styles.find((s: StyleOption) => s.id === styleId)?.name}</Badge>
-                {accentStyleId && styles && (
-                  <span className="text-muted-foreground"> + {styles.find((s: StyleOption) => s.id === accentStyleId)?.name} accent</span>
-                )}
+          <div className="flex-1 flex items-center justify-center p-6">
+            <div className="w-full max-w-lg space-y-4">
+              <div className="mb-2">
+                <h2 className="text-2xl font-semibold mb-1">Choose Setup Method</h2>
+                <p className="text-sm text-muted-foreground">
+                  How would you like to define your project?
+                </p>
               </div>
-            )}
 
-            <div className="space-y-3">
-              {/* Claude option */}
-              <Card
-                className="cursor-pointer hover:border-primary transition-colors"
-                onClick={() => !createProject.isPending && handleMethodSelect('claude')}
-              >
-                <CardContent className="p-4">
-                  <div className="flex items-start gap-4">
-                    <div className="p-2 bg-primary/10 rounded-lg">
-                      <Bot size={24} className="text-primary" />
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold">Create with Claude</span>
-                        <Badge>Recommended</Badge>
+              {/* Show selected style summary */}
+              {styleId && styles && (
+                <div className="flex items-center gap-2 text-sm">
+                  <Paintbrush size={14} className="text-primary" />
+                  <span className="text-muted-foreground">Style:</span>
+                  <Badge variant="secondary">{styles.find((s: StyleOption) => s.id === styleId)?.name}</Badge>
+                  {accentStyleId && styles && (
+                    <span className="text-muted-foreground"> + {styles.find((s: StyleOption) => s.id === accentStyleId)?.name} accent</span>
+                  )}
+                </div>
+              )}
+
+              <div className="space-y-3">
+                {/* Claude option */}
+                <Card
+                  className="cursor-pointer hover:border-primary transition-colors"
+                  onClick={() => !createProject.isPending && handleMethodSelect('claude')}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-start gap-4">
+                      <div className="p-2 bg-primary/10 rounded-lg">
+                        <Bot size={24} className="text-primary" />
                       </div>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Interactive conversation to define features and generate your app specification automatically.
-                      </p>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold">Create with Claude</span>
+                          <Badge>Recommended</Badge>
+                        </div>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          Interactive conversation to define features and generate your app specification automatically.
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
 
-              {/* Manual option */}
-              <Card
-                className="cursor-pointer hover:border-primary transition-colors"
-                onClick={() => !createProject.isPending && handleMethodSelect('manual')}
-              >
-                <CardContent className="p-4">
-                  <div className="flex items-start gap-4">
-                    <div className="p-2 bg-secondary rounded-lg">
-                      <FileEdit size={24} className="text-secondary-foreground" />
+                {/* Manual option */}
+                <Card
+                  className="cursor-pointer hover:border-primary transition-colors"
+                  onClick={() => !createProject.isPending && handleMethodSelect('manual')}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-start gap-4">
+                      <div className="p-2 bg-secondary rounded-lg">
+                        <FileEdit size={24} className="text-secondary-foreground" />
+                      </div>
+                      <div className="flex-1">
+                        <span className="font-semibold">Edit Templates Manually</span>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          Edit the template files directly. Best for developers who want full control.
+                        </p>
+                      </div>
                     </div>
-                    <div className="flex-1">
-                      <span className="font-semibold">Edit Templates Manually</span>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Edit the template files directly. Best for developers who want full control.
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {error && (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-
-            {createProject.isPending && (
-              <div className="flex items-center justify-center gap-2 text-muted-foreground">
-                <Loader2 size={16} className="animate-spin" />
-                <span>
-                  {boilerplateId && boilerplateId !== 'scratch'
-                    ? 'Cloning boilerplate...'
-                    : 'Creating project...'}
-                </span>
+                  </CardContent>
+                </Card>
               </div>
-            )}
 
-            <DialogFooter className="sm:justify-start">
-              <Button
-                variant="ghost"
-                onClick={handleBack}
-                disabled={createProject.isPending}
-              >
-                <ArrowLeft size={16} />
-                Back
-              </Button>
-            </DialogFooter>
+              {error && (
+                <Alert variant="destructive">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+
+              {createProject.isPending && (
+                <div className="flex items-center justify-center gap-2 text-muted-foreground">
+                  <Loader2 size={16} className="animate-spin" />
+                  <span>
+                    {boilerplateId && boilerplateId !== 'scratch'
+                      ? 'Cloning boilerplate...'
+                      : 'Creating project...'}
+                  </span>
+                </div>
+              )}
+
+              <div className="flex justify-start">
+                <Button
+                  variant="ghost"
+                  onClick={handleBack}
+                  disabled={createProject.isPending}
+                >
+                  <ArrowLeft size={16} />
+                  Back
+                </Button>
+              </div>
+            </div>
           </div>
         )}
 
-        {/* Step 6: Complete */}
+        {/* ---------------------------------------------------------------- */}
+        {/* Step 6: Complete                                                  */}
+        {/* ---------------------------------------------------------------- */}
         {step === 'complete' && (
-          <div className="text-center py-8">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-primary/10 rounded-full mb-4">
-              <CheckCircle2 size={32} className="text-primary" />
-            </div>
-            <h3 className="font-semibold text-xl mb-2">{projectName}</h3>
-            <p className="text-muted-foreground">
-              Your project has been created successfully!
-            </p>
-            <div className="mt-4 flex items-center justify-center gap-2">
-              <Loader2 size={16} className="animate-spin" />
-              <span className="text-sm text-muted-foreground">Redirecting...</span>
+          <div className="flex-1 flex items-center justify-center p-6">
+            <div className="text-center">
+              <div className="inline-flex items-center justify-center w-16 h-16 bg-primary/10 rounded-full mb-4">
+                <CheckCircle2 size={32} className="text-primary" />
+              </div>
+              <h3 className="font-semibold text-xl mb-2">{projectName}</h3>
+              <p className="text-muted-foreground">
+                Your project has been created successfully!
+              </p>
+              <div className="mt-4 flex items-center justify-center gap-2">
+                <Loader2 size={16} className="animate-spin" />
+                <span className="text-sm text-muted-foreground">Redirecting...</span>
+              </div>
             </div>
           </div>
         )}
-      </DialogContent>
-    </Dialog>
+      </div>
+    </div>,
+    document.body
   )
 }

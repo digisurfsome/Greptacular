@@ -119,6 +119,7 @@ export function NewProjectModal({
   const [customColors, setCustomColors] = useState<Record<string, string>>({})
   const [previewStyleId, setPreviewStyleId] = useState<string | null>(null)
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const closeCooldownRef = useRef<number>(0)
 
   // Accent style state
   const [accentStyleId, setAccentStyleId] = useState<string | null>(null)
@@ -128,10 +129,23 @@ export function NewProjectModal({
   const [screenshotExtracting, setScreenshotExtracting] = useState(false)
   const [extractionResult, setExtractionResult] = useState<StyleExtractionResult | null>(null)
 
+  const closePreview = useCallback(() => {
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current)
+      hoverTimerRef.current = null
+    }
+    closeCooldownRef.current = Date.now()
+    setPreviewStyleId(null)
+  }, [])
+
   const handleCardHover = useCallback((id: string) => {
+    // Don't re-open if we just closed (500ms cooldown)
+    if (Date.now() - closeCooldownRef.current < 500) return
+    // Don't re-trigger if already showing a preview
+    if (previewStyleId) return
     if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
     hoverTimerRef.current = setTimeout(() => setPreviewStyleId(id), 400)
-  }, [])
+  }, [previewStyleId])
 
   const handleCardHoverEnd = useCallback(() => {
     if (hoverTimerRef.current) {
@@ -463,7 +477,7 @@ export function NewProjectModal({
 
   return (
     <Dialog open={true} onOpenChange={(open) => !open && handleClose()}>
-      <DialogContent className={step === 'style' ? 'sm:max-w-7xl overflow-hidden flex flex-col max-h-[90vh]' : step === 'boilerplate' ? 'sm:max-w-xl' : 'sm:max-w-lg'}>
+      <DialogContent className={step === 'style' ? 'sm:max-w-7xl overflow-hidden flex flex-col max-h-[90vh] p-4 gap-2' : step === 'boilerplate' ? 'sm:max-w-xl' : 'sm:max-w-lg'}>
         <DialogHeader>
           <DialogTitle>
             {step === 'name' && 'Create New Project'}
@@ -936,20 +950,18 @@ export function NewProjectModal({
                       >
                         <CardContent className="p-3 flex gap-3">
                           {/* LEFT: Style info */}
-                          <div className="flex-1 min-w-0">
-                            {/* Color swatches preview */}
-                            <div className="flex gap-1 mb-2">
-                              {swatches.map((color, i) => (
-                                <div
-                                  key={i}
-                                  className="h-4 flex-1 rounded-sm border border-black/10"
-                                  style={{ backgroundColor: color }}
-                                />
-                              ))}
-                            </div>
-
-                            {/* Style name and badges */}
-                            <div className="flex items-center gap-1.5 mb-1">
+                          <div className="flex-1 min-w-0 flex flex-col">
+                            {/* Color swatches + name row */}
+                            <div className="flex items-center gap-2 mb-1.5">
+                              <div className="flex gap-0.5">
+                                {swatches.map((color, i) => (
+                                  <div
+                                    key={i}
+                                    className="h-5 w-5 rounded-sm border border-black/10"
+                                    style={{ backgroundColor: color }}
+                                  />
+                                ))}
+                              </div>
                               <span className="font-semibold text-sm leading-tight">{style.name}</span>
                               {isTopPick && (
                                 <Badge className="text-[10px] px-1.5 py-0 h-4">Best</Badge>
@@ -957,16 +969,24 @@ export function NewProjectModal({
                               {isRecommended && !isTopPick && (
                                 <Check size={12} className="text-primary" />
                               )}
+                              <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4 ml-auto capitalize">
+                                {style.category}
+                              </Badge>
                             </div>
 
                             {/* Description */}
-                            <p className="text-xs text-muted-foreground leading-snug line-clamp-2">
+                            <p className="text-xs text-muted-foreground leading-snug">
                               {style.description}
                             </p>
 
+                            {/* Philosophy */}
+                            <p className="text-[10px] text-muted-foreground/60 mt-1 leading-snug line-clamp-2 italic">
+                              {style.philosophy}
+                            </p>
+
                             {/* Best for */}
-                            <p className="text-[10px] text-muted-foreground/70 mt-1 leading-snug">
-                              {style.best_for}
+                            <p className="text-[10px] text-muted-foreground/70 mt-auto pt-1 leading-snug">
+                              <span className="font-medium text-muted-foreground/90">Best for:</span> {style.best_for}
                             </p>
                           </div>
 
@@ -992,10 +1012,11 @@ export function NewProjectModal({
 
                 {/* Full-screen preview overlay */}
                 {previewStyleId && (() => {
-                  const previewStyle = filteredStyles.find((s: StyleOption) => s.id === previewStyleId)
+                  // Look in ALL styles (not just filtered) so switching via the strip always works
+                  const previewStyle = styles?.find((s: StyleOption) => s.id === previewStyleId)
                   if (!previewStyle?.style_guide) return null
 
-                  // Resolve accent styles for this preview base style
+                  // Accent styles for mixing (exclude the current preview style)
                   const previewAccentStyles = styles?.filter((s: StyleOption) =>
                     s.id !== previewStyleId && s.style_guide
                   ) || []
@@ -1005,11 +1026,14 @@ export function NewProjectModal({
                       guide={previewStyle.style_guide}
                       styleName={previewStyle.name}
                       styleDescription={previewStyle.description}
+                      styleId={previewStyleId}
                       onSelect={() => {
                         handleStyleSelect(previewStyleId)
-                        setPreviewStyleId(null)
+                        closePreview()
                       }}
-                      onClose={() => setPreviewStyleId(null)}
+                      onClose={closePreview}
+                      allStyles={styles || []}
+                      onStyleChange={setPreviewStyleId}
                       modifiers={modifiers}
                       activeModifiers={selectedModifiers}
                       onModifiersChange={setSelectedModifiers}

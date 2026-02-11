@@ -28,15 +28,17 @@ import {
   Sparkles,
   Paintbrush,
   Check,
+  Upload,
+  ImageIcon,
 } from 'lucide-react'
-import { useCreateProject, useBoilerplates, useStyles, useStyleProfiles, useStyleRecommendations, useStyleModifiers, useDescriptionRecommendation } from '../hooks/useProjects'
+import { useCreateProject, useBoilerplates, useStyles, useStyleProfiles, useStyleRecommendations, useStyleModifiers, useDescriptionRecommendation, useAccentCompatibility, useExtractStyleFromScreenshot } from '../hooks/useProjects'
 import { SpecCreationChat } from './SpecCreationChat'
 import { FolderBrowser } from './FolderBrowser'
 import { StylePreview } from './StylePreview'
 import { StyleFullPreview } from './StyleFullPreview'
 import { ColorCustomizer } from './ColorCustomizer'
 import { startAgent } from '../lib/api'
-import type { BoilerplateCategory, StyleOption } from '../lib/types'
+import type { BoilerplateCategory, StyleOption, AccentStyleOption, StyleExtractionResult } from '../lib/types'
 import {
   Dialog,
   DialogContent,
@@ -118,6 +120,14 @@ export function NewProjectModal({
   const [previewStyleId, setPreviewStyleId] = useState<string | null>(null)
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Accent style state
+  const [accentStyleId, setAccentStyleId] = useState<string | null>(null)
+
+  // Screenshot extractor state
+  const [stylePickerTab, setStylePickerTab] = useState<'browse' | 'describe' | 'screenshot'>('browse')
+  const [screenshotExtracting, setScreenshotExtracting] = useState(false)
+  const [extractionResult, setExtractionResult] = useState<StyleExtractionResult | null>(null)
+
   const handleCardHover = useCallback((id: string) => {
     if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
     hoverTimerRef.current = setTimeout(() => setPreviewStyleId(id), 400)
@@ -144,6 +154,8 @@ export function NewProjectModal({
   )
   const { data: modifiers } = useStyleModifiers()
   const descriptionRec = useDescriptionRecommendation()
+  const { data: accentStyles } = useAccentCompatibility(styleId)
+  const extractScreenshot = useExtractStyleFromScreenshot()
 
   // Filtered styles by category
   const filteredStyles = useMemo(() => {
@@ -157,6 +169,35 @@ export function NewProjectModal({
     if (!recommendations || recommendations.length === 0) return new Set<string>()
     return new Set(recommendations.slice(0, 3).map((r) => r.style_id))
   }, [recommendations])
+
+  const handleScreenshotUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setScreenshotExtracting(true)
+    setExtractionResult(null)
+
+    const reader = new FileReader()
+    reader.onload = async () => {
+      const base64 = (reader.result as string).split(',')[1]
+      try {
+        const result = await extractScreenshot.mutateAsync(base64)
+        setExtractionResult(result)
+        // Auto-select the detected primary style
+        if (result.identified_style.primary) {
+          setStyleId(result.identified_style.primary)
+          if (result.identified_style.accent) {
+            setAccentStyleId(result.identified_style.accent)
+          }
+        }
+      } catch {
+        // Error handled by mutation state
+      } finally {
+        setScreenshotExtracting(false)
+      }
+    }
+    reader.readAsDataURL(file)
+  }, [extractScreenshot])
 
   // Wrapper to notify parent of step changes
   const changeStep = (newStep: Step) => {
@@ -252,6 +293,7 @@ export function NewProjectModal({
           styleId,
           modifierIds: selectedModifiers,
           customColors: Object.keys(customColors).length > 0 ? customColors : undefined,
+          accentStyle: accentStyleId,
         })
         changeStep('complete')
         setTimeout(() => {
@@ -272,6 +314,7 @@ export function NewProjectModal({
           styleId,
           modifierIds: selectedModifiers,
           customColors: Object.keys(customColors).length > 0 ? customColors : undefined,
+          accentStyle: accentStyleId,
         })
         changeStep('chat')
       } catch (err: unknown) {
@@ -342,6 +385,10 @@ export function NewProjectModal({
     setAppDescription('')
     setCustomColors({})
     setPreviewStyleId(null)
+    setAccentStyleId(null)
+    setStylePickerTab('browse')
+    setScreenshotExtracting(false)
+    setExtractionResult(null)
     onClose()
   }
 
@@ -357,6 +404,9 @@ export function NewProjectModal({
       setStyleId(null)
       setSelectedModifiers([])
       setCustomColors({})
+      setAccentStyleId(null)
+      setExtractionResult(null)
+      setStylePickerTab('browse')
     } else if (step === 'method') {
       changeStep('style')
       setSpecMethod(null)
@@ -602,8 +652,25 @@ export function NewProjectModal({
               </div>
             </div>
 
+            {/* Style Picker Mode Tabs */}
+            <div className="flex border-b border-border">
+              {(['browse', 'describe', 'screenshot'] as const).map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setStylePickerTab(tab)}
+                  className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors ${
+                    stylePickerTab === tab
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {tab === 'browse' ? 'Browse Styles' : tab === 'describe' ? 'Describe App' : 'Screenshot'}
+                </button>
+              ))}
+            </div>
+
             {/* AI Recommender Panel */}
-            {showRecommender && profiles && (
+            {(stylePickerTab === 'browse' || stylePickerTab === 'describe') && showRecommender && profiles && (
               <Card className="border-primary/30 bg-primary/5">
                 <CardContent className="p-3 space-y-3">
                   {/* Quick description option */}
@@ -708,15 +775,145 @@ export function NewProjectModal({
               </Card>
             )}
 
+            {/* Screenshot Extraction Tab */}
+            {stylePickerTab === 'screenshot' && (
+              <div className="space-y-4 py-4">
+                <div className="flex flex-col items-center gap-3">
+                  <div className="w-full max-w-md">
+                    <label
+                      className={`flex flex-col items-center gap-3 p-8 border-2 border-dashed rounded-xl cursor-pointer transition-colors ${
+                        screenshotExtracting
+                          ? 'border-primary/50 bg-primary/5'
+                          : 'border-border hover:border-primary/50 hover:bg-muted/50'
+                      }`}
+                    >
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        className="hidden"
+                        onChange={handleScreenshotUpload}
+                        disabled={screenshotExtracting}
+                      />
+                      {screenshotExtracting ? (
+                        <>
+                          <Loader2 size={32} className="text-primary animate-spin" />
+                          <span className="text-sm text-muted-foreground">Analyzing screenshot...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Upload size={32} className="text-muted-foreground" />
+                          <div className="text-center">
+                            <p className="text-sm font-medium">Drop an image here or click to upload</p>
+                            <p className="text-xs text-muted-foreground mt-1">.png, .jpg, or .webp</p>
+                          </div>
+                        </>
+                      )}
+                    </label>
+                  </div>
+
+                  {/* Extraction Results */}
+                  {extractionResult && (
+                    <Card className="w-full">
+                      <CardContent className="p-4 space-y-3">
+                        <div className="flex items-center gap-2">
+                          <ImageIcon size={16} className="text-primary" />
+                          <span className="font-medium text-sm">Style Analysis</span>
+                        </div>
+
+                        {extractionResult.identified_style.primary && (
+                          <div className="space-y-1">
+                            <p className="text-sm">
+                              <span className="text-muted-foreground">Detected: </span>
+                              <span className="font-semibold">
+                                {styles?.find(s => s.id === extractionResult.identified_style.primary)?.name || extractionResult.identified_style.primary}
+                              </span>
+                              {extractionResult.identified_style.accent && (
+                                <span className="text-muted-foreground">
+                                  {' + '}
+                                  <span className="font-medium">
+                                    {styles?.find(s => s.id === extractionResult.identified_style.accent)?.name || extractionResult.identified_style.accent}
+                                  </span>
+                                  {' accent'}
+                                </span>
+                              )}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              Confidence: {extractionResult.identified_style.primary_confidence}
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Extracted color palette preview */}
+                        {extractionResult.tailwind_config && !!(extractionResult.tailwind_config as Record<string, unknown>).colors && (
+                          <div className="space-y-1">
+                            <p className="text-xs text-muted-foreground">Extracted palette:</p>
+                            <div className="flex gap-1">
+                              {(() => {
+                                const colors = (extractionResult.tailwind_config as Record<string, Record<string, Record<string, string>>>).colors || {}
+                                const swatches: string[] = []
+                                if (colors.brand?.DEFAULT) swatches.push(colors.brand.DEFAULT)
+                                if (colors.surface?.canvas) swatches.push(colors.surface.canvas)
+                                if (colors.surface?.base) swatches.push(colors.surface.base)
+                                if (colors.text?.primary) swatches.push(colors.text.primary)
+                                return swatches.slice(0, 6).map((c, i) => (
+                                  <div
+                                    key={i}
+                                    className="h-6 w-8 rounded border border-black/10"
+                                    style={{ backgroundColor: c }}
+                                    title={c}
+                                  />
+                                ))
+                              })()}
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="flex gap-2 pt-1">
+                          <Button size="sm" onClick={() => {
+                            if (extractionResult.identified_style.primary) {
+                              setStyleId(extractionResult.identified_style.primary)
+                              if (extractionResult.identified_style.accent) {
+                                setAccentStyleId(extractionResult.identified_style.accent)
+                              }
+                              setStylePickerTab('browse')
+                            }
+                          }}>
+                            Use This Style
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setExtractionResult(null)
+                            }}
+                          >
+                            Try Another Image
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {extractScreenshot.isError && (
+                    <Alert variant="destructive" className="w-full">
+                      <AlertDescription>
+                        Failed to analyze screenshot. Make sure you have a valid ANTHROPIC_API_KEY set.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Style Grid */}
-            {stylesLoading && (
+            {stylePickerTab !== 'screenshot' && stylesLoading && (
               <div className="flex items-center justify-center gap-2 py-8 text-muted-foreground">
                 <Loader2 size={16} className="animate-spin" />
                 <span>Loading styles...</span>
               </div>
             )}
 
-            {!stylesLoading && filteredStyles.length > 0 && (
+            {stylePickerTab !== 'screenshot' && !stylesLoading && filteredStyles.length > 0 && (
               <div className="overflow-y-auto pr-1 -mr-1 flex-1 min-h-0">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                   {filteredStyles.map((style: StyleOption) => {
@@ -852,6 +1049,48 @@ export function NewProjectModal({
                   </div>
                 )}
 
+                {/* Accent Style Picker (shown after picking a base style) */}
+                {styleId && accentStyles && accentStyles.length > 0 && (
+                  <div className="space-y-2 border-t pt-3 mt-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">Accent Style</span>
+                      <Badge variant="secondary" className="text-[10px]">Optional</Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Add a secondary style for buttons, inputs, and interactive elements only.
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {accentStyles.map((accent: AccentStyleOption) => {
+                        const isActive = accentStyleId === accent.id
+                        return (
+                          <button
+                            key={accent.id}
+                            onClick={() => setAccentStyleId(isActive ? null : accent.id)}
+                            className={`text-left p-2.5 rounded-lg border transition-colors ${
+                              isActive
+                                ? 'border-primary bg-primary/10'
+                                : 'border-border hover:border-primary/50'
+                            }`}
+                          >
+                            <div className="flex items-center gap-1.5">
+                              {isActive && <Check size={12} className="text-primary" />}
+                              <span className="text-sm font-medium">{accent.name}</span>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-0.5 leading-snug line-clamp-2">
+                              {accent.description}
+                            </p>
+                          </button>
+                        )
+                      })}
+                    </div>
+                    {accentStyleId && (
+                      <p className="text-[10px] text-muted-foreground">
+                        Base style controls layout, colors, and typography. Accent controls buttons and inputs only.
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 {/* Color Customization (shown after picking a style that has tokens) */}
                 {styleId && (() => {
                   const selected = styles?.find((s: StyleOption) => s.id === styleId)
@@ -903,6 +1142,9 @@ export function NewProjectModal({
                 <Paintbrush size={14} className="text-primary" />
                 <span className="text-muted-foreground">Style:</span>
                 <Badge variant="secondary">{styles.find((s: StyleOption) => s.id === styleId)?.name}</Badge>
+                {accentStyleId && styles && (
+                  <span className="text-muted-foreground"> + {styles.find((s: StyleOption) => s.id === accentStyleId)?.name} accent</span>
+                )}
               </div>
             )}
 

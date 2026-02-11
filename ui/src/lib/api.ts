@@ -12,6 +12,8 @@ import type {
   StyleRecommendation,
   StyleProfiles,
   StyleModifier,
+  AccentStyleOption,
+  StyleExtractionResult,
   FeatureListResponse,
   Feature,
   FeatureCreate,
@@ -80,6 +82,7 @@ export async function createProject(
   styleId?: string | null,
   modifierIds?: string[],
   customColors?: Record<string, string>,
+  accentStyle?: string | null,
 ): Promise<ProjectSummary> {
   return fetchJSON('/projects', {
     method: 'POST',
@@ -91,6 +94,7 @@ export async function createProject(
       style_id: styleId ?? null,
       modifier_ids: modifierIds ?? [],
       custom_colors: customColors ?? {},
+      accent_style: accentStyle ?? null,
     }),
   })
 }
@@ -140,6 +144,21 @@ export async function getStyleRecommendationsFromDescription(
 
 export async function listStyleModifiers(): Promise<StyleModifier[]> {
   return fetchJSON('/styles/modifiers')
+}
+
+export async function getAccentCompatibility(styleId: string): Promise<AccentStyleOption[]> {
+  return fetchJSON(`/styles/${encodeURIComponent(styleId)}/accent-compatibility`)
+}
+
+export async function getStyleCombinations(): Promise<Array<{ base_id: string; base_name: string; accent_id: string; accent_name: string }>> {
+  return fetchJSON('/styles/combinations')
+}
+
+export async function extractStyleFromScreenshot(imageBase64: string): Promise<StyleExtractionResult> {
+  return fetchJSON('/styles/extract-from-screenshot', {
+    method: 'POST',
+    body: JSON.stringify({ image: imageBase64 }),
+  })
 }
 
 export async function getProject(name: string): Promise<ProjectDetail> {

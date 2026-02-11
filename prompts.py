@@ -173,10 +173,14 @@ def _get_style_context(project_dir: Path | None) -> str:
             config = {}
 
         style_id = config.get("style")
+        accent_id = config.get("accent_style")
         if style_id:
             try:
-                from server.services.style_manager import get_style_guide_markdown
-                guide = get_style_guide_markdown(style_id)
+                from server.services.style_manager import get_mixed_style_prompt, get_style_guide_markdown
+                if accent_id:
+                    guide = get_mixed_style_prompt(style_id, accent_id)
+                else:
+                    guide = get_style_guide_markdown(style_id)
                 if guide:
                     style_ctx = (
                         f"\n## DESIGN SYSTEM\n\nFollow this style guide for ALL UI implementation:\n\n{guide}\n"

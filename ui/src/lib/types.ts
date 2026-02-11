@@ -143,6 +143,27 @@ export interface StyleModifier {
   icon: string  // lucide icon name
 }
 
+/** Accent style compatibility info returned from API */
+export interface AccentStyleOption {
+  id: string
+  name: string
+  description: string
+  accent_token_overrides: Record<string, Record<string, string>>
+}
+
+/** Screenshot extraction result */
+export interface StyleExtractionResult {
+  identified_style: {
+    primary: string | null
+    primary_confidence: string
+    accent: string | null
+    accent_confidence: string
+  }
+  extracted_tokens: Record<string, unknown>
+  style_guide_markdown: string
+  tailwind_config: Record<string, unknown>
+}
+
 // Filesystem types
 export interface DriveInfo {
   letter: string

@@ -79,6 +79,7 @@ export async function createProject(
   boilerplateId?: string | null,
   styleId?: string | null,
   modifierIds?: string[],
+  customColors?: Record<string, string>,
 ): Promise<ProjectSummary> {
   return fetchJSON('/projects', {
     method: 'POST',
@@ -89,6 +90,7 @@ export async function createProject(
       boilerplate_id: boilerplateId ?? null,
       style_id: styleId ?? null,
       modifier_ids: modifierIds ?? [],
+      custom_colors: customColors ?? {},
     }),
   })
 }
@@ -105,8 +107,9 @@ export async function listBoilerplates(): Promise<BoilerplateCategory[]> {
 // Styles API
 // ============================================================================
 
-export async function listStyles(): Promise<StyleOption[]> {
-  return fetchJSON('/styles')
+export async function listStyles(includeTokens: boolean = false): Promise<StyleOption[]> {
+  const params = includeTokens ? '?include_tokens=true' : ''
+  return fetchJSON(`/styles${params}`)
 }
 
 export async function getStyleProfiles(): Promise<StyleProfiles> {

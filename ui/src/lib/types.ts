@@ -42,6 +42,60 @@ export interface BoilerplateCategory {
 }
 
 // Style types
+
+/** Component pattern tokens for a single component type */
+export interface StyleComponentTokens {
+  background?: string
+  border?: string
+  radius?: string
+  shadow?: string
+  padding?: string
+  backdrop_filter?: string
+  primary_bg?: string
+  primary_text?: string
+  hover?: string
+  font_weight?: string
+  text_transform?: string
+  style?: string
+  size?: string
+  [key: string]: string | undefined
+}
+
+/** Full style guide data for rendering UI previews */
+export interface StyleGuide {
+  color_tokens: {
+    brand: { light: string; DEFAULT: string; dark: string }
+    surface: { canvas: string; base: string; muted: string }
+    text: { primary: string; secondary: string; tertiary: string }
+    border: { subtle: string; DEFAULT?: string }
+    status: { success: string; error: string; warning: string; info: string }
+    accent?: Record<string, string>
+    [key: string]: unknown
+  }
+  typography: {
+    font_family: string
+    hierarchy: Array<{
+      level: string
+      size: string
+      weight: number
+      line_height: number
+    }>
+  }
+  components: {
+    cards: StyleComponentTokens
+    buttons: StyleComponentTokens
+    inputs: StyleComponentTokens
+    icons: { style: string; size: string }
+  }
+  spacing: {
+    base_unit: string
+    density: string
+    card_gap: string
+    section_gap: string
+  }
+  tailwind_config: Record<string, unknown>
+}
+
 export interface StyleOption {
   id: string
   name: string
@@ -49,6 +103,7 @@ export interface StyleOption {
   description: string
   best_for: string
   philosophy: string
+  style_guide?: StyleGuide
 }
 
 export interface StyleRecommendation {

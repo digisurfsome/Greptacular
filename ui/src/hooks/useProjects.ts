@@ -29,14 +29,15 @@ export function useCreateProject() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ name, path, specMethod, boilerplateId, styleId }: {
+    mutationFn: ({ name, path, specMethod, boilerplateId, styleId, modifierIds }: {
       name: string
       path: string
       specMethod?: 'claude' | 'manual'
       boilerplateId?: string | null
       styleId?: string | null
+      modifierIds?: string[]
     }) =>
-      api.createProject(name, path, specMethod, boilerplateId, styleId),
+      api.createProject(name, path, specMethod, boilerplateId, styleId, modifierIds),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] })
     },
@@ -48,6 +49,49 @@ export function useBoilerplates() {
     queryKey: ['boilerplates'],
     queryFn: api.listBoilerplates,
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes - rarely changes
+  })
+}
+
+export function useStyles() {
+  return useQuery({
+    queryKey: ['styles'],
+    queryFn: api.listStyles,
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes - rarely changes
+  })
+}
+
+export function useStyleRecommendations(
+  audience?: string,
+  vibe?: string,
+  ageGroup?: string,
+) {
+  return useQuery({
+    queryKey: ['style-recommendations', audience, vibe, ageGroup],
+    queryFn: () => api.getStyleRecommendations(audience, vibe, ageGroup),
+    enabled: !!(audience || vibe || ageGroup),
+    staleTime: 60 * 1000,
+  })
+}
+
+export function useStyleProfiles() {
+  return useQuery({
+    queryKey: ['style-profiles'],
+    queryFn: api.getStyleProfiles,
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+export function useStyleModifiers() {
+  return useQuery({
+    queryKey: ['style-modifiers'],
+    queryFn: api.listStyleModifiers,
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+export function useDescriptionRecommendation() {
+  return useMutation({
+    mutationFn: (description: string) => api.getStyleRecommendationsFromDescription(description),
   })
 }
 

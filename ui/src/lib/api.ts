@@ -8,6 +8,10 @@ import type {
   ProjectPrompts,
   ProjectSettingsUpdate,
   BoilerplateCategory,
+  StyleOption,
+  StyleRecommendation,
+  StyleProfiles,
+  StyleModifier,
   FeatureListResponse,
   Feature,
   FeatureCreate,
@@ -74,6 +78,7 @@ export async function createProject(
   specMethod: 'claude' | 'manual' = 'manual',
   boilerplateId?: string | null,
   styleId?: string | null,
+  modifierIds?: string[],
 ): Promise<ProjectSummary> {
   return fetchJSON('/projects', {
     method: 'POST',
@@ -83,6 +88,7 @@ export async function createProject(
       spec_method: specMethod,
       boilerplate_id: boilerplateId ?? null,
       style_id: styleId ?? null,
+      modifier_ids: modifierIds ?? [],
     }),
   })
 }
@@ -93,6 +99,44 @@ export async function createProject(
 
 export async function listBoilerplates(): Promise<BoilerplateCategory[]> {
   return fetchJSON('/boilerplates')
+}
+
+// ============================================================================
+// Styles API
+// ============================================================================
+
+export async function listStyles(): Promise<StyleOption[]> {
+  return fetchJSON('/styles')
+}
+
+export async function getStyleProfiles(): Promise<StyleProfiles> {
+  return fetchJSON('/styles/profiles')
+}
+
+export async function getStyleRecommendations(
+  audience?: string,
+  vibe?: string,
+  ageGroup?: string,
+): Promise<StyleRecommendation[]> {
+  const params = new URLSearchParams()
+  if (audience) params.set('audience', audience)
+  if (vibe) params.set('vibe', vibe)
+  if (ageGroup) params.set('age_group', ageGroup)
+  const query = params.toString()
+  return fetchJSON(`/styles/recommend${query ? `?${query}` : ''}`)
+}
+
+export async function getStyleRecommendationsFromDescription(
+  description: string,
+): Promise<{ detected_signals: { audience: string | null; vibe: string | null; age_group: string | null }; recommendations: StyleRecommendation[] }> {
+  return fetchJSON('/styles/recommend-from-description', {
+    method: 'POST',
+    body: JSON.stringify({ description }),
+  })
+}
+
+export async function listStyleModifiers(): Promise<StyleModifier[]> {
+  return fetchJSON('/styles/modifiers')
 }
 
 export async function getProject(name: string): Promise<ProjectDetail> {

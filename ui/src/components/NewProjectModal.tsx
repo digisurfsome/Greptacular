@@ -360,7 +360,7 @@ export function NewProjectModal({
   if (step === 'folder') {
     return (
       <Dialog open={true} onOpenChange={(open) => !open && handleClose()}>
-        <DialogContent className="sm:max-w-3xl max-h-[85vh] flex flex-col p-0">
+        <DialogContent className="sm:max-w-3xl !top-[2rem] !translate-y-0 max-h-[calc(100vh-4rem)] flex flex-col p-0">
           {/* Header */}
           <DialogHeader className="p-6 pb-4 border-b">
             <div className="flex items-center gap-3">

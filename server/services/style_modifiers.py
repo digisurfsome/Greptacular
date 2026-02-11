@@ -126,22 +126,30 @@ STYLE_MODIFIERS: list[dict] = [
 ]
 
 
-def get_modifier_registry() -> list[dict]:
+def get_modifier_registry(include_tokens: bool = False) -> list[dict]:
     """Return all available style modifiers.
 
-    Returns a lightweight list suitable for API responses, omitting
+    Args:
+        include_tokens: If True, include the full token_overrides dict for
+            each modifier. Used by the live preview engine to apply modifier
+            effects visually.
+
+    Returns a list suitable for API responses. By default omits
     the full token_overrides and prompt_additions for performance.
     """
-    return [
-        {
+    result = []
+    for m in STYLE_MODIFIERS:
+        entry: dict = {
             "id": m["id"],
             "name": m["name"],
             "description": m["description"],
             "category": m["category"],
             "icon": m["icon"],
         }
-        for m in STYLE_MODIFIERS
-    ]
+        if include_tokens:
+            entry["token_overrides"] = m.get("token_overrides", {})
+        result.append(entry)
+    return result
 
 
 def get_modifier(modifier_id: str) -> dict | None:

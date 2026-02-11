@@ -973,7 +973,15 @@ export function NewProjectModal({
                           {/* RIGHT: UI Preview */}
                           {style.style_guide && (
                             <div className="w-[200px] shrink-0">
-                              <StylePreview guide={style.style_guide} size="compact" styleName={style.name} />
+                              <StylePreview
+                                guide={style.style_guide}
+                                size="compact"
+                                styleName={style.name}
+                                modifiers={isSelected ? selectedModifiers : undefined}
+                                accentGuide={isSelected && accentStyleId
+                                  ? styles?.find((s: StyleOption) => s.id === accentStyleId)?.style_guide
+                                  : undefined}
+                              />
                             </div>
                           )}
                         </CardContent>
@@ -986,6 +994,12 @@ export function NewProjectModal({
                 {previewStyleId && (() => {
                   const previewStyle = filteredStyles.find((s: StyleOption) => s.id === previewStyleId)
                   if (!previewStyle?.style_guide) return null
+
+                  // Resolve accent styles for this preview base style
+                  const previewAccentStyles = styles?.filter((s: StyleOption) =>
+                    s.id !== previewStyleId && s.style_guide
+                  ) || []
+
                   return createPortal(
                     <StyleFullPreview
                       guide={previewStyle.style_guide}
@@ -996,6 +1010,12 @@ export function NewProjectModal({
                         setPreviewStyleId(null)
                       }}
                       onClose={() => setPreviewStyleId(null)}
+                      modifiers={modifiers}
+                      activeModifiers={selectedModifiers}
+                      onModifiersChange={setSelectedModifiers}
+                      accentStyles={previewAccentStyles}
+                      activeAccentId={accentStyleId}
+                      onAccentChange={setAccentStyleId}
                     />,
                     document.body
                   )

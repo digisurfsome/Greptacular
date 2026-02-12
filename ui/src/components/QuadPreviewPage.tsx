@@ -69,15 +69,16 @@ export function QuadPreviewPage() {
   useEffect(() => {
     if (viewMode !== 'quad' || !quadGridRef.current) return
     const el = quadGridRef.current
-    const observer = new ResizeObserver((entries) => {
-      const entry = entries[0]
-      if (!entry) return
-      const { width, height } = entry.contentRect
-      const cellW = width / 2
-      const cellH = height / 2
+    const update = () => {
+      const { clientWidth, clientHeight } = el
+      if (clientWidth === 0 || clientHeight === 0) return
+      const cellW = clientWidth / 2
+      const cellH = clientHeight / 2
       const scale = Math.min(cellW / INTERNAL_W, cellH / INTERNAL_H)
       setQuadScale(Math.max(0.15, Math.min(1, scale)))
-    })
+    }
+    update() // Immediate first calculation
+    const observer = new ResizeObserver(() => update())
     observer.observe(el)
     return () => observer.disconnect()
   }, [viewMode])
@@ -352,53 +353,69 @@ export function QuadPreviewPage() {
 
       {/* Preview area */}
       {viewMode === 'quad' ? (
-        <div
-          ref={quadGridRef}
-          className="flex-1 overflow-hidden grid grid-cols-1 sm:grid-cols-2"
-        >
-          {PAGES.map((page) => (
+        (() => {
+          const quadPages: { id: PreviewPage; label: string; top: string; left: string }[] = [
+            { id: 'landing', label: 'Landing', top: '0', left: '0' },
+            { id: 'dashboard', label: 'Dashboard', top: '0', left: '50%' },
+            { id: 'settings', label: 'Settings', top: '50%', left: '0' },
+            { id: 'feed', label: 'Feed', top: '50%', left: '50%' },
+          ]
+          return (
             <div
-              key={page.id}
-              className="relative overflow-hidden cursor-pointer group"
-              style={{
-                borderRight: page.id === 'landing' || page.id === 'settings' ? '1px solid var(--color-border)' : undefined,
-                borderBottom: page.id === 'landing' || page.id === 'dashboard' ? '1px solid var(--color-border)' : undefined,
-              }}
-              onClick={() => {
-                setSinglePage(page.id)
-                setViewMode('single')
-              }}
+              ref={quadGridRef}
+              className="relative w-full flex-1"
             >
-              {/* Page label */}
-              <div className="absolute top-2 left-2 z-10 px-2 py-0.5 rounded text-[10px] font-semibold bg-black/60 text-white backdrop-blur-sm pointer-events-none">
-                {page.label}
-              </div>
-              {/* Expand icon on hover */}
-              <div className="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded bg-black/60 text-white backdrop-blur-sm pointer-events-none">
-                <Maximize2 size={12} />
-              </div>
-              {/* Scaled preview - dynamically fits quadrant */}
-              <div
-                style={{
-                  width: `${INTERNAL_W}px`,
-                  height: `${INTERNAL_H}px`,
-                  transform: `scale(${quadScale})`,
-                  transformOrigin: 'top left',
-                  overflow: 'hidden',
-                }}
-              >
-                <StylePreview
-                  guide={styleGuide}
-                  accentGuide={accentGuide}
-                  modifiers={activeModifiers}
-                  size="full"
-                  styleName={resolvedStyle.name}
-                  activePage={page.id}
-                />
-              </div>
+              {quadPages.map((page) => (
+                <div
+                  key={page.id}
+                  className="absolute overflow-hidden cursor-pointer group"
+                  style={{
+                    top: page.top,
+                    left: page.left,
+                    width: '50%',
+                    height: '50%',
+                    borderRight: page.left === '0' ? '1px solid var(--color-border)' : undefined,
+                    borderBottom: page.top === '0' ? '1px solid var(--color-border)' : undefined,
+                  }}
+                  onClick={() => {
+                    setSinglePage(page.id)
+                    setViewMode('single')
+                  }}
+                >
+                  {/* Page label */}
+                  <div className="absolute top-2 left-2 z-10 px-2 py-0.5 rounded text-[10px] font-semibold bg-black/60 text-white backdrop-blur-sm pointer-events-none">
+                    {page.label}
+                  </div>
+                  {/* Expand icon on hover */}
+                  <div className="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded bg-black/60 text-white backdrop-blur-sm pointer-events-none">
+                    <Maximize2 size={12} />
+                  </div>
+                  {/* Scaled preview - dynamically fits quadrant */}
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      width: `${INTERNAL_W}px`,
+                      height: `${INTERNAL_H}px`,
+                      transform: `scale(${quadScale})`,
+                      transformOrigin: 'top left',
+                    }}
+                  >
+                    <StylePreview
+                      guide={styleGuide}
+                      accentGuide={accentGuide}
+                      modifiers={activeModifiers}
+                      size="full"
+                      styleName={resolvedStyle.name}
+                      activePage={page.id}
+                    />
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          )
+        })()
       ) : (
         <div className="flex-1 overflow-y-auto">
           <StylePreview

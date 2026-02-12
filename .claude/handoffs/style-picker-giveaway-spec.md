@@ -232,6 +232,71 @@ The app itself uses the Minimalism style -- clean, professional, generous whites
       15. "Sand & Stone"
           brand: #92400E  background: #FAF5F0  surface: #FFFFFF  text: #292524  accent: #0891B2  muted: #E7E5E4
           Vibe: Warm minimal, boutique, calm
+
+      Premium Palettes (16-25) - unlocked on upgrade:
+
+      Monochrome & Minimal:
+      16. "Pure Ink"
+          brand: #18181B  background: #FAFAFA  surface: #FFFFFF  text: #09090B  accent: #A1A1AA  muted: #E4E4E7
+          Vibe: Black and white, ultra-minimal, typography-first
+
+      17. "Slate Mode"
+          brand: #475569  background: #F1F5F9  surface: #FFFFFF  text: #0F172A  accent: #0EA5E9  muted: #CBD5E1
+          Vibe: Neutral, no-nonsense, data-heavy apps
+
+      Luxury & Premium:
+      18. "Champagne"
+          brand: #A16207  background: #FFFBEB  surface: #FEF3C7  text: #422006  accent: #1D4ED8  muted: #FDE68A
+          Vibe: Luxury, gold tones, premium feel
+
+      19. "Plum Velvet"
+          brand: #7E22CE  background: #FAF5FF  surface: #FFFFFF  text: #3B0764  accent: #E11D48  muted: #E9D5FF
+          Vibe: Rich, creative agencies, fashion
+
+      20. "Obsidian Gold"
+          brand: #EAB308  background: #09090B  surface: #18181B  text: #FAFAF9  accent: #A855F7  muted: #27272A
+          Vibe: Premium dark, fintech, luxury (dark)
+
+      Playful & Creative:
+      21. "Candy Pop"
+          brand: #EC4899  background: #FDF2F8  surface: #FFFFFF  text: #1E1B4B  accent: #8B5CF6  muted: #FBCFE8
+          Vibe: Fun, youthful, social, Gen Z
+
+      22. "Retro Arcade"
+          brand: #A855F7  background: #0F0526  surface: #1A0940  text: #E0E7FF  accent: #34D399  muted: #312E81
+          Vibe: Synthwave, gaming, retro-futurism (dark)
+
+      23. "Citrus Splash"
+          brand: #65A30D  background: #FEFCE8  surface: #FFFFFF  text: #1A2E05  accent: #E11D48  muted: #D9F99D
+          Vibe: Fresh, energetic, food tech, fitness
+
+      Muted & Sophisticated:
+      24. "Sage Whisper"
+          brand: #4D7C0F  background: #F5F5F4  surface: #FAFAF9  text: #292524  accent: #B45309  muted: #D6D3D1
+          Vibe: Organic, wellness, journals, calm apps
+
+      25. "Dusty Mauve"
+          brand: #9F1239  background: #FFF5F7  surface: #FFFFFF  text: #44403C  accent: #0D9488  muted: #E7E5E4
+          Vibe: Soft, refined, interior design, boutique
+
+      TIERING:
+      - Free tier: Palettes 1-10 (Professional + Warm + Cool categories)
+      - Premium tier: All 25 palettes (adds Bold, Nature, Monochrome, Luxury, Playful, Muted)
+      - Tier is stored in localStorage alongside the access flag
+      - Premium palettes appear in the strip but with a small lock icon overlay
+      - Clicking a locked palette shows a tooltip: "Upgrade to unlock 15 more palettes"
+      - Upgrade flow: link to payment page (Stripe/Gumroad) or future in-app purchase
+
+      FAVORITES SYSTEM:
+      - Heart/star icon on each palette thumbnail - click to toggle favorite
+      - Favorites stored in localStorage as array of palette IDs
+      - "Show Favorites Only" toggle at the top of the palette strip
+      - When toggled on: only favorited palettes shown (faster to find your go-to palettes)
+      - Favorites persist across sessions (localStorage)
+      - Default state: no favorites, full list shown
+      - If user has 0 favorites and toggles "Favorites Only", show friendly message:
+        "Star some palettes to build your shortlist"
+      - Visual: favorited palettes get a small filled star badge in the corner
     </color_palette_switcher>
 
     <style_downloads>
@@ -915,31 +980,45 @@ create policy "Anyone can insert" on extraction_events for insert with check (tr
 **Priority: 5**
 **Depends on: Features 2, 6, 9**
 
-- 15 curated color palettes hardcoded in `src/data/palettes.ts`
+- 25 curated color palettes hardcoded in `src/data/palettes.ts`
 - Each palette has 6 slots: brand, background, surface, text, accent, muted
+- Each palette also has a `tier` field: `"free"` (palettes 1-10) or `"premium"` (palettes 11-25)
 - Palette selector appears on the Style Detail page, above the live preview
 - UI: horizontal scrollable strip of palette thumbnails
   - Each thumbnail: a row of 6 small color circles (16px) + palette name below
   - Selected palette has a ring highlight
   - First option is "Default" which uses the style's built-in colors
   - Click a palette → live preview re-renders instantly with new colors
+  - Premium palettes show a small lock icon overlay for free-tier users
+  - Clicking a locked palette shows tooltip: "Upgrade to unlock 15 more palettes"
+- Favorites system:
+  - Heart/star icon on each palette thumbnail, click to toggle favorite
+  - Favorites stored in localStorage as array of palette IDs (`sv_fav_palettes`)
+  - "Show Favorites Only" toggle button at the top of the palette strip
+  - When toggled: only favorited palettes shown for quick access
+  - Favorited palettes get a small filled star badge in the corner
+  - If no favorites yet and toggle is on: "Star some palettes to build your shortlist"
+- Tier stored in localStorage (`sv_tier: "free" | "premium"`)
 - The StylePreview component already takes tokens as props, so palette switching just
   overrides the color tokens while keeping typography/spacing/component tokens from the style
 - Create `src/lib/paletteUtils.ts` with `applyPalette(styleTokens, palette)` that merges
   palette colors into a style's token set
 - Downloads include the selected palette: if user selected "Sunset Glow" palette on
   Minimalism style, the CSS/Tailwind/JSON files contain Sunset Glow colors, not Minimalism defaults
-- Palette categories shown as subtle section headers: Professional, Warm, Cool, Bold, Nature
+- Palette categories shown as subtle section headers in the strip
 - On mobile: palette strip wraps to 2 rows or scrolls horizontally
 
 **Steps:**
-1. Create `src/data/palettes.ts` with all 15 palettes as typed data (PaletteData interface)
-2. Create `src/components/PaletteStrip.tsx` - horizontal scrollable palette selector
-3. Create `src/lib/paletteUtils.ts` with `applyPalette()` merge function
-4. Add PaletteStrip to StyleDetailPage above the preview, with state for selected palette
-5. Wire palette selection to StylePreview - pass merged tokens when palette is active
-6. Update download functions to accept optional palette override
-7. Verify: select Minimalism, switch through 3+ palettes, confirm preview updates and downloads match
+1. Create `src/data/palettes.ts` with all 25 palettes as typed data (PaletteData interface with tier field)
+2. Create `src/components/PaletteStrip.tsx` - horizontal scrollable palette selector with lock icons on premium
+3. Create `src/components/FavoriteToggle.tsx` - star/heart button for favoriting
+4. Create `src/lib/paletteUtils.ts` with `applyPalette()` merge function
+5. Create favorites logic: localStorage read/write, "Favorites Only" filter toggle
+6. Add PaletteStrip to StyleDetailPage above the preview, with state for selected palette
+7. Wire palette selection to StylePreview - pass merged tokens when palette is active
+8. Update download functions to accept optional palette override
+9. Add tier check: free users see lock on palettes 11-25, premium users see all unlocked
+10. Verify: select Minimalism, switch through palettes, favorite 3, toggle "Favorites Only", confirm downloads match
 
 ### Feature 11: Page Transitions and Final Polish
 **Priority: 6**

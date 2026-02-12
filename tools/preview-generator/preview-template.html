@@ -1,0 +1,1418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>Preview Template</title>
+<!--
+  Google Fonts used across the 12 design styles.
+  Loaded here so they are available when Playwright injects --font-family.
+-->
+<!-- Google Fonts loaded when served from a real server. In sandboxed/local environments, falls back to system fonts. -->
+<!-- <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&family=Nunito:wght@400;600;700&family=Lora:wght@400;500;600;700&family=Orbitron:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Merriweather:wght@400;700&family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet"> -->
+
+<style>
+/* ================================================================
+   RESET & BASE
+   ================================================================ */
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  /* Defaults (overridden by Playwright injection) */
+  --brand: #3B82F6;
+  --brand-light: #60A5FA;
+  --brand-dark: #2563EB;
+  --surface-canvas: #FFFFFF;
+  --surface-base: #F8FAFC;
+  --surface-muted: #F1F5F9;
+  --text-primary: #0F172A;
+  --text-secondary: #475569;
+  --text-tertiary: #94A3B8;
+  --border: #CBD5E1;
+  --success: #22C55E;
+  --error: #EF4444;
+  --warning: #F59E0B;
+  --info: #3B82F6;
+  --font-family: Inter, system-ui, sans-serif;
+  --card-radius: 8px;
+  --card-shadow: none;
+  --card-border: 1px solid #E2E8F0;
+  --button-radius: 6px;
+  --canvas-gradient: none;
+  --glass-blur: 0px;
+}
+
+html {
+  font-size: 15px;
+}
+
+body {
+  font-family: var(--font-family);
+  background: var(--canvas-gradient, none), var(--surface-canvas);
+  background-color: var(--surface-canvas);
+  color: var(--text-primary);
+  line-height: 1.5;
+  width: 1280px;
+  min-height: 800px;
+  overflow: hidden;
+}
+
+/* ================================================================
+   SHARED UTILITIES
+   ================================================================ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 22px;
+  font-family: var(--font-family);
+  font-size: 0.9rem;
+  font-weight: 600;
+  border-radius: var(--button-radius);
+  border: 2px solid var(--brand);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.btn-primary {
+  background: var(--brand);
+  color: #fff;
+  border-color: var(--brand);
+}
+.btn-primary:hover {
+  background: var(--brand-dark);
+  border-color: var(--brand-dark);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-primary);
+  border-color: var(--border);
+}
+
+.btn-danger {
+  background: var(--error);
+  color: #fff;
+  border-color: var(--error);
+}
+
+.btn-sm {
+  padding: 6px 14px;
+  font-size: 0.8rem;
+}
+
+.card {
+  background: var(--surface-base);
+  border-radius: var(--card-radius);
+  box-shadow: var(--card-shadow);
+  border: var(--card-border);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+}
+
+.input {
+  padding: 10px 14px;
+  font-family: var(--font-family);
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  background: var(--surface-base);
+  border: 1px solid var(--border);
+  border-radius: var(--button-radius);
+  outline: none;
+  width: 100%;
+}
+.input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.textarea {
+  padding: 10px 14px;
+  font-family: var(--font-family);
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  background: var(--surface-base);
+  border: 1px solid var(--border);
+  border-radius: var(--button-radius);
+  outline: none;
+  width: 100%;
+  resize: vertical;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  border-radius: 999px;
+  letter-spacing: 0.02em;
+}
+.badge-success {
+  background: var(--success);
+  color: #fff;
+}
+.badge-warning {
+  background: var(--warning);
+  color: #fff;
+}
+.badge-error {
+  background: var(--error);
+  color: #fff;
+}
+.badge-info {
+  background: var(--info);
+  color: #fff;
+}
+
+.avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--brand-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.avatar-sm {
+  width: 32px;
+  height: 32px;
+}
+.avatar-lg {
+  width: 64px;
+  height: 64px;
+}
+
+/* Toggle switch */
+.toggle-track {
+  width: 44px;
+  height: 24px;
+  border-radius: 12px;
+  background: var(--border);
+  position: relative;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.toggle-track.active {
+  background: var(--brand);
+}
+.toggle-knob {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  transition: transform 0.15s;
+}
+.toggle-track.active .toggle-knob {
+  transform: translateX(20px);
+}
+
+/* Radio */
+.radio-group {
+  display: flex;
+  gap: 16px;
+}
+.radio-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.radio-circle {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.radio-circle.checked {
+  border-color: var(--brand);
+}
+.radio-circle.checked::after {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--brand);
+}
+
+/* Hide all pages by default */
+.page { display: none; }
+.page.active { display: block; }
+
+
+/* ================================================================
+   LANDING PAGE
+   ================================================================ */
+.landing-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 48px;
+  background: var(--surface-base);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(var(--glass-blur));
+}
+.landing-nav-logo {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--brand);
+  letter-spacing: -0.02em;
+}
+.landing-nav-links {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+}
+.landing-nav-links a {
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.landing-hero {
+  text-align: center;
+  padding: 64px 48px 48px;
+}
+.landing-hero h1 {
+  font-size: 2.8rem;
+  font-weight: 800;
+  line-height: 1.15;
+  color: var(--text-primary);
+  margin-bottom: 16px;
+  letter-spacing: -0.03em;
+}
+.landing-hero p {
+  font-size: 1.1rem;
+  color: var(--text-secondary);
+  max-width: 540px;
+  margin: 0 auto 32px;
+  line-height: 1.6;
+}
+.landing-hero-btns {
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+}
+
+.landing-features {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  padding: 0 48px 48px;
+}
+.feature-card {
+  padding: 28px;
+  text-align: center;
+}
+.feature-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--brand);
+  margin: 0 auto 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.feature-card h3 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: var(--text-primary);
+}
+.feature-card p {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+.landing-testimonial {
+  padding: 28px 48px 24px;
+  display: flex;
+  justify-content: center;
+}
+.testimonial-inner {
+  max-width: 600px;
+  padding: 28px 32px;
+  text-align: center;
+}
+.testimonial-inner blockquote {
+  font-size: 1rem;
+  font-style: italic;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: 16px;
+}
+.testimonial-author {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.testimonial-author span {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.landing-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 48px;
+  border-top: 1px solid var(--border);
+  font-size: 0.8rem;
+  color: var(--text-tertiary);
+}
+.landing-footer-links {
+  display: flex;
+  gap: 20px;
+}
+.landing-footer-links a {
+  color: var(--text-tertiary);
+  text-decoration: none;
+}
+
+
+/* ================================================================
+   DASHBOARD PAGE
+   ================================================================ */
+.dash-layout {
+  display: flex;
+  height: 800px;
+}
+.dash-sidebar {
+  width: 220px;
+  background: var(--surface-base);
+  border-right: 1px solid var(--border);
+  padding: 20px 0;
+  display: flex;
+  flex-direction: column;
+  backdrop-filter: blur(var(--glass-blur));
+  flex-shrink: 0;
+}
+.dash-sidebar-logo {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--brand);
+  padding: 0 20px 20px;
+  letter-spacing: -0.02em;
+}
+.dash-sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 10px;
+}
+.dash-sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--button-radius);
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+  cursor: pointer;
+}
+.dash-sidebar-item.active {
+  background: var(--surface-muted);
+  color: var(--brand);
+  font-weight: 600;
+}
+.dash-sidebar-item svg {
+  flex-shrink: 0;
+}
+
+.dash-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.dash-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 28px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-base);
+  backdrop-filter: blur(var(--glass-blur));
+}
+.dash-search {
+  width: 320px;
+}
+.dash-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.dash-bell {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--surface-muted);
+  cursor: pointer;
+  position: relative;
+}
+.dash-bell-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--error);
+}
+
+.dash-content {
+  flex: 1;
+  padding: 24px 28px;
+  overflow-y: auto;
+  background: var(--surface-canvas);
+}
+
+.dash-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
+  margin-bottom: 24px;
+}
+.stat-card {
+  padding: 20px;
+}
+.stat-card .stat-label {
+  font-size: 0.8rem;
+  color: var(--text-tertiary);
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+.stat-card .stat-value {
+  font-size: 1.65rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+  letter-spacing: -0.02em;
+}
+.stat-sparkline {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 28px;
+}
+.stat-sparkline .bar {
+  width: 6px;
+  border-radius: 2px;
+  background: var(--brand-light);
+}
+
+.dash-table-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.dash-table-header h3 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.dash-table-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.data-table thead th {
+  text-align: left;
+  padding: 10px 16px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--border);
+}
+.data-table tbody td {
+  padding: 12px 16px;
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+}
+.data-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.table-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+
+/* ================================================================
+   SETTINGS PAGE
+   ================================================================ */
+.settings-page {
+  padding: 32px 48px;
+  max-width: 800px;
+  margin: 0 auto;
+  overflow-y: auto;
+  height: 800px;
+}
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 28px;
+}
+.settings-header h1 {
+  font-size: 1.65rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.settings-section {
+  margin-bottom: 22px;
+  padding: 24px;
+}
+.settings-section h2 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 18px;
+}
+
+.settings-profile-top {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.settings-profile-top .avatar-lg {
+  background: var(--brand);
+}
+
+.form-row {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+.form-group {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.form-group label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.toggle-row:last-child {
+  border-bottom: none;
+}
+.toggle-label {
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.toggle-desc {
+  font-size: 0.78rem;
+  color: var(--text-tertiary);
+  margin-top: 2px;
+}
+
+.danger-zone {
+  border-color: var(--error) !important;
+}
+.danger-zone h2 {
+  color: var(--error);
+}
+
+
+/* ================================================================
+   FEED PAGE
+   ================================================================ */
+.feed-page {
+  padding: 0;
+  height: 800px;
+  display: flex;
+  flex-direction: column;
+}
+.feed-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 36px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-base);
+  backdrop-filter: blur(var(--glass-blur));
+}
+.feed-topbar h1 {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.feed-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.feed-search {
+  width: 260px;
+}
+.filter-select {
+  padding: 10px 14px;
+  font-family: var(--font-family);
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  background: var(--surface-base);
+  border: 1px solid var(--border);
+  border-radius: var(--button-radius);
+  outline: none;
+  appearance: none;
+  cursor: pointer;
+  padding-right: 32px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' fill='none' stroke='%23666' stroke-width='1.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+}
+
+.feed-content {
+  flex: 1;
+  padding: 28px 36px;
+  overflow-y: auto;
+  background: var(--surface-canvas);
+}
+.feed-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 22px;
+  margin-bottom: 28px;
+}
+.feed-card {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.feed-card-image {
+  height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.feed-card-image svg {
+  opacity: 0.5;
+}
+.feed-card-body {
+  padding: 16px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.feed-card-body h3 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+  line-height: 1.3;
+}
+.feed-card-body p {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: 12px;
+  flex: 1;
+}
+.feed-card-author {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.feed-card-author-name {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.feed-card-author-date {
+  font-size: 0.72rem;
+  color: var(--text-tertiary);
+}
+.feed-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 0.78rem;
+  color: var(--text-tertiary);
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+.feed-card-meta span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.feed-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.feed-pagination button {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--button-radius);
+  border: 1px solid var(--border);
+  background: var(--surface-base);
+  color: var(--text-secondary);
+  font-family: var(--font-family);
+  font-size: 0.85rem;
+  cursor: pointer;
+  font-weight: 500;
+}
+.feed-pagination button.active {
+  background: var(--brand);
+  color: #fff;
+  border-color: var(--brand);
+}
+.feed-pagination .dots {
+  font-size: 0.85rem;
+  color: var(--text-tertiary);
+  padding: 0 4px;
+}
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     LANDING PAGE
+     ============================================================ -->
+<div id="page-landing" class="page">
+  <nav class="landing-nav">
+    <div class="landing-nav-logo">AppName</div>
+    <div class="landing-nav-links">
+      <a href="#">Home</a>
+      <a href="#">Features</a>
+      <a href="#">Pricing</a>
+      <button class="btn btn-primary btn-sm">Sign Up</button>
+    </div>
+  </nav>
+
+  <section class="landing-hero">
+    <h1>Build something amazing</h1>
+    <p>Ship faster with the all-in-one platform that empowers teams to design, develop, and deploy beautiful applications.</p>
+    <div class="landing-hero-btns">
+      <button class="btn btn-primary">Get Started Free</button>
+      <button class="btn btn-ghost">Watch Demo</button>
+    </div>
+  </section>
+
+  <section class="landing-features">
+    <div class="card feature-card">
+      <div class="feature-icon">
+        <!-- Lightning bolt icon -->
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+          <path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z" fill="#fff"/>
+        </svg>
+      </div>
+      <h3>Lightning Fast</h3>
+      <p>Optimised for speed with edge computing and intelligent caching that delivers sub-50ms response times globally.</p>
+    </div>
+    <div class="card feature-card">
+      <div class="feature-icon">
+        <!-- Shield icon -->
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+          <path d="M12 3L4 7v5c0 4.5 3.4 8.7 8 10 4.6-1.3 8-5.5 8-10V7l-8-4z" fill="#fff"/>
+        </svg>
+      </div>
+      <h3>Enterprise Security</h3>
+      <p>SOC 2 compliant with end-to-end encryption, role-based access controls, and real-time threat monitoring.</p>
+    </div>
+    <div class="card feature-card">
+      <div class="feature-icon">
+        <!-- Puzzle icon -->
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+          <rect x="4" y="4" width="7" height="7" rx="1" fill="#fff"/>
+          <rect x="13" y="4" width="7" height="7" rx="1" fill="#fff" opacity="0.7"/>
+          <rect x="4" y="13" width="7" height="7" rx="1" fill="#fff" opacity="0.7"/>
+          <rect x="13" y="13" width="7" height="7" rx="1" fill="#fff" opacity="0.5"/>
+        </svg>
+      </div>
+      <h3>Seamless Integrations</h3>
+      <p>Connect with 200+ tools out of the box. REST APIs, webhooks, and native SDKs for any workflow.</p>
+    </div>
+  </section>
+
+  <section class="landing-testimonial">
+    <div class="card testimonial-inner">
+      <blockquote>"AppName transformed how our team ships products. We cut our development cycle by 60% and our customers love the results."</blockquote>
+      <div class="testimonial-author">
+        <div class="avatar avatar-sm">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <circle cx="8" cy="6" r="3" fill="var(--brand-dark)"/>
+            <path d="M2 14c0-3 2.7-5 6-5s6 2 6 5" fill="var(--brand-dark)"/>
+          </svg>
+        </div>
+        <span>Sarah Chen, CTO at Horizon Labs</span>
+      </div>
+    </div>
+  </section>
+
+  <footer class="landing-footer">
+    <span>&copy; 2026 AppName. All rights reserved.</span>
+    <div class="landing-footer-links">
+      <a href="#">Privacy</a>
+      <a href="#">Terms</a>
+      <a href="#">Contact</a>
+    </div>
+  </footer>
+</div>
+
+
+<!-- ============================================================
+     DASHBOARD PAGE
+     ============================================================ -->
+<div id="page-dashboard" class="page">
+  <div class="dash-layout">
+    <aside class="dash-sidebar">
+      <div class="dash-sidebar-logo">AppName</div>
+      <nav class="dash-sidebar-nav">
+        <div class="dash-sidebar-item active">
+          <!-- Grid/Dashboard icon -->
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+            <rect x="1" y="1" width="7" height="7" rx="1.5" fill="currentColor"/>
+            <rect x="10" y="1" width="7" height="7" rx="1.5" fill="currentColor" opacity="0.5"/>
+            <rect x="1" y="10" width="7" height="7" rx="1.5" fill="currentColor" opacity="0.5"/>
+            <rect x="10" y="10" width="7" height="7" rx="1.5" fill="currentColor" opacity="0.3"/>
+          </svg>
+          Dashboard
+        </div>
+        <div class="dash-sidebar-item">
+          <!-- Chart icon -->
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+            <rect x="2" y="9" width="3" height="7" rx="0.5" fill="currentColor" opacity="0.5"/>
+            <rect x="7.5" y="5" width="3" height="11" rx="0.5" fill="currentColor" opacity="0.5"/>
+            <rect x="13" y="2" width="3" height="14" rx="0.5" fill="currentColor" opacity="0.5"/>
+          </svg>
+          Analytics
+        </div>
+        <div class="dash-sidebar-item">
+          <!-- Users icon -->
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+            <circle cx="7" cy="6" r="3" fill="currentColor" opacity="0.5"/>
+            <path d="M1 16c0-3 2.5-5 6-5s6 2 6 5" fill="currentColor" opacity="0.5"/>
+            <circle cx="13" cy="5" r="2" fill="currentColor" opacity="0.3"/>
+          </svg>
+          Users
+        </div>
+        <div class="dash-sidebar-item">
+          <!-- Gear icon -->
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+            <circle cx="9" cy="9" r="3" stroke="currentColor" stroke-width="1.5" fill="none"/>
+            <circle cx="9" cy="2" r="1.5" fill="currentColor" opacity="0.4"/>
+            <circle cx="9" cy="16" r="1.5" fill="currentColor" opacity="0.4"/>
+            <circle cx="2" cy="9" r="1.5" fill="currentColor" opacity="0.4"/>
+            <circle cx="16" cy="9" r="1.5" fill="currentColor" opacity="0.4"/>
+          </svg>
+          Settings
+        </div>
+      </nav>
+    </aside>
+
+    <div class="dash-main">
+      <div class="dash-topbar">
+        <input class="input dash-search" placeholder="Search anything..." />
+        <div class="dash-topbar-right">
+          <div class="dash-bell">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <path d="M9 2C6.5 2 4.5 4 4.5 6.5v3L3 11.5v1h12v-1L13.5 9.5v-3C13.5 4 11.5 2 9 2z" fill="var(--text-tertiary)"/>
+              <rect x="7.5" y="14" width="3" height="2" rx="1" fill="var(--text-tertiary)"/>
+            </svg>
+            <div class="dash-bell-dot"></div>
+          </div>
+          <div class="avatar avatar-sm">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <circle cx="7" cy="5" r="2.5" fill="var(--brand-dark)"/>
+              <path d="M2 13c0-2.5 2-4.5 5-4.5s5 2 5 4.5" fill="var(--brand-dark)"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <div class="dash-content">
+        <div class="dash-stats">
+          <div class="card stat-card">
+            <div class="stat-label">Total Revenue</div>
+            <div class="stat-value">$48,295</div>
+            <div class="stat-sparkline">
+              <div class="bar" style="height:40%"></div>
+              <div class="bar" style="height:60%"></div>
+              <div class="bar" style="height:35%"></div>
+              <div class="bar" style="height:80%"></div>
+              <div class="bar" style="height:55%"></div>
+              <div class="bar" style="height:90%"></div>
+              <div class="bar" style="height:70%"></div>
+            </div>
+          </div>
+          <div class="card stat-card">
+            <div class="stat-label">Active Users</div>
+            <div class="stat-value">2,847</div>
+            <div class="stat-sparkline">
+              <div class="bar" style="height:50%"></div>
+              <div class="bar" style="height:45%"></div>
+              <div class="bar" style="height:65%"></div>
+              <div class="bar" style="height:70%"></div>
+              <div class="bar" style="height:60%"></div>
+              <div class="bar" style="height:85%"></div>
+              <div class="bar" style="height:95%"></div>
+            </div>
+          </div>
+          <div class="card stat-card">
+            <div class="stat-label">Conversion</div>
+            <div class="stat-value">3.24%</div>
+            <div class="stat-sparkline">
+              <div class="bar" style="height:70%"></div>
+              <div class="bar" style="height:50%"></div>
+              <div class="bar" style="height:60%"></div>
+              <div class="bar" style="height:45%"></div>
+              <div class="bar" style="height:55%"></div>
+              <div class="bar" style="height:65%"></div>
+              <div class="bar" style="height:75%"></div>
+            </div>
+          </div>
+          <div class="card stat-card">
+            <div class="stat-label">Avg. Response</div>
+            <div class="stat-value">142ms</div>
+            <div class="stat-sparkline">
+              <div class="bar" style="height:85%"></div>
+              <div class="bar" style="height:70%"></div>
+              <div class="bar" style="height:55%"></div>
+              <div class="bar" style="height:40%"></div>
+              <div class="bar" style="height:35%"></div>
+              <div class="bar" style="height:30%"></div>
+              <div class="bar" style="height:25%"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="padding: 20px;">
+          <div class="dash-table-header">
+            <h3>Recent Transactions</h3>
+            <div class="dash-table-actions">
+              <button class="btn btn-ghost btn-sm">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path d="M2 4h10M4 4V2h6v2M3 4l1 8h6l1-8" stroke="currentColor" stroke-width="1.2" fill="none"/>
+                </svg>
+                Filter
+              </button>
+              <button class="btn btn-primary btn-sm">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path d="M7 2v10M2 7h10" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+                Export
+              </button>
+            </div>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Customer</th>
+                <th>Status</th>
+                <th>Amount</th>
+                <th>Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>
+                  <div class="table-name">
+                    <div class="avatar avatar-sm"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="5" r="2.5" fill="var(--brand-dark)"/><path d="M2 13c0-2.5 2-4.5 5-4.5s5 2 5 4.5" fill="var(--brand-dark)"/></svg></div>
+                    Alex Morgan
+                  </div>
+                </td>
+                <td><span class="badge badge-success">Completed</span></td>
+                <td>$1,240.00</td>
+                <td>Feb 12, 2026</td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="table-name">
+                    <div class="avatar avatar-sm"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="5" r="2.5" fill="var(--brand-dark)"/><path d="M2 13c0-2.5 2-4.5 5-4.5s5 2 5 4.5" fill="var(--brand-dark)"/></svg></div>
+                    Jordan Rivera
+                  </div>
+                </td>
+                <td><span class="badge badge-warning">Pending</span></td>
+                <td>$890.00</td>
+                <td>Feb 11, 2026</td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="table-name">
+                    <div class="avatar avatar-sm"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="5" r="2.5" fill="var(--brand-dark)"/><path d="M2 13c0-2.5 2-4.5 5-4.5s5 2 5 4.5" fill="var(--brand-dark)"/></svg></div>
+                    Taylor Kim
+                  </div>
+                </td>
+                <td><span class="badge badge-success">Completed</span></td>
+                <td>$2,450.00</td>
+                <td>Feb 10, 2026</td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="table-name">
+                    <div class="avatar avatar-sm"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="5" r="2.5" fill="var(--brand-dark)"/><path d="M2 13c0-2.5 2-4.5 5-4.5s5 2 5 4.5" fill="var(--brand-dark)"/></svg></div>
+                    Casey Brooks
+                  </div>
+                </td>
+                <td><span class="badge badge-error">Failed</span></td>
+                <td>$340.00</td>
+                <td>Feb 9, 2026</td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="table-name">
+                    <div class="avatar avatar-sm"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="5" r="2.5" fill="var(--brand-dark)"/><path d="M2 13c0-2.5 2-4.5 5-4.5s5 2 5 4.5" fill="var(--brand-dark)"/></svg></div>
+                    Riley Patel
+                  </div>
+                </td>
+                <td><span class="badge badge-info">Processing</span></td>
+                <td>$1,875.00</td>
+                <td>Feb 8, 2026</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ============================================================
+     SETTINGS PAGE
+     ============================================================ -->
+<div id="page-settings" class="page">
+  <div class="settings-page">
+    <div class="settings-header">
+      <h1>Settings</h1>
+      <button class="btn btn-primary">Save Changes</button>
+    </div>
+
+    <!-- Profile Section -->
+    <div class="card settings-section">
+      <h2>Profile</h2>
+      <div class="settings-profile-top">
+        <div class="avatar avatar-lg">
+          <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+            <circle cx="14" cy="10" r="5" fill="#fff"/>
+            <path d="M4 26c0-5 4-9 10-9s10 4 10 9" fill="#fff"/>
+          </svg>
+        </div>
+        <div>
+          <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 2px;">Upload Photo</div>
+          <div style="font-size: 0.8rem; color: var(--text-tertiary);">JPG, PNG or SVG. Max 2MB.</div>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>First Name</label>
+          <input class="input" value="Sarah" />
+        </div>
+        <div class="form-group">
+          <label>Last Name</label>
+          <input class="input" value="Chen" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Email</label>
+          <input class="input" value="sarah@horizonlabs.io" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Bio</label>
+        <textarea class="textarea" rows="3">Engineering lead building the next generation of developer tools. Coffee enthusiast and open-source contributor.</textarea>
+      </div>
+    </div>
+
+    <!-- Notifications Section -->
+    <div class="card settings-section">
+      <h2>Notifications</h2>
+      <div class="toggle-row">
+        <div>
+          <div class="toggle-label">Email notifications</div>
+          <div class="toggle-desc">Get notified about important updates via email</div>
+        </div>
+        <div class="toggle-track active"><div class="toggle-knob"></div></div>
+      </div>
+      <div class="toggle-row">
+        <div>
+          <div class="toggle-label">Push notifications</div>
+          <div class="toggle-desc">Receive push notifications on your devices</div>
+        </div>
+        <div class="toggle-track active"><div class="toggle-knob"></div></div>
+      </div>
+      <div class="toggle-row">
+        <div>
+          <div class="toggle-label">Marketing emails</div>
+          <div class="toggle-desc">Receive tips, product updates, and offers</div>
+        </div>
+        <div class="toggle-track"><div class="toggle-knob"></div></div>
+      </div>
+    </div>
+
+    <!-- Theme Section -->
+    <div class="card settings-section">
+      <h2>Appearance</h2>
+      <div class="radio-group">
+        <div class="radio-item">
+          <div class="radio-circle checked"></div>
+          Light
+        </div>
+        <div class="radio-item">
+          <div class="radio-circle"></div>
+          Dark
+        </div>
+        <div class="radio-item">
+          <div class="radio-circle"></div>
+          System
+        </div>
+      </div>
+    </div>
+
+    <!-- Danger Zone -->
+    <div class="card settings-section danger-zone">
+      <h2>Danger Zone</h2>
+      <div style="display: flex; align-items: center; justify-content: space-between;">
+        <div>
+          <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 2px;">Delete Account</div>
+          <div style="font-size: 0.8rem; color: var(--text-tertiary);">Permanently delete your account and all associated data. This action cannot be undone.</div>
+        </div>
+        <button class="btn btn-danger btn-sm" style="flex-shrink: 0; margin-left: 20px;">Delete Account</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ============================================================
+     FEED PAGE
+     ============================================================ -->
+<div id="page-feed" class="page">
+  <div class="feed-page">
+    <div class="feed-topbar">
+      <h1>Feed</h1>
+      <div class="feed-topbar-right">
+        <input class="input feed-search" placeholder="Search posts..." />
+        <select class="filter-select">
+          <option>All Posts</option>
+          <option>Following</option>
+          <option>Popular</option>
+        </select>
+      </div>
+    </div>
+    <div class="feed-content">
+      <div class="feed-grid">
+        <!-- Card 1 -->
+        <div class="card feed-card">
+          <div class="feed-card-image" style="background: var(--brand);">
+            <svg width="40" height="40" viewBox="0 0 40 40" fill="none"><rect x="6" y="6" width="28" height="28" rx="4" fill="rgba(255,255,255,0.3)"/><circle cx="15" cy="16" r="4" fill="rgba(255,255,255,0.5)"/><path d="M6 30l10-8 6 4 12-10" stroke="rgba(255,255,255,0.6)" stroke-width="2" fill="none"/></svg>
+          </div>
+          <div class="feed-card-body">
+            <h3>Getting Started with Design Systems</h3>
+            <p>Learn how to build a scalable design system that grows with your team and product.</p>
+            <div class="feed-card-author">
+              <div class="avatar avatar-sm"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="5" r="2.5" fill="var(--brand-dark)"/><path d="M2 13c0-2.5 2-4.5 5-4.5s5 2 5 4.5" fill="var(--brand-dark)"/></svg></div>
+              <div>
+                <div class="feed-card-author-name">Emma Wilson</div>
+                <div class="feed-card-author-date">Feb 12, 2026</div>
+              </div>
+            </div>
+            <div class="feed-card-meta">
+              <span><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 2C4 2 1.5 4.5 2.5 7.5L7 12l4.5-4.5C12.5 4.5 10 2 7 2z" fill="currentColor"/></svg> 48</span>
+              <span><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 3h10v6H6L3 11V9H2V3z" fill="currentColor"/></svg> 12</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 2 -->
+        <div class="card feed-card">
+          <div class="feed-card-image" style="background: var(--brand-dark);">
+            <svg width="40" height="40" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="12" fill="rgba(255,255,255,0.25)"/><circle cx="20" cy="20" r="6" fill="rgba(255,255,255,0.4)"/></svg>
+          </div>
+          <div class="feed-card-body">
+            <h3>Advanced TypeScript Patterns</h3>
+            <p>Deep dive into conditional types, template literals, and mapped types for production code.</p>
+            <div class="feed-card-author">
+              <div class="avatar avatar-sm"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="5" r="2.5" fill="var(--brand-dark)"/><path d="M2 13c0-2.5 2-4.5 5-4.5s5 2 5 4.5" fill="var(--brand-dark)"/></svg></div>
+              <div>
+                <div class="feed-card-author-name">Marcus Lee</div>
+                <div class="feed-card-author-date">Feb 11, 2026</div>
+              </div>
+            </div>
+            <div class="feed-card-meta">
+              <span><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 2C4 2 1.5 4.5 2.5 7.5L7 12l4.5-4.5C12.5 4.5 10 2 7 2z" fill="currentColor"/></svg> 96</span>
+              <span><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 3h10v6H6L3 11V9H2V3z" fill="currentColor"/></svg> 23</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 3 -->
+        <div class="card feed-card">
+          <div class="feed-card-image" style="background: var(--success);">
+            <svg width="40" height="40" viewBox="0 0 40 40" fill="none"><rect x="8" y="12" width="24" height="16" rx="2" fill="rgba(255,255,255,0.3)"/><path d="M8 14l12 8 12-8" stroke="rgba(255,255,255,0.5)" stroke-width="2" fill="none"/></svg>
+          </div>
+          <div class="feed-card-body">
+            <h3>Responsive Layouts in 2026</h3>
+            <p>Container queries, subgrid, and the future of CSS layout techniques explained.</p>
+            <div class="feed-card-author">
+              <div class="avatar avatar-sm"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="5" r="2.5" fill="var(--brand-dark)"/><path d="M2 13c0-2.5 2-4.5 5-4.5s5 2 5 4.5" fill="var(--brand-dark)"/></svg></div>
+              <div>
+                <div class="feed-card-author-name">Aisha Patel</div>
+                <div class="feed-card-author-date">Feb 10, 2026</div>
+              </div>
+            </div>
+            <div class="feed-card-meta">
+              <span><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 2C4 2 1.5 4.5 2.5 7.5L7 12l4.5-4.5C12.5 4.5 10 2 7 2z" fill="currentColor"/></svg> 72</span>
+              <span><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 3h10v6H6L3 11V9H2V3z" fill="currentColor"/></svg> 18</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 4 -->
+        <div class="card feed-card">
+          <div class="feed-card-image" style="background: var(--warning);">
+            <svg width="40" height="40" viewBox="0 0 40 40" fill="none"><polygon points="20,8 32,32 8,32" fill="rgba(255,255,255,0.3)"/><circle cx="20" cy="24" r="2" fill="rgba(255,255,255,0.5)"/><rect x="19" y="16" width="2" height="5" rx="1" fill="rgba(255,255,255,0.5)"/></svg>
+          </div>
+          <div class="feed-card-body">
+            <h3>Performance Monitoring Best Practices</h3>
+            <p>Set up comprehensive monitoring for web applications with real user metrics.</p>
+            <div class="feed-card-author">
+              <div class="avatar avatar-sm"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="5" r="2.5" fill="var(--brand-dark)"/><path d="M2 13c0-2.5 2-4.5 5-4.5s5 2 5 4.5" fill="var(--brand-dark)"/></svg></div>
+              <div>
+                <div class="feed-card-author-name">David Okonkwo</div>
+                <div class="feed-card-author-date">Feb 9, 2026</div>
+              </div>
+            </div>
+            <div class="feed-card-meta">
+              <span><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 2C4 2 1.5 4.5 2.5 7.5L7 12l4.5-4.5C12.5 4.5 10 2 7 2z" fill="currentColor"/></svg> 35</span>
+              <span><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 3h10v6H6L3 11V9H2V3z" fill="currentColor"/></svg> 8</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 5 -->
+        <div class="card feed-card">
+          <div class="feed-card-image" style="background: var(--info);">
+            <svg width="40" height="40" viewBox="0 0 40 40" fill="none"><rect x="10" y="10" width="8" height="20" rx="1" fill="rgba(255,255,255,0.3)"/><rect x="22" y="6" width="8" height="24" rx="1" fill="rgba(255,255,255,0.3)"/></svg>
+          </div>
+          <div class="feed-card-body">
+            <h3>Building Accessible Components</h3>
+            <p>Practical guide to ARIA patterns and keyboard navigation for React components.</p>
+            <div class="feed-card-author">
+              <div class="avatar avatar-sm"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="5" r="2.5" fill="var(--brand-dark)"/><path d="M2 13c0-2.5 2-4.5 5-4.5s5 2 5 4.5" fill="var(--brand-dark)"/></svg></div>
+              <div>
+                <div class="feed-card-author-name">Sofia Martinez</div>
+                <div class="feed-card-author-date">Feb 8, 2026</div>
+              </div>
+            </div>
+            <div class="feed-card-meta">
+              <span><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 2C4 2 1.5 4.5 2.5 7.5L7 12l4.5-4.5C12.5 4.5 10 2 7 2z" fill="currentColor"/></svg> 61</span>
+              <span><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 3h10v6H6L3 11V9H2V3z" fill="currentColor"/></svg> 15</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 6 -->
+        <div class="card feed-card">
+          <div class="feed-card-image" style="background: var(--brand-light);">
+            <svg width="40" height="40" viewBox="0 0 40 40" fill="none"><path d="M10 30V14l10-6 10 6v16l-10 6-10-6z" fill="rgba(255,255,255,0.25)" stroke="rgba(255,255,255,0.4)" stroke-width="1.5"/><path d="M10 14l10 6 10-6M20 20v16" stroke="rgba(255,255,255,0.4)" stroke-width="1.5"/></svg>
+          </div>
+          <div class="feed-card-body">
+            <h3>Edge Computing Architecture</h3>
+            <p>Deploy serverless functions at the edge for sub-millisecond response times worldwide.</p>
+            <div class="feed-card-author">
+              <div class="avatar avatar-sm"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="5" r="2.5" fill="var(--brand-dark)"/><path d="M2 13c0-2.5 2-4.5 5-4.5s5 2 5 4.5" fill="var(--brand-dark)"/></svg></div>
+              <div>
+                <div class="feed-card-author-name">James Nguyen</div>
+                <div class="feed-card-author-date">Feb 7, 2026</div>
+              </div>
+            </div>
+            <div class="feed-card-meta">
+              <span><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 2C4 2 1.5 4.5 2.5 7.5L7 12l4.5-4.5C12.5 4.5 10 2 7 2z" fill="currentColor"/></svg> 84</span>
+              <span><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 3h10v6H6L3 11V9H2V3z" fill="currentColor"/></svg> 27</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="feed-pagination">
+        <button class="active">1</button>
+        <button>2</button>
+        <button>3</button>
+        <span class="dots">...</span>
+        <button>10</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<script>
+/**
+ * Reads the ?page= query parameter and activates the matching page div.
+ * Valid values: landing, dashboard, settings, feed
+ */
+(function() {
+  const params = new URLSearchParams(window.location.search);
+  const page = params.get('page') || 'landing';
+  const el = document.getElementById('page-' + page);
+  if (el) {
+    el.classList.add('active');
+  } else {
+    // Fallback: show landing
+    document.getElementById('page-landing').classList.add('active');
+  }
+})();
+</script>
+</body>
+</html>

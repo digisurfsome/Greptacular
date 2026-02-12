@@ -103,25 +103,52 @@ The app itself uses the Minimalism style -- clean, professional, generous whites
     </style_gallery>
 
     <style_detail_page>
+      TWO VIEW MODES accessible from gallery:
+
+      MODE 1: "Quick Compare" (Quad View + Swipe) - DEFAULT
+      =====================================================
+      - Full-screen view showing all 4 preview screenshots at once in a 2x2 grid
+      - Each quadrant shows one page type: Landing (top-left), Dashboard (top-right),
+        Settings (bottom-left), Feed (bottom-right)
+      - Small label in each corner: "Landing", "Dashboard", "Settings", "Feed"
+      - Style name displayed prominently at top center with category badge
+      - LEFT/RIGHT swipe (or arrow buttons) to cycle through all 12 styles
+      - Keyboard: left/right arrow keys also navigate
+      - Swipe animation: smooth horizontal slide transition (200ms)
+      - On desktop: left/right arrow buttons on screen edges (semi-transparent, appear on hover)
+      - On mobile: natural swipe gesture + dots indicator at bottom showing position (1-12)
+      - Quick: user can rapid-fire swipe through all 12 in seconds
+      - When you see one you like, tap/click any quadrant to enter Mode 2 (full detail)
+      - Style counter: "3 / 12" shown at top
+      - Preview images: pre-generated PNG screenshots (48 images, 12 styles x 4 pages)
+        loaded from `/previews/{style-id}-{page}.png`
+      - Images are static PNGs for fast loading (not live-rendered in quick compare mode)
+
+      MODE 2: "Full Detail" (entered by clicking a quadrant or "View Details" from gallery)
+      ====================================================================================
       - Full-page view for a single style
-      - Back button to return to gallery
-      - Left column (or top on mobile): style metadata
+      - Back button returns to Quick Compare at the same position
+      - Top section: 4 preview images in a horizontal row (tabs or scrollable strip)
+        - Click any to enlarge it as the main preview
+        - Selected image shown large below
+      - Below preview: style metadata
         - Name, category badge, description, philosophy quote
         - Full color palette with hex values (click to copy)
         - Typography specimen: font family, heading/body hierarchy table
         - Component specs: card, button, input patterns with exact values
         - Do's and Don'ts guidelines
-      - Right column (or bottom on mobile): large live preview
-        - A sample page section rendered entirely with that style's tokens
-        - Contains: heading, paragraph, primary button, outline button, card with content,
-          text input, and a small form
-        - Background color matches the style's canvas color
-        - All elements styled with inline CSS derived from the style's tokens
+      - Color Palette Switcher strip (Feature 13) below the preview
+        - Switching palette shows a LIVE-RENDERED preview (not static PNG) so colors update
       - Download section at bottom:
         - "Download Style Sheet" primary CTA button
         - Format options: JSON (all tokens) / CSS (custom properties) / Tailwind Config
         - Download triggers Supabase analytics increment (style_id + format)
       - Previous/Next navigation to browse styles sequentially
+
+      MOBILE LAYOUT:
+      - Quick Compare: 4 images stacked vertically (full-width, scrollable)
+        with swipe-left/right to change styles
+      - Full Detail: single preview image at top, metadata below, scroll down for downloads
     </style_detail_page>
 
     <screenshot_style_extractor>
@@ -821,8 +848,8 @@ These features are ordered by dependency and map to AutoForge's feature-by-featu
 **Priority: 4**
 **Depends on: Features 2, 4, 6**
 
-- Page header: "Design System Gallery" title, filter tabs (All / Core / Vibe)
-- Filter tabs use URL search params or local state
+- Page header: "Design System Gallery" title + "Quick Compare" button (enters quad-view swipe mode)
+- Filter tabs: All / Core / Vibe (use URL search params or local state)
 - Grid: CSS grid, 3 cols on lg, 2 on md, 1 on mobile
 - Each StyleCard component:
   - Style name (H3) and category badge (small pill: "Core" in gray, "Vibe" in purple)
@@ -863,41 +890,75 @@ These features are ordered by dependency and map to AutoForge's feature-by-featu
 3. Create a `downloadStyle(style, format)` orchestrator function that generates content, triggers download, and tracks analytics
 4. Verify: call each generator, confirm output is well-formatted and valid
 
-### Feature 9: Style Detail Page
+### Feature 9: Quick Compare (Quad View + Swipe)
 **Priority: 5**
-**Depends on: Features 2, 6, 8**
+**Depends on: Features 1, 2**
+
+- Route: `/compare` - full-screen quad view of all 4 preview pages
+- 2x2 grid showing Landing (top-left), Dashboard (top-right), Settings (bottom-left), Feed (bottom-right)
+- Small label in each quadrant corner identifying the page type
+- Style name + category badge displayed prominently at top center
+- Style counter: "3 / 12" shown at top
+- Navigation: LEFT/RIGHT swipe or arrow keys to cycle through all 12 styles
+- On desktop: arrow buttons on screen edges (semi-transparent, appear on hover)
+- On mobile: natural swipe gesture + dots indicator at bottom (1-12)
+- Swipe animation: smooth horizontal slide (200ms ease)
+- Preview images: pre-generated PNG screenshots loaded from `/previews/{style-id}-{page}.png`
+- Images are static PNGs (fast loading, not live-rendered)
+- Click any quadrant → navigate to `/style/:id` Full Detail view
+- Mobile layout: 4 images stacked vertically (full-width) with swipe left/right for styles
+- "View Details" button at bottom to enter Full Detail mode
+- Preload adjacent style images for smooth swiping
+
+**Steps:**
+1. Create `src/pages/ComparePage.tsx` with 2x2 grid layout
+2. Build swipe/arrow navigation with style index state
+3. Load preview PNGs for current style's 4 pages
+4. Add keyboard listener for left/right arrow keys
+5. Add touch swipe detection for mobile
+6. Add slide transition animation between styles
+7. Add dot indicators for mobile position tracking
+8. Wire quadrant clicks to navigate to detail page
+9. Preload next/prev style images for smooth transitions
+10. Verify: swipe through all 12 styles, click quadrant opens detail
+
+### Feature 9b: Style Detail Page (Full Detail)
+**Priority: 5**
+**Depends on: Features 2, 6, 8, 9**
 
 - Route: `/style/:id` - extract id from URL params, look up style from data
 - If style not found: show a "Style not found" message with back link
-- Back button at top left: "Back to Gallery" with left arrow icon
-- Two-column layout on desktop (lg), stacked on mobile:
-  - Left column (metadata):
-    - Style name (H1), category badge
-    - Description paragraph
-    - Philosophy quote in a subtle blockquote
-    - Color palette: grid of swatches (48px circles) with hex labels, click-to-copy
-    - Typography table: font family name, hierarchy table with Level/Size/Weight columns
-    - Component specs: cards, buttons, inputs details in a clean list
-    - Do's (green checkmarks) and Don'ts (red X marks) lists
-  - Right column (preview):
-    - StylePreview in full mode, filling the column
-    - Takes up ~60% width on desktop
-- Download section below the columns:
+- Back button: "Back to Compare" returns to quad view at same position
+- Top section: 4 preview images as clickable tabs/thumbnails in a horizontal row
+  - Click any to show it as the main large preview
+  - Selected tab highlighted
+- Below: large preview image (or live StylePreview when palette is active)
+- Below preview: style metadata
+  - Style name (H1), category badge
+  - Description paragraph
+  - Philosophy quote in a subtle blockquote
+  - Color palette: grid of swatches (48px circles) with hex labels, click-to-copy
+  - Typography table: font family name, hierarchy table with Level/Size/Weight columns
+  - Component specs: cards, buttons, inputs details in a clean list
+  - Do's (green checkmarks) and Don'ts (red X marks) lists
+- Color Palette Switcher strip (Feature 13) - when active, preview switches to live-rendered
+- Download section at bottom:
   - "Download This Style" heading
   - Three buttons: "CSS Variables" / "Tailwind Config" / "JSON Tokens"
-  - Each triggers the corresponding download
-- Previous/Next navigation at the bottom: links to adjacent styles in the list
+  - Each triggers the corresponding download (includes selected palette if any)
+- Previous/Next navigation at the bottom: links to adjacent styles
 - Color swatch click-to-copy: copies hex value, shows brief toast "Copied #3B82F6"
 
 **Steps:**
 1. Set up the route param extraction and style lookup
-2. Build the metadata column with all sections
-3. Build the preview column with full-size StylePreview
-4. Build the download section with three format buttons
-5. Build the Previous/Next navigation
-6. Implement click-to-copy on color swatches with toast feedback
-7. Handle 404 case when style ID is invalid
-8. Verify: navigate to each of the 12 styles, confirm all data renders, downloads work
+2. Build the 4-image tab strip at top with selected state
+3. Build the large preview area (static PNG by default, live when palette active)
+4. Build the metadata section with all subsections
+5. Build the download section with three format buttons
+6. Build the Previous/Next navigation
+7. Implement click-to-copy on color swatches with toast feedback
+8. Handle 404 case when style ID is invalid
+9. Verify: navigate to each of the 12 styles, switch preview tabs, download works
 
 ### Feature 10: Toast Notification System
 **Priority: 3**
@@ -1072,16 +1133,21 @@ stylevault/
 │   │   ├── ColorSwatch.tsx             # Clickable color circle with copy
 │   │   ├── Toast.tsx                   # Toast notification component
 │   │   ├── LoadingSkeleton.tsx         # Shimmer placeholder for gallery
-│   │   └── CategoryBadge.tsx           # "Core" / "Vibe" pill badge
+│   │   ├── CategoryBadge.tsx           # "Core" / "Vibe" pill badge
+│   │   ├── ImageUploader.tsx           # Drag-and-drop image upload
+│   │   ├── PaletteStrip.tsx            # Horizontal palette selector with favorites
+│   │   └── FavoriteToggle.tsx          # Star/heart button for favoriting palettes
 │   ├── pages/
 │   │   ├── LandingPage.tsx             # Hero + form + preview strip
-│   │   ├── GalleryPage.tsx             # Filter tabs + style grid
-│   │   ├── StyleDetailPage.tsx         # Full style view + download
+│   │   ├── GalleryPage.tsx             # Filter tabs + style grid + "Quick Compare" button
+│   │   ├── ComparePage.tsx             # Quad-view: 4 screenshots + swipe through 12 styles
+│   │   ├── StyleDetailPage.tsx         # Full style view + palette switcher + downloads
 │   │   └── ExtractPage.tsx             # Screenshot upload + AI analysis
 │   ├── data/
 │   │   ├── index.ts                    # Barrel export
 │   │   ├── types.ts                    # TypeScript interfaces
 │   │   ├── styles.ts                   # All 12 styles with full tokens
+│   │   ├── palettes.ts                # 25 color palettes with tier/favorites
 │   │   └── helpers.ts                  # Lookup and filter functions
 │   └── lib/
 │       ├── supabase.ts                 # Supabase client init
@@ -1089,7 +1155,15 @@ stylevault/
 │       ├── analytics.ts               # Download tracking
 │       ├── downloads.ts               # CSS/Tailwind/JSON generators
 │       ├── downloadFile.ts            # Browser download trigger utility
+│       ├── paletteUtils.ts            # applyPalette() merge function
 │       └── extractor.ts              # Screenshot analysis API call
+├── public/
+│   └── previews/                       # 48 pre-generated PNG screenshots
+│       ├── flat-design-landing.png
+│       ├── flat-design-dashboard.png
+│       ├── flat-design-settings.png
+│       ├── flat-design-feed.png
+│       ├── ... (12 styles x 4 pages = 48 images)
 ├── supabase/
 │   └── functions/
 │       └── extract-style/

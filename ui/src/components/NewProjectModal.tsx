@@ -100,72 +100,67 @@ function StepProgressBar({
   currentStep,
   onStepClick,
   onClose,
+  styleControls,
 }: {
   currentStep: Step
   onStepClick: (step: Step) => void
   onClose: () => void
+  styleControls?: React.ReactNode
 }) {
   const currentIndex = STEP_ORDER.findIndex((s) => s.id === currentStep)
 
   return (
-    <div className="h-14 border-b bg-background flex items-center px-6 shrink-0 z-10">
+    <div className="h-12 border-b bg-background flex items-center px-4 shrink-0 z-10 gap-3">
       {/* Logo */}
       <div className="flex items-center gap-2 shrink-0">
-        <img src="/logo.png" alt="AutoForge" className="h-8 w-8 rounded-full" />
+        <img src="/logo.png" alt="AutoForge" className="h-7 w-7 rounded-full" />
         <span className="font-semibold text-sm hidden sm:inline">AutoForge</span>
       </div>
 
-      {/* Step progress indicator - centered */}
-      <div className="flex items-center gap-0 mx-auto">
+      {/* Step progress indicator */}
+      <div className="flex items-center gap-0 shrink-0">
         {STEP_ORDER.map((stepDef, idx) => {
           const isCompleted = idx < currentIndex
           const isActive = idx === currentIndex
-          const isFuture = idx > currentIndex
-          // Allow navigating back to completed steps only
           const isClickable = isCompleted
 
           return (
             <div key={stepDef.id} className="flex items-center">
-              {/* Connecting line before this dot (skip for first) */}
               {idx > 0 && (
                 <div
-                  className={`w-8 sm:w-12 h-0.5 transition-colors ${
+                  className={`w-6 h-0.5 transition-colors ${
                     idx <= currentIndex ? 'bg-primary' : 'bg-border'
                   }`}
                 />
               )}
-
-              {/* Step dot + label */}
               <button
                 type="button"
                 disabled={!isClickable}
                 onClick={() => isClickable && onStepClick(stepDef.id)}
-                className={`flex flex-col items-center gap-1 group ${
-                  isClickable ? 'cursor-pointer' : isFuture ? 'cursor-default' : 'cursor-default'
+                className={`flex flex-col items-center gap-0.5 group ${
+                  isClickable ? 'cursor-pointer' : 'cursor-default'
                 }`}
                 title={isClickable ? `Go back to ${stepDef.label}` : stepDef.label}
               >
-                {/* Circle */}
                 <div
                   className={`flex items-center justify-center rounded-full transition-all ${
                     isActive
-                      ? 'w-7 h-7 bg-primary text-primary-foreground ring-2 ring-primary/30'
+                      ? 'w-6 h-6 bg-primary text-primary-foreground ring-2 ring-primary/30'
                       : isCompleted
-                        ? 'w-6 h-6 bg-primary text-primary-foreground group-hover:ring-2 group-hover:ring-primary/20'
-                        : 'w-6 h-6 border-2 border-muted-foreground/30 text-muted-foreground/40'
+                        ? 'w-5 h-5 bg-primary text-primary-foreground group-hover:ring-2 group-hover:ring-primary/20'
+                        : 'w-5 h-5 border-2 border-muted-foreground/30 text-muted-foreground/40'
                   }`}
                 >
                   {isCompleted ? (
-                    <Check size={12} strokeWidth={3} />
+                    <Check size={10} strokeWidth={3} />
                   ) : (
-                    <span className={`text-[10px] font-bold ${isActive ? '' : ''}`}>
+                    <span className={`text-[9px] font-bold`}>
                       {idx + 1}
                     </span>
                   )}
                 </div>
-                {/* Label */}
                 <span
-                  className={`text-[10px] font-medium leading-none whitespace-nowrap ${
+                  className={`text-[9px] font-medium leading-none whitespace-nowrap ${
                     isActive
                       ? 'text-primary'
                       : isCompleted
@@ -180,6 +175,16 @@ function StepProgressBar({
           )
         })}
       </div>
+
+      {/* Style step controls (injected from parent) */}
+      {styleControls && (
+        <div className="flex-1 flex items-center min-w-0">
+          {styleControls}
+        </div>
+      )}
+
+      {/* Spacer when no style controls */}
+      {!styleControls && <div className="flex-1" />}
 
       {/* Close button */}
       <button
@@ -589,6 +594,110 @@ export function NewProjectModal({
         currentStep={step}
         onStepClick={handleStepClick}
         onClose={handleClose}
+        styleControls={step === 'style' ? (
+          <>
+            {/* Back button */}
+            <Button variant="ghost" size="sm" className="h-7 text-xs shrink-0" onClick={handleBack}>
+              <ArrowLeft size={12} />
+              Back
+            </Button>
+
+            {/* Browse / Preview toggle */}
+            <div className="flex bg-muted rounded-lg p-0.5 shrink-0 ml-2">
+              <button
+                onClick={() => setStyleView('browse')}
+                className={`px-2.5 py-0.5 text-[11px] font-medium rounded-md transition-colors ${
+                  styleView === 'browse' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'
+                }`}
+              >
+                Browse
+              </button>
+              <button
+                onClick={() => setStyleView('preview')}
+                className={`px-2.5 py-0.5 text-[11px] font-medium rounded-md transition-colors ${
+                  styleView === 'preview' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'
+                }`}
+              >
+                Preview
+              </button>
+            </div>
+
+            {/* Category filter tabs (browse view only) */}
+            {styleView === 'browse' && (
+              <div className="flex gap-0.5 ml-2 shrink-0">
+                {(['all', 'core', 'vibe'] as StyleCategory[]).map((cat) => (
+                  <Button
+                    key={cat}
+                    variant={styleCategory === cat ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => setStyleCategory(cat)}
+                    className="text-[11px] px-2 h-6"
+                  >
+                    {cat === 'all' ? 'All' : cat === 'core' ? 'Core' : 'Vibe'}
+                  </Button>
+                ))}
+              </div>
+            )}
+
+            {/* Selected style indicator (preview view) */}
+            {styleView === 'preview' && styleId && styles && (
+              <span className="ml-2 text-xs text-muted-foreground shrink-0">
+                Previewing: <span className="font-medium text-foreground">{styles.find((s: StyleOption) => s.id === styleId)?.name}</span>
+              </span>
+            )}
+
+            {/* Center spacer */}
+            <div className="flex-1" />
+
+            {/* AI Recommendation button */}
+            {styleView === 'browse' && (
+              <Button
+                variant={showRecommender ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setShowRecommender(!showRecommender)}
+                className="h-6 text-[11px] shrink-0"
+              >
+                <Sparkles size={11} />
+                AI Recommendation
+              </Button>
+            )}
+
+            {/* Style Picker Mode Tabs (browse view only) */}
+            {styleView === 'browse' && (
+              <div className="flex border border-border rounded-md overflow-hidden shrink-0 ml-2">
+                {(['browse', 'describe', 'screenshot'] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => setStylePickerTab(tab)}
+                    className={`px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                      stylePickerTab === tab
+                        ? 'bg-primary text-primary-foreground'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                    }`}
+                  >
+                    {tab === 'browse' ? 'Browse' : tab === 'describe' ? 'Describe' : 'Screenshot'}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Continue / Skip */}
+            <div className="flex gap-1 ml-2 shrink-0">
+              {!styleId && (
+                <Button variant="outline" size="sm" className="h-7 text-xs" onClick={handleStyleSkip}>
+                  Skip
+                  <ArrowRight size={12} />
+                </Button>
+              )}
+              {styleId && (
+                <Button size="sm" className="h-7 text-xs" onClick={handleStyleConfirm}>
+                  Continue
+                  <ArrowRight size={12} />
+                </Button>
+              )}
+            </div>
+          </>
+        ) : undefined}
       />
 
       {/* Step Content Area - uses remaining viewport height */}
@@ -790,85 +899,6 @@ export function NewProjectModal({
         {/* ---------------------------------------------------------------- */}
         {step === 'style' && (
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-            {/* Sub-header: view toggle + filters */}
-            <div className="flex items-center gap-2 px-4 py-2 border-b shrink-0">
-              {/* Browse / Preview toggle */}
-              <div className="flex bg-muted rounded-lg p-0.5">
-                <button
-                  onClick={() => setStyleView('browse')}
-                  className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
-                    styleView === 'browse' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'
-                  }`}
-                >
-                  Browse Styles
-                </button>
-                <button
-                  onClick={() => setStyleView('preview')}
-                  className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
-                    styleView === 'preview' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'
-                  }`}
-                >
-                  Preview
-                </button>
-              </div>
-
-              {/* Category filter tabs (shown in browse view only) */}
-              {styleView === 'browse' && (
-                <div className="flex gap-1 ml-2">
-                  {(['all', 'core', 'vibe'] as StyleCategory[]).map((cat) => (
-                    <Button
-                      key={cat}
-                      variant={styleCategory === cat ? 'default' : 'ghost'}
-                      size="sm"
-                      onClick={() => setStyleCategory(cat)}
-                      className="text-xs px-2 h-7"
-                    >
-                      {cat === 'all' ? 'All' : cat === 'core' ? 'Core' : 'Vibe'}
-                    </Button>
-                  ))}
-                </div>
-              )}
-
-              {/* Selected style indicator (shown in preview view) */}
-              {styleView === 'preview' && styleId && styles && (
-                <span className="ml-2 text-sm text-muted-foreground">
-                  Previewing: <span className="font-medium text-foreground">{styles.find((s: StyleOption) => s.id === styleId)?.name}</span>
-                </span>
-              )}
-
-              {/* Right side: Help Me Choose + picker tabs */}
-              {styleView === 'browse' && (
-                <div className="ml-auto flex items-center gap-2">
-                  {/* Style Picker Mode Tabs */}
-                  <div className="flex border border-border rounded-md overflow-hidden">
-                    {(['browse', 'describe', 'screenshot'] as const).map((tab) => (
-                      <button
-                        key={tab}
-                        onClick={() => setStylePickerTab(tab)}
-                        className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                          stylePickerTab === tab
-                            ? 'bg-primary text-primary-foreground'
-                            : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-                        }`}
-                      >
-                        {tab === 'browse' ? 'Browse' : tab === 'describe' ? 'Describe' : 'Screenshot'}
-                      </button>
-                    ))}
-                  </div>
-
-                  <Button
-                    variant={showRecommender ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setShowRecommender(!showRecommender)}
-                    className="h-7 text-xs"
-                  >
-                    <Sparkles size={12} />
-                    {showRecommender ? 'Hide' : 'Help Me Choose'}
-                  </Button>
-                </div>
-              )}
-            </div>
-
             {/* ==================================================== */}
             {/* BROWSE VIEW                                            */}
             {/* ==================================================== */}
@@ -1104,11 +1134,115 @@ export function NewProjectModal({
                   </div>
                 )}
 
-                {/* Main content area: style grid (+ optional right panel) */}
                 {stylePickerTab !== 'screenshot' && (
                   <div className="flex-1 min-h-0 flex overflow-hidden">
+                    {/* Left panel: modifiers, accent, colors (always visible) */}
+                    <div className="w-[240px] shrink-0 border-r overflow-y-auto p-3 space-y-3">
+                      {/* Modifier Selection */}
+                      {modifiers && modifiers.length > 0 && (
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Modifiers</span>
+                            <Badge variant="secondary" className="text-[9px] h-4">Optional</Badge>
+                          </div>
+                          <div className="space-y-1">
+                            {modifiers.map((mod) => {
+                              const isActive = selectedModifiers.includes(mod.id)
+                              return (
+                                <button
+                                  key={mod.id}
+                                  onClick={() => {
+                                    setSelectedModifiers(prev =>
+                                      isActive
+                                        ? prev.filter(id => id !== mod.id)
+                                        : prev.length < 3
+                                          ? [...prev, mod.id]
+                                          : prev
+                                    )
+                                  }}
+                                  className={`w-full text-left p-1.5 rounded-md border transition-colors ${
+                                    isActive
+                                      ? 'border-primary bg-primary/10'
+                                      : 'border-border hover:border-primary/50'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-1.5">
+                                    {isActive && <Check size={10} className="text-primary" />}
+                                    <span className="text-[11px] font-medium">{mod.name}</span>
+                                  </div>
+                                  <p className="text-[10px] text-muted-foreground mt-0.5 leading-snug">
+                                    {mod.description}
+                                  </p>
+                                </button>
+                              )
+                            })}
+                          </div>
+                          {selectedModifiers.length >= 3 && (
+                            <p className="text-[10px] text-muted-foreground">Maximum 3 modifiers.</p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Accent Style Picker */}
+                      {accentStyles && accentStyles.length > 0 && (
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Accent Style</span>
+                            <Badge variant="secondary" className="text-[9px] h-4">Optional</Badge>
+                          </div>
+                          <div className="space-y-1">
+                            {accentStyles.map((accent: AccentStyleOption) => {
+                              const isActive = accentStyleId === accent.id
+                              return (
+                                <button
+                                  key={accent.id}
+                                  onClick={() => setAccentStyleId(isActive ? null : accent.id)}
+                                  className={`w-full text-left p-1.5 rounded-md border transition-colors ${
+                                    isActive
+                                      ? 'border-primary bg-primary/10'
+                                      : 'border-border hover:border-primary/50'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-1.5">
+                                    {isActive && <Check size={10} className="text-primary" />}
+                                    <span className="text-[11px] font-medium">{accent.name}</span>
+                                  </div>
+                                </button>
+                              )
+                            })}
+                          </div>
+                          {accentStyleId && (
+                            <p className="text-[10px] text-muted-foreground">
+                              Accent controls buttons and inputs only.
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* No style selected hint for accent */}
+                      {!styleId && (!accentStyles || accentStyles.length === 0) && (
+                        <div className="space-y-1.5">
+                          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Accent Style</span>
+                          <p className="text-[10px] text-muted-foreground">Select a style to see compatible accents.</p>
+                        </div>
+                      )}
+
+                      {/* Color Customization */}
+                      {(() => {
+                        const selected = styles?.find((s: StyleOption) => s.id === styleId)
+                        if (!selected?.style_guide) return null
+                        return (
+                          <ColorCustomizer
+                            styleGuide={selected.style_guide}
+                            customColors={customColors}
+                            onChange={setCustomColors}
+                          />
+                        )
+                      })()}
+                    </div>
+
                     {/* Style Grid */}
-                    <div className={`flex-1 min-w-0 overflow-y-auto p-4 ${styleId ? 'pr-2' : ''}`}>
+                    <div className="flex-1 min-w-0 overflow-y-auto p-3">
                       {stylesLoading && (
                         <div className="flex items-center justify-center gap-2 py-8 text-muted-foreground">
                           <Loader2 size={16} className="animate-spin" />
@@ -1117,7 +1251,7 @@ export function NewProjectModal({
                       )}
 
                       {!stylesLoading && filteredStyles.length > 0 && (
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2">
                           {filteredStyles.map((style: StyleOption) => {
                             const swatches = STYLE_SWATCHES[style.id] || ['#3B82F6', '#FFFFFF', '#111827', '#22C55E']
                             const isRecommended = recommendedIds.has(style.id)
@@ -1134,52 +1268,52 @@ export function NewProjectModal({
                                 }`}
                                 onClick={() => handleStyleSelect(style.id)}
                               >
-                                <CardContent className="p-3 flex gap-3">
-                                  {/* LEFT: Style info */}
-                                  <div className="flex-1 min-w-0 flex flex-col">
+                                <CardContent className="p-2 flex flex-col gap-1.5">
+                                  {/* Style info */}
+                                  <div className="flex flex-col gap-0.5">
                                     {/* Color swatches + name row */}
-                                    <div className="flex items-center gap-2 mb-1">
+                                    <div className="flex items-center gap-1.5">
                                       <div className="flex gap-0.5">
                                         {swatches.map((color, i) => (
                                           <div
                                             key={i}
-                                            className="h-4 w-4 rounded-sm border border-black/10"
+                                            className="h-3 w-3 rounded-sm border border-black/10"
                                             style={{ backgroundColor: color }}
                                           />
                                         ))}
                                       </div>
-                                      <span className="font-semibold text-sm leading-tight">{style.name}</span>
+                                      <span className="font-semibold text-xs leading-tight truncate">{style.name}</span>
                                       {isTopPick && (
-                                        <Badge className="text-[10px] px-1.5 py-0 h-4">Best</Badge>
+                                        <Badge className="text-[8px] px-1 py-0 h-3.5">Best</Badge>
                                       )}
                                       {isRecommended && !isTopPick && (
-                                        <Check size={12} className="text-primary" />
+                                        <Check size={10} className="text-primary shrink-0" />
                                       )}
-                                      <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4 ml-auto capitalize">
+                                      <Badge variant="outline" className="text-[8px] px-1 py-0 h-3.5 ml-auto capitalize shrink-0">
                                         {style.category}
                                       </Badge>
                                     </div>
 
-                                    {/* Description */}
-                                    <p className="text-xs text-muted-foreground leading-snug line-clamp-2">
+                                    {/* Description - single line */}
+                                    <p className="text-[10px] text-muted-foreground leading-snug line-clamp-1">
                                       {style.description}
                                     </p>
 
                                     {/* Best for */}
-                                    <p className="text-[10px] text-muted-foreground/70 mt-auto pt-0.5 leading-snug">
+                                    <p className="text-[9px] text-muted-foreground/70 leading-snug line-clamp-1">
                                       <span className="font-medium text-muted-foreground/90">Best for:</span> {style.best_for}
                                     </p>
                                   </div>
 
-                                  {/* RIGHT: UI Preview */}
+                                  {/* UI Preview - full width below text */}
                                   {style.style_guide && (
-                                    <div className="w-[180px] shrink-0">
+                                    <div className="w-full">
                                       <StylePreview
                                         guide={style.style_guide}
                                         size="compact"
                                         styleName={style.name}
-                                        modifiers={isSelected ? selectedModifiers : undefined}
-                                        accentGuide={isSelected && accentStyleId
+                                        modifiers={selectedModifiers.length > 0 ? selectedModifiers : undefined}
+                                        accentGuide={accentStyleId
                                           ? styles?.find((s: StyleOption) => s.id === accentStyleId)?.style_guide
                                           : undefined}
                                       />
@@ -1192,116 +1326,6 @@ export function NewProjectModal({
                         </div>
                       )}
                     </div>
-
-                    {/* Right panel: modifiers, accent, colors (shown when a style is selected) */}
-                    {styleId && (
-                      <div className="w-[280px] shrink-0 border-l overflow-y-auto p-3 space-y-3">
-                        {/* Selected style name */}
-                        <div className="flex items-center gap-2 pb-2 border-b">
-                          <Paintbrush size={14} className="text-primary" />
-                          <span className="text-sm font-semibold">
-                            {styles?.find((s: StyleOption) => s.id === styleId)?.name}
-                          </span>
-                        </div>
-
-                        {/* Modifier Selection */}
-                        {modifiers && modifiers.length > 0 && (
-                          <div className="space-y-1.5">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Modifiers</span>
-                              <Badge variant="secondary" className="text-[9px] h-4">Optional</Badge>
-                            </div>
-                            <div className="space-y-1">
-                              {modifiers.map((mod) => {
-                                const isActive = selectedModifiers.includes(mod.id)
-                                return (
-                                  <button
-                                    key={mod.id}
-                                    onClick={() => {
-                                      setSelectedModifiers(prev =>
-                                        isActive
-                                          ? prev.filter(id => id !== mod.id)
-                                          : prev.length < 3
-                                            ? [...prev, mod.id]
-                                            : prev
-                                      )
-                                    }}
-                                    className={`w-full text-left p-2 rounded-md border transition-colors ${
-                                      isActive
-                                        ? 'border-primary bg-primary/10'
-                                        : 'border-border hover:border-primary/50'
-                                    }`}
-                                  >
-                                    <div className="flex items-center gap-1.5">
-                                      {isActive && <Check size={10} className="text-primary" />}
-                                      <span className="text-xs font-medium">{mod.name}</span>
-                                    </div>
-                                    <p className="text-[10px] text-muted-foreground mt-0.5 leading-snug">
-                                      {mod.description}
-                                    </p>
-                                  </button>
-                                )
-                              })}
-                            </div>
-                            {selectedModifiers.length >= 3 && (
-                              <p className="text-[10px] text-muted-foreground">Maximum 3 modifiers.</p>
-                            )}
-                          </div>
-                        )}
-
-                        {/* Accent Style Picker */}
-                        {accentStyles && accentStyles.length > 0 && (
-                          <div className="space-y-1.5">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Accent Style</span>
-                              <Badge variant="secondary" className="text-[9px] h-4">Optional</Badge>
-                            </div>
-                            <div className="space-y-1">
-                              {accentStyles.map((accent: AccentStyleOption) => {
-                                const isActive = accentStyleId === accent.id
-                                return (
-                                  <button
-                                    key={accent.id}
-                                    onClick={() => setAccentStyleId(isActive ? null : accent.id)}
-                                    className={`w-full text-left p-2 rounded-md border transition-colors ${
-                                      isActive
-                                        ? 'border-primary bg-primary/10'
-                                        : 'border-border hover:border-primary/50'
-                                    }`}
-                                  >
-                                    <div className="flex items-center gap-1.5">
-                                      {isActive && <Check size={10} className="text-primary" />}
-                                      <span className="text-xs font-medium">{accent.name}</span>
-                                    </div>
-                                    <p className="text-[10px] text-muted-foreground mt-0.5 leading-snug line-clamp-2">
-                                      {accent.description}
-                                    </p>
-                                  </button>
-                                )
-                              })}
-                            </div>
-                            {accentStyleId && (
-                              <p className="text-[10px] text-muted-foreground">
-                                Base controls layout/colors. Accent controls buttons and inputs.
-                              </p>
-                            )}
-                          </div>
-                        )}
-
-                        {/* Color Customization */}
-                        {(() => {
-                          const selected = styles?.find((s: StyleOption) => s.id === styleId)
-                          if (!selected?.style_guide) return null
-                          return (
-                            <ColorCustomizer
-                              styleGuide={selected.style_guide}
-                              customColors={customColors}
-                              onChange={setCustomColors}
-                            />
-                          )
-                        })()}
-                      </div>
-                    )}
                   </div>
                 )}
               </div>
@@ -1484,27 +1508,6 @@ export function NewProjectModal({
               </div>
             )}
 
-            {/* Footer: Back / Skip / Continue */}
-            <div className="flex items-center justify-between px-4 py-2 border-t shrink-0">
-              <Button variant="ghost" size="sm" onClick={handleBack}>
-                <ArrowLeft size={14} />
-                Back
-              </Button>
-              <div className="flex gap-2">
-                {!styleId && (
-                  <Button variant="outline" size="sm" onClick={handleStyleSkip}>
-                    Skip for Now
-                    <ArrowRight size={14} />
-                  </Button>
-                )}
-                {styleId && (
-                  <Button size="sm" onClick={handleStyleConfirm}>
-                    Continue
-                    <ArrowRight size={14} />
-                  </Button>
-                )}
-              </div>
-            </div>
           </div>
         )}
 

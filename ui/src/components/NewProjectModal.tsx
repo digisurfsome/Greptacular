@@ -14,7 +14,7 @@
  * progress indicator at the top for a consistent, immersive UX.
  */
 
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import {
   Bot,
@@ -34,6 +34,8 @@ import {
   Upload,
   ImageIcon,
   X,
+  Grid2x2,
+  Maximize2,
 } from 'lucide-react'
 import { useCreateProject, useBoilerplates, useStyles, useStyleProfiles, useStyleRecommendations, useStyleModifiers, useDescriptionRecommendation, useAccentCompatibility, useExtractStyleFromScreenshot } from '../hooks/useProjects'
 import { SpecCreationChat } from './SpecCreationChat'
@@ -240,9 +242,32 @@ export function NewProjectModal({
   // Style view toggle: browse (card grid) vs preview (sidebar + full render)
   const [styleView, setStyleView] = useState<StyleView>('browse')
   const [previewPage, setPreviewPage] = useState<PreviewPage>('landing')
+  const [previewViewMode, setPreviewViewMode] = useState<'quad' | 'single'>('quad')
 
   // Accent style state
   const [accentStyleId, setAccentStyleId] = useState<string | null>(null)
+
+  // Quad view dynamic scaling
+  const QUAD_INTERNAL_W = 1280
+  const QUAD_INTERNAL_H = 800
+  const quadGridRef = useRef<HTMLDivElement>(null)
+  const [quadScale, setQuadScale] = useState(0.4)
+
+  useEffect(() => {
+    if (styleView !== 'preview' || previewViewMode !== 'quad' || !quadGridRef.current) return
+    const el = quadGridRef.current
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0]
+      if (!entry) return
+      const { width, height } = entry.contentRect
+      const cellW = width / 2
+      const cellH = height / 2
+      const scale = Math.min(cellW / QUAD_INTERNAL_W, cellH / QUAD_INTERNAL_H)
+      setQuadScale(Math.max(0.15, Math.min(1, scale)))
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [styleView, previewViewMode])
 
   // Screenshot extractor state
   const [stylePickerTab, setStylePickerTab] = useState<'browse' | 'describe' | 'screenshot'>('browse')
@@ -1376,9 +1401,31 @@ export function NewProjectModal({
                     </div>
                   </div>
 
-                  {/* Page tabs section */}
+                  {/* View mode + Page selector section */}
                   <div className="p-3 border-b">
-                    <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Page</h4>
+                    <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">View</h4>
+                    {/* Quad / Single toggle */}
+                    <div className="flex bg-muted rounded-lg p-0.5 mb-2">
+                      <button
+                        onClick={() => setPreviewViewMode('quad')}
+                        className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md transition-colors ${
+                          previewViewMode === 'quad' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'
+                        }`}
+                      >
+                        <Grid2x2 size={12} />
+                        Quad
+                      </button>
+                      <button
+                        onClick={() => setPreviewViewMode('single')}
+                        className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md transition-colors ${
+                          previewViewMode === 'single' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'
+                        }`}
+                      >
+                        <Maximize2 size={12} />
+                        Single
+                      </button>
+                    </div>
+                    {/* Page selector - click goes to single view of that page */}
                     <div className="space-y-0.5">
                       {([
                         { id: 'landing' as PreviewPage, label: 'Landing' },
@@ -1386,11 +1433,14 @@ export function NewProjectModal({
                         { id: 'settings' as PreviewPage, label: 'Settings' },
                         { id: 'feed' as PreviewPage, label: 'Feed' },
                       ]).map((page) => {
-                        const isActive = previewPage === page.id
+                        const isActive = previewViewMode === 'single' && previewPage === page.id
                         return (
                           <button
                             key={page.id}
-                            onClick={() => setPreviewPage(page.id)}
+                            onClick={() => {
+                              setPreviewPage(page.id)
+                              setPreviewViewMode('single')
+                            }}
                             className={`w-full text-left px-2.5 py-1.5 rounded-md text-sm transition-colors ${
                               isActive
                                 ? 'bg-primary/10 font-medium text-foreground'
@@ -1477,7 +1527,7 @@ export function NewProjectModal({
                 </div>
 
                 {/* Right: preview render area */}
-                <div className="flex-1 overflow-y-auto min-h-0 bg-muted/10">
+                <div className="flex-1 min-h-0 bg-muted/10 overflow-hidden">
                   {styleId && (() => {
                     const previewStyle = styles?.find((s: StyleOption) => s.id === styleId)
                     if (!previewStyle?.style_guide) return (
@@ -1485,18 +1535,79 @@ export function NewProjectModal({
                         Select a style to preview
                       </div>
                     )
+                    const guide = previewStyle.style_guide
                     const accentGuide = accentStyleId
                       ? styles?.find((s: StyleOption) => s.id === accentStyleId)?.style_guide
                       : undefined
+
+                    if (previewViewMode === 'quad') {
+                      return (
+                        <div
+                          ref={quadGridRef}
+                          className="h-full grid grid-cols-2 grid-rows-2"
+                        >
+                          {([
+                            { id: 'landing' as PreviewPage, label: 'Landing' },
+                            { id: 'dashboard' as PreviewPage, label: 'Dashboard' },
+                            { id: 'settings' as PreviewPage, label: 'Settings' },
+                            { id: 'feed' as PreviewPage, label: 'Feed' },
+                          ]).map((page) => (
+                            <div
+                              key={page.id}
+                              className="relative overflow-hidden cursor-pointer group"
+                              style={{
+                                borderRight: page.id === 'landing' || page.id === 'settings' ? '1px solid var(--color-border)' : undefined,
+                                borderBottom: page.id === 'landing' || page.id === 'dashboard' ? '1px solid var(--color-border)' : undefined,
+                              }}
+                              onClick={() => {
+                                setPreviewPage(page.id)
+                                setPreviewViewMode('single')
+                              }}
+                            >
+                              {/* Page label overlay */}
+                              <div className="absolute top-1.5 left-1.5 z-10 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-black/60 text-white backdrop-blur-sm pointer-events-none">
+                                {page.label}
+                              </div>
+                              {/* Expand icon on hover */}
+                              <div className="absolute top-1.5 right-1.5 z-10 opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded bg-black/60 text-white backdrop-blur-sm pointer-events-none">
+                                <Maximize2 size={10} />
+                              </div>
+                              {/* Scaled-down preview */}
+                              <div
+                                style={{
+                                  width: `${QUAD_INTERNAL_W}px`,
+                                  height: `${QUAD_INTERNAL_H}px`,
+                                  transform: `scale(${quadScale})`,
+                                  transformOrigin: 'top left',
+                                  overflow: 'hidden',
+                                }}
+                              >
+                                <StylePreview
+                                  guide={guide}
+                                  accentGuide={accentGuide}
+                                  modifiers={selectedModifiers}
+                                  size="full"
+                                  styleName={previewStyle.name}
+                                  activePage={page.id}
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    }
+
                     return (
-                      <StylePreview
-                        guide={previewStyle.style_guide}
-                        accentGuide={accentGuide}
-                        modifiers={selectedModifiers}
-                        size="full"
-                        styleName={previewStyle.name}
-                        activePage={previewPage}
-                      />
+                      <div className="h-full overflow-y-auto">
+                        <StylePreview
+                          guide={guide}
+                          accentGuide={accentGuide}
+                          modifiers={selectedModifiers}
+                          size="full"
+                          styleName={previewStyle.name}
+                          activePage={previewPage}
+                        />
+                      </div>
                     )
                   })()}
                   {!styleId && (

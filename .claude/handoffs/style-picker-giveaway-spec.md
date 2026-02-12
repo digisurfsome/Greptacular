@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A standalone lead-magnet web app for giving away at a live class. Users enter their email to access a gallery of 12 professional UI design systems. Each style has a live preview showing actual rendered components, and users can download complete style sheets (CSS custom properties, Tailwind config, and JSON tokens) for each design system.
+A standalone lead-magnet web app for giving away at a live class. Users enter their email to access a gallery of 12 professional UI design systems with live previews and downloadable style sheets. Plus a screenshot extractor: upload a screenshot of any app you like, and AI analyzes it to generate a matching style sheet with extracted colors, typography, and component patterns.
 
 The app itself uses the Minimalism style -- clean, professional, generous whitespace -- to showcase good design while letting the 12 gallery styles shine on their own terms.
 
@@ -59,6 +59,9 @@ The app itself uses the Minimalism style -- clean, professional, generous whites
       - Supabase project with anon key (free tier is fine)
       - Environment variable: VITE_SUPABASE_URL
       - Environment variable: VITE_SUPABASE_ANON_KEY
+      - Environment variable: VITE_ANTHROPIC_PROXY_URL (for screenshot extractor Edge Function)
+      - Supabase Edge Function deployed for screenshot analysis (calls Claude Sonnet vision API)
+      - Anthropic API key stored as Supabase Edge Function secret (never exposed to client)
     </environment_setup>
   </prerequisites>
 
@@ -71,7 +74,7 @@ The app itself uses the Minimalism style -- clean, professional, generous whites
       - Form validation: required fields, email format check
       - On submit: store to Supabase "leads" table, set localStorage flag, redirect to gallery
       - Social proof section with placeholder metrics ("Join 500+ developers")
-      - "What You Get" section: 3 feature cards (Design Tokens, Tailwind Config, Component Patterns)
+      - "What You Get" section: 4 feature cards (12 Design Systems, Tailwind Configs, Screenshot Extractor, Component Patterns)
       - Footer with minimal branding
     </landing_page>
 
@@ -120,6 +123,29 @@ The app itself uses the Minimalism style -- clean, professional, generous whites
         - Download triggers Supabase analytics increment (style_id + format)
       - Previous/Next navigation to browse styles sequentially
     </style_detail_page>
+
+    <screenshot_style_extractor>
+      - "Extract from Screenshot" page accessible from gallery navigation
+      - Upload area: drag-and-drop or click-to-upload (accepts .png, .jpg, .webp, max 5MB)
+      - Image preview shown after upload with "Analyze" button
+      - On analyze: sends base64 image to a Supabase Edge Function
+      - The Edge Function calls Claude Sonnet API with a vision prompt that:
+        1. Identifies the closest base style from the 12 known styles
+        2. Detects if it's a mix of two styles (base + accent)
+        3. Extracts actual hex colors, font guesses, component patterns, spacing
+        4. Returns structured JSON with all extracted tokens
+      - Results display:
+        - "This looks like: Minimalism with Glassmorphism accents" (with confidence %)
+        - Extracted color palette shown as swatches
+        - Typography guess (font family, sizes)
+        - Component pattern summary
+        - Side-by-side: uploaded screenshot vs our closest style preview
+      - Download extracted style sheet in all 3 formats (CSS, Tailwind, JSON)
+      - "Browse Similar Styles" link to the matching style(s) in the gallery
+      - Rate limit: 3 extractions per email per day (tracked in Supabase)
+      - Loading state: animated progress bar with "Analyzing design patterns..." text
+      - Error handling: graceful message if API fails, with retry button
+    </screenshot_style_extractor>
 
     <style_downloads>
       - Each style generates three downloadable files:
@@ -739,9 +765,68 @@ These features are ordered by dependency and map to AutoForge's feature-by-featu
 4. Style with success/info/error variants
 5. Verify: trigger multiple toasts, confirm they stack and auto-dismiss
 
+### Feature 12: Screenshot Style Extractor
+**Priority: 5**
+**Depends on: Features 2, 3, 6, 10**
+
+- New page: `/extract` accessible from gallery header navigation
+- Upload area with drag-and-drop zone + click-to-upload button
+- Accepts .png, .jpg, .webp (max 5MB, validate client-side)
+- After upload: shows image preview + "Analyze Design" button
+- On analyze: converts image to base64, calls Supabase Edge Function `extract-style`
+- The Edge Function:
+  - Receives base64 image
+  - Calls Claude Sonnet API with vision prompt (see screenshot-style-extractor-handoff.md for full prompt)
+  - Identifies closest style(s) from the 12 known styles
+  - Extracts hex colors, font guesses, component patterns, spacing estimates
+  - Returns structured JSON response
+- Results display:
+  - Style match: "This looks like: **Minimalism** with **Glassmorphism** accents" + confidence badges
+  - Extracted color palette: row of color swatches with hex values (click to copy)
+  - Typography guess: font family name, size hierarchy
+  - Side-by-side comparison: uploaded screenshot (left) | closest style's live preview (right)
+  - "Browse This Style" button links to the matched style's detail page
+- Download section: same 3 formats (CSS, Tailwind, JSON) but using the EXTRACTED tokens, not the predefined ones
+- Rate limit: 3 extractions per day per email (check against Supabase `extraction_events` table)
+- Loading state: progress bar animation with rotating tips ("Analyzing color palette...", "Detecting typography...", "Mapping component patterns...")
+- Error handling: retry button on API failure, friendly message
+
+**Steps:**
+1. Create `src/pages/ExtractPage.tsx` with upload zone and results layout
+2. Create `src/components/ImageUploader.tsx` with drag-and-drop + file input
+3. Create `src/lib/extractor.ts` with `analyzeScreenshot(base64)` function calling the Edge Function
+4. Create Supabase Edge Function `supabase/functions/extract-style/index.ts` with the Claude vision API call
+5. Build the results display with style match, color swatches, and side-by-side preview
+6. Wire up download buttons for extracted tokens
+7. Add rate limiting check (query extraction_events count for today)
+8. Add navigation link in gallery header
+9. Verify: upload a screenshot, get analysis, download extracted tokens
+
+**Supabase Edge Function (`supabase/functions/extract-style/index.ts`):**
+```typescript
+// Receives: { image: string (base64), email: string }
+// Calls Claude Sonnet with vision prompt
+// Returns: { identified_style, extracted_tokens, outputs }
+// Anthropic API key stored as Edge Function secret
+// Rate limit: check extraction_events table, reject if >= 3 today
+```
+
+**New Supabase table:**
+```sql
+create table extraction_events (
+  id uuid primary key default gen_random_uuid(),
+  email text not null,
+  identified_style text,
+  confidence numeric,
+  created_at timestamptz default now()
+);
+alter table extraction_events enable row level security;
+create policy "Anyone can insert" on extraction_events for insert with check (true);
+```
+
 ### Feature 11: Page Transitions and Final Polish
 **Priority: 6**
-**Depends on: Features 5, 7, 9, 10**
+**Depends on: Features 5, 7, 9, 10, 12**
 
 - Wrap route outlet in Framer Motion AnimatePresence for page transitions
 - Add fade + slight slide-up on page enter, fade out on exit (200ms)
@@ -795,7 +880,8 @@ stylevault/
 │   ├── pages/
 │   │   ├── LandingPage.tsx             # Hero + form + preview strip
 │   │   ├── GalleryPage.tsx             # Filter tabs + style grid
-│   │   └── StyleDetailPage.tsx         # Full style view + download
+│   │   ├── StyleDetailPage.tsx         # Full style view + download
+│   │   └── ExtractPage.tsx             # Screenshot upload + AI analysis
 │   ├── data/
 │   │   ├── index.ts                    # Barrel export
 │   │   ├── types.ts                    # TypeScript interfaces
@@ -806,7 +892,12 @@ stylevault/
 │       ├── leads.ts                    # Email storage function
 │       ├── analytics.ts               # Download tracking
 │       ├── downloads.ts               # CSS/Tailwind/JSON generators
-│       └── downloadFile.ts            # Browser download trigger utility
+│       ├── downloadFile.ts            # Browser download trigger utility
+│       └── extractor.ts              # Screenshot analysis API call
+├── supabase/
+│   └── functions/
+│       └── extract-style/
+│           └── index.ts               # Edge Function: Claude vision API for style extraction
 ```
 
 ---

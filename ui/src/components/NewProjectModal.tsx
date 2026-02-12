@@ -36,6 +36,8 @@ import {
   X,
   Grid2x2,
   Maximize2,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
 import { useCreateProject, useBoilerplates, useStyles, useStyleProfiles, useStyleRecommendations, useStyleModifiers, useDescriptionRecommendation, useAccentCompatibility, useExtractStyleFromScreenshot } from '../hooks/useProjects'
 import { SpecCreationChat } from './SpecCreationChat'
@@ -647,6 +649,30 @@ export function NewProjectModal({
                 Preview
               </button>
             </div>
+
+            {/* Quad / Single toggle (preview mode only) */}
+            {styleView === 'preview' && (
+              <div className="flex bg-muted rounded-lg p-0.5 shrink-0 ml-1">
+                <button
+                  onClick={() => setPreviewViewMode('quad')}
+                  className={`flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium rounded-md transition-colors ${
+                    previewViewMode === 'quad' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'
+                  }`}
+                >
+                  <Grid2x2 size={10} />
+                  Quad
+                </button>
+                <button
+                  onClick={() => setPreviewViewMode('single')}
+                  className={`flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium rounded-md transition-colors ${
+                    previewViewMode === 'single' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'
+                  }`}
+                >
+                  <Maximize2 size={10} />
+                  Single
+                </button>
+              </div>
+            )}
 
             {/* Category filter tabs (browse view only) */}
             {styleView === 'browse' && (
@@ -1362,12 +1388,12 @@ export function NewProjectModal({
             {/* ==================================================== */}
             {styleView === 'preview' && (
               <div className="flex-1 min-h-0 flex overflow-hidden">
-                {/* Left sidebar - wider for full-screen */}
-                <div className="w-[320px] shrink-0 border-r bg-muted/30 overflow-y-auto">
-                  {/* Styles section */}
-                  <div className="p-3 border-b">
-                    <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Styles</h4>
-                    <div className="space-y-0.5">
+                {/* Left sidebar - compact 2-column layout */}
+                <div className="w-[280px] shrink-0 border-r bg-muted/30 overflow-y-auto">
+                  {/* Styles section - 2 columns */}
+                  <div className="px-2.5 pt-2.5 pb-2 border-b">
+                    <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Styles</h4>
+                    <div className="grid grid-cols-2 gap-0.5">
                       {(styles || []).map((style: StyleOption) => {
                         const swatches = STYLE_SWATCHES[style.id] || ['#3B82F6', '#FFFFFF', '#111827']
                         const isActive = styleId === style.id
@@ -1375,25 +1401,22 @@ export function NewProjectModal({
                           <button
                             key={style.id}
                             onClick={() => handleStyleSelect(style.id)}
-                            className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-left transition-colors ${
+                            className={`flex items-center gap-1 px-1.5 py-1 rounded text-left transition-colors ${
                               isActive
-                                ? 'bg-primary/10 border-l-2 border-l-primary pl-2'
-                                : 'hover:bg-muted border-l-2 border-l-transparent pl-2'
+                                ? 'bg-primary/10 ring-1 ring-primary/40'
+                                : 'hover:bg-muted'
                             }`}
                           >
-                            <div className="flex gap-0.5 shrink-0">
+                            <div className="flex gap-px shrink-0">
                               {swatches.slice(0, 3).map((color, i) => (
                                 <div
                                   key={i}
-                                  className="w-3 h-3 rounded-sm"
-                                  style={{
-                                    backgroundColor: color,
-                                    border: '1px solid rgba(0,0,0,0.1)',
-                                  }}
+                                  className="w-2 h-2 rounded-sm"
+                                  style={{ backgroundColor: color, border: '1px solid rgba(0,0,0,0.1)' }}
                                 />
                               ))}
                             </div>
-                            <span className={`text-sm truncate ${isActive ? 'font-medium text-foreground' : 'text-muted-foreground'}`}>
+                            <span className={`text-[11px] truncate ${isActive ? 'font-medium text-foreground' : 'text-muted-foreground'}`}>
                               {style.name}
                             </span>
                           </button>
@@ -1402,70 +1425,17 @@ export function NewProjectModal({
                     </div>
                   </div>
 
-                  {/* View mode + Page selector section */}
-                  <div className="p-3 border-b">
-                    <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">View</h4>
-                    {/* Quad / Single toggle */}
-                    <div className="flex bg-muted rounded-lg p-0.5 mb-2">
-                      <button
-                        onClick={() => setPreviewViewMode('quad')}
-                        className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md transition-colors ${
-                          previewViewMode === 'quad' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'
-                        }`}
-                      >
-                        <Grid2x2 size={12} />
-                        Quad
-                      </button>
-                      <button
-                        onClick={() => setPreviewViewMode('single')}
-                        className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md transition-colors ${
-                          previewViewMode === 'single' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'
-                        }`}
-                      >
-                        <Maximize2 size={12} />
-                        Single
-                      </button>
-                    </div>
-                    {/* Page selector - click goes to single view of that page */}
-                    <div className="space-y-0.5">
-                      {([
-                        { id: 'landing' as PreviewPage, label: 'Landing' },
-                        { id: 'dashboard' as PreviewPage, label: 'Dashboard' },
-                        { id: 'settings' as PreviewPage, label: 'Settings' },
-                        { id: 'feed' as PreviewPage, label: 'Feed' },
-                      ]).map((page) => {
-                        const isActive = previewViewMode === 'single' && previewPage === page.id
-                        return (
-                          <button
-                            key={page.id}
-                            onClick={() => {
-                              setPreviewPage(page.id)
-                              setPreviewViewMode('single')
-                            }}
-                            className={`w-full text-left px-2.5 py-1.5 rounded-md text-sm transition-colors ${
-                              isActive
-                                ? 'bg-primary/10 font-medium text-foreground'
-                                : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                            }`}
-                          >
-                            {page.label}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Modifiers section */}
+                  {/* Modifiers section - 2 columns */}
                   {modifiers && modifiers.length > 0 && (
-                    <div className="p-3 border-b">
-                      <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Modifiers</h4>
-                      <div className="space-y-1">
+                    <div className="px-2.5 py-2 border-b">
+                      <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Modifiers</h4>
+                      <div className="grid grid-cols-2 gap-x-1 gap-y-0.5">
                         {modifiers.map((mod) => {
                           const isActive = selectedModifiers.includes(mod.id)
                           return (
                             <label
                               key={mod.id}
-                              className="flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer hover:bg-muted transition-colors"
+                              className="flex items-center gap-1 px-1 py-0.5 rounded cursor-pointer hover:bg-muted transition-colors"
                             >
                               <input
                                 type="checkbox"
@@ -1479,9 +1449,9 @@ export function NewProjectModal({
                                         : prev
                                   )
                                 }}
-                                className="rounded border-border"
+                                className="rounded border-border w-3 h-3"
                               />
-                              <span className={`text-sm ${isActive ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
+                              <span className={`text-[11px] truncate ${isActive ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
                                 {mod.name}
                               </span>
                             </label>
@@ -1491,15 +1461,15 @@ export function NewProjectModal({
                     </div>
                   )}
 
-                  {/* Accent section */}
-                  <div className="p-3">
-                    <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Accent</h4>
-                    <div className="space-y-0.5">
+                  {/* Accent section - 2 columns */}
+                  <div className="px-2.5 py-2 border-b">
+                    <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Accent</h4>
+                    <div className="grid grid-cols-2 gap-0.5">
                       <button
                         onClick={() => setAccentStyleId(null)}
-                        className={`w-full text-left px-2.5 py-1.5 rounded-md text-sm transition-colors ${
+                        className={`text-left px-1.5 py-1 rounded text-[11px] transition-colors ${
                           !accentStyleId
-                            ? 'bg-primary/10 font-medium text-foreground'
+                            ? 'bg-primary/10 font-medium text-foreground ring-1 ring-primary/40'
                             : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                         }`}
                       >
@@ -1513,9 +1483,9 @@ export function NewProjectModal({
                             <button
                               key={accent.id}
                               onClick={() => setAccentStyleId(isActive ? null : accent.id)}
-                              className={`w-full text-left px-2.5 py-1.5 rounded-md text-sm transition-colors ${
+                              className={`text-left px-1.5 py-1 rounded text-[11px] truncate transition-colors ${
                                 isActive
-                                  ? 'bg-primary/10 font-medium text-foreground'
+                                  ? 'bg-primary/10 font-medium text-foreground ring-1 ring-primary/40'
                                   : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                               }`}
                             >
@@ -1525,10 +1495,25 @@ export function NewProjectModal({
                         })}
                     </div>
                   </div>
+
+                  {/* Color customizer */}
+                  <div className="px-2.5 py-2">
+                    {styleId && (() => {
+                      const selected = styles?.find((s: StyleOption) => s.id === styleId)
+                      if (!selected?.style_guide) return null
+                      return (
+                        <ColorCustomizer
+                          styleGuide={selected.style_guide}
+                          customColors={customColors}
+                          onChange={setCustomColors}
+                        />
+                      )
+                    })()}
+                  </div>
                 </div>
 
-                {/* Right: preview render area */}
-                <div className="flex-1 min-h-0 bg-muted/10 overflow-hidden">
+                {/* Right: preview render area with arrow navigation */}
+                <div className="flex-1 min-h-0 bg-muted/10 overflow-hidden relative">
                   {styleId && (() => {
                     const previewStyle = styles?.find((s: StyleOption) => s.id === styleId)
                     if (!previewStyle?.style_guide) return (
@@ -1623,6 +1608,70 @@ export function NewProjectModal({
                       Select a style from the sidebar to preview
                     </div>
                   )}
+
+                  {/* Left/Right arrow navigation overlay */}
+                  {styleId && (() => {
+                    const styleList = styles || []
+                    const currentIdx = styleList.findIndex((s: StyleOption) => s.id === styleId)
+                    const PREVIEW_PAGES: PreviewPage[] = ['landing', 'dashboard', 'settings', 'feed']
+                    const pageIdx = PREVIEW_PAGES.indexOf(previewPage)
+
+                    const handlePrev = () => {
+                      if (previewViewMode === 'quad') {
+                        // Cycle to previous style
+                        if (currentIdx > 0) handleStyleSelect(styleList[currentIdx - 1].id)
+                      } else {
+                        // Cycle to previous page
+                        const idx = (pageIdx - 1 + PREVIEW_PAGES.length) % PREVIEW_PAGES.length
+                        setPreviewPage(PREVIEW_PAGES[idx])
+                      }
+                    }
+                    const handleNext = () => {
+                      if (previewViewMode === 'quad') {
+                        // Cycle to next style
+                        if (currentIdx < styleList.length - 1) handleStyleSelect(styleList[currentIdx + 1].id)
+                      } else {
+                        // Cycle to next page
+                        const idx = (pageIdx + 1) % PREVIEW_PAGES.length
+                        setPreviewPage(PREVIEW_PAGES[idx])
+                      }
+                    }
+                    const canPrev = previewViewMode === 'quad' ? currentIdx > 0 : true
+                    const canNext = previewViewMode === 'quad' ? currentIdx < styleList.length - 1 : true
+
+                    return (
+                      <>
+                        <button
+                          onClick={handlePrev}
+                          disabled={!canPrev}
+                          className="absolute left-2 top-1/2 -translate-y-1/2 z-20 p-1.5 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors disabled:opacity-20 disabled:cursor-not-allowed backdrop-blur-sm"
+                          aria-label={previewViewMode === 'quad' ? 'Previous style' : 'Previous page'}
+                        >
+                          <ChevronLeft size={18} />
+                        </button>
+                        <button
+                          onClick={handleNext}
+                          disabled={!canNext}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 z-20 p-1.5 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors disabled:opacity-20 disabled:cursor-not-allowed backdrop-blur-sm"
+                          aria-label={previewViewMode === 'quad' ? 'Next style' : 'Next page'}
+                        >
+                          <ChevronRight size={18} />
+                        </button>
+                        {/* Style counter (quad mode) */}
+                        {previewViewMode === 'quad' && styleList.length > 1 && (
+                          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 px-3 py-1 rounded-full bg-black/50 text-white text-xs font-medium backdrop-blur-sm tabular-nums">
+                            {currentIdx + 1} / {styleList.length}
+                          </div>
+                        )}
+                        {/* Page indicator (single mode) */}
+                        {previewViewMode === 'single' && (
+                          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 px-3 py-1 rounded-full bg-black/50 text-white text-xs font-medium backdrop-blur-sm">
+                            {previewPage.charAt(0).toUpperCase() + previewPage.slice(1)}
+                          </div>
+                        )}
+                      </>
+                    )
+                  })()}
                 </div>
               </div>
             )}

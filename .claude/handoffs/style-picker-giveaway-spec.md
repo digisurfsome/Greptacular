@@ -147,6 +147,93 @@ The app itself uses the Minimalism style -- clean, professional, generous whites
       - Error handling: graceful message if API fails, with retry button
     </screenshot_style_extractor>
 
+    <color_palette_switcher>
+      - Separate from style selection: style = structure (shapes, shadows, typography, spacing),
+        palette = paint (colors only). User picks a style THEN picks a palette.
+      - 15 curated UI palettes, each with 6 functional color slots:
+        - brand: primary action color (buttons, links, CTAs)
+        - background: page/app background
+        - surface: cards, modals, panels
+        - text: primary readable text
+        - accent: highlights, badges, secondary actions
+        - muted: borders, dividers, subtle backgrounds
+      - All palettes tested for WCAG AA contrast (text on background >= 4.5:1)
+      - Palette selector UI: horizontal scrollable strip of palette thumbnails (6 colored dots each)
+        - Appears on the Style Detail page above the live preview
+        - Click a palette → live preview instantly recolors
+        - Selected palette highlighted with ring
+        - "Default" option resets to the style's original colors
+      - Palettes are style-agnostic: any palette works with any of the 12 styles
+      - Downloaded style sheets include the selected palette's colors (not just the default)
+
+      PALETTE DATA (15 curated palettes):
+
+      Professional / Corporate:
+      1. "Midnight Office"
+         brand: #2563EB  background: #F8FAFC  surface: #FFFFFF  text: #0F172A  accent: #F59E0B  muted: #E2E8F0
+         Vibe: Corporate trust, clean authority
+
+      2. "Charcoal & Cream"
+         brand: #374151  background: #FFFBEB  surface: #FFFFFF  text: #1F2937  accent: #DC2626  muted: #D1D5DB
+         Vibe: Sophisticated, editorial
+
+      3. "Deep Teal"
+         brand: #0D9488  background: #F0FDFA  surface: #FFFFFF  text: #134E4A  accent: #F97316  muted: #CCFBF1
+         Vibe: Calm professionalism, healthcare/finance
+
+      Warm & Friendly:
+      4. "Sunset Glow"
+         brand: #EA580C  background: #FFFBEB  surface: #FFFFFF  text: #431407  accent: #7C3AED  muted: #FED7AA
+         Vibe: Warm, inviting, food/lifestyle
+
+      5. "Rose Garden"
+         brand: #E11D48  background: #FFF1F2  surface: #FFFFFF  text: #1C1917  accent: #0EA5E9  muted: #FECDD3
+         Vibe: Friendly, approachable, community
+
+      6. "Terracotta"
+         brand: #C2410C  background: #FEF3C7  surface: #FFFBEB  text: #292524  accent: #4F46E5  muted: #D6D3D1
+         Vibe: Earthy, artisan, handmade
+
+      Cool & Modern:
+      7. "Arctic Blue"
+         brand: #0284C7  background: #F0F9FF  surface: #FFFFFF  text: #0C4A6E  accent: #E11D48  muted: #BAE6FD
+         Vibe: Clean tech, SaaS
+
+      8. "Indigo Night"
+         brand: #6366F1  background: #EEF2FF  surface: #FFFFFF  text: #1E1B4B  accent: #10B981  muted: #C7D2FE
+         Vibe: Modern, creative tools
+
+      9. "Mint Fresh"
+         brand: #059669  background: #ECFDF5  surface: #FFFFFF  text: #064E3B  accent: #8B5CF6  muted: #A7F3D0
+         Vibe: Fresh, health/wellness
+
+      Bold & Energetic:
+      10. "Electric Coral"
+          brand: #F43F5E  background: #FFFFFF  surface: #FFF1F2  text: #18181B  accent: #06B6D4  muted: #F4F4F5
+          Vibe: Bold, startups, social apps
+
+      11. "Neon Slate"
+          brand: #8B5CF6  background: #020617  surface: #0F172A  text: #E2E8F0  accent: #22D3EE  muted: #334155
+          Vibe: Dark mode, developer tools, gaming
+
+      12. "Sunburst"
+          brand: #D97706  background: #FFFFF0  surface: #FFFFFF  text: #1C1917  accent: #2563EB  muted: #FDE68A
+          Vibe: Energetic, marketplaces, education
+
+      Nature-Inspired:
+      13. "Forest Floor"
+          brand: #15803D  background: #F5F5F4  surface: #FFFFFF  text: #1C1917  accent: #B45309  muted: #D6D3D1
+          Vibe: Organic, outdoors, sustainability
+
+      14. "Ocean Dusk"
+          brand: #1D4ED8  background: #0F172A  surface: #1E293B  text: #CBD5E1  accent: #F59E0B  muted: #334155
+          Vibe: Deep, immersive, storytelling (dark)
+
+      15. "Sand & Stone"
+          brand: #92400E  background: #FAF5F0  surface: #FFFFFF  text: #292524  accent: #0891B2  muted: #E7E5E4
+          Vibe: Warm minimal, boutique, calm
+    </color_palette_switcher>
+
     <style_downloads>
       - Each style generates three downloadable files:
         1. JSON file: complete token object (colors, typography, components, spacing)
@@ -824,9 +911,39 @@ alter table extraction_events enable row level security;
 create policy "Anyone can insert" on extraction_events for insert with check (true);
 ```
 
+### Feature 13: Color Palette Switcher
+**Priority: 5**
+**Depends on: Features 2, 6, 9**
+
+- 15 curated color palettes hardcoded in `src/data/palettes.ts`
+- Each palette has 6 slots: brand, background, surface, text, accent, muted
+- Palette selector appears on the Style Detail page, above the live preview
+- UI: horizontal scrollable strip of palette thumbnails
+  - Each thumbnail: a row of 6 small color circles (16px) + palette name below
+  - Selected palette has a ring highlight
+  - First option is "Default" which uses the style's built-in colors
+  - Click a palette → live preview re-renders instantly with new colors
+- The StylePreview component already takes tokens as props, so palette switching just
+  overrides the color tokens while keeping typography/spacing/component tokens from the style
+- Create `src/lib/paletteUtils.ts` with `applyPalette(styleTokens, palette)` that merges
+  palette colors into a style's token set
+- Downloads include the selected palette: if user selected "Sunset Glow" palette on
+  Minimalism style, the CSS/Tailwind/JSON files contain Sunset Glow colors, not Minimalism defaults
+- Palette categories shown as subtle section headers: Professional, Warm, Cool, Bold, Nature
+- On mobile: palette strip wraps to 2 rows or scrolls horizontally
+
+**Steps:**
+1. Create `src/data/palettes.ts` with all 15 palettes as typed data (PaletteData interface)
+2. Create `src/components/PaletteStrip.tsx` - horizontal scrollable palette selector
+3. Create `src/lib/paletteUtils.ts` with `applyPalette()` merge function
+4. Add PaletteStrip to StyleDetailPage above the preview, with state for selected palette
+5. Wire palette selection to StylePreview - pass merged tokens when palette is active
+6. Update download functions to accept optional palette override
+7. Verify: select Minimalism, switch through 3+ palettes, confirm preview updates and downloads match
+
 ### Feature 11: Page Transitions and Final Polish
 **Priority: 6**
-**Depends on: Features 5, 7, 9, 10, 12**
+**Depends on: Features 5, 7, 9, 10, 12, 13**
 
 - Wrap route outlet in Framer Motion AnimatePresence for page transitions
 - Add fade + slight slide-up on page enter, fade out on exit (200ms)

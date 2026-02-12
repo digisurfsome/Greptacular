@@ -511,20 +511,20 @@ function renderCompact(t: ResolvedTokens, styleName?: string): React.JSX.Element
       style={{
         ...(t.isGradientBg ? { backgroundImage: t.canvasBg } : { backgroundColor: t.canvasBg }),
         borderRadius: '8px',
-        padding: '12px',
+        padding: '8px',
         fontFamily: t.fontFamily,
         overflow: 'hidden',
-        minHeight: '140px',
+        minHeight: '100px',
         display: 'flex',
         flexDirection: 'column',
-        gap: '8px',
+        gap: '4px',
       }}
     >
       {/* Heading */}
       <div
         style={{
           color: t.textPrimary,
-          fontSize: '13px',
+          fontSize: '11px',
           fontWeight: t.h2.weight,
           lineHeight: 1.3,
           letterSpacing: '-0.01em',
@@ -537,7 +537,7 @@ function renderCompact(t: ResolvedTokens, styleName?: string): React.JSX.Element
       <div
         style={{
           color: t.textSecondary,
-          fontSize: '10px',
+          fontSize: '8px',
           fontWeight: t.body.weight,
           lineHeight: 1.5,
         }}
@@ -548,27 +548,27 @@ function renderCompact(t: ResolvedTokens, styleName?: string): React.JSX.Element
       {/* Card sample */}
       <div
         style={{
-          ...cardStyle(t, '8px'),
+          ...cardStyle(t, '6px'),
         }}
       >
-        <div style={{ color: t.textPrimary, fontSize: '9px', fontWeight: 600 }}>Card Title</div>
-        <div style={{ color: t.textSecondary, fontSize: '8px', marginTop: '2px' }}>Card content</div>
+        <div style={{ color: t.textPrimary, fontSize: '8px', fontWeight: 600 }}>Card Title</div>
+        <div style={{ color: t.textSecondary, fontSize: '7px', marginTop: '2px' }}>Card content</div>
       </div>
 
       {/* Buttons row */}
       <div style={{ display: 'flex', gap: '6px', marginTop: 'auto' }}>
         <div
           style={{
-            ...primaryBtnStyle(t, '9px'),
-            padding: '4px 10px',
+            ...primaryBtnStyle(t, '8px'),
+            padding: '3px 8px',
           }}
         >
           Primary
         </div>
         <div
           style={{
-            ...outlineBtnStyle(t, '9px'),
-            padding: '4px 10px',
+            ...outlineBtnStyle(t, '8px'),
+            padding: '3px 8px',
           }}
         >
           Secondary
@@ -579,8 +579,8 @@ function renderCompact(t: ResolvedTokens, styleName?: string): React.JSX.Element
       <div
         style={{
           ...inputStyle(t),
-          fontSize: '8px',
-          padding: '4px 8px',
+          fontSize: '7px',
+          padding: '3px 6px',
         }}
       >
         Input field...

@@ -256,15 +256,16 @@ export function NewProjectModal({
   useEffect(() => {
     if (styleView !== 'preview' || previewViewMode !== 'quad' || !quadGridRef.current) return
     const el = quadGridRef.current
-    const observer = new ResizeObserver((entries) => {
-      const entry = entries[0]
-      if (!entry) return
-      const { width, height } = entry.contentRect
-      const cellW = width / 2
-      const cellH = height / 2
+    const update = () => {
+      const { clientWidth, clientHeight } = el
+      if (clientWidth === 0 || clientHeight === 0) return
+      const cellW = clientWidth / 2
+      const cellH = clientHeight / 2
       const scale = Math.min(cellW / QUAD_INTERNAL_W, cellH / QUAD_INTERNAL_H)
-      setQuadScale(Math.max(0.15, Math.min(1, scale)))
-    })
+      setQuadScale(Math.max(0.1, Math.min(1, scale)))
+    }
+    update() // Immediate first calculation
+    const observer = new ResizeObserver(() => update())
     observer.observe(el)
     return () => observer.disconnect()
   }, [styleView, previewViewMode])
@@ -1541,23 +1542,28 @@ export function NewProjectModal({
                       : undefined
 
                     if (previewViewMode === 'quad') {
+                      const quadPages: { id: PreviewPage; label: string; top: string; left: string }[] = [
+                        { id: 'landing', label: 'Landing', top: '0', left: '0' },
+                        { id: 'dashboard', label: 'Dashboard', top: '0', left: '50%' },
+                        { id: 'settings', label: 'Settings', top: '50%', left: '0' },
+                        { id: 'feed', label: 'Feed', top: '50%', left: '50%' },
+                      ]
                       return (
                         <div
                           ref={quadGridRef}
-                          className="h-full grid grid-cols-2 grid-rows-2"
+                          className="relative w-full h-full"
                         >
-                          {([
-                            { id: 'landing' as PreviewPage, label: 'Landing' },
-                            { id: 'dashboard' as PreviewPage, label: 'Dashboard' },
-                            { id: 'settings' as PreviewPage, label: 'Settings' },
-                            { id: 'feed' as PreviewPage, label: 'Feed' },
-                          ]).map((page) => (
+                          {quadPages.map((page) => (
                             <div
                               key={page.id}
-                              className="relative overflow-hidden cursor-pointer group"
+                              className="absolute overflow-hidden cursor-pointer group"
                               style={{
-                                borderRight: page.id === 'landing' || page.id === 'settings' ? '1px solid var(--color-border)' : undefined,
-                                borderBottom: page.id === 'landing' || page.id === 'dashboard' ? '1px solid var(--color-border)' : undefined,
+                                top: page.top,
+                                left: page.left,
+                                width: '50%',
+                                height: '50%',
+                                borderRight: page.left === '0' ? '1px solid var(--color-border)' : undefined,
+                                borderBottom: page.top === '0' ? '1px solid var(--color-border)' : undefined,
                               }}
                               onClick={() => {
                                 setPreviewPage(page.id)
@@ -1575,11 +1581,13 @@ export function NewProjectModal({
                               {/* Scaled-down preview */}
                               <div
                                 style={{
+                                  position: 'absolute',
+                                  top: 0,
+                                  left: 0,
                                   width: `${QUAD_INTERNAL_W}px`,
                                   height: `${QUAD_INTERNAL_H}px`,
                                   transform: `scale(${quadScale})`,
                                   transformOrigin: 'top left',
-                                  overflow: 'hidden',
                                 }}
                               >
                                 <StylePreview

@@ -34,6 +34,7 @@ class ProjectCreate(BaseModel):
     accent_style: str | None = Field(None, description="Accent style ID for interactive element overrides")
     modifier_ids: list[str] = Field(default_factory=list, description="Accessibility/style modifier IDs")
     custom_colors: dict[str, str] = Field(default_factory=dict, description="Custom color overrides keyed by role (primary, secondary, accent, background, surface, text)")
+    palette_id: str | None = Field(None, description="Preset palette ID from the palette strip (e.g., 'midnight-office')")
 
 
 class ProjectStats(BaseModel):

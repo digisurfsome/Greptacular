@@ -4,12 +4,17 @@
  * Allows users to customize individual colors within a chosen design style.
  * Shows the 6 main color tokens (primary, secondary, accent, background, surface, text)
  * with color picker inputs and hex value displays. Collapsed by default.
+ *
+ * Includes a PaletteStrip for quick preset selection that populates all 6 colors at once.
  */
 
 import { useState } from 'react'
 import { RotateCcw, ChevronDown, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { PaletteStrip } from './PaletteStrip'
+import { paletteToCustomColors } from '../lib/paletteUtils'
+import type { PaletteData } from '../data/palettes'
 import type { StyleGuide } from '../lib/types'
 
 /** The 6 main customizable color keys and their labels */
@@ -28,6 +33,8 @@ interface ColorCustomizerProps {
   styleGuide: StyleGuide
   customColors: CustomColors
   onChange: (colors: CustomColors) => void
+  selectedPaletteId: string | null
+  onPaletteSelect: (paletteId: string | null) => void
 }
 
 /** Get the default value for a color field from the style guide tokens */
@@ -46,7 +53,7 @@ function isValidHex(value: string): boolean {
   return /^#[0-9A-Fa-f]{6}$/.test(value)
 }
 
-export function ColorCustomizer({ styleGuide, customColors, onChange }: ColorCustomizerProps) {
+export function ColorCustomizer({ styleGuide, customColors, onChange, selectedPaletteId, onPaletteSelect }: ColorCustomizerProps) {
   const [isOpen, setIsOpen] = useState(false)
 
   const hasChanges = Object.keys(customColors).length > 0
@@ -62,10 +69,18 @@ export function ColorCustomizer({ styleGuide, customColors, onChange }: ColorCus
     } else {
       next[key] = value
     }
+    // Manual edit clears the palette selection
+    onPaletteSelect(null)
     onChange(next)
   }
 
+  const handlePaletteSelect = (palette: PaletteData) => {
+    onPaletteSelect(palette.id)
+    onChange(paletteToCustomColors(palette))
+  }
+
   const handleReset = () => {
+    onPaletteSelect(null)
     onChange({})
   }
 
@@ -86,8 +101,14 @@ export function ColorCustomizer({ styleGuide, customColors, onChange }: ColorCus
       {isOpen && (
         <div className="space-y-3 pl-5">
           <p className="text-xs text-muted-foreground">
-            Tweak individual colors while keeping the style's typography, spacing, and patterns.
+            Pick a palette preset or tweak individual colors.
           </p>
+
+          {/* Palette preset strip */}
+          <PaletteStrip
+            selectedId={selectedPaletteId}
+            onSelect={handlePaletteSelect}
+          />
 
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
             {COLOR_FIELDS.map(({ key, label, path }) => {

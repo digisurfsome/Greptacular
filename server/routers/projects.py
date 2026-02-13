@@ -522,9 +522,10 @@ async def create_project(project: ProjectCreate):
     # Scaffold prompts
     _scaffold_project_prompts(project_path)
 
-    # Save project config (boilerplate + style choices + modifiers + custom colors + accent)
+    # Save project config (boilerplate + style choices + modifiers + custom colors + accent + palette)
     custom_colors = project.custom_colors or None
     accent_style = project.accent_style
+    palette_id = project.palette_id
     if boilerplate_id:
         save_project_config(
             project_path,
@@ -533,6 +534,7 @@ async def create_project(project: ProjectCreate):
             modifier_ids=project.modifier_ids or None,
             custom_colors=custom_colors if custom_colors else None,
             accent_style=accent_style,
+            palette_id=palette_id,
         )
 
     # Save style guide if a style was selected (with custom color overrides and optional accent)

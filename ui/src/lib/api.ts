@@ -83,6 +83,7 @@ export async function createProject(
   modifierIds?: string[],
   customColors?: Record<string, string>,
   accentStyle?: string | null,
+  paletteId?: string | null,
 ): Promise<ProjectSummary> {
   return fetchJSON('/projects', {
     method: 'POST',
@@ -95,6 +96,7 @@ export async function createProject(
       modifier_ids: modifierIds ?? [],
       custom_colors: customColors ?? {},
       accent_style: accentStyle ?? null,
+      palette_id: paletteId ?? null,
     }),
   })
 }

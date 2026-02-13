@@ -238,6 +238,7 @@ export function NewProjectModal({
   const [selectedModifiers, setSelectedModifiers] = useState<string[]>([])
   const [appDescription, setAppDescription] = useState('')
   const [customColors, setCustomColors] = useState<Record<string, string>>({})
+  const [selectedPaletteId, setSelectedPaletteId] = useState<string | null>(null)
 
   // Style view toggle: browse (card grid) vs preview (sidebar + full render)
   const [styleView, setStyleView] = useState<StyleView>('browse')
@@ -429,6 +430,7 @@ export function NewProjectModal({
           modifierIds: selectedModifiers,
           customColors: Object.keys(customColors).length > 0 ? customColors : undefined,
           accentStyle: accentStyleId,
+          paletteId: selectedPaletteId,
         })
         changeStep('complete')
         setTimeout(() => {
@@ -450,6 +452,7 @@ export function NewProjectModal({
           modifierIds: selectedModifiers,
           customColors: Object.keys(customColors).length > 0 ? customColors : undefined,
           accentStyle: accentStyleId,
+          paletteId: selectedPaletteId,
         })
         changeStep('chat')
       } catch (err: unknown) {
@@ -1262,6 +1265,8 @@ export function NewProjectModal({
                             styleGuide={selected.style_guide}
                             customColors={customColors}
                             onChange={setCustomColors}
+                            selectedPaletteId={selectedPaletteId}
+                            onPaletteSelect={setSelectedPaletteId}
                           />
                         )
                       })()}

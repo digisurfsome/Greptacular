@@ -241,7 +241,7 @@ export function NewProjectModal({
   const [selectedPaletteId, setSelectedPaletteId] = useState<string | null>(null)
 
   // Style view toggle: browse (card grid) vs preview (sidebar + full render)
-  const [styleView, setStyleView] = useState<StyleView>('browse')
+  const [_styleView, setStyleView] = useState<StyleView>('browse')
   const [previewPage, setPreviewPage] = useState<PreviewPage>('landing')
   const [previewViewMode, setPreviewViewMode] = useState<'quad' | 'single'>('quad')
 
@@ -255,7 +255,7 @@ export function NewProjectModal({
   const [quadScale, setQuadScale] = useState(0.4)
 
   useEffect(() => {
-    if (styleView !== 'preview' || previewViewMode !== 'quad' || !quadGridRef.current) return
+    if (previewViewMode !== 'quad' || !quadGridRef.current) return
     const el = quadGridRef.current
     const update = () => {
       const { clientWidth, clientHeight } = el
@@ -269,7 +269,7 @@ export function NewProjectModal({
     const observer = new ResizeObserver(() => update())
     observer.observe(el)
     return () => observer.disconnect()
-  }, [styleView, previewViewMode])
+  }, [previewViewMode])
 
   // Screenshot extractor state
   const [stylePickerTab, setStylePickerTab] = useState<'browse' | 'describe' | 'screenshot'>('browse')
@@ -278,6 +278,7 @@ export function NewProjectModal({
 
   // Suppress unused variable warning - specMethod may be used in future
   void _specMethod
+  void _styleView
 
   const createProject = useCreateProject()
   const { data: boilerplateCategories, isLoading: boilerplatesLoading } = useBoilerplates()
@@ -631,84 +632,51 @@ export function NewProjectModal({
               Back
             </Button>
 
-            {/* Browse / Preview toggle */}
-            <div className="flex bg-muted rounded-lg p-0.5 shrink-0 ml-2">
-              <button
-                onClick={() => setStyleView('browse')}
-                className={`px-2.5 py-0.5 text-[11px] font-medium rounded-md transition-colors ${
-                  styleView === 'browse' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'
-                }`}
-              >
-                Browse
-              </button>
-              <button
-                onClick={() => setStyleView('preview')}
-                className={`px-2.5 py-0.5 text-[11px] font-medium rounded-md transition-colors ${
-                  styleView === 'preview' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'
-                }`}
-              >
-                Preview
-              </button>
+            {/* Category filter tabs */}
+            <div className="flex gap-0.5 ml-2 shrink-0">
+              {(['all', 'core', 'vibe'] as StyleCategory[]).map((cat) => (
+                <Button
+                  key={cat}
+                  variant={styleCategory === cat ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => setStyleCategory(cat)}
+                  className="text-[11px] px-2 h-6"
+                >
+                  {cat === 'all' ? 'All' : cat === 'core' ? 'Core' : 'Vibe'}
+                </Button>
+              ))}
             </div>
-
-            {/* Category filter tabs (browse view only) */}
-            {styleView === 'browse' && (
-              <div className="flex gap-0.5 ml-2 shrink-0">
-                {(['all', 'core', 'vibe'] as StyleCategory[]).map((cat) => (
-                  <Button
-                    key={cat}
-                    variant={styleCategory === cat ? 'default' : 'ghost'}
-                    size="sm"
-                    onClick={() => setStyleCategory(cat)}
-                    className="text-[11px] px-2 h-6"
-                  >
-                    {cat === 'all' ? 'All' : cat === 'core' ? 'Core' : 'Vibe'}
-                  </Button>
-                ))}
-              </div>
-            )}
-
-            {/* Selected style indicator (preview view) */}
-            {styleView === 'preview' && styleId && styles && (
-              <span className="ml-2 text-xs text-muted-foreground shrink-0">
-                Previewing: <span className="font-medium text-foreground">{styles.find((s: StyleOption) => s.id === styleId)?.name}</span>
-              </span>
-            )}
 
             {/* Center spacer */}
             <div className="flex-1" />
 
             {/* AI Recommendation button */}
-            {styleView === 'browse' && (
-              <Button
-                variant={showRecommender ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setShowRecommender(!showRecommender)}
-                className="h-6 text-[11px] shrink-0"
-              >
-                <Sparkles size={11} />
-                AI Recommendation
-              </Button>
-            )}
+            <Button
+              variant={showRecommender ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setShowRecommender(!showRecommender)}
+              className="h-6 text-[11px] shrink-0"
+            >
+              <Sparkles size={11} />
+              AI Recommendation
+            </Button>
 
-            {/* Style Picker Mode Tabs (browse view only) */}
-            {styleView === 'browse' && (
-              <div className="flex border border-border rounded-md overflow-hidden shrink-0 ml-2">
-                {(['browse', 'describe', 'screenshot'] as const).map((tab) => (
-                  <button
-                    key={tab}
-                    onClick={() => setStylePickerTab(tab)}
-                    className={`px-2 py-0.5 text-[10px] font-medium transition-colors ${
-                      stylePickerTab === tab
-                        ? 'bg-primary text-primary-foreground'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-                    }`}
-                  >
-                    {tab === 'browse' ? 'Browse' : tab === 'describe' ? 'Describe' : 'Screenshot'}
-                  </button>
-                ))}
-              </div>
-            )}
+            {/* Style Picker Mode Tabs */}
+            <div className="flex border border-border rounded-md overflow-hidden shrink-0 ml-2">
+              {(['browse', 'describe', 'screenshot'] as const).map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setStylePickerTab(tab)}
+                  className={`px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                    stylePickerTab === tab
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                  }`}
+                >
+                  {tab === 'browse' ? 'Browse' : tab === 'describe' ? 'Describe' : 'Screenshot'}
+                </button>
+              ))}
+            </div>
 
             {/* Continue / Skip */}
             <div className="flex gap-1 ml-2 shrink-0">
@@ -929,492 +897,447 @@ export function NewProjectModal({
         {step === 'style' && (
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
             {/* ==================================================== */}
-            {/* BROWSE VIEW                                            */}
+            {/* AI Recommender Panel (collapsible, compact)             */}
             {/* ==================================================== */}
-            {styleView === 'browse' && (
-              <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-                {/* AI Recommender Panel (collapsible, compact) */}
-                {(stylePickerTab === 'browse' || stylePickerTab === 'describe') && showRecommender && profiles && (
-                  <div className="shrink-0 px-4 py-2 border-b bg-primary/5">
-                    <div className="flex gap-4 items-start">
-                      {/* Description input */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex gap-2 items-end">
-                          <div className="flex-1">
-                            <Label className="text-[11px]">Describe your app (optional)</Label>
-                            <textarea
-                              value={appDescription}
-                              onChange={(e) => setAppDescription(e.target.value)}
-                              placeholder="e.g., A sugar tracking app for diabetics aged 50-80..."
-                              className="w-full text-xs rounded-md border border-border bg-background px-2 py-1.5 resize-none h-10 mt-0.5"
-                            />
-                          </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={appDescription.length < 10 || descriptionRec.isPending}
-                            onClick={() => {
-                              descriptionRec.mutate(appDescription, {
-                                onSuccess: (data) => {
-                                  if (data.detected_signals.audience) setSelectedAudience(data.detected_signals.audience)
-                                  if (data.detected_signals.vibe) setSelectedVibe(data.detected_signals.vibe)
-                                  if (data.detected_signals.age_group) setSelectedAge(data.detected_signals.age_group)
-                                }
-                              })
-                            }}
-                            className="h-7 text-xs mb-0.5"
-                          >
-                            {descriptionRec.isPending ? (
-                              <Loader2 size={12} className="animate-spin" />
-                            ) : (
-                              <Sparkles size={12} />
-                            )}
-                            Analyze
-                          </Button>
-                        </div>
-                        {descriptionRec.data && (
-                          <p className="text-[10px] text-muted-foreground mt-0.5">
-                            Detected: {[
-                              descriptionRec.data.detected_signals.audience && `Audience: ${descriptionRec.data.detected_signals.audience}`,
-                              descriptionRec.data.detected_signals.vibe && `Vibe: ${descriptionRec.data.detected_signals.vibe}`,
-                              descriptionRec.data.detected_signals.age_group && `Age: ${descriptionRec.data.detected_signals.age_group}`,
-                            ].filter(Boolean).join(' | ')}
-                          </p>
+            {(stylePickerTab === 'browse' || stylePickerTab === 'describe') && showRecommender && profiles && (
+              <div className="shrink-0 px-4 py-2 border-b bg-primary/5">
+                <div className="flex gap-4 items-start">
+                  {/* Description input */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex gap-2 items-end">
+                      <div className="flex-1">
+                        <Label className="text-[11px]">Describe your app (optional)</Label>
+                        <textarea
+                          value={appDescription}
+                          onChange={(e) => setAppDescription(e.target.value)}
+                          placeholder="e.g., A sugar tracking app for diabetics aged 50-80..."
+                          className="w-full text-xs rounded-md border border-border bg-background px-2 py-1.5 resize-none h-10 mt-0.5"
+                        />
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={appDescription.length < 10 || descriptionRec.isPending}
+                        onClick={() => {
+                          descriptionRec.mutate(appDescription, {
+                            onSuccess: (data) => {
+                              if (data.detected_signals.audience) setSelectedAudience(data.detected_signals.audience)
+                              if (data.detected_signals.vibe) setSelectedVibe(data.detected_signals.vibe)
+                              if (data.detected_signals.age_group) setSelectedAge(data.detected_signals.age_group)
+                            }
+                          })
+                        }}
+                        className="h-7 text-xs mb-0.5"
+                      >
+                        {descriptionRec.isPending ? (
+                          <Loader2 size={12} className="animate-spin" />
+                        ) : (
+                          <Sparkles size={12} />
                         )}
-                      </div>
-
-                      {/* Manual selectors */}
-                      <div className="flex gap-2 shrink-0">
-                        <div>
-                          <Label className="text-[11px]">Audience</Label>
-                          <select
-                            value={selectedAudience}
-                            onChange={(e) => setSelectedAudience(e.target.value)}
-                            className="w-full mt-0.5 text-xs rounded-md border border-border bg-background px-2 py-1.5"
-                          >
-                            <option value="">Any</option>
-                            {Object.entries(profiles.audiences).map(([key, val]) => (
-                              <option key={key} value={key}>{val.label}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div>
-                          <Label className="text-[11px]">Vibe</Label>
-                          <select
-                            value={selectedVibe}
-                            onChange={(e) => setSelectedVibe(e.target.value)}
-                            className="w-full mt-0.5 text-xs rounded-md border border-border bg-background px-2 py-1.5"
-                          >
-                            <option value="">Any</option>
-                            {Object.entries(profiles.vibes).map(([key, val]) => (
-                              <option key={key} value={key}>{val.label}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div>
-                          <Label className="text-[11px]">Age Group</Label>
-                          <select
-                            value={selectedAge}
-                            onChange={(e) => setSelectedAge(e.target.value)}
-                            className="w-full mt-0.5 text-xs rounded-md border border-border bg-background px-2 py-1.5"
-                          >
-                            <option value="">Any</option>
-                            {Object.entries(profiles.age_groups).map(([key, val]) => (
-                              <option key={key} value={key}>{val.label}</option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
+                        Analyze
+                      </Button>
                     </div>
-                    {recommendations && recommendations.length > 0 && (
-                      <p className="text-[10px] text-muted-foreground mt-1">
-                        Top picks highlighted below. Best match: <span className="font-semibold text-primary">{styles?.find((s: StyleOption) => s.id === recommendations[0].style_id)?.name}</span>
+                    {descriptionRec.data && (
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        Detected: {[
+                          descriptionRec.data.detected_signals.audience && `Audience: ${descriptionRec.data.detected_signals.audience}`,
+                          descriptionRec.data.detected_signals.vibe && `Vibe: ${descriptionRec.data.detected_signals.vibe}`,
+                          descriptionRec.data.detected_signals.age_group && `Age: ${descriptionRec.data.detected_signals.age_group}`,
+                        ].filter(Boolean).join(' | ')}
                       </p>
                     )}
                   </div>
-                )}
 
-                {/* Screenshot Extraction Tab */}
-                {stylePickerTab === 'screenshot' && (
-                  <div className="shrink-0 px-4 py-3 border-b">
-                    <div className="flex items-start gap-4 max-w-2xl mx-auto">
-                      <label
-                        className={`flex flex-col items-center gap-2 p-4 border-2 border-dashed rounded-xl cursor-pointer transition-colors flex-1 ${
-                          screenshotExtracting
-                            ? 'border-primary/50 bg-primary/5'
-                            : 'border-border hover:border-primary/50 hover:bg-muted/50'
-                        }`}
+                  {/* Manual selectors */}
+                  <div className="flex gap-2 shrink-0">
+                    <div>
+                      <Label className="text-[11px]">Audience</Label>
+                      <select
+                        value={selectedAudience}
+                        onChange={(e) => setSelectedAudience(e.target.value)}
+                        className="w-full mt-0.5 text-xs rounded-md border border-border bg-background px-2 py-1.5"
                       >
-                        <input
-                          type="file"
-                          accept="image/png,image/jpeg,image/webp"
-                          className="hidden"
-                          onChange={handleScreenshotUpload}
-                          disabled={screenshotExtracting}
-                        />
-                        {screenshotExtracting ? (
-                          <>
-                            <Loader2 size={24} className="text-primary animate-spin" />
-                            <span className="text-xs text-muted-foreground">Analyzing...</span>
-                          </>
-                        ) : (
-                          <>
-                            <Upload size={24} className="text-muted-foreground" />
-                            <div className="text-center">
-                              <p className="text-xs font-medium">Drop an image or click to upload</p>
-                              <p className="text-[10px] text-muted-foreground">.png, .jpg, or .webp</p>
-                            </div>
-                          </>
-                        )}
-                      </label>
-
-                      {/* Extraction Results */}
-                      {extractionResult && (
-                        <Card className="flex-1">
-                          <CardContent className="p-3 space-y-2">
-                            <div className="flex items-center gap-2">
-                              <ImageIcon size={14} className="text-primary" />
-                              <span className="font-medium text-xs">Style Analysis</span>
-                            </div>
-
-                            {extractionResult.identified_style.primary && (
-                              <div className="space-y-0.5">
-                                <p className="text-xs">
-                                  <span className="text-muted-foreground">Detected: </span>
-                                  <span className="font-semibold">
-                                    {styles?.find(s => s.id === extractionResult.identified_style.primary)?.name || extractionResult.identified_style.primary}
-                                  </span>
-                                  {extractionResult.identified_style.accent && (
-                                    <span className="text-muted-foreground">
-                                      {' + '}
-                                      <span className="font-medium">
-                                        {styles?.find(s => s.id === extractionResult.identified_style.accent)?.name || extractionResult.identified_style.accent}
-                                      </span>
-                                      {' accent'}
-                                    </span>
-                                  )}
-                                </p>
-                                <p className="text-[10px] text-muted-foreground">
-                                  Confidence: {extractionResult.identified_style.primary_confidence}
-                                </p>
-                              </div>
-                            )}
-
-                            {/* Extracted color palette preview */}
-                            {extractionResult.tailwind_config && !!(extractionResult.tailwind_config as Record<string, unknown>).colors && (
-                              <div className="space-y-0.5">
-                                <p className="text-[10px] text-muted-foreground">Extracted palette:</p>
-                                <div className="flex gap-1">
-                                  {(() => {
-                                    const colors = (extractionResult.tailwind_config as Record<string, Record<string, Record<string, string>>>).colors || {}
-                                    const swatches: string[] = []
-                                    if (colors.brand?.DEFAULT) swatches.push(colors.brand.DEFAULT)
-                                    if (colors.surface?.canvas) swatches.push(colors.surface.canvas)
-                                    if (colors.surface?.base) swatches.push(colors.surface.base)
-                                    if (colors.text?.primary) swatches.push(colors.text.primary)
-                                    return swatches.slice(0, 6).map((c, i) => (
-                                      <div
-                                        key={i}
-                                        className="h-5 w-6 rounded border border-black/10"
-                                        style={{ backgroundColor: c }}
-                                        title={c}
-                                      />
-                                    ))
-                                  })()}
-                                </div>
-                              </div>
-                            )}
-
-                            <div className="flex gap-2">
-                              <Button size="sm" className="h-7 text-xs" onClick={() => {
-                                if (extractionResult.identified_style.primary) {
-                                  setStyleId(extractionResult.identified_style.primary)
-                                  if (extractionResult.identified_style.accent) {
-                                    setAccentStyleId(extractionResult.identified_style.accent)
-                                  }
-                                  setStylePickerTab('browse')
-                                }
-                              }}>
-                                Use This Style
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 text-xs"
-                                onClick={() => {
-                                  setExtractionResult(null)
-                                }}
-                              >
-                                Try Another
-                              </Button>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      )}
-
-                      {extractScreenshot.isError && (
-                        <Alert variant="destructive" className="flex-1">
-                          <AlertDescription className="text-xs">
-                            Failed to analyze screenshot. Make sure you have a valid ANTHROPIC_API_KEY set.
-                          </AlertDescription>
-                        </Alert>
-                      )}
+                        <option value="">Any</option>
+                        {Object.entries(profiles.audiences).map(([key, val]) => (
+                          <option key={key} value={key}>{val.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <Label className="text-[11px]">Vibe</Label>
+                      <select
+                        value={selectedVibe}
+                        onChange={(e) => setSelectedVibe(e.target.value)}
+                        className="w-full mt-0.5 text-xs rounded-md border border-border bg-background px-2 py-1.5"
+                      >
+                        <option value="">Any</option>
+                        {Object.entries(profiles.vibes).map(([key, val]) => (
+                          <option key={key} value={key}>{val.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <Label className="text-[11px]">Age Group</Label>
+                      <select
+                        value={selectedAge}
+                        onChange={(e) => setSelectedAge(e.target.value)}
+                        className="w-full mt-0.5 text-xs rounded-md border border-border bg-background px-2 py-1.5"
+                      >
+                        <option value="">Any</option>
+                        {Object.entries(profiles.age_groups).map(([key, val]) => (
+                          <option key={key} value={key}>{val.label}</option>
+                        ))}
+                      </select>
                     </div>
                   </div>
-                )}
-
-                {stylePickerTab !== 'screenshot' && (
-                  <div className="flex-1 min-h-0 flex overflow-hidden">
-                    {/* Left panel: modifiers, accent, colors (always visible) */}
-                    <div className="w-[240px] shrink-0 border-r overflow-y-auto p-3 space-y-3">
-                      {/* Modifier Selection */}
-                      {modifiers && modifiers.length > 0 && (
-                        <div className="space-y-1.5">
-                          <div className="flex items-center gap-2">
-                            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Modifiers</span>
-                            <Badge variant="secondary" className="text-[9px] h-4">Optional</Badge>
-                          </div>
-                          <div className="space-y-1">
-                            {modifiers.map((mod) => {
-                              const isActive = selectedModifiers.includes(mod.id)
-                              return (
-                                <button
-                                  key={mod.id}
-                                  onClick={() => {
-                                    setSelectedModifiers(prev =>
-                                      isActive
-                                        ? prev.filter(id => id !== mod.id)
-                                        : prev.length < 3
-                                          ? [...prev, mod.id]
-                                          : prev
-                                    )
-                                  }}
-                                  className={`w-full text-left p-1.5 rounded-md border transition-colors ${
-                                    isActive
-                                      ? 'border-primary bg-primary/10'
-                                      : 'border-border hover:border-primary/50'
-                                  }`}
-                                >
-                                  <div className="flex items-center gap-1.5">
-                                    {isActive && <Check size={10} className="text-primary" />}
-                                    <span className="text-[11px] font-medium">{mod.name}</span>
-                                  </div>
-                                  <p className="text-[10px] text-muted-foreground mt-0.5 leading-snug">
-                                    {mod.description}
-                                  </p>
-                                </button>
-                              )
-                            })}
-                          </div>
-                          {selectedModifiers.length >= 3 && (
-                            <p className="text-[10px] text-muted-foreground">Maximum 3 modifiers.</p>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Accent Style Picker */}
-                      {accentStyles && accentStyles.length > 0 && (
-                        <div className="space-y-1.5">
-                          <div className="flex items-center gap-2">
-                            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Accent Style</span>
-                            <Badge variant="secondary" className="text-[9px] h-4">Optional</Badge>
-                          </div>
-                          <div className="space-y-1">
-                            {accentStyles.map((accent: AccentStyleOption) => {
-                              const isActive = accentStyleId === accent.id
-                              return (
-                                <button
-                                  key={accent.id}
-                                  onClick={() => setAccentStyleId(isActive ? null : accent.id)}
-                                  className={`w-full text-left p-1.5 rounded-md border transition-colors ${
-                                    isActive
-                                      ? 'border-primary bg-primary/10'
-                                      : 'border-border hover:border-primary/50'
-                                  }`}
-                                >
-                                  <div className="flex items-center gap-1.5">
-                                    {isActive && <Check size={10} className="text-primary" />}
-                                    <span className="text-[11px] font-medium">{accent.name}</span>
-                                  </div>
-                                </button>
-                              )
-                            })}
-                          </div>
-                          {accentStyleId && (
-                            <p className="text-[10px] text-muted-foreground">
-                              Accent controls buttons and inputs only.
-                            </p>
-                          )}
-                        </div>
-                      )}
-
-                      {/* No style selected hint for accent */}
-                      {!styleId && (!accentStyles || accentStyles.length === 0) && (
-                        <div className="space-y-1.5">
-                          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Accent Style</span>
-                          <p className="text-[10px] text-muted-foreground">Select a style to see compatible accents.</p>
-                        </div>
-                      )}
-
-                      {/* Color Customization */}
-                      {(() => {
-                        const selected = styles?.find((s: StyleOption) => s.id === styleId)
-                        if (!selected?.style_guide) return null
-                        return (
-                          <ColorCustomizer
-                            styleGuide={selected.style_guide}
-                            customColors={customColors}
-                            onChange={setCustomColors}
-                            selectedPaletteId={selectedPaletteId}
-                            onPaletteSelect={setSelectedPaletteId}
-                          />
-                        )
-                      })()}
-                    </div>
-
-                    {/* Style Grid */}
-                    <div className="flex-1 min-w-0 overflow-y-auto p-3">
-                      {stylesLoading && (
-                        <div className="flex items-center justify-center gap-2 py-8 text-muted-foreground">
-                          <Loader2 size={16} className="animate-spin" />
-                          <span>Loading styles...</span>
-                        </div>
-                      )}
-
-                      {!stylesLoading && filteredStyles.length > 0 && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2">
-                          {filteredStyles.map((style: StyleOption) => {
-                            const swatches = STYLE_SWATCHES[style.id] || ['#3B82F6', '#FFFFFF', '#111827', '#22C55E']
-                            const isRecommended = recommendedIds.has(style.id)
-                            const isTopPick = recommendations && recommendations.length > 0 && recommendations[0].style_id === style.id
-                            const isSelected = styleId === style.id
-
-                            return (
-                              <Card
-                                key={style.id}
-                                className={`cursor-pointer transition-all hover:border-primary ${
-                                  isRecommended ? 'border-primary/50 ring-1 ring-primary/20' : ''
-                                } ${isTopPick ? 'ring-2 ring-primary/40' : ''} ${
-                                  isSelected ? 'border-primary ring-2 ring-primary/30' : ''
-                                }`}
-                                onClick={() => handleStyleSelect(style.id)}
-                              >
-                                <CardContent className="p-2 flex flex-col gap-1.5">
-                                  {/* Style info */}
-                                  <div className="flex flex-col gap-0.5">
-                                    {/* Color swatches + name row */}
-                                    <div className="flex items-center gap-1.5">
-                                      <div className="flex gap-0.5">
-                                        {swatches.map((color, i) => (
-                                          <div
-                                            key={i}
-                                            className="h-3 w-3 rounded-sm border border-black/10"
-                                            style={{ backgroundColor: color }}
-                                          />
-                                        ))}
-                                      </div>
-                                      <span className="font-semibold text-xs leading-tight truncate">{style.name}</span>
-                                      {isTopPick && (
-                                        <Badge className="text-[8px] px-1 py-0 h-3.5">Best</Badge>
-                                      )}
-                                      {isRecommended && !isTopPick && (
-                                        <Check size={10} className="text-primary shrink-0" />
-                                      )}
-                                      <Badge variant="outline" className="text-[8px] px-1 py-0 h-3.5 ml-auto capitalize shrink-0">
-                                        {style.category}
-                                      </Badge>
-                                    </div>
-
-                                    {/* Description - single line */}
-                                    <p className="text-[10px] text-muted-foreground leading-snug line-clamp-1">
-                                      {style.description}
-                                    </p>
-
-                                    {/* Best for */}
-                                    <p className="text-[9px] text-muted-foreground/70 leading-snug line-clamp-1">
-                                      <span className="font-medium text-muted-foreground/90">Best for:</span> {style.best_for}
-                                    </p>
-                                  </div>
-
-                                  {/* UI Preview - full width below text */}
-                                  {style.style_guide && (
-                                    <div className="w-full">
-                                      <StylePreview
-                                        guide={style.style_guide}
-                                        size="compact"
-                                        styleName={style.name}
-                                        modifiers={selectedModifiers.length > 0 ? selectedModifiers : undefined}
-                                        accentGuide={accentStyleId
-                                          ? styles?.find((s: StyleOption) => s.id === accentStyleId)?.style_guide
-                                          : undefined}
-                                      />
-                                    </div>
-                                  )}
-                                </CardContent>
-                              </Card>
-                            )
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  </div>
+                </div>
+                {recommendations && recommendations.length > 0 && (
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    Top picks highlighted below. Best match: <span className="font-semibold text-primary">{styles?.find((s: StyleOption) => s.id === recommendations[0].style_id)?.name}</span>
+                  </p>
                 )}
               </div>
             )}
 
             {/* ==================================================== */}
-            {/* PREVIEW VIEW: sidebar + full render                    */}
+            {/* Screenshot Extraction Tab                               */}
             {/* ==================================================== */}
-            {styleView === 'preview' && (
-              <div className="flex-1 min-h-0 flex overflow-hidden">
-                {/* Left sidebar - wider for full-screen */}
-                <div className="w-[320px] shrink-0 border-r bg-muted/30 overflow-y-auto">
-                  {/* Styles section */}
-                  <div className="p-3 border-b">
-                    <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Styles</h4>
-                    <div className="space-y-0.5">
-                      {(styles || []).map((style: StyleOption) => {
-                        const swatches = STYLE_SWATCHES[style.id] || ['#3B82F6', '#FFFFFF', '#111827']
-                        const isActive = styleId === style.id
-                        return (
-                          <button
-                            key={style.id}
-                            onClick={() => handleStyleSelect(style.id)}
-                            className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-left transition-colors ${
-                              isActive
-                                ? 'bg-primary/10 border-l-2 border-l-primary pl-2'
-                                : 'hover:bg-muted border-l-2 border-l-transparent pl-2'
-                            }`}
-                          >
-                            <div className="flex gap-0.5 shrink-0">
-                              {swatches.slice(0, 3).map((color, i) => (
-                                <div
-                                  key={i}
-                                  className="w-3 h-3 rounded-sm"
-                                  style={{
-                                    backgroundColor: color,
-                                    border: '1px solid rgba(0,0,0,0.1)',
-                                  }}
-                                />
-                              ))}
+            {stylePickerTab === 'screenshot' && (
+              <div className="shrink-0 px-4 py-3 border-b">
+                <div className="flex items-start gap-4 max-w-2xl mx-auto">
+                  <label
+                    className={`flex flex-col items-center gap-2 p-4 border-2 border-dashed rounded-xl cursor-pointer transition-colors flex-1 ${
+                      screenshotExtracting
+                        ? 'border-primary/50 bg-primary/5'
+                        : 'border-border hover:border-primary/50 hover:bg-muted/50'
+                    }`}
+                  >
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      className="hidden"
+                      onChange={handleScreenshotUpload}
+                      disabled={screenshotExtracting}
+                    />
+                    {screenshotExtracting ? (
+                      <>
+                        <Loader2 size={24} className="text-primary animate-spin" />
+                        <span className="text-xs text-muted-foreground">Analyzing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Upload size={24} className="text-muted-foreground" />
+                        <div className="text-center">
+                          <p className="text-xs font-medium">Drop an image or click to upload</p>
+                          <p className="text-[10px] text-muted-foreground">.png, .jpg, or .webp</p>
+                        </div>
+                      </>
+                    )}
+                  </label>
+
+                  {/* Extraction Results */}
+                  {extractionResult && (
+                    <Card className="flex-1">
+                      <CardContent className="p-3 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <ImageIcon size={14} className="text-primary" />
+                          <span className="font-medium text-xs">Style Analysis</span>
+                        </div>
+
+                        {extractionResult.identified_style.primary && (
+                          <div className="space-y-0.5">
+                            <p className="text-xs">
+                              <span className="text-muted-foreground">Detected: </span>
+                              <span className="font-semibold">
+                                {styles?.find(s => s.id === extractionResult.identified_style.primary)?.name || extractionResult.identified_style.primary}
+                              </span>
+                              {extractionResult.identified_style.accent && (
+                                <span className="text-muted-foreground">
+                                  {' + '}
+                                  <span className="font-medium">
+                                    {styles?.find(s => s.id === extractionResult.identified_style.accent)?.name || extractionResult.identified_style.accent}
+                                  </span>
+                                  {' accent'}
+                                </span>
+                              )}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground">
+                              Confidence: {extractionResult.identified_style.primary_confidence}
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Extracted color palette preview */}
+                        {extractionResult.tailwind_config && !!(extractionResult.tailwind_config as Record<string, unknown>).colors && (
+                          <div className="space-y-0.5">
+                            <p className="text-[10px] text-muted-foreground">Extracted palette:</p>
+                            <div className="flex gap-1">
+                              {(() => {
+                                const colors = (extractionResult.tailwind_config as Record<string, Record<string, Record<string, string>>>).colors || {}
+                                const swatches: string[] = []
+                                if (colors.brand?.DEFAULT) swatches.push(colors.brand.DEFAULT)
+                                if (colors.surface?.canvas) swatches.push(colors.surface.canvas)
+                                if (colors.surface?.base) swatches.push(colors.surface.base)
+                                if (colors.text?.primary) swatches.push(colors.text.primary)
+                                return swatches.slice(0, 6).map((c, i) => (
+                                  <div
+                                    key={i}
+                                    className="h-5 w-6 rounded border border-black/10"
+                                    style={{ backgroundColor: c }}
+                                    title={c}
+                                  />
+                                ))
+                              })()}
                             </div>
-                            <span className={`text-sm truncate ${isActive ? 'font-medium text-foreground' : 'text-muted-foreground'}`}>
-                              {style.name}
-                            </span>
-                          </button>
+                          </div>
+                        )}
+
+                        <div className="flex gap-2">
+                          <Button size="sm" className="h-7 text-xs" onClick={() => {
+                            if (extractionResult.identified_style.primary) {
+                              setStyleId(extractionResult.identified_style.primary)
+                              if (extractionResult.identified_style.accent) {
+                                setAccentStyleId(extractionResult.identified_style.accent)
+                              }
+                              setStylePickerTab('browse')
+                            }
+                          }}>
+                            Use This Style
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs"
+                            onClick={() => {
+                              setExtractionResult(null)
+                            }}
+                          >
+                            Try Another
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {extractScreenshot.isError && (
+                    <Alert variant="destructive" className="flex-1">
+                      <AlertDescription className="text-xs">
+                        Failed to analyze screenshot. Make sure you have a valid ANTHROPIC_API_KEY set.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ==================================================== */}
+            {/* UNIFIED LAYOUT: style browser + live preview            */}
+            {/* ==================================================== */}
+            {stylePickerTab !== 'screenshot' && (
+              <div className="flex-1 min-h-0 flex overflow-hidden">
+                {/* LEFT PANEL: style grid + controls */}
+                <div className="w-[480px] shrink-0 border-r overflow-y-auto p-3 space-y-3">
+                  {/* Style Grid - 2 columns always */}
+                  {stylesLoading && (
+                    <div className="flex items-center justify-center gap-2 py-8 text-muted-foreground">
+                      <Loader2 size={16} className="animate-spin" />
+                      <span>Loading styles...</span>
+                    </div>
+                  )}
+
+                  {!stylesLoading && filteredStyles.length > 0 && (
+                    <div className="grid grid-cols-2 gap-2">
+                      {filteredStyles.map((style: StyleOption) => {
+                        const swatches = STYLE_SWATCHES[style.id] || ['#3B82F6', '#FFFFFF', '#111827', '#22C55E']
+                        const isRecommended = recommendedIds.has(style.id)
+                        const isTopPick = recommendations && recommendations.length > 0 && recommendations[0].style_id === style.id
+                        const isSelected = styleId === style.id
+
+                        return (
+                          <Card
+                            key={style.id}
+                            className={`cursor-pointer transition-all hover:border-primary ${
+                              isRecommended ? 'border-primary/50 ring-1 ring-primary/20' : ''
+                            } ${isTopPick ? 'ring-2 ring-primary/40' : ''} ${
+                              isSelected ? 'border-primary ring-2 ring-primary/30' : ''
+                            }`}
+                            onClick={() => handleStyleSelect(style.id)}
+                          >
+                            <CardContent className="p-2 flex flex-col gap-1.5">
+                              {/* Style info */}
+                              <div className="flex flex-col gap-0.5">
+                                {/* Color swatches + name row */}
+                                <div className="flex items-center gap-1.5">
+                                  <div className="flex gap-0.5">
+                                    {swatches.map((color, i) => (
+                                      <div
+                                        key={i}
+                                        className="h-3 w-3 rounded-sm border border-black/10"
+                                        style={{ backgroundColor: color }}
+                                      />
+                                    ))}
+                                  </div>
+                                  <span className="font-semibold text-xs leading-tight truncate">{style.name}</span>
+                                  {isTopPick && (
+                                    <Badge className="text-[8px] px-1 py-0 h-3.5">Best</Badge>
+                                  )}
+                                  {isRecommended && !isTopPick && (
+                                    <Check size={10} className="text-primary shrink-0" />
+                                  )}
+                                  <Badge variant="outline" className="text-[8px] px-1 py-0 h-3.5 ml-auto capitalize shrink-0">
+                                    {style.category}
+                                  </Badge>
+                                </div>
+
+                                {/* Description - single line */}
+                                <p className="text-[10px] text-muted-foreground leading-snug line-clamp-1">
+                                  {style.description}
+                                </p>
+
+                                {/* Best for */}
+                                <p className="text-[9px] text-muted-foreground/70 leading-snug line-clamp-1">
+                                  <span className="font-medium text-muted-foreground/90">Best for:</span> {style.best_for}
+                                </p>
+                              </div>
+
+                              {/* UI Preview - full width below text */}
+                              {style.style_guide && (
+                                <div className="w-full">
+                                  <StylePreview
+                                    guide={style.style_guide}
+                                    size="compact"
+                                    styleName={style.name}
+                                    modifiers={selectedModifiers.length > 0 ? selectedModifiers : undefined}
+                                    accentGuide={accentStyleId
+                                      ? styles?.find((s: StyleOption) => s.id === accentStyleId)?.style_guide
+                                      : undefined}
+                                  />
+                                </div>
+                              )}
+                            </CardContent>
+                          </Card>
                         )
                       })}
                     </div>
-                  </div>
+                  )}
 
-                  {/* View mode + Page selector section */}
-                  <div className="p-3 border-b">
-                    <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">View</h4>
+                  {/* Separator */}
+                  <div className="border-t" />
+
+                  {/* Modifier Selection */}
+                  {modifiers && modifiers.length > 0 && (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Modifiers</span>
+                        <Badge variant="secondary" className="text-[9px] h-4">Optional</Badge>
+                      </div>
+                      <div className="space-y-1">
+                        {modifiers.map((mod) => {
+                          const isActive = selectedModifiers.includes(mod.id)
+                          return (
+                            <button
+                              key={mod.id}
+                              onClick={() => {
+                                setSelectedModifiers(prev =>
+                                  isActive
+                                    ? prev.filter(id => id !== mod.id)
+                                    : prev.length < 3
+                                      ? [...prev, mod.id]
+                                      : prev
+                                )
+                              }}
+                              className={`w-full text-left p-1.5 rounded-md border transition-colors ${
+                                isActive
+                                  ? 'border-primary bg-primary/10'
+                                  : 'border-border hover:border-primary/50'
+                              }`}
+                            >
+                              <div className="flex items-center gap-1.5">
+                                {isActive && <Check size={10} className="text-primary" />}
+                                <span className="text-[11px] font-medium">{mod.name}</span>
+                              </div>
+                              <p className="text-[10px] text-muted-foreground mt-0.5 leading-snug">
+                                {mod.description}
+                              </p>
+                            </button>
+                          )
+                        })}
+                      </div>
+                      {selectedModifiers.length >= 3 && (
+                        <p className="text-[10px] text-muted-foreground">Maximum 3 modifiers.</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Accent Style Picker */}
+                  {accentStyles && accentStyles.length > 0 && (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Accent Style</span>
+                        <Badge variant="secondary" className="text-[9px] h-4">Optional</Badge>
+                      </div>
+                      <div className="space-y-1">
+                        {accentStyles.map((accent: AccentStyleOption) => {
+                          const isActive = accentStyleId === accent.id
+                          return (
+                            <button
+                              key={accent.id}
+                              onClick={() => setAccentStyleId(isActive ? null : accent.id)}
+                              className={`w-full text-left p-1.5 rounded-md border transition-colors ${
+                                isActive
+                                  ? 'border-primary bg-primary/10'
+                                  : 'border-border hover:border-primary/50'
+                              }`}
+                            >
+                              <div className="flex items-center gap-1.5">
+                                {isActive && <Check size={10} className="text-primary" />}
+                                <span className="text-[11px] font-medium">{accent.name}</span>
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
+                      {accentStyleId && (
+                        <p className="text-[10px] text-muted-foreground">
+                          Accent controls buttons and inputs only.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* No style selected hint for accent */}
+                  {!styleId && (!accentStyles || accentStyles.length === 0) && (
+                    <div className="space-y-1.5">
+                      <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Accent Style</span>
+                      <p className="text-[10px] text-muted-foreground">Select a style to see compatible accents.</p>
+                    </div>
+                  )}
+
+                  {/* Color Customization */}
+                  {(() => {
+                    const selected = styles?.find((s: StyleOption) => s.id === styleId)
+                    if (!selected?.style_guide) return null
+                    return (
+                      <ColorCustomizer
+                        styleGuide={selected.style_guide}
+                        customColors={customColors}
+                        onChange={setCustomColors}
+                        selectedPaletteId={selectedPaletteId}
+                        onPaletteSelect={setSelectedPaletteId}
+                      />
+                    )
+                  })()}
+                </div>
+
+                {/* RIGHT PANEL: live preview (always visible) */}
+                <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+                  {/* View controls bar at top of preview */}
+                  <div className="shrink-0 flex items-center gap-2 px-3 py-2 border-b bg-muted/30">
                     {/* Quad / Single toggle */}
-                    <div className="flex bg-muted rounded-lg p-0.5 mb-2">
+                    <div className="flex bg-muted rounded-lg p-0.5">
                       <button
                         onClick={() => setPreviewViewMode('quad')}
-                        className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md transition-colors ${
+                        className={`flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md transition-colors ${
                           previewViewMode === 'quad' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'
                         }`}
                       >
@@ -1423,7 +1346,7 @@ export function NewProjectModal({
                       </button>
                       <button
                         onClick={() => setPreviewViewMode('single')}
-                        className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md transition-colors ${
+                        className={`flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md transition-colors ${
                           previewViewMode === 'single' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'
                         }`}
                       >
@@ -1431,203 +1354,121 @@ export function NewProjectModal({
                         Single
                       </button>
                     </div>
-                    {/* Page selector - click goes to single view of that page */}
-                    <div className="space-y-0.5">
-                      {([
-                        { id: 'landing' as PreviewPage, label: 'Landing' },
-                        { id: 'dashboard' as PreviewPage, label: 'Dashboard' },
-                        { id: 'settings' as PreviewPage, label: 'Settings' },
-                        { id: 'feed' as PreviewPage, label: 'Feed' },
-                      ]).map((page) => {
-                        const isActive = previewViewMode === 'single' && previewPage === page.id
-                        return (
+                    {/* Page selector buttons (single mode) */}
+                    {previewViewMode === 'single' && (
+                      <div className="flex gap-1 ml-2">
+                        {(['landing', 'dashboard', 'settings', 'feed'] as PreviewPage[]).map((p) => (
                           <button
-                            key={page.id}
-                            onClick={() => {
-                              setPreviewPage(page.id)
-                              setPreviewViewMode('single')
-                            }}
-                            className={`w-full text-left px-2.5 py-1.5 rounded-md text-sm transition-colors ${
-                              isActive
-                                ? 'bg-primary/10 font-medium text-foreground'
-                                : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                            key={p}
+                            onClick={() => setPreviewPage(p)}
+                            className={`px-2 py-0.5 text-[11px] font-medium rounded-md transition-colors ${
+                              previewPage === p ? 'bg-primary/10 text-foreground' : 'text-muted-foreground hover:bg-muted'
                             }`}
                           >
-                            {page.label}
+                            {p.charAt(0).toUpperCase() + p.slice(1)}
                           </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Modifiers section */}
-                  {modifiers && modifiers.length > 0 && (
-                    <div className="p-3 border-b">
-                      <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Modifiers</h4>
-                      <div className="space-y-1">
-                        {modifiers.map((mod) => {
-                          const isActive = selectedModifiers.includes(mod.id)
-                          return (
-                            <label
-                              key={mod.id}
-                              className="flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer hover:bg-muted transition-colors"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={isActive}
-                                onChange={() => {
-                                  setSelectedModifiers(prev =>
-                                    isActive
-                                      ? prev.filter(id => id !== mod.id)
-                                      : prev.length < 3
-                                        ? [...prev, mod.id]
-                                        : prev
-                                  )
-                                }}
-                                className="rounded border-border"
-                              />
-                              <span className={`text-sm ${isActive ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
-                                {mod.name}
-                              </span>
-                            </label>
-                          )
-                        })}
+                        ))}
                       </div>
-                    </div>
-                  )}
-
-                  {/* Accent section */}
-                  <div className="p-3">
-                    <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Accent</h4>
-                    <div className="space-y-0.5">
-                      <button
-                        onClick={() => setAccentStyleId(null)}
-                        className={`w-full text-left px-2.5 py-1.5 rounded-md text-sm transition-colors ${
-                          !accentStyleId
-                            ? 'bg-primary/10 font-medium text-foreground'
-                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                        }`}
-                      >
-                        None
-                      </button>
-                      {(styles || [])
-                        .filter((s: StyleOption) => s.id !== styleId && s.style_guide)
-                        .map((accent: StyleOption) => {
-                          const isActive = accentStyleId === accent.id
-                          return (
-                            <button
-                              key={accent.id}
-                              onClick={() => setAccentStyleId(isActive ? null : accent.id)}
-                              className={`w-full text-left px-2.5 py-1.5 rounded-md text-sm transition-colors ${
-                                isActive
-                                  ? 'bg-primary/10 font-medium text-foreground'
-                                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                              }`}
-                            >
-                              {accent.name}
-                            </button>
-                          )
-                        })}
-                    </div>
+                    )}
                   </div>
-                </div>
 
-                {/* Right: preview render area */}
-                <div className="flex-1 min-h-0 bg-muted/10 overflow-hidden">
-                  {styleId && (() => {
-                    const previewStyle = styles?.find((s: StyleOption) => s.id === styleId)
-                    if (!previewStyle?.style_guide) return (
+                  {/* Preview area */}
+                  <div className="flex-1 min-h-0 bg-muted/10 overflow-hidden">
+                    {styleId && (() => {
+                      const previewStyle = styles?.find((s: StyleOption) => s.id === styleId)
+                      if (!previewStyle?.style_guide) return (
+                        <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+                          Select a style to preview
+                        </div>
+                      )
+                      const guide = previewStyle.style_guide
+                      const accentGuide = accentStyleId
+                        ? styles?.find((s: StyleOption) => s.id === accentStyleId)?.style_guide
+                        : undefined
+
+                      if (previewViewMode === 'quad') {
+                        const quadPages: { id: PreviewPage; label: string; top: string; left: string }[] = [
+                          { id: 'landing', label: 'Landing', top: '0', left: '0' },
+                          { id: 'dashboard', label: 'Dashboard', top: '0', left: '50%' },
+                          { id: 'settings', label: 'Settings', top: '50%', left: '0' },
+                          { id: 'feed', label: 'Feed', top: '50%', left: '50%' },
+                        ]
+                        return (
+                          <div
+                            ref={quadGridRef}
+                            className="relative w-full h-full"
+                          >
+                            {quadPages.map((page) => (
+                              <div
+                                key={page.id}
+                                className="absolute overflow-hidden cursor-pointer group"
+                                style={{
+                                  top: page.top,
+                                  left: page.left,
+                                  width: '50%',
+                                  height: '50%',
+                                  borderRight: page.left === '0' ? '1px solid var(--color-border)' : undefined,
+                                  borderBottom: page.top === '0' ? '1px solid var(--color-border)' : undefined,
+                                }}
+                                onClick={() => {
+                                  setPreviewPage(page.id)
+                                  setPreviewViewMode('single')
+                                }}
+                              >
+                                {/* Page label overlay */}
+                                <div className="absolute top-1.5 left-1.5 z-10 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-black/60 text-white backdrop-blur-sm pointer-events-none">
+                                  {page.label}
+                                </div>
+                                {/* Expand icon on hover */}
+                                <div className="absolute top-1.5 right-1.5 z-10 opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded bg-black/60 text-white backdrop-blur-sm pointer-events-none">
+                                  <Maximize2 size={10} />
+                                </div>
+                                {/* Scaled-down preview */}
+                                <div
+                                  style={{
+                                    position: 'absolute',
+                                    top: 0,
+                                    left: 0,
+                                    width: `${QUAD_INTERNAL_W}px`,
+                                    height: `${QUAD_INTERNAL_H}px`,
+                                    transform: `scale(${quadScale})`,
+                                    transformOrigin: 'top left',
+                                  }}
+                                >
+                                  <StylePreview
+                                    guide={guide}
+                                    accentGuide={accentGuide}
+                                    modifiers={selectedModifiers}
+                                    size="full"
+                                    styleName={previewStyle.name}
+                                    activePage={page.id}
+                                  />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )
+                      }
+
+                      return (
+                        <div className="h-full overflow-y-auto">
+                          <StylePreview
+                            guide={guide}
+                            accentGuide={accentGuide}
+                            modifiers={selectedModifiers}
+                            size="full"
+                            styleName={previewStyle.name}
+                            activePage={previewPage}
+                          />
+                        </div>
+                      )
+                    })()}
+                    {!styleId && (
                       <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
                         Select a style to preview
                       </div>
-                    )
-                    const guide = previewStyle.style_guide
-                    const accentGuide = accentStyleId
-                      ? styles?.find((s: StyleOption) => s.id === accentStyleId)?.style_guide
-                      : undefined
-
-                    if (previewViewMode === 'quad') {
-                      const quadPages: { id: PreviewPage; label: string; top: string; left: string }[] = [
-                        { id: 'landing', label: 'Landing', top: '0', left: '0' },
-                        { id: 'dashboard', label: 'Dashboard', top: '0', left: '50%' },
-                        { id: 'settings', label: 'Settings', top: '50%', left: '0' },
-                        { id: 'feed', label: 'Feed', top: '50%', left: '50%' },
-                      ]
-                      return (
-                        <div
-                          ref={quadGridRef}
-                          className="relative w-full h-full"
-                        >
-                          {quadPages.map((page) => (
-                            <div
-                              key={page.id}
-                              className="absolute overflow-hidden cursor-pointer group"
-                              style={{
-                                top: page.top,
-                                left: page.left,
-                                width: '50%',
-                                height: '50%',
-                                borderRight: page.left === '0' ? '1px solid var(--color-border)' : undefined,
-                                borderBottom: page.top === '0' ? '1px solid var(--color-border)' : undefined,
-                              }}
-                              onClick={() => {
-                                setPreviewPage(page.id)
-                                setPreviewViewMode('single')
-                              }}
-                            >
-                              {/* Page label overlay */}
-                              <div className="absolute top-1.5 left-1.5 z-10 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-black/60 text-white backdrop-blur-sm pointer-events-none">
-                                {page.label}
-                              </div>
-                              {/* Expand icon on hover */}
-                              <div className="absolute top-1.5 right-1.5 z-10 opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded bg-black/60 text-white backdrop-blur-sm pointer-events-none">
-                                <Maximize2 size={10} />
-                              </div>
-                              {/* Scaled-down preview */}
-                              <div
-                                style={{
-                                  position: 'absolute',
-                                  top: 0,
-                                  left: 0,
-                                  width: `${QUAD_INTERNAL_W}px`,
-                                  height: `${QUAD_INTERNAL_H}px`,
-                                  transform: `scale(${quadScale})`,
-                                  transformOrigin: 'top left',
-                                }}
-                              >
-                                <StylePreview
-                                  guide={guide}
-                                  accentGuide={accentGuide}
-                                  modifiers={selectedModifiers}
-                                  size="full"
-                                  styleName={previewStyle.name}
-                                  activePage={page.id}
-                                />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )
-                    }
-
-                    return (
-                      <div className="h-full overflow-y-auto">
-                        <StylePreview
-                          guide={guide}
-                          accentGuide={accentGuide}
-                          modifiers={selectedModifiers}
-                          size="full"
-                          styleName={previewStyle.name}
-                          activePage={previewPage}
-                        />
-                      </div>
-                    )
-                  })()}
-                  {!styleId && (
-                    <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-                      Select a style from the sidebar to preview
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               </div>
             )}

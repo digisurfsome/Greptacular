@@ -226,6 +226,7 @@ def save_project_config(
     modifier_ids: list[str] | None = None,
     custom_colors: dict[str, str] | None = None,
     accent_style: str | None = None,
+    palette_id: str | None = None,
 ) -> None:
     """
     Write a project_config.json file recording the boilerplate and style choices.
@@ -242,6 +243,7 @@ def save_project_config(
                       Saved as ``style_modifiers`` in the config for prompt injection.
         custom_colors: Optional dict of color role overrides (e.g., {"primary": "#FF0000"}).
         accent_style: Optional accent style ID for interactive element overrides.
+        palette_id: Optional preset palette ID from the palette strip.
 
     Raises:
         OSError: If the configuration file cannot be written.
@@ -259,6 +261,7 @@ def save_project_config(
         "accent_style": accent_style,
         "style_modifiers": modifier_ids if modifier_ids else [],
         "custom_colors": custom_colors if custom_colors else {},
+        "palette_id": palette_id,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
 

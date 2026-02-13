@@ -264,8 +264,8 @@ The app itself uses the Minimalism style -- clean, professional, generous whites
 
       Monochrome & Minimal:
       16. "Pure Ink"
-          brand: #18181B  background: #FAFAFA  surface: #FFFFFF  text: #09090B  accent: #A1A1AA  muted: #E4E4E7
-          Vibe: Black and white, ultra-minimal, typography-first
+          brand: #374151  background: #FAFAFA  surface: #FFFFFF  text: #111827  accent: #6366F1  muted: #D1D5DB
+          Vibe: Near-monochrome with a touch of indigo, typography-first
 
       17. "Slate Mode"
           brand: #475569  background: #F1F5F9  surface: #FFFFFF  text: #0F172A  accent: #0EA5E9  muted: #CBD5E1
@@ -299,7 +299,7 @@ The app itself uses the Minimalism style -- clean, professional, generous whites
 
       Muted & Sophisticated:
       24. "Sage Whisper"
-          brand: #4D7C0F  background: #F5F5F4  surface: #FAFAF9  text: #292524  accent: #B45309  muted: #D6D3D1
+          brand: #4D7C0F  background: #F5F5F4  surface: #FAFAF9  text: #292524  accent: #0E7490  muted: #D6D3D1
           Vibe: Organic, wellness, journals, calm apps
 
       25. "Dusty Mauve"

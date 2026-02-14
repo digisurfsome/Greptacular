@@ -26,3 +26,16 @@ API_ENV_VARS: list[str] = [
     "CLOUD_ML_REGION",                 # GCP region (e.g., us-east5)
     "ANTHROPIC_VERTEX_PROJECT_ID",     # GCP project ID
 ]
+
+NOTIFICATION_ENV_VARS: list[str] = [
+    # Webhook
+    "PROGRESS_N8N_WEBHOOK_URL",        # n8n webhook URL for progress events
+    # Pushover push notifications
+    "PUSHOVER_USER_KEY",               # Pushover user/group key
+    "PUSHOVER_API_TOKEN",              # Pushover application API token
+    # Twilio SMS notifications
+    "TWILIO_ACCOUNT_SID",              # Twilio account SID
+    "TWILIO_AUTH_TOKEN",               # Twilio auth token
+    "TWILIO_FROM_NUMBER",              # Twilio sender phone number (E.164 format)
+    "TWILIO_TO_NUMBER",                # Recipient phone number (E.164 format)
+]

@@ -6,9 +6,11 @@ Functions for tracking and displaying progress of the autonomous coding agent.
 Uses direct SQLite access for database queries.
 """
 
+import base64
 import json
 import os
 import sqlite3
+import urllib.parse
 import urllib.request
 from contextlib import closing
 from datetime import datetime, timezone
@@ -16,6 +18,16 @@ from pathlib import Path
 
 WEBHOOK_URL = os.environ.get("PROGRESS_N8N_WEBHOOK_URL")
 PROGRESS_CACHE_FILE = ".progress_cache"
+
+# Pushover notification settings
+PUSHOVER_USER_KEY = os.environ.get("PUSHOVER_USER_KEY")
+PUSHOVER_API_TOKEN = os.environ.get("PUSHOVER_API_TOKEN")
+
+# Twilio SMS notification settings
+TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
+TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
+TWILIO_FROM_NUMBER = os.environ.get("TWILIO_FROM_NUMBER")
+TWILIO_TO_NUMBER = os.environ.get("TWILIO_TO_NUMBER")
 
 # SQLite connection settings for parallel mode safety
 SQLITE_TIMEOUT = 30  # seconds to wait for locks
@@ -142,11 +154,109 @@ def get_all_passing_features(project_dir: Path) -> list[dict]:
         return []
 
 
-def send_progress_webhook(passing: int, total: int, project_dir: Path) -> None:
-    """Send webhook notification when progress increases."""
-    if not WEBHOOK_URL:
-        return  # Webhook not configured
+def send_pushover_notification(title: str, message: str, priority: int = 0) -> None:
+    """Send a push notification via Pushover.
 
+    Silently returns if Pushover credentials are not configured.
+    Never raises exceptions — prints a warning on failure.
+
+    Args:
+        title: Notification title (e.g. "Feature Passed", "BUILD COMPLETE")
+        message: Notification body text
+        priority: 0 = normal, 1 = high (bypass quiet hours), 2 = emergency (repeats until acknowledged)
+    """
+    if not PUSHOVER_USER_KEY or not PUSHOVER_API_TOKEN:
+        return
+
+    params: dict[str, str | int] = {
+        "token": PUSHOVER_API_TOKEN,
+        "user": PUSHOVER_USER_KEY,
+        "title": title,
+        "message": message,
+        "priority": priority,
+    }
+
+    # Emergency priority requires retry interval and expiration
+    if priority == 2:
+        params["retry"] = 30    # Retry every 30 seconds
+        params["expire"] = 3600  # Stop retrying after 1 hour
+
+    try:
+        data = urllib.parse.urlencode(params).encode("utf-8")
+        req = urllib.request.Request(
+            "https://api.pushover.net/1/messages.json",
+            data=data,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        urllib.request.urlopen(req, timeout=10)
+    except Exception as e:
+        print(f"[Pushover notification failed: {e}]")
+
+
+def send_sms_notification(message: str) -> None:
+    """Send an SMS notification via Twilio.
+
+    Silently returns if Twilio credentials are not configured.
+    Uses urllib with HTTP Basic Auth — no external dependencies.
+    Never raises exceptions — prints a warning on failure.
+
+    Args:
+        message: SMS body text (max 1600 chars per Twilio, truncated if needed)
+    """
+    if not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN or not TWILIO_FROM_NUMBER or not TWILIO_TO_NUMBER:
+        return
+
+    url = f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_ACCOUNT_SID}/Messages.json"
+
+    params = {
+        "To": TWILIO_TO_NUMBER,
+        "From": TWILIO_FROM_NUMBER,
+        "Body": message[:1600],  # Twilio SMS body limit
+    }
+
+    try:
+        data = urllib.parse.urlencode(params).encode("utf-8")
+        # Basic Auth: base64-encode "account_sid:auth_token"
+        credentials = base64.b64encode(f"{TWILIO_ACCOUNT_SID}:{TWILIO_AUTH_TOKEN}".encode()).decode()
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Authorization": f"Basic {credentials}",
+            },
+        )
+        urllib.request.urlopen(req, timeout=10)
+    except Exception as e:
+        print(f"[Twilio SMS notification failed: {e}]")
+
+
+def send_critical_notification(title: str, message: str) -> None:
+    """Send an urgent notification via Pushover (emergency) and SMS.
+
+    Intended for agent crashes, unrecoverable errors, or situations
+    requiring immediate human attention. This function is not called
+    from progress tracking directly — it is exported for use by the
+    agent crash handler and scheduler.
+
+    Pushover emergency priority (2) causes the notification to repeat
+    every 30 seconds until the user acknowledges it in the Pushover app.
+
+    Args:
+        title: Alert title (e.g. "Agent Crashed", "Requires Input")
+        message: Detailed description of the issue
+    """
+    send_pushover_notification(title, message, priority=2)
+    send_sms_notification(f"[URGENT] {title}: {message}")
+
+
+def send_progress_webhook(passing: int, total: int, project_dir: Path) -> None:
+    """Send webhook and push/SMS notifications when progress increases.
+
+    Fires the existing n8n webhook (if configured) and also sends Pushover
+    and Twilio SMS notifications for feature completions and build completion.
+    Each notification channel is independent — any combination can be configured.
+    """
     from autoforge_paths import get_progress_cache_path
     cache_file = get_progress_cache_path(project_dir)
     previous = 0
@@ -186,27 +296,46 @@ def send_progress_webhook(passing: int, total: int, project_dir: Path) -> None:
                 else:
                     completed_tests.append(name)
 
-        payload = {
-            "event": "test_progress",
-            "passing": passing,
-            "total": total,
-            "percentage": round((passing / total) * 100, 1) if total > 0 else 0,
-            "previous_passing": previous,
-            "tests_completed_this_session": passing - previous,
-            "completed_tests": completed_tests,
-            "project": project_dir.name,
-            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-        }
+        project_name = project_dir.name
 
-        try:
-            req = urllib.request.Request(
-                WEBHOOK_URL,
-                data=json.dumps([payload]).encode("utf-8"),  # n8n expects array
-                headers={"Content-Type": "application/json"},
-            )
-            urllib.request.urlopen(req, timeout=5)
-        except Exception as e:
-            print(f"[Webhook notification failed: {e}]")
+        # --- Existing n8n webhook ---
+        if WEBHOOK_URL:
+            payload = {
+                "event": "test_progress",
+                "passing": passing,
+                "total": total,
+                "percentage": round((passing / total) * 100, 1) if total > 0 else 0,
+                "previous_passing": previous,
+                "tests_completed_this_session": passing - previous,
+                "completed_tests": completed_tests,
+                "project": project_name,
+                "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            }
+
+            try:
+                req = urllib.request.Request(
+                    WEBHOOK_URL,
+                    data=json.dumps([payload]).encode("utf-8"),  # n8n expects array
+                    headers={"Content-Type": "application/json"},
+                )
+                urllib.request.urlopen(req, timeout=5)
+            except Exception as e:
+                print(f"[Webhook notification failed: {e}]")
+
+        # --- Pushover and SMS notifications ---
+        all_complete = passing == total and total > 0
+
+        if all_complete:
+            # All features passing — high-priority notification
+            msg = f"AutoForge: ALL {total} features passing! Build complete for {project_name}"
+            send_pushover_notification("BUILD COMPLETE", msg, priority=1)
+            send_sms_notification(msg)
+        elif completed_tests:
+            # Individual feature(s) completed — normal-priority notification
+            feature_summary = ", ".join(completed_tests)
+            msg = f"AutoForge: Feature '{feature_summary}' passed ({passing}/{total}) - {project_name}"
+            send_pushover_notification("Feature Passed", msg, priority=0)
+            send_sms_notification(msg)
 
         # Update cache with count and passing IDs
         cache_file.write_text(

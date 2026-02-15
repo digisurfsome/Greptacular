@@ -348,6 +348,12 @@ const DEFAULT_SETTINGS: Settings = {
   api_base_url: null,
   api_has_auth_token: false,
   api_model: null,
+  review_agent_ratio: 1,
+  review_batch_size: 5,
+  auto_qa: true,
+  qa_thoroughness: 'standard',
+  computer_use_enabled: false,
+  computer_use_budget: 5,
 }
 
 const DEFAULT_PROVIDERS: ProvidersResponse = {
@@ -419,5 +425,36 @@ export function useUpdateSettings() {
       queryClient.invalidateQueries({ queryKey: ['available-models'] })
       queryClient.invalidateQueries({ queryKey: ['available-providers'] })
     },
+  })
+}
+
+// ============================================================================
+// QA Reports
+// ============================================================================
+
+export function useQAReport(projectName: string | null) {
+  return useQuery({
+    queryKey: ['qa-report', projectName],
+    queryFn: () => api.getQAReport(projectName!),
+    enabled: !!projectName,
+    retry: false,
+  })
+}
+
+export function useComputerUseReport(projectName: string | null) {
+  return useQuery({
+    queryKey: ['computer-use-report', projectName],
+    queryFn: () => api.getComputerUseReport(projectName!),
+    enabled: !!projectName,
+    retry: false,
+  })
+}
+
+export function useQAScreenshots(projectName: string | null) {
+  return useQuery({
+    queryKey: ['qa-screenshots', projectName],
+    queryFn: () => api.getQAScreenshots(projectName!),
+    enabled: !!projectName,
+    retry: false,
   })
 }

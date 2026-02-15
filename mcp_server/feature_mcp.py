@@ -222,7 +222,9 @@ def feature_get_summary(
             "name": feature.name,
             "passes": feature.passes,
             "in_progress": feature.in_progress,
-            "dependencies": feature.dependencies or []
+            "dependencies": feature.dependencies or [],
+            "reviewed": feature.reviewed if feature.reviewed is not None else False,
+            "qa_verified": feature.qa_verified if feature.qa_verified is not None else False,
         })
     finally:
         session.close()
@@ -302,9 +304,10 @@ def feature_mark_failing(
             return json.dumps({"error": f"Feature with ID {feature_id} not found"})
 
         # Atomic update for parallel safety
+        # Also reset reviewed and qa_verified when a regression is detected
         session.execute(text("""
             UPDATE features
-            SET passes = 0, in_progress = 0
+            SET passes = 0, in_progress = 0, reviewed = 0, qa_verified = 0
             WHERE id = :id
         """), {"id": feature_id})
         session.commit()
@@ -319,6 +322,85 @@ def feature_mark_failing(
     except Exception as e:
         session.rollback()
         return json.dumps({"error": f"Failed to mark feature failing: {str(e)}"})
+    finally:
+        session.close()
+
+
+@mcp.tool()
+def feature_mark_reviewed(
+    feature_id: Annotated[int, Field(description="The ID of the feature to mark as reviewed", ge=1)]
+) -> str:
+    """Mark a feature as reviewed after code review passes.
+
+    Only succeeds when the feature has passes=True. Sets reviewed=1.
+    Use this after the review agent has verified code quality, test quality,
+    and found no issues.
+
+    Args:
+        feature_id: The ID of the feature to mark as reviewed
+
+    Returns:
+        JSON with success confirmation or error for invalid state transitions.
+    """
+    session = get_session()
+    try:
+        feature = session.query(Feature).filter(Feature.id == feature_id).first()
+        if feature is None:
+            return json.dumps({"error": f"Feature with ID {feature_id} not found"})
+        if not feature.passes:
+            return json.dumps({"error": f"Feature {feature_id} must be passing before it can be reviewed. Current passes={feature.passes}"})
+        if feature.reviewed:
+            return json.dumps({"error": f"Feature {feature_id} is already reviewed"})
+
+        session.execute(text("""
+            UPDATE features SET reviewed = 1 WHERE id = :id AND passes = 1
+        """), {"id": feature_id})
+        session.commit()
+
+        session.refresh(feature)
+        return json.dumps({"success": True, "feature_id": feature_id, "name": feature.name, "reviewed": True})
+    except Exception as e:
+        session.rollback()
+        return json.dumps({"error": f"Failed to mark feature reviewed: {str(e)}"})
+    finally:
+        session.close()
+
+
+@mcp.tool()
+def feature_mark_qa_verified(
+    feature_id: Annotated[int, Field(description="The ID of the feature to mark as QA verified", ge=1)]
+) -> str:
+    """Mark a feature as QA verified after final QA sweep passes.
+
+    Only succeeds when the feature has reviewed=1. Sets qa_verified=1.
+    Use this after the QA agent has verified the feature in the final QA sweep.
+
+    Args:
+        feature_id: The ID of the feature to mark as QA verified
+
+    Returns:
+        JSON with success confirmation or error for invalid state transitions.
+    """
+    session = get_session()
+    try:
+        feature = session.query(Feature).filter(Feature.id == feature_id).first()
+        if feature is None:
+            return json.dumps({"error": f"Feature with ID {feature_id} not found"})
+        if not feature.reviewed:
+            return json.dumps({"error": f"Feature {feature_id} must be reviewed before QA verification. Current reviewed={feature.reviewed}"})
+        if feature.qa_verified:
+            return json.dumps({"error": f"Feature {feature_id} is already QA verified"})
+
+        session.execute(text("""
+            UPDATE features SET qa_verified = 1 WHERE id = :id AND reviewed = 1
+        """), {"id": feature_id})
+        session.commit()
+
+        session.refresh(feature)
+        return json.dumps({"success": True, "feature_id": feature_id, "name": feature.name, "qa_verified": True})
+    except Exception as e:
+        session.rollback()
+        return json.dumps({"error": f"Failed to mark feature QA verified: {str(e)}"})
     finally:
         session.close()
 

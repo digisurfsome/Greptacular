@@ -23,6 +23,15 @@ Your features have been pre-assigned by the orchestrator. For each feature ID li
 Use the feature_get_by_id tool with feature_id=<ID>
 ```
 
+### STEP 1.5: RUN GENERATED TESTS
+
+Before manual browser verification, check if a generated test file exists:
+
+1. Check for `tests/e2e/feature-{ID}-*.spec.ts` for the feature being tested
+2. If the file exists, run it: `npx playwright test tests/e2e/feature-{ID}-*.spec.ts`
+3. If the programmatic test FAILS: immediately call `feature_mark_failing` with the test output
+4. If the test PASSES or no test file exists: proceed to manual verification below
+
 ### STEP 2: VERIFY THE FEATURE
 
 **CRITICAL:** You MUST verify the feature through the actual UI using browser automation.

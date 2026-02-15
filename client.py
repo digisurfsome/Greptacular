@@ -222,11 +222,30 @@ INITIALIZER_AGENT_TOOLS = [
     "mcp__features__feature_set_dependencies",
 ]
 
+REVIEWER_AGENT_TOOLS = [
+    "mcp__features__feature_get_stats",
+    "mcp__features__feature_get_by_id",
+    "mcp__features__feature_get_summary",
+    "mcp__features__feature_mark_failing",
+    "mcp__features__feature_mark_reviewed",
+]
+
+QA_AGENT_TOOLS = [
+    "mcp__features__feature_get_stats",
+    "mcp__features__feature_get_by_id",
+    "mcp__features__feature_get_summary",
+    "mcp__features__feature_mark_passing",
+    "mcp__features__feature_mark_failing",
+    "mcp__features__feature_mark_reviewed",
+    "mcp__features__feature_mark_qa_verified",
+]
+
 # Union of all agent tool lists -- used for permissions (all tools remain
 # *permitted* so the MCP server can respond, but only the agent-type-specific
 # list is included in allowed_tools, which controls what the LLM sees).
 ALL_FEATURE_MCP_TOOLS = sorted(
     set(CODING_AGENT_TOOLS) | set(TESTING_AGENT_TOOLS) | set(INITIALIZER_AGENT_TOOLS)
+    | set(REVIEWER_AGENT_TOOLS) | set(QA_AGENT_TOOLS)
 )
 
 # Playwright MCP tools for browser automation.
@@ -315,6 +334,8 @@ def create_client(
         "coding": CODING_AGENT_TOOLS,
         "testing": TESTING_AGENT_TOOLS,
         "initializer": INITIALIZER_AGENT_TOOLS,
+        "reviewer": REVIEWER_AGENT_TOOLS,
+        "qa": QA_AGENT_TOOLS,
     }
     feature_tools = feature_tools_map.get(agent_type, CODING_AGENT_TOOLS)
 
@@ -328,13 +349,16 @@ def create_client(
         "coding": 150,
         "testing": 75,
         "initializer": 200,
+        "reviewer": 100,
+        "qa": 250,
     }
     max_turns = max_turns_map.get(agent_type, 150)
 
     # Build allowed tools list based on mode and agent type.
     # In YOLO mode, exclude Playwright tools for faster prototyping.
+    # Reviewer agents don't need browser automation (they review code, not UI).
     allowed_tools = [*BUILTIN_TOOLS, *feature_tools]
-    if not yolo_mode:
+    if not yolo_mode and agent_type not in ("reviewer",):
         allowed_tools.extend(PLAYWRIGHT_TOOLS)
 
     # Build permissions list.
@@ -367,8 +391,9 @@ def create_client(
         permissions_list.append(f"Glob({path}/**)")
         permissions_list.append(f"Grep({path}/**)")
 
-    if not yolo_mode:
+    if not yolo_mode and agent_type not in ("reviewer",):
         # Allow Playwright MCP tools for browser automation (standard mode only)
+        # Reviewer agents don't need browser automation
         permissions_list.extend(PLAYWRIGHT_TOOLS)
 
     # Create comprehensive security settings
@@ -425,8 +450,9 @@ def create_client(
             },
         },
     }
-    if not yolo_mode:
+    if not yolo_mode and agent_type not in ("reviewer",):
         # Include Playwright MCP server for browser automation (standard mode only)
+        # Reviewer agents don't need the Playwright server
         # Browser and headless mode configurable via environment variables
         browser = get_playwright_browser()
         playwright_args = [

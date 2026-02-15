@@ -102,6 +102,9 @@ def feature_to_response(f, passing_ids: set[int] | None = None) -> FeatureRespon
         # Handle legacy NULL values gracefully - treat as False
         passes=f.passes if f.passes is not None else False,
         in_progress=f.in_progress if f.in_progress is not None else False,
+        # QA pipeline fields - use getattr for databases that haven't been migrated
+        reviewed=getattr(f, 'reviewed', False) or False,
+        qa_verified=getattr(f, 'qa_verified', False) or False,
         blocked=blocked,
         blocking_dependencies=blocking,
     )
@@ -369,6 +372,57 @@ async def get_dependency_graph(project_name: str):
     except Exception:
         logger.exception("Failed to get dependency graph")
         raise HTTPException(status_code=500, detail="Failed to get dependency graph")
+
+
+@router.get("/qa-report")
+async def get_qa_report(project_name: str):
+    """Get the QA report markdown content."""
+    project_name = validate_project_name(project_name)
+    project_dir = _get_project_path(project_name)
+    if not project_dir:
+        raise HTTPException(status_code=404, detail=f"Project '{project_name}' not found")
+
+    report_path = project_dir / ".autoforge" / "qa-report.md"
+    if not report_path.exists():
+        raise HTTPException(status_code=404, detail="QA report not found")
+
+    return {"content": report_path.read_text(encoding="utf-8")}
+
+
+@router.get("/computer-use-report")
+async def get_computer_use_report(project_name: str):
+    """Get the Computer Use QA report."""
+    project_name = validate_project_name(project_name)
+    project_dir = _get_project_path(project_name)
+    if not project_dir:
+        raise HTTPException(status_code=404, detail=f"Project '{project_name}' not found")
+
+    report_path = project_dir / ".autoforge" / "computer-use-report.json"
+    if not report_path.exists():
+        raise HTTPException(status_code=404, detail="Computer Use report not found")
+
+    import json
+    return json.loads(report_path.read_text(encoding="utf-8"))
+
+
+@router.get("/qa-screenshots")
+async def list_qa_screenshots(project_name: str):
+    """List QA screenshots."""
+    project_name = validate_project_name(project_name)
+    project_dir = _get_project_path(project_name)
+    if not project_dir:
+        raise HTTPException(status_code=404, detail=f"Project '{project_name}' not found")
+
+    screenshots_dir = project_dir / ".autoforge" / "qa-screenshots"
+    if not screenshots_dir.exists():
+        return {"screenshots": []}
+
+    screenshots = []
+    for f in sorted(screenshots_dir.iterdir()):
+        if f.suffix.lower() in (".png", ".jpg", ".jpeg"):
+            screenshots.append({"name": f.name, "path": str(f.relative_to(project_dir))})
+
+    return {"screenshots": screenshots}
 
 
 # ============================================================================

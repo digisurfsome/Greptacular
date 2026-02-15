@@ -145,7 +145,7 @@ Authentication:
     # Agent type for subprocess mode
     parser.add_argument(
         "--agent-type",
-        choices=["initializer", "coding", "testing"],
+        choices=["initializer", "coding", "testing", "reviewer", "qa"],
         default=None,
         help="Agent type (used by orchestrator to spawn specialized subprocesses)",
     )
@@ -184,6 +184,70 @@ Authentication:
         type=int,
         default=3,
         help="Max features per coding agent batch (1-3, default: 3)",
+    )
+
+    # QA pipeline arguments
+    parser.add_argument(
+        "--review-agent-ratio",
+        type=int,
+        default=1,
+        help="Number of review agents (0-3, default: 1)",
+    )
+
+    parser.add_argument(
+        "--review-batch-size",
+        type=int,
+        default=5,
+        help="Features per review agent batch (1-10, default: 5)",
+    )
+
+    parser.add_argument(
+        "--auto-qa",
+        action="store_true",
+        default=True,
+        help="Auto-spawn QA when all features pass and are reviewed (default: true)",
+    )
+
+    parser.add_argument(
+        "--skip-qa",
+        action="store_true",
+        default=False,
+        help="Skip QA agent entirely",
+    )
+
+    parser.add_argument(
+        "--qa-thoroughness",
+        choices=["standard", "thorough"],
+        default="standard",
+        help="QA thoroughness level (default: standard)",
+    )
+
+    parser.add_argument(
+        "--computer-use",
+        action="store_true",
+        default=False,
+        help="Enable Computer Use exploratory QA after QA passes",
+    )
+
+    parser.add_argument(
+        "--computer-use-budget",
+        type=float,
+        default=5.0,
+        help="Max API spend for Computer Use in dollars (default: 5.0)",
+    )
+
+    parser.add_argument(
+        "--computer-use-scenarios",
+        type=str,
+        default="all",
+        help="Computer Use scenarios to run (comma-separated or 'all')",
+    )
+
+    parser.add_argument(
+        "--review-feature-ids",
+        type=str,
+        default=None,
+        help="Comma-separated feature IDs to review (used by orchestrator for reviewer agents)",
     )
 
     return parser.parse_args()
@@ -255,9 +319,24 @@ def main() -> None:
             print(f"Error: --feature-ids must be comma-separated integers, got: {args.feature_ids}")
             return
 
+    # Parse review feature IDs (comma-separated string -> list[int])
+    # Reviewer agents receive their feature assignments via this parameter
+    review_feature_ids: list[int] | None = None
+    if args.review_feature_ids:
+        try:
+            review_feature_ids = [int(x.strip()) for x in args.review_feature_ids.split(",") if x.strip()]
+        except ValueError:
+            print(f"Error: --review-feature-ids must be comma-separated integers, got: {args.review_feature_ids}")
+            return
+
     try:
         if args.agent_type:
             # Subprocess mode - spawned by orchestrator for a specific role
+            # For reviewer agents, pass review_feature_ids via the testing_feature_ids parameter
+            effective_testing_ids = testing_feature_ids
+            if args.agent_type == "reviewer" and review_feature_ids:
+                effective_testing_ids = review_feature_ids
+
             asyncio.run(
                 run_autonomous_agent(
                     project_dir=project_dir,
@@ -268,7 +347,7 @@ def main() -> None:
                     feature_ids=coding_feature_ids,
                     agent_type=args.agent_type,
                     testing_feature_id=args.testing_feature_id,
-                    testing_feature_ids=testing_feature_ids,
+                    testing_feature_ids=effective_testing_ids,
                 )
             )
         else:
@@ -291,6 +370,9 @@ def main() -> None:
             if concurrency != args.concurrency:
                 print(f"Clamping concurrency to valid range: {concurrency}", flush=True)
 
+            # Determine auto_qa setting (--skip-qa overrides --auto-qa)
+            auto_qa = args.auto_qa and not args.skip_qa
+
             asyncio.run(
                 run_parallel_orchestrator(
                     project_dir=project_dir,
@@ -300,6 +382,10 @@ def main() -> None:
                     testing_agent_ratio=args.testing_ratio,
                     testing_batch_size=args.testing_batch_size,
                     batch_size=args.batch_size,
+                    review_agent_ratio=args.review_agent_ratio,
+                    review_batch_size=args.review_batch_size,
+                    auto_qa=auto_qa,
+                    qa_thoroughness=args.qa_thoroughness,
                 )
             )
     except KeyboardInterrupt:

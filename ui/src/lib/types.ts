@@ -209,6 +209,8 @@ export interface Feature {
   steps: string[]
   passes: boolean
   in_progress: boolean
+  reviewed?: boolean              // Added for QA pipeline
+  qa_verified?: boolean           // Added for QA pipeline
   dependencies?: number[]           // Optional for backwards compat
   blocked?: boolean                 // Computed by API
   blocking_dependencies?: number[]  // Computed by API
@@ -327,7 +329,7 @@ export type AgentMascot = typeof AGENT_MASCOTS[number]
 export type AgentState = 'idle' | 'thinking' | 'working' | 'testing' | 'success' | 'error' | 'struggling'
 
 // Agent type (coding vs testing)
-export type AgentType = 'coding' | 'testing'
+export type AgentType = 'coding' | 'testing' | 'reviewer' | 'qa' | 'computer_use'
 
 // Individual log entry for an agent
 export interface AgentLogEntry {
@@ -699,6 +701,12 @@ export interface Settings {
   api_base_url: string | null
   api_has_auth_token: boolean
   api_model: string | null
+  review_agent_ratio: number
+  review_batch_size: number
+  auto_qa: boolean
+  qa_thoroughness: string
+  computer_use_enabled: boolean
+  computer_use_budget: number
 }
 
 export interface SettingsUpdate {
@@ -711,6 +719,12 @@ export interface SettingsUpdate {
   api_base_url?: string
   api_auth_token?: string
   api_model?: string
+  review_agent_ratio?: number
+  review_batch_size?: number
+  auto_qa?: boolean
+  qa_thoroughness?: string
+  computer_use_enabled?: boolean
+  computer_use_budget?: number
 }
 
 export interface ProjectSettingsUpdate {

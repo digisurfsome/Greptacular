@@ -1,0 +1,393 @@
+<project_specification>
+  <project_name>autoforge-post-build-reports</project_name>
+
+  <overview>
+    Post-build reports extend AutoForge with three autonomous agent types (documentation,
+    performance profiling, security audit) that run in parallel after the QA pipeline
+    completes. They produce professional deliverables -- API docs, user guides with
+    screenshots, performance benchmarks with grades, and OWASP Top 10 security audits --
+    committed directly to the project repository. The security agent can mark features as
+    failing to prevent shipping critical vulnerabilities. This is an internal feature
+    addition to the existing AutoForge codebase.
+  </overview>
+
+  <technology_stack>
+    <frontend>
+      <framework>React 19 with Vite 7 (existing AutoForge UI)</framework>
+      <styling>Tailwind CSS v4</styling>
+      <state_management>React hooks, TanStack Query, context</state_management>
+      <routing>React Router (existing)</routing>
+      <port>5173 (dev), served by FastAPI in production</port>
+    </frontend>
+    <backend>
+      <runtime>Python 3.11+ with FastAPI (existing AutoForge server)</runtime>
+      <database>SQLite with SQLAlchemy (existing features.db, registry.db)</database>
+      <port>8000</port>
+    </backend>
+    <communication>
+      <api>REST endpoints + WebSocket (existing patterns)</api>
+    </communication>
+  </technology_stack>
+
+  <prerequisites>
+    <environment_setup>
+      - Python 3.11+ with venv
+      - Node.js 20+ with npm
+      - Existing AutoForge installation with all dependencies
+      - Claude Code CLI (for running post-build agents)
+      - Playwright MCP server (for screenshots, page timing, auth testing)
+    </environment_setup>
+  </prerequisites>
+
+  <feature_count>17</feature_count>
+
+  <core_features>
+    <prompt_templates>
+      - System creates documentation agent prompt template at .claude/templates/docs_prompt.template.md with phases for codebase analysis, API documentation generation, user guide with Playwright screenshots, README generation, changelog from git history, and commit instructions
+      - System creates performance profiling agent prompt template at .claude/templates/performance_prompt.template.md with phases for page load measurement via Navigation Timing API, throttled network testing via CDP, bundle size analysis, API response time benchmarking, code anti-pattern scanning, and graded report generation (A/B/C/D/F)
+      - System creates security audit agent prompt template at .claude/templates/security_prompt.template.md with phases for npm audit, OWASP Top 10 code scanning, Playwright-based auth bypass testing, IDOR testing, HTTP security header checks, graded report generation, and feature_mark_failing for CRITICAL vulnerabilities
+    </prompt_templates>
+
+    <cli_and_agent_types>
+      - CLI accepts --agent-type with choices including docs, performance, and security alongside existing initializer, coding, and testing types
+      - CLI accepts --auto-post-build flag (default true) to automatically run post-build agents after QA passes
+      - CLI accepts --skip-docs, --skip-performance, and --skip-security flags to selectively disable individual post-build agents
+      - CLI accepts --post-build-only flag to run post-build agents on an already-built project without re-running the build pipeline
+    </cli_and_agent_types>
+
+    <prompt_loading>
+      - System loads docs agent prompt via get_docs_prompt() in prompts.py with app_spec.txt content injected into the template
+      - System loads performance agent prompt via get_performance_prompt() in prompts.py with app_spec.txt content injected into the template
+      - System loads security agent prompt via get_security_prompt() in prompts.py with app_spec.txt content injected into the template
+    </prompt_loading>
+
+    <client_configuration>
+      - Docs agent client provides read-only feature MCP tools (feature_get_stats, feature_get_summary) plus Playwright MCP server for screenshots plus standard built-in tools with Write access scoped to docs/ and README.md
+      - Performance agent client provides read-only feature MCP tools (feature_get_stats, feature_get_summary) plus Playwright MCP server for page timing and CDP access plus standard built-in tools with Write access scoped to docs/performance-report.md
+      - Security agent client provides feature MCP tools including feature_mark_failing (feature_get_stats, feature_get_summary, feature_get_by_id, feature_mark_failing) plus Playwright MCP server for auth and IDOR testing plus standard built-in tools with Write access scoped to docs/security-report.md
+    </client_configuration>
+
+    <agent_dispatch>
+      - Agent dispatch in agent.py routes docs agent type to the documentation prompt and client configuration
+      - Agent dispatch in agent.py routes performance agent type to the performance prompt and client configuration
+      - Agent dispatch in agent.py routes security agent type to the security prompt and client configuration
+    </agent_dispatch>
+
+    <orchestrator_spawning>
+      - Orchestrator spawns post-build agents in parallel after QA agent completes successfully via _check_post_build_ready()
+      - Orchestrator spawns each enabled post-build agent as an independent subprocess via _spawn_post_build_agent() using the same pattern as _spawn_testing_agent()
+      - Orchestrator tracks post-build state with _post_build_started flag, _post_build_completed set, and running_post_build_agents dict
+      - Post-build agents do not count toward MAX_TOTAL_AGENTS and have their own MAX_POST_BUILD_AGENTS limit of 3
+    </orchestrator_spawning>
+
+    <orchestrator_completion>
+      - Orchestrator detects when all enabled post-build agents have finished via _check_post_build_complete()
+      - Orchestrator calls _finalize_project() when all post-build agents complete, emitting a project_finalized WebSocket event with report paths and grades
+      - YOLO mode skips post-build agents entirely since there is no QA phase to trigger them
+    </orchestrator_completion>
+
+    <security_rerun>
+      - Orchestrator re-enters the build pipeline when the security agent marks features as failing, resetting QA and post-build state
+      - Orchestrator caps security audit runs at MAX_SECURITY_AUDIT_RUNS (3) to prevent infinite security-fix-security loops
+      - Orchestrator re-runs only the security agent (not docs or performance) after features are fixed and QA passes again
+      - Orchestrator declares the project complete with unresolved warnings if critical issues persist after 3 security audit runs
+    </security_rerun>
+
+    <server_settings_api>
+      - Settings API exposes post-build configuration fields (auto_post_build, docs_enabled, performance_enabled, security_enabled) via the existing settings router and global settings model
+      - Settings API persists post-build toggles so they survive server restarts
+    </server_settings_api>
+
+    <server_agent_api>
+      - Agent router supports starting post-build agent types (docs, performance, security) through the existing agent control endpoints
+      - Agent router emits post_build_status WebSocket events when post-build agents start, complete, or fail, including the grade on completion
+      - Agent router supports --post-build-only mode that verifies all features are passing before allowing post-build agents to run
+    </server_agent_api>
+
+    <ui_types_and_websocket>
+      - TypeScript types define PostBuildStatus event with agent type (docs/performance/security), status (running/completed/failed), and optional grade (A/B/C/D/F)
+      - TypeScript types define ProjectFinalized event with report availability and grades
+      - useWebSocket hook handles post_build_status and project_finalized events, updating component state
+    </ui_types_and_websocket>
+
+    <ui_settings>
+      - SettingsModal displays an Auto Post-Build Reports toggle (default on) in a new Post-Build section
+      - SettingsModal displays individual toggles for Documentation Agent, Performance Agent, and Security Agent (all default on)
+      - Settings toggles map to the --skip-docs, --skip-performance, --skip-security CLI flags via the settings API
+    </ui_settings>
+
+    <ui_pipeline_status>
+      - Pipeline status display shows a POST-BUILD phase after QA in the build progress visualization
+      - Post-build phase shows individual status for docs, performance, and security agents with icons (gray/clock when not started, cyan/spinner when running, green/checkmark when complete)
+      - Post-build phase displays grade badges (A/B/C/D/F with color coding) next to completed performance and security agents
+    </ui_pipeline_status>
+
+    <ui_agent_mascots>
+      - AgentMissionControl displays Quill (quill pen) mascot for the docs agent in a separate Post-Build section below main build agents
+      - AgentMissionControl displays Bolt (lightning bolt) mascot for the performance agent in the Post-Build section
+      - AgentMissionControl displays Lock (padlock) mascot for the security agent in the Post-Build section
+      - Post-build agent cards show thinking/working/complete states following the existing mascot animation pattern
+    </ui_agent_mascots>
+
+    <ui_report_viewer>
+      - App displays a Reports tab group with sub-tabs for Documentation, Performance, and Security
+      - ReportViewer component renders markdown report files read from the project filesystem via the existing filesystem API
+      - ReportViewer displays grade badges (A-F) with color coding (green for A/B, yellow for C, red for D/F) at the top of performance and security reports
+      - ReportViewer renders tables as proper HTML tables with pass/fail status badges and supports collapsible sections for each report phase
+    </ui_report_viewer>
+  </core_features>
+
+  <database_schema>
+    <tables>
+      <global_settings>
+        Note: Extends the existing GlobalSettings model in registry.py with new fields.
+        No new tables are created.
+        - auto_post_build (BOOLEAN NOT NULL DEFAULT 1) -- enable post-build phase
+        - docs_enabled (BOOLEAN NOT NULL DEFAULT 1) -- enable documentation agent
+        - performance_enabled (BOOLEAN NOT NULL DEFAULT 1) -- enable performance agent
+        - security_enabled (BOOLEAN NOT NULL DEFAULT 1) -- enable security agent
+      </global_settings>
+    </tables>
+  </database_schema>
+
+  <api_endpoints_summary>
+    <settings>
+      - GET /api/settings (existing -- now includes post-build fields)
+      - PUT /api/settings (existing -- now accepts post-build fields)
+    </settings>
+    <agent>
+      - POST /api/projects/{name}/agent/start (existing -- now supports agent_type: docs|performance|security)
+      - POST /api/projects/{name}/agent/post-build-only (new -- runs only post-build agents, verifies all features passing first)
+    </agent>
+    <reports>
+      - GET /api/projects/{name}/reports (list available reports: docs, performance, security)
+      - GET /api/projects/{name}/reports/{type} (read report markdown content for docs|performance|security)
+    </reports>
+    <websocket>
+      - WS /ws/projects/{name} (existing -- now emits post_build_status and project_finalized events)
+    </websocket>
+  </api_endpoints_summary>
+
+  <ui_layout>
+    <main_structure>
+      Note: Extends the existing AutoForge UI layout. No new pages -- new components
+      integrate into existing views.
+      - Pipeline status bar gains a POST-BUILD phase indicator after QA
+      - AgentMissionControl gains a Post-Build section with three agent cards
+      - Main content area gains a Reports tab group alongside existing tabs
+      - SettingsModal gains a Post-Build Reports section with toggles
+    </main_structure>
+  </ui_layout>
+
+  <design_system>
+    <color_palette>
+      Note: Uses existing AutoForge neobrutalism design tokens from globals.css.
+      - Post-build not started: --color-neo-pending (yellow/gray)
+      - Post-build in progress: --color-neo-progress (cyan)
+      - Post-build complete: --color-neo-done (green)
+      - Grade A/B badge: green (#10B981)
+      - Grade C badge: yellow (#F59E0B)
+      - Grade D/F badge: red (#EF4444)
+      - Security CRITICAL badge: red (#EF4444) with bold border
+    </color_palette>
+    <typography>
+      Note: Uses existing Inter font family and Tailwind v4 utility classes.
+      - Grade badges: font-bold text-lg in colored pill shape
+      - Report section headers: font-semibold text-xl
+      - Report tables: standard Tailwind table styling with alternating row colors
+    </typography>
+  </design_system>
+
+  <ui_ux_standards>
+    <banned_patterns>
+      - alert(), confirm(), prompt() - Use existing Modal/Toast components
+      - Inline styles - Use Tailwind CSS classes only
+      - Raw timestamps in reports - Format as relative time
+      - Ungraded reports - Every performance/security report must display a grade badge
+    </banned_patterns>
+    <required_components>
+      - Grade badge component with A-F color coding
+      - Collapsible report section component
+      - Post-build agent status card with mascot
+      - Pipeline phase indicator for post-build
+    </required_components>
+    <page_patterns>
+      - Post-build status is read-only (no edit view needed)
+      - Reports are read-only rendered markdown
+      - Settings use toggle switches (existing pattern)
+    </page_patterns>
+    <feedback_protocol>
+      - Post-build agent start: toast notification
+      - Post-build agent complete: toast with grade (if applicable)
+      - Post-build all complete: celebration overlay or prominent notification
+      - Security critical found: warning toast with link to security report
+    </feedback_protocol>
+    <polish_requirements>
+      - Smooth transitions between pipeline phases
+      - Skeleton loaders while reports are being fetched
+      - Empty state when no reports have been generated yet
+      - Back navigation from report detail to reports list
+    </polish_requirements>
+    <accessibility_basics>
+      - Grade badges include aria-label with full text (e.g., "Performance grade: B")
+      - Collapsible sections use proper aria-expanded attributes
+      - Agent status cards announce state changes to screen readers
+    </accessibility_basics>
+  </ui_ux_standards>
+
+  <coding_standards>
+    <architecture>
+      - Follow existing AutoForge patterns: routers in server/routers/, services in server/services/
+      - Follow existing UI patterns: components in ui/src/components/, hooks in ui/src/hooks/
+      - TypeScript interfaces for all new data types in ui/src/lib/types.ts
+      - Python type hints on all new functions
+      - New Python code must pass ruff check and mypy
+      - New TypeScript code must pass npm run lint and npm run build
+    </architecture>
+    <routing>
+      - No new pages -- integrate into existing views
+      - Reports API follows existing REST patterns in server/routers/
+    </routing>
+    <error_handling>
+      - Post-build agent failures do not block project completion (except security CRITICAL)
+      - Failed post-build agents are logged and reported via WebSocket
+      - Report viewer shows graceful error state if report file is not found
+      - Retry action available for failed post-build agents
+    </error_handling>
+  </coding_standards>
+
+  <key_interactions>
+    <automatic_post_build_flow>
+      1. QA agent completes successfully, marking all features as passing
+      2. Orchestrator detects QA completion and checks post-build configuration
+      3. Orchestrator spawns enabled post-build agents (docs, performance, security) in parallel
+      4. UI updates pipeline display to show POST-BUILD phase with agent status
+      5. AgentMissionControl shows Quill, Bolt, Lock mascots with working state
+      6. Each agent generates its report and commits to git
+      7. WebSocket events update UI with completion status and grades
+      8. All agents complete -- project finalized event emitted
+    </automatic_post_build_flow>
+    <security_failure_flow>
+      1. Security agent discovers CRITICAL vulnerability during audit
+      2. Security agent marks affected feature(s) as failing via feature_mark_failing
+      3. Security agent commits security-report.md with findings
+      4. Orchestrator detects feature failures and re-enters build pipeline
+      5. Coding agent picks up failing feature and fixes the vulnerability
+      6. Feature passes through review and testing again
+      7. QA agent re-runs and passes
+      8. Orchestrator re-runs only the security agent (not docs or performance)
+      9. Security agent verifies fix -- marks report as updated
+      10. If issues persist after 3 runs, project completes with warnings
+    </security_failure_flow>
+    <manual_post_build_flow>
+      1. User has an already-built project with all features passing
+      2. User runs --post-build-only flag or clicks post-build button in UI
+      3. System verifies all features are passing
+      4. Post-build agents spawn and generate reports
+      5. Reports appear in the Reports tab for viewing
+    </manual_post_build_flow>
+    <report_viewing_flow>
+      1. User navigates to project dashboard after post-build completes
+      2. User clicks Reports tab group
+      3. User sees sub-tabs for Documentation, Performance, Security with grade badges
+      4. User clicks Performance tab to view the performance report
+      5. Report renders with grade badge, collapsible sections, and data tables
+      6. User can scroll through findings and recommendations
+    </report_viewing_flow>
+  </key_interactions>
+
+  <implementation_steps>
+    <step number="1">
+      <title>Prompt Templates (Foundation)</title>
+      <tasks>
+        - Create .claude/templates/docs_prompt.template.md with all 6 phases
+        - Create .claude/templates/performance_prompt.template.md with all 6 phases
+        - Create .claude/templates/security_prompt.template.md with all 6 phases
+        - Each template includes MCP tools available, important reminders, and output format
+      </tasks>
+    </step>
+    <step number="2">
+      <title>CLI and Agent Registration</title>
+      <tasks>
+        - Add docs, performance, security to --agent-type choices in autonomous_agent_demo.py
+        - Add --auto-post-build, --skip-docs, --skip-performance, --skip-security, --post-build-only flags
+        - Pass post-build configuration to orchestrator and agent entry points
+      </tasks>
+    </step>
+    <step number="3">
+      <title>Python Backend Core</title>
+      <tasks>
+        - Add get_docs_prompt(), get_performance_prompt(), get_security_prompt() to prompts.py
+        - Add docs/performance/security agent tool filtering to client.py
+        - Add docs/performance/security dispatch to agent.py run_autonomous_agent()
+      </tasks>
+    </step>
+    <step number="4">
+      <title>Orchestrator Post-Build Logic</title>
+      <tasks>
+        - Add post-build state tracking variables to parallel_orchestrator.py __init__
+        - Implement _check_post_build_ready() and _spawn_post_build_agent()
+        - Implement _check_post_build_complete() and _finalize_project()
+        - Implement _handle_security_failures() with MAX_SECURITY_AUDIT_RUNS cap
+        - Wire post-build checks into the main run_loop()
+      </tasks>
+    </step>
+    <step number="5">
+      <title>Server API Extensions</title>
+      <tasks>
+        - Extend GlobalSettings model with post-build fields
+        - Update settings router to expose post-build configuration
+        - Add post-build agent type support to agent router
+        - Add reports router for listing and reading report files
+        - Emit post_build_status and project_finalized WebSocket events
+      </tasks>
+    </step>
+    <step number="6">
+      <title>UI Types and WebSocket</title>
+      <tasks>
+        - Add PostBuildStatus and ProjectFinalized types to ui/src/lib/types.ts
+        - Handle new event types in useWebSocket.ts
+        - Add API client functions for reports and post-build settings
+      </tasks>
+    </step>
+    <step number="7">
+      <title>UI Components</title>
+      <tasks>
+        - Add post-build toggles to SettingsModal.tsx
+        - Add POST-BUILD phase to pipeline status display
+        - Add Quill, Bolt, Lock mascots to AgentMissionControl.tsx
+        - Create ReportViewer.tsx with markdown rendering and grade badges
+        - Add Reports tab group to App.tsx
+      </tasks>
+    </step>
+  </implementation_steps>
+
+  <success_criteria>
+    <functionality>
+      - All three post-build agent types (docs, performance, security) can be spawned independently via --agent-type flag
+      - Post-build agents spawn automatically in parallel after QA completes
+      - Each agent produces its expected output files in the project docs/ directory
+      - Security agent can mark features as failing for CRITICAL vulnerabilities
+      - Security re-run logic caps at 3 audit runs without infinite loops
+      - --post-build-only flag works on already-built projects
+      - --skip-docs/performance/security flags correctly disable individual agents
+      - Reports are committed to git automatically
+    </functionality>
+    <user_experience>
+      - Pipeline status clearly shows post-build phase with individual agent progress
+      - Grade badges are visible and color-coded for quick assessment
+      - Reports render cleanly with proper tables, code blocks, and collapsible sections
+      - Settings toggles persist and correctly control agent behavior
+      - Toast notifications inform user of post-build progress
+      - Post-build agent mascots display in AgentMissionControl
+    </user_experience>
+    <technical_quality>
+      - Python code passes ruff check and mypy
+      - TypeScript code passes npm run lint and npm run build
+      - No new console errors introduced
+      - WebSocket events follow existing patterns
+      - Post-build agents do not interfere with build agent process limits
+      - Security re-run logic handles edge cases (no features to fix, max retries)
+    </technical_quality>
+  </success_criteria>
+</project_specification>

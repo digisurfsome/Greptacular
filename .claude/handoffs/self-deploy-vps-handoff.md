@@ -11,6 +11,38 @@ land on a fully running AutoForge dashboard.
 
 This turns AutoForge from a developer tool into a SaaS product with recurring revenue.
 
+## CRITICAL: Use Gen-Ai Boilerplate (DO NOT Build From Scratch)
+
+The marketing site, auth, billing, and admin dashboard are built on top of the **Gen-Ai
+boilerplate** (`https://github.com/digisurfsome/Gen-Ai`), which is already installed as
+AutoForge's web application boilerplate.
+
+### What the Boilerplate Already Provides (DO NOT rebuild these):
+- **React 18 + TypeScript + Vite 6 + Tailwind CSS + shadcn/ui + Radix UI** — Full frontend stack
+- **Supabase Auth** — Email/password login, password reset, auth state management, protected routes
+- **Stripe Integration** — Subscriptions, one-time purchases, credit system, webhook handlers, billing portal
+- **Admin Dashboard** — Role-based access, user management, admin-only routes
+- **Row-Level Security** — RLS policies already configured in Supabase
+- **Resend Email** — Transactional email (welcome, password reset, notifications)
+- **Vercel Deployment** — Pre-configured for Vercel (also works on other hosts)
+- **Credit System** — Per-user credit balances with deduction and top-up
+
+### What YOU Build On Top of the Boilerplate:
+- Fly.io Machines API integration (provisioning, lifecycle management)
+- Instance management UI (status cards, health monitoring)
+- AutoForge-specific onboarding wizard (API key entry, tier selection, deploy animation)
+- Custom domain support
+- Usage tracking and metering
+- AutoForge-specific landing page content (hero, features, pricing, competitor comparison)
+
+### Integration Approach:
+1. Clone the Gen-Ai boilerplate as the project base
+2. Configure Supabase project with the additional `instances`, `instance_usage`, and `billing_events` tables (auth, Stripe tables already exist)
+3. Add Fly.io provisioning Edge Functions alongside existing Stripe webhook handlers
+4. Customize the existing dashboard layout for instance management
+5. Customize the existing admin dashboard for instance oversight
+6. Add AutoForge-specific landing page content to the existing layout
+
 ## User Flow
 
 1. Visit autoforge.com marketing site
@@ -43,9 +75,9 @@ No terminal. No SSH keys. No `docker run`. No `apt-get`. Just a button and a cre
            (user-facing)  (Edge Function)
 ```
 
-**Marketing site + Dashboard:** React / Next.js on Vercel or Fly.io static hosting
-**Auth and data:** Supabase (Auth, Postgres, Edge Functions)
-**Billing:** Stripe Subscriptions with webhook handlers
+**Marketing site + Dashboard:** Gen-Ai boilerplate (React 18 + Vite 6 + Tailwind + shadcn/ui) deployed on Vercel
+**Auth and data:** Supabase (Auth, Postgres, Edge Functions) — already configured in Gen-Ai boilerplate
+**Billing:** Stripe (subscriptions, one-time, credits) — already configured in Gen-Ai boilerplate
 **Instance hosting:** Fly.io Machines API (primary) or DigitalOcean Droplets API (power-user option)
 **Each user gets:** An isolated Machine running the AutoForge Docker image with their own env vars
 
@@ -238,9 +270,13 @@ as an add-on or included in a higher subscription price.
 Default to **BYO key** for launch. It eliminates token cost risk and simplifies billing.
 Add metered key as a premium option once usage tracking (Feature 7) is built.
 
-## Supabase Schema
+## Supabase Schema (Additional Tables — Added to Existing Boilerplate Schema)
 
-### Core Tables
+**NOTE: The Gen-Ai boilerplate already includes Supabase tables for auth (users, profiles),
+Stripe (customers, subscriptions, prices, products), and credits (user_credits). The tables
+below are ADDITIONS to the existing schema for AutoForge instance management.**
+
+### AutoForge-Specific Tables
 
 ```sql
 -- User instances (one per subscription)
@@ -325,57 +361,58 @@ create policy "Users can view own billing"
 These features are structured for the AutoForge two-agent pattern: the initializer creates
 them in the features database, and coding agents implement them one by one.
 
-### Feature 1: Project Scaffolding and Marketing Site
+### Feature 1: Customize Boilerplate for AutoForge Landing Page
 
 **Priority:** 1 (no dependencies)
 
-React + Vite + Tailwind CSS project with TypeScript. Landing page with hero section,
-features grid, pricing table (3 tiers), FAQ accordion, and footer. Supabase client
-initialized and configured. Responsive layout (mobile-first). Navigation header with
-"Launch AutoForge" CTA button. All content is static at this stage -- no auth or billing
-integration yet.
+**NOTE: Uses Gen-Ai boilerplate as the project base.** The React + Vite + TypeScript +
+Tailwind + shadcn/ui + Supabase client are ALREADY configured. This feature customizes
+the existing boilerplate landing page with AutoForge-specific content: hero section,
+features grid, pricing table (3 tiers), FAQ accordion, and footer. Responsive layout
+is already built into the boilerplate.
 
 **Steps:**
-1. Initialize React + Vite + TypeScript + Tailwind project
-2. Create landing page layout with hero, features, pricing, FAQ sections
-3. Set up Supabase client configuration (env vars, client initialization)
-4. Add responsive navigation with CTA button
+1. Clone the Gen-Ai boilerplate and configure environment variables for this project
+2. Customize the existing landing page with AutoForge hero, features grid, pricing table (3 tiers), FAQ accordion
+3. Update navigation header with "Launch AutoForge" CTA button
+4. Add the `instances`, `instance_usage`, and `billing_events` tables to the Supabase schema (see SQL below)
 5. Verify build passes and all sections render correctly
 
-### Feature 2: Auth and User Dashboard
+### Feature 2: Instance Dashboard (Auth Already in Boilerplate)
 
 **Priority:** 1 | **Depends on:** Feature 1
 
-Supabase Auth integration with email/password and Google OAuth. Protected dashboard route
-showing instance status card (provisioning/running/suspended), settings panel for API key
-entry and tier display, and a sidebar with navigation. Auth state management with automatic
-redirects (unauthenticated users go to login, authenticated users go to dashboard). Logout
-functionality.
+**NOTE: Supabase Auth (email/password, password reset), protected routes, login/signup
+pages, auth state management, and route guards are ALREADY built in the Gen-Ai boilerplate.
+Do NOT rebuild these.** This feature adds AutoForge-specific dashboard content on top of
+the existing protected dashboard: instance status card (provisioning/running/suspended),
+settings panel for API key entry and tier display. Google OAuth can be enabled in Supabase
+dashboard settings if desired.
 
 **Steps:**
-1. Set up Supabase Auth with email and Google OAuth providers
-2. Create login/signup pages with form validation
-3. Build protected dashboard layout with sidebar navigation
-4. Add instance status card component (placeholder data)
-5. Add settings panel for API key input and tier display
-6. Implement auth state management and route guards
+1. Verify existing boilerplate auth flow works (login, signup, password reset, logout)
+2. Customize the existing protected dashboard layout for AutoForge branding
+3. Add instance status card component (placeholder data for now)
+4. Add settings panel for Anthropic API key input and tier display
+5. Enable Google OAuth in Supabase dashboard settings (optional)
 
-### Feature 3: Stripe Billing Integration
+### Feature 3: Configure Stripe for AutoForge Tiers (Stripe Already in Boilerplate)
 
 **Priority:** 2 | **Depends on:** Feature 2
 
-Stripe Checkout integration for three subscription tiers. Pricing page links to Stripe
-Checkout sessions. Webhook handler (Supabase Edge Function) processes:
-`checkout.session.completed`, `invoice.paid`, `invoice.payment_failed`,
-`customer.subscription.deleted`. Billing portal link in dashboard for users to manage
-their subscription. Support for promotional/discount codes at checkout.
+**NOTE: Stripe integration (subscriptions, one-time purchases, credit system, webhook
+handlers, billing portal) is ALREADY built in the Gen-Ai boilerplate. Do NOT rebuild
+the Stripe checkout flow, webhook handling, or billing portal.** This feature configures
+the existing Stripe integration with AutoForge-specific products: three subscription tiers
+(Starter $19/mo, Pro $39/mo, Team $79/mo). Add the provisioning trigger to the existing
+webhook handler so that `checkout.session.completed` also fires Fly.io instance creation.
 
 **Steps:**
-1. Create Stripe products and prices for three tiers
-2. Build checkout session creation endpoint (Edge Function)
-3. Implement webhook handler for all four event types
-4. Add billing portal link to dashboard settings
-5. Wire up pricing page buttons to checkout flow
+1. Create Stripe products and prices for the three AutoForge tiers in Stripe Dashboard
+2. Update the existing boilerplate pricing page with AutoForge tier names, prices, and feature lists
+3. Add provisioning trigger to the existing `checkout.session.completed` webhook handler (calls Feature 4's provisioner)
+4. Add `invoice.payment_failed` handler extension for instance suspension (calls Feature 5)
+5. Verify existing billing portal link works in dashboard settings
 6. Test full payment flow with Stripe test mode
 
 ### Feature 4: Fly.io Provisioning Service
@@ -454,54 +491,55 @@ aggregated daily.
 5. Add overage alert emails for metered key users
 6. Display usage summary on instance card in dashboard
 
-### Feature 8: Admin Dashboard
+### Feature 8: Extend Admin Dashboard for Instance Management (Admin Already in Boilerplate)
 
 **Priority:** 5 | **Depends on:** Feature 4, Feature 5, Feature 7
 
-Admin-only dashboard (separate route, role-based access) showing: all instances with
-status and health, total user count and growth, revenue metrics (MRR, churn rate, ARPU),
-usage patterns across all instances, and support tools (restart instance, extend grace
-period, change tier manually). Accessible only to users with `admin` role in Supabase.
+**NOTE: The Gen-Ai boilerplate ALREADY includes an admin dashboard with role-based access,
+admin-only routes, and user management. Do NOT rebuild the admin layout, role system, or
+route protection.** This feature extends the existing admin dashboard with AutoForge-specific
+views: all instances with status and health, revenue metrics (MRR, churn rate, ARPU),
+usage patterns, and support tools (restart instance, extend grace period, change tier).
 
 **Steps:**
-1. Add admin role to Supabase Auth (custom claim or profiles table)
-2. Create admin layout with protected route
-3. Build instances overview table with filters and search
-4. Add revenue metrics cards (MRR, churn, ARPU) with calculations
-5. Implement support tools (restart, extend grace, manual tier change)
-6. Add user management view (search, view details, billing history)
+1. Add instances overview table to existing admin dashboard (with filters and search)
+2. Add revenue metrics cards (MRR, churn, ARPU) with calculations from `billing_events` table
+3. Add instance health status column with live data from Fly.io
+4. Implement support tools (restart instance, extend grace period, manual tier change)
+5. Add usage analytics view (aggregate data from `instance_usage` table)
 
 ### Feature 9: Onboarding Wizard
 
 **Priority:** 5 | **Depends on:** Feature 3, Feature 4
 
-Post-signup onboarding wizard that guides users through setup. Step 1: Choose API key
-mode (BYO vs metered) with explanation of each. Step 2: If BYO, enter Anthropic API key
-with validation check. Step 3: Choose tier with feature comparison. Step 4: Stripe
-checkout. Step 5: Deploying animation (progress bar with status messages: "Creating
-instance...", "Installing AutoForge...", "Running health checks...", "Almost ready...").
-Step 6: "Your AutoForge is ready!" with link button. Welcome email sent on completion
-with quick-start guide.
+Post-signup onboarding wizard that guides new users through AutoForge-specific setup after
+they've signed up via the boilerplate's existing auth flow. Step 1: Choose API key mode
+(BYO vs metered) with explanation of each. Step 2: If BYO, enter Anthropic API key with
+validation check. Step 3: Choose tier with feature comparison. Step 4: Stripe checkout
+(uses the boilerplate's existing Stripe checkout flow). Step 5: Deploying animation
+(progress bar with real-time status: "Creating instance...", "Installing AutoForge...",
+"Running health checks...", "Almost ready..."). Step 6: "Your AutoForge is ready!" with
+link button. Welcome email sent via the boilerplate's existing Resend integration.
 
 **Steps:**
-1. Create multi-step wizard component with progress indicator
+1. Create multi-step wizard component with progress indicator (using shadcn/ui components from boilerplate)
 2. Build API key mode selection step with explanations
 3. Add API key entry step with validation (test key against Anthropic API)
 4. Build tier selection step with feature comparison table
-5. Integrate Stripe checkout as a wizard step
+5. Wire wizard's checkout step to the boilerplate's existing Stripe checkout flow
 6. Create deploying animation with real-time status from provisioner
-7. Build completion step with instance link and welcome email trigger
+7. Build completion step with instance link and trigger welcome email via existing Resend integration
 
-### Feature 10: Landing Page and SEO
+### Feature 10: Landing Page Polish and SEO
 
 **Priority:** 6 | **Depends on:** Feature 1
 
-Upgrade the initial landing page to a professional marketing site. Competitor comparison
-section: AutoForge vs Lovable vs Bolt vs Cursor (feature matrix table). Social proof
-section with testimonials (placeholder initially). Blog section with initial "What is
-AutoForge?" and "AutoForge vs Cursor" posts. SEO meta tags on all pages (title,
-description, Open Graph, Twitter cards). Structured data (JSON-LD) for the product.
-Sitemap generation. Performance optimization (lazy loading images, preconnect hints).
+Upgrade the AutoForge landing page (customized from boilerplate in Feature 1) to a
+professional marketing site. Competitor comparison section: AutoForge vs Lovable vs Bolt
+vs Cursor (feature matrix table). Social proof section with testimonials (placeholder
+initially). Blog section with initial "What is AutoForge?" and "AutoForge vs Cursor"
+posts. SEO meta tags on all pages (title, description, Open Graph, Twitter cards).
+Structured data (JSON-LD) for the product. Sitemap generation. Performance optimization.
 
 **Steps:**
 1. Add competitor comparison table (AutoForge vs Lovable vs Bolt vs Cursor)
@@ -606,3 +644,17 @@ Fly.io container registry (`registry.fly.io/autoforge:latest`) as part of CI/CD.
 - Set up alerts for: instance health check failures, high error rates in Edge Functions,
   Stripe webhook failures, provisioning timeouts
 - Log all provisioning events for debugging and audit
+
+## What NOT To Do
+
+- Do NOT scaffold a new React + Vite + TypeScript project — use the Gen-Ai boilerplate
+- Do NOT build Supabase Auth from scratch — it's already in the boilerplate
+- Do NOT build Stripe checkout/webhooks/billing portal from scratch — already in the boilerplate
+- Do NOT build an admin dashboard from scratch — extend the existing one in the boilerplate
+- Do NOT build a credit system from scratch — the boilerplate already has per-user credit balances
+- Do NOT build email sending from scratch — use the boilerplate's existing Resend integration
+- Do NOT create new UI components when shadcn/ui + Radix UI components exist in the boilerplate
+- DO add the `instances`, `instance_usage`, and `billing_events` tables to Supabase (these are new)
+- DO build the Fly.io Machines API integration (this is entirely new)
+- DO build the instance lifecycle management (suspend/resume/upgrade/destroy)
+- DO build the onboarding wizard for API key entry and deploy animation

@@ -1,0 +1,402 @@
+<project_specification>
+  <project_name>autoforge-devops-pipeline</project_name>
+
+  <overview>
+    Extends AutoForge with three post-build agent types that close the gap between
+    "code that works locally" and "code that runs reliably in production with ongoing
+    maintenance." The CI/CD Pipeline Generator creates GitHub Actions workflows, Dockerfiles,
+    and platform-specific deployment configs. The Monitoring Setup Agent adds Sentry error
+    tracking, health endpoints, structured logging, and optional analytics. The Auto-Update
+    Agent runs on a recurring schedule to update dependencies, fix vulnerabilities, verify
+    nothing broke, and create PRs or roll back with issue reports. These are additions to
+    the existing AutoForge codebase (FastAPI + React 19 + TypeScript).
+  </overview>
+
+  <technology_stack>
+    <frontend>
+      <framework>React 19 with Vite 7 (existing AutoForge UI in ui/)</framework>
+      <styling>Tailwind CSS v4</styling>
+      <state_management>TanStack Query, React hooks and context</state_management>
+      <routing>React Router (existing)</routing>
+      <port>5173 (dev), served by FastAPI in production</port>
+    </frontend>
+    <backend>
+      <runtime>Python 3.11+ with FastAPI and uvicorn (existing AutoForge server)</runtime>
+      <database>SQLite with SQLAlchemy (existing features.db and registry.db)</database>
+      <port>8000</port>
+    </backend>
+    <communication>
+      <api>REST endpoints via FastAPI routers, WebSocket for real-time updates</api>
+    </communication>
+    <additional_libraries>
+      <python>APScheduler (existing), structlog (new for logging templates)</python>
+      <node>None new -- templates reference project dependencies, not AutoForge dependencies</node>
+    </additional_libraries>
+  </technology_stack>
+
+  <prerequisites>
+    <environment_setup>
+      - Python 3.11+ with pip
+      - Node.js 20+ with npm (for UI development)
+      - Existing AutoForge installation (source checkout or npm global install)
+      - Claude Code CLI configured and authenticated
+      - ruff and mypy for Python linting/type-checking
+    </environment_setup>
+  </prerequisites>
+
+  <feature_count>17</feature_count>
+
+  <core_features>
+    <cli_agent_types>
+      - System accepts --agent-type cicd, monitoring, and auto-update as valid choices in autonomous_agent_demo.py alongside existing initializer, coding, and testing types
+      - System accepts --deployment-target flag with choices vercel, railway, flyio, aws, docker for the CI/CD agent
+      - System accepts --monitoring-features flag with comma-separated values (sentry, health, logging, analytics, uptime) defaulting to sentry,health,logging
+      - System accepts --analytics-provider flag with choices plausible, posthog, none defaulting to none
+      - System accepts --update-strategy flag with choices conservative and aggressive defaulting to conservative
+      - System accepts --maintenance-frequency flag with choices weekly, biweekly, monthly defaulting to weekly
+      - System accepts --dry-run boolean flag for the auto-update agent to check without applying updates
+    </cli_agent_types>
+
+    <cicd_prompt_template>
+      - System provides CI/CD prompt template at .claude/templates/cicd_prompt.template.md with instructions for generating GitHub Actions CI/staging/production/security workflows, Dockerfile, docker-compose.yml, .env.example, Makefile, and platform-specific deployment configs
+    </cicd_prompt_template>
+
+    <monitoring_prompt_template>
+      - System provides monitoring prompt template at .claude/templates/monitoring_prompt.template.md with instructions for adding Sentry error tracking, /api/health endpoint, structured logging middleware, optional analytics (Plausible/PostHog), and uptime monitoring scripts
+    </monitoring_prompt_template>
+
+    <auto_update_prompt_template>
+      - System provides auto-update prompt template at .claude/templates/auto_update_prompt.template.md with the five-phase workflow: audit, update, verify, report, and commit-or-rollback with PR creation or issue filing on failure
+    </auto_update_prompt_template>
+
+    <cicd_prompt_loading>
+      - System loads the CI/CD template via get_cicd_prompt() in prompts.py and injects the deployment target into the prompt
+      - System auto-detects the deployment target via _detect_deployment_target() by checking for next.config (vercel), fly.toml (flyio), railway.toml (railway), or falling back to docker
+    </cicd_prompt_loading>
+
+    <monitoring_and_autoupdate_prompt_loading>
+      - System loads the monitoring template via get_monitoring_prompt() in prompts.py and injects the enabled monitoring features list and analytics provider selection
+      - System loads the auto-update template via get_auto_update_prompt() in prompts.py and injects the update strategy (conservative/aggressive), dry-run flag, and current date for branch naming
+    </monitoring_and_autoupdate_prompt_loading>
+
+    <client_configuration>
+      - System configures post-build agents (cicd, monitoring, auto-update) in client.py with no Playwright MCP server, read-only feature MCP tools (feature_get_stats, feature_get_summary only), and standard built-in tools (Read, Write, Edit, Bash, Grep, Glob)
+      - System restricts the CI/CD agent to file generation with full write access to the project directory
+      - System grants the monitoring agent full write access to modify existing project files for instrumentation
+      - System grants the auto-update agent full write access plus git and gh CLI access for branch creation, PR submission, and issue filing
+    </client_configuration>
+
+    <database_models>
+      - System creates MaintenanceRun model in api/database.py with columns: id (PK), project_name (indexed), run_date, status (success/failure/dry_run), strategy (conservative/aggressive), packages_updated (int), vulnerabilities_fixed (int), tests_passed (bool nullable), pr_url (text nullable), issue_url (text nullable), report_path (text nullable), duration_seconds (int nullable), error_message (text nullable), created_at, updated_at
+      - System extends the Schedule model in api/database.py with schedule_type column (String, default "agent") to distinguish agent schedules from maintenance schedules, and update_strategy column (String, nullable) for maintenance schedule configuration
+    </database_models>
+
+    <maintenance_api>
+      - API returns paginated list of MaintenanceRun records via GET /api/projects/{project_name}/maintenance/history with limit parameter (default 20)
+      - API returns the next scheduled maintenance run date/time via GET /api/projects/{project_name}/maintenance/next-run based on the project's maintenance schedule
+      - API triggers an auto-update agent subprocess via POST /api/projects/{project_name}/maintenance/trigger with optional dry_run boolean parameter
+      - API returns the full maintenance report markdown content via GET /api/projects/{project_name}/maintenance/report/{run_id} for a specific run
+      - API deletes a maintenance run record via DELETE /api/projects/{project_name}/maintenance/history/{run_id} for cleanup of old records
+      - System registers the maintenance router in server/main.py with prefix /api/projects/{project_name}/maintenance
+    </maintenance_api>
+
+    <settings_api>
+      - System exposes DevOps settings in server/routers/settings.py: deployment_target (string), monitoring_features (list of strings), analytics_provider (string), update_strategy (string), maintenance_frequency (string)
+      - System persists DevOps settings via the existing GlobalSettings model in registry.py
+      - API returns DevOps configuration alongside existing settings via GET /api/settings
+      - API accepts DevOps configuration fields alongside existing settings via PUT /api/settings
+    </settings_api>
+
+    <scheduler_service>
+      - System extends scheduler_service.py with _handle_scheduled_maintenance() that spawns an auto-update agent subprocess with the schedule's update_strategy
+      - System maps maintenance frequency presets (weekly, biweekly, monthly) to CronTrigger configurations: weekly = Monday 09:00 UTC, biweekly = every other Monday 09:00 UTC, monthly = first Monday of month 09:00 UTC
+      - System handles maintenance schedules (schedule_type="maintenance") separately from agent run schedules (schedule_type="agent") with no interference between the two
+    </scheduler_service>
+
+    <orchestrator_integration>
+      - System detects build completion in parallel_orchestrator.py via _check_post_build_ready() when all features are passing and no post-build agents have run yet
+      - System launches the CI/CD agent via _spawn_cicd_agent() as a single-turn subprocess (no continuation loop) after build completion
+      - System launches the monitoring agent via _spawn_monitoring_agent() as a single-turn subprocess after build completion
+      - System spawns CI/CD and monitoring agents in parallel since they do not conflict (CI/CD writes new files, monitoring modifies existing files in different locations)
+      - System tracks post-build agent status with _cicd_running, _cicd_completed, _monitoring_running, _monitoring_completed flags
+    </orchestrator_integration>
+
+    <agent_router_support>
+      - System extends server/routers/agent.py to accept cicd, monitoring, and auto-update as valid agent_type values in start and stop endpoints
+      - System passes --deployment-target from settings to the subprocess when starting a cicd agent
+      - System passes --monitoring-features and --analytics-provider from settings to the subprocess when starting a monitoring agent
+      - System passes --update-strategy and optional --dry-run to the subprocess when starting an auto-update agent
+    </agent_router_support>
+
+    <ui_types_and_api_client>
+      - System defines MaintenanceRun TypeScript interface in ui/src/lib/types.ts matching the database model fields
+      - System extends the Schedule type in types.ts with schedule_type and update_strategy fields
+      - System provides maintenance API client functions in ui/src/lib/api.ts: getMaintenanceHistory(), getNextMaintenanceRun(), triggerMaintenance(), getMaintenanceReport(), deleteMaintenanceRun()
+      - System provides TanStack Query hooks in ui/src/hooks/useProjects.ts: useMaintenanceHistory(), useNextMaintenanceRun(), useTriggerMaintenance(), useMaintenanceReport()
+    </ui_types_and_api_client>
+
+    <settings_modal_devops>
+      - System extends SettingsModal.tsx with a "DevOps" section containing: deployment target dropdown (Vercel, Railway, Fly.io, AWS, Docker, Auto-detect), monitoring feature checkboxes (Sentry, Health Check, Structured Logging, Analytics, Uptime Monitoring), analytics provider radio buttons (Plausible, PostHog, None), and update strategy toggle (Conservative, Aggressive)
+      - System displays maintenance frequency dropdown (Weekly, Biweekly, Monthly) in the DevOps section
+      - System persists settings changes via PUT /api/settings on save
+    </settings_modal_devops>
+
+    <maintenance_tab>
+      - System displays MaintenanceTab.tsx component with summary card showing: last maintenance run date and status (green check or red X), next scheduled run date with countdown, current update strategy with toggle, and "Run Now" button that calls POST /trigger
+      - System displays history table with columns: date, status badge, packages updated, vulnerabilities fixed, duration, with each row expandable to show the full maintenance report
+      - System displays schedule configuration section with frequency dropdown, day-of-week selector, time picker (user's local timezone, stored as UTC), and enable/disable toggle
+      - System adds MaintenanceTab to the project view in App.tsx as a new tab alongside existing Kanban/Graph views
+    </maintenance_tab>
+
+    <maintenance_report_viewer>
+      - System renders MaintenanceReport.tsx component displaying maintenance report markdown as formatted HTML with sections for summary, dependencies updated table, security audit table, and test results table
+      - System displays a clickable PR link when maintenance succeeded or a clickable issue link when maintenance failed
+      - System makes reports accessible both inline (expanded row in history table) and via direct URL using the run_id
+      - System shows EmptyState when no maintenance runs exist yet, with CTA to configure maintenance schedule or trigger a manual run
+    </maintenance_report_viewer>
+  </core_features>
+
+  <database_schema>
+    <tables>
+      <maintenance_runs>
+        - id (INTEGER PRIMARY KEY AUTOINCREMENT)
+        - project_name (TEXT NOT NULL, INDEX)
+        - run_date (DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)
+        - status (TEXT NOT NULL, CHECK IN ('success', 'failure', 'dry_run'))
+        - strategy (TEXT NOT NULL, CHECK IN ('conservative', 'aggressive'))
+        - packages_updated (INTEGER NOT NULL DEFAULT 0)
+        - vulnerabilities_fixed (INTEGER NOT NULL DEFAULT 0)
+        - tests_passed (BOOLEAN, nullable)
+        - pr_url (TEXT, nullable)
+        - issue_url (TEXT, nullable)
+        - report_path (TEXT, nullable)
+        - duration_seconds (INTEGER, nullable)
+        - error_message (TEXT, nullable)
+        - created_at (TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)
+        - updated_at (TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)
+      </maintenance_runs>
+      <schedules_extension>
+        - schedule_type (TEXT NOT NULL DEFAULT 'agent') -- added column: 'agent' or 'maintenance'
+        - update_strategy (TEXT, nullable) -- added column: 'conservative' or 'aggressive', used when schedule_type='maintenance'
+      </schedules_extension>
+    </tables>
+  </database_schema>
+
+  <api_endpoints_summary>
+    <maintenance>
+      - GET /api/projects/{project_name}/maintenance/history?limit=20 (paginated maintenance run list)
+      - GET /api/projects/{project_name}/maintenance/next-run (next scheduled maintenance date/time)
+      - POST /api/projects/{project_name}/maintenance/trigger?dry_run=false (manually trigger maintenance)
+      - GET /api/projects/{project_name}/maintenance/report/{run_id} (full report markdown for a run)
+      - DELETE /api/projects/{project_name}/maintenance/history/{run_id} (delete a maintenance run record)
+    </maintenance>
+    <settings_extension>
+      - GET /api/settings (extended with deployment_target, monitoring_features, analytics_provider, update_strategy, maintenance_frequency)
+      - PUT /api/settings (extended to accept DevOps configuration fields)
+    </settings_extension>
+    <agent_extension>
+      - POST /api/projects/{project_name}/agent/start (extended to accept agent_type: cicd, monitoring, auto-update)
+      - POST /api/projects/{project_name}/agent/stop (extended to stop post-build agent types)
+    </agent_extension>
+  </api_endpoints_summary>
+
+  <ui_layout>
+    <main_structure>
+      - Existing AutoForge project view with Kanban/Graph tabs
+      - New "Maintenance" tab added to the project view tab bar
+      - Existing Settings modal extended with "DevOps" section
+      - Maintenance tab contains summary card, history table, and schedule configuration
+    </main_structure>
+  </ui_layout>
+
+  <design_system>
+    <color_palette>
+      - Uses existing AutoForge neobrutalism design system
+      - Maintenance status colors: success green (--color-neo-done), failure red (error), dry-run blue (info)
+      - Schedule active: cyan (--color-neo-progress), schedule disabled: gray (muted)
+    </color_palette>
+    <typography>
+      - Follows existing AutoForge typography (Inter, system-ui, sans-serif)
+      - Maintenance report rendered in monospace for tables, proportional for prose
+    </typography>
+    <spacing>
+      - Follows existing AutoForge spacing conventions: 4px grid, standard Tailwind spacing scale
+      - Summary card uses p-6 padding, history table rows use py-3 px-4
+      - Section gaps use space-y-6 between major sections in the Maintenance tab
+    </spacing>
+  </design_system>
+
+  <ui_ux_standards>
+    <banned_patterns>
+      - alert(), confirm(), prompt() -- use existing Modal/ConfirmModal/Toast
+      - Hardcoded secrets in any generated template -- always reference env vars
+      - Raw timestamps in maintenance history -- use relative time formatting
+      - Delete/trigger without confirmation -- "Run Now" button requires confirmation
+    </banned_patterns>
+    <required_components>
+      - Toast notification after manual maintenance trigger (success: "Maintenance started", error: "Failed to start")
+      - Loading spinner on "Run Now" button during API call
+      - Skeleton loader for maintenance history table while loading
+      - EmptyState for maintenance tab when no runs exist ("No maintenance runs yet")
+      - ConfirmModal before manual maintenance trigger
+    </required_components>
+    <feedback_protocol>
+      - Trigger maintenance: confirm modal -> loading state -> toast + refresh history
+      - Settings save: loading button -> toast ("Settings saved") + close modal
+      - Report load: skeleton -> rendered report or error state with retry
+    </feedback_protocol>
+  </ui_ux_standards>
+
+  <coding_standards>
+    <architecture>
+      - Follow existing AutoForge patterns: new routers in server/routers/, new services in server/services/, new components in ui/src/components/
+      - Python: SQLAlchemy models in api/database.py, FastAPI routers with Pydantic request/response models
+      - TypeScript: interfaces in ui/src/lib/types.ts, API functions in ui/src/lib/api.ts, TanStack Query hooks in ui/src/hooks/
+      - All new Python code must pass ruff check and mypy
+      - All new TypeScript code must pass npm run lint and npm run build
+    </architecture>
+    <error_handling>
+      - Maintenance trigger endpoint returns 404 if project not found, 409 if maintenance already running
+      - Auto-update agent failures logged to MaintenanceRun.error_message and surfaced in UI
+      - Graceful degradation: if gh CLI unavailable, skip PR/issue creation and note in report
+      - Scheduler errors logged but do not crash the server
+    </error_handling>
+  </coding_standards>
+
+  <key_interactions>
+    <trigger_maintenance_flow>
+      1. User navigates to project's Maintenance tab
+      2. User clicks "Run Now" button
+      3. ConfirmModal appears asking "Start maintenance run for {project}?"
+      4. User confirms, button shows loading spinner
+      5. POST /trigger API spawns auto-update agent subprocess
+      6. Toast shows "Maintenance started for {project}"
+      7. History table auto-refreshes via TanStack Query invalidation
+      8. When run completes, new row appears in history with status badge
+    </trigger_maintenance_flow>
+    <configure_devops_flow>
+      1. User opens Settings modal (comma key or gear icon)
+      2. User scrolls to DevOps section
+      3. User selects deployment target from dropdown
+      4. User checks/unchecks monitoring features
+      5. User selects update strategy (conservative/aggressive)
+      6. User picks maintenance frequency (weekly/biweekly/monthly)
+      7. User clicks Save, settings persisted via PUT /api/settings
+      8. Toast confirms "Settings saved"
+    </configure_devops_flow>
+    <post_build_agent_flow>
+      1. All project features reach PASSING status
+      2. Orchestrator detects build completion via _check_post_build_ready()
+      3. CI/CD agent spawns, reads project, generates pipeline files
+      4. Monitoring agent spawns in parallel, modifies existing files to add observability
+      5. Both agents complete as single-turn subprocesses
+      6. Agent status updates sent via WebSocket to UI
+      7. Project view shows post-build completion status
+    </post_build_agent_flow>
+    <view_maintenance_report_flow>
+      1. User views maintenance history in Maintenance tab
+      2. User clicks expand arrow on a history row
+      3. GET /report/{run_id} fetches the markdown report
+      4. Report renders inline with formatted tables for dependencies, security audit, and test results
+      5. If PR was created, clickable link opens GitHub PR in new tab
+      6. If issue was created on failure, clickable link opens GitHub issue
+    </view_maintenance_report_flow>
+  </key_interactions>
+
+  <implementation_steps>
+    <step number="1">
+      <title>Foundation: CLI, Templates, and Database</title>
+      <tasks>
+        - Add cicd, monitoring, auto-update to --agent-type choices in autonomous_agent_demo.py with all new CLI flags
+        - Create .claude/templates/cicd_prompt.template.md with full CI/CD pipeline generation instructions
+        - Create .claude/templates/monitoring_prompt.template.md with monitoring setup instructions
+        - Create .claude/templates/auto_update_prompt.template.md with maintenance workflow instructions
+        - Add MaintenanceRun model to api/database.py and extend Schedule model with new columns
+      </tasks>
+    </step>
+    <step number="2">
+      <title>Core: Prompt Loading, Client Config, and APIs</title>
+      <tasks>
+        - Add get_cicd_prompt() with _detect_deployment_target() to prompts.py
+        - Add get_monitoring_prompt() and get_auto_update_prompt() to prompts.py
+        - Configure post-build agent types in client.py (no Playwright, read-only feature tools)
+        - Create server/routers/maintenance.py with history, trigger, report, next-run endpoints
+        - Extend server/routers/settings.py with DevOps configuration fields
+      </tasks>
+    </step>
+    <step number="3">
+      <title>Integration: Scheduler, Orchestrator, and Agent Router</title>
+      <tasks>
+        - Extend scheduler_service.py with maintenance schedule support and frequency presets
+        - Add post-build agent spawning to parallel_orchestrator.py
+        - Extend server/routers/agent.py to support post-build agent types
+      </tasks>
+    </step>
+    <step number="4">
+      <title>UI: Types, Settings, Maintenance Tab, and Report Viewer</title>
+      <tasks>
+        - Add MaintenanceRun type and maintenance API client/hooks to UI codebase
+        - Extend SettingsModal.tsx with DevOps configuration panel
+        - Create MaintenanceTab.tsx with summary card, history table, and schedule config
+        - Create MaintenanceReport.tsx for rendered report display
+        - Add Maintenance tab to project view in App.tsx
+      </tasks>
+    </step>
+  </implementation_steps>
+
+  <feature_dependencies>
+    <dependency_map>
+      <!-- Foundation features: no dependencies -->
+      - Feature "CLI agent types" depends on: nothing
+      - Feature "CI/CD prompt template" depends on: nothing
+      - Feature "Monitoring prompt template" depends on: nothing
+      - Feature "Auto-update prompt template" depends on: nothing
+      - Feature "MaintenanceRun database model" depends on: nothing
+
+      <!-- Core features: depend on foundation -->
+      - Feature "CI/CD prompt loading" depends on: CI/CD prompt template
+      - Feature "Monitoring and auto-update prompt loading" depends on: Monitoring prompt template, Auto-update prompt template
+      - Feature "Post-build agent client configuration" depends on: CLI agent types
+      - Feature "Maintenance API router" depends on: MaintenanceRun database model
+      - Feature "DevOps settings API" depends on: nothing (settings are independent)
+
+      <!-- Integration features: depend on core -->
+      - Feature "Scheduler maintenance support" depends on: MaintenanceRun database model
+      - Feature "Post-build agent orchestration" depends on: CI/CD prompt loading, Monitoring and auto-update prompt loading, Post-build agent client configuration
+      - Feature "Agent router post-build support" depends on: CLI agent types, Post-build agent client configuration
+
+      <!-- UI features: depend on APIs -->
+      - Feature "TypeScript types and API client" depends on: Maintenance API router
+      - Feature "Settings modal DevOps panel" depends on: DevOps settings API
+      - Feature "Maintenance tab component" depends on: TypeScript types and API client
+      - Feature "Maintenance report viewer" depends on: TypeScript types and API client
+    </dependency_map>
+  </feature_dependencies>
+
+  <success_criteria>
+    <functionality>
+      - All three agent types (cicd, monitoring, auto-update) can be launched via CLI and via the UI agent start endpoint
+      - CI/CD agent generates complete GitHub Actions workflows, Dockerfile, docker-compose.yml, .env.example, and Makefile for a target project
+      - Monitoring agent correctly modifies existing project files to add Sentry, health endpoints, and structured logging
+      - Auto-update agent performs the full audit-update-verify-report-commit/rollback workflow
+      - Maintenance history persists across server restarts in SQLite
+      - Maintenance schedules fire at the correct intervals via the scheduler service
+      - Post-build agents automatically spawn when all features pass in parallel orchestrator mode
+    </functionality>
+    <user_experience>
+      - Maintenance tab provides clear visibility into maintenance run history and status
+      - Settings modal DevOps section allows configuring all three agents without touching config files
+      - Manual maintenance trigger provides immediate feedback with toast notification
+      - Maintenance reports render cleanly with formatted tables and clickable PR/issue links
+      - Empty states guide users to configure maintenance when no runs exist
+    </user_experience>
+    <technical_quality>
+      - All Python code passes ruff check . and mypy
+      - All TypeScript code passes npm run lint and npm run build in ui/
+      - No console errors in the React UI
+      - Database migrations are backward-compatible (new columns have defaults, new table is additive)
+      - Post-build agents do not interfere with coding agents or with each other
+      - Auto-update agent never force-pushes, never merges its own PRs, and always rolls back cleanly on failure
+    </technical_quality>
+  </success_criteria>
+</project_specification>

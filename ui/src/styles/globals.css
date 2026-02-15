@@ -62,6 +62,23 @@
   --color-status-progress: oklch(0.85 0.08 245);
   --color-status-done: oklch(0.85 0.08 245);
 
+  /* Graph colors */
+  --color-graph-edge: #a1a1aa;
+  --color-graph-node-pending: #eab308;
+  --color-graph-node-progress: #06b6d4;
+  --color-graph-node-done: #22c55e;
+  --color-graph-node-failing: #ef4444;
+  --color-graph-bg: #d4d4d8;
+
+  /* Category badge colors */
+  --color-category-1: #ec4899;
+  --color-category-2: #06b6d4;
+  --color-category-3: #22c55e;
+  --color-category-4: #eab308;
+  --color-category-5: #f97316;
+  --color-category-6: #a855f7;
+  --color-category-7: #3b82f6;
+
   /* Font stacks */
   --font-sans: 'Open Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
@@ -123,6 +140,23 @@
   --color-status-pending: oklch(0.25 0.02 250);
   --color-status-progress: oklch(0.25 0.05 245);
   --color-status-done: oklch(0.25 0.05 245);
+
+  /* Graph colors for dark mode */
+  --color-graph-edge: #71717a;
+  --color-graph-node-pending: #facc15;
+  --color-graph-node-progress: #22d3ee;
+  --color-graph-node-done: #4ade80;
+  --color-graph-node-failing: #f87171;
+  --color-graph-bg: #3f3f46;
+
+  /* Category badge colors for dark mode */
+  --color-category-1: #f472b6;
+  --color-category-2: #22d3ee;
+  --color-category-3: #4ade80;
+  --color-category-4: #facc15;
+  --color-category-5: #fb923c;
+  --color-category-6: #c084fc;
+  --color-category-7: #60a5fa;
 }
 
 /* ============================================================================

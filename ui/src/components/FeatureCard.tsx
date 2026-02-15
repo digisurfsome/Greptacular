@@ -13,28 +13,27 @@ interface FeatureCardProps {
   activeAgent?: ActiveAgent
 }
 
-// Generate consistent color for category
-function getCategoryColor(category: string): string {
-  const colors = [
-    'bg-pink-500',
-    'bg-cyan-500',
-    'bg-green-500',
-    'bg-yellow-500',
-    'bg-orange-500',
-    'bg-purple-500',
-    'bg-blue-500',
-  ]
+// Generate consistent CSS variable color for category
+const CATEGORY_COLOR_VARS = [
+  'var(--color-category-1)',
+  'var(--color-category-2)',
+  'var(--color-category-3)',
+  'var(--color-category-4)',
+  'var(--color-category-5)',
+  'var(--color-category-6)',
+  'var(--color-category-7)',
+]
 
+function getCategoryColorVar(category: string): string {
   let hash = 0
   for (let i = 0; i < category.length; i++) {
     hash = category.charCodeAt(i) + ((hash << 5) - hash)
   }
-
-  return colors[Math.abs(hash) % colors.length]
+  return CATEGORY_COLOR_VARS[Math.abs(hash) % CATEGORY_COLOR_VARS.length]
 }
 
 export function FeatureCard({ feature, onClick, isInProgress, allFeatures = [], activeAgent }: FeatureCardProps) {
-  const categoryColor = getCategoryColor(feature.category)
+  const categoryColorVar = getCategoryColorVar(feature.category)
   const isBlocked = feature.blocked || (feature.blocking_dependencies && feature.blocking_dependencies.length > 0)
   const hasActiveAgent = !!activeAgent
 
@@ -49,11 +48,11 @@ export function FeatureCard({ feature, onClick, isInProgress, allFeatures = [], 
         ${hasActiveAgent ? 'ring-2 ring-primary ring-offset-2' : ''}
       `}
     >
-      <CardContent className="p-4 space-y-3">
+      <CardContent className="p-4 space-y-4">
         {/* Header */}
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2">
-            <Badge className={`${categoryColor} text-white`}>
+            <Badge style={{ backgroundColor: categoryColorVar, color: 'white' }}>
               {feature.category}
             </Badge>
             <DependencyBadge feature={feature} allFeatures={allFeatures} compact />

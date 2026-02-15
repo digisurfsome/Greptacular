@@ -275,18 +275,18 @@ export function DebugLogViewer({
     return 'info'
   }
 
-  // Get color class for log level
-  const getLogColor = (level: LogLevel): string => {
+  // Get inline color style for log level using CSS variables
+  const getLogColorStyle = (level: LogLevel): React.CSSProperties => {
     switch (level) {
       case 'error':
-        return 'text-red-500'
+        return { color: 'var(--color-log-error)' }
       case 'warn':
-        return 'text-yellow-500'
+        return { color: 'var(--color-log-warning)' }
       case 'debug':
-        return 'text-blue-400'
+        return { color: 'var(--color-log-info)' }
       case 'info':
       default:
-        return 'text-foreground'
+        return {}
     }
   }
 
@@ -334,7 +334,7 @@ export function DebugLogViewer({
             onClick={onToggle}
             className="flex items-center gap-2 hover:bg-accent px-2 py-1 rounded transition-colors cursor-pointer"
           >
-            <TerminalIcon size={16} className="text-green-500" />
+            <TerminalIcon size={16} style={{ color: 'var(--color-log-success)' }} />
             <span className="font-mono text-sm text-foreground font-bold">
               Debug
             </span>
@@ -407,7 +407,10 @@ export function DebugLogViewer({
                 </Badge>
               )}
               {isAutoScrollPaused() && (
-                <Badge variant="default" className="bg-yellow-500 text-yellow-950">
+                <Badge
+                  variant="default"
+                  style={{ backgroundColor: 'var(--color-log-warning)', color: 'var(--color-background)' }}
+                >
                   Paused
                 </Badge>
               )}
@@ -459,18 +462,18 @@ export function DebugLogViewer({
                 <div className="space-y-0.5">
                   {logs.map((log, index) => {
                     const level = getLogLevel(log.line)
-                    const colorClass = getLogColor(level)
+                    const colorStyle = getLogColorStyle(level)
                     const timestamp = formatTimestamp(log.timestamp)
 
                     return (
                       <div
                         key={`${log.timestamp}-${index}`}
-                        className="flex gap-2 hover:bg-muted px-1 py-0.5 rounded"
+                        className="flex gap-2 hover:bg-muted px-2 py-1 rounded"
                       >
                         <span className="text-muted-foreground select-none shrink-0">
                           {timestamp}
                         </span>
-                        <span className={`${colorClass} whitespace-pre-wrap break-all`}>
+                        <span className="whitespace-pre-wrap break-all" style={colorStyle}>
                           {log.line}
                         </span>
                       </div>
@@ -496,18 +499,18 @@ export function DebugLogViewer({
                 <div className="space-y-0.5">
                   {devLogs.map((log, index) => {
                     const level = getLogLevel(log.line)
-                    const colorClass = getLogColor(level)
+                    const colorStyle = getLogColorStyle(level)
                     const timestamp = formatTimestamp(log.timestamp)
 
                     return (
                       <div
                         key={`${log.timestamp}-${index}`}
-                        className="flex gap-2 hover:bg-muted px-1 py-0.5 rounded"
+                        className="flex gap-2 hover:bg-muted px-2 py-1 rounded"
                       >
                         <span className="text-muted-foreground select-none shrink-0">
                           {timestamp}
                         </span>
-                        <span className={`${colorClass} whitespace-pre-wrap break-all`}>
+                        <span className="whitespace-pre-wrap break-all" style={colorStyle}>
                           {log.line}
                         </span>
                       </div>

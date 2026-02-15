@@ -73,8 +73,8 @@ class GraphErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryStat
       return (
         <div className="h-full w-full flex items-center justify-center bg-muted">
           <div className="text-center p-6">
-            <AlertTriangle size={48} className="mx-auto mb-4 text-yellow-500" />
-            <div className="text-foreground font-bold mb-2">Graph rendering error</div>
+            <AlertTriangle size={48} className="mx-auto mb-4 text-amber-500 dark:text-amber-400" />
+            <div className="text-foreground font-medium mb-2">Graph rendering error</div>
             <div className="text-sm text-muted-foreground mb-4">
               The dependency graph encountered an issue.
             </div>
@@ -91,32 +91,28 @@ class GraphErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryStat
   }
 }
 
+// Map status to CSS variable names for graph node colors
+const STATUS_COLOR_VAR: Record<string, string> = {
+  pending: 'var(--color-graph-node-pending)',
+  in_progress: 'var(--color-graph-node-progress)',
+  done: 'var(--color-graph-node-done)',
+  blocked: 'var(--color-graph-node-failing)',
+}
+
 // Custom node component
 function FeatureNode({ data }: { data: GraphNode & { onClick?: () => void; agent?: NodeAgentInfo } }) {
-  const statusColors = {
-    pending: 'bg-yellow-100 border-yellow-300 dark:bg-yellow-900/30 dark:border-yellow-700',
-    in_progress: 'bg-cyan-100 border-cyan-300 dark:bg-cyan-900/30 dark:border-cyan-700',
-    done: 'bg-green-100 border-green-300 dark:bg-green-900/30 dark:border-green-700',
-    blocked: 'bg-red-50 border-red-300 dark:bg-red-900/20 dark:border-red-700',
-  }
-
-  const textColors = {
-    pending: 'text-yellow-900 dark:text-yellow-100',
-    in_progress: 'text-cyan-900 dark:text-cyan-100',
-    done: 'text-green-900 dark:text-green-100',
-    blocked: 'text-red-900 dark:text-red-100',
-  }
+  const nodeColor = STATUS_COLOR_VAR[data.status] || STATUS_COLOR_VAR.pending
 
   const StatusIcon = () => {
     switch (data.status) {
       case 'done':
-        return <CheckCircle2 size={16} className={textColors[data.status]} />
+        return <CheckCircle2 size={16} style={{ color: nodeColor }} />
       case 'in_progress':
-        return <Loader2 size={16} className={`${textColors[data.status]} animate-spin`} />
+        return <Loader2 size={16} className="animate-spin" style={{ color: nodeColor }} />
       case 'blocked':
         return <AlertTriangle size={16} className="text-destructive" />
       default:
-        return <Circle size={16} className={textColors[data.status]} />
+        return <Circle size={16} style={{ color: nodeColor }} />
     }
   }
 
@@ -124,13 +120,15 @@ function FeatureNode({ data }: { data: GraphNode & { onClick?: () => void; agent
     <>
       <Handle type="target" position={Position.Left} className="!bg-border !w-2 !h-2" />
       <div
-        className={`
-          px-4 py-3 rounded-lg border-2 cursor-pointer
-          transition-all hover:shadow-md relative
-          ${statusColors[data.status]}
-        `}
+        className="px-3 py-2 rounded-lg border-2 cursor-pointer transition-all hover:shadow-md relative"
         onClick={data.onClick}
-        style={{ minWidth: NODE_WIDTH - 20, maxWidth: NODE_WIDTH }}
+        style={{
+          minWidth: NODE_WIDTH - 20,
+          maxWidth: NODE_WIDTH,
+          borderColor: nodeColor,
+          backgroundColor: `color-mix(in srgb, ${nodeColor} 12%, var(--color-background))`,
+          color: nodeColor,
+        }}
       >
         {/* Agent avatar badge - positioned at top right */}
         {data.agent && (
@@ -142,20 +140,20 @@ function FeatureNode({ data }: { data: GraphNode & { onClick?: () => void; agent
         )}
         <div className="flex items-center gap-2 mb-1">
           <StatusIcon />
-          <span className={`text-xs font-mono ${textColors[data.status]} opacity-70`}>
+          <span className="text-xs font-mono opacity-70">
             #{data.priority}
           </span>
           {/* Show agent name inline if present */}
           {data.agent && (
-            <span className={`text-xs font-bold ${textColors[data.status]} ml-auto`}>
+            <span className="text-xs font-bold ml-auto">
               {data.agent.name}
             </span>
           )}
         </div>
-        <div className={`font-bold text-sm ${textColors[data.status]} truncate`} title={data.name}>
+        <div className="font-medium text-sm truncate" title={data.name}>
           {data.name}
         </div>
-        <div className={`text-xs ${textColors[data.status]} opacity-70 truncate`} title={data.category}>
+        <div className="text-xs opacity-70 truncate" title={data.category}>
           {data.category}
         </div>
       </div>
@@ -253,16 +251,18 @@ function DependencyGraphInner({ graphData, onNodeClick, activeAgents = [] }: Dep
       },
     }))
 
+    const edgeColor = getComputedStyle(document.documentElement).getPropertyValue('--color-graph-edge').trim() || '#a1a1aa'
+
     const edges: Edge[] = graphData.edges.map((edge, index) => ({
       id: `e${edge.source}-${edge.target}-${index}`,
       source: String(edge.source),
       target: String(edge.target),
       type: 'smoothstep',
       animated: false,
-      style: { stroke: '#a1a1aa', strokeWidth: 2 },
+      style: { stroke: edgeColor, strokeWidth: 2 },
       markerEnd: {
         type: MarkerType.ArrowClosed,
-        color: '#a1a1aa',
+        color: edgeColor,
       },
     }))
 
@@ -313,18 +313,19 @@ function DependencyGraphInner({ graphData, onNodeClick, activeAgents = [] }: Dep
     []
   )
 
-  // Color nodes for minimap
-  const nodeColor = useCallback((node: Node) => {
+  // Color nodes for minimap using CSS variables
+  const minimapNodeColor = useCallback((node: Node) => {
     const status = (node.data as unknown as GraphNode).status
+    const style = getComputedStyle(document.documentElement)
     switch (status) {
       case 'done':
-        return '#22c55e' // green-500
+        return style.getPropertyValue('--color-graph-node-done').trim() || '#22c55e'
       case 'in_progress':
-        return '#06b6d4' // cyan-500
+        return style.getPropertyValue('--color-graph-node-progress').trim() || '#06b6d4'
       case 'blocked':
-        return '#ef4444' // red-500
+        return style.getPropertyValue('--color-graph-node-failing').trim() || '#ef4444'
       default:
-        return '#eab308' // yellow-500
+        return style.getPropertyValue('--color-graph-node-pending').trim() || '#eab308'
     }
   }, [])
 
@@ -363,25 +364,23 @@ function DependencyGraphInner({ graphData, onNodeClick, activeAgents = [] }: Dep
 
       {/* Legend */}
       <Card className="absolute top-4 right-4 z-10">
-        <CardContent className="p-3">
-          <div className="text-xs font-bold mb-2">Status</div>
+        <CardContent className="p-4">
+          <div className="text-xs font-medium mb-2">Status</div>
           <div className="space-y-1.5">
-            <div className="flex items-center gap-2 text-xs">
-              <div className="w-3 h-3 rounded bg-yellow-400 border border-yellow-500" />
-              <span>Pending</span>
-            </div>
-            <div className="flex items-center gap-2 text-xs">
-              <div className="w-3 h-3 rounded bg-cyan-400 border border-cyan-500" />
-              <span>In Progress</span>
-            </div>
-            <div className="flex items-center gap-2 text-xs">
-              <div className="w-3 h-3 rounded bg-green-400 border border-green-500" />
-              <span>Done</span>
-            </div>
-            <div className="flex items-center gap-2 text-xs">
-              <div className="w-3 h-3 rounded bg-red-100 border border-red-400" />
-              <span>Blocked</span>
-            </div>
+            {[
+              { label: 'Pending', colorVar: 'var(--color-graph-node-pending)' },
+              { label: 'In Progress', colorVar: 'var(--color-graph-node-progress)' },
+              { label: 'Done', colorVar: 'var(--color-graph-node-done)' },
+              { label: 'Blocked', colorVar: 'var(--color-graph-node-failing)' },
+            ].map(({ label, colorVar }) => (
+              <div key={label} className="flex items-center gap-2 text-xs">
+                <div
+                  className="w-3 h-3 rounded"
+                  style={{ backgroundColor: colorVar, border: `1px solid ${colorVar}` }}
+                />
+                <span>{label}</span>
+              </div>
+            ))}
           </div>
         </CardContent>
       </Card>
@@ -399,13 +398,13 @@ function DependencyGraphInner({ graphData, onNodeClick, activeAgents = [] }: Dep
         minZoom={0.1}
         maxZoom={2}
       >
-        <Background color="#d4d4d8" gap={20} size={1} />
+        <Background color="var(--color-graph-bg)" gap={20} size={1} />
         <Controls
           className="!bg-card !border !border-border !rounded-lg !shadow-sm"
           showInteractive={false}
         />
         <MiniMap
-          nodeColor={nodeColor}
+          nodeColor={minimapNodeColor}
           className="!bg-card !border !border-border !rounded-lg !shadow-sm"
           maskColor="rgba(0, 0, 0, 0.1)"
         />

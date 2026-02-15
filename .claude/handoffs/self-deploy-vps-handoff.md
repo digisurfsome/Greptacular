@@ -81,6 +81,72 @@ No terminal. No SSH keys. No `docker run`. No `apt-get`. Just a button and a cre
 **Instance hosting:** Fly.io Machines API (primary) or DigitalOcean Droplets API (power-user option)
 **Each user gets:** An isolated Machine running the AutoForge Docker image with their own env vars
 
+## Cross-Platform Architecture (4 Clients, 1 Supabase)
+
+AutoForge is accessible through FOUR different clients. All four connect to the SAME
+Supabase project — one database, one source of truth for users, credits, ideas, and builds.
+
+```
+                              SUPABASE
+                         (One Database For All)
+                                 |
+            +----------+---------+---------+----------+
+            |          |                   |          |
+     autoforge.com   Flutter App       VPS Instance   Local Install
+     (Web App)       (Mobile)          (Cloud)        (Desktop)
+     Gen-Ai          Flutter           AutoForge      AutoForge
+     Boilerplate     Boilerplate       Docker Image   Downloaded
+```
+
+### Client 1: autoforge.com (Web — Gen-Ai Boilerplate)
+- Landing page, sign up, buy credits, manage account
+- View/create/edit app ideas and PRDs
+- Provision a VPS instance OR download desktop version
+- Stripe checkout (ALL purchases happen here)
+- **This is the "home base" for every user regardless of how they use AutoForge**
+- Deployed on Vercel
+
+### Client 2: Flutter Companion App (Mobile — Flutter Boilerplate)
+- Same Supabase login (same email/password, same account)
+- Jot down app ideas on the go (voice-to-text friendly)
+- Fill in PRD details: app name, features, target audience, design preferences
+- View build history, credit balance, instance status
+- Push notifications when builds complete
+- **Does NOT run builds** — planning, monitoring, and idea capture only
+- Shares Supabase backend with the web app (dual boilerplate pattern)
+
+### Client 3: VPS Instance (yourname.autoforge.app)
+- The actual AutoForge app builder running in the cloud
+- For non-technical users who don't want to install anything
+- Pulls ideas/PRDs from Supabase that user entered on mobile or web
+- No auth of its own — validates JWT tokens from Supabase (SSO)
+- No billing of its own — checks entitlements via API to autoforge.com
+- Deducts credits via API call before each build starts
+- Mobile-friendly UI — user can monitor builds and answer spec questions from their phone
+
+### Client 4: Local Install (Desktop Download)
+- Same AutoForge, running on the user's own computer
+- For technical users who want full control
+- Still connects to Supabase for auth, credits, ideas, entitlements
+- Same credit system — local doesn't mean free
+- Build results logged to Supabase so they appear in web dashboard and mobile app
+- Downloaded from autoforge.com/download
+
+### How Data Flows Between Clients
+
+All four clients read/write the same Supabase tables:
+
+| Data | Written By | Read By |
+|------|-----------|---------|
+| User account | Web (signup) | All clients |
+| App ideas/PRDs | Web, Flutter | VPS, Local (to start builds) |
+| Credit balance | Web (purchase), VPS/Local (deduct) | All clients |
+| Build history | VPS, Local (during builds) | Web, Flutter (monitoring) |
+| Instance status | Provisioner (Edge Function) | Web, Flutter (dashboard) |
+
+**Key pattern:** Ideas flow FROM web/mobile TO build engines. Build results flow FROM
+build engines BACK TO web/mobile. Credits are purchased on web and consumed by build engines.
+
 ## Why Fly.io Over DigitalOcean
 
 Fly.io is the recommended primary hosting backend for user instances:
@@ -234,18 +300,176 @@ with a retry option.
 5. Update status to `destroyed`
 6. Send confirmation email
 
-## Pricing Tiers
+## Pricing Model: Credit-Based with Optional Monthly Plans
 
-| Tier | Price | Your Cost | Specs | Limits |
-|------|-------|-----------|-------|--------|
-| Starter | $19/mo | ~$5/mo | Shared CPU, 256MB RAM | 1 concurrent agent, 10 projects |
-| Pro | $39/mo | ~$10/mo | Dedicated CPU, 1GB RAM | 3 concurrent agents, unlimited projects |
-| Team | $79/mo | ~$20/mo | 2 CPUs, 2GB RAM | 5 concurrent agents, unlimited projects, priority support |
+AutoForge uses a **credit-based pricing model**. Every build consumes credits. Monthly
+plans give a discounted bundle of credits with a cap — they are NOT unlimited. Users can
+also buy credits a la carte without a subscription.
 
-Gross margins: 73% (Starter), 74% (Pro), 75% (Team).
+**Design goal:** Prevent abuse. Building enterprise-quality apps should cost real money.
+If someone wants to crank out 100 apps a month as an agency, they pay for 100 builds worth
+of credits. The credit system ensures costs scale linearly with usage.
 
-These costs include Fly.io compute, volume storage, and bandwidth. They do not include
-Anthropic API costs -- those are either BYO key or metered separately.
+### How Credits Work
+
+Each build consumes credits based on which **build components** are enabled. Users can
+toggle components on/off to control cost per build:
+
+| Build Component | Credit Cost | Description |
+|----------------|-------------|-------------|
+| Core Build | Base cost | App scaffolding + feature implementation (always required) |
+| QA Pipeline | +credits | Code review, regression testing, final QA |
+| Computer Use Testing | +credits | Claude Computer Use exploratory QA |
+| Pre-Build Intelligence | +credits | Spec validation and recommendations before building |
+| Post-Build Report | +credits | Quality report, security audit, performance analysis |
+| Premium Boilerplate | +credits | Using a premium boilerplate vs basic template |
+
+**Example:** A full build with everything enabled might cost 10 credits. Skip QA and
+Computer Use testing and it drops to 7. Use the basic template instead of premium
+boilerplate and it's 6. A bare-minimum build (just core + basic template) might be 4 credits.
+
+**Exact credit costs TBD** — the numbers above are illustrative. Final pricing will be
+set before launch based on actual Anthropic API costs per build component.
+
+### Subscription Plans (Monthly/Yearly/Lifetime)
+
+Monthly plans give a bundle of credits at a discount. Credits DO NOT roll over.
+There is a hard cap — subscriptions are NOT unlimited.
+
+| Tier | Monthly | Yearly | Lifetime | Credits/Month | Agents | VPS Specs |
+|------|---------|--------|----------|---------------|--------|-----------|
+| Starter | TBD | TBD | TBD | TBD | 1 | Shared CPU, 256MB |
+| Pro | TBD | TBD | TBD | TBD | 3 | Dedicated CPU, 1GB |
+| Agency | TBD | TBD | TBD | TBD | 5 | 2 CPUs, 2GB |
+
+**Note:** Exact prices are TBD. The subscription fee covers VPS hosting + a bundle of
+build credits. The monthly price will be higher than just hosting cost to include the
+credit bundle, with a slight per-credit discount vs buying a la carte.
+
+### A La Carte Credits (Buy More Anytime)
+
+Users can buy credits without a subscription. Purchased credits do not expire.
+
+| Pack | Price | Per-Credit Cost |
+|------|-------|----------------|
+| Single | TBD | Full price |
+| 5-Pack | TBD | Slight discount |
+| 10-Pack | TBD | Best per-credit rate |
+
+### Boilerplate Fees (Per-Build, Separate from Credits)
+
+Boilerplates have a **flat fee per build** on top of the credit cost. This is a separate
+charge, not deducted from credits.
+
+| Boilerplate | Per-Build Fee | Notes |
+|-------------|--------------|-------|
+| Basic Template | Free | Simple scaffolding, included with all tiers |
+| Web SaaS (Gen-Ai) | ~$199-299 | Full Supabase + Stripe + Admin boilerplate |
+| Dual Web + Mobile | ~$299-399 | Web boilerplate + Flutter companion app |
+| E-Commerce | TBD | Specialized e-commerce template |
+| Enterprise Suite | TBD | Full enterprise boilerplate |
+
+**Exact boilerplate prices TBD.** The premium boilerplates include pre-built auth, billing,
+admin dashboards, etc. — the user is paying for the massive head start, not just a template.
+
+### VPS Hosting Cost (Separate from Credits)
+
+The VPS hosting fee is part of the subscription or a standalone monthly charge:
+
+| Tier | Hosting Cost (Our Cost) | Specs |
+|------|------------------------|-------|
+| Starter | ~$5/mo | Shared CPU, 256MB RAM |
+| Pro | ~$10/mo | Dedicated CPU, 1GB RAM |
+| Agency | ~$20/mo | 2 CPUs, 2GB RAM |
+
+Users who run AutoForge locally (desktop download) skip the VPS hosting cost entirely
+but still pay credits per build and boilerplate fees.
+
+### Anti-Abuse Design
+
+- **Every build costs credits.** No unlimited plans. No "build as much as you want."
+- **Credits have real monetary value** tied to actual Anthropic API costs per build.
+- **Agencies pay agency prices.** 100 builds = 100x credit cost. Period.
+- **Monthly caps** prevent subscription abuse (even Agency tier has a credit limit).
+- **Boilerplate fees** add cost to high-value builds using premium templates.
+
+## Entitlements API
+
+AutoForge instances (VPS and local) do NOT have their own billing or auth systems.
+They check what a user can do by calling the Entitlements API on autoforge.com.
+
+### How It Works
+
+1. User opens their AutoForge instance (VPS or local)
+2. AutoForge validates their JWT token against Supabase
+3. Before any expensive operation (starting a build), AutoForge calls the Entitlements API
+4. The API returns what the user can do, how many credits they have, which boilerplates they own
+5. AutoForge enables/disables features accordingly
+6. When a build starts, AutoForge calls a "deduct credits" endpoint
+7. If the user runs out of credits mid-session, AutoForge shows a "Buy More Credits" button
+   that redirects them to autoforge.com/credits
+
+### Entitlements Endpoint
+
+```
+GET autoforge.com/api/entitlements
+Authorization: Bearer <user-jwt-token>
+
+Response:
+{
+  "user_id": "uuid",
+  "tier": "pro",
+  "credits_remaining": 7,
+  "subscription_active": true,
+  "max_concurrent_agents": 3,
+  "available_boilerplates": ["basic", "saas-starter", "ecommerce"],
+  "available_components": {
+    "core_build": true,
+    "qa_pipeline": true,
+    "computer_use_qa": true,
+    "pre_build_intelligence": true,
+    "post_build_report": true
+  },
+  "instance_limits": {
+    "max_projects": 50,
+    "max_parallel_agents": 3
+  }
+}
+```
+
+### Credit Deduction Endpoint
+
+```
+POST autoforge.com/api/credits/deduct
+Authorization: Bearer <user-jwt-token>
+Content-Type: application/json
+
+{
+  "build_id": "uuid",
+  "components": ["core_build", "qa_pipeline", "computer_use_qa"],
+  "boilerplate": "saas-starter"
+}
+
+Response:
+{
+  "authorized": true,
+  "credits_deducted": 8,
+  "credits_remaining": 2,
+  "boilerplate_charge_cents": 29900
+}
+```
+
+If the user doesn't have enough credits, the response returns `authorized: false` with
+the deficit amount and a checkout URL for buying more credits.
+
+### "Buy More" Redirect Flow
+
+When a VPS or local AutoForge instance detects insufficient credits:
+1. Show modal: "You need X more credits to start this build"
+2. Show options: "Buy 1 Credit", "Buy 5-Pack", "Buy 10-Pack", "Upgrade Plan"
+3. Each button links to `autoforge.com/checkout?product=X&redirect=instance`
+4. After purchase on autoforge.com, user is redirected back to their instance
+5. AutoForge re-checks entitlements and proceeds with the build
 
 ## API Key Models
 
@@ -331,6 +555,51 @@ create table billing_events (
 -- Index for billing history queries
 create index idx_billing_events_user_id on billing_events(user_id);
 create index idx_billing_events_created_at on billing_events(created_at);
+
+-- App ideas (shared across web, mobile, VPS, and local install)
+-- Users create ideas on web or Flutter app, then build them on VPS or local
+create table app_ideas (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) not null,
+  name text not null,                          -- "My Restaurant App"
+  description text,                            -- Brief description of the app
+  target_audience text,                        -- "Restaurant owners"
+  features jsonb default '[]',                 -- Array of feature ideas (name, description)
+  design_preferences text,                     -- "Modern, clean, dark mode"
+  boilerplate_preference text,                 -- "saas-starter", "ecommerce", etc.
+  prd_data jsonb default '{}',                 -- Full PRD details when fleshed out
+  status text not null default 'draft'
+    check (status in ('draft', 'ready', 'building', 'completed', 'archived')),
+  build_id uuid,                               -- Links to builds table when building starts
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index idx_app_ideas_user_id on app_ideas(user_id);
+create index idx_app_ideas_status on app_ideas(status);
+
+-- Build log (every build across ALL platforms — VPS and local)
+-- Tracks credit consumption and links back to the idea that spawned the build
+create table builds (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) not null,
+  idea_id uuid references app_ideas(id),       -- Which idea spawned this build (nullable for manual builds)
+  instance_type text not null
+    check (instance_type in ('vps', 'local')),
+  instance_id uuid references instances(id),   -- Which VPS instance (null for local)
+  boilerplate_used text,                       -- Which boilerplate template was used
+  credits_consumed integer not null default 0,  -- Total credits this build cost
+  components_used jsonb default '[]',          -- Which build components were enabled
+  status text not null default 'started'
+    check (status in ('started', 'building', 'completed', 'failed', 'cancelled')),
+  features_total integer default 0,
+  features_passing integer default 0,
+  started_at timestamptz not null default now(),
+  completed_at timestamptz
+);
+
+create index idx_builds_user_id on builds(user_id);
+create index idx_builds_status on builds(status);
 ```
 
 ### Row Level Security
@@ -354,6 +623,22 @@ create policy "Users can view own usage"
 alter table billing_events enable row level security;
 create policy "Users can view own billing"
   on billing_events for select using (auth.uid() = user_id);
+
+-- App ideas: users can CRUD their own ideas
+alter table app_ideas enable row level security;
+create policy "Users can view own ideas"
+  on app_ideas for select using (auth.uid() = user_id);
+create policy "Users can create ideas"
+  on app_ideas for insert with check (auth.uid() = user_id);
+create policy "Users can update own ideas"
+  on app_ideas for update using (auth.uid() = user_id);
+create policy "Users can delete own ideas"
+  on app_ideas for delete using (auth.uid() = user_id);
+
+-- Builds: users can view their own builds (inserts are done by Edge Functions)
+alter table builds enable row level security;
+create policy "Users can view own builds"
+  on builds for select using (auth.uid() = user_id);
 ```
 
 ## Feature Breakdown (10 Features, AutoForge-Compatible)
@@ -550,24 +835,118 @@ Structured data (JSON-LD) for the product. Sitemap generation. Performance optim
 6. Add JSON-LD structured data and generate sitemap
 7. Optimize performance (lazy images, preconnect, Lighthouse audit)
 
-## Revenue Projections
+## Revenue Projections (Credit-Based Model)
 
-Assumes average revenue per user of ~$24/month (weighted across tiers) and average
-hosting cost of ~$6/month per instance.
+Revenue comes from THREE streams: subscriptions (hosting + credit bundles), a la carte
+credit purchases, and per-build boilerplate fees.
 
-| Users | Monthly Revenue | Monthly Hosting Cost | Monthly Profit | Annual Profit |
-|-------|----------------|---------------------|----------------|---------------|
-| 100 | $2,400 | $600 | $1,800 | $21,600 |
-| 500 | $12,000 | $3,000 | $9,000 | $108,000 |
-| 1,000 | $24,000 | $6,000 | $18,000 | $216,000 |
-| 5,000 | $120,000 | $30,000 | $90,000 | $1,080,000 |
+**Exact prices TBD.** The projections below use placeholder numbers to illustrate the
+model. Replace with actual prices once finalized.
 
-These projections do not include Anthropic API revenue from metered key users, which
-could add 20-40% on top if offered.
+### Revenue Streams
 
-Additional costs not reflected: Supabase Pro ($25/mo), Vercel Pro ($20/mo), Stripe
-fees (2.9% + $0.30 per transaction), domain and email services. These are fixed costs
-that become negligible past ~50 users.
+1. **Subscriptions** — Recurring monthly/yearly for VPS hosting + credit bundles
+2. **A la carte credits** — One-time purchases for additional builds
+3. **Boilerplate fees** — Per-build charge for premium templates ($199-399 per build)
+
+### Cost Structure Per Build
+
+- Anthropic API cost per full build: ~$5-15 (varies by feature count and components used)
+- Fly.io hosting per user: ~$5-10/month
+- Fixed costs: Supabase Pro ($25/mo), Vercel Pro ($20/mo), Stripe fees (2.9% + $0.30)
+
+At premium per-build pricing ($199-499 per build with boilerplate), margins are very high.
+Even accounting for API costs and hosting, gross margin per build should be 80%+.
+
+### Anti-Commoditization Note
+
+The premium pricing ($199-499 per build) is intentional. AutoForge produces enterprise-
+quality apps with QA, testing, and professional boilerplates. This is NOT a vibe-coding
+toy — it's a professional app factory. Pricing it high keeps the output quality perception
+high and prevents market flooding.
+
+## Flutter Companion App (Dual Boilerplate Pattern)
+
+The Flutter boilerplate (`https://github.com/digisurfsome/Gen-Ai` — Flutter variant)
+shares the SAME Supabase project as the web app. This is the "dual boilerplate" pattern:
+one backend, two frontends (web + mobile).
+
+### What the Flutter App Does
+
+1. **Idea Capture** — Jot down app ideas on the go. Voice-to-text friendly. Fill in name,
+   description, features, target audience, design preferences. Saves to `app_ideas` table
+   in Supabase — instantly visible on web dashboard and inside AutoForge instances.
+
+2. **PRD Builder** — Expand a draft idea into a full PRD. Conversational flow (like the
+   spec creation chat in AutoForge) but running on mobile. Can use voice input to describe
+   features. The PRD data is stored in `app_ideas.prd_data` JSON column.
+
+3. **Build Monitoring** — View active builds across all instances (VPS and local). See
+   feature progress, agent status, logs. Push notifications when builds complete or fail.
+
+4. **Account Management** — View credit balance, subscription tier, build history. Quick
+   link to buy more credits (opens autoforge.com in mobile browser for Stripe checkout).
+
+5. **Instance Status** — See if your VPS instance is running, suspended, or provisioning.
+   Quick actions: restart instance, view instance URL.
+
+### What the Flutter App Does NOT Do
+
+- Does NOT run builds (no Claude agent, no CLI, no coding)
+- Does NOT process payments (redirects to autoforge.com for Stripe checkout)
+- Does NOT manage instance lifecycle (that's the web dashboard + Edge Functions)
+
+### Shared Supabase Tables
+
+Both the web app and Flutter app read/write the same tables:
+
+```
+Gen-Ai Web Boilerplate          Flutter Boilerplate
+        |                               |
+        |       SAME SUPABASE           |
+        +----------- PROJECT ----------+
+        |                               |
+   auth.users (login)            auth.users (login)
+   user_credits (balance)        user_credits (balance)
+   app_ideas (create/edit)       app_ideas (create/edit)
+   builds (view history)         builds (view history)
+   instances (manage)            instances (view status)
+```
+
+Create an idea on your phone at 7am on the train. Open your laptop at 9am and it's already
+there in your AutoForge dashboard, ready to build.
+
+## Idea Capture: Web + Mobile (Separate from Build Engine)
+
+The idea/PRD creation flow does NOT need the AutoForge CLI or VPS. It's a standalone
+feature that lives in the web dashboard and Flutter app:
+
+### Where Ideas Can Be Created
+- **Flutter app** — Quick capture with voice-to-text. Best for on-the-go brainstorming.
+- **Web dashboard** (autoforge.com) — Full-featured idea editor. Best for fleshing out PRDs.
+- **Inside AutoForge** (VPS/local) — The existing spec creation chat. Best when ready to build immediately.
+
+### Idea Lifecycle
+
+```
+DRAFT → READY → BUILDING → COMPLETED
+  |       |         |          |
+Phone   Laptop    VPS/Local   Done
+```
+
+1. **DRAFT** — User creates an idea (phone or web). Just a name and rough description.
+2. **READY** — User has fleshed out features, design preferences, boilerplate choice. Marked as "ready to build."
+3. **BUILDING** — User clicks "Build This" on their VPS or local install. Credits are deducted. AutoForge pulls the idea's PRD data and uses it as the app spec.
+4. **COMPLETED** — Build finished. Linked to the `builds` table with full results.
+
+### Voice-First Design
+
+The Flutter app and web dashboard should support **voice input** for idea capture:
+- Large microphone button for recording thoughts
+- Whisper API (or device speech-to-text) transcribes voice to text
+- AI assistant cleans up transcription into structured fields (name, features, audience)
+- User reviews and edits before saving
+- Especially important because the founder (and likely many users) prefers talking over typing
 
 ## Key Decisions to Make Before Building
 
@@ -654,7 +1033,11 @@ Fly.io container registry (`registry.fly.io/autoforge:latest`) as part of CI/CD.
 - Do NOT build a credit system from scratch — the boilerplate already has per-user credit balances
 - Do NOT build email sending from scratch — use the boilerplate's existing Resend integration
 - Do NOT create new UI components when shadcn/ui + Radix UI components exist in the boilerplate
-- DO add the `instances`, `instance_usage`, and `billing_events` tables to Supabase (these are new)
+- Do NOT put auth or billing logic inside AutoForge VPS instances — they check entitlements via API
+- Do NOT build a separate backend for the Flutter app — it shares the same Supabase project
+- DO add the `instances`, `instance_usage`, `billing_events`, `app_ideas`, and `builds` tables to Supabase
 - DO build the Fly.io Machines API integration (this is entirely new)
 - DO build the instance lifecycle management (suspend/resume/upgrade/destroy)
 - DO build the onboarding wizard for API key entry and deploy animation
+- DO build the Entitlements API for VPS/local instances to check credits and permissions
+- DO build the credit deduction flow (AutoForge calls API before each build starts)

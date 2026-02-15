@@ -1,0 +1,327 @@
+<project_specification>
+  <project_name>autoforge-idea-code-integration</project_name>
+
+  <overview>
+    Integrates the full Idea Code design system extraction methodology into AutoForge's
+    style pipeline. Users upload a screenshot of any website or UI, and the system extracts
+    the complete Visual Design Language (color tokens, typography, component patterns,
+    spacing rules, and Tailwind theme config) using Claude's vision capabilities. Extracted
+    styles produce the same output format as predefined styles, so the coding agent can
+    consume either interchangeably. Adds style classification to identify which of the
+    12 known design styles best matches the extracted aesthetic.
+  </overview>
+
+  <technology_stack>
+    <frontend>
+      <framework>React 19 with Vite 7 (existing AutoForge UI)</framework>
+      <styling>Tailwind CSS v4</styling>
+      <state_management>TanStack Query, React hooks and context</state_management>
+      <routing>React Router (existing)</routing>
+      <port>5173 (dev) / served by FastAPI in production</port>
+    </frontend>
+    <backend>
+      <runtime>Python 3.11+ with FastAPI (existing AutoForge server)</runtime>
+      <database>SQLite with SQLAlchemy (existing)</database>
+      <port>8000</port>
+    </backend>
+    <communication>
+      <api>RESTful endpoints (existing patterns)</api>
+    </communication>
+    <additional>
+      <vision_api>Claude Vision API for screenshot analysis</vision_api>
+      <testing>ruff (Python lint), npm run lint + npm run build (TypeScript)</testing>
+    </additional>
+  </technology_stack>
+
+  <prerequisites>
+    <environment_setup>
+      - Python 3.11+ with existing AutoForge venv
+      - Node.js 20+ for UI development
+      - Existing AutoForge installation with all dependencies
+      - Anthropic API key configured (for Claude Vision API calls)
+      - Existing style_manager.py service with predefined styles
+    </environment_setup>
+  </prerequisites>
+
+  <feature_count>16</feature_count>
+
+  <core_features>
+    <extraction_service>
+      - Create server/services/style_extractor.py with the full Idea Code EXTRACTION_PROMPT constant that instructs Claude to extract abstract color tokens, typography system, component patterns, layout/spacing physics, Tailwind theme extension, and style classification from a screenshot image
+      - Implement async extract_style_from_image(image_data, image_format) that sends the screenshot to Claude Vision API with the EXTRACTION_PROMPT and returns the raw markdown style guide response
+      - Implement parse_extraction_result(raw_markdown) that parses the raw response into a structured StyleExtraction dataclass with fields for color_tokens, typography, component_patterns, layout_spacing, tailwind_theme, and style_classification
+    </extraction_service>
+
+    <style_processing>
+      - Generate a complete Tailwind CSS theme extend config via generate_tailwind_config(extraction) that converts extracted color tokens, typography, border radius, and shadows into the same format used by predefined styles
+      - Classify extracted aesthetics via classify_style(extraction) against the 12 known style categories (Flat Design, Minimalism, Neumorphism, Glassmorphism, Skeuomorphism, Neubrutalism, Bauhaus, Claymorphism, Retro Futurism, Cyberpunk, Dark Mode Elegant, Warmer Shades) returning a primary style with confidence and optional accent style
+      - Normalize extraction output via normalize_to_style_guide(extraction) into the same markdown format produced by predefined styles' get_style_guide_markdown(), ensuring sections 1-5 are structurally identical regardless of source
+    </style_processing>
+
+    <server_api>
+      - Accept multipart image upload (PNG, JPG, WebP, max 10MB) at POST /api/styles/extract, run extraction through style_extractor, and return the structured StyleExtraction result with an extraction_id
+      - Return saved extraction results via GET /api/styles/extractions (list with thumbnails) and GET /api/styles/extractions/{extraction_id} (full result with raw_markdown, structured data, tailwind_config, and classification)
+      - Delete a saved extraction via DELETE /api/styles/extractions/{extraction_id} with 404 response for non-existent IDs
+    </server_api>
+
+    <integration>
+      - Accept an extraction_id in style_manager.py and load the extracted style guide as the active style for a project via POST /api/projects/{project_name}/style/apply-extraction, using the same code path as predefined style selection
+      - Detect when a project uses an extracted style (vs predefined) in the agent prompt injection pipeline and inject the normalized style guide markdown using the same insertion point and format as predefined styles
+    </integration>
+
+    <ui_components>
+      - Provide a screenshot upload component with drag-and-drop zone and file picker in the project creation flow and style settings, showing image preview before extraction triggers
+      - Display extraction results in a preview component with parsed color tokens as labeled swatches, typography hierarchy samples, style classification with confidence badge, and Tailwind theme config in a code block
+      - Apply an extracted style as the project's design system via an action button on the preview component, with a ConfirmModal when overwriting an existing style selection
+    </ui_components>
+
+    <error_handling>
+      - Reject invalid image formats with 400 Bad Request and oversized images (>10MB) with 413 Payload Too Large, showing clear guidance on accepted formats and size limits
+      - Handle Vision API failures by returning a user-friendly error with retry action, and handle malformed extraction output by falling back to raw markdown display with a warning toast
+    </error_handling>
+  </core_features>
+
+  <database_schema>
+    <tables>
+      <style_extractions>
+        - id (INTEGER PRIMARY KEY AUTOINCREMENT)
+        - image_filename (TEXT NOT NULL)
+        - image_thumbnail (BLOB)
+        - raw_markdown (TEXT NOT NULL)
+        - color_tokens_json (TEXT NOT NULL)
+        - typography_json (TEXT NOT NULL)
+        - component_patterns_json (TEXT NOT NULL)
+        - layout_spacing_json (TEXT NOT NULL)
+        - tailwind_config_json (TEXT NOT NULL)
+        - primary_style (TEXT)
+        - primary_style_confidence (TEXT)
+        - accent_style (TEXT)
+        - accent_style_confidence (TEXT)
+        - created_at (TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)
+        - updated_at (TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)
+      </style_extractions>
+      <project_style_config>
+        - id (INTEGER PRIMARY KEY AUTOINCREMENT)
+        - project_name (TEXT UNIQUE NOT NULL, references project registry by name)
+        - style_type (TEXT NOT NULL, CHECK IN ('predefined', 'extracted'))
+        - predefined_style_id (TEXT, name of predefined style when style_type is 'predefined')
+        - extraction_id (INTEGER, FOREIGN KEY -> style_extractions.id, used when style_type is 'extracted')
+        - created_at (TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)
+        - updated_at (TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)
+      </project_style_config>
+    </tables>
+  </database_schema>
+
+  <api_endpoints_summary>
+    <style_extraction>
+      - POST /api/styles/extract (upload image, run extraction, return structured result)
+      - GET /api/styles/extractions (list all saved extractions with thumbnails)
+      - GET /api/styles/extractions/{extraction_id} (get full extraction result)
+      - DELETE /api/styles/extractions/{extraction_id} (delete a saved extraction)
+    </style_extraction>
+    <style_application>
+      - POST /api/projects/{project_name}/style/apply-extraction (apply an extracted style to a project)
+    </style_application>
+  </api_endpoints_summary>
+
+  <ui_layout>
+    <main_structure>
+      - Existing AutoForge UI layout unchanged
+      - Screenshot upload component embedded in project creation wizard (style selection step)
+      - Screenshot upload also accessible from project settings (style section)
+      - Extraction preview displays as a modal or expandable panel
+    </main_structure>
+    <extraction_preview_layout>
+      - Header with image thumbnail, primary style badge, and extraction timestamp
+      - Color section: grid of labeled color swatches (brand, surface, text, border, status)
+      - Typography section: font family, hierarchy samples with size/weight
+      - Components section: card/button/input pattern descriptions
+      - Layout section: spacing base unit, density, radius rule
+      - Tailwind config section: syntax-highlighted code block
+      - Footer with Apply to Project button
+    </extraction_preview_layout>
+  </ui_layout>
+
+  <design_system>
+    <color_palette>
+      - Use existing AutoForge neobrutalism design system
+      - Extraction-specific: use neutral grays for preview container so extracted colors stand out
+      - Confidence badges: green for high, yellow for medium, red for low
+    </color_palette>
+    <typography>
+      - Follow existing AutoForge typography
+      - Code blocks for Tailwind config use monospace font
+    </typography>
+    <spacing>
+      - Follow existing AutoForge spacing scale (4px base unit)
+      - Color swatch grid uses gap-3 with consistent swatch size (w-12 h-12)
+      - Preview panel sections use standard gap-4 vertical spacing
+      - Upload zone uses generous padding (p-8) for clear drop target
+    </spacing>
+  </design_system>
+
+  <ui_ux_standards>
+    <banned_patterns>
+      - alert(), confirm(), prompt() - Use modals and toasts instead
+      - Text-only empty states - Use EmptyState component with icon + CTA
+      - Loading states that just say "Loading..." - Use skeleton loaders
+      - Delete without confirmation - Always use ConfirmModal
+      - Raw timestamps - Format as relative time
+    </banned_patterns>
+    <required_components>
+      - Use existing AutoForge UI components (Modal, ConfirmModal, Toast, Skeleton, EmptyState)
+      - Drag-and-drop upload zone with file type validation
+      - Color swatch display component
+      - Confidence badge component
+    </required_components>
+    <page_patterns>
+      - Upload triggers extraction inline (no page navigation)
+      - Preview appears as modal or expandable panel after extraction
+      - Apply action uses ConfirmModal before committing
+    </page_patterns>
+    <feedback_protocol>
+      - Upload start: progress indicator on upload zone
+      - Extraction running: skeleton loader in preview area with "Analyzing design..." message
+      - Extraction complete: toast + preview populates with results
+      - Extraction failed: error toast + retry button + keep uploaded image
+      - Style applied: success toast + style indicator updates in project header
+    </feedback_protocol>
+  </ui_ux_standards>
+
+  <coding_standards>
+    <architecture>
+      - Python: New service at server/services/style_extractor.py
+      - Python: New router at server/routers/styles.py (or extend existing if applicable)
+      - Python: Integration points in existing style_manager.py and prompts.py
+      - TypeScript: Types in ui/src/lib/types.ts, API in ui/src/lib/api.ts, hooks in ui/src/hooks/
+      - TypeScript: Components in ui/src/components/ (upload, preview, swatches)
+      - Follow existing patterns in each file - match code style and conventions
+    </architecture>
+    <testing>
+      - Python: ruff check . must pass
+      - TypeScript: npm run lint and npm run build must pass
+      - Extraction service testable with sample image fixtures
+    </testing>
+    <error_handling>
+      - Vision API failures return user-friendly error with retry option
+      - Invalid image formats rejected with clear message before upload
+      - Parsing failures for malformed extraction output handled gracefully with raw markdown fallback
+      - Large images (>10MB) rejected at upload with size guidance
+    </error_handling>
+  </coding_standards>
+
+  <key_interactions>
+    <extract_style_from_screenshot_flow>
+      1. User is in project creation wizard at style selection step
+      2. User sees predefined styles grid plus "Extract from Screenshot" option
+      3. User clicks Extract from Screenshot, sees drag-and-drop upload zone
+      4. User drops a PNG/JPG screenshot of a reference website or UI
+      5. Image preview appears, user confirms extraction
+      6. Skeleton loader displays "Analyzing design language..."
+      7. Claude Vision API processes image with Idea Code prompt
+      8. Extraction result populates: color swatches, typography, components, classification
+      9. User reviews extracted style guide with all sections
+      10. User clicks Apply to Project
+      11. ConfirmModal confirms the choice, style is set as project design system
+      12. Project creation continues with extracted style active
+    </extract_style_from_screenshot_flow>
+    <browse_saved_extractions_flow>
+      1. User navigates to project settings > Style section
+      2. User sees current style and "Change Style" option
+      3. User clicks "Browse Extracted Styles" to see previously saved extractions
+      4. Grid shows extraction thumbnails with primary style labels
+      5. User clicks an extraction to see full preview
+      6. User clicks Apply to switch the project to this style
+    </browse_saved_extractions_flow>
+    <coding_agent_style_consumption_flow>
+      1. Coding agent starts a new session for a project
+      2. Client.py detects project uses an extracted style (not predefined)
+      3. System loads normalized style guide markdown from style_extractions table
+      4. Style guide is injected into coding agent prompt at same insertion point as predefined styles
+      5. Agent receives identical format regardless of style source
+      6. Agent applies color tokens, typography, and component patterns during implementation
+    </coding_agent_style_consumption_flow>
+  </key_interactions>
+
+  <implementation_steps>
+    <step number="1">
+      <title>Extraction Service Core</title>
+      <tasks>
+        - Create server/services/style_extractor.py with EXTRACTION_PROMPT constant
+        - Implement extract_style_from_image() using Claude Vision API
+        - Implement parse_extraction_result() to parse markdown into structured data
+        - Define StyleExtraction dataclass with all parsed fields
+      </tasks>
+    </step>
+    <step number="2">
+      <title>Style Processing Pipeline</title>
+      <tasks>
+        - Implement generate_tailwind_config() from extracted tokens
+        - Implement classify_style() against 12 known categories
+        - Implement normalize_to_style_guide() for format parity with predefined styles
+      </tasks>
+    </step>
+    <step number="3">
+      <title>Database and API</title>
+      <tasks>
+        - Add style_extractions table via SQLAlchemy model
+        - Create server/routers/styles.py with extract, list, get, delete endpoints
+        - Add apply-extraction endpoint for projects
+        - Handle image upload with size and format validation
+      </tasks>
+    </step>
+    <step number="4">
+      <title>Integration with Existing Systems</title>
+      <tasks>
+        - Connect extracted styles to style_manager.py pipeline
+        - Add extracted style detection and prompt injection in client.py/prompts.py
+        - Ensure coding agent receives identical format for extracted vs predefined styles
+      </tasks>
+    </step>
+    <step number="5">
+      <title>UI - Upload and Preview</title>
+      <tasks>
+        - Build screenshot upload component with drag-and-drop and file picker
+        - Build extraction preview component with color swatches, typography, classification
+        - Build Apply to Project action with ConfirmModal
+        - Add TypeScript types, API client functions, and React Query hooks
+      </tasks>
+    </step>
+    <step number="6">
+      <title>UI - Integration and Polish</title>
+      <tasks>
+        - Integrate upload component into project creation wizard
+        - Integrate into project settings style section
+        - Add saved extractions browsing grid
+        - Handle loading, error, and empty states
+      </tasks>
+    </step>
+  </implementation_steps>
+
+  <success_criteria>
+    <functionality>
+      - Screenshot upload accepts PNG, JPG, WebP up to 10MB
+      - Extraction produces structured color tokens, typography, components, layout, and Tailwind config
+      - Style classification identifies primary and optional accent style with confidence
+      - Extracted style guide markdown matches predefined style format (sections 1-5 identical)
+      - Coding agent receives and applies extracted styles identically to predefined styles
+      - Extractions persist in database and can be browsed, retrieved, and deleted
+    </functionality>
+    <user_experience>
+      - Upload zone provides clear drag-and-drop affordance
+      - Extraction progress shows skeleton loader (not blank screen)
+      - Color swatches clearly display extracted palette with semantic labels
+      - Style classification shows confidence level visually
+      - Apply action confirms before overwriting existing style
+      - Errors show clear messages with retry option
+    </user_experience>
+    <technical_quality>
+      - ruff check . passes with no errors
+      - npm run lint and npm run build pass with no errors
+      - No console errors in browser
+      - All TypeScript types properly defined (no any)
+      - Vision API errors handled gracefully with user-friendly messages
+      - Image uploads validated for size and format before processing
+    </technical_quality>
+  </success_criteria>
+</project_specification>

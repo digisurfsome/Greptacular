@@ -1,0 +1,377 @@
+<project_specification>
+  <project_name>build-intelligence</project_name>
+
+  <overview>
+    Build Intelligence is an AutoForge-internal feature set that collects metrics across all
+    builds, scores PRD quality before building, and uses historical data to improve future builds
+    through prompt injection, time estimation, and risk flagging. It creates a feedback loop where
+    AutoForge gets measurably smarter with every project built. These features extend the existing
+    AutoForge FastAPI + React architecture.
+  </overview>
+
+  <technology_stack>
+    <frontend>
+      <framework>React 19 with Vite 7 (existing)</framework>
+      <styling>Tailwind CSS v4 (existing neobrutalism design system)</styling>
+      <state_management>TanStack Query + React hooks (existing)</state_management>
+      <routing>React Router (existing)</routing>
+      <port>5173 (dev) / served by FastAPI in production</port>
+    </frontend>
+    <backend>
+      <runtime>Python 3.11+ with FastAPI and uvicorn (existing)</runtime>
+      <database>SQLite with SQLAlchemy (existing features.db)</database>
+      <port>8000 (existing FastAPI server)</port>
+    </backend>
+    <communication>
+      <api>RESTful endpoints via FastAPI routers (existing pattern)</api>
+    </communication>
+  </technology_stack>
+
+  <prerequisites>
+    <environment_setup>
+      - Python 3.11+ with existing AutoForge venv
+      - Node.js 20+ for UI development
+      - Existing AutoForge codebase with FastAPI server and React UI
+      - Claude Code CLI (for spec scoring agent calls)
+    </environment_setup>
+  </prerequisites>
+
+  <!-- Note on parallelism: build_metrics_collection and prd_quality_scoring are independent
+       branches that both depend only on database_and_models. They can be built in parallel. -->
+
+  <feature_count>20</feature_count>
+
+  <core_features>
+    <database_and_models>
+      - System creates BuildMetric, FeaturePattern, PromptVersion, and BuildFeedback SQLAlchemy models in api/database.py with UUID text primary keys, all required columns per the schema below (including created_at and updated_at on every table), a UNIQUE constraint on (category, pattern_name) for FeaturePattern, a FOREIGN KEY on build_feedback.build_id referencing build_metrics.id, plus a _migrate_add_intelligence_tables function that creates all four tables if they do not exist, called from create_database() after existing migration calls
+      - System defines TypeScript interfaces (SpecScore, BuildEstimate, RiskAssessment, BuildMetric, FeaturePattern, BuildFeedbackPayload) in ui/src/lib/types.ts and adds corresponding API client methods (analyzeSpec, getSpecScore, getBuildEstimate, getRiskAssessment, getFeaturePatterns, getBuildMetrics, submitBuildFeedback) in ui/src/lib/api.ts
+    </database_and_models>
+
+    <build_metrics_collection>
+      - System provides a BuildIntelligence service class in server/services/build_intelligence.py with collect_build_start_metrics (inserts a partial build_metrics row with spec word count, feature count, complexity score, boilerplate, style, and returns a build_id), collect_build_end_metrics (updates the row with total sessions, turns, duration, first-try pass rate, rework count, regression count), record_agent_session (records per-agent completion data including feature_id, agent_type, success boolean, and duration), and update_feature_patterns (incrementally updates category-level success_rate, avg_turns, avg_rework, common_pitfalls, and sample_count) methods, all using the existing atomic_transaction pattern
+      - System integrates metrics collection into parallel_orchestrator.py by calling collect_build_start_metrics at the start of run_loop, record_agent_session in _on_agent_complete for coding agents, and collect_build_end_metrics after all features complete, with every call wrapped in try/except so metrics failures never break the orchestrator
+    </build_metrics_collection>
+
+    <prd_quality_scoring>
+      - System provides a spec analyzer prompt template at .claude/templates/spec_analyzer_prompt.template.md that instructs Claude to analyze an app_spec.txt and return structured JSON with an overall score (1.0-5.0), six dimension scores (completeness, clarity, consistency, feasibility, testability, scope each 1-5), a list of critical issues with affected feature IDs, a list of recommendations, and per-feature scores
+      - System provides a SpecScorer service class in server/services/spec_scorer.py with an async score_spec method that loads the prompt template, injects the spec content, calls Claude for a single-turn structured analysis, parses the JSON response into a SpecScore dataclass, and caches the result to .autoforge/spec_score.json with a spec_hash for change detection; and a get_cached_score method that returns the cached score if the spec has not changed since last analysis
+      - System provides API endpoints in server/routers/intelligence.py: POST /api/intelligence/analyze-spec/{project_name} triggers spec scoring (with optional force re-analyze query parameter) and returns the full SpecScore JSON; GET /api/intelligence/spec-score/{project_name} returns the cached score or 404 if no score exists
+      - System displays a SpecScoreCard component in ui/src/components/SpecScoreCard.tsx showing the overall score (1-5) with color-coded border (green for 4+, cyan for 3-4, yellow for 2-3, red for below 2), horizontal progress bars for each of the six dimensions, a collapsible critical issues list, a recommendations section, and Analyze Again and View Full Report buttons, styled with the existing neobrutalism design system
+    </prd_quality_scoring>
+
+    <intelligence_injection>
+      - System provides a _get_intelligence_context function in prompts.py that queries the BuildIntelligence service for historical patterns matching a feature category and returns a concise markdown section (3-5 sentences max) with pitfall warnings and recommended approaches, returning empty string when insufficient data exists or when intelligence injection is disabled in settings; this context is injected into get_coding_prompt and get_single_feature_prompt alongside existing style and boilerplate context
+      - System provides a get_build_estimate method on BuildIntelligence that computes per-category time estimates by summing avg_turns_to_implement from feature_patterns multiplied by a calibrated turn duration derived from recent build_metrics, returning a dict with estimated_hours, confidence level, sample_count, and a per-category breakdown list; the method falls back to step-count heuristics from the existing _estimate_feature_turns logic when insufficient historical data exists
+      - System provides a get_risk_assessment method on BuildIntelligence that queries feature_patterns for each feature's category and returns a list of dicts with feature_id, feature_name, risk_level (high if success_rate below 70%, medium if 70-85%, low if above 85%), reason string, and historical success_rate; features with no matching pattern data are omitted from the risk list
+    </intelligence_injection>
+
+    <intelligence_api>
+      - System provides a FastAPI router at server/routers/intelligence.py with GET /api/intelligence/estimate/{project_name} (returns build time estimate with per-category breakdown), GET /api/intelligence/risks/{project_name} (returns feature risk assessment list), GET /api/intelligence/patterns (returns aggregated feature patterns filtered by optional category and min_samples query parameters), and GET /api/intelligence/metrics/{project_name} (returns build metrics for a project or 404), registered in the main FastAPI app alongside existing routers
+    </intelligence_api>
+
+    <intelligence_ui>
+      - System displays a BuildEstimate component in ui/src/components/BuildEstimate.tsx showing estimated build time in hours with a sample count citation, a per-category breakdown table with feature count and estimated time per category, and a summary count of high-risk features flagged, styled with the neobrutalism design system and querying the estimate endpoint via TanStack Query
+      - System displays a RiskBadge component in ui/src/components/RiskBadge.tsx as a small Lucide shield icon badge on feature cards in the kanban board and dependency graph: red for high-risk, yellow for medium-risk, hidden for low-risk; hovering the badge shows a tooltip with the historical success rate percentage and top 3 common pitfalls for that feature's category
+      - System provides React Query hooks (useSpecScore, useBuildEstimate, useRiskAssessment, useFeaturePatterns) in ui/src/hooks/useIntelligence.ts that wrap the intelligence API endpoints with project-name-based cache keys, 60-second stale times, and enabled conditions that check for valid project selection
+    </intelligence_ui>
+
+    <continuous_improvement>
+      - System adds prompt versioning to prompts.py by computing a SHA-256 hash (first 16 chars) of the final assembled prompt in get_coding_prompt and get_single_feature_prompt, and recording the prompt hash, template name, intelligence context hash, and timestamp to the prompt_versions table via a _record_prompt_version helper, so that prompt variations can later be correlated with build outcomes
+      - System provides a PatternLibrary service class in server/services/pattern_library.py with a generate_pattern_doc method that produces a best-practices markdown document for a feature category when its sample_count in feature_patterns exceeds a configurable threshold (default 100), a get_pattern_doc method that returns the cached doc from ~/.autoforge/patterns/{category}.md, and a refresh_all_patterns method that regenerates all qualifying docs
+      - System displays a BuildFeedback component in ui/src/components/BuildFeedback.tsx that appears as an overlay card once after all features pass, showing a "How was this build?" heading with 5 clickable star icons for rating and an optional text comment field, with a Submit button that POSTs to POST /api/intelligence/feedback/{project_name}; the card is dismissable and shown only once per build completion
+      - System adds an Intelligence section to the existing SettingsModal.tsx with three toggles (enable build metrics collection defaulting on, enable prompt intelligence injection defaulting on, enable spec score gate defaulting on) and a numeric input for spec score blocking threshold (default 2.0), persisted via the existing settings router and GlobalSettings model
+    </continuous_improvement>
+
+    <error_handling_and_degradation>
+      - System handles intelligence failures gracefully: the analyze-spec endpoint returns 502 with a descriptive error on Claude API failures and the SpecScoreCard shows an error state with retry button and error toast; the build estimate endpoint returns step-count heuristic fallbacks when no historical data exists; RiskBadge hides entirely when no feature_patterns data is available; all intelligence UI components degrade to empty, hidden, or placeholder states rather than showing errors on projects with no build history
+    </error_handling_and_degradation>
+  </core_features>
+
+  <database_schema>
+    <tables>
+      <build_metrics>
+        - id (TEXT PRIMARY KEY, UUID)
+        - project_id (TEXT, anonymized one-way hash of project name, not a foreign key)
+        - created_at (TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)
+        - updated_at (TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)
+        - spec_word_count (INTEGER)
+        - spec_feature_count (INTEGER)
+        - spec_complexity_score (INTEGER, 1-5)
+        - boilerplate_used (TEXT, nullable)
+        - style_used (TEXT, nullable)
+        - total_coding_sessions (INTEGER)
+        - total_testing_sessions (INTEGER)
+        - total_review_sessions (INTEGER DEFAULT 0)
+        - total_turns_used (INTEGER)
+        - build_duration_seconds (INTEGER)
+        - features_passed_first_try (INTEGER)
+        - features_needed_rework (INTEGER)
+        - review_issues_found (INTEGER DEFAULT 0)
+        - review_issues_by_severity (TEXT, JSON)
+        - qa_issues_found (INTEGER DEFAULT 0)
+        - regression_count (INTEGER DEFAULT 0)
+        - qa_score (TEXT, A/B/C/D/F)
+        - performance_score (TEXT, A/B/C/D/F)
+        - security_score (TEXT, A/B/C/D/F)
+        - tech_stack (TEXT, JSON)
+        - common_failures (TEXT, JSON array)
+      </build_metrics>
+
+      <feature_patterns>
+        - id (TEXT PRIMARY KEY, UUID)
+        - category (TEXT NOT NULL)
+        - pattern_name (TEXT NOT NULL)
+        - success_rate (REAL, 0.00-100.00)
+        - avg_turns_to_implement (INTEGER)
+        - avg_rework_cycles (INTEGER)
+        - common_pitfalls (TEXT, JSON array of strings)
+        - recommended_approach (TEXT, markdown)
+        - sample_count (INTEGER NOT NULL DEFAULT 0)
+        - created_at (TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)
+        - updated_at (TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)
+        - UNIQUE(category, pattern_name)
+      </feature_patterns>
+
+      <prompt_versions>
+        - id (TEXT PRIMARY KEY, UUID)
+        - prompt_hash (TEXT NOT NULL, first 16 chars of SHA-256)
+        - template_name (TEXT NOT NULL)
+        - intelligence_hash (TEXT)
+        - created_at (TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)
+        - updated_at (TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)
+        - usage_count (INTEGER NOT NULL DEFAULT 0)
+        - avg_success_rate (REAL)
+        - avg_turns (REAL)
+        - avg_rework_rate (REAL)
+      </prompt_versions>
+
+      <build_feedback>
+        - id (TEXT PRIMARY KEY, UUID)
+        - project_id (TEXT NOT NULL)
+        - build_id (TEXT, FOREIGN KEY -> build_metrics.id)
+        - rating (INTEGER NOT NULL, 1-5)
+        - comment (TEXT, nullable)
+        - created_at (TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)
+        - updated_at (TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)
+      </build_feedback>
+    </tables>
+  </database_schema>
+
+  <api_endpoints_summary>
+    <spec_scoring>
+      - POST /api/intelligence/analyze-spec/{project_name} (trigger spec quality scoring, optional force query param; returns SpecScore JSON or 502 on Claude API failure)
+      - GET /api/intelligence/spec-score/{project_name} (get cached spec score or 404)
+    </spec_scoring>
+    <build_intelligence>
+      - GET /api/intelligence/estimate/{project_name} (build time estimate with per-category breakdown; falls back to heuristics)
+      - GET /api/intelligence/risks/{project_name} (risk assessment for all features; empty list when no data)
+      - GET /api/intelligence/patterns (aggregated feature patterns, optional category and min_samples query filters)
+      - GET /api/intelligence/metrics/{project_name} (build metrics for a project or 404)
+    </build_intelligence>
+    <feedback>
+      - POST /api/intelligence/feedback/{project_name} (submit post-build quality rating with stars and optional comment)
+    </feedback>
+    <settings>
+      - Existing GET/PUT /api/settings endpoints extended with intelligence fields (metrics_enabled, injection_enabled, spec_gate_enabled, spec_score_threshold)
+    </settings>
+  </api_endpoints_summary>
+
+  <ui_layout>
+    <main_structure>
+      - SpecScoreCard shown in project creation flow (after spec is written) and as compact card on project dashboard sidebar
+      - BuildEstimate shown during project creation (after spec analysis) and on project dashboard
+      - RiskBadge shown on individual FeatureCard components in KanbanBoard and DependencyGraph
+      - BuildFeedback shown as overlay card after all features pass (once per build, dismissable)
+      - Intelligence settings section added to existing SettingsModal
+    </main_structure>
+  </ui_layout>
+
+  <design_system>
+    <color_palette>
+      - Uses existing neobrutalism design system variables from ui/src/styles/globals.css
+      - Score colors: --color-neo-done (green, score 4-5), --color-neo-progress (cyan, 3-4), --color-neo-pending (yellow, 2-3), red (#EF4444, score below 2)
+      - Risk badge colors: red shield (high risk), yellow shield (medium risk), no badge (low risk)
+    </color_palette>
+    <typography>
+      - Uses existing Tailwind CSS v4 typography tokens
+      - Score numbers: font-mono font-bold text-2xl
+      - Dimension labels: font-medium text-sm
+      - Issue text: text-sm text-gray-600
+    </typography>
+    <spacing>
+      - Card padding: p-4 (compact mode) / p-6 (full mode)
+      - Dimension bar height: h-2 with rounded-full
+      - Badge size: w-5 h-5 inline icon
+      - Section gaps: space-y-4 between score dimensions, space-y-2 between issues
+    </spacing>
+  </design_system>
+
+  <ui_ux_standards>
+    <banned_patterns>
+      - alert(), confirm(), prompt() - Use existing Modal/ConfirmModal/Toast components
+      - Raw loading text - Use existing skeleton loaders
+      - Inline styles - Tailwind CSS only
+      - Console errors from intelligence failures - All errors caught and logged silently
+    </banned_patterns>
+    <required_components>
+      - Loading skeleton for SpecScoreCard while analysis runs (shimmer animation)
+      - Toast notification when spec analysis completes (success or error)
+      - Tooltip on RiskBadge hover showing success rate and top pitfalls
+      - Dismissable BuildFeedback card (never blocks the UI, closes on X or after submit)
+      - Error state with retry button for failed spec analysis
+    </required_components>
+    <feedback_protocol>
+      - Spec analysis start: show loading skeleton with shimmer animation
+      - Spec analysis success: toast with score summary, card populates with results
+      - Spec analysis failure: error toast with retry button, card shows error state with retry
+      - Build feedback submission: toast confirmation, card fades out
+      - Risk badge: tooltip on hover only, no click action required
+    </feedback_protocol>
+  </ui_ux_standards>
+
+  <coding_standards>
+    <architecture>
+      - New Python services follow existing patterns in server/services/ (class-based, project_dir parameter)
+      - New routers follow existing patterns in server/routers/ (APIRouter with prefix and tags)
+      - New SQLAlchemy models follow existing patterns in api/database.py (Base class, Column definitions)
+      - Database migrations follow existing _migrate_add_* function pattern (check if table exists, create if missing)
+      - All intelligence operations are best-effort: wrapped in try/except, never break core build flow
+      - TypeScript interfaces in ui/src/lib/types.ts, API methods in ui/src/lib/api.ts
+      - React Query hooks in dedicated ui/src/hooks/useIntelligence.ts file
+    </architecture>
+    <error_handling>
+      - BuildIntelligence service methods catch all exceptions internally and log warnings via logging module
+      - Orchestrator integration uses bare try/except with pass to ensure metrics never break builds
+      - API endpoints return appropriate HTTP status codes (200, 404, 502 for upstream failures)
+      - UI components handle loading, error, and empty states with skeleton/toast/hidden patterns
+      - Spec scorer returns 502 with error detail JSON when Claude API call fails
+    </error_handling>
+  </coding_standards>
+
+  <key_interactions>
+    <spec_scoring_flow>
+      1. User creates or imports a project with an app_spec.txt
+      2. User clicks "Analyze Spec" button on the project dashboard
+      3. System shows loading skeleton with shimmer animation in SpecScoreCard
+      4. System calls Claude with spec analyzer prompt (10-30 second wait)
+      5. On success: SpecScoreCard displays overall score, dimension bars, critical issues, recommendations
+      6. On failure: error toast appears, SpecScoreCard shows error state with Retry button
+      7. If score is below blocking threshold (default 2.0), build button is disabled with red banner
+      8. User can click "Analyze Again" after making spec changes (re-hashes spec to detect changes)
+    </spec_scoring_flow>
+    <build_with_intelligence_flow>
+      1. User starts a build on a project with existing build history
+      2. System queries feature_patterns for each feature category
+      3. Coding agent prompt is enhanced with 3-5 sentence intelligence context per category
+      4. BuildEstimate widget shows estimated build time with per-category breakdown
+      5. RiskBadge appears on high/medium-risk feature cards in kanban view
+      6. Build proceeds with enhanced prompts; metrics are collected silently throughout
+      7. After all features pass, BuildFeedback card appears for optional user rating
+    </build_with_intelligence_flow>
+    <metrics_collection_flow>
+      1. Build starts: orchestrator calls collect_build_start_metrics (spec metrics recorded, build_id returned)
+      2. Each agent completes: orchestrator calls record_agent_session (per-feature outcome recorded)
+      3. Build ends: orchestrator calls collect_build_end_metrics (aggregate metrics computed, row updated)
+      4. Feature patterns are updated incrementally from the completed build data
+      5. Next build benefits from updated intelligence context and risk assessments
+    </metrics_collection_flow>
+    <graceful_degradation_flow>
+      1. New project with no build history loads the dashboard
+      2. BuildEstimate shows heuristic-based estimate with "No historical data" note
+      3. RiskBadge is hidden on all feature cards (no pattern data available)
+      4. Intelligence context injection returns empty string (no data to inject)
+      5. After first build completes, intelligence data begins populating for subsequent builds
+    </graceful_degradation_flow>
+  </key_interactions>
+
+  <implementation_steps>
+    <step number="1">
+      <title>Database Foundation</title>
+      <tasks>
+        - Add BuildMetric and FeaturePattern SQLAlchemy models to api/database.py with all columns including created_at and updated_at
+        - Add PromptVersion and BuildFeedback SQLAlchemy models to api/database.py
+        - Create _migrate_add_intelligence_tables function for all four tables, wire into create_database()
+        - Add TypeScript interfaces and API client methods to ui/src/lib/types.ts and ui/src/lib/api.ts
+      </tasks>
+    </step>
+    <step number="2">
+      <title>Build Metrics Collection (can run in parallel with Step 3)</title>
+      <tasks>
+        - Create server/services/build_intelligence.py with BuildIntelligence class
+        - Implement collect_build_start_metrics and collect_build_end_metrics methods
+        - Implement record_agent_session and update_feature_patterns methods
+        - Integrate collection calls into parallel_orchestrator.py with try/except wrappers
+      </tasks>
+    </step>
+    <step number="3">
+      <title>PRD Quality Scoring (can run in parallel with Step 2)</title>
+      <tasks>
+        - Create .claude/templates/spec_analyzer_prompt.template.md
+        - Create server/services/spec_scorer.py with SpecScorer class
+        - Add analyze-spec and spec-score endpoints to server/routers/intelligence.py
+        - Create ui/src/components/SpecScoreCard.tsx with score visualization and error state
+      </tasks>
+    </step>
+    <step number="4">
+      <title>Intelligence Injection and Estimation</title>
+      <tasks>
+        - Add _get_intelligence_context() to prompts.py and inject into coding prompts
+        - Implement get_build_estimate with heuristic fallback on BuildIntelligence
+        - Implement get_risk_assessment on BuildIntelligence
+        - Add estimate, risks, patterns, and metrics endpoints to intelligence router
+        - Register intelligence router in FastAPI app
+      </tasks>
+    </step>
+    <step number="5">
+      <title>Intelligence UI Widgets</title>
+      <tasks>
+        - Create ui/src/components/BuildEstimate.tsx component
+        - Create ui/src/components/RiskBadge.tsx component with tooltip
+        - Create ui/src/hooks/useIntelligence.ts React Query hooks
+        - Integrate widgets into project dashboard, kanban board, and dependency graph
+      </tasks>
+    </step>
+    <step number="6">
+      <title>Continuous Improvement and Polish</title>
+      <tasks>
+        - Add prompt versioning with SHA-256 hashing to prompts.py
+        - Create server/services/pattern_library.py
+        - Create ui/src/components/BuildFeedback.tsx with feedback endpoint
+        - Add Intelligence section to SettingsModal.tsx with toggles and threshold input
+        - Verify graceful degradation on projects with no build history
+      </tasks>
+    </step>
+  </implementation_steps>
+
+  <success_criteria>
+    <functionality>
+      - All four intelligence tables (build_metrics, feature_patterns, prompt_versions, build_feedback) are created via idempotent migration on startup
+      - Build metrics are silently collected during every orchestrator run without errors or build interruption
+      - Spec scorer returns a structured quality score with six dimension breakdowns and per-feature scores
+      - Intelligence context is injected into coding prompts when historical data exists and injection is enabled
+      - Build estimates fall back to step-count heuristics when no historical data exists
+      - Risk assessments correctly categorize features as high/medium/low based on pattern data
+      - All intelligence API endpoints return correct data or appropriate error responses (404, 502)
+      - Pattern library generates best-practice docs when sample threshold is met
+      - Build feedback ratings are stored and associated with build_metrics records
+    </functionality>
+    <user_experience>
+      - SpecScoreCard displays score with color-coded progress bars after analysis completes
+      - SpecScoreCard shows loading skeleton during analysis and error state with retry on failure
+      - BuildEstimate shows per-category time breakdown with sample count citation
+      - RiskBadge appears on feature cards without cluttering the kanban board, hidden when no data
+      - BuildFeedback card is non-intrusive, dismissable, and shown only once per build
+      - All new components match the existing neobrutalism design system
+      - Intelligence UI degrades gracefully to hidden/empty states on projects with no history
+    </user_experience>
+    <technical_quality>
+      - Intelligence operations never break the core build process (all best-effort with try/except)
+      - ruff check passes for all new Python files
+      - npm run lint and npm run build pass for all new TypeScript/React files
+      - Database migrations are idempotent (safe to run multiple times)
+      - Backwards compatible with projects created before intelligence feature exists
+      - Thread-safe database operations using existing atomic_transaction pattern
+      - No console errors from intelligence components in any state (loading, error, empty, populated)
+    </technical_quality>
+  </success_criteria>
+</project_specification>

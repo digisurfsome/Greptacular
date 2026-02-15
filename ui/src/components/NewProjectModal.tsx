@@ -36,15 +36,18 @@ import {
   X,
   Grid2x2,
   Maximize2,
+  Star,
 } from 'lucide-react'
-import { useCreateProject, useBoilerplates, useStyles, useStyleProfiles, useStyleRecommendations, useStyleModifiers, useDescriptionRecommendation, useAccentCompatibility, useExtractStyleFromScreenshot } from '../hooks/useProjects'
+import { useCreateProject, useBoilerplates, useStyles, useStyleProfiles, useStyleRecommendations, useStyleModifiers, useDescriptionRecommendation, useExtractStyleFromScreenshot } from '../hooks/useProjects'
 import { SpecCreationChat } from './SpecCreationChat'
 import { FolderBrowser } from './FolderBrowser'
 import { StylePreview } from './StylePreview'
 import type { PreviewPage } from './StylePreview'
 import { ColorCustomizer } from './ColorCustomizer'
+import { PALETTES } from '../data/palettes'
+import { paletteToCustomColors } from '../lib/paletteUtils'
 import { startAgent } from '../lib/api'
-import type { BoilerplateCategory, StyleOption, AccentStyleOption, StyleExtractionResult } from '../lib/types'
+import type { BoilerplateCategory, StyleOption, StyleExtractionResult } from '../lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -248,6 +251,10 @@ export function NewProjectModal({
   // Accent style state
   const [accentStyleId, setAccentStyleId] = useState<string | null>(null)
 
+  // Favorites and palette navigation state
+  const [favoriteStyles, setFavoriteStyles] = useState<Set<string>>(new Set())
+  const [paletteIndex, setPaletteIndex] = useState(0)
+
   // Quad view dynamic scaling
   const QUAD_INTERNAL_W = 1280
   const QUAD_INTERNAL_H = 800
@@ -291,7 +298,6 @@ export function NewProjectModal({
   )
   const { data: modifiers } = useStyleModifiers()
   const descriptionRec = useDescriptionRecommendation()
-  const { data: accentStyles } = useAccentCompatibility(styleId)
   const extractScreenshot = useExtractStyleFromScreenshot()
 
   // Filtered styles by category
@@ -528,6 +534,8 @@ export function NewProjectModal({
     setStylePickerTab('browse')
     setScreenshotExtracting(false)
     setExtractionResult(null)
+    setFavoriteStyles(new Set())
+    setPaletteIndex(0)
     onClose()
   }
 
@@ -548,6 +556,8 @@ export function NewProjectModal({
       setStylePickerTab('browse')
       setStyleView('browse')
       setPreviewPage('landing')
+      setFavoriteStyles(new Set())
+      setPaletteIndex(0)
     } else if (step === 'method') {
       changeStep('style')
       setSpecMethod(null)
@@ -575,6 +585,8 @@ export function NewProjectModal({
       setStylePickerTab('browse')
       setStyleView('browse')
       setPreviewPage('landing')
+      setFavoriteStyles(new Set())
+      setPaletteIndex(0)
     }
     if (targetIndex < 3) {
       // Going before boilerplate: reset boilerplate
@@ -1131,107 +1143,97 @@ export function NewProjectModal({
             )}
 
             {/* ==================================================== */}
-            {/* UNIFIED LAYOUT: style browser + live preview            */}
+            {/* 3-COLUMN LAYOUT: base styles | controls | preview     */}
             {/* ==================================================== */}
             {stylePickerTab !== 'screenshot' && (
               <div className="flex-1 min-h-0 flex overflow-hidden">
-                {/* LEFT PANEL: style grid + controls */}
-                <div className="w-[480px] shrink-0 border-r overflow-y-auto p-3 space-y-3">
-                  {/* Style Grid - 2 columns always */}
+                {/* LEFT COLUMN: 12 Base Style Cards (4×3 compact grid) */}
+                <div className="w-[340px] shrink-0 border-r overflow-y-auto p-2">
                   {stylesLoading && (
                     <div className="flex items-center justify-center gap-2 py-8 text-muted-foreground">
                       <Loader2 size={16} className="animate-spin" />
                       <span>Loading styles...</span>
                     </div>
                   )}
-
                   {!stylesLoading && filteredStyles.length > 0 && (
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-4 gap-1.5">
                       {filteredStyles.map((style: StyleOption) => {
                         const swatches = STYLE_SWATCHES[style.id] || ['#3B82F6', '#FFFFFF', '#111827', '#22C55E']
-                        const isRecommended = recommendedIds.has(style.id)
-                        const isTopPick = recommendations && recommendations.length > 0 && recommendations[0].style_id === style.id
                         const isSelected = styleId === style.id
+                        const isFavorite = favoriteStyles.has(style.id)
+                        const isRecommended = recommendedIds.has(style.id)
 
                         return (
-                          <Card
+                          <div
                             key={style.id}
-                            className={`cursor-pointer transition-all hover:border-primary ${
-                              isRecommended ? 'border-primary/50 ring-1 ring-primary/20' : ''
-                            } ${isTopPick ? 'ring-2 ring-primary/40' : ''} ${
-                              isSelected ? 'border-primary ring-2 ring-primary/30' : ''
+                            className={`relative cursor-pointer rounded-md border p-1 transition-all ${
+                              isSelected ? 'border-primary ring-2 ring-primary/30 bg-primary/5' :
+                              isRecommended ? 'border-primary/40 hover:border-primary' :
+                              'border-border hover:border-primary/50'
                             }`}
                             onClick={() => handleStyleSelect(style.id)}
                           >
-                            <CardContent className="p-2 flex flex-col gap-1.5">
-                              {/* Style info */}
-                              <div className="flex flex-col gap-0.5">
-                                {/* Color swatches + name row */}
-                                <div className="flex items-center gap-1.5">
-                                  <div className="flex gap-0.5">
-                                    {swatches.map((color, i) => (
-                                      <div
-                                        key={i}
-                                        className="h-3 w-3 rounded-sm border border-black/10"
-                                        style={{ backgroundColor: color }}
-                                      />
-                                    ))}
-                                  </div>
-                                  <span className="font-semibold text-xs leading-tight truncate">{style.name}</span>
-                                  {isTopPick && (
-                                    <Badge className="text-[8px] px-1 py-0 h-3.5">Best</Badge>
-                                  )}
-                                  {isRecommended && !isTopPick && (
-                                    <Check size={10} className="text-primary shrink-0" />
-                                  )}
-                                  <Badge variant="outline" className="text-[8px] px-1 py-0 h-3.5 ml-auto capitalize shrink-0">
-                                    {style.category}
-                                  </Badge>
-                                </div>
+                            {/* Favorite star */}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setFavoriteStyles(prev => {
+                                  const next = new Set(prev)
+                                  if (next.has(style.id)) next.delete(style.id)
+                                  else next.add(style.id)
+                                  return next
+                                })
+                              }}
+                              className={`absolute top-0.5 right-0.5 z-10 p-0.5 rounded-sm transition-colors ${
+                                isFavorite ? 'text-yellow-500' : 'text-muted-foreground/30 hover:text-yellow-400'
+                              }`}
+                            >
+                              <Star size={10} fill={isFavorite ? 'currentColor' : 'none'} />
+                            </button>
 
-                                {/* Description - single line */}
-                                <p className="text-[10px] text-muted-foreground leading-snug line-clamp-1">
-                                  {style.description}
-                                </p>
+                            {/* Color swatches row */}
+                            <div className="flex gap-0.5 mb-1">
+                              {swatches.map((color, i) => (
+                                <div
+                                  key={i}
+                                  className="h-2.5 w-2.5 rounded-sm border border-black/10"
+                                  style={{ backgroundColor: color }}
+                                />
+                              ))}
+                            </div>
 
-                                {/* Best for */}
-                                <p className="text-[9px] text-muted-foreground/70 leading-snug line-clamp-1">
-                                  <span className="font-medium text-muted-foreground/90">Best for:</span> {style.best_for}
-                                </p>
+                            {/* Style name */}
+                            <p className="text-[9px] font-semibold leading-tight truncate">{style.name}</p>
+
+                            {/* Compact preview — buttons/card sample only */}
+                            {style.style_guide && (
+                              <div className="mt-1 w-full overflow-hidden rounded-sm" style={{ height: '42px' }}>
+                                <StylePreview
+                                  guide={style.style_guide}
+                                  size="compact"
+                                  styleName={style.name}
+                                  modifiers={selectedModifiers.length > 0 ? selectedModifiers : undefined}
+                                  accentGuide={accentStyleId
+                                    ? styles?.find((s: StyleOption) => s.id === accentStyleId)?.style_guide
+                                    : undefined}
+                                />
                               </div>
-
-                              {/* UI Preview - full width below text */}
-                              {style.style_guide && (
-                                <div className="w-full">
-                                  <StylePreview
-                                    guide={style.style_guide}
-                                    size="compact"
-                                    styleName={style.name}
-                                    modifiers={selectedModifiers.length > 0 ? selectedModifiers : undefined}
-                                    accentGuide={accentStyleId
-                                      ? styles?.find((s: StyleOption) => s.id === accentStyleId)?.style_guide
-                                      : undefined}
-                                  />
-                                </div>
-                              )}
-                            </CardContent>
-                          </Card>
+                            )}
+                          </div>
                         )
                       })}
                     </div>
                   )}
+                </div>
 
-                  {/* Separator */}
-                  <div className="border-t" />
-
-                  {/* Modifier Selection */}
+                {/* MIDDLE COLUMN: Controls stacked tight */}
+                <div className="w-[240px] shrink-0 border-r overflow-y-auto p-2 space-y-3">
+                  {/* Modifiers — compact checkboxes */}
                   {modifiers && modifiers.length > 0 && (
-                    <div className="space-y-1.5">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Modifiers</span>
-                        <Badge variant="secondary" className="text-[9px] h-4">Optional</Badge>
-                      </div>
-                      <div className="space-y-1">
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Modifiers</span>
+                      <div className="space-y-0.5">
                         {modifiers.map((mod) => {
                           const isActive = selectedModifiers.includes(mod.id)
                           return (
@@ -1246,74 +1248,145 @@ export function NewProjectModal({
                                       : prev
                                 )
                               }}
-                              className={`w-full text-left p-1.5 rounded-md border transition-colors ${
+                              className={`w-full text-left px-1.5 py-1 rounded border transition-colors flex items-center gap-1.5 ${
                                 isActive
                                   ? 'border-primary bg-primary/10'
                                   : 'border-border hover:border-primary/50'
                               }`}
+                              title={mod.description}
                             >
-                              <div className="flex items-center gap-1.5">
-                                {isActive && <Check size={10} className="text-primary" />}
-                                <span className="text-[11px] font-medium">{mod.name}</span>
+                              <div className={`w-3 h-3 rounded-sm border flex items-center justify-center shrink-0 ${
+                                isActive ? 'bg-primary border-primary' : 'border-muted-foreground/30'
+                              }`}>
+                                {isActive && <Check size={8} className="text-primary-foreground" />}
                               </div>
-                              <p className="text-[10px] text-muted-foreground mt-0.5 leading-snug">
-                                {mod.description}
-                              </p>
+                              <span className="text-[10px] font-medium truncate">{mod.name}</span>
                             </button>
                           )
                         })}
                       </div>
-                      {selectedModifiers.length >= 3 && (
-                        <p className="text-[10px] text-muted-foreground">Maximum 3 modifiers.</p>
-                      )}
                     </div>
                   )}
 
-                  {/* Accent Style Picker */}
-                  {accentStyles && accentStyles.length > 0 && (
-                    <div className="space-y-1.5">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Accent Style</span>
-                        <Badge variant="secondary" className="text-[9px] h-4">Optional</Badge>
-                      </div>
-                      <div className="space-y-1">
-                        {accentStyles.map((accent: AccentStyleOption) => {
-                          const isActive = accentStyleId === accent.id
-                          return (
-                            <button
-                              key={accent.id}
-                              onClick={() => setAccentStyleId(isActive ? null : accent.id)}
-                              className={`w-full text-left p-1.5 rounded-md border transition-colors ${
-                                isActive
-                                  ? 'border-primary bg-primary/10'
-                                  : 'border-border hover:border-primary/50'
-                              }`}
-                            >
-                              <div className="flex items-center gap-1.5">
-                                {isActive && <Check size={10} className="text-primary" />}
-                                <span className="text-[11px] font-medium">{accent.name}</span>
-                              </div>
-                            </button>
-                          )
-                        })}
-                      </div>
-                      {accentStyleId && (
-                        <p className="text-[10px] text-muted-foreground">
-                          Accent controls buttons and inputs only.
+                  <div className="border-t" />
+
+                  {/* Accent Styles — ALL 12 shown as compact pills */}
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Accent Style</span>
+                    <div className="grid grid-cols-3 gap-1">
+                      {/* None pill */}
+                      <button
+                        type="button"
+                        onClick={() => setAccentStyleId(null)}
+                        className={`text-left px-1 py-0.5 rounded border transition-colors ${
+                          !accentStyleId
+                            ? 'border-primary bg-primary/10'
+                            : 'border-border hover:border-primary/50'
+                        }`}
+                      >
+                        <span className="text-[9px] font-medium text-muted-foreground">None</span>
+                      </button>
+                      {/* All styles as possible accents (except current base) */}
+                      {styles?.filter((s: StyleOption) => s.id !== styleId).map((style: StyleOption) => {
+                        const swatches = STYLE_SWATCHES[style.id] || ['#3B82F6', '#FFFFFF', '#111827']
+                        const isActive = accentStyleId === style.id
+                        return (
+                          <button
+                            key={style.id}
+                            type="button"
+                            onClick={() => setAccentStyleId(isActive ? null : style.id)}
+                            className={`text-left px-1 py-0.5 rounded border transition-colors ${
+                              isActive
+                                ? 'border-primary bg-primary/10'
+                                : 'border-border hover:border-primary/50'
+                            }`}
+                          >
+                            <div className="flex gap-0.5 mb-0.5">
+                              {swatches.slice(0, 3).map((color, i) => (
+                                <div
+                                  key={i}
+                                  className="w-2 h-2 rounded-full border border-black/10"
+                                  style={{ backgroundColor: color }}
+                                />
+                              ))}
+                            </div>
+                            <span className="text-[8px] font-medium leading-tight line-clamp-1">{style.name}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="border-t" />
+
+                  {/* Color Palettes — arrow navigation */}
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Color Palette</span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const newIdx = (paletteIndex - 1 + PALETTES.length) % PALETTES.length
+                          setPaletteIndex(newIdx)
+                          const palette = PALETTES[newIdx]
+                          setSelectedPaletteId(palette.id)
+                          setCustomColors(paletteToCustomColors(palette))
+                        }}
+                        className="p-0.5 rounded hover:bg-muted shrink-0"
+                      >
+                        <ArrowLeft size={12} />
+                      </button>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex gap-0.5 justify-center">
+                          {(() => {
+                            const pal = PALETTES[paletteIndex]
+                            return [pal.brand, pal.background, pal.surface, pal.text, pal.accent, pal.muted].map((c, i) => (
+                              <span
+                                key={i}
+                                className="w-4 h-4 rounded-full border border-black/10 shrink-0"
+                                style={{ backgroundColor: c }}
+                              />
+                            ))
+                          })()}
+                        </div>
+                        <p className="text-[9px] text-center text-muted-foreground mt-0.5 truncate">
+                          {PALETTES[paletteIndex].name}
                         </p>
-                      )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const newIdx = (paletteIndex + 1) % PALETTES.length
+                          setPaletteIndex(newIdx)
+                          const palette = PALETTES[newIdx]
+                          setSelectedPaletteId(palette.id)
+                          setCustomColors(paletteToCustomColors(palette))
+                        }}
+                        className="p-0.5 rounded hover:bg-muted shrink-0"
+                      >
+                        <ArrowRight size={12} />
+                      </button>
                     </div>
-                  )}
+                    <p className="text-[8px] text-center text-muted-foreground">
+                      {paletteIndex + 1} / {PALETTES.length}
+                    </p>
+                    {selectedPaletteId && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedPaletteId(null)
+                          setCustomColors({})
+                        }}
+                        className="w-full text-[9px] text-muted-foreground hover:text-foreground transition-colors text-center"
+                      >
+                        Reset to style default
+                      </button>
+                    )}
+                  </div>
 
-                  {/* No style selected hint for accent */}
-                  {!styleId && (!accentStyles || accentStyles.length === 0) && (
-                    <div className="space-y-1.5">
-                      <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Accent Style</span>
-                      <p className="text-[10px] text-muted-foreground">Select a style to see compatible accents.</p>
-                    </div>
-                  )}
+                  <div className="border-t" />
 
-                  {/* Color Customization */}
+                  {/* Color Customizer (individual tweaks) */}
                   {(() => {
                     const selected = styles?.find((s: StyleOption) => s.id === styleId)
                     if (!selected?.style_guide) return null
@@ -1329,39 +1402,37 @@ export function NewProjectModal({
                   })()}
                 </div>
 
-                {/* RIGHT PANEL: live preview (always visible) */}
+                {/* RIGHT PANEL: Preview area with favorites bar */}
                 <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-                  {/* View controls bar at top of preview */}
-                  <div className="shrink-0 flex items-center gap-2 px-3 py-2 border-b bg-muted/30">
-                    {/* Quad / Single toggle */}
+                  {/* View controls bar */}
+                  <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 border-b bg-muted/30">
                     <div className="flex bg-muted rounded-lg p-0.5">
                       <button
                         onClick={() => setPreviewViewMode('quad')}
-                        className={`flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md transition-colors ${
+                        className={`flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded-md transition-colors ${
                           previewViewMode === 'quad' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'
                         }`}
                       >
-                        <Grid2x2 size={12} />
+                        <Grid2x2 size={11} />
                         Quad
                       </button>
                       <button
                         onClick={() => setPreviewViewMode('single')}
-                        className={`flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md transition-colors ${
+                        className={`flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded-md transition-colors ${
                           previewViewMode === 'single' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'
                         }`}
                       >
-                        <Maximize2 size={12} />
+                        <Maximize2 size={11} />
                         Single
                       </button>
                     </div>
-                    {/* Page selector buttons (single mode) */}
                     {previewViewMode === 'single' && (
-                      <div className="flex gap-1 ml-2">
+                      <div className="flex gap-1 ml-1">
                         {(['landing', 'dashboard', 'settings', 'feed'] as PreviewPage[]).map((p) => (
                           <button
                             key={p}
                             onClick={() => setPreviewPage(p)}
-                            className={`px-2 py-0.5 text-[11px] font-medium rounded-md transition-colors ${
+                            className={`px-1.5 py-0.5 text-[10px] font-medium rounded-md transition-colors ${
                               previewPage === p ? 'bg-primary/10 text-foreground' : 'text-muted-foreground hover:bg-muted'
                             }`}
                           >
@@ -1371,6 +1442,43 @@ export function NewProjectModal({
                       </div>
                     )}
                   </div>
+
+                  {/* Favorites bar */}
+                  {favoriteStyles.size > 0 && (
+                    <div className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 border-b bg-yellow-50/50 dark:bg-yellow-950/20">
+                      <Star size={10} className="text-yellow-500 shrink-0" fill="currentColor" />
+                      <span className="text-[9px] font-medium text-muted-foreground shrink-0">Favorites:</span>
+                      <div className="flex gap-1 overflow-x-auto">
+                        {Array.from(favoriteStyles).map(favId => {
+                          const favStyle = styles?.find((s: StyleOption) => s.id === favId)
+                          if (!favStyle) return null
+                          const swatches = STYLE_SWATCHES[favId] || ['#3B82F6', '#FFFFFF', '#111827']
+                          const isActive = styleId === favId
+                          return (
+                            <button
+                              key={favId}
+                              type="button"
+                              onClick={() => handleStyleSelect(favId)}
+                              className={`shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded border transition-colors ${
+                                isActive ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/50'
+                              }`}
+                            >
+                              <div className="flex gap-0.5">
+                                {swatches.slice(0, 3).map((color, i) => (
+                                  <div
+                                    key={i}
+                                    className="w-2 h-2 rounded-sm border border-black/10"
+                                    style={{ backgroundColor: color }}
+                                  />
+                                ))}
+                              </div>
+                              <span className="text-[9px] font-medium">{favStyle.name}</span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Preview area */}
                   <div className="flex-1 min-h-0 bg-muted/10 overflow-hidden">
@@ -1415,15 +1523,12 @@ export function NewProjectModal({
                                   setPreviewViewMode('single')
                                 }}
                               >
-                                {/* Page label overlay */}
                                 <div className="absolute top-1.5 left-1.5 z-10 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-black/60 text-white backdrop-blur-sm pointer-events-none">
                                   {page.label}
                                 </div>
-                                {/* Expand icon on hover */}
                                 <div className="absolute top-1.5 right-1.5 z-10 opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded bg-black/60 text-white backdrop-blur-sm pointer-events-none">
                                   <Maximize2 size={10} />
                                 </div>
-                                {/* Scaled-down preview */}
                                 <div
                                   style={{
                                     position: 'absolute',

@@ -1,0 +1,379 @@
+<project_specification>
+  <project_name>autoforge-style-features</project_name>
+
+  <overview>
+    A suite of five interconnected style system enhancements for the AutoForge UI and agent
+    pipeline. Includes: (1) UI realignment to a locked-in design system, (2) base+accent
+    style mixing for generated apps, (3) per-project color customization, (4) a full-screen
+    style preview engine with live token-based rendering, and (5) a screenshot-to-style
+    extractor using vision LLM analysis. These features collectively transform style selection
+    from a simple picker into an interactive design studio within AutoForge.
+  </overview>
+
+  <technology_stack>
+    <frontend>
+      <framework>React 19 with Vite 7 (existing AutoForge UI)</framework>
+      <styling>Tailwind CSS v4 with CSS variables in globals.css</styling>
+      <state_management>React hooks, TanStack Query, context</state_management>
+      <routing>React Router (hash-based)</routing>
+      <port>5173 (dev) / served by FastAPI in production</port>
+    </frontend>
+    <backend>
+      <runtime>Python FastAPI (existing AutoForge server)</runtime>
+      <database>SQLite with SQLAlchemy (existing), project_config.json for per-project settings</database>
+      <port>8000</port>
+    </backend>
+    <communication>
+      <api>RESTful endpoints via FastAPI routers, WebSocket for real-time updates</api>
+    </communication>
+    <additional_libraries>
+      <library>Playwright (screenshot generation script)</library>
+      <library>Claude/vision LLM API (screenshot style extraction)</library>
+    </additional_libraries>
+  </technology_stack>
+
+  <prerequisites>
+    <environment_setup>
+      - Existing AutoForge codebase with server/ and ui/ directories
+      - Python 3.11+ with FastAPI, SQLAlchemy, uvicorn installed
+      - Node.js 20+ with React 19, Vite 7, Tailwind CSS v4
+      - server/services/style_manager.py with 12-style STYLE_REGISTRY
+      - server/services/style_modifiers.py with 4 accessibility modifiers
+      - ui/src/components/NewProjectModal.tsx with existing style picker
+      - ui/src/styles/globals.css with 6 theme variants
+      - Claude API key or vision-capable LLM access (for screenshot extractor)
+    </environment_setup>
+  </prerequisites>
+
+  <feature_count>20</feature_count>
+
+  <core_features>
+    <ui_realignment>
+      - System defines CSS variables in globals.css for graph node colors (--color-graph-node-pending, --color-graph-node-progress, --color-graph-node-done, --color-graph-node-failing, --color-graph-edge), category badge colors, and log level colors across all 6 theme variants
+      - System replaces all hardcoded hex and Tailwind color classes in DependencyGraph, DebugLogViewer, and FeatureCard with references to the new CSS variables
+      - System updates App.tsx, SettingsModal, and AgentMissionControl to use the standardized typography scale (text-2xl/text-lg/text-base/text-sm/text-xs) and 8px spacing grid with symmetric padding
+      - System updates ProgressDashboard, KanbanBoard, ProjectSelector, and NewProjectModal to use the standardized typography scale and 8px spacing grid with consistent button sizing
+      - System creates ui/STYLE_GUIDE.md documenting the locked-in typography scale, spacing grid, color variable rules, component patterns (Card, Button, Input), and dark mode requirements
+    </ui_realignment>
+
+    <style_mixing>
+      - System adds accent_compatibility data to each style in STYLE_REGISTRY including works_as_accent_for list and accent_token_overrides for buttons, inputs, toggles, focus_rings, and hover_states
+      - API returns compatible accent styles for a given base style via GET /api/styles/{style_id}/accent-compatibility and all pre-validated base+accent pairs via GET /api/styles/combinations
+      - System stores accent_style in project_config.json and generates a combined style guide in prompts.py _get_style_context() with full base section plus accent override section scoped to interactive elements only
+      - User can select an optional accent style in NewProjectModal after choosing a base style, with the picker filtered to only compatible accents and No Accent as the default
+    </style_mixing>
+
+    <color_customization>
+      - System merges custom color overrides into base style tokens via style_manager.py get_style_with_overrides() before generating the style guide markdown
+      - System accepts custom_colors in the project creation API, persists non-default overrides to project_config.json via boilerplate_manager, and applies them in prompts.py when building style context
+      - User can customize 6 main colors (primary, secondary, accent, background, surface, text) via a collapsible ColorCustomizer in NewProjectModal with swatches, hex inputs, native color picker, and Reset to Default button
+    </color_customization>
+
+    <style_preview>
+      - API returns full style token data (color_tokens, typography, components, spacing) for each style in the GET /api/styles response
+      - System renders a StylePreview component showing heading, body text, primary button, outline button, text input, styled card, and toggle using inline CSS from style tokens, with support for optional accentTokens and modifierOverrides props
+      - System renders a StyleFullPreview overlay with 4 tabbed sample pages (Landing, Dashboard, Settings, Feed) built from a shared page template with per-page content variations, plus Close and Select This Style buttons
+      - User can browse styles in a full-width grid (max-w-7xl) with two-column cards showing style info and compact StylePreview, plus fanned screenshot thumbnails that fan out on hover (300ms ease-out) and pin open on click, with hover or click on a card opening the full-screen StyleFullPreview
+      - System provides a dedicated route at /#/style-preview/:styleId/:page for chromeless preview rendering and a Playwright script at scripts/generate-style-screenshots.ts that generates 48 static PNG screenshots (12 styles x 4 pages) saved to ui/public/style-previews/
+    </style_preview>
+
+    <screenshot_extractor>
+      - System analyzes uploaded screenshots via style_extractor.py service and POST /api/styles/extract-from-screenshot endpoint, returning identified primary/accent styles with confidence scores, extracted tokens, and style guide markdown
+      - User can upload a screenshot via drag-and-drop in the Extract from Screenshot tab of the style picker and accept the extracted style via Use This Style, which saves tokens as a custom-extracted style in project_config.json
+    </screenshot_extractor>
+
+    <error_handling>
+      - System displays an error toast with Retry button when screenshot analysis fails due to timeout, invalid image format, or API error, and shows inline validation errors for invalid hex color values in the ColorCustomizer
+    </error_handling>
+  </core_features>
+
+  <database_schema>
+    <description>
+      No new SQLite tables are created. These features modify Python data structures
+      (STYLE_REGISTRY in style_manager.py), JSON config files (project_config.json),
+      and CSS variables (globals.css). The data model changes are described below.
+    </description>
+    <tables>
+      <style_registry_in_memory>
+        Each style dict in STYLE_REGISTRY (style_manager.py) gains:
+        - accent_compatibility.works_as_accent_for (LIST of style IDs)
+        - accent_compatibility.accent_token_overrides.buttons (DICT: radius, shadow, hover, padding)
+        - accent_compatibility.accent_token_overrides.inputs (DICT: border, radius, shadow, focus)
+        - accent_compatibility.accent_token_overrides.toggles (DICT: track_color, thumb_style, active)
+        - accent_compatibility.accent_token_overrides.focus_rings (DICT: color, width, offset)
+        - accent_compatibility.accent_token_overrides.hover_states (DICT: transform, shadow, color_shift)
+      </style_registry_in_memory>
+      <project_config_json>
+        project_config.json (per-project, in .autoforge/) gains:
+        - accent_style (TEXT, nullable, must be in base style's compatibility list)
+        - custom_colors (DICT of color_name to hex_value, only non-default overrides stored)
+        - style_id value "custom-extracted" (reserved for screenshot-extracted styles)
+      </project_config_json>
+      <css_variables>
+        globals.css gains variables across all 6 theme variants:
+        - --color-graph-edge, --color-graph-node-pending, --color-graph-node-progress, --color-graph-node-done, --color-graph-node-failing
+        - --color-category-{name} for each feature category badge
+        - --color-log-error, --color-log-warning, --color-log-info, --color-log-debug (if not present)
+      </css_variables>
+    </tables>
+  </database_schema>
+
+  <api_endpoints_summary>
+    <styles_enhanced>
+      - GET /api/styles (enhanced: includes full token data per style - color_tokens, typography, components, spacing)
+    </styles_enhanced>
+    <style_mixing>
+      - GET /api/styles/{style_id}/accent-compatibility (returns list of compatible accent style IDs with preview data)
+      - GET /api/styles/combinations (returns all valid base+accent pairs with compatibility metadata)
+    </style_mixing>
+    <screenshot_extraction>
+      - POST /api/styles/extract-from-screenshot (accepts {image: base64_string}, returns style analysis with identification, tokens, and formatted outputs)
+    </screenshot_extraction>
+    <projects_updated>
+      - POST /api/projects (updated: accepts optional accent_style and custom_colors in request body)
+    </projects_updated>
+  </api_endpoints_summary>
+
+  <ui_layout>
+    <main_structure>
+      - Existing AutoForge layout unchanged (header, sidebar, main content area)
+      - NewProjectModal style step expanded to full-width (max-w-7xl) for style preview grid
+      - Style picker gains 3 tabs: Browse Styles (enhanced with previews), Describe Your App (existing), Extract from Screenshot (new)
+      - Full-screen preview overlay renders above the modal when hovering/clicking a style card
+      - ColorCustomizer appears as collapsible section below style selection
+      - Accent style picker appears as optional step after base style selection
+      - New route /#/style-preview/:styleId/:page for standalone preview rendering
+    </main_structure>
+  </ui_layout>
+
+  <design_system>
+    <color_palette>
+      - All colors use CSS variables from globals.css (no hardcoded values)
+      - 6 theme variants: Twitter, Claude, Neo Brutalism, Retro Arcade, Aurora, Business
+      - Status colors: --color-neo-pending (yellow), --color-neo-progress (cyan), --color-neo-done (green)
+      - Semantic tokens: text-primary, text-muted-foreground, bg-card, border-border, text-destructive
+      - Status-specific: text-emerald-500 dark:text-emerald-400 (success), text-amber-500 dark:text-amber-400 (warning), text-sky-500 dark:text-sky-400 (info)
+    </color_palette>
+    <typography>
+      - Page Title: text-2xl font-semibold
+      - Section Header: text-lg font-semibold
+      - Card Title: text-base font-medium
+      - Body Text: text-sm
+      - Small/Meta: text-xs text-muted-foreground
+      - Micro: text-[10px] text-muted-foreground (graph nodes only)
+      - Font family: Inter, system-ui, sans-serif
+    </typography>
+    <spacing>
+      - 8px grid system: p-1 (4px), p-2 (8px), p-3 (12px), p-4 (16px), p-6 (24px), p-8 (32px)
+      - Card padding: p-4 (standard) or p-6 (spacious)
+      - Section gaps: gap-6 between major sections, gap-4 within sections
+      - Symmetric padding preferred (p-4 not pt-3 pb-3 px-4)
+    </spacing>
+  </design_system>
+
+  <ui_ux_standards>
+    <banned_patterns>
+      - Hardcoded Tailwind color classes (bg-pink-500, text-red-500, etc.) for theme-dependent colors
+      - Hardcoded hex colors in component code (#22c55e, #ef4444, etc.)
+      - Arbitrary font sizes (text-[13px]) outside the typography scale
+      - text-xl (ambiguous between card title and page title)
+      - Asymmetric padding (pt-3 pb-3) without specific visual justification
+      - Raw div cards with custom borders/shadows when Card component exists
+      - Raw styled buttons when Button component exists
+      - Raw styled inputs when Input component exists
+      - alert(), confirm(), prompt() - use modals and toasts
+    </banned_patterns>
+    <required_components>
+      - Card/CardContent from ui/src/components/ui/card.tsx for all card containers
+      - Button from ui/src/components/ui/button.tsx for all clickable actions
+      - Input from ui/src/components/ui/input.tsx for all text inputs
+      - StylePreview for inline token-based style rendering
+      - StyleFullPreview for full-screen multi-page style preview
+      - ColorCustomizer for color override selection
+    </required_components>
+    <page_patterns>
+      - Style selection: Browse Grid -> Hover/Click -> Full Preview -> Select
+      - Color customization: Style selected -> Expand customizer -> Adjust -> Preview updates
+      - Screenshot extraction: Upload -> Loading -> Results -> Accept or Retry
+      - Accent mixing: Base selected -> Show compatible accents -> Preview combination -> Confirm
+    </page_patterns>
+    <feedback_protocol>
+      - Screenshot analysis: show loading spinner during LLM processing, display results with confidence
+      - Color changes: preview updates immediately (no save needed until project creation)
+      - Style selection: highlight selected card, preview overlay dismisses on selection
+      - Error states: failed screenshot analysis shows error toast with Retry button, invalid hex shows inline error
+    </feedback_protocol>
+    <polish_requirements>
+      - Style card hover: 300ms delay before full preview opens (prevent accidental triggers)
+      - Fanned card stack: smooth 300ms ease-out CSS transition on hover/click
+      - Color picker: real-time preview update as user adjusts colors
+      - Full preview: tabbed navigation between 4 sample pages
+      - Accent picker: filtered list updates immediately when base style changes
+    </polish_requirements>
+    <accessibility_basics>
+      - Focus rings on all interactive style cards, color pickers, and preview tab buttons
+      - Escape key closes the full-screen preview overlay and fanned card stack
+      - aria-labels on icon-only buttons (close preview, reset colors, upload image)
+      - Labels on all color picker inputs with visible hex value
+      - Keyboard navigation through style grid (arrow keys), preview tabs, and accent picker
+      - Color contrast validation warning when custom colors produce low-contrast text/background pairs
+    </accessibility_basics>
+  </ui_ux_standards>
+
+  <coding_standards>
+    <architecture>
+      - All new backend logic in server/services/ (style_extractor.py, updates to style_manager.py)
+      - All new API endpoints in server/routers/ (updates to projects.py and styles endpoints)
+      - All new React components in ui/src/components/ (StylePreview.tsx, StyleFullPreview.tsx, ColorCustomizer.tsx)
+      - TypeScript interfaces for all data types in ui/src/lib/types.ts
+      - API calls in ui/src/lib/api.ts, not in components
+      - CSS variables in ui/src/styles/globals.css, not hardcoded in components
+    </architecture>
+    <routing>
+      - New route /#/style-preview/:styleId/:page for standalone preview rendering
+      - Route renders preview without modal chrome (for Playwright screenshots and sharing)
+    </routing>
+    <error_handling>
+      - Screenshot extraction: handle LLM timeout, invalid image format, rate limiting with error toast and Retry
+      - Color customization: validate hex format inline, warn on low contrast between text and background
+      - Style mixing: validate accent is in base's compatibility list before saving
+      - Preview rendering: graceful fallback if token data is missing or malformed
+    </error_handling>
+    <testing>
+      - Python: ruff check . (lint), mypy . (type check)
+      - React: npm run lint (ESLint), npm run build (TypeScript + Vite build)
+      - Playwright: scripts/generate-style-screenshots.ts for screenshot generation
+      - Manual verification: all 6 themes display correctly after CSS variable changes
+    </testing>
+  </coding_standards>
+
+  <key_interactions>
+    <style_preview_flow>
+      1. User opens style picker and sees full-width grid of style cards
+      2. Each card shows style metadata on the left and compact StylePreview on the right
+      3. Cards display 4-page screenshots as a fanned stack; hover fans them out smoothly
+      4. User hovers over a card for 300ms; full-screen StyleFullPreview overlay appears
+      5. Preview shows Landing page; user tabs through Dashboard, Settings, Feed pages
+      6. User clicks "Select This Style" in the preview overlay
+      7. Overlay closes, style is selected, modifier and accent options appear below
+    </style_preview_flow>
+
+    <style_mixing_flow>
+      1. User selects a base style from the style picker grid
+      2. Optional "Add Accent Style" section appears below with compatible accent styles
+      3. User selects an accent style from filtered cards showing button/input previews
+      4. Style preview updates to show base layout with accent-styled interactive elements
+      5. User confirms selection; accent_style saved to project_config.json
+      6. Agent receives combined style guide with base section + accent override section
+    </style_mixing_flow>
+
+    <color_customization_flow>
+      1. User selects a base style from the picker
+      2. User clicks "Customize Colors" to expand the collapsible color panel
+      3. Six color pickers appear pre-filled with the style's default color values
+      4. User adjusts primary color via native color picker or hex input
+      5. Preview updates immediately to reflect the new primary color
+      6. User clicks "Reset to Default" to restore original style colors
+      7. On project creation, only changed colors are saved to custom_colors in config
+    </color_customization_flow>
+
+    <screenshot_extraction_flow>
+      1. User clicks the "Extract from Screenshot" tab in the style picker
+      2. User drags and drops a screenshot onto the upload area (or clicks to browse)
+      3. Loading spinner appears while the vision LLM analyzes the image
+      4. Results display: detected style name, confidence score, extracted color palette
+      5. User clicks "Use This Style" to adopt the extracted tokens
+      6. Extracted tokens saved as custom-extracted style; style guide generated from tokens
+      7. Flow continues to modifier/accent selection as with any other style choice
+    </screenshot_extraction_flow>
+  </key_interactions>
+
+  <implementation_steps>
+    <step number="1">
+      <title>UI Realignment Foundation</title>
+      <tasks>
+        - Define CSS variables in globals.css for graph, category, and log level colors
+        - Refactor DependencyGraph, DebugLogViewer, and FeatureCard to use CSS variables
+        - Refactor App.tsx, SettingsModal, AgentMissionControl for typography and spacing
+        - Refactor ProgressDashboard, KanbanBoard, ProjectSelector, NewProjectModal for typography and spacing
+        - Create ui/STYLE_GUIDE.md documenting the design system
+      </tasks>
+    </step>
+    <step number="2">
+      <title>Backend Services (parallelizable)</title>
+      <tasks>
+        - Add accent_compatibility data to all 12 styles in STYLE_REGISTRY
+        - Add get_style_with_overrides() color override support to style_manager.py
+        - Expose full style tokens in GET /api/styles response
+        - Create style_extractor.py service with vision LLM integration
+      </tasks>
+    </step>
+    <step number="3">
+      <title>API Layer and Config</title>
+      <tasks>
+        - Add style mixing API endpoints (accent-compatibility, combinations)
+        - Update project config and prompts.py to store and use accent_style
+        - Update project creation API and prompts.py for custom_colors
+        - Add POST /api/styles/extract-from-screenshot endpoint
+      </tasks>
+    </step>
+    <step number="4">
+      <title>Preview Engine</title>
+      <tasks>
+        - Create StylePreview compact component with token-based rendering
+        - Create StyleFullPreview multi-page overlay component
+        - Update style picker to full-width grid with preview cards and hover interaction
+        - Add dedicated /#/style-preview/:styleId/:page route
+      </tasks>
+    </step>
+    <step number="5">
+      <title>UI Integration</title>
+      <tasks>
+        - Add accent style picker UI to NewProjectModal
+        - Create ColorCustomizer component and wire into NewProjectModal
+        - Add Extract from Screenshot tab with upload and results UI
+        - Update TypeScript types, API client, and TanStack Query hooks
+      </tasks>
+    </step>
+    <step number="6">
+      <title>Polish, Assets, and Error Handling</title>
+      <tasks>
+        - Create Playwright screenshot generation script (48 images)
+        - Implement fanned card stack with static thumbnails and hover/click animation
+        - Add error handling: screenshot failure toast, hex validation, accent compatibility guard
+        - Verify all features work across all 6 theme variants in light and dark mode
+      </tasks>
+    </step>
+  </implementation_steps>
+
+  <success_criteria>
+    <functionality>
+      - All 12 styles display correctly in the new full-width preview grid with compact previews
+      - Full-screen preview renders 4 distinct pages (Landing, Dashboard, Settings, Feed) for each style
+      - Accent style mixing generates correct combined prompts with base layout + accent interactive elements
+      - Color customization overrides propagate correctly through style guide generation to agent prompts
+      - Screenshot extractor returns plausible style identification and usable extracted tokens
+      - Fanned card stack displays 4 static screenshots per style with smooth hover/click animations
+      - No hardcoded color values remain in any UI component (all use CSS variables)
+      - Error states display correctly: screenshot failure shows toast with retry, invalid hex shows inline error
+    </functionality>
+    <user_experience>
+      - Style differences are immediately visible in the grid without hovering (compact previews)
+      - Full preview opens smoothly after 300ms hover delay, not jarring
+      - Color customizer provides instant visual feedback as colors are adjusted
+      - Accent picker only shows compatible options (no invalid combinations possible)
+      - Screenshot upload shows clear loading state and confident results
+      - All interactions work in both light and dark mode across all 6 themes
+      - Keyboard navigation works for style grid, preview tabs, and all interactive elements
+    </user_experience>
+    <technical_quality>
+      - ruff check . passes with no errors
+      - npm run lint passes with no errors
+      - npm run build succeeds with no TypeScript errors
+      - Zero console errors in browser during all style interactions
+      - CSS variables properly cascade through all 6 theme variants
+      - Preview component renders correctly with any combination of base tokens, accent tokens, and modifier overrides
+      - STYLE_GUIDE.md is comprehensive and matches the actual implementation
+    </technical_quality>
+  </success_criteria>
+</project_specification>

@@ -127,6 +127,27 @@ class SpecChatSession:
         project_path = str(self.project_dir.resolve())
         system_prompt = skill_content.replace("$ARGUMENTS", project_path)
 
+        # Inject identity-first reminder to ensure the 4 identity fields are captured
+        # and included in the generated app_spec.txt <app_overview> section
+        identity_ctx = (
+            "\n\n## IDENTITY TRACKING REMINDER\n\n"
+            "You MUST capture all 4 identity fields before proceeding to features:\n"
+            "1. App Name\n"
+            "2. One-Line Description\n"
+            "3. Target User (specific)\n"
+            "4. Core Problem (pain point)\n\n"
+            "Include these in the `<app_overview>` section of the generated app_spec.txt:\n"
+            "```xml\n"
+            "<app_overview>\n"
+            "  <name>AppName</name>\n"
+            "  <description>One-line description</description>\n"
+            "  <target_user>Specific target user</target_user>\n"
+            "  <core_problem>Pain point being solved</core_problem>\n"
+            "</app_overview>\n"
+            "```\n"
+        )
+        system_prompt = system_prompt + identity_ctx
+
         # Inject boilerplate context if the project was created from a boilerplate
         from .boilerplate_manager import get_boilerplate_option, load_project_config
         project_config = load_project_config(self.project_dir)

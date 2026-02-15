@@ -32,6 +32,14 @@ Use the feature_create_bulk tool to add all features at once. You can create fea
 - IDs and priorities are assigned automatically based on order
 - All features start with `passes: false` by default
 
+**Feature Description Format:**
+
+For each feature, provide TWO descriptions:
+- **description**: Technical capability (e.g., "Scale recipe servings with auto-calculated ingredient quantities")
+- **user_action**: Plain English (e.g., "Users can adjust serving sizes and see updated measurements instantly")
+
+The coding agent uses the technical description for implementation and the user_action for verification — it tests whether a real user could actually do what's described.
+
 **Requirements for features:**
 
 - Feature count must match the `feature_count` specified in app_spec.txt

@@ -114,6 +114,50 @@ Implement the chosen feature thoroughly:
 3. Fix any issues discovered
 4. Verify the feature works end-to-end
 
+### STEP 4.5: CODING STANDARDS (MANDATORY)
+
+Follow these rules for ALL code you write:
+
+**Architecture:**
+1. NO database calls in components — create a service layer (`src/services/`) for all backend operations. Components call services, never databases directly.
+2. ALL database writes must include `createdAt` and `updatedAt` timestamps.
+3. ALL user data must be scoped to the authenticated user (filter by userId in queries).
+4. Wrap the app root in an ErrorBoundary component that catches and displays errors gracefully.
+
+**TypeScript:**
+5. NO `any` types — define explicit TypeScript interfaces in `src/types/`.
+6. ALL shared types go in `src/types/index.ts`, not scattered across files.
+
+**Styling:**
+7. NO inline styles — use Tailwind CSS classes only.
+8. Use CSS variables for dark/light mode (dark-first approach).
+9. Use Lucide React for ALL icons (import from `lucide-react`).
+
+**UI Components (create these if they don't exist):**
+10. Detail View (read-only) SEPARATE from Edit View — never combine them.
+11. All pages set the document title via a `usePageTitle` hook:
+    ```typescript
+    // src/hooks/usePageTitle.ts
+    export function usePageTitle(title: string) {
+      useEffect(() => {
+        document.title = title ? `${title} - AppName` : 'AppName';
+      }, [title]);
+    }
+    ```
+12. All forms autofocus the first input field.
+13. All lists with more than 5 expected items must have search/filter.
+14. All error states must include a retry action (not just "Error occurred").
+15. Unsaved form changes must trigger a `beforeunload` warning.
+
+**Navigation Pattern:**
+Follow this flow for all CRUD features:
+```
+LIST → click item → DETAIL (read-only) → click edit → EDIT → save → DETAIL
+LIST → click new  → CREATE → save → DETAIL
+DETAIL → delete (with ConfirmModal) → LIST
+```
+All detail pages must have back navigation.
+
 ### STEP 5: VERIFY WITH BROWSER AUTOMATION
 
 **CRITICAL:** You MUST verify features through the actual UI.
@@ -151,6 +195,12 @@ Use browser automation tools:
 - **Integration:** Zero JS console errors, no 500s in network tab, API data matches UI, loading/error states work
 - **UI Polish:** No `alert()`/`confirm()`/`prompt()` calls; loading states use skeletons (not "Loading..." text); all destructive actions have confirmation modals; all success/error actions show toast/notification feedback; empty lists show EmptyState with icon + CTA (not just text); dates displayed as relative time (not raw timestamps); long text truncated with ellipsis
 - **Accessibility:** Visible focus rings on interactive elements; icon-only buttons have aria-label; modals close with Escape key; form inputs have labels (not just placeholders)
+- **Architecture:** No database calls in components (only in services/); ErrorBoundary wraps app root; all DB writes have createdAt/updatedAt; user data scoped by userId
+- **TypeScript:** No `any` types in src/ (grep for `: any` and `as any`); interfaces in src/types/
+- **Forms:** First input autofocused; beforeunload warning for unsaved changes; validation before submit
+- **Lists:** Search/filter present when list could have > 5 items
+- **Navigation:** Detail View separate from Edit View; back navigation on all detail pages; List→Detail→Edit flow
+- **Page Titles:** Every page calls usePageTitle with a descriptive title
 
 ### STEP 5.6: MOCK DATA DETECTION (Before marking passing)
 

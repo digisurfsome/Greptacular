@@ -1245,14 +1245,20 @@ STYLE_DOS_AND_DONTS: dict[str, dict[str, list[str]]] = {
 # Accent Style Compatibility Matrix
 # =============================================================================
 
-# Which styles work as accents for which base styles.
+# Every style can serve as an accent for any other base style.
 # Key = accent style ID, Value = dict with "works_as_accent_for" list and "accent_token_overrides"
-# Only distinctive styles (neumorphism, neubrutalism, glassmorphism, claymorphism, skeuomorphism)
-# work well as accents. Simpler styles (flat, minimal, dark, warm) work best as bases.
+# The accent_token_overrides define how interactive elements (buttons, inputs, toggles)
+# should be styled when this style is used as an accent on top of a different base.
+
+ALL_STYLE_IDS = [
+    "flat-design", "minimalism", "neumorphism", "glassmorphism", "skeuomorphism",
+    "neubrutalism", "bauhaus", "claymorphism", "retro-futurism", "cyberpunk",
+    "dark-mode", "warmer-shades",
+]
 
 ACCENT_COMPATIBILITY: dict[str, dict] = {
     "neumorphism": {
-        "works_as_accent_for": ["flat-design", "minimalism", "warmer-shades", "claymorphism"],
+        "works_as_accent_for": [s for s in ALL_STYLE_IDS if s != "neumorphism"],
         "accent_token_overrides": {
             "buttons": {
                 "radius": "12px",
@@ -1279,7 +1285,7 @@ ACCENT_COMPATIBILITY: dict[str, dict] = {
         },
     },
     "neubrutalism": {
-        "works_as_accent_for": ["flat-design", "minimalism", "dark-mode", "bauhaus"],
+        "works_as_accent_for": [s for s in ALL_STYLE_IDS if s != "neubrutalism"],
         "accent_token_overrides": {
             "buttons": {
                 "radius": "0px",
@@ -1305,7 +1311,7 @@ ACCENT_COMPATIBILITY: dict[str, dict] = {
         },
     },
     "glassmorphism": {
-        "works_as_accent_for": ["minimalism", "retro-futurism", "cyberpunk", "dark-mode"],
+        "works_as_accent_for": [s for s in ALL_STYLE_IDS if s != "glassmorphism"],
         "accent_token_overrides": {
             "buttons": {
                 "background": "rgba(255, 255, 255, 0.2)",
@@ -1334,7 +1340,7 @@ ACCENT_COMPATIBILITY: dict[str, dict] = {
         },
     },
     "claymorphism": {
-        "works_as_accent_for": ["flat-design", "minimalism", "warmer-shades"],
+        "works_as_accent_for": [s for s in ALL_STYLE_IDS if s != "claymorphism"],
         "accent_token_overrides": {
             "buttons": {
                 "radius": "20px",
@@ -1361,7 +1367,7 @@ ACCENT_COMPATIBILITY: dict[str, dict] = {
         },
     },
     "skeuomorphism": {
-        "works_as_accent_for": ["retro-futurism", "warmer-shades"],
+        "works_as_accent_for": [s for s in ALL_STYLE_IDS if s != "skeuomorphism"],
         "accent_token_overrides": {
             "buttons": {
                 "background": "linear-gradient(180deg, lighten 10%, darken 10%)",
@@ -1388,29 +1394,240 @@ ACCENT_COMPATIBILITY: dict[str, dict] = {
             },
         },
     },
+    "flat-design": {
+        "works_as_accent_for": [s for s in ALL_STYLE_IDS if s != "flat-design"],
+        "accent_token_overrides": {
+            "buttons": {
+                "radius": "6px",
+                "border": "1px solid currentColor",
+                "shadow": "none",
+                "hover": "background-color swap, no transform or shadow effects",
+            },
+            "inputs": {
+                "radius": "6px",
+                "border": "1px solid #CBD5E1",
+                "shadow": "none",
+            },
+            "toggles": {
+                "track_border": "1px solid #CBD5E1",
+                "track_radius": "6px",
+                "track_bg": "solid color, no gradients",
+            },
+            "focus_rings": {
+                "style": "0 0 0 2px rgba(59, 130, 246, 0.4)",
+            },
+            "hover_states": {
+                "transform": "none",
+                "shadow_change": "none - color change only",
+            },
+        },
+    },
+    "minimalism": {
+        "works_as_accent_for": [s for s in ALL_STYLE_IDS if s != "minimalism"],
+        "accent_token_overrides": {
+            "buttons": {
+                "radius": "8px",
+                "border": "1px solid #E5E7EB",
+                "shadow": "0 1px 2px rgba(0,0,0,0.04)",
+                "hover": "subtle background shift, no transform",
+            },
+            "inputs": {
+                "radius": "8px",
+                "border": "none",
+                "shadow": "none",
+                "background": "surface-muted (very subtle fill, no border)",
+            },
+            "toggles": {
+                "track_border": "none",
+                "track_radius": "8px",
+                "track_bg": "muted surface fill",
+            },
+            "focus_rings": {
+                "style": "0 0 0 2px rgba(17, 24, 39, 0.15)",
+            },
+            "hover_states": {
+                "transform": "none",
+                "shadow_change": "none - opacity or background-color transition only",
+            },
+        },
+    },
+    "bauhaus": {
+        "works_as_accent_for": [s for s in ALL_STYLE_IDS if s != "bauhaus"],
+        "accent_token_overrides": {
+            "buttons": {
+                "radius": "0px",
+                "border": "2px solid #0A0A0A",
+                "shadow": "none",
+                "hover": "background swaps to primary color (red/blue/yellow), bold color shift",
+            },
+            "inputs": {
+                "radius": "0px",
+                "border": "2px solid #0A0A0A",
+                "shadow": "none",
+            },
+            "toggles": {
+                "track_border": "2px solid #0A0A0A",
+                "track_radius": "0px",
+                "track_bg": "primary color fill when active",
+            },
+            "focus_rings": {
+                "style": "2px solid #2563EB, offset 2px",
+            },
+            "hover_states": {
+                "transform": "none",
+                "shadow_change": "none - bold color swap only",
+            },
+        },
+    },
+    "retro-futurism": {
+        "works_as_accent_for": [s for s in ALL_STYLE_IDS if s != "retro-futurism"],
+        "accent_token_overrides": {
+            "buttons": {
+                "radius": "4px",
+                "border": "1px solid rgba(217,70,239,0.4)",
+                "shadow": "0 0 12px rgba(217,70,239,0.4), 0 0 4px rgba(217,70,239,0.2)",
+                "hover": "intensified neon glow, shadow spread increases",
+                "background": "linear-gradient(135deg, #D946EF, #A21CAF)",
+            },
+            "inputs": {
+                "radius": "4px",
+                "border": "1px solid rgba(217,70,239,0.3)",
+                "shadow": "0 0 8px rgba(217,70,239,0.1)",
+                "background": "rgba(255,255,255,0.05)",
+            },
+            "toggles": {
+                "track_border": "1px solid rgba(217,70,239,0.3)",
+                "track_radius": "4px",
+                "track_glow": "0 0 8px rgba(217,70,239,0.3) when active",
+            },
+            "focus_rings": {
+                "style": "0 0 0 2px rgba(217, 70, 239, 0.5), 0 0 8px rgba(217,70,239,0.3)",
+            },
+            "hover_states": {
+                "transform": "none",
+                "shadow_change": "neon glow intensifies (spread and opacity increase)",
+            },
+        },
+    },
+    "cyberpunk": {
+        "works_as_accent_for": [s for s in ALL_STYLE_IDS if s != "cyberpunk"],
+        "accent_token_overrides": {
+            "buttons": {
+                "radius": "2px",
+                "border": "1px solid #06B6D4",
+                "shadow": "0 0 10px rgba(6,182,212,0.3), inset 0 0 6px rgba(6,182,212,0.1)",
+                "hover": "neon cyan glow intensifies, border brightens to #67E8F9",
+                "background": "#06B6D4",
+            },
+            "inputs": {
+                "radius": "2px",
+                "border": "1px solid #3F3F46",
+                "shadow": "0 0 4px rgba(6,182,212,0.08)",
+                "background": "#09090B",
+            },
+            "toggles": {
+                "track_border": "1px solid #3F3F46",
+                "track_radius": "2px",
+                "track_glow": "0 0 6px rgba(6,182,212,0.4) when active",
+            },
+            "focus_rings": {
+                "style": "0 0 0 1px #06B6D4, 0 0 8px rgba(6,182,212,0.4)",
+            },
+            "hover_states": {
+                "transform": "none",
+                "shadow_change": "hard neon glow pulse on cyan/teal accent",
+            },
+        },
+    },
+    "dark-mode": {
+        "works_as_accent_for": [s for s in ALL_STYLE_IDS if s != "dark-mode"],
+        "accent_token_overrides": {
+            "buttons": {
+                "radius": "8px",
+                "border": "1px solid #334155",
+                "shadow": "0 2px 8px rgba(0,0,0,0.3)",
+                "hover": "background lightens one surface step, subtle shadow lift",
+                "background": "#1E293B",
+            },
+            "inputs": {
+                "radius": "8px",
+                "border": "1px solid #334155",
+                "shadow": "0 1px 4px rgba(0,0,0,0.2)",
+                "background": "#0F172A",
+            },
+            "toggles": {
+                "track_border": "1px solid #334155",
+                "track_radius": "8px",
+                "track_bg": "#1E293B",
+            },
+            "focus_rings": {
+                "style": "0 0 0 2px rgba(59, 130, 246, 0.4)",
+            },
+            "hover_states": {
+                "transform": "none",
+                "shadow_change": "subtle shadow depth increase, surface lightens",
+            },
+        },
+    },
+    "warmer-shades": {
+        "works_as_accent_for": [s for s in ALL_STYLE_IDS if s != "warmer-shades"],
+        "accent_token_overrides": {
+            "buttons": {
+                "radius": "12px",
+                "border": "1px solid #E7D5C0",
+                "shadow": "0 2px 6px rgba(140,100,60,0.1)",
+                "hover": "warm background shift toward amber, shadow warms",
+                "background": "#D97706",
+            },
+            "inputs": {
+                "radius": "12px",
+                "border": "1px solid #E7D5C0",
+                "shadow": "0 1px 3px rgba(140,100,60,0.06)",
+                "background": "#FFFBF5",
+            },
+            "toggles": {
+                "track_border": "1px solid #E7D5C0",
+                "track_radius": "12px",
+                "track_bg": "#FEF3E2",
+            },
+            "focus_rings": {
+                "style": "0 0 0 2px rgba(217, 119, 6, 0.35)",
+            },
+            "hover_states": {
+                "transform": "none",
+                "shadow_change": "warm-tinted shadow deepens slightly",
+            },
+        },
+    },
 }
 
 
 def get_accent_styles(base_id: str) -> list[dict]:
-    """Return styles that work as accents for the given base style.
+    """Return all styles that can serve as accents for the given base style.
+
+    Every style can be used as an accent for any other base style.
+    Returns all 11 other styles (excluding the base style itself) with
+    their accent token overrides.
 
     Args:
-        base_id: The base style ID to find compatible accents for.
+        base_id: The base style ID to find accent options for.
 
     Returns:
         List of accent style dicts with id, name, and accent_token_overrides.
     """
     results = []
     for accent_id, compat in ACCENT_COMPATIBILITY.items():
-        if base_id in compat["works_as_accent_for"]:
-            style = get_style_option(accent_id)
-            if style:
-                results.append({
-                    "id": accent_id,
-                    "name": style["name"],
-                    "description": style["description"],
-                    "accent_token_overrides": compat["accent_token_overrides"],
-                })
+        # Skip the base style itself - a style cannot accent itself
+        if accent_id == base_id:
+            continue
+        style = get_style_option(accent_id)
+        if style:
+            results.append({
+                "id": accent_id,
+                "name": style["name"],
+                "description": style["description"],
+                "accent_token_overrides": compat["accent_token_overrides"],
+            })
     return results
 
 
@@ -1420,16 +1637,19 @@ def get_mixed_style_prompt(base_id: str, accent_id: str) -> str | None:
     The base style guide is generated normally. Then an additional section
     is appended that specifies the accent overrides for interactive elements only.
 
+    All styles are compatible as accents for any base style, so this function
+    only validates that both style IDs exist in the registry.
+
     Args:
         base_id: The dominant base style ID.
         accent_id: The accent style ID for interactive elements.
 
     Returns:
-        Combined markdown style guide, or None if styles are incompatible.
+        Combined markdown style guide, or None if either style ID is invalid.
     """
-    # Validate compatibility
+    # Validate that both styles exist
     compat = ACCENT_COMPATIBILITY.get(accent_id)
-    if not compat or base_id not in compat["works_as_accent_for"]:
+    if not compat:
         return None
 
     base_guide = get_style_guide_markdown(base_id)

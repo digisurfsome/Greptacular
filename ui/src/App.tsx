@@ -265,7 +265,7 @@ function App() {
             {/* Logo and Title */}
             <div className="flex items-center gap-3">
               <img src="/logo.png" alt="AutoForge" className="h-9 w-9 rounded-full" />
-              <h1 className="font-display text-2xl font-bold tracking-tight uppercase">
+              <h1 className="font-display text-2xl font-semibold tracking-tight uppercase">
                 AutoForge
               </h1>
             </div>
@@ -329,7 +329,7 @@ function App() {
                   {/* GLM Mode Badge */}
                   {settings?.glm_mode && (
                     <Badge
-                      className="bg-purple-500 text-white hover:bg-purple-600"
+                      variant="default"
                       title="Using GLM API"
                     >
                       GLM
@@ -378,7 +378,7 @@ function App() {
       >
         {!selectedProject ? (
           <div className="text-center mt-12">
-            <h2 className="font-display text-2xl font-bold mb-2">
+            <h2 className="font-display text-2xl font-semibold mb-2">
               Welcome to AutoForge
             </h2>
             <p className="text-muted-foreground mb-4">
@@ -425,7 +425,7 @@ function App() {
               <Card className="p-8 text-center">
                 <CardContent className="p-0">
                   <Loader2 size={32} className="animate-spin mx-auto mb-4 text-primary" />
-                  <h3 className="font-display font-bold text-xl mb-2">
+                  <h3 className="font-display font-semibold text-lg mb-2">
                     Initializing Features...
                   </h3>
                   <p className="text-muted-foreground">

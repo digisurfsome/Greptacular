@@ -13,6 +13,7 @@ import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 
 interface SettingsModalProps {
   isOpen: boolean
@@ -151,7 +152,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <button
                     key={themeOption.id}
                     onClick={() => setTheme(themeOption.id)}
-                    className={`flex items-center gap-3 p-3 rounded-lg border-2 transition-colors text-left ${
+                    className={`flex items-center gap-3 py-2 px-3 rounded-lg border-2 transition-colors text-left ${
                       theme === themeOption.id
                         ? 'border-primary bg-primary/5'
                         : 'border-border hover:border-primary/50 hover:bg-muted/50'
@@ -217,20 +218,17 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             {/* API Provider Selection */}
             <div className="space-y-3">
               <Label className="font-medium">API Provider</Label>
-              <div className="flex flex-wrap gap-1.5">
+              <div className="flex flex-wrap gap-2">
                 {providers.map((provider) => (
-                  <button
+                  <Button
                     key={provider.id}
+                    variant={currentProvider === provider.id ? 'default' : 'outline'}
+                    size="sm"
                     onClick={() => handleProviderChange(provider.id)}
                     disabled={isSaving}
-                    className={`py-1.5 px-3 text-sm font-medium rounded-md border transition-colors ${
-                      currentProvider === provider.id
-                        ? 'bg-primary text-primary-foreground border-primary'
-                        : 'bg-background text-foreground border-border hover:bg-muted'
-                    } ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
                     {provider.name.split(' (')[0]}
-                  </button>
+                  </Button>
                 ))}
               </div>
               <p className="text-xs text-muted-foreground">
@@ -243,7 +241,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <Label className="text-sm">API Key</Label>
                   {settings.api_has_auth_token && !authTokenInput && (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <ShieldCheck size={14} className="text-green-500" />
+                      <ShieldCheck size={14} className="text-emerald-500 dark:text-emerald-400" />
                       <span>Configured</span>
                       <Button
                         variant="ghost"
@@ -258,12 +256,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   {(!settings.api_has_auth_token || authTokenInput) && (
                     <div className="flex gap-2">
                       <div className="relative flex-1">
-                        <input
+                        <Input
                           type={showAuthToken ? 'text' : 'password'}
                           value={authTokenInput.trim()}
                           onChange={(e) => setAuthTokenInput(e.target.value)}
                           placeholder="Enter API key..."
-                          className="w-full py-1.5 px-3 pe-9 text-sm border rounded-md bg-background"
+                          className="pe-9"
                         />
                         <button
                           type="button"
@@ -290,12 +288,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <div className="space-y-2 pt-1">
                   <Label className="text-sm">Base URL</Label>
                   <div className="flex gap-2">
-                    <input
+                    <Input
                       type="text"
                       value={customBaseUrlInput || settings.api_base_url || ''}
                       onChange={(e) => setCustomBaseUrlInput(e.target.value)}
                       placeholder="https://api.example.com/v1"
-                      className="flex-1 py-1.5 px-3 text-sm border rounded-md bg-background"
+                      className="flex-1"
                     />
                     <Button
                       size="sm"
@@ -313,33 +311,31 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             <div className="space-y-2">
               <Label className="font-medium">Model</Label>
               {models.length > 0 && (
-                <div className="flex rounded-lg border overflow-hidden">
+                <div className="flex gap-2">
                   {models.map((model) => (
-                    <button
+                    <Button
                       key={model.id}
+                      variant={(settings.api_model ?? settings.model) === model.id ? 'default' : 'outline'}
+                      size="sm"
                       onClick={() => handleModelChange(model.id)}
                       disabled={isSaving}
-                      className={`flex-1 py-2 px-3 text-sm font-medium transition-colors ${
-                        (settings.api_model ?? settings.model) === model.id
-                          ? 'bg-primary text-primary-foreground'
-                          : 'bg-background text-foreground hover:bg-muted'
-                      } ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      className="flex-1 flex-col h-auto py-2"
                     >
-                      <span className="block">{model.name}</span>
+                      <span className="block text-sm">{model.name}</span>
                       <span className="block text-xs opacity-60">{model.id}</span>
-                    </button>
+                    </Button>
                   ))}
                 </div>
               )}
               {/* Custom model input for Ollama/Custom */}
               {showCustomModelInput && (
                 <div className="flex gap-2 pt-1">
-                  <input
+                  <Input
                     type="text"
                     value={customModelInput}
                     onChange={(e) => setCustomModelInput(e.target.value)}
                     placeholder="Custom model name..."
-                    className="flex-1 py-1.5 px-3 text-sm border rounded-md bg-background"
+                    className="flex-1"
                     onKeyDown={(e) => e.key === 'Enter' && handleSaveCustomModel()}
                   />
                   <Button
@@ -397,20 +393,18 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               <p className="text-sm text-muted-foreground">
                 Number of regression testing agents (0 = disabled)
               </p>
-              <div className="flex rounded-lg border overflow-hidden">
+              <div className="flex gap-2">
                 {[0, 1, 2, 3].map((ratio) => (
-                  <button
+                  <Button
                     key={ratio}
+                    variant={settings.testing_agent_ratio === ratio ? 'default' : 'outline'}
+                    size="sm"
                     onClick={() => handleTestingRatioChange(ratio)}
                     disabled={isSaving}
-                    className={`flex-1 py-2 px-3 text-sm font-medium transition-colors ${
-                      settings.testing_agent_ratio === ratio
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-background text-foreground hover:bg-muted'
-                    } ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    className="flex-1"
                   >
                     {ratio}
-                  </button>
+                  </Button>
                 ))}
               </div>
             </div>
@@ -421,20 +415,18 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               <p className="text-sm text-muted-foreground">
                 Number of features assigned to each coding agent
               </p>
-              <div className="flex rounded-lg border overflow-hidden">
+              <div className="flex gap-2">
                 {[1, 2, 3].map((size) => (
-                  <button
+                  <Button
                     key={size}
+                    variant={(settings.batch_size ?? 1) === size ? 'default' : 'outline'}
+                    size="sm"
                     onClick={() => handleBatchSizeChange(size)}
                     disabled={isSaving}
-                    className={`flex-1 py-2 px-3 text-sm font-medium transition-colors ${
-                      (settings.batch_size ?? 1) === size
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-background text-foreground hover:bg-muted'
-                    } ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    className="flex-1"
                   >
                     {size}
-                  </button>
+                  </Button>
                 ))}
               </div>
             </div>

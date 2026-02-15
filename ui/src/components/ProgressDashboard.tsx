@@ -79,7 +79,7 @@ export function ProgressDashboard({
     <Card>
       <CardHeader className="flex-row items-center justify-between space-y-0 pb-0">
         <div className="flex items-center gap-3">
-          <CardTitle className="text-xl uppercase tracking-wide">
+          <CardTitle className="text-lg font-semibold uppercase tracking-wide">
             Progress
           </CardTitle>
           <Badge variant={isConnected ? 'default' : 'destructive'} className="gap-1">
@@ -97,17 +97,17 @@ export function ProgressDashboard({
           </Badge>
         </div>
         <div className="flex items-baseline gap-1">
-          <span className="font-mono text-lg font-bold text-primary">
+          <span className="font-mono text-lg font-semibold text-primary">
             {passing}
           </span>
           <span className="text-sm text-muted-foreground">/</span>
-          <span className="font-mono text-lg font-bold">
+          <span className="font-mono text-lg font-semibold">
             {total}
           </span>
         </div>
       </CardHeader>
 
-      <CardContent className="pt-3 pb-3">
+      <CardContent className="py-4">
         <div className="flex items-center gap-4">
           {/* Progress Bar */}
           <div className="h-2.5 bg-muted rounded-full overflow-hidden flex-1">
@@ -117,7 +117,7 @@ export function ProgressDashboard({
             />
           </div>
           {/* Percentage */}
-          <span className="text-sm font-bold tabular-nums text-muted-foreground w-12 text-right">
+          <span className="text-sm font-medium tabular-nums text-muted-foreground w-12 text-right">
             {percentage.toFixed(1)}%
           </span>
         </div>
@@ -133,7 +133,7 @@ export function ProgressDashboard({
             <div className="relative shrink-0">
               <Brain size={16} className="text-primary" strokeWidth={2.5} />
               {isRunning && (
-                <Sparkles size={8} className="absolute -top-1 -right-1 text-yellow-500 animate-pulse" />
+                <Sparkles size={8} className="absolute -top-1 -right-1 text-amber-500 dark:text-amber-400 animate-pulse" />
               )}
             </div>
             <p

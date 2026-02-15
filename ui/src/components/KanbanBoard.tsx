@@ -24,7 +24,7 @@ export function KanbanBoard({ features, onFeatureClick, onAddFeature, onExpandPr
     return (
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {['Pending', 'In Progress', 'Done'].map(title => (
-          <Card key={title} className="py-4">
+          <Card key={title}>
             <CardContent className="p-4">
               <div className="h-8 bg-muted animate-pulse rounded mb-4" />
               <div className="space-y-3">

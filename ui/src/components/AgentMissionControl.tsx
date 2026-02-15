@@ -118,7 +118,7 @@ export function AgentMissionControl({
 
           {/* Collapsible Activity Feed */}
           {recentActivity.length > 0 && (
-            <div className="mt-4 pt-4 border-t">
+            <div className="mt-4 pt-4 border-t border-border">
               <Button
                 variant="ghost"
                 size="sm"

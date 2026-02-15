@@ -1,0 +1,320 @@
+<project_specification>
+  <project_name>autoforge-knowledge-base</project_name>
+
+  <overview>
+    A post-build documentation agent system for AutoForge that automatically generates
+    a complete knowledge base, tutorial video scripts, and an embedded in-app help system
+    for every AutoForge-built project. Runs after all features pass, producing professional
+    onboarding materials so every app ships with documentation out of the box. Offered as
+    a tiered premium add-on ($49-99 per project) that differentiates AutoForge from
+    competitors that ship code with no docs.
+  </overview>
+
+  <technology_stack>
+    <frontend>
+      <framework>React 19 with Vite 7 (existing AutoForge UI)</framework>
+      <styling>Tailwind CSS v4</styling>
+      <state_management>TanStack Query, React hooks and context</state_management>
+      <routing>React Router (existing)</routing>
+      <port>5173 (dev) / served by FastAPI in production</port>
+    </frontend>
+    <backend>
+      <runtime>Python 3.11+ with FastAPI (existing AutoForge server)</runtime>
+      <database>SQLite with SQLAlchemy (existing)</database>
+      <port>8000</port>
+    </backend>
+    <communication>
+      <api>RESTful endpoints + WebSocket (existing patterns)</api>
+    </communication>
+    <additional>
+      <agent_sdk>Claude Agent SDK (existing)</agent_sdk>
+      <mcp>Feature MCP server (read-only), Playwright MCP server</mcp>
+      <testing>ruff (Python lint), npm run lint + npm run build (TypeScript), Playwright e2e</testing>
+    </additional>
+  </technology_stack>
+
+  <prerequisites>
+    <environment_setup>
+      - Python 3.11+ with existing AutoForge venv
+      - Node.js 20+ for UI development
+      - Existing AutoForge installation with all dependencies
+      - Playwright MCP server available for browser automation
+      - Claude Agent SDK configured
+    </environment_setup>
+  </prerequisites>
+
+  <feature_count>18</feature_count>
+
+  <core_features>
+    <agent_prompt_and_template>
+      - Create knowledge base prompt template at .claude/templates/knowledge_base_prompt.template.md with documentation generation instructions, screenshot conventions, and MCP tool reference
+      - Add get_knowledge_base_prompt() to prompts.py that loads the template with tier-aware section injection following the existing fallback chain (project-specific then base template), including _get_tutorial_script_section() for full/premium tiers and _get_in_app_help_section() for premium tier only
+    </agent_prompt_and_template>
+
+    <agent_infrastructure>
+      - Register knowledge-base as a valid agent-type choice in autonomous_agent_demo.py with --kb-tier flag (basic/full/premium) and --kb-only flag for standalone doc generation on already-built projects
+      - Configure client.py to provide the KB agent with read-only feature MCP tools (feature_get_stats, feature_get_by_id, feature_get_summary, feature_get_graph, feature_get_ready), built-in tools (Read, Write, Edit, Bash, Grep, Glob), and Playwright MCP server, excluding all feature mutation tools
+      - Add _check_knowledge_base_ready() to parallel_orchestrator.py that detects when all features are passing and spawns the KB agent with dynamic turn budget based on tier (200 base, 250 full, 280 premium)
+      - Extend process_manager.py to support knowledge-base agent process lifecycle including start, stop, and status tracking, running in parallel with QA agent without file conflicts
+    </agent_infrastructure>
+
+    <server_api>
+      - Add POST /api/projects/{project_name}/knowledge-base endpoint that accepts tier selection in request body, starts the KB agent, and returns status with agent_type, tier, and estimated_turns
+      - Add GET /api/projects/{project_name}/knowledge-base/status endpoint that returns generation progress including features_documented, features_total, screenshots_taken, scripts_generated, output_path, and completed_at timestamp
+      - Emit kb_progress events via the existing WebSocket at /ws/projects/{project_name} with feature documentation progress and screenshot capture events
+    </server_api>
+
+    <ui_data_layer>
+      - Add KBAgentType, KBTier, KBStatus, KBStartRequest, and KBStartResponse TypeScript types to types.ts, API client functions (startKnowledgeBase, getKnowledgeBaseStatus) to api.ts, and React Query hooks (useStartKnowledgeBase, useKnowledgeBaseStatus) to useProjects.ts
+    </ui_data_layer>
+
+    <ui_components>
+      - Add a Knowledge Base section to SettingsModal.tsx with auto-generate toggle checkbox and tier dropdown (Basic $49 / Full $79 / Premium $99) following existing settings section patterns
+      - Add Sage mascot (book/scroll theme) to AgentMissionControl.tsx for the knowledge-base agent with Reading, Writing, and Screenshotting states displayed alongside existing mascots (Spark, Fizz, Octo, Hoot, Buzz)
+      - Add a Docs tab to the project view tab navigation (alongside Kanban, Graph, Terminal) showing KB generation status card with progress bar and action buttons (Start, Stop, Regenerate)
+      - Display a docs file browser within the Docs tab showing the generated docs tree (index.md, features/, api/, screenshots/) with inline markdown preview and download-as-zip button
+    </ui_components>
+
+    <edge_cases_and_resilience>
+      - Handle authenticated apps by checking for login pages, searching for test/seed credentials (.env, seed files, fixtures), and creating a test account via signup flow if no credentials are found
+      - Handle large projects (100+ features) by documenting in priority order and generating summary-only docs (title + description, no screenshots) for remaining features when approaching the turn budget limit
+      - Return 409 Conflict from the KB start endpoint when generation is already running for a project, preventing duplicate agent spawns
+      - Recover gracefully when the KB agent crashes mid-generation by updating the knowledge_base_runs status to failed with error_message and exposing a retry action in the UI
+    </edge_cases_and_resilience>
+  </core_features>
+
+  <database_schema>
+    <tables>
+      <knowledge_base_runs>
+        - id (INTEGER PRIMARY KEY AUTOINCREMENT)
+        - project_name (TEXT NOT NULL, references project registry by name - not a DB FK since projects live in ~/.autoforge/registry.db)
+        - tier (TEXT NOT NULL DEFAULT 'basic', CHECK IN ('basic', 'full', 'premium'))
+        - status (TEXT NOT NULL DEFAULT 'pending', CHECK IN ('pending', 'running', 'completed', 'failed'))
+        - features_documented (INTEGER NOT NULL DEFAULT 0)
+        - features_total (INTEGER NOT NULL DEFAULT 0)
+        - screenshots_taken (INTEGER NOT NULL DEFAULT 0)
+        - scripts_generated (INTEGER NOT NULL DEFAULT 0)
+        - output_path (TEXT)
+        - error_message (TEXT)
+        - started_at (TEXT)
+        - completed_at (TEXT)
+        - created_at (TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)
+        - updated_at (TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)
+      </knowledge_base_runs>
+    </tables>
+  </database_schema>
+
+  <api_endpoints_summary>
+    <knowledge_base>
+      - POST /api/projects/{project_name}/knowledge-base (start KB generation with tier)
+      - GET /api/projects/{project_name}/knowledge-base/status (get current generation status and progress)
+      - GET /api/projects/{project_name}/knowledge-base/history (list all KB runs for this project)
+      - POST /api/projects/{project_name}/knowledge-base/stop (stop a running KB agent)
+      - POST /api/projects/{project_name}/knowledge-base/regenerate (re-run KB generation, clearing previous output)
+      - GET /api/projects/{project_name}/knowledge-base/download (download generated docs as zip)
+    </knowledge_base>
+    <websocket>
+      - WS /ws/projects/{project_name} (existing - add kb_progress event type)
+    </websocket>
+  </api_endpoints_summary>
+
+  <ui_layout>
+    <main_structure>
+      - Existing AutoForge UI layout with header, sidebar project list, and main content area
+      - New Docs tab added to project view tab bar (Kanban | Graph | Terminal | Docs)
+      - Settings modal gains Knowledge Base section
+      - Agent Mission Control gains Sage mascot slot
+    </main_structure>
+    <docs_tab_layout>
+      - Status card at top showing generation state, tier, and progress bar
+      - Action buttons row: Start/Regenerate, Stop, Download
+      - File browser below showing generated docs tree (index.md, features/, api/, screenshots/)
+      - Markdown preview panel for selected doc file
+    </docs_tab_layout>
+  </ui_layout>
+
+  <design_system>
+    <color_palette>
+      - Use existing AutoForge neobrutalism design system
+      - KB-specific accent: Purple/indigo for Sage mascot and Docs tab indicator
+      - Progress states: --color-neo-pending (yellow), --color-neo-progress (cyan), --color-neo-done (green)
+    </color_palette>
+    <typography>
+      - Follow existing AutoForge typography (system fonts, font-semibold headings)
+    </typography>
+    <spacing>
+      - Follow existing AutoForge spacing scale (4px base unit)
+      - Docs tab layout uses standard content padding (p-4 / p-6)
+      - File browser items use compact spacing (py-1 px-2)
+      - Status card and action buttons use standard gap-3 spacing
+    </spacing>
+  </design_system>
+
+  <ui_ux_standards>
+    <banned_patterns>
+      - alert(), confirm(), prompt() - Use modals and toasts instead
+      - Text-only empty states - Use EmptyState component with icon + CTA
+      - Loading states that just say "Loading..." - Use skeleton loaders
+      - Delete without confirmation - Always use ConfirmModal
+      - Raw timestamps - Format as relative time
+    </banned_patterns>
+    <required_components>
+      - Use existing AutoForge UI components (Modal, Toast, Skeleton, EmptyState, ErrorBoundary)
+      - Progress bar component for KB generation tracking
+      - File tree component for docs browsing
+    </required_components>
+    <page_patterns>
+      - Docs tab follows existing tab pattern in project dashboard
+      - Settings additions follow existing SettingsModal section pattern
+      - Mission Control additions follow existing mascot card pattern
+    </page_patterns>
+    <feedback_protocol>
+      - KB start: toast confirmation + progress tracking begins
+      - KB complete: toast notification + Docs tab shows results
+      - KB failed: error toast + error details in status card + retry button
+    </feedback_protocol>
+  </ui_ux_standards>
+
+  <coding_standards>
+    <architecture>
+      - Python: New router in server/routers/ or extensions to server/routers/agent.py
+      - Python: New service logic in server/services/process_manager.py (extend existing)
+      - Python: Prompt functions in prompts.py (extend existing)
+      - TypeScript: Types in ui/src/lib/types.ts, API in ui/src/lib/api.ts, hooks in ui/src/hooks/
+      - TypeScript: Components in ui/src/components/
+      - Follow existing patterns in each file - match code style and conventions
+    </architecture>
+    <testing>
+      - Python: ruff check . must pass
+      - TypeScript: npm run lint and npm run build must pass
+      - New endpoints should be testable via curl/httpie
+    </testing>
+    <error_handling>
+      - KB agent failures logged and surfaced via status API
+      - WebSocket errors handled gracefully with reconnection
+      - Process manager handles agent crashes (existing pattern)
+    </error_handling>
+  </coding_standards>
+
+  <key_interactions>
+    <auto_generate_kb_flow>
+      1. User enables "Auto-generate after build" in Settings > Knowledge Base
+      2. User selects tier (Basic/Full/Premium)
+      3. Build completes - all features pass
+      4. Orchestrator detects completion and spawns knowledge-base agent
+      5. Sage mascot appears in Agent Mission Control with "Reading" state
+      6. WebSocket emits kb_progress events as features are documented
+      7. Docs tab shows live progress bar
+      8. Agent completes - toast notification, Docs tab shows generated files
+      9. User browses docs in-app or downloads as zip
+    </auto_generate_kb_flow>
+    <manual_kb_generation_flow>
+      1. User navigates to project dashboard Docs tab
+      2. User sees empty state with "Generate Knowledge Base" CTA
+      3. User selects tier from dropdown and clicks Generate
+      4. POST /api/projects/{name}/knowledge-base fires
+      5. Progress tracking begins, Sage mascot appears
+      6. On completion, docs file tree populates
+      7. User clicks a doc file to preview markdown content
+    </manual_kb_generation_flow>
+    <regenerate_docs_flow>
+      1. User has existing generated docs but wants to update
+      2. User clicks Regenerate in Docs tab
+      3. ConfirmModal warns that existing docs will be replaced
+      4. User confirms, KB agent re-runs
+      5. New docs replace old docs, git commit created
+    </regenerate_docs_flow>
+  </key_interactions>
+
+  <implementation_steps>
+    <step number="1">
+      <title>Prompt Template and Loading</title>
+      <tasks>
+        - Create .claude/templates/knowledge_base_prompt.template.md with full documentation agent instructions
+        - Add get_knowledge_base_prompt() to prompts.py with tier-aware section injection
+        - Add _get_tutorial_script_section() for full/premium tiers
+        - Add _get_in_app_help_section() for premium tier
+      </tasks>
+    </step>
+    <step number="2">
+      <title>CLI and Agent Infrastructure</title>
+      <tasks>
+        - Add knowledge-base agent type to autonomous_agent_demo.py CLI
+        - Add --kb-tier and --kb-only flags
+        - Configure client.py with read-only feature tools and Playwright
+        - Add KB agent lifecycle to process_manager.py
+      </tasks>
+    </step>
+    <step number="3">
+      <title>Orchestrator Integration</title>
+      <tasks>
+        - Add _check_knowledge_base_ready() to parallel_orchestrator.py
+        - Add _spawn_knowledge_base_agent() with dynamic turn budgets
+        - Wire auto-spawn after all features pass
+      </tasks>
+    </step>
+    <step number="4">
+      <title>Server API Endpoints</title>
+      <tasks>
+        - Add KB start endpoint (POST)
+        - Add KB status endpoint (GET)
+        - Add KB stop and regenerate endpoints
+        - Add KB download endpoint (zip)
+        - Add kb_progress WebSocket event type
+      </tasks>
+    </step>
+    <step number="5">
+      <title>UI Data Layer</title>
+      <tasks>
+        - Add TypeScript types for KB agent, status, tier
+        - Add API client functions for KB endpoints
+        - Add React Query hooks for KB operations
+      </tasks>
+    </step>
+    <step number="6">
+      <title>UI Components</title>
+      <tasks>
+        - Add Knowledge Base section to SettingsModal
+        - Add Sage mascot to AgentMissionControl
+        - Build Docs tab with status, file browser, preview, and actions
+      </tasks>
+    </step>
+    <step number="7">
+      <title>Edge Cases and Polish</title>
+      <tasks>
+        - Handle authenticated app documentation
+        - Handle large project priority-based fallback
+        - Handle screenshot failures with retry
+        - Verify WebSocket progress updates work end-to-end
+      </tasks>
+    </step>
+  </implementation_steps>
+
+  <success_criteria>
+    <functionality>
+      - Knowledge-base agent type is recognized by CLI, client, and orchestrator
+      - Prompt template loads correctly with tier-specific sections injected
+      - KB agent spawns automatically after all features pass (when enabled)
+      - KB agent can be started manually via API endpoint
+      - Status API returns accurate progress during generation
+      - WebSocket emits live progress events
+      - Generated docs are committed to git
+    </functionality>
+    <user_experience>
+      - Settings modal KB section matches existing settings UI patterns
+      - Sage mascot displays correct states in Agent Mission Control
+      - Docs tab shows clear progress during generation
+      - Docs tab provides browsing, preview, and download after completion
+      - Empty state guides user to generate docs
+      - Error states show clear messages with retry action
+    </user_experience>
+    <technical_quality>
+      - ruff check . passes with no errors
+      - npm run lint and npm run build pass with no errors
+      - No console errors in browser
+      - KB agent process is properly managed (start, stop, crash recovery)
+      - WebSocket events follow existing protocol patterns
+      - All new TypeScript types are properly defined (no any)
+    </technical_quality>
+  </success_criteria>
+</project_specification>

@@ -1704,6 +1704,55 @@ def get_style_guide_markdown(style_id: str) -> str | None:
             lines.append(f"- {item}")
         lines.append("")
 
+    # Append universal design standards that apply regardless of style
+    lines.extend([
+        "## Universal Design Standards",
+        "",
+        "### Typography Scale",
+        "| Element | Size | Weight | Usage |",
+        "|---------|------|--------|-------|",
+        "| Page Title | 24px (text-2xl) | Semi-bold | One per page, top of content area |",
+        "| Section Header | 18px (text-lg) | Semi-bold | Group related content |",
+        "| Card Title | 16px (text-base) | Medium | Card headers, list item titles |",
+        "| Body Text | 14px (text-sm) | Regular | Default readable text |",
+        "| Small/Meta | 12px (text-xs) | Regular | Timestamps, counts, labels |",
+        "",
+        "### Spacing System (8px grid)",
+        "- Card padding: p-6 (24px)",
+        "- Section gaps: gap-6 (24px)",
+        "- Element gaps within sections: gap-4 (16px)",
+        "- Tight gaps (icon + text): gap-2 (8px)",
+        "",
+        "### Layout Structure",
+        "- Sidebar: 240px wide, bg-surface-base, border-r border-border-subtle",
+        "- Header: Full width, h-16, bg-surface-base, border-b border-border-subtle",
+        "- Main content: flex-1, overflow-y-auto, p-8",
+        "- Max content width: max-w-7xl mx-auto (for wide layouts)",
+        "",
+        "### Responsive Breakpoints (mobile-first)",
+        "- Default: Mobile (< 640px)",
+        "- sm: Tablet (640px+)",
+        "- lg: Desktop (1024px+)",
+        "- All touch targets: minimum 44x44px",
+        "",
+        "### Component Patterns",
+        "Cards:",
+        "```html",
+        '<div class="bg-surface-base rounded-xl border border-border-subtle shadow-sm p-6">',
+        "```",
+        "",
+        "Primary Button:",
+        "```html",
+        '<button class="bg-brand hover:bg-brand-dark text-white font-medium px-6 py-3 rounded-lg transition-colors">',
+        "```",
+        "",
+        "Input:",
+        "```html",
+        '<input class="bg-surface-muted text-text-primary placeholder:text-text-tertiary px-4 py-3 rounded-lg w-full outline-none focus:ring-2 focus:ring-brand" />',
+        "```",
+        "",
+    ])
+
     return "\n".join(lines)
 
 

@@ -1,0 +1,711 @@
+<project_specification>
+  <project_name>StyleVault</project_name>
+
+  <overview>
+    StyleVault is a free email-gated gallery of 12 professional UI design systems
+    with 25 curated color palettes. Users enter their name and email on a landing
+    page, then gain access to browse all 12 styles with live component previews,
+    color swatches, typography details, and one-click downloads of complete style
+    sheets in CSS, Tailwind, and JSON formats. Includes an AI-powered screenshot
+    analyzer that extracts design tokens from uploaded images. Built as a static
+    React app with Supabase for email storage and download analytics, designed as
+    a lead-magnet giveaway for a live class.
+  </overview>
+
+  <technology_stack>
+    <frontend>
+      <framework>React 19 with Vite 7</framework>
+      <language>TypeScript (strict mode)</language>
+      <styling>Tailwind CSS v4</styling>
+      <state_management>React hooks and context (AccessContext, ToastContext)</state_management>
+      <routing>React Router v7 (HashRouter for static hosting)</routing>
+      <icons>Lucide React</icons>
+      <animations>Framer Motion for page transitions and card interactions</animations>
+      <port>5173</port>
+    </frontend>
+    <backend>
+      <service>Supabase (hosted, no self-managed backend)</service>
+      <database>Supabase PostgreSQL - leads, download_events, extraction_events tables</database>
+      <auth>None - localStorage flag after email submission</auth>
+      <edge_functions>Supabase Edge Function for screenshot analysis (calls Claude Sonnet vision API)</edge_functions>
+    </backend>
+    <deployment>
+      <hosting>Static site (Vercel, Netlify, or Cloudflare Pages)</hosting>
+      <build>vite build produces static dist/ folder</build>
+    </deployment>
+    <communication>
+      <api>Supabase JS client for database operations, Edge Function for AI analysis</api>
+    </communication>
+  </technology_stack>
+
+  <prerequisites>
+    <environment_setup>
+      - Node.js 20+ installed
+      - npm package manager
+      - Supabase project with anon key (free tier)
+      - Environment variable: VITE_SUPABASE_URL
+      - Environment variable: VITE_SUPABASE_ANON_KEY
+      - Environment variable: VITE_ANTHROPIC_PROXY_URL (for screenshot extractor Edge Function)
+      - Supabase Edge Function deployed for screenshot analysis
+      - Anthropic API key stored as Supabase Edge Function secret (never exposed to client)
+      - Google Fonts loaded: Inter, Space Grotesk, DM Sans, Nunito, Quicksand, Orbitron, Space Mono, JetBrains Mono, Fira Code, Lora, Merriweather
+    </environment_setup>
+  </prerequisites>
+
+  <feature_count>150</feature_count>
+
+  <core_features>
+    <infrastructure>
+      - Dev server starts and renders the React 19 app with Vite 7 and TypeScript without errors
+      - Supabase client connects to the hosted PostgreSQL database using VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
+      - Supabase leads table accepts INSERT operations and persists data across page reloads
+      - App contains no mock data, placeholder arrays, or hardcoded dummy responses for Supabase operations
+      - All Supabase client operations (submitLead, trackDownload) query the real hosted database
+      - App functions fully without Supabase when env vars are missing (all Supabase calls silently no-op)
+      - HashRouter navigates between all routes (/, /gallery, /style/:id, /compare, /extract) without page reload
+      - ErrorBoundary component wraps the entire app and displays a user-friendly fallback on unhandled errors
+      - Catch-all 404 route displays "Page not found" message with link back to gallery
+    </infrastructure>
+
+    <style_data>
+      - Style data module exports TypeScript interfaces: ColorTokens, Typography, Components, Spacing, TailwindConfig, StyleData
+      - getStyleById(id) returns the correct style object for any of 12 valid style IDs
+      - getStylesByCategory('Core') returns 8 Core styles, getStylesByCategory('Vibe') returns 4 Vibe styles
+      - getAllStyles() returns all 12 styles in display order (Flat Design through Warmer Shades)
+      - Each style object contains complete token data: brand colors, surface colors, text hierarchy, border tokens, typography with font family and size scale, component patterns for cards/buttons/inputs, spacing system, and tailwind config
+      - Each style object includes descriptive metadata: name, id, category, description, bestFor text, philosophy quote, and do's/don'ts guidelines
+      - Palette data module exports 25 color palette objects with 6 functional color slots each: brand, background, surface, text, accent, muted
+      - Each palette object includes id, name, category label, vibe description, and tier field ('free' for 1-10, 'premium' for 11-25)
+      - applyPalette(styleTokens, palette) utility merges palette colors into a style's token set while preserving typography, spacing, and component structure
+    </style_data>
+
+    <email_gate>
+      - AccessContext provider reads localStorage 'sv_access' key on app mount and exposes hasAccess state
+      - User calling grantAccess() sets localStorage flag 'sv_access' and updates React context state
+      - ProtectedRoute component redirects unauthenticated users to landing page via React Router Navigate
+      - User cannot access /gallery, /style/:id, /compare, or /extract routes without passing the email gate
+      - Returning user with existing localStorage flag can navigate directly to /gallery without re-entering email
+    </email_gate>
+
+    <landing_page>
+      - User sees hero section with headline "12 Professional UI Design Systems - Free" in Display typography (48px, weight 600)
+      - User sees subtitle explaining these are ready-to-use design tokens for colors, typography, spacing, and component patterns
+      - User can enter name and email in the capture form and click "Get Free Access" submit button
+      - System validates both fields as required and shows inline error messages below each empty field
+      - System validates email format with regex and shows specific error for invalid email
+      - Submit button displays loading spinner during submission with minimum 500ms delay for perceived feedback
+      - System stores lead in Supabase leads table, grants access, and redirects user to /gallery on successful submit
+      - System completes email submission even if Supabase insert fails (fire-and-forget, does not block UX)
+      - User sees preview strip below hero with 3-4 mini style cards in horizontal scroll (each ~160px wide with style name and 4 color dots)
+      - User sees "What You Get" section with 3 feature cards (Design Tokens, Tailwind Configs, Component Patterns) with Lucide icons
+      - User sees social proof bar "Join 500+ developers using these design systems" centered below features
+      - User sees footer with minimal branding, copyright, and current year
+      - Returning user with existing access sees "Go to Gallery" button alongside the email form
+    </landing_page>
+
+    <style_gallery>
+      - User sees all 12 style cards displayed in a responsive CSS grid on the gallery page
+      - System renders grid as 3 columns on desktop (lg:1024px+), 2 columns on tablet (md:768px), 1 column on mobile
+      - User can switch between All (12 styles), Core (8 styles), and Vibe (4 styles) using filter tabs at top
+      - User sees style name as H3 heading with category badge pill on each StyleCard ("Core" in gray, "Vibe" in purple)
+      - User sees row of 6 color swatches (24px diameter circles with border for light colors) on each StyleCard
+      - User sees compact StylePreview rendered with that style's actual design tokens on each StyleCard
+      - User sees one-line description truncated with text ellipsis overflow on each StyleCard
+      - User sees "Best for" text in muted color below description on each StyleCard
+      - User can click anywhere on a StyleCard to navigate to /style/:id detail page
+      - System animates cards with hover effect: subtle lift (translateY -2px) and shadow increase with 200ms transition
+      - System animates cards in with staggered fade-in on page mount using Framer Motion
+      - User sees "Design System Gallery" title and "Quick Compare" button linking to /compare in gallery header
+    </style_gallery>
+
+    <live_preview>
+      - StylePreview component renders in compact mode (~200px tall) showing a single card with heading, paragraph text, and primary button
+      - StylePreview component renders in full mode (~500px tall) showing hero section with heading + subtitle + 2 buttons, then row of 2 feature cards, then form with inputs and submit button
+      - System renders all preview elements using pure inline CSS derived from token values (no Tailwind classes inside preview)
+      - System sets preview container background to the style's surface-canvas color with overflow hidden and 12px border radius
+      - System renders all text elements using the style's specified font family via inline fontFamily style
+      - System renders buttons using the style's button tokens: background color, text color, border radius, padding, shadow
+      - System renders cards using the style's card tokens: background, border, radius, shadow, padding
+      - System renders inputs using the style's input tokens: background, border, radius, padding, focus ring
+      - User sees visually distinct previews when switching between different styles (colors, fonts, and component shapes differ)
+    </live_preview>
+
+    <quick_compare>
+      - User sees a 2x2 grid displaying 4 preview screenshots for the current style on the compare page
+      - System labels quadrants: Landing (top-left), Dashboard (top-right), Settings (bottom-left), Feed (bottom-right)
+      - User sees style name and category badge displayed prominently at top center
+      - User sees style counter showing current position as "N / 12" at top
+      - User can press left/right arrow keys to cycle through all 12 styles sequentially
+      - User can click semi-transparent arrow buttons on screen edges (appear on hover) for desktop navigation
+      - User can swipe left/right to navigate between styles on mobile touch devices
+      - User sees dot indicators at bottom showing current position (1-12) on mobile
+      - System applies smooth horizontal slide animation (200ms ease) between style transitions
+      - System loads preview images from /previews/{style-id}-{page}.png (48 static PNGs: 12 styles x 4 pages)
+      - User can click any quadrant to navigate to /style/:id full detail page
+      - System stacks 4 images vertically at full width on mobile with swipe left/right for changing styles
+      - System preloads adjacent style images for smooth transitions when swiping
+    </quick_compare>
+
+    <style_detail>
+      - System loads correct style data by extracting style ID from URL params
+      - System shows "Style not found" message with link back to gallery when style ID is invalid or missing
+      - User can click back button at top left to return to gallery or compare page
+      - User sees 4 preview image thumbnails as clickable tabs in a horizontal row at top
+      - User can click a thumbnail tab to display that preview as the main large image below
+      - System highlights the selected tab with a visual border or ring indicator
+      - User sees style metadata: style name (H1), category badge, and multi-line description
+      - User sees philosophy quote rendered in a subtle blockquote with italic styling
+      - User sees color palette as grid of 48px circle swatches with hex value labels
+      - User can click any color swatch to copy hex value to clipboard (shows toast "Copied #XXXXXX")
+      - User sees typography section with font family name and hierarchy table (Level, Size, Weight, Line-Height, Usage)
+      - User sees component specs section listing card, button, and input pattern details with exact token values
+      - User sees Do's guidelines displayed with green checkmark icons
+      - User sees Don'ts guidelines displayed with red X icons
+      - User can click Previous/Next navigation at page bottom to browse adjacent styles sequentially
+      - User sees download section with heading "Download This Style" and three format buttons: CSS Variables, Tailwind Config, JSON Tokens
+      - User can click any download button to trigger client-side file generation and browser save dialog
+      - System switches live preview from static PNG to live-rendered StylePreview with merged tokens when a color palette is active
+    </style_detail>
+
+    <downloads>
+      - System generates CSS file with all tokens as --sv-* custom properties inside a :root {} block with style name header comment
+      - System generates Tailwind config file with a theme.extend configuration object as a JavaScript module export with header comment
+      - System generates JSON file with the complete token object as formatted JSON including metadata (name, version, generated date)
+      - System triggers browser download via Blob + URL.createObjectURL + programmatic link click (no server round-trip)
+      - System tracks download events in Supabase download_events table with style_id, format, and created_at
+      - System completes download even if Supabase analytics insert fails (fire-and-forget tracking)
+      - System includes selected palette colors in generated files when a palette override is active (not just default style colors)
+    </downloads>
+
+    <toast_notifications>
+      - System provides showToast(message, type) function via ToastContext provider wrapping the app
+      - User sees toast notification slide in from top-right with Framer Motion animation
+      - System auto-dismisses toast after 2 seconds
+      - System stacks multiple concurrent toasts vertically without overlapping
+      - System renders toast with success (green), info (blue), and error (red) visual variants with small icon
+      - System styles toast with Minimalism design tokens: clean border, subtle shadow, surface-base background
+    </toast_notifications>
+
+    <screenshot_extractor>
+      - User can navigate to Extract page from gallery header "Extract from Screenshot" link
+      - User can upload a screenshot via drag-and-drop zone or click-to-browse button (accepts .png, .jpg, .webp)
+      - System rejects non-image files and files exceeding 5MB with descriptive error message
+      - User sees image preview after upload with "Analyze Design" action button
+      - System converts image to base64 and calls Supabase Edge Function 'extract-style' on analyze
+      - Supabase Edge Function calls Claude Sonnet vision API to identify style match and extract tokens
+      - Edge Function returns structured JSON with identified_style, confidence, extracted colors, typography guess, and component patterns
+      - User sees matched style name with confidence percentage badges (e.g., "This looks like: Minimalism with Glassmorphism accents")
+      - User sees extracted color palette as row of clickable swatches with hex values
+      - User sees typography guess with detected font family and size hierarchy
+      - User sees side-by-side comparison: uploaded screenshot (left) and closest style's live preview (right)
+      - User can click "Browse This Style" button to navigate to the matched style's detail page
+      - User can download extracted tokens in CSS, Tailwind, and JSON formats (uses extracted tokens, not predefined)
+      - System enforces rate limit of 3 extractions per email per day via Supabase extraction_events table check
+      - System shows animated progress bar with rotating status text during analysis ("Analyzing color palette...", "Detecting typography...")
+      - System shows friendly error message with retry button when API call fails
+      - System shows rate limit exceeded message when user has already used 3 extractions today
+    </screenshot_extractor>
+
+    <color_palettes>
+      - User sees horizontally scrollable PaletteStrip with all 25 palette thumbnails on the detail page
+      - User sees each thumbnail as a row of 6 small color circles (16px) with palette name below
+      - System highlights the selected palette with a ring indicator
+      - User can select "Default" option to reset to the style's built-in original colors
+      - User can click any palette to instantly re-render the live preview with merged color tokens
+      - System shows a small lock icon overlay on premium palettes (11-25) for free-tier users
+      - System shows tooltip "Upgrade to unlock 15 more palettes" when user clicks a locked premium palette
+      - System reads tier status from localStorage 'sv_tier' field (defaults to 'free')
+      - User can click star/heart icon on each palette thumbnail to toggle favorite status
+      - System persists favorites array in localStorage as 'sv_fav_palettes'
+      - User can click "Show Favorites Only" toggle to filter the palette strip to favorited palettes only
+      - System displays a small filled star badge in the corner of favorited palettes
+      - System shows "Star some palettes to build your shortlist" when favorites toggle is on with 0 favorites
+      - User sees palette categories as subtle section headers in the scrollable strip (Professional, Warm, Cool, Bold, Nature, Monochrome, Luxury, Playful, Muted)
+    </color_palettes>
+
+    <responsive_design>
+      - System renders landing page as fully responsive: stacked sections and full-width form on mobile
+      - System adapts gallery grid from 1-col (mobile) to 2-col (tablet md:768px) to 3-col (desktop lg:1024px)
+      - System renders detail page stacked vertically on mobile and side-by-side layout on desktop
+      - System renders compare page as stacked images on mobile with horizontal swipe and 2x2 grid on desktop
+      - System ensures all touch targets are minimum 44x44px on interactive elements
+      - System sets font size minimum 16px on mobile inputs to prevent iOS zoom
+      - System wraps palette strip to 2 rows or scrolls horizontally on mobile
+    </responsive_design>
+
+    <polish_and_accessibility>
+      - System wraps route outlet in Framer Motion AnimatePresence for fade page transitions (200ms)
+      - System updates document.title dynamically on each page ("StyleVault", "StyleVault - Gallery", "StyleVault - [Style Name]")
+      - System shows loading skeleton with shimmer animation in gallery grid during initial font loading
+      - System displays visible focus rings on all interactive elements for keyboard tab navigation
+      - System applies smooth scroll behavior globally
+      - System applies card hover transitions at 200ms ease with translateY -2px and shadow increase
+      - System applies active:scale-[0.98] feedback on button press
+      - System displays "SV" monogram favicon in browser tab
+      - System sets meta description and Open Graph tags in index.html for social sharing
+      - User can navigate the entire app using keyboard only (Tab, Enter, Escape, Arrow keys)
+      - System shows clipboard fallback toast "Could not copy - hover to see hex value" when navigator.clipboard is unavailable
+    </polish_and_accessibility>
+  </core_features>
+
+  <database_schema>
+    <tables>
+      <leads>
+        - id (UUID, PRIMARY KEY, DEFAULT gen_random_uuid())
+        - name (TEXT, NOT NULL)
+        - email (TEXT, NOT NULL)
+        - source (TEXT, DEFAULT 'stylevault')
+        - created_at (TIMESTAMPTZ, DEFAULT now())
+      </leads>
+
+      <download_events>
+        - id (UUID, PRIMARY KEY, DEFAULT gen_random_uuid())
+        - style_id (TEXT, NOT NULL)
+        - format (TEXT, NOT NULL, CHECK IN ('json', 'css', 'tailwind'))
+        - palette_id (TEXT, nullable - tracks which palette was active during download)
+        - created_at (TIMESTAMPTZ, DEFAULT now())
+      </download_events>
+
+      <extraction_events>
+        - id (UUID, PRIMARY KEY, DEFAULT gen_random_uuid())
+        - email (TEXT, NOT NULL)
+        - identified_style (TEXT)
+        - confidence (NUMERIC)
+        - created_at (TIMESTAMPTZ, DEFAULT now())
+      </extraction_events>
+    </tables>
+
+    <supabase_sql>
+      CREATE TABLE leads (
+        id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+        name TEXT NOT NULL,
+        email TEXT NOT NULL,
+        source TEXT DEFAULT 'stylevault',
+        created_at TIMESTAMPTZ DEFAULT now()
+      );
+
+      CREATE TABLE download_events (
+        id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+        style_id TEXT NOT NULL,
+        format TEXT NOT NULL CHECK (format IN ('json', 'css', 'tailwind')),
+        palette_id TEXT,
+        created_at TIMESTAMPTZ DEFAULT now()
+      );
+
+      CREATE TABLE extraction_events (
+        id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+        email TEXT NOT NULL,
+        identified_style TEXT,
+        confidence NUMERIC,
+        created_at TIMESTAMPTZ DEFAULT now()
+      );
+
+      ALTER TABLE leads ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE download_events ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE extraction_events ENABLE ROW LEVEL SECURITY;
+
+      CREATE POLICY "Allow anonymous inserts on leads"
+        ON leads FOR INSERT WITH CHECK (true);
+      CREATE POLICY "Allow anonymous inserts on download_events"
+        ON download_events FOR INSERT WITH CHECK (true);
+      CREATE POLICY "Allow anonymous inserts on extraction_events"
+        ON extraction_events FOR INSERT WITH CHECK (true);
+    </supabase_sql>
+  </database_schema>
+
+  <api_endpoints_summary>
+    <supabase_client_operations>
+      - INSERT leads (name, email, source) - email capture on landing page
+      - INSERT download_events (style_id, format, palette_id) - download analytics tracking
+      - INSERT extraction_events (email, identified_style, confidence) - extraction tracking
+      - SELECT COUNT extraction_events WHERE email = ? AND created_at > today - rate limit check
+    </supabase_client_operations>
+    <supabase_edge_functions>
+      - POST /functions/v1/extract-style - receives base64 image + email, calls Claude Sonnet vision API, returns identified style match with extracted tokens
+    </supabase_edge_functions>
+    <static_assets>
+      - GET /previews/{style-id}-{page}.png - 48 pre-generated preview screenshots (12 styles x 4 pages)
+    </static_assets>
+  </api_endpoints_summary>
+
+  <ui_layout>
+    <main_structure>
+      - Minimal header: logo text "StyleVault" on left, navigation links on right (Gallery, Extract)
+      - Header only shows navigation links after user has access (hidden on landing page)
+      - No sidebar - clean, content-focused layouts throughout
+      - Main content area with generous whitespace (Minimalism style)
+    </main_structure>
+
+    <landing_page_layout>
+      Full-width vertically stacked sections:
+      - Navbar: logo left, minimal (no navigation links on landing)
+      - Hero: centered text, large headline (48px), subtitle, email form below
+      - Preview strip: horizontal scroll of 3-4 mini style cards
+      - "What You Get" section: 3 feature cards in a row (stacked on mobile)
+      - Social proof bar: centered text with metrics
+      - Footer: minimal branding, copyright
+    </landing_page_layout>
+
+    <gallery_page_layout>
+      - Sticky header: logo left, filter tabs center (All/Core/Vibe), "Quick Compare" button right
+      - Responsive grid of style cards below header
+      - No sidebar, no footer - full focus on the grid
+    </gallery_page_layout>
+
+    <detail_page_layout>
+      - Back button at top left
+      - Preview image tabs at top (4 thumbnails + large selected preview)
+      - Palette switcher strip below preview images
+      - Two-column layout on desktop: left (40%) metadata/tokens, right (60%) large live preview
+      - Single column stacked on mobile: preview on top, metadata below
+      - Download section with three format buttons
+      - Previous/Next navigation at the very bottom
+    </detail_page_layout>
+
+    <compare_page_layout>
+      - Style name and counter at top center
+      - 2x2 grid of preview images filling the viewport
+      - Arrow navigation buttons on left/right edges (desktop)
+      - Dot indicators at bottom (mobile)
+      - "View Details" button at bottom
+    </compare_page_layout>
+
+    <extract_page_layout>
+      - Upload zone centered at top (drag-and-drop area)
+      - Image preview below upload zone after file selected
+      - "Analyze Design" CTA button below preview
+      - Results section: style match banner, color swatches, typography, side-by-side comparison
+      - Download section at bottom with three format buttons
+    </extract_page_layout>
+  </ui_layout>
+
+  <design_system>
+    <color_palette>
+      The app shell uses the Minimalism style:
+      - Brand: #111827 (near-black, Apple-inspired)
+      - Brand Light: #E5E7EB
+      - Brand Dark: #030712
+      - Surface Canvas: #FFFFFF (pure white background)
+      - Surface Base: #FFFFFF (cards)
+      - Surface Muted: #F9FAFB (inputs, hover states)
+      - Text Primary: #111827 (headings, key values)
+      - Text Secondary: #6B7280 (body text, labels)
+      - Text Tertiary: #9CA3AF (placeholders, inactive)
+      - Border Subtle: #F3F4F6 (near-invisible dividers)
+      - Border Default: #E5E7EB
+      - Success: #10B981
+      - Error: #EF4444
+      - Warning: #F59E0B
+      - Info: #6366F1
+    </color_palette>
+    <typography>
+      - Font family: SF Pro Display, Inter, system-ui, -apple-system, sans-serif
+      - Display: 48px / weight 600 / line-height 1.1 (landing hero)
+      - H1: 32px / weight 600 / line-height 1.2 (page titles)
+      - H2: 24px / weight 500 / line-height 1.3 (section headers)
+      - H3: 18px / weight 500 / line-height 1.4 (card titles)
+      - Body: 15px / weight 400 / line-height 1.7 (regular text)
+      - Micro: 12px / weight 400 / line-height 1.5 (labels, captions)
+    </typography>
+    <component_patterns>
+      - Cards: white background, 1px border #F3F4F6, 12px radius, subtle shadow, 24px padding, hover lift
+      - Primary buttons: #111827 background, white text, 10px radius, 12px 24px padding
+      - Secondary buttons: transparent background, 1px border #E5E7EB, 10px radius
+      - Ghost buttons: transparent background, hover #F9FAFB, 10px radius
+      - Inputs: #F9FAFB background, no border default, 2px focus ring #111827, 10px radius, 12px 16px padding
+    </component_patterns>
+    <spacing>
+      - Base unit: 8px
+      - Scale: xs 4px, sm 8px, md 16px, lg 24px, xl 32px, 2xl 48px
+      - Density: Cozy (generous whitespace, Minimalism demands breathing room)
+    </spacing>
+    <animations>
+      - Page transitions: 200ms fade (Framer Motion)
+      - Card hover: 200ms ease, translateY -2px, shadow increase
+      - Button press: active scale 0.98
+      - Toast: slide-in from top-right, auto-dismiss 2s
+      - Color swatch copy: brief scale pulse
+      - Gallery entrance: staggered fade-in on mount
+    </animations>
+  </design_system>
+
+  <ui_ux_standards>
+    <banned_patterns>
+      - alert(), confirm(), prompt() - Use Toast notifications and modals instead
+      - Text-only empty states - Use styled empty state with icon and helpful message
+      - Loading states that just say "Loading..." - Use skeleton loaders with shimmer
+      - Raw timestamps - Format as relative time where applicable
+      - Inline styles in the app shell - Use Tailwind CSS (inline styles only inside StylePreview component)
+    </banned_patterns>
+    <required_components>
+      - Toast notification system with success/info/error variants
+      - Loading skeleton with shimmer animation for gallery
+      - ErrorBoundary wrapping the entire app
+      - StylePreview with compact and full modes
+      - PaletteStrip with favorites and tier locking
+      - ImageUploader with drag-and-drop support
+      - CategoryBadge pill component for Core/Vibe labels
+      - ColorSwatch clickable circle with copy-to-clipboard
+    </required_components>
+    <page_patterns>
+      - Gallery grid -> Quick Compare (quad view) or Style Detail (full view)
+      - Style Detail: preview tabs -> metadata -> downloads
+      - Landing -> email gate -> Gallery (one-way flow, no back to landing after access)
+    </page_patterns>
+    <feedback_protocol>
+      - Email submit: loading spinner -> redirect to gallery (silent success)
+      - Download: instant file save + success toast "Downloaded [filename]"
+      - Color copy: brief toast "Copied #XXXXXX"
+      - Screenshot analysis: progress animation -> results display
+      - Error: toast with error message + retry option where applicable
+    </feedback_protocol>
+    <polish_requirements>
+      - Text truncation with ellipsis on card descriptions
+      - Back navigation on detail and extract pages
+      - Hover states on all interactive cards and buttons
+      - Focus rings on all interactive elements
+      - Autofocus on first form input (landing page email form)
+      - Smooth transitions between routes
+      - Dynamic page titles
+    </polish_requirements>
+    <accessibility_basics>
+      - Focus rings visible on keyboard navigation
+      - Escape key dismisses toasts
+      - aria-labels on icon-only buttons (arrows, favorites, close)
+      - Labels on all form inputs
+      - Color contrast meets WCAG AA (4.5:1 for text)
+      - Touch targets minimum 44x44px
+    </accessibility_basics>
+  </ui_ux_standards>
+
+  <coding_standards>
+    <architecture>
+      - One component per file, organized by type (pages/, components/, context/, lib/, data/)
+      - Service layer: all Supabase operations in lib/ files, never called directly from components
+      - TypeScript interfaces for all data types in data/types.ts, no 'any' types
+      - Style data and palette data as typed constants in data/ directory
+      - Context providers for cross-cutting concerns (AccessContext, ToastContext)
+    </architecture>
+    <routing>
+      - HashRouter for static hosting compatibility (no server-side routing needed)
+      - Public route: / (landing page)
+      - Protected routes: /gallery, /style/:id, /compare, /extract
+      - ProtectedRoute wrapper handles redirect to landing page
+      - 404 catch-all route for unknown paths
+    </routing>
+    <error_handling>
+      - ErrorBoundary wraps entire app at root level
+      - Supabase operations wrapped in try/catch with console.warn (fire-and-forget)
+      - Screenshot extractor shows user-friendly error with retry button
+      - Missing preview images show placeholder with style name
+      - Invalid style IDs show "not found" with navigation back to gallery
+    </error_handling>
+  </coding_standards>
+
+  <key_interactions>
+    <email_capture_flow>
+      1. User arrives at landing page from class link
+      2. Sees hero headline, preview strip teasers, and email form
+      3. Enters name and email, clicks "Get Free Access"
+      4. Form validates fields (inline errors if invalid)
+      5. Button shows loading spinner during submission
+      6. Email stored in Supabase leads table (fire-and-forget)
+      7. localStorage flag set, redirected to /gallery with fade transition
+    </email_capture_flow>
+
+    <style_browsing_flow>
+      1. User views gallery grid with 12 style cards
+      2. Optionally filters by Core or Vibe using tabs
+      3. Clicks a style card to view full details
+      4. Reviews metadata: colors, typography, component specs, do's and don'ts
+      5. Clicks color swatches to copy hex values (toast confirms)
+      6. Uses Previous/Next to browse more styles
+      7. OR enters Quick Compare to swipe through all 12 side-by-side
+    </style_browsing_flow>
+
+    <download_flow>
+      1. User is on a style detail page
+      2. Optionally selects a color palette from the palette strip
+      3. Clicks one of three download buttons (CSS, Tailwind, JSON)
+      4. File generates client-side with style tokens (plus palette override if active)
+      5. Browser save dialog appears, file downloads
+      6. Success toast confirms download
+      7. Download event tracked in Supabase analytics
+    </download_flow>
+
+    <screenshot_analysis_flow>
+      1. User navigates to /extract from gallery header
+      2. Uploads a screenshot via drag-and-drop or file picker
+      3. Image preview appears with "Analyze Design" button
+      4. Clicks analyze, loading animation plays with rotating status text
+      5. Results show: matched style with confidence, extracted colors, typography guess
+      6. Side-by-side comparison of uploaded image and closest style preview
+      7. User can download extracted tokens or navigate to matched style's detail page
+    </screenshot_analysis_flow>
+
+    <returning_user_flow>
+      1. User returns to site (localStorage flag still set)
+      2. Landing page detects flag, shows "Go to Gallery" button alongside form
+      3. User clicks button or navigates directly to /gallery (access is granted)
+    </returning_user_flow>
+  </key_interactions>
+
+  <implementation_steps>
+    <step number="1">
+      <title>Project Scaffolding and Core Data</title>
+      <tasks>
+        - Initialize Vite + React 19 + TypeScript project
+        - Install dependencies: tailwindcss v4, react-router-dom v7, lucide-react, framer-motion, @supabase/supabase-js
+        - Configure Tailwind v4 with Minimalism design tokens
+        - Set up HashRouter with all route definitions (/, /gallery, /style/:id, /compare, /extract)
+        - Create page component stubs: LandingPage, GalleryPage, StyleDetailPage, ComparePage, ExtractPage
+        - Create shared Layout component with header
+        - Create complete TypeScript interfaces for style data structure
+        - Implement all 12 style datasets with full token values
+        - Create style data helper functions (getStyleById, getStylesByCategory, getAllStyles)
+        - Add Google Fonts link to index.html
+      </tasks>
+    </step>
+
+    <step number="2">
+      <title>Access Gate and Supabase Integration</title>
+      <tasks>
+        - Create Supabase client module with env var initialization and graceful no-op
+        - Create leads service (submitLead function with fire-and-forget error handling)
+        - Create analytics service (trackDownload function with fire-and-forget error handling)
+        - Create .env.example with Supabase variable placeholders
+        - Create AccessContext provider with localStorage check and grantAccess function
+        - Create ProtectedRoute wrapper with redirect to landing
+        - Create ToastContext provider with showToast function
+        - Create Toast component with slide-in animation and auto-dismiss
+      </tasks>
+    </step>
+
+    <step number="3">
+      <title>Landing Page and Live Preview Engine</title>
+      <tasks>
+        - Build landing page hero section with Display typography headline and subtitle
+        - Build email capture form with name/email inputs, validation, and submit handler
+        - Wire form to Supabase submitLead and AccessContext grantAccess
+        - Build preview strip with mini style cards in horizontal scroll
+        - Build "What You Get" section with feature cards and Lucide icons
+        - Build social proof bar and footer
+        - Build StylePreview component with compact and full render modes
+        - Implement tokensToStyles helper for mapping tokens to CSS properties
+        - Add returning user detection ("Go to Gallery" button when access exists)
+      </tasks>
+    </step>
+
+    <step number="4">
+      <title>Gallery and Download System</title>
+      <tasks>
+        - Build StyleCard component with color swatches, compact preview, metadata
+        - Build gallery page with responsive grid and filter tabs (All/Core/Vibe)
+        - Add card hover animations and staggered entrance animation
+        - Wire card clicks to navigate to style detail page
+        - Build CSS generator for --sv-* custom properties
+        - Build Tailwind config generator for theme.extend object
+        - Build JSON generator with complete token object and metadata
+        - Build triggerDownload utility with Blob + URL.createObjectURL
+        - Create downloadStyle orchestrator that generates, downloads, and tracks
+      </tasks>
+    </step>
+
+    <step number="5">
+      <title>Quick Compare and Style Detail Pages</title>
+      <tasks>
+        - Build Compare page with 2x2 preview grid
+        - Add swipe/arrow navigation with style cycling
+        - Add keyboard listener for arrow keys
+        - Add touch swipe detection for mobile
+        - Add slide transition animation and dot indicators
+        - Build Style Detail page with preview tabs and large preview area
+        - Build metadata sections: colors with copy, typography table, component specs, do's/don'ts
+        - Build download section with three format buttons
+        - Build Previous/Next style navigation
+        - Handle invalid style ID with "not found" state
+      </tasks>
+    </step>
+
+    <step number="6">
+      <title>Color Palette System</title>
+      <tasks>
+        - Create 25 palette definitions in data/palettes.ts with tier field
+        - Build PaletteStrip component with scrollable thumbnails
+        - Implement palette selection with live preview re-rendering
+        - Build favorites system with localStorage persistence
+        - Add "Show Favorites Only" toggle with empty state message
+        - Add premium tier lock icons with upgrade tooltip
+        - Wire palette selection to download system (include active palette in generated files)
+        - Add palette category section headers
+      </tasks>
+    </step>
+
+    <step number="7">
+      <title>Screenshot Style Extractor</title>
+      <tasks>
+        - Build Extract page with upload zone layout
+        - Build ImageUploader component with drag-and-drop and file validation
+        - Create extractor service calling Supabase Edge Function
+        - Create Supabase Edge Function extract-style with Claude Sonnet vision API call
+        - Build results display: style match, confidence, extracted colors, typography
+        - Build side-by-side comparison view
+        - Wire download buttons to use extracted tokens
+        - Add rate limiting check against extraction_events table
+        - Add loading animation with rotating status text
+        - Add error handling with retry button
+      </tasks>
+    </step>
+
+    <step number="8">
+      <title>Polish and Responsive Design</title>
+      <tasks>
+        - Add Framer Motion page transitions to all routes
+        - Add dynamic document.title on every page
+        - Add loading skeleton with shimmer for gallery
+        - Verify responsive design on all breakpoints (375px, 768px, 1024px, 1920px)
+        - Verify all touch targets are 44x44px minimum
+        - Add favicon, meta description, and Open Graph tags
+        - Audit keyboard navigation and focus rings
+        - Full end-to-end test: landing -> email -> gallery -> detail -> download
+        - Fix any console errors or TypeScript warnings
+      </tasks>
+    </step>
+  </implementation_steps>
+
+  <success_criteria>
+    <functionality>
+      - Email capture form validates, submits, and grants gallery access
+      - All 12 styles display with correct colors, typography, and previews in gallery
+      - Gallery filter tabs correctly show All/Core/Vibe subsets
+      - Quick Compare allows swiping through all 12 styles with smooth transitions
+      - Style Detail shows complete metadata, preview tabs, and color copy functionality
+      - Downloads generate valid CSS, Tailwind, and JSON files with correct token values
+      - Color palette switcher re-renders preview and modifies download output
+      - Palette favorites persist across browser sessions via localStorage
+      - Screenshot extractor uploads image, calls API, and displays analysis results
+      - Rate limiting prevents more than 3 extractions per email per day
+      - Returning users bypass email form with localStorage flag detection
+    </functionality>
+    <user_experience>
+      - Responsive on mobile (375px), tablet (768px), and desktop (1024px+)
+      - Page transitions are smooth with Framer Motion fade animations
+      - All user actions provide immediate visual feedback (loading spinners, toasts, hover states)
+      - Gallery cards have staggered entrance animation and hover lift effect
+      - Color swatch copy shows instant toast confirmation
+      - Download triggers instantly (client-side generation, no server round-trip for style files)
+      - Touch targets are comfortable on mobile (44x44px minimum)
+      - Font loading does not cause visible layout shift (skeleton placeholders)
+    </user_experience>
+    <technical_quality>
+      - Zero console errors in production build
+      - TypeScript strict mode with no 'any' types
+      - All style data hardcoded with complete token values (no placeholder or mock data)
+      - Supabase operations fail gracefully (app works fully without Supabase configured)
+      - Pure inline styles inside StylePreview (no Tailwind dependency for preview rendering)
+      - Clean component architecture: pages, components, context, lib, data separation
+      - Service layer pattern: all Supabase calls in lib/ files, never in components
+      - All form inputs have proper validation before submission
+    </technical_quality>
+  </success_criteria>
+</project_specification>

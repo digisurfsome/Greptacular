@@ -1,0 +1,303 @@
+<project_specification>
+  <project_name>autoforge-pre-build-intelligence</project_name>
+
+  <overview>
+    Pre-Build Intelligence is a 3-phase pipeline that runs before AutoForge starts building
+    application code. It adds spec validation (Phase 0), architecture planning (Phase 0.5),
+    and dependency auto-detection (enhanced Phase 1) to eliminate wasted agent sessions caused
+    by spec gaps, inconsistent architectural decisions, and missing dependency relationships.
+    This is an internal feature set for the AutoForge codebase.
+  </overview>
+
+  <technology_stack>
+    <frontend>
+      <framework>React 19 with Vite 7 (existing AutoForge UI)</framework>
+      <styling>Tailwind CSS v4</styling>
+      <state_management>TanStack Query, React hooks and context</state_management>
+      <routing>React Router (existing)</routing>
+      <port>5173 (dev), served by FastAPI in production</port>
+    </frontend>
+    <backend>
+      <runtime>Python 3.11+ with FastAPI (existing AutoForge server)</runtime>
+      <database>SQLite with SQLAlchemy (existing registry.db for settings)</database>
+      <port>8000 (FastAPI uvicorn)</port>
+    </backend>
+    <communication>
+      <api>REST endpoints (FastAPI routers) + WebSocket for real-time updates</api>
+    </communication>
+  </technology_stack>
+
+  <prerequisites>
+    <environment_setup>
+      - Existing AutoForge development environment (Python 3.11+, Node.js 20+)
+      - AutoForge codebase cloned with all dependencies installed
+      - Familiarity with existing agent types (initializer, coding, testing)
+      - Understanding of existing MCP server pattern (mcp_server/feature_mcp.py)
+      - Understanding of existing orchestrator pattern (parallel_orchestrator.py)
+    </environment_setup>
+  </prerequisites>
+
+  <feature_count>15</feature_count>
+
+  <core_features>
+    <agent_infrastructure>
+      - CLI accepts new agent types spec-analyzer and architect in --agent-type choices and client.py maps them to empty tool lists, correct max_turns values, and conditionally skips the features MCP server for these agent types
+      - Spec analyzer prompt template exists at .claude/templates/spec_analyzer_prompt.template.md with 6 analysis steps: read spec, completeness analysis, contradiction detection, complexity estimation, dependency risk analysis, and report generation
+      - Architect prompt template exists at .claude/templates/architect_prompt.template.md with 7 design steps: read spec, design database schema, design API structure, map component tree, define routing map, choose patterns and conventions, write ARCHITECTURE.md
+    </agent_infrastructure>
+
+    <spec_analyzer_agent>
+      - Spec analyzer agent can be invoked via agent.py routing with correct prompt loading from prompts.py and runs as a single-session read-only analysis agent that produces .autoforge/spec-analysis.md
+      - Orchestrator runs spec analyzer as Phase 0 before initialization, parses the completeness score from the generated report, blocks the build if score is below the configurable threshold, and supports --skip-spec-analysis, --min-spec-score (1-5, default 3), and --force-build CLI flags
+    </spec_analyzer_agent>
+
+    <architect_agent>
+      - Architect agent can be invoked via agent.py routing with correct prompt loading from prompts.py and runs as a single-session design agent that produces ARCHITECTURE.md in the project root
+      - Orchestrator runs architect as Phase 0.5 after spec analysis and before initialization, verifies ARCHITECTURE.md was created, and CLI supports --skip-architect flag to bypass this phase
+    </architect_agent>
+
+    <architecture_reference>
+      - Coding prompt template includes ARCHITECTURE.md reading in its orientation step and a mandatory ARCHITECTURE REFERENCE section that instructs coding agents to follow all architectural decisions without deviation
+      - Initializer prompt template includes an instruction to read ARCHITECTURE.md before creating features and use the architecture document for consistent naming, endpoint references, and dependency ordering
+    </architecture_reference>
+
+    <dependency_auto_detection>
+      - Initializer prompt template includes a FIFTH TASK for dependency auto-detection that runs after feature creation, applying heuristic rules to call feature_set_dependencies for each feature based on entity CRUD relationships, auth requirements, and UI composition patterns
+    </dependency_auto_detection>
+
+    <settings_and_api>
+      - Settings API exposes run_spec_analyzer (bool), min_spec_score (int 1-5), run_architect (bool), and force_build (bool) via GET/PATCH on the existing settings endpoint persisted in GlobalSettings, and projects API returns spec_analysis_score and has_architecture fields in the project status response by checking for .autoforge/spec-analysis.md and ARCHITECTURE.md files
+    </settings_and_api>
+
+    <ui_components>
+      - Settings modal includes a Pre-Build Intelligence section with toggles for spec analysis and architecture planning, a slider for minimum spec score, and a checkbox for force build
+      - Project dashboard displays a pipeline status indicator showing completion state of spec analysis (with score badge), architecture planning, initialization, and building phases as a horizontal stepper
+      - Project dashboard includes a collapsible spec analysis report viewer that renders .autoforge/spec-analysis.md as markdown with a colored completeness score badge (red 1-2, yellow 3, green 4-5) and a warning banner when score is below threshold
+      - Project view includes an Architecture tab that renders ARCHITECTURE.md with syntax-highlighted code blocks and a search input for finding specific entities or patterns
+    </ui_components>
+  </core_features>
+
+  <database_schema>
+    <tables>
+      <note>
+        No new database tables are required. The pre-build intelligence settings are
+        stored in the existing GlobalSettings model in registry.py (SQLAlchemy).
+        New fields added to the existing model:
+        - run_spec_analyzer (BOOLEAN NOT NULL DEFAULT TRUE)
+        - min_spec_score (INTEGER NOT NULL DEFAULT 3)
+        - run_architect (BOOLEAN NOT NULL DEFAULT TRUE)
+        - force_build (BOOLEAN NOT NULL DEFAULT FALSE)
+      </note>
+    </tables>
+  </database_schema>
+
+  <api_endpoints_summary>
+    <settings>
+      - GET /api/settings (existing - returns all settings including new pre-build fields)
+      - PATCH /api/settings (existing - accepts new pre-build fields for update)
+    </settings>
+    <projects>
+      - GET /api/projects/:name (existing - enhanced response includes spec_analysis_score and has_architecture)
+      - GET /api/projects/:name/spec-analysis (new - returns raw markdown content of .autoforge/spec-analysis.md)
+      - GET /api/projects/:name/architecture (new - returns raw markdown content of ARCHITECTURE.md)
+    </projects>
+  </api_endpoints_summary>
+
+  <ui_layout>
+    <main_structure>
+      - Existing AutoForge UI layout unchanged
+      - New pipeline status indicator added above the kanban board / dependency graph
+      - New spec analysis viewer as collapsible section in project dashboard
+      - New Architecture tab added to project view navigation
+      - New Pre-Build Intelligence section added to Settings modal
+    </main_structure>
+  </ui_layout>
+
+  <design_system>
+    <color_palette>
+      - Existing AutoForge neobrutalism design system
+      - Score badge colors: red (#EF4444) for 1-2, yellow (#F59E0B) for 3, green (#10B981) for 4-5
+      - Pipeline step colors: pending (--color-neo-pending), active (--color-neo-progress), done (--color-neo-done)
+    </color_palette>
+    <typography>
+      - Existing AutoForge typography system (Inter, system-ui, sans-serif)
+      - Monospace font for code blocks in report/architecture viewers
+    </typography>
+  </design_system>
+
+  <ui_ux_standards>
+    <banned_patterns>
+      - alert(), confirm(), prompt() - Use existing Modal/Toast system
+      - Raw timestamps - Use relative time formatting
+      - Loading spinners without context - Use skeleton loaders with descriptive text
+    </banned_patterns>
+    <required_components>
+      - Use existing AutoForge UI components (from Radix UI primitives)
+      - Pipeline stepper follows neobrutalism style with bold borders and solid fills
+      - Score badge uses existing badge patterns with color coding
+    </required_components>
+    <feedback_protocol>
+      - Settings changes: immediate save with toast confirmation
+      - Pipeline phase completion: stepper updates via WebSocket
+      - Build blocked by low score: warning banner with actionable message
+    </feedback_protocol>
+  </ui_ux_standards>
+
+  <coding_standards>
+    <architecture>
+      - Follow existing AutoForge patterns: routers in server/routers/, services in server/services/
+      - Python code must pass ruff check and mypy type checking
+      - TypeScript code must pass npm run lint and npm run build
+      - New prompt templates follow existing fallback chain pattern in prompts.py
+      - Agent routing follows existing pattern in agent.py (if/elif on agent_type)
+      - Orchestrator phases follow existing _run_initializer() subprocess pattern
+    </architecture>
+    <error_handling>
+      - Spec analyzer failure: log warning, skip phase, proceed with build
+      - Architect failure: log warning, skip phase, proceed without ARCHITECTURE.md
+      - Score parsing failure: default to score 0, respect force_build flag
+      - Missing files: graceful degradation (UI hides sections when files don't exist)
+    </error_handling>
+  </coding_standards>
+
+  <key_interactions>
+    <pre_build_pipeline_flow>
+      1. User starts a build (via UI or CLI) for a project with an app_spec.txt
+      2. Orchestrator checks if spec analysis is enabled and not already done
+      3. Phase 0: Spec analyzer agent reads app_spec.txt and writes .autoforge/spec-analysis.md
+      4. Orchestrator parses completeness score from report
+      5. If score is below threshold and force_build is off, build is blocked with actionable message
+      6. If score passes, Phase 0.5: Architect agent reads spec and analysis, writes ARCHITECTURE.md
+      7. Phase 1: Enhanced initializer creates features, then runs dependency auto-detection second pass
+      8. Phase 2+: Coding agents proceed as normal, referencing ARCHITECTURE.md for consistency
+    </pre_build_pipeline_flow>
+
+    <settings_configuration_flow>
+      1. User opens Settings modal via gear icon or comma key
+      2. User scrolls to Pre-Build Intelligence section
+      3. User toggles spec analysis on/off, adjusts minimum score slider, toggles architecture planning
+      4. Changes save immediately via PATCH /api/settings with toast confirmation
+      5. Next build respects the updated settings
+    </settings_configuration_flow>
+
+    <spec_analysis_review_flow>
+      1. After spec analysis completes, pipeline status indicator updates to show score badge
+      2. User clicks the spec analysis step or expands the report viewer section
+      3. Report renders as formatted markdown with tables for gaps, contradictions, and risks
+      4. If score is below threshold, warning banner shows with suggestion to revise spec
+      5. User can force-build via checkbox in settings or --force-build CLI flag
+    </spec_analysis_review_flow>
+  </key_interactions>
+
+  <implementation_steps>
+    <step number="1">
+      <title>Foundation: Agent Type Registration and Client Configuration</title>
+      <tasks>
+        - Add spec-analyzer and architect to --agent-type choices in autonomous_agent_demo.py
+        - Add SPEC_ANALYZER_TOOLS (empty list) and ARCHITECT_TOOLS (empty list) to client.py
+        - Add spec-analyzer and architect entries to feature_tools_map in client.py
+        - Add spec-analyzer (75 turns) and architect (100 turns) entries to max_turns_map in client.py
+        - Add conditional logic to skip features MCP server when agent_type is spec-analyzer or architect
+        - Verify with ruff check and mypy
+      </tasks>
+    </step>
+
+    <step number="2">
+      <title>Prompt Templates: Spec Analyzer and Architect</title>
+      <tasks>
+        - Create .claude/templates/spec_analyzer_prompt.template.md with all 6 analysis steps
+        - Create .claude/templates/architect_prompt.template.md with all 7 design steps
+        - Add get_spec_analyzer_prompt() and get_architect_prompt() to prompts.py
+        - Add spec-analyzer and architect routing in agent.py
+        - Verify prompt loading fallback chain works for both new agent types
+      </tasks>
+    </step>
+
+    <step number="3">
+      <title>Orchestrator Phases: Spec Analysis and Architecture</title>
+      <tasks>
+        - Add _run_spec_analyzer(), _parse_completeness_score(), _spec_analysis_done() to parallel_orchestrator.py
+        - Add _run_architect(), _architecture_done() to parallel_orchestrator.py
+        - Add Phase 0 (spec analysis) and Phase 0.5 (architecture) to run_loop()
+        - Add CLI flags: --skip-spec-analysis, --min-spec-score, --force-build, --skip-architect
+        - Add corresponding __init__ parameters to ParallelOrchestrator
+        - Wire CLI flags through autonomous_agent_demo.py to orchestrator
+        - Verify subprocess spawning follows existing _run_initializer() pattern
+      </tasks>
+    </step>
+
+    <step number="4">
+      <title>Architecture Reference in Existing Prompts</title>
+      <tasks>
+        - Update coding_prompt.template.md to read ARCHITECTURE.md in STEP 1 orientation
+        - Add ARCHITECTURE REFERENCE (MANDATORY) section to coding prompt
+        - Update initializer_prompt.template.md to read ARCHITECTURE.md before feature creation
+        - Verify existing prompt loading still works correctly
+      </tasks>
+    </step>
+
+    <step number="5">
+      <title>Dependency Auto-Detection Enhancement</title>
+      <tasks>
+        - Add FIFTH TASK to initializer_prompt.template.md for second-pass dependency detection
+        - Include heuristic rules table (entity CRUD, auth, UI composition patterns)
+        - Include dependency principles (infrastructure deps, wide graphs, max 20, no cycles)
+        - Include graph validation and logging steps
+        - Verify prompt stays within initializer's 200-turn budget
+      </tasks>
+    </step>
+
+    <step number="6">
+      <title>Settings API and Project Status</title>
+      <tasks>
+        - Add run_spec_analyzer, min_spec_score, run_architect, force_build fields to GlobalSettings model in registry.py
+        - Expose new fields in GET/PATCH /api/settings in server/routers/settings.py
+        - Add GET /api/projects/:name/spec-analysis endpoint to server/routers/projects.py
+        - Add GET /api/projects/:name/architecture endpoint to server/routers/projects.py
+        - Include spec_analysis_score and has_architecture in project status response
+        - Verify with ruff check and mypy
+      </tasks>
+    </step>
+
+    <step number="7">
+      <title>UI: Settings Controls and Pipeline Status</title>
+      <tasks>
+        - Add Pre-Build Intelligence section to SettingsModal.tsx with toggles, slider, checkbox
+        - Update types.ts with new settings fields and project status fields
+        - Create PipelineStatus component showing build phase stepper with score badge
+        - Integrate pipeline status into project dashboard above kanban/graph view
+        - Add spec analysis report viewer as collapsible section in project dashboard
+        - Add Architecture tab to project view with markdown rendering and search
+        - Add API client functions for spec-analysis and architecture endpoints
+        - Verify with npm run lint and npm run build
+      </tasks>
+    </step>
+  </implementation_steps>
+
+  <success_criteria>
+    <functionality>
+      - Spec analyzer agent runs as Phase 0 and produces a valid spec-analysis.md with completeness score
+      - Architect agent runs as Phase 0.5 and produces ARCHITECTURE.md with database schema, API structure, component tree, routing map, and conventions
+      - Build is blocked when spec score is below threshold (unless force_build is set)
+      - Initializer second pass detects dependencies using heuristic rules and calls feature_set_dependencies
+      - Coding agents read and follow ARCHITECTURE.md for all architectural decisions
+      - All phases are idempotent (skip if output already exists)
+      - All phases can be individually skipped via CLI flags or settings
+    </functionality>
+    <user_experience>
+      - Pipeline status indicator clearly shows which phases have completed
+      - Spec analysis report is readable with actionable findings
+      - Architecture document is searchable and well-formatted
+      - Settings controls are intuitive with clear labels and descriptions
+      - Warning banner for low spec score provides clear next steps
+    </user_experience>
+    <technical_quality>
+      - Python code passes ruff check and mypy with no errors
+      - TypeScript code passes npm run lint and npm run build with no errors
+      - New agent types follow existing patterns in client.py and agent.py
+      - Orchestrator phases follow existing subprocess management pattern
+      - No regressions to existing initializer, coding, or testing agent flows
+      - Prompt templates follow existing fallback chain (project-specific then base template)
+    </technical_quality>
+  </success_criteria>
+</project_specification>

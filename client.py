@@ -240,6 +240,9 @@ QA_AGENT_TOOLS = [
     "mcp__features__feature_mark_qa_verified",
 ]
 
+SPEC_ANALYZER_TOOLS: list[str] = []  # No feature tools needed
+ARCHITECT_TOOLS: list[str] = []  # No feature tools needed
+
 # Union of all agent tool lists -- used for permissions (all tools remain
 # *permitted* so the MCP server can respond, but only the agent-type-specific
 # list is included in allowed_tools, which controls what the LLM sees).
@@ -336,6 +339,8 @@ def create_client(
         "initializer": INITIALIZER_AGENT_TOOLS,
         "reviewer": REVIEWER_AGENT_TOOLS,
         "qa": QA_AGENT_TOOLS,
+        "spec-analyzer": SPEC_ANALYZER_TOOLS,
+        "architect": ARCHITECT_TOOLS,
     }
     feature_tools = feature_tools_map.get(agent_type, CODING_AGENT_TOOLS)
 
@@ -351,6 +356,8 @@ def create_client(
         "initializer": 200,
         "reviewer": 100,
         "qa": 250,
+        "spec-analyzer": 75,
+        "architect": 100,
     }
     max_turns = max_turns_map.get(agent_type, 150)
 
@@ -437,9 +444,13 @@ def create_client(
     else:
         print("   - Warning: System 'claude' CLI not found, using bundled CLI")
 
-    # Build MCP servers config - features is always included, playwright only in standard mode
-    mcp_servers = {
-        "features": {
+    # Build MCP servers config - features is always included (except for spec-analyzer/architect),
+    # playwright only in standard mode
+    mcp_servers = {}
+
+    # Only start features MCP server for agent types that need it
+    if agent_type not in ("spec-analyzer", "architect"):
+        mcp_servers["features"] = {
             "command": sys.executable,  # Use the same Python that's running this script
             "args": ["-m", "mcp_server.feature_mcp"],
             "env": {
@@ -448,8 +459,7 @@ def create_client(
                 "PROJECT_DIR": str(project_dir.resolve()),
                 "PYTHONPATH": str(Path(__file__).parent.resolve()),
             },
-        },
-    }
+        }
     if not yolo_mode and agent_type not in ("reviewer",):
         # Include Playwright MCP server for browser automation (standard mode only)
         # Reviewer agents don't need the Playwright server

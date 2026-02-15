@@ -597,6 +597,94 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               )}
             </div>
 
+            <hr className="border-border" />
+
+            {/* Pre-Build Intelligence */}
+            <div className="space-y-4">
+              <Label className="font-medium">Pre-Build Intelligence</Label>
+              <p className="text-sm text-muted-foreground">
+                Analyze specs and plan architecture before building
+              </p>
+
+              {/* Spec Analysis Toggle */}
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="spec-analyzer" className="text-sm">
+                    Spec Analysis
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Evaluate spec completeness before building
+                  </p>
+                </div>
+                <Switch
+                  id="spec-analyzer"
+                  checked={settings.run_spec_analyzer}
+                  onCheckedChange={() => updateSettings.mutate({ run_spec_analyzer: !settings.run_spec_analyzer })}
+                  disabled={isSaving}
+                />
+              </div>
+
+              {/* Min Spec Score */}
+              {settings.run_spec_analyzer && (
+                <div className="space-y-2">
+                  <Label className="text-sm">Minimum Spec Score</Label>
+                  <div className="flex gap-2">
+                    {[1, 2, 3, 4, 5].map((score) => (
+                      <Button
+                        key={score}
+                        variant={(settings.min_spec_score ?? 3) === score ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => updateSettings.mutate({ min_spec_score: score })}
+                        disabled={isSaving}
+                        className="flex-1"
+                      >
+                        {score}
+                      </Button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Build is blocked if score is below this threshold (1-5)
+                  </p>
+                </div>
+              )}
+
+              {/* Architecture Planning Toggle */}
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="architect" className="text-sm">
+                    Architecture Planning
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Generate ARCHITECTURE.md before building
+                  </p>
+                </div>
+                <Switch
+                  id="architect"
+                  checked={settings.run_architect}
+                  onCheckedChange={() => updateSettings.mutate({ run_architect: !settings.run_architect })}
+                  disabled={isSaving}
+                />
+              </div>
+
+              {/* Force Build Toggle */}
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="force-build" className="text-sm">
+                    Force Build
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Override low spec scores and build anyway
+                  </p>
+                </div>
+                <Switch
+                  id="force-build"
+                  checked={settings.force_build}
+                  onCheckedChange={() => updateSettings.mutate({ force_build: !settings.force_build })}
+                  disabled={isSaving}
+                />
+              </div>
+            </div>
+
             {/* Update Error */}
             {updateSettings.isError && (
               <Alert variant="destructive">

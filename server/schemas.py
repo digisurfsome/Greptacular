@@ -54,6 +54,8 @@ class ProjectSummary(BaseModel):
     default_concurrency: int = 3
     boilerplate_id: str | None = None
     style_id: str | None = None
+    spec_analysis_score: int | None = None
+    has_architecture: bool = False
 
 
 class ProjectDetail(BaseModel):
@@ -66,6 +68,8 @@ class ProjectDetail(BaseModel):
     default_concurrency: int = 3
     boilerplate_id: str | None = None
     style_id: str | None = None
+    spec_analysis_score: int | None = None
+    has_architecture: bool = False
 
 
 class ProjectPrompts(BaseModel):
@@ -442,6 +446,11 @@ class SettingsResponse(BaseModel):
     qa_thoroughness: str = "standard"
     computer_use_enabled: bool = False
     computer_use_budget: float = 5.0
+    # Pre-build intelligence settings
+    run_spec_analyzer: bool = True
+    min_spec_score: int = 3
+    run_architect: bool = True
+    force_build: bool = False
 
 
 class ModelsResponse(BaseModel):
@@ -468,6 +477,11 @@ class SettingsUpdate(BaseModel):
     qa_thoroughness: str | None = None
     computer_use_enabled: bool | None = None
     computer_use_budget: float | None = None
+    # Pre-build intelligence settings
+    run_spec_analyzer: bool | None = None
+    min_spec_score: int | None = None
+    run_architect: bool | None = None
+    force_build: bool | None = None
 
     @field_validator('api_base_url')
     @classmethod
@@ -530,6 +544,13 @@ class SettingsUpdate(BaseModel):
     def validate_computer_use_budget(cls, v: float | None) -> float | None:
         if v is not None and (v < 1.0 or v > 10.0):
             raise ValueError("computer_use_budget must be between 1.0 and 10.0")
+        return v
+
+    @field_validator('min_spec_score')
+    @classmethod
+    def validate_min_spec_score(cls, v: int | None) -> int | None:
+        if v is not None and (v < 1 or v > 5):
+            raise ValueError("min_spec_score must be between 1 and 5")
         return v
 
 

@@ -18,6 +18,8 @@ export interface ProjectSummary {
   default_concurrency: number
   boilerplate_id: string | null
   style_id: string | null
+  spec_analysis_score: number | null
+  has_architecture: boolean
 }
 
 export interface ProjectDetail extends ProjectSummary {
@@ -707,6 +709,10 @@ export interface Settings {
   qa_thoroughness: string
   computer_use_enabled: boolean
   computer_use_budget: number
+  run_spec_analyzer: boolean
+  min_spec_score: number
+  run_architect: boolean
+  force_build: boolean
 }
 
 export interface SettingsUpdate {
@@ -725,6 +731,10 @@ export interface SettingsUpdate {
   qa_thoroughness?: string
   computer_use_enabled?: boolean
   computer_use_budget?: number
+  run_spec_analyzer?: boolean
+  min_spec_score?: number
+  run_architect?: boolean
+  force_build?: boolean
 }
 
 export interface ProjectSettingsUpdate {

@@ -17,11 +17,12 @@ from ..utils.project_helpers import get_project_path as _get_project_path
 from ..utils.validation import validate_project_name
 
 
-def _get_settings_defaults() -> tuple[bool, str, int, bool, int]:
+def _get_settings_defaults() -> tuple[bool, str, int, bool, int, bool, int, bool, bool]:
     """Get defaults from global settings.
 
     Returns:
-        Tuple of (yolo_mode, model, testing_agent_ratio, playwright_headless, batch_size)
+        Tuple of (yolo_mode, model, testing_agent_ratio, playwright_headless, batch_size,
+                  run_spec_analyzer, min_spec_score, run_architect, force_build)
     """
     import sys
     root = Path(__file__).parent.parent.parent
@@ -47,7 +48,16 @@ def _get_settings_defaults() -> tuple[bool, str, int, bool, int]:
     except (ValueError, TypeError):
         batch_size = 3
 
-    return yolo_mode, model, testing_agent_ratio, playwright_headless, batch_size
+    # Pre-build intelligence settings
+    run_spec_analyzer = (settings.get("run_spec_analyzer") or "true").lower() == "true"
+    try:
+        min_spec_score = int(settings.get("min_spec_score", "3"))
+    except (ValueError, TypeError):
+        min_spec_score = 3
+    run_architect = (settings.get("run_architect") or "true").lower() == "true"
+    force_build = (settings.get("force_build") or "false").lower() == "true"
+
+    return yolo_mode, model, testing_agent_ratio, playwright_headless, batch_size, run_spec_analyzer, min_spec_score, run_architect, force_build
 
 
 router = APIRouter(prefix="/api/projects/{project_name}/agent", tags=["agent"])
@@ -96,7 +106,8 @@ async def start_agent(
     manager = get_project_manager(project_name)
 
     # Get defaults from global settings if not provided in request
-    default_yolo, default_model, default_testing_ratio, playwright_headless, default_batch_size = _get_settings_defaults()
+    (default_yolo, default_model, default_testing_ratio, playwright_headless,
+     default_batch_size, run_spec_analyzer, min_spec_score, run_architect, force_build) = _get_settings_defaults()
 
     yolo_mode = request.yolo_mode if request.yolo_mode is not None else default_yolo
     model = request.model if request.model else default_model
@@ -112,6 +123,10 @@ async def start_agent(
         testing_agent_ratio=testing_agent_ratio,
         playwright_headless=playwright_headless,
         batch_size=batch_size,
+        skip_spec_analysis=not run_spec_analyzer,
+        min_spec_score=min_spec_score,
+        force_build=force_build,
+        skip_architect=not run_architect,
     )
 
     # Notify scheduler of manual start (to prevent auto-stop during scheduled window)

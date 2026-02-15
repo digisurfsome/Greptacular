@@ -49,22 +49,36 @@ ls -la
 # 3. Read the project specification to understand what you're building
 cat app_spec.txt
 
-# 4. Read progress notes from previous sessions (last 500 lines to avoid context overflow)
+# 4. Read ARCHITECTURE.md in the project root if it exists. This document contains all architectural decisions you MUST follow.
+cat ARCHITECTURE.md 2>/dev/null || true
+
+# 5. Read progress notes from previous sessions (last 500 lines to avoid context overflow)
 tail -500 claude-progress.txt
 
-# 5. Check recent git history
+# 6. Check recent git history
 git log --oneline -20
 ```
 
 Then use MCP tools to check feature status:
 
 ```
-# 6. Get progress statistics (passing/total counts)
+# 7. Get progress statistics (passing/total counts)
 Use the feature_get_stats tool
 ```
 
 Understanding the `app_spec.txt` is critical - it contains the full requirements
 for the application you're building.
+
+## ARCHITECTURE REFERENCE (MANDATORY)
+
+If `ARCHITECTURE.md` exists in the project root, you MUST follow it for ALL architectural decisions:
+- Database schema: Use the exact table names, field names, types, and relationships defined
+- API endpoints: Use the exact route paths, HTTP methods, and request/response schemas defined
+- Component structure: Follow the component tree, naming conventions, and prop interfaces defined
+- Routing: Use the exact route paths and guards defined
+- Conventions: Follow all naming, file organization, and pattern conventions defined
+
+**DO NOT deviate from ARCHITECTURE.md.** If you encounter a conflict between the architecture document and your own preferences, the architecture document wins. This ensures consistency across all coding agents working on the project.
 
 ### STEP 2: START SERVERS (IF NOT RUNNING)
 

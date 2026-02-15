@@ -31,12 +31,14 @@ from progress import (
 )
 from prompts import (
     copy_spec_to_project,
+    get_architect_prompt,
     get_batch_feature_prompt,
     get_coding_prompt,
     get_initializer_prompt,
     get_qa_prompt,
     get_review_prompt,
     get_single_feature_prompt,
+    get_spec_analyzer_prompt,
     get_testing_prompt,
 )
 from rate_limit_utils import (
@@ -215,6 +217,29 @@ async def run_autonomous_agent(
             agent_type = "coding"
 
     is_initializer = agent_type == "initializer"
+
+    # Single-session agent types (no loop)
+    if agent_type == "spec-analyzer":
+        print("Running as SPEC ANALYZER agent (read-only analysis)")
+        prompt = get_spec_analyzer_prompt(project_dir)
+        client = create_client(project_dir, model, yolo_mode=True, agent_type="spec-analyzer")
+        try:
+            async with client:
+                status, response = await run_agent_session(client, prompt, project_dir)
+        except Exception as e:
+            print(f"Spec analyzer error: {e}")
+        return
+
+    if agent_type == "architect":
+        print("Running as ARCHITECT agent (design planning)")
+        prompt = get_architect_prompt(project_dir)
+        client = create_client(project_dir, model, yolo_mode=True, agent_type="architect")
+        try:
+            async with client:
+                status, response = await run_agent_session(client, prompt, project_dir)
+        except Exception as e:
+            print(f"Architect error: {e}")
+        return
 
     if is_initializer:
         print("Running as INITIALIZER agent")

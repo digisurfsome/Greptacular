@@ -214,6 +214,18 @@ export async function resetProject(
   })
 }
 
+export async function getSpecAnalysis(
+  name: string
+): Promise<{ content: string; score: number | null }> {
+  return fetchJSON(`/projects/${encodeURIComponent(name)}/spec-analysis`)
+}
+
+export async function getArchitecture(
+  name: string
+): Promise<{ content: string }> {
+  return fetchJSON(`/projects/${encodeURIComponent(name)}/architecture`)
+}
+
 // ============================================================================
 // Features API
 // ============================================================================

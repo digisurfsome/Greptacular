@@ -222,6 +222,16 @@ def get_initializer_prompt(project_dir: Path | None = None) -> str:
     return prompt
 
 
+def get_spec_analyzer_prompt(project_dir: Path | None = None) -> str:
+    """Load the spec analyzer prompt (project-specific if available)."""
+    return load_prompt("spec_analyzer_prompt", project_dir)
+
+
+def get_architect_prompt(project_dir: Path | None = None) -> str:
+    """Load the architect prompt (project-specific if available)."""
+    return load_prompt("architect_prompt", project_dir)
+
+
 def _strip_browser_testing_sections(prompt: str) -> str:
     """Strip browser automation and Playwright testing instructions from prompt.
 

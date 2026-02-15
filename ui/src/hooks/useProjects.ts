@@ -152,6 +152,30 @@ export function useUpdateProjectSettings(projectName: string) {
 }
 
 // ============================================================================
+// Pre-Build Intelligence
+// ============================================================================
+
+export function useSpecAnalysis(projectName: string | null) {
+  return useQuery({
+    queryKey: ['spec-analysis', projectName],
+    queryFn: () => api.getSpecAnalysis(projectName!),
+    enabled: !!projectName,
+    staleTime: 60000,
+    retry: false,
+  })
+}
+
+export function useArchitecture(projectName: string | null) {
+  return useQuery({
+    queryKey: ['architecture', projectName],
+    queryFn: () => api.getArchitecture(projectName!),
+    enabled: !!projectName,
+    staleTime: 60000,
+    retry: false,
+  })
+}
+
+// ============================================================================
 // Features
 // ============================================================================
 
@@ -354,6 +378,10 @@ const DEFAULT_SETTINGS: Settings = {
   qa_thoroughness: 'standard',
   computer_use_enabled: false,
   computer_use_budget: 5,
+  run_spec_analyzer: true,
+  min_spec_score: 3,
+  run_architect: true,
+  force_build: false,
 }
 
 const DEFAULT_PROVIDERS: ProvidersResponse = {

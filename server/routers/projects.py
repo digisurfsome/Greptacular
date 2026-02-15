@@ -85,6 +85,20 @@ def _get_registry_functions():
     )
 
 
+def _parse_spec_analysis_score(project_dir: Path) -> int | None:
+    """Parse completeness score from spec-analysis.md if it exists."""
+    report = project_dir / ".autoforge" / "spec-analysis.md"
+    if not report.exists():
+        return None
+    try:
+        import re as _re
+        content = report.read_text(encoding="utf-8")
+        match = _re.search(r"Completeness Score:\s*(\d)/5", content)
+        return int(match.group(1)) if match else None
+    except (OSError, ValueError):
+        return None
+
+
 from ..services.boilerplate_manager import (
     clone_boilerplate,
     get_boilerplate_registry,
@@ -430,6 +444,8 @@ async def list_projects():
             default_concurrency=info.get("default_concurrency", 3),
             boilerplate_id=bp_id,
             style_id=st_id,
+            spec_analysis_score=_parse_spec_analysis_score(project_dir),
+            has_architecture=(project_dir / "ARCHITECTURE.md").exists(),
         ))
 
     return result
@@ -599,6 +615,8 @@ async def get_project(name: str):
         default_concurrency=get_project_concurrency(name),
         boilerplate_id=bp_id,
         style_id=st_id,
+        spec_analysis_score=_parse_spec_analysis_score(project_dir),
+        has_architecture=(project_dir / "ARCHITECTURE.md").exists(),
     )
 
 
@@ -725,6 +743,53 @@ async def get_project_stats_endpoint(name: str):
         raise HTTPException(status_code=404, detail="Project directory not found")
 
     return get_project_stats(project_dir)
+
+
+@router.get("/{name}/spec-analysis")
+async def get_spec_analysis(name: str):
+    """Get the spec analysis report content."""
+    _init_imports()
+    (_, _, get_project_path, _, _, _, _) = _get_registry_functions()
+
+    name = validate_project_name(name)
+    project_dir = get_project_path(name)
+
+    if not project_dir:
+        raise HTTPException(status_code=404, detail=f"Project '{name}' not found")
+
+    report_path = project_dir / ".autoforge" / "spec-analysis.md"
+    if not report_path.exists():
+        raise HTTPException(status_code=404, detail="Spec analysis report not found")
+
+    try:
+        content = report_path.read_text(encoding="utf-8")
+        score = _parse_spec_analysis_score(project_dir)
+        return {"content": content, "score": score}
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read spec analysis: {e}")
+
+
+@router.get("/{name}/architecture")
+async def get_architecture(name: str):
+    """Get the architecture document content."""
+    _init_imports()
+    (_, _, get_project_path, _, _, _, _) = _get_registry_functions()
+
+    name = validate_project_name(name)
+    project_dir = get_project_path(name)
+
+    if not project_dir:
+        raise HTTPException(status_code=404, detail=f"Project '{name}' not found")
+
+    arch_path = project_dir / "ARCHITECTURE.md"
+    if not arch_path.exists():
+        raise HTTPException(status_code=404, detail="Architecture document not found")
+
+    try:
+        content = arch_path.read_text(encoding="utf-8")
+        return {"content": content}
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read architecture document: {e}")
 
 
 @router.post("/{name}/reset")
@@ -876,4 +941,6 @@ async def update_project_settings(name: str, settings: ProjectSettingsUpdate):
         default_concurrency=get_project_concurrency(name),
         boilerplate_id=settings_bp_id,
         style_id=settings_st_id,
+        spec_analysis_score=_parse_spec_analysis_score(project_dir),
+        has_architecture=(project_dir / "ARCHITECTURE.md").exists(),
     )

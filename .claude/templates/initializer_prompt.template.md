@@ -9,6 +9,14 @@ Start by reading `app_spec.txt` in your working directory. This file contains
 the complete specification for what you need to build. Read it carefully
 before proceeding.
 
+## ARCHITECTURE REFERENCE
+
+Before creating features, read `ARCHITECTURE.md` in the project root if it exists. Use the architecture document for:
+- Consistent entity and table naming in feature descriptions
+- Correct API endpoint paths in feature steps
+- Proper component names and hierarchy in UI feature steps
+- Accurate dependency ordering (features that define schemas before features that use them)
+
 ---
 
 ## REQUIRED FEATURE COUNT
@@ -381,7 +389,7 @@ These directories provide the structure for generated tests created during featu
 
 ### ENDING THIS SESSION
 
-Once you have completed the four tasks above:
+Once you have completed the five tasks above:
 
 1. Commit all work with a descriptive message
 2. Verify features were created using the feature_get_stats tool
@@ -392,3 +400,42 @@ Once you have completed the four tasks above:
 Feature implementation will be handled by parallel coding agents that spawn after
 you complete initialization. Starting implementation here would create a bottleneck
 and defeat the purpose of the parallel architecture.
+
+## TASK 5: DEPENDENCY AUTO-DETECTION (Second Pass)
+
+After creating all features, perform a second pass to automatically detect and set dependencies between features. This reduces manual dependency configuration and ensures the build order is correct.
+
+### Heuristic Rules
+
+Apply these rules to identify dependencies:
+
+| Pattern | Rule | Example |
+|---------|------|---------|
+| Entity CRUD | "Create X" depends on "X database schema/model" | "Create user profile page" depends on "User model setup" |
+| Auth requirement | Any feature requiring auth depends on "Authentication setup" | "Admin dashboard" depends on "Auth system" |
+| UI composition | Page features depend on their component features | "Dashboard page" depends on "Chart component", "Stats widget" |
+| API consumer | Frontend features depend on their backend API features | "User list page" depends on "GET /api/users endpoint" |
+| Data relationship | Features using related entities depend on parent entity features | "Order items" depends on "Orders", "Products" |
+| Configuration | Features using config/env depend on "Project setup" or "Config" features | "Email notifications" depends on "Email service setup" |
+
+### Dependency Principles
+
+1. **Infrastructure first**: Database, auth, and config features should have no dependencies (or depend only on project setup)
+2. **Wide graphs preferred**: Maximize parallelization by keeping dependency chains short
+3. **Maximum 20 dependencies per feature**: If a feature has more, it's likely too granular
+4. **No circular dependencies**: The dependency graph must be a DAG (directed acyclic graph)
+5. **Transitive reduction**: Don't add A→C if A→B→C already exists (the dependency is implied)
+
+### Process
+
+1. Call `feature_get_summary` to get all features with their IDs and names
+2. For each feature, analyze its name, description, and steps against the heuristic rules
+3. Call `feature_set_dependencies` for each feature that needs dependencies
+4. Call `feature_get_graph` to verify the dependency graph is valid (no cycles)
+5. Log a summary: "Set dependencies for X features, Y total dependency edges"
+
+### Important
+- Only set dependencies between features that ACTUALLY exist (check IDs from the summary)
+- If `feature_set_dependencies` reports a cycle, remove the problematic dependency and try again
+- This is a best-effort enhancement - it's OK if some dependencies are missed
+- Do NOT modify feature names, descriptions, or steps during this pass

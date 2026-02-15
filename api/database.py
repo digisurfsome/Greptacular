@@ -60,6 +60,9 @@ class Feature(Base):
     # Dependencies: list of feature IDs that must be completed before this feature
     # NULL/empty = no dependencies (backwards compatible)
     dependencies = Column(JSON, nullable=True, default=None)
+    # QA pipeline columns: track review and QA verification status
+    reviewed = Column(Boolean, nullable=False, default=False, index=True)
+    qa_verified = Column(Boolean, nullable=False, default=False, index=True)
 
     def to_dict(self) -> dict:
         """Convert feature to dictionary for JSON serialization."""
@@ -75,6 +78,9 @@ class Feature(Base):
             "in_progress": self.in_progress if self.in_progress is not None else False,
             # Dependencies: NULL/empty treated as empty list for backwards compat
             "dependencies": self.dependencies if self.dependencies else [],
+            # QA pipeline status
+            "reviewed": self.reviewed if self.reviewed is not None else False,
+            "qa_verified": self.qa_verified if self.qa_verified is not None else False,
         }
 
     def get_dependencies_safe(self) -> list[int]:
@@ -251,6 +257,19 @@ def _migrate_add_testing_columns(engine) -> None:
     pass
 
 
+def _migrate_add_qa_columns(engine) -> None:
+    """Add reviewed and qa_verified columns to existing databases."""
+    with engine.connect() as conn:
+        result = conn.execute(text("PRAGMA table_info(features)"))
+        columns = [row[1] for row in result.fetchall()]
+        if "reviewed" not in columns:
+            conn.execute(text("ALTER TABLE features ADD COLUMN reviewed BOOLEAN DEFAULT 0"))
+            conn.commit()
+        if "qa_verified" not in columns:
+            conn.execute(text("ALTER TABLE features ADD COLUMN qa_verified BOOLEAN DEFAULT 0"))
+            conn.commit()
+
+
 def _is_network_path(path: Path) -> bool:
     """Detect if path is on a network filesystem.
 
@@ -425,6 +444,7 @@ def create_database(project_dir: Path) -> tuple:
     _migrate_fix_null_boolean_fields(engine)
     _migrate_add_dependencies_column(engine)
     _migrate_add_testing_columns(engine)
+    _migrate_add_qa_columns(engine)
 
     # Migrate to add schedules tables
     _migrate_add_schedules_tables(engine)

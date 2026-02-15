@@ -366,6 +366,19 @@ Set up the basic project structure based on what's specified in `app_spec.txt`.
 This typically includes directories for frontend, backend, and any other
 components mentioned in the spec.
 
+### Test Scaffolding
+
+After creating all features, scaffold the test directories:
+
+1. Create `tests/e2e/` with:
+   - `playwright.config.ts` - Playwright configuration for e2e tests
+   - `package.json` with `@playwright/test` dependency
+
+2. Create `tests/api/` with:
+   - `vitest.config.ts` - Vitest configuration for API tests
+
+These directories provide the structure for generated tests created during feature implementation.
+
 ### ENDING THIS SESSION
 
 Once you have completed the four tasks above:

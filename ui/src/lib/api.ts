@@ -616,3 +616,19 @@ export async function deleteSchedule(
 export async function getNextScheduledRun(projectName: string): Promise<NextRunResponse> {
   return fetchJSON(`/projects/${encodeURIComponent(projectName)}/schedules/next`)
 }
+
+// ============================================================================
+// QA Reports API
+// ============================================================================
+
+export async function getQAReport(projectName: string): Promise<{ content: string }> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/features/qa-report`)
+}
+
+export async function getComputerUseReport(projectName: string): Promise<Record<string, unknown>> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/features/computer-use-report`)
+}
+
+export async function getQAScreenshots(projectName: string): Promise<{ screenshots: { name: string; path: string }[] }> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/features/qa-screenshots`)
+}

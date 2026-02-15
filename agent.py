@@ -34,6 +34,8 @@ from prompts import (
     get_batch_feature_prompt,
     get_coding_prompt,
     get_initializer_prompt,
+    get_qa_prompt,
+    get_review_prompt,
     get_single_feature_prompt,
     get_testing_prompt,
 )
@@ -228,6 +230,12 @@ async def run_autonomous_agent(
     elif agent_type == "testing":
         print("Running as TESTING agent (regression testing)")
         print_progress_summary(project_dir)
+    elif agent_type == "reviewer":
+        print("Running as REVIEWER agent (code review)")
+        print_progress_summary(project_dir)
+    elif agent_type == "qa":
+        print("Running as QA agent (final quality assurance)")
+        print_progress_summary(project_dir)
     else:
         print("Running as CODING agent")
         print_progress_summary(project_dir)
@@ -278,6 +286,11 @@ async def run_autonomous_agent(
             prompt = get_initializer_prompt(project_dir)
         elif agent_type == "testing":
             prompt = get_testing_prompt(project_dir, testing_feature_id, testing_feature_ids)
+        elif agent_type == "reviewer":
+            # Reviewer agents receive feature IDs via the testing_feature_ids parameter
+            prompt = get_review_prompt(project_dir, testing_feature_ids)
+        elif agent_type == "qa":
+            prompt = get_qa_prompt(project_dir)
         elif feature_ids and len(feature_ids) > 1:
             # Batch mode (used by orchestrator for multi-feature coding agents)
             prompt = get_batch_feature_prompt(feature_ids, project_dir, yolo_mode)
@@ -388,7 +401,7 @@ async def run_autonomous_agent(
                 print("The autonomous agent has finished its work.")
                 break
 
-            # Single-feature mode, batch mode, or testing agent: exit after one session
+            # Single-feature mode, batch mode, or testing/reviewer/qa agent: exit after one session
             if feature_ids and len(feature_ids) > 1:
                 print(f"\nBatch mode: Features {', '.join(f'#{fid}' for fid in feature_ids)} session complete.")
                 break
@@ -401,6 +414,12 @@ async def run_autonomous_agent(
                 break
             elif agent_type == "testing":
                 print("\nTesting agent complete. Terminating session.")
+                break
+            elif agent_type == "reviewer":
+                print("\nReviewer agent complete. Terminating session.")
+                break
+            elif agent_type == "qa":
+                print("\nQA agent complete. Terminating session.")
                 break
 
             # Reset rate limit retries only if no rate limit signal was detected

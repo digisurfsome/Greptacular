@@ -64,6 +64,42 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     }
   }
 
+  const handleReviewRatioChange = (ratio: number) => {
+    if (!updateSettings.isPending) {
+      updateSettings.mutate({ review_agent_ratio: ratio })
+    }
+  }
+
+  const handleReviewBatchSizeChange = (size: number) => {
+    if (!updateSettings.isPending) {
+      updateSettings.mutate({ review_batch_size: size })
+    }
+  }
+
+  const handleAutoQAToggle = () => {
+    if (settings && !updateSettings.isPending) {
+      updateSettings.mutate({ auto_qa: !settings.auto_qa })
+    }
+  }
+
+  const handleQAThoroughnessChange = (thoroughness: string) => {
+    if (!updateSettings.isPending) {
+      updateSettings.mutate({ qa_thoroughness: thoroughness })
+    }
+  }
+
+  const handleComputerUseToggle = () => {
+    if (settings && !updateSettings.isPending) {
+      updateSettings.mutate({ computer_use_enabled: !settings.computer_use_enabled })
+    }
+  }
+
+  const handleComputerUseBudgetChange = (budget: number) => {
+    if (!updateSettings.isPending) {
+      updateSettings.mutate({ computer_use_budget: budget })
+    }
+  }
+
   const handleProviderChange = (providerId: string) => {
     if (!updateSettings.isPending) {
       updateSettings.mutate({ api_provider: providerId })
@@ -429,6 +465,136 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </Button>
                 ))}
               </div>
+            </div>
+
+            <hr className="border-border" />
+
+            {/* QA Pipeline Settings */}
+            <div className="space-y-4">
+              <Label className="font-medium text-base">QA Pipeline</Label>
+
+              {/* Review Agent Ratio */}
+              <div className="space-y-2">
+                <Label className="text-sm">Review Agents</Label>
+                <p className="text-xs text-muted-foreground">
+                  Code review agents after features pass (0 = disabled)
+                </p>
+                <div className="flex gap-2">
+                  {[0, 1, 2, 3].map((ratio) => (
+                    <Button
+                      key={ratio}
+                      variant={(settings.review_agent_ratio ?? 1) === ratio ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => handleReviewRatioChange(ratio)}
+                      disabled={isSaving}
+                      className="flex-1"
+                    >
+                      {ratio}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Review Batch Size */}
+              <div className="space-y-2">
+                <Label className="text-sm">Review Batch Size</Label>
+                <p className="text-xs text-muted-foreground">
+                  Features per review agent
+                </p>
+                <div className="flex gap-2">
+                  {[1, 3, 5, 10].map((size) => (
+                    <Button
+                      key={size}
+                      variant={(settings.review_batch_size ?? 5) === size ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => handleReviewBatchSizeChange(size)}
+                      disabled={isSaving}
+                      className="flex-1"
+                    >
+                      {size}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Auto QA Toggle */}
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="auto-qa" className="text-sm font-medium">
+                    Auto QA
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Auto-run QA when all features pass review
+                  </p>
+                </div>
+                <Switch
+                  id="auto-qa"
+                  checked={settings.auto_qa ?? true}
+                  onCheckedChange={handleAutoQAToggle}
+                  disabled={isSaving}
+                />
+              </div>
+
+              {/* QA Thoroughness */}
+              <div className="space-y-2">
+                <Label className="text-sm">QA Thoroughness</Label>
+                <div className="flex gap-2">
+                  {['standard', 'thorough'].map((level) => (
+                    <Button
+                      key={level}
+                      variant={(settings.qa_thoroughness ?? 'standard') === level ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => handleQAThoroughnessChange(level)}
+                      disabled={isSaving}
+                      className="flex-1 capitalize"
+                    >
+                      {level}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Computer Use Toggle */}
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="computer-use" className="text-sm font-medium">
+                    Computer Use QA
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Exploratory testing after QA passes
+                  </p>
+                </div>
+                <Switch
+                  id="computer-use"
+                  checked={settings.computer_use_enabled ?? false}
+                  onCheckedChange={handleComputerUseToggle}
+                  disabled={isSaving}
+                />
+              </div>
+
+              {/* Computer Use Budget */}
+              {settings.computer_use_enabled && (
+                <div className="space-y-2">
+                  <Label className="text-sm">Computer Use Budget</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Max API spend per CU session
+                  </p>
+                  <div className="flex gap-2">
+                    {[1, 3, 5, 10].map((budget) => (
+                      <Button
+                        key={budget}
+                        variant={(settings.computer_use_budget ?? 5) === budget ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => handleComputerUseBudgetChange(budget)}
+                        disabled={isSaving}
+                        className="flex-1"
+                      >
+                        ${budget}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Update Error */}

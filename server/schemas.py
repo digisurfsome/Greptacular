@@ -128,6 +128,8 @@ class FeatureResponse(FeatureBase):
     priority: int
     passes: bool
     in_progress: bool
+    reviewed: bool = False
+    qa_verified: bool = False
     blocked: bool = False  # Computed: has unmet dependencies
     blocking_dependencies: list[int] = Field(default_factory=list)  # Computed
 
@@ -433,6 +435,13 @@ class SettingsResponse(BaseModel):
     api_base_url: str | None = None
     api_has_auth_token: bool = False  # Never expose actual token
     api_model: str | None = None
+    # QA pipeline settings
+    review_agent_ratio: int = 1
+    review_batch_size: int = 5
+    auto_qa: bool = True
+    qa_thoroughness: str = "standard"
+    computer_use_enabled: bool = False
+    computer_use_budget: float = 5.0
 
 
 class ModelsResponse(BaseModel):
@@ -452,6 +461,13 @@ class SettingsUpdate(BaseModel):
     api_base_url: str | None = Field(None, max_length=500)
     api_auth_token: str | None = Field(None, max_length=500)  # Write-only, never returned
     api_model: str | None = Field(None, max_length=200)
+    # QA pipeline settings
+    review_agent_ratio: int | None = None
+    review_batch_size: int | None = None
+    auto_qa: bool | None = None
+    qa_thoroughness: str | None = None
+    computer_use_enabled: bool | None = None
+    computer_use_budget: float | None = None
 
     @field_validator('api_base_url')
     @classmethod
@@ -486,6 +502,34 @@ class SettingsUpdate(BaseModel):
     def validate_batch_size(cls, v: int | None) -> int | None:
         if v is not None and (v < 1 or v > 3):
             raise ValueError("batch_size must be between 1 and 3")
+        return v
+
+    @field_validator('review_agent_ratio')
+    @classmethod
+    def validate_review_ratio(cls, v: int | None) -> int | None:
+        if v is not None and (v < 0 or v > 3):
+            raise ValueError("review_agent_ratio must be between 0 and 3")
+        return v
+
+    @field_validator('review_batch_size')
+    @classmethod
+    def validate_review_batch_size(cls, v: int | None) -> int | None:
+        if v is not None and (v < 1 or v > 10):
+            raise ValueError("review_batch_size must be between 1 and 10")
+        return v
+
+    @field_validator('qa_thoroughness')
+    @classmethod
+    def validate_qa_thoroughness(cls, v: str | None) -> str | None:
+        if v is not None and v not in ("standard", "thorough"):
+            raise ValueError("qa_thoroughness must be 'standard' or 'thorough'")
+        return v
+
+    @field_validator('computer_use_budget')
+    @classmethod
+    def validate_computer_use_budget(cls, v: float | None) -> float | None:
+        if v is not None and (v < 1.0 or v > 10.0):
+            raise ValueError("computer_use_budget must be between 1.0 and 10.0")
         return v
 
 

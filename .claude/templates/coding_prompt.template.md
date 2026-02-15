@@ -210,6 +210,24 @@ Before marking a feature passing, grep for mock/placeholder data patterns in src
 
 For any feature involving CRUD or data persistence: create unique test data (e.g., "RESTART_TEST_12345"), verify it exists, then fully stop and restart the dev server. After restart, verify the test data still exists. If data is gone, the implementation uses in-memory storage -- run STEP 5.6 greps, find the mock pattern, and replace with real database queries. Clean up test data after verification. This test catches in-memory stores like `globalThis.devStore` that pass all other tests but lose data on restart.
 
+### STEP 5.8: GENERATE PERSISTENT TEST FILES
+
+After marking a feature as passing, generate permanent test files:
+
+1. **E2E Test**: Create `tests/e2e/feature-{ID}-{slug}.spec.ts`
+   - Import from `@playwright/test`
+   - Include real `expect()` assertions that verify the feature works
+   - Test the actual UI behavior the feature implements
+   - Name the test descriptively based on the feature name
+
+2. **API Test** (for API features): Create `tests/api/feature-{ID}-{slug}.test.ts`
+   - Use vitest for API endpoint testing
+   - Include request/response assertions
+
+Where `{ID}` is the feature ID and `{slug}` is the feature name slugified (lowercase, hyphens).
+
+These tests become the permanent regression test suite for the project.
+
 ### STEP 6: UPDATE FEATURE STATUS (CAREFULLY!)
 
 **YOU CAN ONLY MODIFY ONE FIELD: "passes"**

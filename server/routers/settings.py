@@ -95,6 +95,16 @@ def _parse_bool(value: str | None, default: bool = False) -> bool:
     return value.lower() == "true"
 
 
+def _parse_float(value: str | None, default: float) -> float:
+    """Parse float setting with default fallback."""
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return default
+
+
 @router.get("", response_model=SettingsResponse)
 async def get_settings():
     """Get current global settings."""
@@ -117,6 +127,13 @@ async def get_settings():
         api_base_url=all_settings.get("api_base_url"),
         api_has_auth_token=bool(all_settings.get("api_auth_token")),
         api_model=all_settings.get("api_model"),
+        # QA pipeline settings
+        review_agent_ratio=_parse_int(all_settings.get("review_agent_ratio"), 1),
+        review_batch_size=_parse_int(all_settings.get("review_batch_size"), 5),
+        auto_qa=_parse_bool(all_settings.get("auto_qa"), default=True),
+        qa_thoroughness=all_settings.get("qa_thoroughness", "standard"),
+        computer_use_enabled=_parse_bool(all_settings.get("computer_use_enabled"), default=False),
+        computer_use_budget=_parse_float(all_settings.get("computer_use_budget"), 5.0),
     )
 
 
@@ -163,6 +180,25 @@ async def update_settings(update: SettingsUpdate):
     if update.api_model is not None:
         set_setting("api_model", update.api_model)
 
+    # QA pipeline settings
+    if update.review_agent_ratio is not None:
+        set_setting("review_agent_ratio", str(update.review_agent_ratio))
+
+    if update.review_batch_size is not None:
+        set_setting("review_batch_size", str(update.review_batch_size))
+
+    if update.auto_qa is not None:
+        set_setting("auto_qa", "true" if update.auto_qa else "false")
+
+    if update.qa_thoroughness is not None:
+        set_setting("qa_thoroughness", update.qa_thoroughness)
+
+    if update.computer_use_enabled is not None:
+        set_setting("computer_use_enabled", "true" if update.computer_use_enabled else "false")
+
+    if update.computer_use_budget is not None:
+        set_setting("computer_use_budget", str(update.computer_use_budget))
+
     # Return updated settings
     all_settings = get_all_settings()
     api_provider = all_settings.get("api_provider", "claude")
@@ -181,4 +217,11 @@ async def update_settings(update: SettingsUpdate):
         api_base_url=all_settings.get("api_base_url"),
         api_has_auth_token=bool(all_settings.get("api_auth_token")),
         api_model=all_settings.get("api_model"),
+        # QA pipeline settings
+        review_agent_ratio=_parse_int(all_settings.get("review_agent_ratio"), 1),
+        review_batch_size=_parse_int(all_settings.get("review_batch_size"), 5),
+        auto_qa=_parse_bool(all_settings.get("auto_qa"), default=True),
+        qa_thoroughness=all_settings.get("qa_thoroughness", "standard"),
+        computer_use_enabled=_parse_bool(all_settings.get("computer_use_enabled"), default=False),
+        computer_use_budget=_parse_float(all_settings.get("computer_use_budget"), 5.0),
     )

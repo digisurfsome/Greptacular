@@ -272,6 +272,10 @@ def _strip_browser_testing_sections(prompt: str) -> str:
         "2. Verify code compiles (lint and type-check pass)",
     )
 
+    # NOTE: STEP 5.8 (Generate Persistent Test Files) is intentionally preserved
+    # even in YOLO mode. Test file generation is not browser testing -- it creates
+    # the permanent regression test suite for the project.
+
     if prompt == original_prompt:
         print("[YOLO] Warning: No browser testing sections found to strip. "
               "Project-specific prompt may need manual YOLO adaptation.")
@@ -430,6 +434,32 @@ Process them IN ORDER: {ids_str}
 
 """
     return batch_header + base_prompt
+
+
+def get_review_prompt(
+    project_dir: Path | None = None,
+    review_feature_ids: list[int] | None = None,
+) -> str:
+    """Load the reviewer agent prompt.
+
+    Args:
+        project_dir: Optional project directory for project-specific prompts
+        review_feature_ids: List of feature IDs to review
+    """
+    base_prompt = load_prompt("reviewer_prompt", project_dir)
+    if review_feature_ids:
+        ids_str = ", ".join(str(fid) for fid in review_feature_ids)
+        return base_prompt.replace("{{REVIEW_FEATURE_IDS}}", ids_str)
+    return base_prompt.replace("{{REVIEW_FEATURE_IDS}}", "(none assigned)")
+
+
+def get_qa_prompt(project_dir: Path | None = None) -> str:
+    """Load the QA agent prompt.
+
+    Args:
+        project_dir: Optional project directory for project-specific prompts
+    """
+    return load_prompt("qa_prompt", project_dir)
 
 
 def get_app_spec(project_dir: Path) -> str:

@@ -163,6 +163,10 @@ class ParallelOrchestrator:
         testing_agent_ratio: int = 1,
         testing_batch_size: int = DEFAULT_TESTING_BATCH_SIZE,
         batch_size: int = 3,
+        review_agent_ratio: int = 1,
+        review_batch_size: int = 5,
+        auto_qa: bool = True,
+        qa_thoroughness: str = "standard",
         on_output: Callable[[int, str], None] | None = None,
         on_status: Callable[[int, str], None] | None = None,
     ):
@@ -178,6 +182,12 @@ class ParallelOrchestrator:
                 0 = disabled, 1-3 = maintain that many testing agents running independently.
             testing_batch_size: Number of features to include per testing session (1-5).
                 Each testing agent receives this many features to regression test.
+            batch_size: Max features per coding agent batch (1-3).
+            review_agent_ratio: Number of review agents to maintain (0-3).
+                0 = disabled, 1-3 = maintain that many review agents running independently.
+            review_batch_size: Number of features per review batch (1-10).
+            auto_qa: Whether to auto-spawn QA agent when all features are reviewed.
+            qa_thoroughness: QA thoroughness level ("standard" or "thorough").
             on_output: Callback for agent output (feature_id, line)
             on_status: Callback for agent status changes (feature_id, status)
         """
@@ -188,6 +198,10 @@ class ParallelOrchestrator:
         self.testing_agent_ratio = min(max(testing_agent_ratio, 0), 3)  # Clamp 0-3
         self.testing_batch_size = min(max(testing_batch_size, 1), 5)  # Clamp 1-5
         self.batch_size = min(max(batch_size, 1), 3)  # Clamp 1-3
+        self.review_agent_ratio = min(max(review_agent_ratio, 0), 3)  # Clamp 0-3
+        self.review_batch_size = min(max(review_batch_size, 1), 10)  # Clamp 1-10
+        self.auto_qa = auto_qa
+        self.qa_thoroughness = qa_thoroughness
         self.on_output = on_output
         self.on_status = on_status
 
@@ -199,6 +213,12 @@ class ParallelOrchestrator:
         # Testing agents: pid -> (feature_id, process)
         # Keyed by PID (not feature_id) because multiple agents can test the same feature
         self.running_testing_agents: dict[int, tuple[int, subprocess.Popen]] = {}
+        # Review agents: pid -> (feature_id, process)
+        # Keyed by PID (same pattern as testing agents)
+        self.running_review_agents: dict[int, tuple[int, subprocess.Popen]] = {}
+        # QA agent tracking
+        self.running_qa_agent: subprocess.Popen | None = None
+        self._qa_spawned = False
         # Legacy alias for backward compatibility
         self.running_agents = self.running_coding_agents
         self.abort_events: dict[int, threading.Event] = {}
@@ -719,7 +739,8 @@ class ParallelOrchestrator:
             with self._lock:
                 current_testing = len(self.running_testing_agents)
                 desired = self.testing_agent_ratio
-                total_agents = len(self.running_coding_agents) + current_testing
+                total_agents = (len(self.running_coding_agents) + current_testing +
+                               len(self.running_review_agents))
 
                 # Check if we need more testing agents
                 if current_testing >= desired:
@@ -741,6 +762,194 @@ class ParallelOrchestrator:
                 debug_log.log("TESTING", f"Spawn failed, stopping: {msg}")
                 return
 
+    # =========================================================================
+    # Review Agent Management
+    # =========================================================================
+
+    def _get_review_batch(self, batch_size: int = 5) -> list[int]:
+        """Select passing-but-unreviewed features for review.
+
+        Returns feature IDs where passes=True and reviewed=False.
+        Excludes features already being reviewed by running review agents.
+        """
+        session = self.get_session()
+        try:
+            session.expire_all()
+            features = (
+                session.query(Feature)
+                .filter(Feature.passes == True)
+                .filter(Feature.in_progress == False)
+                .all()
+            )
+            # Filter to unreviewed features
+            unreviewed = []
+            for f in features:
+                reviewed = getattr(f, 'reviewed', False)
+                if not reviewed:
+                    unreviewed.append(f.id)
+
+            # Exclude features already being reviewed
+            with self._lock:
+                reviewing_ids = {fid for _, (fid, _) in self.running_review_agents.items()}
+
+            available = [fid for fid in unreviewed if fid not in reviewing_ids]
+            return available[:batch_size]
+        finally:
+            session.close()
+
+    def _maintain_review_agents(self, feature_dicts: list[dict] | None = None) -> None:
+        """Maintain the desired count of review agents.
+
+        Spawns review agents for passing-but-unreviewed features.
+        Follows the same pattern as _maintain_testing_agents().
+        """
+        if self.review_agent_ratio == 0:
+            return
+
+        # Get features needing review
+        batch = self._get_review_batch(self.review_batch_size)
+        if not batch:
+            return
+
+        with self._lock:
+            current_review = len(self.running_review_agents)
+            if current_review >= self.review_agent_ratio:
+                return
+            total_agents = (len(self.running_coding_agents) +
+                           len(self.running_testing_agents) +
+                           current_review)
+            if total_agents >= MAX_TOTAL_AGENTS:
+                return
+
+        self._spawn_review_agent(batch)
+
+    def _spawn_review_agent(self, feature_ids: list[int]) -> tuple[bool, str]:
+        """Spawn a review agent subprocess for a batch of features.
+
+        The review agent runs the code review prompt against the specified
+        features and marks them as reviewed on success.
+        """
+        batch_str = ",".join(str(fid) for fid in feature_ids)
+
+        cmd = [
+            sys.executable,
+            "-u",
+            str(AUTOFORGE_ROOT / "autonomous_agent_demo.py"),
+            "--project-dir", str(self.project_dir),
+            "--max-iterations", "1",
+            "--agent-type", "reviewer",
+            "--review-feature-ids", batch_str,
+        ]
+        if self.model:
+            cmd.extend(["--model", self.model])
+
+        try:
+            popen_kwargs: dict[str, Any] = {
+                "stdin": subprocess.DEVNULL,
+                "stdout": subprocess.PIPE,
+                "stderr": subprocess.STDOUT,
+                "text": True,
+                "encoding": "utf-8",
+                "errors": "replace",
+                "cwd": str(self.project_dir),
+                "env": {**os.environ, "PYTHONUNBUFFERED": "1"},
+            }
+            if sys.platform == "win32":
+                popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+
+            proc = subprocess.Popen(cmd, **popen_kwargs)
+        except Exception as e:
+            return False, f"Failed to start review agent: {e}"
+
+        with self._lock:
+            self.running_review_agents[proc.pid] = (feature_ids[0], proc)
+
+        threading.Thread(
+            target=self._read_output,
+            args=(feature_ids[0], proc, threading.Event(), "reviewer"),
+            daemon=True
+        ).start()
+
+        print(f"Started review agent for features [{batch_str}]", flush=True)
+        debug_log.log("REVIEW", f"Spawned review agent for features [{batch_str}]",
+            pid=proc.pid, feature_ids=feature_ids)
+        return True, "Started review agent"
+
+    # =========================================================================
+    # QA Agent Management
+    # =========================================================================
+
+    def _check_qa_ready(self, feature_dicts: list[dict] | None = None) -> None:
+        """Check if QA should be spawned (all features passing and reviewed).
+
+        QA is spawned once when all features are both passing and reviewed.
+        If the QA agent fails, _qa_spawned is reset to allow a retry.
+        """
+        if not self.auto_qa or self._qa_spawned:
+            return
+
+        if feature_dicts is None:
+            session = self.get_session()
+            try:
+                session.expire_all()
+                feature_dicts = [f.to_dict() for f in session.query(Feature).all()]
+            finally:
+                session.close()
+
+        if not feature_dicts:
+            return
+
+        # Check if all features are passing and reviewed
+        all_passing = all(fd.get("passes") for fd in feature_dicts)
+        all_reviewed = all(fd.get("reviewed") for fd in feature_dicts)
+
+        if all_passing and all_reviewed:
+            self._qa_spawned = True
+            self._spawn_qa_agent()
+
+    def _spawn_qa_agent(self) -> tuple[bool, str]:
+        """Spawn the QA agent subprocess for final quality assurance."""
+        cmd = [
+            sys.executable,
+            "-u",
+            str(AUTOFORGE_ROOT / "autonomous_agent_demo.py"),
+            "--project-dir", str(self.project_dir),
+            "--max-iterations", "1",
+            "--agent-type", "qa",
+        ]
+        if self.model:
+            cmd.extend(["--model", self.model])
+
+        try:
+            popen_kwargs: dict[str, Any] = {
+                "stdin": subprocess.DEVNULL,
+                "stdout": subprocess.PIPE,
+                "stderr": subprocess.STDOUT,
+                "text": True,
+                "encoding": "utf-8",
+                "errors": "replace",
+                "cwd": str(self.project_dir),
+                "env": {**os.environ, "PYTHONUNBUFFERED": "1"},
+            }
+            if sys.platform == "win32":
+                popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+
+            proc = subprocess.Popen(cmd, **popen_kwargs)
+        except Exception as e:
+            return False, f"Failed to start QA agent: {e}"
+
+        self.running_qa_agent = proc
+
+        threading.Thread(
+            target=self._read_output,
+            args=(0, proc, threading.Event(), "qa"),
+            daemon=True
+        ).start()
+
+        print("Started QA agent for final quality assurance", flush=True)
+        debug_log.log("QA", "Spawned QA agent", pid=proc.pid)
+        return True, "Started QA agent"
+
     def start_feature(self, feature_id: int, resume: bool = False) -> tuple[bool, str]:
         """Start a single coding agent for a feature.
 
@@ -756,8 +965,10 @@ class ParallelOrchestrator:
                 return False, "Feature already running"
             if len(self.running_coding_agents) >= self.max_concurrency:
                 return False, "At max concurrency"
-            # Enforce hard limit on total agents (coding + testing)
-            total_agents = len(self.running_coding_agents) + len(self.running_testing_agents)
+            # Enforce hard limit on total agents (coding + testing + review)
+            total_agents = (len(self.running_coding_agents) +
+                           len(self.running_testing_agents) +
+                           len(self.running_review_agents))
             if total_agents >= MAX_TOTAL_AGENTS:
                 return False, f"At max total agents ({total_agents}/{MAX_TOTAL_AGENTS})"
 
@@ -817,7 +1028,9 @@ class ParallelOrchestrator:
                     return False, f"Feature {fid} already running"
             if len(self.running_coding_agents) >= self.max_concurrency:
                 return False, "At max concurrency"
-            total_agents = len(self.running_coding_agents) + len(self.running_testing_agents)
+            total_agents = (len(self.running_coding_agents) +
+                           len(self.running_testing_agents) +
+                           len(self.running_review_agents))
             if total_agents >= MAX_TOTAL_AGENTS:
                 return False, f"At max total agents ({total_agents}/{MAX_TOTAL_AGENTS})"
 
@@ -1014,7 +1227,9 @@ class ParallelOrchestrator:
             if current_testing_count >= self.max_concurrency:
                 debug_log.log("TESTING", f"Skipped spawn - at max testing agents ({current_testing_count}/{self.max_concurrency})")
                 return False, f"At max testing agents ({current_testing_count})"
-            total_agents = len(self.running_coding_agents) + len(self.running_testing_agents)
+            total_agents = (len(self.running_coding_agents) +
+                           len(self.running_testing_agents) +
+                           len(self.running_review_agents))
             if total_agents >= MAX_TOTAL_AGENTS:
                 debug_log.log("TESTING", f"Skipped spawn - at max total agents ({total_agents}/{MAX_TOTAL_AGENTS})")
                 return False, f"At max total agents ({total_agents})"
@@ -1175,7 +1390,7 @@ class ParallelOrchestrator:
         feature_id: int | None,
         proc: subprocess.Popen,
         abort: threading.Event,
-        agent_type: Literal["coding", "testing"] = "coding",
+        agent_type: Literal["coding", "testing", "reviewer", "qa"] = "coding",
     ):
         """Read output from subprocess and emit events."""
         current_feature_id = feature_id
@@ -1258,7 +1473,7 @@ class ParallelOrchestrator:
         self,
         feature_id: int | None,
         return_code: int,
-        agent_type: Literal["coding", "testing"],
+        agent_type: Literal["coding", "testing", "reviewer", "qa"],
         proc: subprocess.Popen,
     ):
         """Handle agent completion.
@@ -1271,6 +1486,13 @@ class ParallelOrchestrator:
 
         For testing agents:
         - Remove from running dict (no claim to release - concurrent testing is allowed).
+
+        For review agents:
+        - Remove from running dict and log completion.
+
+        For QA agents:
+        - Clear running reference. On success, emit PROJECT_COMPLETE event.
+          On failure, allow retry by resetting _qa_spawned flag.
         """
         if agent_type == "testing":
             with self._lock:
@@ -1284,6 +1506,34 @@ class ParallelOrchestrator:
                 feature_id=feature_id,
                 status=status)
             # Signal main loop that an agent slot is available
+            self._signal_agent_completed()
+            return
+
+        if agent_type == "reviewer":
+            with self._lock:
+                self.running_review_agents.pop(proc.pid, None)
+            status = "completed" if return_code == 0 else "failed"
+            print(f"Review agent {status}", flush=True)
+            debug_log.log("COMPLETE", f"Review agent for feature #{feature_id} finished",
+                pid=proc.pid,
+                feature_id=feature_id,
+                status=status)
+            self._signal_agent_completed()
+            return
+
+        if agent_type == "qa":
+            self.running_qa_agent = None
+            status = "completed" if return_code == 0 else "failed"
+            if return_code == 0:
+                print("QA agent completed successfully!", flush=True)
+                debug_log.log("COMPLETE", "QA agent finished successfully")
+                # Emit project_complete event
+                if self.on_output:
+                    self.on_output(0, "PROJECT_COMPLETE: All features QA verified")
+            else:
+                print("QA agent failed", flush=True)
+                debug_log.log("COMPLETE", "QA agent failed", return_code=return_code)
+                self._qa_spawned = False  # Allow retry
             self._signal_agent_completed()
             return
 
@@ -1374,7 +1624,7 @@ class ParallelOrchestrator:
         return True, f"Stopped feature {feature_id}"
 
     def stop_all(self) -> None:
-        """Stop all running agents (coding and testing)."""
+        """Stop all running agents (coding, testing, review, and QA)."""
         self.is_running = False
 
         # Stop coding agents
@@ -1394,10 +1644,29 @@ class ParallelOrchestrator:
                 status=result.status, children_found=result.children_found,
                 children_terminated=result.children_terminated, children_killed=result.children_killed)
 
-        # Clear dict so get_status() doesn't report stale agents while
+        # Stop review agents
+        with self._lock:
+            review_items = list(self.running_review_agents.items())
+
+        for pid, (feature_id, proc) in review_items:
+            result = kill_process_tree(proc, timeout=5.0)
+            debug_log.log("STOP", f"Killed review agent for feature #{feature_id} (PID {pid})",
+                status=result.status, children_found=result.children_found,
+                children_terminated=result.children_terminated, children_killed=result.children_killed)
+
+        # Stop QA agent if running
+        if self.running_qa_agent is not None:
+            result = kill_process_tree(self.running_qa_agent, timeout=5.0)
+            debug_log.log("STOP", "Killed QA agent",
+                status=result.status, children_found=result.children_found,
+                children_terminated=result.children_terminated, children_killed=result.children_killed)
+            self.running_qa_agent = None
+
+        # Clear dicts so get_status() doesn't report stale agents while
         # _on_agent_complete callbacks are still in flight.
         with self._lock:
             self.running_testing_agents.clear()
+            self.running_review_agents.clear()
 
     async def run_loop(self):
         """Main orchestration loop."""
@@ -1432,6 +1701,8 @@ class ParallelOrchestrator:
         print(f"Max concurrency: {self.max_concurrency} coding agents", flush=True)
         print(f"YOLO mode: {self.yolo_mode}", flush=True)
         print(f"Regression agents: {self.testing_agent_ratio} (maintained independently)", flush=True)
+        print(f"Review agents: {self.review_agent_ratio}", flush=True)
+        print(f"Auto QA: {self.auto_qa}", flush=True)
         print(f"Batch size: {self.batch_size} features per agent", flush=True)
         print("=" * 70, flush=True)
         print(flush=True)
@@ -1532,13 +1803,38 @@ class ParallelOrchestrator:
                     _dump_database_state(feature_dicts, f"(iteration {loop_iteration})")
 
             try:
-                # Check if all complete
+                # Check if all coding work is complete
                 if self.get_all_complete(feature_dicts):
+                    # Don't exit while review or QA agents are still needed/running
+                    with self._lock:
+                        review_running = len(self.running_review_agents) > 0
+                    qa_running = self.running_qa_agent is not None
+
+                    if review_running or qa_running:
+                        # Still have review/QA work in progress - wait and recheck
+                        await self._wait_for_agent_completion()
+                        continue
+
+                    # Check if review/QA pipeline still needs work
+                    all_reviewed = all(fd.get("reviewed") for fd in feature_dicts)
+                    has_unreviewed = not all_reviewed and self.review_agent_ratio > 0
+                    if has_unreviewed:
+                        # Still need review agents - don't exit yet
+                        self._maintain_review_agents(feature_dicts)
+                        await self._wait_for_agent_completion()
+                        continue
+
                     print("\nAll features complete!", flush=True)
                     break
 
                 # Maintain testing agents independently (runs every iteration)
                 self._maintain_testing_agents(feature_dicts)
+
+                # Maintain review agents (after testing)
+                self._maintain_review_agents(feature_dicts)
+
+                # Check if QA should be spawned
+                self._check_qa_ready(feature_dicts)
 
                 # Check capacity
                 with self._lock:
@@ -1634,14 +1930,16 @@ class ParallelOrchestrator:
                 print(f"Orchestrator error: {e}", flush=True)
                 await self._wait_for_agent_completion()
 
-        # Wait for remaining agents to complete
+        # Wait for remaining agents to complete (coding, testing, review, QA)
         print("Waiting for running agents to complete...", flush=True)
         while True:
             with self._lock:
                 coding_done = len(self.running_coding_agents) == 0
                 testing_done = len(self.running_testing_agents) == 0
-                if coding_done and testing_done:
-                    break
+                review_done = len(self.running_review_agents) == 0
+            qa_done = self.running_qa_agent is None
+            if coding_done and testing_done and review_done and qa_done:
+                break
             # Use short timeout since we're just waiting for final agents to finish
             await self._wait_for_agent_completion(timeout=1.0)
 
@@ -1654,9 +1952,12 @@ class ParallelOrchestrator:
                 "running_features": list(self.running_coding_agents.keys()),
                 "coding_agent_count": len(self.running_coding_agents),
                 "testing_agent_count": len(self.running_testing_agents),
+                "review_agent_count": len(self.running_review_agents),
+                "qa_agent_running": self.running_qa_agent is not None,
                 "count": len(self.running_coding_agents),  # Legacy compatibility
                 "max_concurrency": self.max_concurrency,
                 "testing_agent_ratio": self.testing_agent_ratio,
+                "review_agent_ratio": self.review_agent_ratio,
                 "is_running": self.is_running,
                 "yolo_mode": self.yolo_mode,
             }
@@ -1699,6 +2000,10 @@ async def run_parallel_orchestrator(
     testing_agent_ratio: int = 1,
     testing_batch_size: int = DEFAULT_TESTING_BATCH_SIZE,
     batch_size: int = 3,
+    review_agent_ratio: int = 1,
+    review_batch_size: int = 5,
+    auto_qa: bool = True,
+    qa_thoroughness: str = "standard",
 ) -> None:
     """Run the unified orchestrator.
 
@@ -1710,6 +2015,10 @@ async def run_parallel_orchestrator(
         testing_agent_ratio: Number of regression agents to maintain (0-3)
         testing_batch_size: Number of features per testing batch (1-5)
         batch_size: Max features per coding agent batch (1-3)
+        review_agent_ratio: Number of review agents to maintain (0-3)
+        review_batch_size: Number of features per review batch (1-10)
+        auto_qa: Whether to auto-spawn QA agent when all features are reviewed
+        qa_thoroughness: QA thoroughness level ("standard" or "thorough")
     """
     print(f"[ORCHESTRATOR] run_parallel_orchestrator called with max_concurrency={max_concurrency}", flush=True)
     orchestrator = ParallelOrchestrator(
@@ -1720,6 +2029,10 @@ async def run_parallel_orchestrator(
         testing_agent_ratio=testing_agent_ratio,
         testing_batch_size=testing_batch_size,
         batch_size=batch_size,
+        review_agent_ratio=review_agent_ratio,
+        review_batch_size=review_batch_size,
+        auto_qa=auto_qa,
+        qa_thoroughness=qa_thoroughness,
     )
 
     # Set up cleanup to run on exit (handles normal exit, exceptions)
@@ -1811,8 +2124,36 @@ def main():
         default=3,
         help="Max features per coding agent batch (1-5, default: 3)",
     )
+    parser.add_argument(
+        "--review-agent-ratio",
+        type=int,
+        default=1,
+        help="Number of review agents (0-3, default: 1). Set to 0 to disable review agents.",
+    )
+    parser.add_argument(
+        "--review-batch-size",
+        type=int,
+        default=5,
+        help="Number of features per review batch (1-10, default: 5)",
+    )
+    parser.add_argument(
+        "--auto-qa",
+        action="store_true",
+        default=True,
+        help="Auto-spawn QA agent when all features are reviewed (default: True)",
+    )
+    parser.add_argument(
+        "--no-auto-qa",
+        action="store_true",
+        default=False,
+        help="Disable auto QA agent",
+    )
 
     args = parser.parse_args()
+
+    # Handle --no-auto-qa flag
+    if args.no_auto_qa:
+        args.auto_qa = False
 
     # Resolve project directory
     project_dir_input = args.project_dir
@@ -1839,6 +2180,9 @@ def main():
             testing_agent_ratio=args.testing_agent_ratio,
             testing_batch_size=args.testing_batch_size,
             batch_size=args.batch_size,
+            review_agent_ratio=args.review_agent_ratio,
+            review_batch_size=args.review_batch_size,
+            auto_qa=args.auto_qa,
         ))
     except KeyboardInterrupt:
         print("\n\nInterrupted by user", flush=True)

@@ -145,7 +145,7 @@ Authentication:
     # Agent type for subprocess mode
     parser.add_argument(
         "--agent-type",
-        choices=["initializer", "coding", "testing", "reviewer", "qa"],
+        choices=["initializer", "coding", "testing", "reviewer", "qa", "spec-analyzer", "architect"],
         default=None,
         help="Agent type (used by orchestrator to spawn specialized subprocesses)",
     )
@@ -248,6 +248,35 @@ Authentication:
         type=str,
         default=None,
         help="Comma-separated feature IDs to review (used by orchestrator for reviewer agents)",
+    )
+
+    # Pre-build intelligence arguments
+    parser.add_argument(
+        "--skip-spec-analysis",
+        action="store_true",
+        default=False,
+        help="Skip spec analysis phase (Phase 0)",
+    )
+
+    parser.add_argument(
+        "--min-spec-score",
+        type=int,
+        default=3,
+        help="Minimum spec completeness score to proceed (1-5, default: 3)",
+    )
+
+    parser.add_argument(
+        "--force-build",
+        action="store_true",
+        default=False,
+        help="Force build even if spec score is below threshold",
+    )
+
+    parser.add_argument(
+        "--skip-architect",
+        action="store_true",
+        default=False,
+        help="Skip architecture planning phase (Phase 0.5)",
     )
 
     return parser.parse_args()
@@ -386,6 +415,10 @@ def main() -> None:
                     review_batch_size=args.review_batch_size,
                     auto_qa=auto_qa,
                     qa_thoroughness=args.qa_thoroughness,
+                    skip_spec_analysis=args.skip_spec_analysis,
+                    min_spec_score=args.min_spec_score,
+                    force_build=args.force_build,
+                    skip_architect=args.skip_architect,
                 )
             )
     except KeyboardInterrupt:

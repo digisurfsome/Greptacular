@@ -167,6 +167,10 @@ class ParallelOrchestrator:
         review_batch_size: int = 5,
         auto_qa: bool = True,
         qa_thoroughness: str = "standard",
+        skip_spec_analysis: bool = False,
+        min_spec_score: int = 3,
+        force_build: bool = False,
+        skip_architect: bool = False,
         on_output: Callable[[int, str], None] | None = None,
         on_status: Callable[[int, str], None] | None = None,
     ):
@@ -188,6 +192,10 @@ class ParallelOrchestrator:
             review_batch_size: Number of features per review batch (1-10).
             auto_qa: Whether to auto-spawn QA agent when all features are reviewed.
             qa_thoroughness: QA thoroughness level ("standard" or "thorough").
+            skip_spec_analysis: Skip the spec analysis phase (Phase 0)
+            min_spec_score: Minimum completeness score to proceed (1-5)
+            force_build: Force build even if spec score is below threshold
+            skip_architect: Skip the architecture planning phase (Phase 0.5)
             on_output: Callback for agent output (feature_id, line)
             on_status: Callback for agent status changes (feature_id, status)
         """
@@ -202,6 +210,10 @@ class ParallelOrchestrator:
         self.review_batch_size = min(max(review_batch_size, 1), 10)  # Clamp 1-10
         self.auto_qa = auto_qa
         self.qa_thoroughness = qa_thoroughness
+        self.skip_spec_analysis = skip_spec_analysis
+        self.min_spec_score = min(max(min_spec_score, 1), 5)  # Clamp 1-5
+        self.force_build = force_build
+        self.skip_architect = skip_architect
         self.on_output = on_output
         self.on_status = on_status
 
@@ -1305,6 +1317,186 @@ class ParallelOrchestrator:
             total_testing_agents=testing_count)
         return True, f"Started testing agent for features [{batch_str}]"
 
+    def _spec_analysis_done(self) -> bool:
+        """Check if spec analysis has already been completed."""
+        report = self.project_dir / ".autoforge" / "spec-analysis.md"
+        return report.exists()
+
+    def _architecture_done(self) -> bool:
+        """Check if architecture planning has already been completed."""
+        arch = self.project_dir / "ARCHITECTURE.md"
+        return arch.exists()
+
+    def _parse_completeness_score(self, report_path: Path) -> int:
+        """Parse the completeness score from spec-analysis.md.
+
+        Looks for the pattern 'Completeness Score: X/5' in the report.
+        Returns 0 if the file doesn't exist or parsing fails.
+        """
+        if not report_path.exists():
+            return 0
+        try:
+            content = report_path.read_text(encoding="utf-8")
+            match = re.search(r"Completeness Score:\s*(\d)/5", content)
+            return int(match.group(1)) if match else 0
+        except (OSError, ValueError):
+            return 0
+
+    async def _run_spec_analyzer(self) -> tuple[bool, int]:
+        """Run spec analyzer agent as blocking subprocess.
+
+        Returns: (should_proceed, completeness_score)
+        """
+        debug_log.section("SPEC ANALYSIS PHASE")
+        debug_log.log("SPEC", "Starting spec analyzer subprocess",
+            project_dir=str(self.project_dir))
+
+        cmd = [
+            sys.executable, "-u",
+            str(AUTOFORGE_ROOT / "autonomous_agent_demo.py"),
+            "--project-dir", str(self.project_dir),
+            "--agent-type", "spec-analyzer",
+            "--max-iterations", "1",
+        ]
+        if self.model:
+            cmd.extend(["--model", self.model])
+
+        print("Running spec analyzer agent...", flush=True)
+
+        popen_kwargs: dict[str, Any] = {
+            "stdin": subprocess.DEVNULL,
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.STDOUT,
+            "text": True,
+            "encoding": "utf-8",
+            "errors": "replace",
+            "cwd": str(AUTOFORGE_ROOT),
+            "env": {**os.environ, "PYTHONUNBUFFERED": "1"},
+        }
+        if sys.platform == "win32":
+            popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+
+        proc = subprocess.Popen(cmd, **popen_kwargs)
+        debug_log.log("SPEC", "Spec analyzer subprocess started", pid=proc.pid)
+
+        loop = asyncio.get_running_loop()
+        try:
+            async def stream_output():
+                while True:
+                    line = await loop.run_in_executor(None, proc.stdout.readline)
+                    if not line:
+                        break
+                    print(line.rstrip(), flush=True)
+                    if self.on_output is not None:
+                        self.on_output(0, line.rstrip())
+                proc.wait()
+
+            await asyncio.wait_for(stream_output(), timeout=INITIALIZER_TIMEOUT)
+
+        except asyncio.TimeoutError:
+            print(f"ERROR: Spec analyzer timed out after {INITIALIZER_TIMEOUT // 60} minutes", flush=True)
+            debug_log.log("SPEC", "TIMEOUT - Spec analyzer exceeded time limit")
+            result = kill_process_tree(proc)
+            debug_log.log("SPEC", "Killed timed-out spec analyzer process tree",
+                status=result.status, children_found=result.children_found)
+            return True, 0  # Fail gracefully, allow build to proceed
+
+        debug_log.log("SPEC", "Spec analyzer subprocess completed",
+            return_code=proc.returncode)
+
+        if proc.returncode != 0:
+            print(f"WARNING: Spec analyzer failed with exit code {proc.returncode}", flush=True)
+            return True, 0  # Fail gracefully
+
+        # Parse the completeness score from the generated report
+        report_path = self.project_dir / ".autoforge" / "spec-analysis.md"
+        score = self._parse_completeness_score(report_path)
+        print(f"Spec analysis complete. Completeness score: {score}/5", flush=True)
+        debug_log.log("SPEC", f"Completeness score: {score}/5",
+            min_required=self.min_spec_score)
+
+        should_proceed = score >= self.min_spec_score or self.force_build
+        if not should_proceed:
+            print(f"ERROR: Spec score {score}/5 is below minimum threshold {self.min_spec_score}/5.", flush=True)
+            print("Revise the spec or use --force-build to override.", flush=True)
+
+        return should_proceed, score
+
+    async def _run_architect(self) -> bool:
+        """Run architect agent as blocking subprocess.
+
+        Returns True if architecture document was created.
+        """
+        debug_log.section("ARCHITECTURE PHASE")
+        debug_log.log("ARCH", "Starting architect subprocess",
+            project_dir=str(self.project_dir))
+
+        cmd = [
+            sys.executable, "-u",
+            str(AUTOFORGE_ROOT / "autonomous_agent_demo.py"),
+            "--project-dir", str(self.project_dir),
+            "--agent-type", "architect",
+            "--max-iterations", "1",
+        ]
+        if self.model:
+            cmd.extend(["--model", self.model])
+
+        print("Running architect agent...", flush=True)
+
+        popen_kwargs: dict[str, Any] = {
+            "stdin": subprocess.DEVNULL,
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.STDOUT,
+            "text": True,
+            "encoding": "utf-8",
+            "errors": "replace",
+            "cwd": str(AUTOFORGE_ROOT),
+            "env": {**os.environ, "PYTHONUNBUFFERED": "1"},
+        }
+        if sys.platform == "win32":
+            popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+
+        proc = subprocess.Popen(cmd, **popen_kwargs)
+        debug_log.log("ARCH", "Architect subprocess started", pid=proc.pid)
+
+        loop = asyncio.get_running_loop()
+        try:
+            async def stream_output():
+                while True:
+                    line = await loop.run_in_executor(None, proc.stdout.readline)
+                    if not line:
+                        break
+                    print(line.rstrip(), flush=True)
+                    if self.on_output is not None:
+                        self.on_output(0, line.rstrip())
+                proc.wait()
+
+            await asyncio.wait_for(stream_output(), timeout=INITIALIZER_TIMEOUT)
+
+        except asyncio.TimeoutError:
+            print(f"ERROR: Architect timed out after {INITIALIZER_TIMEOUT // 60} minutes", flush=True)
+            debug_log.log("ARCH", "TIMEOUT - Architect exceeded time limit")
+            kill_result = kill_process_tree(proc)
+            debug_log.log("ARCH", "Killed timed-out architect process tree",
+                status=kill_result.status, children_found=kill_result.children_found)
+            return False
+
+        debug_log.log("ARCH", "Architect subprocess completed",
+            return_code=proc.returncode)
+
+        if proc.returncode != 0:
+            print(f"WARNING: Architect failed with exit code {proc.returncode}", flush=True)
+            return False
+
+        # Verify ARCHITECTURE.md was created
+        arch_path = self.project_dir / "ARCHITECTURE.md"
+        if arch_path.exists():
+            print("Architecture planning complete. ARCHITECTURE.md created.", flush=True)
+            return True
+        else:
+            print("WARNING: Architect did not create ARCHITECTURE.md.", flush=True)
+            return False
+
     async def _run_initializer(self) -> bool:
         """Run initializer agent as blocking subprocess.
 
@@ -1707,6 +1899,32 @@ class ParallelOrchestrator:
         print("=" * 70, flush=True)
         print(flush=True)
 
+        # Phase 0: Spec Analysis (runs before initialization)
+        if not self.skip_spec_analysis and not self._spec_analysis_done():
+            # Check if there's a spec to analyze
+            from autoforge_paths import get_prompts_dir
+            spec_path = get_prompts_dir(self.project_dir) / "app_spec.txt"
+            legacy_spec = self.project_dir / "app_spec.txt"
+            if spec_path.exists() or legacy_spec.exists():
+                should_proceed, score = await self._run_spec_analyzer()
+                if not should_proceed:
+                    print("Build blocked by low spec score. Exiting.", flush=True)
+                    return
+            else:
+                debug_log.log("SPEC", "No app_spec.txt found, skipping spec analysis")
+        elif self._spec_analysis_done():
+            report_path = self.project_dir / ".autoforge" / "spec-analysis.md"
+            score = self._parse_completeness_score(report_path)
+            print(f"Spec analysis already complete (score: {score}/5). Skipping.", flush=True)
+
+        # Phase 0.5: Architecture Planning (runs after spec analysis, before initialization)
+        if not self.skip_architect and not self._architecture_done():
+            success = await self._run_architect()
+            if not success:
+                print("WARNING: Architecture planning failed. Continuing without ARCHITECTURE.md.", flush=True)
+        elif self._architecture_done():
+            print("Architecture planning already complete. Skipping.", flush=True)
+
         # Phase 1: Check if initialization needed
         if not has_features(self.project_dir):
             print("=" * 70, flush=True)
@@ -2004,6 +2222,10 @@ async def run_parallel_orchestrator(
     review_batch_size: int = 5,
     auto_qa: bool = True,
     qa_thoroughness: str = "standard",
+    skip_spec_analysis: bool = False,
+    min_spec_score: int = 3,
+    force_build: bool = False,
+    skip_architect: bool = False,
 ) -> None:
     """Run the unified orchestrator.
 
@@ -2019,6 +2241,10 @@ async def run_parallel_orchestrator(
         review_batch_size: Number of features per review batch (1-10)
         auto_qa: Whether to auto-spawn QA agent when all features are reviewed
         qa_thoroughness: QA thoroughness level ("standard" or "thorough")
+        skip_spec_analysis: Skip the spec analysis phase (Phase 0)
+        min_spec_score: Minimum completeness score to proceed (1-5)
+        force_build: Force build even if spec score is below threshold
+        skip_architect: Skip the architecture planning phase (Phase 0.5)
     """
     print(f"[ORCHESTRATOR] run_parallel_orchestrator called with max_concurrency={max_concurrency}", flush=True)
     orchestrator = ParallelOrchestrator(
@@ -2033,6 +2259,10 @@ async def run_parallel_orchestrator(
         review_batch_size=review_batch_size,
         auto_qa=auto_qa,
         qa_thoroughness=qa_thoroughness,
+        skip_spec_analysis=skip_spec_analysis,
+        min_spec_score=min_spec_score,
+        force_build=force_build,
+        skip_architect=skip_architect,
     )
 
     # Set up cleanup to run on exit (handles normal exit, exceptions)

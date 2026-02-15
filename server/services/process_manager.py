@@ -340,6 +340,10 @@ class AgentProcessManager:
         testing_agent_ratio: int = 1,
         playwright_headless: bool = True,
         batch_size: int = 3,
+        skip_spec_analysis: bool = False,
+        min_spec_score: int = 3,
+        force_build: bool = False,
+        skip_architect: bool = False,
     ) -> tuple[bool, str]:
         """
         Start the agent as a subprocess.
@@ -351,6 +355,10 @@ class AgentProcessManager:
             max_concurrency: Max concurrent coding agents (1-5, default 1)
             testing_agent_ratio: Number of regression testing agents (0-3, default 1)
             playwright_headless: If True, run browser in headless mode
+            skip_spec_analysis: Skip the spec analysis phase
+            min_spec_score: Minimum spec completeness score to proceed (1-5)
+            force_build: Force build even if spec score is below threshold
+            skip_architect: Skip the architecture planning phase
 
         Returns:
             Tuple of (success, message)
@@ -396,6 +404,15 @@ class AgentProcessManager:
 
         # Add --batch-size flag for multi-feature batching
         cmd.extend(["--batch-size", str(batch_size)])
+
+        # Pre-build intelligence flags
+        if skip_spec_analysis:
+            cmd.append("--skip-spec-analysis")
+        cmd.extend(["--min-spec-score", str(min_spec_score)])
+        if force_build:
+            cmd.append("--force-build")
+        if skip_architect:
+            cmd.append("--skip-architect")
 
         try:
             # Start subprocess with piped stdout/stderr

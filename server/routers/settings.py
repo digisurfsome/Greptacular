@@ -134,6 +134,11 @@ async def get_settings():
         qa_thoroughness=all_settings.get("qa_thoroughness", "standard"),
         computer_use_enabled=_parse_bool(all_settings.get("computer_use_enabled"), default=False),
         computer_use_budget=_parse_float(all_settings.get("computer_use_budget"), 5.0),
+        # Pre-build intelligence settings
+        run_spec_analyzer=_parse_bool(all_settings.get("run_spec_analyzer"), default=True),
+        min_spec_score=_parse_int(all_settings.get("min_spec_score"), 3),
+        run_architect=_parse_bool(all_settings.get("run_architect"), default=True),
+        force_build=_parse_bool(all_settings.get("force_build"), default=False),
     )
 
 
@@ -199,6 +204,19 @@ async def update_settings(update: SettingsUpdate):
     if update.computer_use_budget is not None:
         set_setting("computer_use_budget", str(update.computer_use_budget))
 
+    # Pre-build intelligence settings
+    if update.run_spec_analyzer is not None:
+        set_setting("run_spec_analyzer", "true" if update.run_spec_analyzer else "false")
+
+    if update.min_spec_score is not None:
+        set_setting("min_spec_score", str(min(max(update.min_spec_score, 1), 5)))
+
+    if update.run_architect is not None:
+        set_setting("run_architect", "true" if update.run_architect else "false")
+
+    if update.force_build is not None:
+        set_setting("force_build", "true" if update.force_build else "false")
+
     # Return updated settings
     all_settings = get_all_settings()
     api_provider = all_settings.get("api_provider", "claude")
@@ -224,4 +242,9 @@ async def update_settings(update: SettingsUpdate):
         qa_thoroughness=all_settings.get("qa_thoroughness", "standard"),
         computer_use_enabled=_parse_bool(all_settings.get("computer_use_enabled"), default=False),
         computer_use_budget=_parse_float(all_settings.get("computer_use_budget"), 5.0),
+        # Pre-build intelligence settings
+        run_spec_analyzer=_parse_bool(all_settings.get("run_spec_analyzer"), default=True),
+        min_spec_score=_parse_int(all_settings.get("min_spec_score"), 3),
+        run_architect=_parse_bool(all_settings.get("run_architect"), default=True),
+        force_build=_parse_bool(all_settings.get("force_build"), default=False),
     )

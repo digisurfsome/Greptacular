@@ -1,0 +1,765 @@
+<project_specification>
+  <project_name>autoforge-saas-platform</project_name>
+
+  <overview>
+    AutoForge SaaS Platform is the web-based control plane that turns AutoForge from a
+    developer CLI tool into a fully managed service. Non-technical users visit autoforge.com,
+    sign up, pick a tier, pay via Stripe, and receive a running AutoForge instance on Fly.io
+    in under 60 seconds -- no terminal, SSH, or Docker required. The platform also adds three
+    post-build DevOps agents (CI/CD pipeline generation, monitoring setup, and automated
+    dependency maintenance) to AutoForge's existing agent system, closing the gap between
+    "code that works locally" and "code that runs reliably in production."
+
+    The web platform is built on the Gen-Ai boilerplate (React 18 + Vite 6 + Tailwind +
+    shadcn/ui + Supabase + Stripe), which provides authentication, billing, admin dashboard,
+    credit system, and email out of the box. The DevOps agents are additions to the existing
+    AutoForge Python/FastAPI + React 19 codebase.
+  </overview>
+
+  <technology_stack>
+    <frontend>
+      <framework>React 18 with Vite 6 (Gen-Ai boilerplate)</framework>
+      <styling>Tailwind CSS with shadcn/ui and Radix UI</styling>
+      <state_management>React hooks, context, and Supabase realtime subscriptions</state_management>
+      <routing>React Router</routing>
+      <port>3000</port>
+    </frontend>
+    <backend>
+      <runtime>Supabase (Postgres, Auth, Edge Functions, Row-Level Security)</runtime>
+      <database>Supabase Postgres (extends existing Gen-Ai boilerplate schema)</database>
+      <billing>Stripe (subscriptions, one-time purchases, credit system -- already in boilerplate)</billing>
+      <email>Resend (transactional email -- already in boilerplate)</email>
+      <hosting_api>Fly.io Machines API for user instance provisioning</hosting_api>
+    </backend>
+    <autoforge_additions>
+      <runtime>Python 3.11+ with FastAPI (existing AutoForge backend)</runtime>
+      <database>SQLite with SQLAlchemy (existing AutoForge feature database)</database>
+      <frontend>React 19 with Vite 7 and Tailwind CSS v4 (existing AutoForge UI)</frontend>
+      <agent_sdk>Claude Agent SDK (existing agent infrastructure)</agent_sdk>
+    </autoforge_additions>
+    <communication>
+      <api>RESTful endpoints + Supabase Edge Functions + WebSocket for real-time updates</api>
+    </communication>
+    <deployment>
+      <web_platform>Vercel (autoforge.com)</web_platform>
+      <user_instances>Fly.io Machines (yourname.autoforge.app)</user_instances>
+    </deployment>
+  </technology_stack>
+
+  <prerequisites>
+    <environment_setup>
+      - Node.js 18+ installed
+      - npm package manager
+      - Supabase project configured (Auth, Postgres, Edge Functions)
+      - Stripe account with test and live API keys
+      - Fly.io account with API token and organization
+      - Resend account for transactional email
+      - Gen-Ai boilerplate cloned as project base
+      - Python 3.11+ (for AutoForge DevOps agent additions)
+      - Claude Code CLI (for agent testing)
+    </environment_setup>
+  </prerequisites>
+
+  <feature_count>184</feature_count>
+
+  <core_features>
+    <infrastructure>
+      - System connects to Supabase Postgres and returns data from a test query
+      - System applies all database migrations creating instances, instance_usage, billing_events, app_ideas, and builds tables
+      - Data persists in Supabase Postgres across Edge Function restarts and redeployments
+      - System contains no mock data patterns, in-memory stores, or hardcoded sample data
+      - API endpoints query real Supabase Postgres via the Supabase client, not stubs
+    </infrastructure>
+
+    <platform_foundation>
+      - System loads Gen-Ai boilerplate with AutoForge branding and environment variables on initialization
+      - System creates Row-Level Security policies enforcing user-scoped data access on all AutoForge tables
+      - System creates database indexes on user_id, status, and created_at for all new tables
+      - Landing page displays AutoForge hero section with value proposition and CTA button
+      - Landing page displays feature grid with at least 6 feature cards
+      - Landing page displays pricing table with three tiers (Starter, Pro, Agency)
+      - Landing page displays FAQ accordion with at least 5 questions
+      - Landing page displays footer with navigation links and social links
+      - Navigation header shows "Launch AutoForge" CTA button linking to signup
+    </platform_foundation>
+
+    <instance_dashboard>
+      - Authenticated user sees a protected dashboard with AutoForge branding
+      - Dashboard displays instance status card showing current state (provisioning/running/suspended/destroyed)
+      - Dashboard displays instance URL as a clickable link when instance is running
+      - Dashboard displays current subscription tier with feature summary
+      - Settings panel allows user to enter and save their Anthropic API key
+      - Settings panel displays current API key mode (BYO or metered) with explanation
+      - Settings panel displays credit balance and link to purchase more credits
+      - Dashboard shows "No instance" empty state with CTA to start onboarding wizard
+      - Dashboard shows degraded state message with retry when Fly.io API is unreachable
+    </instance_dashboard>
+
+    <stripe_tier_configuration>
+      - System configures Stripe products and prices for Starter, Pro, and Agency tiers
+      - Pricing page displays tier comparison with features, credits, and VPS specs per tier
+      - Pricing page links to Stripe checkout for each tier
+      - checkout.session.completed webhook triggers Fly.io instance provisioning
+      - invoice.payment_failed webhook initiates instance suspension flow
+      - invoice.paid webhook triggers instance resume for previously suspended instances
+      - customer.subscription.updated webhook handles tier upgrade and downgrade
+      - Billing portal link in dashboard settings allows user to manage their subscription
+      - Dashboard shows error toast with retry option when Stripe checkout fails or is cancelled
+    </stripe_tier_configuration>
+
+    <flyio_provisioning>
+      - Edge Function creates a Fly app with unique name (autoforge-{userId}) on checkout completion
+      - Edge Function creates a Fly Machine with Docker image and tier-based resource allocation
+      - Edge Function attaches a Fly Volume for persistent project data storage
+      - Edge Function sets environment variables (API key, tier, instance ID) on the Machine
+      - Edge Function polls health endpoint with 90-second timeout until instance responds
+      - Edge Function writes instance record to Supabase with status and URLs on success
+      - Edge Function rolls back all created resources (Machine, Volume, app) on any provisioning failure
+      - Edge Function sends welcome email with instance URL via Resend on successful provisioning
+      - Dashboard shows error state with retry button when provisioning fails or times out
+      - Dashboard shows provisioning progress with real-time status messages during creation
+    </flyio_provisioning>
+
+    <instance_lifecycle>
+      - System sends warning email 3 days before suspending an instance on payment failure
+      - System stops Fly Machine and sets instance status to suspended after grace period
+      - System starts Fly Machine and restores running status when payment is received
+      - System resizes Machine CPU and memory when user changes subscription tier
+      - System sets instance to destroying status when user cancels subscription
+      - System deletes Machine, Volume, and Fly app after 30-day destroy grace period
+      - Dashboard displays current lifecycle status with appropriate messaging per state
+      - Suspended instance shows "Update payment to resume" with link to billing portal
+      - Destroying instance shows countdown to permanent deletion with reactivation option
+      - Health monitoring periodically checks running instances and auto-restarts unresponsive ones
+    </instance_lifecycle>
+
+    <entitlements_api>
+      - GET /api/entitlements returns user tier, credits remaining, max agents, and available components
+      - GET /api/entitlements returns available boilerplates based on user tier
+      - POST /api/credits/deduct validates credit balance and deducts credits for a build
+      - POST /api/credits/deduct returns authorized:false with deficit amount when credits are insufficient
+      - Insufficient credits response includes checkout URL for buying more credits
+      - VPS and local AutoForge instances authenticate via JWT token against Supabase
+      - Entitlements endpoint validates JWT and rejects expired or invalid tokens
+      - Credit deduction is atomic -- no partial deductions on failure
+    </entitlements_api>
+
+    <custom_domains>
+      - User can enter a custom domain in dashboard settings
+      - System displays CNAME setup instructions with target hostname and copy button
+      - System creates a TLS certificate via Fly.io Certificates API for the custom domain
+      - System polls DNS propagation and displays verification status (pending/verified/active/error)
+      - System updates instance URL to custom domain in Supabase after successful verification
+      - Dashboard shows domain status badge next to the instance URL
+      - Dashboard shows error message with troubleshooting steps when DNS verification fails
+      - User can remove a custom domain and revert to the default autoforge.app URL
+    </custom_domains>
+
+    <usage_tracking>
+      - AutoForge instances report usage metrics (agent minutes, tokens, projects, features) to Edge Function
+      - Edge Function validates and writes usage data to instance_usage table with daily rollup
+      - Dashboard displays usage chart showing agent minutes over the past 30 days
+      - Dashboard displays usage chart showing projects created and features built
+      - Instance status card shows today's usage summary (minutes, tokens, features)
+      - System sends overage alert email when metered key users approach token budget
+      - Usage data aggregates correctly across date boundaries
+      - System silently queues failed usage reports and retries on next reporting interval
+    </usage_tracking>
+
+    <onboarding_wizard>
+      - Post-signup wizard displays multi-step flow with progress indicator
+      - Step 1 allows user to choose API key mode (BYO vs metered) with explanations
+      - Step 2 accepts Anthropic API key input and validates it against the Anthropic API
+      - Step 2 shows validation result (success checkmark or error message)
+      - Step 3 displays tier selection with feature comparison table
+      - Step 4 connects to boilerplate Stripe checkout for the selected tier
+      - Step 5 shows deploy animation with real-time status messages from provisioner
+      - Step 6 displays "Your AutoForge is ready!" with clickable instance URL
+      - Wizard sends welcome email via Resend on completion
+      - User can exit and resume the wizard at any incomplete step
+      - Wizard shows error message and retry option when API key validation fails
+      - Wizard returns to payment step with explanation when Stripe checkout is cancelled
+    </onboarding_wizard>
+
+    <admin_dashboard>
+      - Admin dashboard displays all instances table with status, tier, user email, and health
+      - Admin can search and filter instances by status, tier, or user email
+      - Admin dashboard displays revenue metrics cards (MRR, churn rate, ARPU)
+      - Revenue metrics are calculated from billing_events table data
+      - Admin can restart a user's instance via support tools panel
+      - Admin can extend a user's destroy grace period
+      - Admin can manually change a user's tier
+      - Admin dashboard displays aggregate usage analytics from instance_usage table
+      - Admin-only routes are protected with role-based access from boilerplate
+    </admin_dashboard>
+
+    <landing_page_polish>
+      - Landing page displays competitor comparison table (AutoForge vs Lovable vs Bolt vs Cursor)
+      - Landing page displays testimonials section with placeholder content
+      - Blog list page displays article cards with title, excerpt, and date
+      - Blog detail page renders markdown content with syntax highlighting
+      - Blog contains initial "What is AutoForge?" post
+      - Blog contains initial "AutoForge vs Cursor" comparison post
+      - Landing page includes title and description meta tags for SEO
+      - Landing page includes Open Graph and Twitter card meta tags for social sharing
+      - Product page includes JSON-LD structured data for search engines
+      - System generates sitemap accessible at /sitemap.xml
+      - Images use lazy loading and external resources use preconnect hints
+    </landing_page_polish>
+
+    <app_ideas_system>
+      - User can create an app idea with name, description, and target audience
+      - User can view a list of all their app ideas with status badges
+      - User can edit an app idea's details including features, design preferences, and boilerplate choice
+      - User can mark an app idea as "ready to build"
+      - User can delete an app idea with confirmation
+      - App ideas list shows empty state with CTA when no ideas exist
+      - Ideas created on web are visible in VPS/local AutoForge instances via shared Supabase
+      - User can start a build from a "ready" idea, which deducts credits and links to builds table
+    </app_ideas_system>
+
+    <build_tracking>
+      - System records every build (VPS and local) in the builds table with status and credits consumed
+      - Dashboard displays build history list with status, date, features total/passing, and credits used
+      - Build history shows which idea spawned each build (if applicable)
+      - Build detail view displays components used and boilerplate selected
+      - Active builds show real-time progress (features_passing / features_total)
+      - Failed builds display error context and retry option
+    </build_tracking>
+
+    <cicd_pipeline_agent>
+      - New agent type "cicd" is available via --agent-type cicd CLI flag
+      - New --deployment-target flag accepts vercel, railway, flyio, aws, or docker
+      - Agent auto-detects deployment target from project files when flag is not specified
+      - CI/CD prompt template loads via standard fallback chain with deployment target injection
+      - Agent generates .github/workflows/ci.yml with lint, type-check, and test steps
+      - Agent generates .github/workflows/deploy-staging.yml triggered on push to main
+      - Agent generates .github/workflows/deploy-production.yml triggered on version tags
+      - Agent generates .github/workflows/security.yml with weekly cron schedule
+      - Agent generates Dockerfile with multi-stage build optimized for detected tech stack
+      - Agent generates docker-compose.yml with app, database, and cache services
+      - Agent generates .env.example documenting all environment variables found in codebase
+      - Agent generates platform-specific deployment config (vercel.json, fly.toml, railway.toml, etc.)
+      - CI/CD agent uses read-only feature MCP tools and has no Playwright access
+      - Orchestrator spawns CI/CD agent after all features pass (post-build hook)
+    </cicd_pipeline_agent>
+
+    <monitoring_setup_agent>
+      - New agent type "monitoring" is available via --agent-type monitoring CLI flag
+      - New --monitoring-features flag accepts comma-separated list (sentry, health, analytics, uptime, logging)
+      - New --analytics-provider flag accepts plausible, posthog, or none
+      - Monitoring prompt template loads via standard fallback chain with feature list injection
+      - Agent adds Sentry error tracking to the frontend entry point with ErrorBoundary wrapper
+      - Agent adds Sentry error tracking to the backend app with unhandled exception capture
+      - Agent adds /api/health endpoint returning status, version, uptime, and component checks
+      - Health endpoint checks database connectivity, memory usage, and disk usage
+      - Health endpoint returns 200 when healthy and 503 when degraded
+      - Agent adds structured JSON logging middleware to the request pipeline
+      - Logging middleware records method, path, status, duration, and request ID per request
+      - Logging redacts Authorization headers, cookies, and password fields
+      - Agent generates uptime check script with webhook notification support
+      - Monitoring agent uses read-only feature MCP tools and has no Playwright access
+      - Orchestrator spawns monitoring agent in parallel with CI/CD agent after build completion
+    </monitoring_setup_agent>
+
+    <auto_update_agent>
+      - New agent type "auto-update" is available via --agent-type auto-update CLI flag
+      - New --update-strategy flag accepts conservative (default) or aggressive
+      - New --dry-run flag runs audit without applying changes
+      - Auto-update prompt template loads with strategy and date placeholders injected
+      - Agent runs security audit and records vulnerability count by severity
+      - Agent applies safe fixes respecting semver constraints in conservative mode
+      - Agent updates to latest versions including major bumps in aggressive mode
+      - Agent runs lint check after applying updates
+      - Agent runs type-check after applying updates
+      - Agent runs E2E tests after applying updates
+      - Agent runs API tests after applying updates
+      - Agent creates maintenance branch and PR with changelog when all tests pass
+      - Agent rolls back all changes and creates GitHub issue when any test fails
+      - Agent generates maintenance-report.md with summary, dependency table, audit results, and test results
+      - Auto-update agent uses read-only feature MCP tools and has no Playwright access
+    </auto_update_agent>
+
+    <maintenance_scheduling>
+      - System accepts schedule_type field on schedule creation to distinguish agent runs from maintenance
+      - System accepts update_strategy field on maintenance schedule creation
+      - System stores maintenance run results including date, status, packages updated, vulnerabilities fixed, and PR/issue URLs
+      - GET /api/projects/{name}/maintenance/history returns paginated maintenance run history
+      - GET /api/projects/{name}/maintenance/next-run returns next scheduled maintenance date
+      - POST /api/projects/{name}/maintenance/trigger manually starts a maintenance run
+      - GET /api/projects/{name}/maintenance/report/{id} returns full maintenance report
+      - Scheduler service spawns auto-update agent subprocess for maintenance schedules
+      - Maintenance frequency presets (weekly, biweekly, monthly) map to cron expressions
+    </maintenance_scheduling>
+
+    <devops_ui_integration>
+      - Project view includes a Maintenance tab showing last run status and next scheduled run
+      - Maintenance tab displays history table with date, status, packages updated, and PR link
+      - Maintenance tab includes "Run Now" button for manual trigger
+      - Maintenance tab includes schedule configuration (frequency, day, time, enable/disable)
+      - History rows expand to show full maintenance report content
+      - Settings modal includes deployment target dropdown for CI/CD agent
+      - Settings modal includes monitoring feature checkboxes and analytics provider dropdown
+      - Settings modal includes update strategy toggle (conservative/aggressive)
+      - MaintenanceRun TypeScript type and API hooks are added to the UI codebase
+    </devops_ui_integration>
+  </core_features>
+
+  <database_schema>
+    <tables>
+      <instances>
+        NOTE: Supabase Postgres table (autoforge.com platform)
+        - id (UUID PRIMARY KEY DEFAULT gen_random_uuid())
+        - user_id (UUID NOT NULL, FOREIGN KEY -> auth.users(id))
+        - fly_app_id (TEXT UNIQUE NOT NULL)
+        - fly_machine_id (TEXT)
+        - fly_volume_id (TEXT)
+        - instance_url (TEXT)
+        - custom_domain (TEXT)
+        - tier (TEXT NOT NULL, CHECK IN ('starter', 'pro', 'agency'))
+        - status (TEXT NOT NULL DEFAULT 'provisioning', CHECK IN ('provisioning', 'running', 'suspended', 'destroying', 'destroyed'))
+        - stripe_subscription_id (TEXT)
+        - api_key_mode (TEXT NOT NULL DEFAULT 'byo', CHECK IN ('byo', 'metered'))
+        - region (TEXT DEFAULT 'iad')
+        - created_at (TIMESTAMPTZ NOT NULL DEFAULT now())
+        - updated_at (TIMESTAMPTZ NOT NULL DEFAULT now())
+        - suspended_at (TIMESTAMPTZ)
+        - destroyed_at (TIMESTAMPTZ)
+        INDEX: idx_instances_user_id ON instances(user_id)
+        INDEX: idx_instances_status ON instances(status)
+        RLS: Users can SELECT and UPDATE only their own rows
+      </instances>
+
+      <instance_usage>
+        NOTE: Supabase Postgres table (autoforge.com platform)
+        - id (UUID PRIMARY KEY DEFAULT gen_random_uuid())
+        - instance_id (UUID NOT NULL, FOREIGN KEY -> instances(id) ON DELETE CASCADE)
+        - date (DATE NOT NULL)
+        - agent_minutes (INTEGER NOT NULL DEFAULT 0)
+        - api_tokens_used (BIGINT NOT NULL DEFAULT 0)
+        - projects_created (INTEGER NOT NULL DEFAULT 0)
+        - features_built (INTEGER NOT NULL DEFAULT 0)
+        - created_at (TIMESTAMPTZ NOT NULL DEFAULT now())
+        - updated_at (TIMESTAMPTZ NOT NULL DEFAULT now())
+        UNIQUE(instance_id, date)
+        RLS: Users can SELECT where instance_id belongs to their instance
+      </instance_usage>
+
+      <billing_events>
+        NOTE: Supabase Postgres table (autoforge.com platform)
+        - id (UUID PRIMARY KEY DEFAULT gen_random_uuid())
+        - user_id (UUID NOT NULL, FOREIGN KEY -> auth.users(id))
+        - instance_id (UUID, FOREIGN KEY -> instances(id))
+        - event_type (TEXT NOT NULL)
+        - amount_cents (INTEGER)
+        - stripe_event_id (TEXT UNIQUE)
+        - metadata (JSONB DEFAULT '{}')
+        - created_at (TIMESTAMPTZ NOT NULL DEFAULT now())
+        - updated_at (TIMESTAMPTZ NOT NULL DEFAULT now())
+        INDEX: idx_billing_events_user_id ON billing_events(user_id)
+        INDEX: idx_billing_events_created_at ON billing_events(created_at)
+        RLS: Users can SELECT only their own rows
+      </billing_events>
+
+      <app_ideas>
+        NOTE: Supabase Postgres table (shared across web, mobile, VPS, local)
+        - id (UUID PRIMARY KEY DEFAULT gen_random_uuid())
+        - user_id (UUID NOT NULL, FOREIGN KEY -> auth.users(id))
+        - name (TEXT NOT NULL)
+        - description (TEXT)
+        - target_audience (TEXT)
+        - features (JSONB DEFAULT '[]')
+        - design_preferences (TEXT)
+        - boilerplate_preference (TEXT)
+        - prd_data (JSONB DEFAULT '{}')
+        - status (TEXT NOT NULL DEFAULT 'draft', CHECK IN ('draft', 'ready', 'building', 'completed', 'archived'))
+        - build_id (UUID, FOREIGN KEY -> builds(id))
+        - created_at (TIMESTAMPTZ NOT NULL DEFAULT now())
+        - updated_at (TIMESTAMPTZ NOT NULL DEFAULT now())
+        INDEX: idx_app_ideas_user_id ON app_ideas(user_id)
+        INDEX: idx_app_ideas_status ON app_ideas(status)
+        RLS: Users can full CRUD on their own rows
+      </app_ideas>
+
+      <builds>
+        NOTE: Supabase Postgres table (tracks all builds across VPS and local)
+        - id (UUID PRIMARY KEY DEFAULT gen_random_uuid())
+        - user_id (UUID NOT NULL, FOREIGN KEY -> auth.users(id))
+        - idea_id (UUID, FOREIGN KEY -> app_ideas(id))
+        - instance_type (TEXT NOT NULL, CHECK IN ('vps', 'local'))
+        - instance_id (UUID, FOREIGN KEY -> instances(id))
+        - boilerplate_used (TEXT)
+        - credits_consumed (INTEGER NOT NULL DEFAULT 0)
+        - components_used (JSONB DEFAULT '[]')
+        - status (TEXT NOT NULL DEFAULT 'started', CHECK IN ('started', 'building', 'completed', 'failed', 'cancelled'))
+        - features_total (INTEGER DEFAULT 0)
+        - features_passing (INTEGER DEFAULT 0)
+        - created_at (TIMESTAMPTZ NOT NULL DEFAULT now())
+        - updated_at (TIMESTAMPTZ NOT NULL DEFAULT now())
+        - started_at (TIMESTAMPTZ)
+        - completed_at (TIMESTAMPTZ)
+        INDEX: idx_builds_user_id ON builds(user_id)
+        INDEX: idx_builds_status ON builds(status)
+        RLS: Users can SELECT their own rows
+      </builds>
+
+      <maintenance_runs>
+        NOTE: SQLite table in AutoForge's existing features.db (via SQLAlchemy)
+        - id (INTEGER PRIMARY KEY AUTOINCREMENT)
+        - project_name (TEXT NOT NULL, INDEXED)
+        - run_date (DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)
+        - status (TEXT NOT NULL, CHECK IN ('success', 'failure', 'dry_run'))
+        - strategy (TEXT NOT NULL, CHECK IN ('conservative', 'aggressive'))
+        - packages_updated (INTEGER NOT NULL DEFAULT 0)
+        - vulnerabilities_fixed (INTEGER NOT NULL DEFAULT 0)
+        - tests_passed (BOOLEAN)
+        - pr_url (TEXT)
+        - issue_url (TEXT)
+        - report_path (TEXT)
+        - duration_seconds (INTEGER)
+        - error_message (TEXT)
+        - created_at (DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)
+        - updated_at (DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)
+      </maintenance_runs>
+
+      <schedules_extension>
+        NOTE: Extends existing Schedule model in AutoForge's SQLAlchemy schema
+        - schedule_type (TEXT NOT NULL DEFAULT 'agent', CHECK IN ('agent', 'maintenance'))
+        - update_strategy (TEXT, CHECK IN ('conservative', 'aggressive'))
+      </schedules_extension>
+    </tables>
+  </database_schema>
+
+  <api_endpoints_summary>
+    <supabase_edge_functions>
+      - POST /functions/v1/provision-instance (create Fly app, Machine, Volume; poll health; write record)
+      - POST /functions/v1/manage-instance (stop, start, resize, or destroy a Machine)
+      - POST /functions/v1/receive-usage (accept and store usage reports from instances)
+      - POST /functions/v1/verify-domain (trigger certificate creation and DNS verification)
+    </supabase_edge_functions>
+
+    <entitlements>
+      - GET /api/entitlements (return user tier, credits, max agents, available components and boilerplates)
+      - POST /api/credits/deduct (validate balance, deduct credits, return authorization result)
+    </entitlements>
+
+    <stripe_webhooks>
+      - POST /api/webhooks/stripe (existing boilerplate handler extended with provisioning and lifecycle triggers)
+    </stripe_webhooks>
+
+    <app_ideas>
+      - GET /api/ideas (list user ideas with pagination and status filter)
+      - POST /api/ideas (create new idea)
+      - GET /api/ideas/:id (get single idea)
+      - PUT /api/ideas/:id (update idea details)
+      - DELETE /api/ideas/:id (delete idea)
+      - PATCH /api/ideas/:id/status (update idea status: draft, ready, building, completed, archived)
+    </app_ideas>
+
+    <builds>
+      - GET /api/builds (list user builds with pagination)
+      - GET /api/builds/:id (get single build with progress details)
+      - POST /api/builds (start a new build from an idea, deducts credits)
+    </builds>
+
+    <instances>
+      - GET /api/instances (list user instances)
+      - GET /api/instances/:id (get instance with status and usage summary)
+      - PUT /api/instances/:id/domain (set custom domain)
+      - POST /api/instances/:id/restart (trigger instance restart)
+    </instances>
+
+    <admin>
+      - GET /api/admin/instances (list all instances with filters -- admin only)
+      - GET /api/admin/metrics (MRR, churn, ARPU calculations -- admin only)
+      - GET /api/admin/usage (aggregate usage analytics -- admin only)
+      - POST /api/admin/instances/:id/restart (restart any instance -- admin only)
+      - PUT /api/admin/instances/:id/grace-period (extend destroy grace period -- admin only)
+      - PUT /api/admin/instances/:id/tier (manual tier change -- admin only)
+    </admin>
+
+    <autoforge_maintenance>
+      NOTE: These endpoints are in the AutoForge FastAPI backend (not Supabase)
+      - GET /api/projects/{name}/maintenance/history (paginated maintenance run history)
+      - GET /api/projects/{name}/maintenance/next-run (next scheduled maintenance date)
+      - POST /api/projects/{name}/maintenance/trigger (manually trigger maintenance run)
+      - GET /api/projects/{name}/maintenance/report/{id} (full maintenance report for a run)
+    </autoforge_maintenance>
+  </api_endpoints_summary>
+
+  <ui_layout>
+    <web_platform>
+      - Landing page: Hero section, feature grid, pricing table, competitor comparison, FAQ, footer
+      - Auth pages: Login, signup, password reset (from Gen-Ai boilerplate)
+      - Dashboard: Instance status card, credit balance, quick actions sidebar
+      - Onboarding wizard: Multi-step modal overlay with progress indicator
+      - Settings: API key, tier display, billing portal link, custom domain
+      - App Ideas: List view with status badges, detail/edit view, create form
+      - Build History: Table with status, progress, credits, expandable details
+      - Admin: Instance management table, revenue metrics cards, support tools, usage analytics
+      - Blog: Article list and individual post pages with markdown rendering
+    </web_platform>
+    <autoforge_ui_additions>
+      - Maintenance tab in project view: Summary card, history table, schedule config, "Run Now" button
+      - Maintenance report viewer: Expandable inline report with dependency table and test results
+      - Settings modal additions: Deployment target dropdown, monitoring checkboxes, update strategy toggle
+    </autoforge_ui_additions>
+  </ui_layout>
+
+  <design_system>
+    <color_palette>
+      NOTE: Gen-Ai boilerplate defaults -- customize with AutoForge branding
+      - Primary: #6366F1 (indigo -- AutoForge brand)
+      - Secondary: #8B5CF6 (violet -- accent)
+      - Background: #FFFFFF (light), #0F172A (dark)
+      - Text: #1E293B (light), #E2E8F0 (dark)
+      - Error: #EF4444
+      - Success: #10B981
+      - Warning: #F59E0B
+      - Muted: #64748B
+    </color_palette>
+    <typography>
+      - Font family: Inter, system-ui, sans-serif
+      - Headings: font-bold
+      - Body: font-normal
+      - Code: JetBrains Mono, monospace
+    </typography>
+    <spacing>
+      - Base unit: 4px (Tailwind default)
+      - Card padding: p-6 (24px)
+      - Section gap: gap-8 (32px)
+      - Form field gap: gap-4 (16px)
+      - Page max-width: max-w-7xl (1280px) centered
+    </spacing>
+    <components>
+      - Use shadcn/ui and Radix UI components from boilerplate
+      - Consistent border-radius: rounded-lg (8px)
+      - Consistent shadow: shadow-sm for cards, shadow-lg for modals
+      - Button variants: default, destructive, outline, secondary, ghost, link
+    </components>
+  </design_system>
+
+  <ui_ux_standards>
+    <banned_patterns>
+      - alert(), confirm(), prompt() -- Use shadcn/ui Dialog and Toast instead
+      - Text-only empty states -- Use EmptyState component with icon + CTA
+      - Loading states that just say "Loading..." -- Use Skeleton components from shadcn/ui
+      - Delete without confirmation -- Always use AlertDialog (shadcn/ui ConfirmModal equivalent)
+      - Raw timestamps -- Format as relative time using date-fns or similar
+      - Hardcoded API keys in source code -- Always use environment variables
+      - Inline styles -- Tailwind utility classes only
+    </banned_patterns>
+    <required_components>
+      - Dialog (Modal), AlertDialog (ConfirmModal), Toast notification system
+      - Skeleton loader, EmptyState with icon and CTA, ErrorBoundary
+      - Button with loading spinner state, Avatar with fallback initials
+      - Badge for status indicators, Progress bar for provisioning/build status
+    </required_components>
+    <page_patterns>
+      - List View -> Detail View (read-only) -> Edit View
+      - Never open directly into edit mode from a list
+      - Separate view and edit concerns
+      - Wizard flows use multi-step modal with back/next navigation
+    </page_patterns>
+    <feedback_protocol>
+      - Success: toast + navigate. Error: toast + stay + keep data.
+      - Delete: confirm dialog -> loading -> toast + redirect
+      - Provisioning: real-time status messages via polling/WebSocket
+      - Long operations: progress indicator with estimated status
+    </feedback_protocol>
+    <polish_requirements>
+      - Relative dates, text truncation, back navigation, hover states, focus states
+      - Autofocus first input in forms, search/filter on lists with 5+ items
+      - Retry action on every error state, loading skeletons for async data
+    </polish_requirements>
+    <accessibility_basics>
+      - Focus rings on interactive elements, Escape closes dialogs
+      - aria-labels on icon-only buttons, labels on all form inputs
+      - Keyboard navigation through wizard steps
+    </accessibility_basics>
+  </ui_ux_standards>
+
+  <coding_standards>
+    <architecture>
+      - Gen-Ai boilerplate conventions for web platform (component structure, Supabase client usage)
+      - AutoForge conventions for DevOps agent additions (routers, services, hooks patterns)
+      - One component per file, feature folders for grouping
+      - Service layer: Supabase client calls in services/hooks, not UI components
+      - TypeScript interfaces for all data types, no 'any'
+      - Environment variables for all secrets and configuration
+      - Edge Functions for server-side operations requiring secrets (Fly.io API token, Stripe keys)
+    </architecture>
+    <routing>
+      - Public routes: landing page, blog, pricing
+      - Protected routes: dashboard, settings, ideas, builds (Supabase auth guard from boilerplate)
+      - Admin routes: admin dashboard (role-based access from boilerplate)
+      - 404 catch-all route
+    </routing>
+    <error_handling>
+      - ErrorBoundary wraps entire app (already in boilerplate)
+      - User-friendly error messages, not raw errors
+      - Retry action on every error state
+      - Graceful degradation when Fly.io API is unreachable
+      - Webhook handlers return 200 even on internal errors (to prevent Stripe retries flooding)
+    </error_handling>
+    <security>
+      - User API keys encrypted at rest (Supabase Vault or encrypted columns)
+      - Each user instance fully isolated (separate Fly app and network)
+      - Edge Functions validate requesting user owns the subscription before modifying resources
+      - Rate limit provisioning requests to prevent abuse
+      - Admin routes use server-side role verification, not just frontend guards
+      - Stripe webhook signature verification on all webhook handlers
+      - JWT validation on all entitlements API calls
+    </security>
+  </coding_standards>
+
+  <key_interactions>
+    <signup_and_provision_flow>
+      1. User visits autoforge.com landing page
+      2. User clicks "Launch AutoForge" and signs up with email/password
+      3. Onboarding wizard appears: user selects BYO key mode and enters API key
+      4. User selects Pro tier and proceeds to Stripe checkout
+      5. Stripe checkout completes; webhook fires
+      6. Edge Function provisions Fly app, Machine, and Volume
+      7. Dashboard shows deploy animation with real-time status messages
+      8. Instance is ready at yourname.autoforge.app within 60 seconds
+      9. User clicks through to their running AutoForge instance
+    </signup_and_provision_flow>
+
+    <instance_suspend_and_resume_flow>
+      1. Stripe invoice.payment_failed webhook fires
+      2. System sends warning email: "Payment failed, instance suspends in 3 days"
+      3. After grace period, system stops Fly Machine
+      4. Dashboard shows "Suspended -- update payment to resume"
+      5. User updates payment method via billing portal
+      6. Stripe invoice.paid webhook fires
+      7. System starts Machine and polls health endpoint
+      8. Dashboard shows "Running" with "Welcome back" toast
+    </instance_suspend_and_resume_flow>
+
+    <auto_update_maintenance_flow>
+      1. Scheduler triggers auto-update agent for a project
+      2. Agent creates maintenance branch and runs security audit
+      3. Agent applies dependency updates per configured strategy
+      4. Agent runs lint, type-check, E2E tests, and API tests
+      5. All tests pass: agent commits, pushes, and creates PR
+      6. Maintenance tab shows success status with link to PR
+      7. If tests fail: agent rolls back, creates GitHub issue, notifies owner
+    </auto_update_maintenance_flow>
+
+    <cicd_generation_flow>
+      1. All project features pass QA (build complete)
+      2. Orchestrator spawns CI/CD pipeline generator agent
+      3. Agent reads project structure and detects tech stack
+      4. Agent generates GitHub Actions workflows, Dockerfile, docker-compose, and .env.example
+      5. Agent generates platform-specific deployment config based on detected target
+      6. Files are written to project; agent exits
+      7. User reviews generated CI/CD pipeline in their repository
+    </cicd_generation_flow>
+  </key_interactions>
+
+  <implementation_steps>
+    <step number="1">
+      <title>Platform Foundation and Schema</title>
+      <tasks>
+        - Clone Gen-Ai boilerplate and configure for AutoForge branding
+        - Add instances, instance_usage, billing_events, app_ideas, and builds tables to Supabase
+        - Configure Row-Level Security policies on all new tables
+        - Create database indexes for performance
+        - Customize landing page with hero, features, pricing, FAQ, and footer
+      </tasks>
+    </step>
+    <step number="2">
+      <title>Dashboard and Stripe Configuration</title>
+      <tasks>
+        - Customize protected dashboard layout with instance status and settings
+        - Configure Stripe products for three AutoForge tiers
+        - Extend webhook handlers for provisioning and lifecycle triggers
+        - Build API key input and tier display in settings
+      </tasks>
+    </step>
+    <step number="3">
+      <title>Fly.io Provisioning and Lifecycle</title>
+      <tasks>
+        - Build provisioning Edge Function (create app, Machine, Volume, poll health)
+        - Implement rollback logic for provisioning failures
+        - Build lifecycle management (suspend, resume, upgrade, destroy)
+        - Add health monitoring with periodic checks and auto-restart
+        - Build Entitlements API for VPS/local instance authorization
+      </tasks>
+    </step>
+    <step number="4">
+      <title>Advanced Platform Features</title>
+      <tasks>
+        - Build custom domain support with certificate provisioning
+        - Build usage tracking and metering system
+        - Build onboarding wizard with deploy animation
+        - Build app ideas CRUD and build tracking
+        - Extend admin dashboard with instance management and revenue metrics
+      </tasks>
+    </step>
+    <step number="5">
+      <title>Landing Page Polish</title>
+      <tasks>
+        - Add competitor comparison table and testimonials section
+        - Build blog with markdown rendering and initial posts
+        - Add SEO meta tags, JSON-LD structured data, and sitemap
+        - Optimize performance (lazy loading, preconnect hints)
+      </tasks>
+    </step>
+    <step number="6">
+      <title>DevOps Agents -- CI/CD and Monitoring</title>
+      <tasks>
+        - Add cicd and monitoring agent types to CLI and client configuration
+        - Create CI/CD prompt template with deployment target detection
+        - Create monitoring prompt template with feature toggles
+        - Wire orchestrator to spawn post-build agents after feature completion
+        - Add deployment target and monitoring settings to Settings modal
+      </tasks>
+    </step>
+    <step number="7">
+      <title>DevOps Agents -- Auto-Update and Maintenance</title>
+      <tasks>
+        - Add auto-update agent type with strategy and dry-run flags
+        - Create auto-update prompt template with branching workflow
+        - Add MaintenanceRun model and extend Schedule model
+        - Build maintenance API router with history, trigger, and report endpoints
+        - Extend scheduler service with maintenance schedule support
+        - Build Maintenance tab UI with history, schedule config, and report viewer
+      </tasks>
+    </step>
+  </implementation_steps>
+
+  <success_criteria>
+    <functionality>
+      - Non-technical user can go from landing page to running AutoForge instance in under 2 minutes
+      - Stripe checkout triggers automatic Fly.io provisioning with no manual intervention
+      - Instance lifecycle (suspend, resume, upgrade, destroy) works correctly via webhooks
+      - Entitlements API correctly authorizes VPS and local instances based on user tier and credits
+      - CI/CD agent generates working GitHub Actions workflows for the detected tech stack
+      - Monitoring agent adds Sentry, health endpoint, and structured logging without breaking existing code
+      - Auto-update agent safely updates dependencies, creates PR on success, and rolls back on failure
+      - Maintenance scheduling runs on configured frequency with correct cron expressions
+      - All data flows correctly between web platform, VPS instances, and local installs via Supabase
+    </functionality>
+    <user_experience>
+      - Onboarding wizard guides users through setup with clear explanations at each step
+      - Deploy animation provides real-time feedback during provisioning
+      - Dashboard clearly communicates instance status with appropriate CTAs per state
+      - Admin dashboard provides actionable metrics and efficient support tools
+      - Maintenance tab clearly shows maintenance health at a glance
+      - All pages responsive on mobile (375px), tablet (768px), desktop (1920px)
+      - All actions provide immediate visual feedback via toasts and status updates
+    </user_experience>
+    <technical_quality>
+      - Zero console errors in browser
+      - All Supabase data protected by Row-Level Security policies
+      - API keys encrypted at rest, never exposed in client-side code
+      - Webhook handlers verify Stripe signatures and handle idempotency
+      - Edge Functions include proper error handling and rollback logic
+      - All generated CI/CD files use pinned action versions and never hardcode secrets
+      - TypeScript strict mode with no 'any' types
+      - Python passes ruff lint check, UI passes ESLint and TypeScript build
+    </technical_quality>
+  </success_criteria>
+</project_specification>

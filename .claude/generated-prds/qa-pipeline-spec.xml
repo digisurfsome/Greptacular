@@ -1,0 +1,349 @@
+<project_specification>
+  <project_name>autoforge-qa-pipeline</project_name>
+
+  <overview>
+    A comprehensive quality assurance pipeline for AutoForge that transforms the build process
+    from ephemeral screenshot-based verification into a 5-phase pipeline with permanent test
+    suites, independent code review, regression testing, final QA sweeps, and optional Computer
+    Use exploratory testing. This is an addition to the existing AutoForge codebase (FastAPI +
+    React 19 + TypeScript), not a standalone application. The pipeline produces a permanent
+    Playwright test suite, a QA report, and optional Computer Use visual verification for every
+    project AutoForge builds — differentiating it from competitors that ship unverified code.
+  </overview>
+
+  <technology_stack>
+    <frontend>
+      <framework>React 19 with Vite 7 (existing AutoForge UI)</framework>
+      <styling>Tailwind CSS v4 (existing)</styling>
+      <state_management>TanStack Query + React hooks (existing)</state_management>
+      <routing>React Router (existing)</routing>
+      <port>5173 (Vite dev server, existing)</port>
+    </frontend>
+    <backend>
+      <runtime>Python 3.11+ with FastAPI and uvicorn (existing)</runtime>
+      <database>SQLite with SQLAlchemy (existing features.db)</database>
+      <port>8000 (FastAPI server, existing)</port>
+    </backend>
+    <additional_dependencies>
+      <python>anthropic (for Computer Use API calls), playwright (already present)</python>
+      <node>@playwright/test (for generated e2e tests), vitest (for API tests)</node>
+    </additional_dependencies>
+    <communication>
+      <api>REST + WebSocket (existing patterns)</api>
+    </communication>
+  </technology_stack>
+
+  <prerequisites>
+    <environment_setup>
+      - Existing AutoForge codebase cloned and running
+      - Python 3.11+ with venv activated
+      - Node.js 20+ with npm
+      - Claude Code CLI installed
+      - ANTHROPIC_API_KEY environment variable set (required only for Computer Use feature)
+    </environment_setup>
+  </prerequisites>
+
+  <feature_count>18</feature_count>
+
+  <core_features>
+    <infrastructure>
+      - System adds reviewed (INTEGER NOT NULL DEFAULT 0) and qa_verified (INTEGER NOT NULL DEFAULT 0) columns to the Feature model in api/database.py with SQLAlchemy migration handling for existing databases
+      - MCP server exposes feature_mark_reviewed tool that sets reviewed=1 on a feature only when passes=True, and exposes feature_mark_qa_verified tool that sets qa_verified=1 only when reviewed=1, returning 400 errors for invalid state transitions
+      - Settings API persists six new QA pipeline fields (review_agent_ratio, review_batch_size, auto_qa, qa_thoroughness, computer_use_enabled, computer_use_budget) via the existing PATCH /api/settings endpoint and GlobalSettings model in registry.py
+    </infrastructure>
+
+    <test_generation>
+      - Initializer prompt template creates tests/e2e/ scaffold (playwright.config.ts, package.json with @playwright/test) and tests/api/ scaffold (vitest.config.ts) in every new project during Feature 1 setup
+      - Coding prompt template adds STEP 5.8 (after existing STEP 5.7) that requires the agent to generate a persistent tests/e2e/feature-{ID}-{slug}.spec.ts with real expect() assertions and a tests/api/feature-{ID}-{slug}.test.ts using vitest for API features, with prompts.py retaining STEP 5.8 in YOLO mode so test files are generated but not executed
+    </test_generation>
+
+    <review_agent>
+      - System provides reviewer_prompt.template.md that instructs the review agent to read code via git diff, run lint and typecheck, evaluate generated test file quality, and call feature_mark_failing with detailed file/line/severity notes when issues are found
+      - System registers reviewer agent type in autonomous_agent_demo.py and client.py with restricted MCP tools (feature_get_stats, feature_get_by_id, feature_get_summary, feature_mark_failing, feature_mark_reviewed) and no Playwright MCP server, and prompts.py provides get_review_prompt() that loads the template with assigned feature IDs
+    </review_agent>
+
+    <testing_enhancement>
+      - Testing prompt template adds STEP 1.5 (before manual verification) that runs the generated tests/e2e/feature-{ID}-*.spec.ts file via npx playwright test and marks the feature as failing immediately if the programmatic test fails, proceeding to manual verification only when the test passes or no test file exists
+    </testing_enhancement>
+
+    <qa_agent>
+      - System provides qa_prompt.template.md that instructs the QA agent to run the full Playwright and vitest test suites, perform exploratory testing of every page, verify the production build, check responsive design at three breakpoints, and produce a structured qa-report.md with pass/fail evidence
+      - System registers qa agent type in autonomous_agent_demo.py and client.py with full feature MCP tools (including feature_mark_passing, feature_mark_failing, feature_mark_qa_verified) plus Playwright MCP server and max_turns=250, and prompts.py provides get_qa_prompt() that loads the template with project context
+    </qa_agent>
+
+    <orchestrator>
+      - Orchestrator adds _maintain_review_agents() method to parallel_orchestrator.py that detects passing-but-unreviewed features and spawns review agents respecting review_agent_ratio (0-3) and review_batch_size (1-10), with reviewed flag resetting to 0 when a feature moves back to in_progress after a failing review
+      - Orchestrator adds _check_qa_ready() method that auto-spawns the QA agent when all features have passes=True and reviewed=1, emitting a project_complete WebSocket event on QA success and creating a v1.0-qa-passed git tag
+      - System accepts new CLI flags in autonomous_agent_demo.py: --review-agent-ratio (0-3, default 1), --review-batch-size (1-10, default 5), --auto-qa (default true), --qa-thoroughness (standard/thorough), --skip-qa, and orchestrator enforces agent priority: coding first, review second, testing third, QA last
+    </orchestrator>
+
+    <computer_use>
+      - System provides computer_use_qa.py module with run_exploratory_qa() async function that creates a Playwright browser, feeds scenario prompts (onboarding, happy-path, navigation, chaos, visual) to the Claude Computer Use API, translates returned actions into Playwright commands, captures screenshots to .autoforge/qa-screenshots/computer-use/, tracks API spend against budget cap, generates computer-use-qa-report.md with scenario results and bug summary, and includes generate_regression_test() to convert each finding into a permanent Playwright .spec.ts file in tests/e2e/computer-use-regression/
+      - Orchestrator adds _check_computer_use_ready() to parallel_orchestrator.py that spawns Computer Use after all features are QA-verified when --computer-use flag is set, and autonomous_agent_demo.py accepts --computer-use (default false), --computer-use-budget (default $5.0), and --computer-use-scenarios (default all) CLI flags
+    </computer_use>
+
+    <ui_integration>
+      - UI updates Feature type in ui/src/lib/types.ts with reviewed and qa_verified boolean fields, adds reviewer/qa/computer_use agent types, and displays pipeline status progression on feature cards (Pending, In Progress, Passing with blue checkmark, Reviewed with green shield, QA Verified with gold star) with Lens, Shield, and Eye mascots in AgentMissionControl.tsx for review, QA, and Computer Use agents
+      - SettingsModal.tsx adds a QA Pipeline section with review agent ratio slider (0-3), review batch size slider (1-10), auto-QA toggle, QA thoroughness dropdown (standard/thorough), Computer Use enable toggle, and Computer Use budget slider ($1-10)
+      - App.tsx adds a QA Report panel accessible as a tab from the project view, with server/routers/ endpoints (GET /api/projects/{name}/qa-report, /computer-use-report, /qa-screenshots) that serve report markdown rendered with pass/fail badges and a screenshot gallery grid for Computer Use images
+    </ui_integration>
+  </core_features>
+
+  <database_schema>
+    <tables>
+      <features_table_changes>
+        - reviewed (INTEGER NOT NULL DEFAULT 0) — 0 = not reviewed, 1 = review agent found no issues
+        - qa_verified (INTEGER NOT NULL DEFAULT 0) — 0 = not QA verified, 1 = QA agent confirmed in final pass
+        NOTE: These are column additions to the existing Feature model in api/database.py.
+        The existing columns (id, priority, category, name, description, steps, passes, in_progress, dependencies) remain unchanged.
+        The Feature model does NOT currently have created_at or updated_at columns.
+      </features_table_changes>
+      <global_settings_changes>
+        - review_agent_ratio (INTEGER NOT NULL DEFAULT 1) — number of concurrent review agents (0-3)
+        - review_batch_size (INTEGER NOT NULL DEFAULT 5) — features per review agent batch (1-10)
+        - auto_qa (INTEGER NOT NULL DEFAULT 1) — auto-spawn QA when all features pass (0/1)
+        - qa_thoroughness (TEXT NOT NULL DEFAULT 'standard') — 'standard' or 'thorough'
+        - computer_use_enabled (INTEGER NOT NULL DEFAULT 0) — enable Computer Use QA (0/1)
+        - computer_use_budget (REAL NOT NULL DEFAULT 5.0) — max API spend in dollars per CU run
+        NOTE: These are additions to the existing GlobalSettings model in registry.py,
+        exposed via the existing PATCH /api/settings endpoint in server/routers/settings.py.
+      </global_settings_changes>
+    </tables>
+  </database_schema>
+
+  <api_endpoints_summary>
+    <settings>
+      - GET /api/settings (existing — response now includes review_agent_ratio, review_batch_size, auto_qa, qa_thoroughness, computer_use_enabled, computer_use_budget)
+      - PATCH /api/settings (existing — accepts the new fields)
+    </settings>
+    <features>
+      - GET /api/projects/{name}/features (existing — response now includes reviewed and qa_verified fields)
+    </features>
+    <agent>
+      - POST /api/projects/{name}/agent/start (existing — now accepts agent_type values: reviewer, qa, computer_use)
+      - POST /api/projects/{name}/agent/stop (existing — works for all agent types)
+    </agent>
+    <mcp_tools>
+      - feature_mark_reviewed (new MCP tool — sets reviewed=1 when passes=True, returns error otherwise)
+      - feature_mark_qa_verified (new MCP tool — sets qa_verified=1 when reviewed=1, returns error otherwise)
+    </mcp_tools>
+    <qa_report>
+      - GET /api/projects/{name}/qa-report (new — returns contents of qa-report.md if it exists, 404 otherwise)
+      - GET /api/projects/{name}/computer-use-report (new — returns contents of computer-use-qa-report.md if it exists, 404 otherwise)
+      - GET /api/projects/{name}/qa-screenshots (new — returns list of screenshot file paths in .autoforge/qa-screenshots/)
+    </qa_report>
+  </api_endpoints_summary>
+
+  <ui_layout>
+    <main_structure>
+      NOTE: All UI changes integrate into the existing AutoForge UI layout.
+      - Feature cards gain pipeline status badges (Passing → Reviewed → QA Verified)
+      - AgentMissionControl dashboard gains new mascot slots for reviewer, QA, and Computer Use agents
+      - Settings modal gains a new "QA Pipeline" section
+      - New QA Report panel accessible from the project view (tab or sidebar panel)
+    </main_structure>
+  </ui_layout>
+
+  <design_system>
+    <color_palette>
+      NOTE: Extends the existing AutoForge neobrutalism design system.
+      - Reviewed status: emerald-500 (#10B981) with shield icon
+      - QA Verified status: amber-400 (#FBBF24) with star icon
+      - Review agent mascot: indigo-500 (#6366F1)
+      - QA agent mascot: emerald-600 (#059669)
+      - Computer Use agent mascot: violet-500 (#8B5CF6)
+      - QA Report SHIP IT badge: green-500 (#22C55E) with bold border
+      - QA Report NEEDS WORK badge: red-500 (#EF4444) with bold border
+    </color_palette>
+    <typography>
+      - Uses existing Inter font family and neobrutalism heading styles
+      - QA report renders with monospace code blocks for test output
+    </typography>
+  </design_system>
+
+  <ui_ux_standards>
+    <banned_patterns>
+      - alert(), confirm(), prompt() — Use modals and toasts instead
+      - Text-only empty states — Use EmptyState component with icon + CTA
+      - Loading states that just say "Loading..." — Use skeleton loaders
+      - Delete without confirmation — Always use ConfirmModal
+      - Raw timestamps — Format as relative time
+    </banned_patterns>
+    <required_components>
+      - All existing AutoForge UI components (Modal, Toast, Skeleton, etc.)
+      - New pipeline status badge component with three states (passing, reviewed, qa_verified)
+      - New QA report markdown renderer with pass/fail badge styling
+      - New screenshot gallery grid component with lightbox view
+    </required_components>
+    <feedback_protocol>
+      - Settings changes: toast confirmation on save
+      - Agent spawn: toast notification with agent type name
+      - QA completion: celebration overlay (existing pattern) + prominent banner
+      - Computer Use budget exhausted: warning toast with spend amount
+    </feedback_protocol>
+  </ui_ux_standards>
+
+  <coding_standards>
+    <architecture>
+      - Follow existing AutoForge patterns: routers in server/routers/, services in server/services/, components in ui/src/components/
+      - Python: ruff-compliant, line length 120, Python 3.11 target
+      - TypeScript: strict mode, no any types, TanStack Query for data fetching
+      - New MCP tools follow existing patterns in mcp_server/feature_mcp.py
+      - New prompt templates follow existing patterns in .claude/templates/
+      - New CLI flags follow existing argparse patterns in autonomous_agent_demo.py
+    </architecture>
+    <error_handling>
+      - MCP tools return descriptive error messages for invalid state transitions (e.g., marking non-passing feature as reviewed)
+      - All new REST endpoints return proper HTTP status codes (400 for validation errors, 404 for missing reports)
+      - Computer Use module handles API errors, budget exhaustion, and timeout with structured error responses
+      - Orchestrator handles agent crashes for review/QA agents identically to existing coding/testing agent crash recovery
+    </error_handling>
+    <testing>
+      - Python changes verified with: ruff check . and mypy .
+      - UI changes verified with: npm run lint and npm run build (in ui/)
+      - New security-sensitive code (Computer Use API calls) gets unit tests
+    </testing>
+  </coding_standards>
+
+  <key_interactions>
+    <review_agent_flow>
+      1. Coding agent implements feature #12 and marks it as passing
+      2. Orchestrator detects feature #12 is passing but reviewed=0
+      3. Orchestrator spawns review agent with feature #12 in its batch
+      4. Review agent reads changed files via git diff, runs ruff check and mypy, evaluates the .spec.ts test file
+      5a. If clean: review agent calls feature_mark_reviewed, UI shows green shield badge
+      5b. If issues found: review agent calls feature_mark_failing with file, line, and severity notes
+      6b. Feature returns to pending state, reviewed resets to 0
+      7b. Coding agent picks up the failed feature and fixes the reported issues
+      8b. After fix, cycle repeats from step 2
+    </review_agent_flow>
+    <qa_agent_flow>
+      1. All features reach passes=True and reviewed=1
+      2. Orchestrator auto-spawns QA agent (if --auto-qa is true)
+      3. QA agent runs full Playwright test suite (npx playwright test) and vitest API tests
+      4. QA agent navigates every page, clicks every button, fills every form
+      5. QA agent builds for production (npm run build) and tests against the production build
+      6. QA agent checks responsive design at 1280px, 768px, and 375px breakpoints
+      7. QA agent produces qa-report.md with pass/fail tables, page-by-page results, and overall assessment
+      8. If issues found: QA agent fixes them, re-tests, and commits fixes
+      9. On success: orchestrator emits project_complete WebSocket event, creates v1.0-qa-passed git tag
+      10. UI shows celebration overlay and renders QA report in the new panel
+    </qa_agent_flow>
+    <computer_use_flow>
+      1. QA agent completes successfully (all features have qa_verified=1)
+      2. If --computer-use flag is set, orchestrator spawns Computer Use sweep
+      3. Computer Use module opens app in a Playwright browser and takes initial screenshot
+      4. Module sends screenshot + scenario prompt to Claude Computer Use API
+      5. API returns actions (click, type, scroll); module translates them to Playwright commands
+      6. Module captures each screenshot and tracks cumulative API spend against budget cap
+      7. After all scenarios complete (or budget exhausted), module generates computer-use-qa-report.md
+      8. generate_regression_test() converts each bug into a permanent Playwright .spec.ts file
+      9. If bugs found: affected features marked failing, coding agent fixes, QA re-verifies
+      10. When clean: project ships with permanent test suite, QA report, and Computer Use evidence
+    </computer_use_flow>
+  </key_interactions>
+
+  <implementation_steps>
+    <step number="1">
+      <title>Foundation: Database Schema, MCP Tools, and Settings</title>
+      <tasks>
+        - Add reviewed and qa_verified columns to Feature model in api/database.py with migration for existing DBs
+        - Add feature_mark_reviewed and feature_mark_qa_verified tools to mcp_server/feature_mcp.py with state validation
+        - Add reviewed-reset logic when features transition back to in_progress
+        - Add new QA pipeline settings fields to GlobalSettings in registry.py
+        - Expose new settings in PATCH /api/settings in server/routers/settings.py
+        - Verify with ruff check and mypy
+      </tasks>
+    </step>
+    <step number="2">
+      <title>Test Generation: Scaffolds and Coding Prompt</title>
+      <tasks>
+        - Update initializer_prompt.template.md to create tests/e2e/ and tests/api/ scaffolds
+        - Add STEP 5.8 to coding_prompt.template.md for e2e and API test generation
+        - Ensure STEP 5.8 is retained in YOLO mode in prompts.py
+      </tasks>
+    </step>
+    <step number="3">
+      <title>Review Agent: Prompt, Registration, and Client</title>
+      <tasks>
+        - Create reviewer_prompt.template.md with code review workflow
+        - Register reviewer agent type in autonomous_agent_demo.py and client.py
+        - Add reviewer tool filtering (no Playwright, limited MCP tools)
+        - Add get_review_prompt() to prompts.py
+      </tasks>
+    </step>
+    <step number="4">
+      <title>Enhanced Testing and QA Agent</title>
+      <tasks>
+        - Add STEP 1.5 to testing_prompt.template.md for running generated tests
+        - Create qa_prompt.template.md with comprehensive QA workflow
+        - Register qa agent type in autonomous_agent_demo.py and client.py
+        - Add QA tool config (full tools + Playwright, max_turns 250)
+        - Add get_qa_prompt() to prompts.py
+      </tasks>
+    </step>
+    <step number="5">
+      <title>Orchestrator Wiring: Review, QA, and CLI</title>
+      <tasks>
+        - Add _maintain_review_agents() with batch selection to parallel_orchestrator.py
+        - Add _check_qa_ready() and _spawn_qa_agent() with project_complete event and git tag
+        - Add new CLI flags to autonomous_agent_demo.py (review ratio, batch size, auto-qa, skip-qa, thoroughness)
+        - Implement agent priority ordering (coding > review > testing > QA)
+      </tasks>
+    </step>
+    <step number="6">
+      <title>Computer Use Module and Orchestrator Integration</title>
+      <tasks>
+        - Create computer_use_qa.py with Playwright-based screenshot execution backend
+        - Implement 5 scenario scripts (onboarding, happy-path, navigation, chaos, visual)
+        - Implement budget tracking, time limits, and structured result capture
+        - Add generate_regression_test() for converting findings to Playwright tests
+        - Add _check_computer_use_ready() to parallel_orchestrator.py
+        - Add --computer-use, --computer-use-budget, --computer-use-scenarios CLI flags
+      </tasks>
+    </step>
+    <step number="7">
+      <title>UI Integration: Pipeline Display, Settings, and Reports</title>
+      <tasks>
+        - Update Feature type in types.ts with reviewed, qa_verified, and new agent types
+        - Add pipeline status badges to feature cards with three visual states
+        - Add Lens, Shield, and Eye mascots to AgentMissionControl.tsx
+        - Add QA Pipeline settings section to SettingsModal.tsx
+        - Add QA report REST endpoints in server/routers/
+        - Add QA Report panel with markdown rendering and screenshot gallery
+        - Verify with npm run lint and npm run build
+      </tasks>
+    </step>
+  </implementation_steps>
+
+  <success_criteria>
+    <functionality>
+      - Coding agent generates persistent .spec.ts and .test.ts files for every implemented feature
+      - Review agent reads code, identifies issues, and marks features failing with file/line/severity notes
+      - Testing agent runs generated .spec.ts files before manual Playwright verification
+      - QA agent runs full test suite, performs exploratory testing, and produces qa-report.md
+      - Computer Use module executes scenario scripts and captures visual bug findings
+      - Computer Use findings are auto-converted to permanent Playwright regression tests
+      - Orchestrator correctly chains: coding → review → testing → QA → Computer Use
+      - MCP tools reject invalid state transitions with descriptive error messages
+      - Feature lifecycle flows correctly: Pending → In Progress → Passing → Reviewed → QA Verified
+    </functionality>
+    <user_experience>
+      - UI displays pipeline status progression with distinct visual indicators per state
+      - New agent types appear in AgentMissionControl with distinctive mascots
+      - QA Report panel renders markdown with pass/fail badges and screenshot gallery
+      - Settings panel provides intuitive controls for all QA pipeline options
+      - Celebration overlay fires when QA completes successfully
+    </user_experience>
+    <technical_quality>
+      - ruff check . passes with zero errors
+      - mypy . passes with zero errors
+      - npm run lint passes with zero errors in ui/
+      - npm run build succeeds in ui/
+      - No breaking changes to existing coding/testing agent flows
+      - Computer Use API calls respect budget caps and timeout limits
+      - All new MCP tools follow existing patterns and pass feature_mcp tests
+      - All new REST endpoints return proper error codes for edge cases
+    </technical_quality>
+  </success_criteria>
+</project_specification>

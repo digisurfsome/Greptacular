@@ -1,0 +1,600 @@
+<project_specification>
+  <project_name>autoforge-billing</project_name>
+
+  <overview>
+    A credit-based pricing and billing system for AutoForge that monetizes the platform
+    as a premium SaaS product. Users purchase typed credits (Standard, Pro, Enterprise)
+    to run builds, with optional BYOK (Bring Your Own Key) reduced pricing, annual
+    platform subscriptions with included credits, usage metering, tier-based rate
+    limiting, and an admin dashboard for revenue and margin analysis. This is an
+    addition to the existing AutoForge codebase, not a standalone application.
+  </overview>
+
+  <technology_stack>
+    <frontend>
+      <framework>React 19 with Vite 7 (existing AutoForge UI)</framework>
+      <styling>Tailwind CSS v4 (existing)</styling>
+      <state_management>TanStack Query + React hooks and context (existing)</state_management>
+      <routing>React Router (existing)</routing>
+      <charts>Recharts (new dependency for admin dashboard)</charts>
+      <port>5173 (dev) / served by FastAPI in production</port>
+    </frontend>
+    <backend>
+      <runtime>Python FastAPI (existing AutoForge server)</runtime>
+      <database>Supabase PostgreSQL (new — billing data requires multi-tenant ACID, RLS)</database>
+      <existing_database>SQLite with SQLAlchemy (unchanged — features.db, registry.db)</existing_database>
+      <payments>Stripe API via stripe Python SDK (new dependency)</payments>
+      <encryption>cryptography library for BYOK key encryption (new dependency)</encryption>
+      <port>8000 (existing FastAPI server)</port>
+    </backend>
+    <communication>
+      <api>RESTful endpoints on existing FastAPI server</api>
+      <realtime>WebSocket (existing) for queue position updates</realtime>
+    </communication>
+  </technology_stack>
+
+  <prerequisites>
+    <environment_setup>
+      - Python 3.11+ (existing)
+      - Node.js 20+ (existing)
+      - Stripe account with API keys (STRIPE_SECRET_KEY, STRIPE_PUBLISHABLE_KEY, STRIPE_WEBHOOK_SECRET)
+      - Supabase project with PostgreSQL database (SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY)
+      - Stripe products and prices created for all credit types, bundles, and subscriptions
+      - BYOK_ENCRYPTION_KEY (256-bit AES key for encrypting stored API keys)
+    </environment_setup>
+  </prerequisites>
+
+  <feature_count>90</feature_count>
+
+  <core_features>
+    <infrastructure>
+      - Database connection to Supabase PostgreSQL established and health-checked on server start
+      - Billing database schema applied: credit_balances, credit_transactions, subscriptions, build_usage, rate_limits, user_api_keys tables with RLS policies
+      - Billing data persists across server restarts (Supabase cloud database)
+      - No mock data patterns in billing codebase (all reads and writes hit Supabase)
+      - Backend billing API queries real Supabase database via supabase-py client
+    </infrastructure>
+
+    <credit_system>
+      - System adds credits to user balance atomically when purchase completes (transaction + balance update in single operation)
+      - System consumes credits from user balance atomically when build starts (FOR UPDATE row lock prevents double-spend)
+      - System refunds credits to user balance when system crash or queue cancellation occurs
+      - System logs every credit operation as an immutable record in credit_transactions table
+      - Credit balance columns enforce non-negative values via CHECK constraints (balance cannot go below zero)
+      - API endpoint GET /api/billing/balance returns user's current credit counts for all nine credit types
+      - API endpoint GET /api/billing/transactions returns paginated transaction history with type filter (purchase, consume, refund, bonus, grant)
+    </credit_system>
+
+    <stripe_integration>
+      - API endpoint POST /api/billing/create-checkout creates a Stripe Checkout Session for one-time credit purchases with credit_type and quantity in metadata
+      - API endpoint POST /api/billing/create-checkout creates a Stripe Checkout Session in subscription mode for annual platform plans
+      - Webhook endpoint POST /api/billing/webhook processes checkout.session.completed events to add credits to user balance
+      - Webhook endpoint processes invoice.paid events to renew subscriptions and grant annual credit allotments
+      - Webhook endpoint processes invoice.payment_failed events to mark subscription status as past_due
+      - Webhook endpoint processes customer.subscription.deleted events to cancel platform access
+      - Webhook endpoint validates Stripe signature on every request and returns 400 for invalid signatures
+    </stripe_integration>
+
+    <build_gating>
+      - System checks user credit balance for the required build type before allowing build to start
+      - System returns "insufficient credits" error with purchase CTA when balance is zero for required credit type
+      - System requires active platform subscription (Starter/Pro/Agency) before allowing any build
+      - Credit deducted atomically when build pipeline actually begins (not on button click)
+      - Queued build cancellation returns the consumed credit to user balance instantly
+      - System auto-refunds credit when build fails due to infrastructure or system error (not bad spec)
+      - Grace period cron job returns unconsumed credits to balance if build not started within 48 hours
+    </build_gating>
+
+    <byok>
+      - User can save an Anthropic API key via POST /api/billing/byok/key endpoint
+      - System validates API key by making a minimal test API call before accepting it
+      - API key encrypted with AES-256 before storage (plaintext never persisted or logged)
+      - GET /api/billing/byok/key returns only masked preview (sk-ant-...XXXX) and validation timestamp
+      - User can delete stored API key via DELETE /api/billing/byok/key with confirmation
+      - Agent subprocess receives user API key via environment variable when BYOK mode is selected for a build
+    </byok>
+
+    <subscriptions>
+      - User can subscribe to Starter annual plan ($999/yr) via Stripe Checkout redirect
+      - User can subscribe to Pro annual plan ($2,499/yr) via Stripe Checkout redirect
+      - User can subscribe to Agency annual plan ($4,999/yr) via Stripe Checkout redirect
+      - System grants tier-specific credits on subscription creation (Starter: 3 standard_web, Pro: 5 pro_dual, Agency: 15 pro_dual + 5 each add-on)
+      - System grants tier-specific credits on each subscription renewal via invoice.paid webhook
+      - User can cancel subscription (platform access continues until current period end)
+    </subscriptions>
+
+    <usage_metering>
+      - System creates build_usage record with status running when build starts
+      - System tracks total input tokens, output tokens, cache tokens per build session
+      - System tracks total agent sessions and conversation turns per build
+      - System calculates estimated AI cost in cents per build based on token usage
+      - System updates build_usage status to completed, failed, or refunded when build ends
+    </usage_metering>
+
+    <rate_limiting>
+      - System enforces max concurrent builds per user based on subscription tier (Starter: 1, Pro: 2, Agency: 5 managed; higher for BYOK)
+      - System enforces max daily builds per user based on subscription tier
+      - System enforces max monthly builds per user based on subscription tier (Agency unlimited)
+      - BYOK users receive higher rate limits than managed users at the same tier
+      - Rate limit counters reset automatically (daily counter resets at midnight UTC, monthly at month start)
+      - API returns clear error message with tier upgrade CTA when rate limit is reached
+    </rate_limiting>
+
+    <build_queue>
+      - Builds added to queue when user's concurrent build limit is reached
+      - Queue ordering uses priority: Agency > Pro > Starter, FIFO within same tier
+      - User can cancel a queued build before it starts and receive instant credit refund
+      - Queue position and estimated wait time broadcast to user via WebSocket in real-time
+    </build_queue>
+
+    <billing_ui>
+      - Credit balance component in app header shows counts for each credit type the user owns
+      - Pricing page displays plan comparison grid with all credit types, bundle discounts, and BYOK pricing
+      - Purchase modal allows selecting credit type, quantity, and shows bundle discount when applicable
+      - Purchase flow redirects to Stripe Checkout hosted page (PCI-compliant, no card data touches our server)
+      - Success page displayed after returning from Stripe Checkout with updated credit balance
+      - Transaction history page shows paginated table with date, type, credit type, quantity, and description
+      - Transaction history supports filtering by transaction type (purchase, consume, refund, grant)
+      - Empty transaction and credit states show EmptyState component with "Purchase your first credits" CTA
+    </billing_ui>
+
+    <byok_settings_ui>
+      - BYOK section in settings modal shows API key input field with "Validate & Save" button
+      - Validation success displays masked key preview, provider name, and validation timestamp
+      - Validation failure displays specific error message (invalid key, insufficient permissions, network error)
+      - Delete key button triggers ConfirmModal before removing stored key
+    </byok_settings_ui>
+
+    <subscription_ui>
+      - Subscription page shows current plan name, status, renewal date, and included credits
+      - Plan comparison grid displays Starter vs Pro vs Agency features, limits, and pricing
+      - Subscribe and upgrade buttons redirect to Stripe Checkout for the selected plan
+      - Cancel subscription button shows ConfirmModal with "access until [date]" messaging
+    </subscription_ui>
+
+    <admin_dashboard>
+      - Admin route /admin requires admin role and returns 403 for non-admin users
+      - Revenue section shows total revenue with daily, weekly, monthly, and all-time breakdowns
+      - Credit velocity section shows credits sold vs consumed over time with chart
+      - Margin analysis section shows average AI cost, revenue, and margin per build type
+      - User analytics section shows total users, active users (30 day), top 10 by revenue, and BYOK adoption rate
+      - Platform health section shows active builds, queue depth, build success rate, and average build duration
+    </admin_dashboard>
+  </core_features>
+
+  <database_schema>
+    <tables>
+      <credit_balances>
+        - user_id (UUID PRIMARY KEY, FOREIGN KEY -> auth.users)
+        - standard_web (INTEGER DEFAULT 0, CHECK >= 0)
+        - standard_dual (INTEGER DEFAULT 0, CHECK >= 0)
+        - pro_web (INTEGER DEFAULT 0, CHECK >= 0)
+        - pro_dual (INTEGER DEFAULT 0, CHECK >= 0)
+        - enterprise (INTEGER DEFAULT 0, CHECK >= 0)
+        - knowledge_base (INTEGER DEFAULT 0, CHECK >= 0)
+        - security_audit (INTEGER DEFAULT 0, CHECK >= 0)
+        - performance_report (INTEGER DEFAULT 0, CHECK >= 0)
+        - maintenance_months (INTEGER DEFAULT 0, CHECK >= 0)
+        - updated_at (TIMESTAMPTZ DEFAULT now())
+        - RLS: users can only SELECT their own row
+      </credit_balances>
+
+      <credit_transactions>
+        - id (UUID PRIMARY KEY DEFAULT gen_random_uuid())
+        - user_id (UUID NOT NULL, FOREIGN KEY -> auth.users)
+        - type (TEXT NOT NULL, CHECK IN ('purchase', 'consume', 'refund', 'bonus', 'grant'))
+        - credit_type (TEXT NOT NULL)
+        - quantity (INTEGER NOT NULL)
+        - stripe_payment_id (TEXT, nullable)
+        - stripe_checkout_session_id (TEXT, nullable)
+        - project_id (UUID, nullable)
+        - build_id (UUID, nullable)
+        - description (TEXT, nullable)
+        - metadata (JSONB DEFAULT '{}')
+        - created_at (TIMESTAMPTZ DEFAULT now())
+        - INDEX on (user_id, created_at DESC)
+        - INDEX on (stripe_payment_id)
+        - RLS: users can only SELECT their own rows
+      </credit_transactions>
+
+      <subscriptions>
+        - id (UUID PRIMARY KEY DEFAULT gen_random_uuid())
+        - user_id (UUID NOT NULL, FOREIGN KEY -> auth.users)
+        - stripe_subscription_id (TEXT UNIQUE NOT NULL)
+        - stripe_customer_id (TEXT NOT NULL)
+        - plan (TEXT NOT NULL, CHECK IN ('starter_annual', 'pro_annual', 'agency_annual'))
+        - status (TEXT NOT NULL, CHECK IN ('active', 'canceled', 'past_due', 'trialing', 'incomplete'))
+        - current_period_start (TIMESTAMPTZ, nullable)
+        - current_period_end (TIMESTAMPTZ, nullable)
+        - cancel_at_period_end (BOOLEAN DEFAULT false)
+        - created_at (TIMESTAMPTZ DEFAULT now())
+        - updated_at (TIMESTAMPTZ DEFAULT now())
+        - INDEX on (user_id)
+        - INDEX on (stripe_subscription_id)
+        - RLS: users can only SELECT their own rows
+      </subscriptions>
+
+      <build_usage>
+        - id (UUID PRIMARY KEY DEFAULT gen_random_uuid())
+        - project_id (UUID NOT NULL)
+        - user_id (UUID NOT NULL, FOREIGN KEY -> auth.users)
+        - build_id (UUID NOT NULL)
+        - credit_type (TEXT NOT NULL)
+        - is_byok (BOOLEAN DEFAULT false)
+        - total_input_tokens (BIGINT DEFAULT 0)
+        - total_output_tokens (BIGINT DEFAULT 0)
+        - total_turns (INTEGER DEFAULT 0)
+        - total_agent_sessions (INTEGER DEFAULT 0)
+        - cache_read_tokens (BIGINT DEFAULT 0)
+        - cache_write_tokens (BIGINT DEFAULT 0)
+        - features_total (INTEGER DEFAULT 0)
+        - features_completed (INTEGER DEFAULT 0)
+        - features_failed (INTEGER DEFAULT 0)
+        - build_start (TIMESTAMPTZ NOT NULL)
+        - build_end (TIMESTAMPTZ, nullable)
+        - build_duration_minutes (INTEGER, nullable)
+        - estimated_ai_cost_cents (INTEGER DEFAULT 0)
+        - credit_value_cents (INTEGER NOT NULL)
+        - margin_cents (INTEGER DEFAULT 0)
+        - status (TEXT, CHECK IN ('running', 'completed', 'failed', 'refunded'))
+        - created_at (TIMESTAMPTZ DEFAULT now())
+        - INDEX on (user_id, created_at DESC)
+        - INDEX on (project_id)
+        - RLS: users can only SELECT their own rows
+      </build_usage>
+
+      <rate_limits>
+        - user_id (UUID PRIMARY KEY, FOREIGN KEY -> auth.users)
+        - tier (TEXT NOT NULL, CHECK IN ('starter', 'pro', 'agency'))
+        - concurrent_builds (INTEGER DEFAULT 0)
+        - builds_today (INTEGER DEFAULT 0)
+        - builds_this_month (INTEGER DEFAULT 0)
+        - last_build_started_at (TIMESTAMPTZ, nullable)
+        - today_reset_at (DATE DEFAULT current_date)
+        - month_reset_at (DATE DEFAULT date_trunc('month', current_date))
+        - updated_at (TIMESTAMPTZ DEFAULT now())
+      </rate_limits>
+
+      <user_api_keys>
+        - user_id (UUID PRIMARY KEY, FOREIGN KEY -> auth.users)
+        - encrypted_key (BYTEA NOT NULL)
+        - key_preview (TEXT NOT NULL)
+        - provider (TEXT DEFAULT 'anthropic')
+        - validated_at (TIMESTAMPTZ, nullable)
+        - created_at (TIMESTAMPTZ DEFAULT now())
+        - updated_at (TIMESTAMPTZ DEFAULT now())
+        - RLS: users can only manage their own row
+      </user_api_keys>
+    </tables>
+
+    <postgres_functions>
+      <consume_credit>
+        Atomically deducts one credit of the specified type from credit_balances
+        using FOR UPDATE row locking, inserts a consume transaction into
+        credit_transactions, and returns boolean success. Prevents double-spend
+        under concurrent requests.
+      </consume_credit>
+      <refund_credit>
+        Atomically adds one credit back to credit_balances, inserts a refund
+        transaction into credit_transactions with the original build_id reference.
+      </refund_credit>
+      <add_credits>
+        Atomically adds N credits of the specified type to credit_balances,
+        inserts a purchase or grant transaction into credit_transactions with
+        Stripe payment reference.
+      </add_credits>
+    </postgres_functions>
+  </database_schema>
+
+  <api_endpoints_summary>
+    <billing>
+      - GET /api/billing/balance (returns current credit counts for authenticated user)
+      - GET /api/billing/transactions?page=1&limit=20&type=purchase (paginated transaction history with optional type filter)
+      - POST /api/billing/create-checkout (creates Stripe Checkout session; body: {credit_type, quantity, is_byok} or {plan})
+      - POST /api/billing/webhook (Stripe webhook receiver; validates signature, processes events)
+      - POST /api/billing/consume (consume a credit for a build; body: {credit_type, project_id, build_id})
+      - POST /api/billing/refund (refund a credit; body: {build_id, reason})
+    </billing>
+    <byok>
+      - POST /api/billing/byok/key (save and validate API key; body: {api_key, provider})
+      - GET /api/billing/byok/key (get masked key preview and validation status)
+      - DELETE /api/billing/byok/key (delete stored API key)
+    </byok>
+    <subscriptions>
+      - GET /api/billing/subscription (get current subscription status and plan details)
+      - POST /api/billing/subscription/cancel (cancel subscription at period end)
+    </subscriptions>
+    <rate_limits>
+      - GET /api/billing/rate-limits (get current usage counts and tier limits for authenticated user)
+    </rate_limits>
+    <admin>
+      - GET /api/admin/revenue?period=monthly (revenue breakdown by period)
+      - GET /api/admin/credits (credit velocity: sold vs consumed, outstanding balance)
+      - GET /api/admin/margins (average AI cost, revenue, and margin per build type)
+      - GET /api/admin/users (total, active, top users, BYOK adoption rate)
+      - GET /api/admin/health (active builds, queue depth, success rate, avg duration)
+    </admin>
+  </api_endpoints_summary>
+
+  <ui_layout>
+    <main_structure>
+      - Existing AutoForge header augmented with CreditBalance component showing credit counts
+      - New /pricing route with plan comparison grid and purchase CTAs
+      - New /billing route with transaction history table
+      - BYOK section added to existing SettingsModal
+      - Subscription management section added to existing SettingsModal or new /subscription route
+      - New /admin route (hidden from nav, requires admin role) with revenue and analytics dashboard
+      - BuildQueue component shown inline when user has queued builds
+    </main_structure>
+  </ui_layout>
+
+  <design_system>
+    <color_palette>
+      - Existing AutoForge neobrutalism design system (Tailwind CSS v4 tokens)
+      - Credit type colors: Standard (blue-500), Pro (purple-500), Enterprise (amber-500)
+      - Balance positive: green-500, Balance zero: gray-400
+      - Revenue up: green-500, Revenue down: red-500
+      - Subscription active: green-500, past_due: amber-500, canceled: gray-400
+    </color_palette>
+    <typography>
+      - Follows existing AutoForge typography (Inter, system-ui, sans-serif)
+      - Credit counts: font-mono tabular-nums for aligned number display
+      - Price display: font-semibold text-lg for emphasis
+    </typography>
+  </design_system>
+
+  <ui_ux_standards>
+    <banned_patterns>
+      - alert(), confirm(), prompt() - Use modals and toasts instead
+      - Text-only empty states - Use EmptyState component with icon + CTA
+      - Loading states that just say "Loading..." - Use skeleton loaders
+      - Delete without confirmation - Always use ConfirmModal (especially for key deletion and subscription cancellation)
+      - Raw timestamps - Format as relative time
+      - Displaying full API keys - Always mask to sk-ant-...XXXX
+      - Client-side rate limit enforcement - All limits checked server-side
+    </banned_patterns>
+    <required_components>
+      - Modal for purchase flow and plan selection
+      - ConfirmModal for subscription cancellation and API key deletion
+      - Toast notifications for purchase success, refund, and error states
+      - Skeleton loader for credit balance, transaction history, and admin charts
+      - EmptyState for zero credits and empty transaction history
+      - Button with loading state for all purchase and subscription actions
+    </required_components>
+    <page_patterns>
+      - Pricing page is read-only (no edit mode needed)
+      - Transaction history is read-only list with filters (no detail view needed for individual transactions)
+      - Subscription management: view current plan -> upgrade/cancel actions
+      - Admin dashboard: read-only metrics with time period selectors
+    </page_patterns>
+    <feedback_protocol>
+      - Purchase success: toast "Credits added to your balance" + redirect to dashboard
+      - Purchase cancel: toast "Purchase cancelled" + stay on pricing page
+      - Credit consumed: no toast (build start flow handles messaging)
+      - Refund: toast "Credit refunded to your balance"
+      - Rate limit hit: inline error with tier upgrade CTA
+      - API key validation success: toast "API key validated and saved"
+      - API key validation failure: inline error with specific message
+      - Subscription cancelled: toast "Subscription cancelled. Access until [date]"
+    </feedback_protocol>
+    <polish_requirements>
+      - Credit counts animate on change (count up/down transition)
+      - Bundle discounts show original price with strikethrough and savings percentage
+      - Transaction amounts show + for additions and - for deductions with color coding
+      - Admin charts support date range selection and are responsive
+    </polish_requirements>
+    <accessibility_basics>
+      - Focus rings on all interactive elements
+      - Escape closes purchase and confirmation modals
+      - aria-labels on icon-only buttons (delete key, cancel subscription)
+      - Form labels on API key input and quantity selectors
+      - Screen reader announcement for credit balance changes
+    </accessibility_basics>
+  </ui_ux_standards>
+
+  <coding_standards>
+    <architecture>
+      - New FastAPI routers in server/routers/billing.py and server/routers/admin.py
+      - New services in server/services/billing_service.py, server/services/byok_service.py
+      - New React components in ui/src/components/billing/ directory
+      - New API client functions in ui/src/lib/billing-api.ts
+      - New React Query hooks in ui/src/hooks/useBilling.ts
+      - New TypeScript types in ui/src/lib/types.ts (extend existing file)
+      - Supabase client initialized in server/services/supabase_client.py
+      - All Stripe Price IDs loaded from environment variables (never hardcoded)
+      - All billing database writes go through service layer (not direct from routers)
+    </architecture>
+    <security>
+      - Stripe webhook signature validated on every webhook request
+      - Credit operations use Postgres row-level locking (FOR UPDATE) to prevent race conditions
+      - BYOK API keys encrypted with AES-256 before storage, never logged or returned in full
+      - Admin endpoints enforce admin role server-side via Supabase RLS
+      - Rate limits enforced server-side only (frontend shows limits but does not enforce)
+      - Idempotency keys (stripe_payment_id) prevent duplicate credit grants from webhook retries
+    </security>
+    <error_handling>
+      - Stripe API errors return user-friendly messages (not raw Stripe error objects)
+      - Credit consumption failures return specific error (insufficient balance, rate limited, no subscription)
+      - Webhook processing failures are logged but return 200 to Stripe (to prevent retry storms for unrecoverable errors)
+      - BYOK validation errors distinguish between invalid key, network error, and permission issues
+    </error_handling>
+  </coding_standards>
+
+  <key_interactions>
+    <purchase_credits_flow>
+      1. User navigates to /pricing page
+      2. User sees plan comparison grid with credit types and bundle options
+      3. User clicks "Buy Credits" on desired credit type
+      4. Purchase modal opens with quantity selector and bundle discount preview
+      5. User selects quantity and clicks "Checkout"
+      6. Frontend calls POST /api/billing/create-checkout with credit_type and quantity
+      7. Backend creates Stripe Checkout Session and returns URL
+      8. Frontend redirects to Stripe hosted checkout page
+      9. User completes payment on Stripe
+      10. Stripe fires checkout.session.completed webhook
+      11. Backend webhook handler adds credits to user balance and logs transaction
+      12. User redirected to success page showing updated credit balance
+    </purchase_credits_flow>
+
+    <start_gated_build_flow>
+      1. User clicks "Start Build" on a project
+      2. System checks: user has active subscription? (if no, redirect to pricing)
+      3. System checks: user has sufficient credits for selected build type? (if no, show purchase modal)
+      4. System checks: user within rate limits? (if no, show rate limit error with upgrade CTA)
+      5. System checks: concurrent build slots available? (if no, add to queue with position display)
+      6. System atomically consumes one credit of the required type
+      7. System creates build_usage record with status running
+      8. Agent pipeline starts; build proceeds normally
+      9. On completion: build_usage updated with token counts, cost, and status
+      10. On system crash: auto-refund triggered, credit returned to balance
+    </start_gated_build_flow>
+
+    <byok_setup_flow>
+      1. User opens Settings modal and navigates to BYOK section
+      2. User enters their Anthropic API key in the input field
+      3. User clicks "Validate & Save"
+      4. System makes a test API call to validate the key
+      5. On success: key encrypted and stored, masked preview shown, toast "Key validated and saved"
+      6. On failure: inline error with specific message (invalid key, network error, etc.)
+      7. Next build start: user offered choice between "Use my API key" (BYOK pricing) and "Use AutoForge AI" (full pricing)
+    </byok_setup_flow>
+  </key_interactions>
+
+  <implementation_steps>
+    <step number="1">
+      <title>Database Schema and Supabase Client</title>
+      <tasks>
+        - Create Supabase migration with all six billing tables (credit_balances, credit_transactions, subscriptions, build_usage, rate_limits, user_api_keys)
+        - Create RLS policies for each table (users read/manage own data only)
+        - Create Postgres functions: consume_credit, refund_credit, add_credits
+        - Create server/services/supabase_client.py with Supabase Python client initialization
+        - Add supabase-py, stripe, and cryptography to requirements.txt
+      </tasks>
+    </step>
+    <step number="2">
+      <title>Credit Service and Billing API</title>
+      <tasks>
+        - Create server/services/billing_service.py with credit operations (add, consume, refund, balance, transactions)
+        - Create server/routers/billing.py with REST endpoints (balance, transactions, consume, refund)
+        - Add billing router to FastAPI app
+        - Add billing TypeScript types to ui/src/lib/types.ts
+        - Create ui/src/lib/billing-api.ts with API client functions
+        - Create ui/src/hooks/useBilling.ts with React Query hooks
+      </tasks>
+    </step>
+    <step number="3">
+      <title>Stripe Integration</title>
+      <tasks>
+        - Add create-checkout endpoint to billing router (one-time and subscription modes)
+        - Add webhook endpoint with Stripe signature validation
+        - Implement webhook handlers for checkout.session.completed, invoice.paid, invoice.payment_failed, customer.subscription.deleted
+        - Add idempotency checks using stripe_payment_id
+        - Add Stripe environment variables to configuration
+      </tasks>
+    </step>
+    <step number="4">
+      <title>Build Gating and Refunds</title>
+      <tasks>
+        - Integrate credit balance check into build start flow (parallel_orchestrator.py)
+        - Implement atomic credit consumption on build pipeline start
+        - Add automatic refund on system crash detection
+        - Implement 48-hour grace period check (cron or on-demand)
+        - Add queue cancellation refund logic
+      </tasks>
+    </step>
+    <step number="5">
+      <title>BYOK and Subscriptions</title>
+      <tasks>
+        - Create server/services/byok_service.py with key validation, encryption, storage
+        - Add BYOK endpoints to billing router
+        - Modify client.py to support user-provided API keys via environment variable
+        - Implement subscription management service (create, renew, cancel, credit grants)
+        - Add subscription endpoints to billing router
+      </tasks>
+    </step>
+    <step number="6">
+      <title>Rate Limiting and Build Queue</title>
+      <tasks>
+        - Implement rate limiting service with tier-based concurrent, daily, monthly limits
+        - Integrate rate limit checks into build start flow
+        - Implement build queue with priority ordering
+        - Add WebSocket broadcast for queue position updates
+        - Implement automatic counter resets (daily and monthly)
+      </tasks>
+    </step>
+    <step number="7">
+      <title>Usage Metering</title>
+      <tasks>
+        - Instrument agent.py to track token usage per session
+        - Create build_usage records on build start, update on completion
+        - Calculate estimated AI cost based on token counts and model pricing
+        - Calculate margin (credit value minus estimated AI cost)
+        - Track feature completion counts per build
+      </tasks>
+    </step>
+    <step number="8">
+      <title>Billing UI Components</title>
+      <tasks>
+        - Create CreditBalance header component with credit type counts
+        - Create PricingPage with plan comparison grid, credit types, and bundle options
+        - Create PurchaseModal with credit type selection, quantity input, and Stripe redirect
+        - Create checkout success page with updated balance display
+        - Create TransactionHistory page with pagination and type filters
+        - Add billing routes to App.tsx
+      </tasks>
+    </step>
+    <step number="9">
+      <title>BYOK and Subscription UI</title>
+      <tasks>
+        - Add BYOKSettings section to SettingsModal with key input, validation, and masked preview
+        - Create SubscriptionPage with current plan display and plan comparison
+        - Add subscribe, upgrade, and cancel flows with Stripe redirect and ConfirmModal
+        - Add BuildQueue component for queue position display
+      </tasks>
+    </step>
+    <step number="10">
+      <title>Admin Dashboard</title>
+      <tasks>
+        - Create server/routers/admin.py with admin-only endpoints (role check enforced)
+        - Implement revenue, credit velocity, margin, user analytics, and platform health queries
+        - Create AdminDashboard page with Recharts visualizations
+        - Add time period selectors for revenue and credit charts
+        - Add /admin route with admin role guard
+      </tasks>
+    </step>
+  </implementation_steps>
+
+  <success_criteria>
+    <functionality>
+      - Users can purchase credits via Stripe Checkout and see balance update immediately
+      - Credits are consumed atomically when builds start (no double-spend possible)
+      - BYOK users can save encrypted API keys and use them for builds at reduced pricing
+      - Annual subscriptions grant correct credits on creation and renewal
+      - Rate limits enforce concurrent, daily, and monthly build caps by tier
+      - Build queue orders by tier priority and provides real-time position updates
+      - Admin dashboard shows accurate revenue, credit velocity, margins, and user analytics
+      - Automatic refunds process correctly for system errors and queue cancellations
+      - 48-hour grace period returns unconsumed credits
+    </functionality>
+    <user_experience>
+      - Credit balance visible at all times in the header
+      - Pricing page clearly shows all options with bundle savings
+      - Purchase flow is smooth: select → checkout → success with no page reload jank
+      - Transaction history is filterable and paginates correctly
+      - BYOK setup provides clear validation feedback
+      - Rate limit errors show specific limits and upgrade path
+      - Queue position updates in real-time without page refresh
+    </user_experience>
+    <technical_quality>
+      - Zero console errors in browser
+      - All credit operations are atomic (Postgres transactions with row locking)
+      - Stripe webhook signature validated on every request
+      - BYOK keys encrypted at rest, never logged or returned in full
+      - No mock data patterns — all billing data reads from Supabase
+      - Admin endpoints enforce role server-side (not just frontend route guard)
+      - Idempotent webhook handling prevents duplicate credit grants
+      - TypeScript strict mode with no any types in billing code
+      - Python code passes ruff lint and mypy type checks
+    </technical_quality>
+  </success_criteria>
+</project_specification>

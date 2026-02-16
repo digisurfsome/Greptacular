@@ -37,7 +37,7 @@ This is the main website definition. It describes:
 
 ### 2. Boilerplate-AutoForge Bridge (Website Side)
 **File:** `.claude/handoffs/boilerplate-autoforge-bridge-handoff.md`
-**No generated PRD yet** — this handoff was not converted to XML spec.
+**Generated PRD:** `.claude/generated-prds/bridge-website-spec.xml` — 18 features covering build orchestration, WebSocket proxy, artifact delivery, multi-tenant isolation, auth bridge, callbacks, health monitoring, build dashboard, spec creation chat, project expand/assistant, and admin tools. Ready to feed to AutoForge.
 
 **Website-side features (Features 1-9, 11):**
 

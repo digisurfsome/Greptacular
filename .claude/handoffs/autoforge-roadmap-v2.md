@@ -560,19 +560,355 @@ Chat interface similar to `AssistantChat.tsx` with additions:
 - Style/palette chips in the chat that the user can click to preview
 - Side-by-side comparison: "Current Design" vs "Recommended Design"
 
-### External Knowledge Sources (Future Enhancement)
+### External Knowledge Sources (Two-Layer System)
 
-The user mentioned connecting to design blogs and sources that track current UI trends. This is achievable through the knowledge context field:
+The Design Advisor stays current through TWO mechanisms working together:
 
-**Manual approach (now):** Periodically update `design_advisor_knowledge_context` in Settings with current trends from design blogs. This is what the editable textarea enables.
+#### Layer 1: Scheduled Background Knowledge Refresh
 
-**Automated approach (future):** Add a scheduled task that:
-1. Fetches RSS feeds from design blogs (Smashing Magazine, CSS-Tricks, UX Collective, etc.)
-2. Summarizes recent articles about design trends using a small model
-3. Appends the summary to `design_advisor_knowledge_context`
-4. Runs weekly or monthly
+A monthly background job fetches design trend articles, summarizes them, and appends to the knowledge context automatically. The user never has to manually paste trend info — it just stays fresh.
 
-This is NOT part of the current implementation but the editable prompt field is designed to support it. The text box can hold a LOT of context — the 1M window means the advisor can consume substantial knowledge.
+**Implementation: `server/services/knowledge_updater.py`**
+
+```python
+"""
+Design Knowledge Auto-Updater
+==============================
+
+Monthly scheduled job that fetches design trend articles from RSS feeds,
+summarizes them using Claude, and appends to the design_advisor_knowledge_context
+setting. Uses the existing APScheduler infrastructure (scheduler_service.py).
+"""
+
+import logging
+from datetime import datetime, timezone
+
+logger = logging.getLogger(__name__)
+
+# RSS feeds to monitor for design trends
+# Curated list of high-quality, regularly-updated design sources
+DESIGN_FEEDS = [
+    {
+        "name": "Smashing Magazine",
+        "url": "https://www.smashingmagazine.com/feed/",
+        "focus": "web design, UX, CSS techniques"
+    },
+    {
+        "name": "CSS-Tricks",
+        "url": "https://css-tricks.com/feed/",
+        "focus": "CSS, frontend patterns, design systems"
+    },
+    {
+        "name": "UX Collective",
+        "url": "https://uxdesign.cc/feed",
+        "focus": "UX design, interaction patterns, user research"
+    },
+    {
+        "name": "Nielsen Norman Group",
+        "url": "https://www.nngroup.com/feed/rss/",
+        "focus": "usability research, UX best practices, accessibility"
+    },
+    {
+        "name": "A List Apart",
+        "url": "https://alistapart.com/main/feed/",
+        "focus": "web standards, design philosophy, inclusive design"
+    },
+    {
+        "name": "Dribbble Blog",
+        "url": "https://dribbble.com/stories/feed",
+        "focus": "visual design trends, popular styles, color trends"
+    },
+    {
+        "name": "Codrops",
+        "url": "https://tympanus.net/codrops/feed/",
+        "focus": "experimental UI, animation trends, creative coding"
+    },
+    {
+        "name": "Web Designer Depot",
+        "url": "https://www.webdesignerdepot.com/feed/",
+        "focus": "design tools, trend roundups, industry news"
+    },
+]
+
+# Summarization prompt sent to Claude with the fetched articles
+SUMMARIZATION_PROMPT = """You are analyzing recent design articles to extract current UI/UX trends.
+
+From the articles below, extract and summarize:
+
+1. **Trending Now** — What design styles, patterns, or approaches are gaining popularity?
+2. **Played Out** — What's becoming overused or cliché? (especially AI-generated aesthetics)
+3. **Color Trends** — What color palettes or combinations are appearing frequently?
+4. **Accessibility Updates** — Any new accessibility best practices or standards?
+5. **Industry-Specific** — Any trends specific to certain industries (fintech, health, e-commerce)?
+6. **Typography** — Any font or typography trends worth noting?
+
+Format as bullet points. Be specific and opinionated — don't just list things,
+say whether they're worth adopting or avoiding. Include source attribution.
+
+ARTICLES:
+{article_summaries}
+"""
+
+
+class KnowledgeUpdater:
+    """Fetches and summarizes design trends on a schedule."""
+
+    async def run_update(self) -> str | None:
+        """
+        Fetch recent articles from design feeds, summarize, and update settings.
+
+        Returns the generated summary text, or None if the update failed.
+        """
+        from registry import get_setting, set_setting
+
+        try:
+            # 1. Fetch recent articles from RSS feeds (last 30 days)
+            articles = await self._fetch_recent_articles()
+            if not articles:
+                logger.warning("No recent articles fetched from design feeds")
+                return None
+
+            logger.info(f"Fetched {len(articles)} recent design articles")
+
+            # 2. Summarize using Claude (uses CLI subscription, minimal cost)
+            summary = await self._summarize_articles(articles)
+            if not summary:
+                logger.warning("Failed to summarize design articles")
+                return None
+
+            # 3. Build the update block with timestamp
+            timestamp = datetime.now(timezone.utc).strftime("%B %Y")
+            update_block = f"\n\n--- Auto-Updated: {timestamp} ---\n{summary}"
+
+            # 4. Append to existing knowledge context
+            current_context = get_setting(
+                "design_advisor_knowledge_context", ""
+            )
+
+            # Remove previous auto-update blocks (keep only the latest)
+            # Split on the auto-update marker and keep everything before it
+            if "--- Auto-Updated:" in current_context:
+                # Keep the manually-written part, replace the auto-generated part
+                manual_part = current_context.split("--- Auto-Updated:")[0].rstrip()
+                updated_context = manual_part + update_block
+            else:
+                updated_context = current_context + update_block
+
+            set_setting("design_advisor_knowledge_context", updated_context)
+            logger.info(f"Design knowledge context updated ({len(summary)} chars)")
+
+            return summary
+
+        except Exception as e:
+            logger.error(f"Knowledge update failed: {e}")
+            return None
+
+    async def _fetch_recent_articles(self) -> list[dict]:
+        """
+        Fetch recent articles from RSS feeds.
+
+        Returns list of dicts with keys: title, source, url, summary, date
+        """
+        import aiohttp
+        import feedparser
+        from datetime import timedelta
+
+        cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+        articles = []
+
+        async with aiohttp.ClientSession() as session:
+            for feed_info in DESIGN_FEEDS:
+                try:
+                    async with session.get(
+                        feed_info["url"], timeout=aiohttp.ClientTimeout(total=15)
+                    ) as resp:
+                        if resp.status != 200:
+                            continue
+                        content = await resp.text()
+
+                    parsed = feedparser.parse(content)
+                    for entry in parsed.entries[:5]:  # Top 5 per feed
+                        # Parse published date
+                        published = entry.get("published_parsed")
+                        if published:
+                            from time import mktime
+                            entry_date = datetime.fromtimestamp(
+                                mktime(published), tz=timezone.utc
+                            )
+                            if entry_date < cutoff:
+                                continue
+
+                        articles.append({
+                            "title": entry.get("title", "Untitled"),
+                            "source": feed_info["name"],
+                            "url": entry.get("link", ""),
+                            "summary": entry.get("summary", "")[:500],
+                            "focus": feed_info["focus"],
+                        })
+                except Exception as e:
+                    logger.warning(f"Failed to fetch {feed_info['name']}: {e}")
+                    continue
+
+        return articles
+
+    async def _summarize_articles(self, articles: list[dict]) -> str | None:
+        """
+        Send articles to Claude for trend summarization.
+
+        Uses the Claude Agent SDK client (CLI subscription) for minimal cost.
+        A single summarization call uses ~2K input tokens + ~500 output tokens.
+        """
+        # Build article text for the prompt
+        article_text = ""
+        for i, article in enumerate(articles[:30], 1):  # Cap at 30 articles
+            article_text += (
+                f"\n[{i}] {article['title']} ({article['source']})\n"
+                f"Focus area: {article['focus']}\n"
+                f"Summary: {article['summary']}\n"
+            )
+
+        prompt = SUMMARIZATION_PROMPT.format(article_summaries=article_text)
+
+        # Use a lightweight Claude call for summarization
+        # This could use the Claude Agent SDK or a direct API call
+        # Implementation depends on what's simplest:
+        #
+        # Option A: Use ClaudeSDKClient with a minimal config (no MCP, no tools)
+        # Option B: Use the anthropic Python package directly if an API key is set
+        # Option C: Use WebFetch to call a summarization endpoint
+        #
+        # The implementing agent should choose the approach that fits best.
+        # The key constraint: this should use the CLI subscription (not API key)
+        # so it doesn't cost extra money.
+        #
+        # Recommended: Create a minimal ClaudeSDKClient with:
+        #   - model = haiku (fastest, cheapest for summarization)
+        #   - max_turns = 1 (single response, no tools needed)
+        #   - no MCP servers
+        #   - no security hooks
+        #   - system_prompt = SUMMARIZATION_PROMPT
+
+        # Placeholder for implementation:
+        # client = create_summarization_client()
+        # response = await client.query(prompt)
+        # return response.text
+
+        raise NotImplementedError(
+            "Implement using ClaudeSDKClient with haiku model, "
+            "max_turns=1, no MCP servers"
+        )
+```
+
+**Wire into the scheduler: `server/services/scheduler_service.py`**
+
+Add a system-level job alongside the existing per-project agent schedules:
+
+```python
+# In SchedulerService.__init__() or start():
+async def _schedule_knowledge_updates(self):
+    """Schedule monthly design knowledge refresh."""
+    from server.services.knowledge_updater import KnowledgeUpdater
+
+    updater = KnowledgeUpdater()
+
+    # Run on the 1st of each month at 3:00 AM UTC
+    self.scheduler.add_job(
+        updater.run_update,
+        trigger=CronTrigger(day=1, hour=3, minute=0),
+        id="design_knowledge_update",
+        name="Monthly design trend refresh",
+        replace_existing=True,
+    )
+    logger.info("Scheduled monthly design knowledge update (1st of month, 3am UTC)")
+```
+
+**Settings for the scheduler:**
+
+| Key | Type | Default | UI Control |
+|-----|------|---------|------------|
+| `knowledge_auto_update` | bool | true | Toggle |
+| `knowledge_update_interval` | string | "monthly" | Dropdown: weekly/monthly/quarterly |
+| `knowledge_feed_urls` | text | (DESIGN_FEEDS urls, one per line) | Textarea |
+
+The feed URL list is also editable in Settings — users can add/remove sources, add industry-specific blogs, or point to their company's internal design system blog.
+
+**New pip dependencies:** `feedparser`, `aiohttp` (aiohttp likely already installed for the async server)
+
+**UI: Knowledge Update Status**
+
+In the Settings > AI Advisors > Design Advisor section, show:
+
+```
+Knowledge Auto-Update: [ON] / [OFF]
+Update Frequency: [Weekly] [Monthly] [Quarterly]
+Last Updated: February 1, 2026
+Next Update: March 1, 2026
+[Run Update Now] button
+Feed Sources: [textarea with URLs, one per line]
+```
+
+The "Run Update Now" button triggers `KnowledgeUpdater.run_update()` immediately via a REST endpoint:
+
+```
+POST /api/design-advisor/update-knowledge
+  → Returns: { "success": true, "summary": "...", "articles_processed": 23 }
+```
+
+#### Layer 2: Live Web Search During Advisor Conversations
+
+The Design Advisor also searches the web in real-time during conversations when it needs specific, current information. This complements the cached knowledge with on-demand freshness.
+
+**Implementation:** Add WebSearch/WebFetch instructions to the Design Advisor's system prompt. These tools are already available in the Claude Agent SDK (`client.py` lines 292-301: `BUILTIN_TOOLS` includes `WebFetch` and `WebSearch`).
+
+**Add to the default `design_advisor_system_prompt`:**
+
+```
+## LIVE TREND RESEARCH
+
+You have access to WebSearch and WebFetch tools. Use them when:
+- The user asks about very recent design trends (last 1-2 months)
+- You need to verify if a style/pattern is still current or has become cliché
+- The user mentions a specific design trend you're not confident about
+- You need industry-specific design guidance not in your knowledge context
+- The user asks "what's trending right now for [industry] apps?"
+
+Example searches you might perform:
+- "UI design trends 2026 [industry]"
+- "is glassmorphism still popular 2026"
+- "[color palette name] overused design"
+- "best design systems for [app type] 2026"
+- "accessibility design trends WCAG 2026"
+
+When citing search results, tell the user where the information came from.
+This builds trust and lets them explore further.
+
+IMPORTANT: Don't search for every recommendation. Use your built-in knowledge
+and the knowledge context for standard recommendations. Only search when you
+need something very current or very specific.
+```
+
+**How the two layers work together:**
+
+```
+Layer 1 (Background):                    Layer 2 (Live):
+Monthly RSS fetch                        Real-time web search
+        ↓                                       ↓
+Claude summarizes articles               Search during conversation
+        ↓                                       ↓
+Appends to knowledge_context             Results cited in chat
+        ↓                                       ↓
+Advisor reads on next conversation       Advisor uses immediately
+        ↓                                       ↓
+Covers broad trends                      Covers specific questions
+Cost: ~free (1 haiku call/month)         Cost: ~2-5 turns per search
+```
+
+**The user controls both:**
+- Layer 1: Toggle on/off, set frequency, edit feed URLs — all in Settings
+- Layer 2: Edit the system prompt to add/remove search instructions — also in Settings
+- Both layers feed into the same Design Advisor conversation
+- If auto-update generates bad summaries, user can delete them from the knowledge textarea
+- If live search wastes too many turns, user can remove the search section from the prompt
 
 ---
 
@@ -599,13 +935,19 @@ Phase 3: AI Setup Advisor
 ├── Depends on: Phase 1 (levers must exist to recommend values)
 └── Follows existing patterns: assistant_chat_session.py, spec_chat_session.py
 
-Phase 4: AI Design Advisor
+Phase 4: AI Design Advisor + Knowledge Auto-Update
 ├── New: server/services/design_advisor_session.py
-├── New: server/routers/design_advisor.py
+├── New: server/services/knowledge_updater.py (RSS fetch + summarize)
+├── New: server/routers/design_advisor.py (includes /update-knowledge endpoint)
 ├── New: ui/src/components/DesignAdvisorChat.tsx
-├── Settings: design_advisor_system_prompt, design_advisor_knowledge_context
+├── Settings: design_advisor_system_prompt, design_advisor_knowledge_context,
+│             knowledge_auto_update, knowledge_update_interval, knowledge_feed_urls
+├── Scheduler: Monthly CronTrigger job in scheduler_service.py
+├── New pip deps: feedparser (aiohttp likely already present)
 ├── Depends on: Phase 3 (shared patterns and UI components)
-└── Integrates with: style_manager.py, palettes.ts, StylePreview.tsx
+├── Two-layer knowledge: Background RSS refresh + Live WebSearch in conversations
+└── Integrates with: style_manager.py, palettes.ts, StylePreview.tsx,
+                      scheduler_service.py (APScheduler)
 ```
 
 ---
@@ -637,12 +979,15 @@ Phase 4: AI Design Advisor
 | `advisor_system_prompt` | text | (see Phase 3 section) | Textarea, 10 rows, monospace |
 | `advisor_knowledge_context` | text | (see Phase 3 section) | Textarea, 10 rows, monospace |
 
-### Phase 4 Settings (Design Advisor)
+### Phase 4 Settings (Design Advisor + Knowledge Updates)
 
 | Key | Type | Default | UI Control |
 |-----|------|---------|------------|
 | `design_advisor_system_prompt` | text | (see Phase 4 section) | Textarea, 10 rows, monospace |
 | `design_advisor_knowledge_context` | text | (see Phase 4 section) | Textarea, 10 rows, monospace |
+| `knowledge_auto_update` | bool | true | Toggle |
+| `knowledge_update_interval` | string | "monthly" | Dropdown: weekly/monthly/quarterly |
+| `knowledge_feed_urls` | text | (default RSS feed URLs, one per line) | Textarea |
 
 ---
 
@@ -688,8 +1033,16 @@ Settings Modal
     └── Design Advisor
         ├── System Prompt: [textarea]
         │   └── [Reset to Default]
-        └── Knowledge Context: [textarea]
-            └── [Reset to Default]
+        ├── Knowledge Context: [textarea]
+        │   └── [Reset to Default]
+        │
+        └── Knowledge Auto-Update                  ← NEW Phase 4
+            ├── Enabled: [ON] / [OFF]
+            ├── Frequency: [Weekly] [Monthly] [Quarterly]
+            ├── Last Updated: February 1, 2026
+            ├── Next Update: March 1, 2026
+            ├── [Run Update Now] button
+            └── Feed Sources: [textarea, URLs one per line]
 ```
 
 ---
@@ -711,7 +1064,9 @@ Settings Modal
 
 1. **Per-project overrides** — `.autoforge/agent_config.yaml` for project-specific lever values
 2. **Session metrics tracking** — `session_metrics` table logging turns used, context %, errors, duration per agent session. Feeds into advisor's knowledge over time.
-3. **Automated knowledge updates** — RSS feed integration for design trends
-4. **Advisor learning** — Track which recommendations led to successful builds, weight future recommendations accordingly
-5. **Community prompt library** — Share advisor prompts that work well for specific project types
-6. **Initializer max_turns lever** — Currently hardcoded at 200, could be adjustable for very complex projects
+3. **Advisor learning** — Track which recommendations led to successful builds, weight future recommendations accordingly. Both Setup Advisor and Design Advisor benefit from historical data showing what settings/designs produced the best outcomes.
+4. **Community prompt library** — Share advisor prompts that work well for specific project types. Users could export/import advisor prompts and knowledge contexts.
+5. **Initializer max_turns lever** — Currently hardcoded at 200, could be adjustable for very complex projects
+6. **Setup Advisor knowledge auto-update** — Same RSS + summarization pattern as the Design Advisor, but for build optimization articles. Sources: Anthropic blog (model updates), CI/CD best practices, Claude Code changelog.
+7. **Design advisor screenshot analysis** — Feed the Design Advisor screenshots of competitor apps or design inspiration. Uses the existing `style_extractor.py` vision LLM pipeline to extract tokens from images and recommend matching AutoForge configurations.
+8. **A/B design testing** — Generate two style configurations, build both, let the user compare side-by-side with the live preview system.

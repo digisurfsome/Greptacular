@@ -259,8 +259,9 @@ WORKSPACE_BUILTIN_TOOLS = [
 # Maximum messages to load from history when resuming a conversation
 MAX_HISTORY_MESSAGES = 100
 
-# Claude's approximate context window for token budget display
-CONTEXT_WINDOW_TOKENS = 200_000
+# Claude's context window with 1M beta enabled (context-1m-2025-08-07)
+# This is the ENTIRE POINT of the workspace — must match the beta flag below.
+CONTEXT_WINDOW_TOKENS = 1_000_000
 ```
 
 **System Prompt Function:**
@@ -387,6 +388,8 @@ hooks = {
     ]
 }
 
+is_alternative_api = sdk_env.get("CLAUDE_CODE_USE_VERTEX") or sdk_env.get("OLLAMA_BASE_URL") or sdk_env.get("ALTERNATIVE_API_BASE_URL")
+
 self.client = ClaudeSDKClient(
     options=ClaudeAgentOptions(
         model=model,
@@ -399,6 +402,9 @@ self.client = ClaudeSDKClient(
         settings=str(settings_file.resolve()),
         env=sdk_env,
         hooks=hooks,
+        # CRITICAL: Enable 1M token context window — this is the whole
+        # point of the workspace. Same beta used in client.py for coding agents.
+        betas=[] if is_alternative_api else ["context-1m-2025-08-07"],
     )
 )
 await self.client.__aenter__()
@@ -996,14 +1002,14 @@ interface ContextBudgetBarProps {
 
 ```
 +------------------------------------------------------------+
-| Context: 45,230 / 200,000 tokens        ████████░░░░  23%  |
+| Context: 45,230 / 1,000,000 tokens      ██░░░░░░░░░░   5%  |
 +------------------------------------------------------------+
 ```
 
 When hovered, expand to show breakdown:
 ```
 +------------------------------------------------------------+
-| Context: 45,230 / 200,000 tokens        ████████░░░░  23%  |
+| Context: 45,230 / 1,000,000 tokens      ██░░░░░░░░░░   5%  |
 |                                                              |
 | Conversation history: ~42,100 tokens                         |
 | System prompt: ~3,130 tokens                                 |
@@ -1153,7 +1159,7 @@ Add the workspace-specific descriptions (Write, Edit, Bash) in addition to the e
 **Full state:**
 ```tsx
 const [totalTokens, setTotalTokens] = useState(0)
-const [contextWindow, setContextWindow] = useState(200_000)
+const [contextWindow, setContextWindow] = useState(1_000_000)
 ```
 
 Include these in the return object. Reset `totalTokens` to 0 in `clearMessages()`.

@@ -1,336 +1,614 @@
-# Feature Sizing System Overhaul — Context-Budget-First Architecture
+# Configurable Agent Budget Levers — Settings UI + Dynamic Context Management
 
-## Status: Ready for Deep Analysis and Implementation
+## Status: Ready for Implementation
 
 ## Your Mission
 
-You are a fresh agent with a full context window. Your job is to **deeply analyze** the feature sizing system in AutoForge, understand two competing philosophies, and implement a merged approach that takes the best of both. Read EVERYTHING referenced in this document. Ruminate on it. Check for edge cases. Make sure every change is consistent across all files. This is the most critical architectural change to the system.
+Add 9 configurable levers to AutoForge that control how coding agents manage their context budget, how features get batched, and how turn estimation works. These replace hardcoded constants scattered across 4 Python files with dynamic values stored in the settings database and controllable from the Settings modal in the React UI.
 
-**Take your time.** You have an entire context window. Use it to think deeply, not to rush.
+**The core principle:** Keep the original creator's granular feature system exactly as-is (small atomic features, 165-405 per project, 20 mandatory test categories, wide dependency graphs). What changes is the SESSION MANAGEMENT — how much of the context window each agent uses, how many features get packed per session, and how aggressively the system batches work. These become tunable levers the owner adjusts per project to find the sweet spot between quality and throughput.
 
----
+**Read these files FIRST before writing any code:**
+1. `registry.py` — Settings key-value store (SQLite), `get_setting()`, `set_setting()`, `get_all_settings()`
+2. `server/routers/settings.py` — GET/PATCH `/api/settings` endpoints, `SettingsResponse`/`SettingsUpdate` models
+3. `server/schemas.py` — Pydantic models for `SettingsResponse` (line ~429) and `SettingsUpdate` (line ~462)
+4. `ui/src/components/SettingsModal.tsx` — React settings UI, existing patterns for toggles/buttons/dropdowns
+5. `ui/src/lib/types.ts` — TypeScript type definitions for settings
+6. `ui/src/hooks/useProjects.ts` — `useSettings()` and `useUpdateSettings()` hooks
+7. `agent.py` — Lines 55-107: budget constants and checkpoint logic
+8. `parallel_orchestrator.py` — Lines 139-146 and 200-216: budget/batch constants and constructor
+9. `client.py` — Lines 347-362: `max_turns_map` per agent type
+10. `autonomous_agent_demo.py` — CLI args and settings flow to orchestrator
+11. `prompts.py` — `get_batch_feature_prompt()` and `get_single_feature_prompt()` functions
+12. `.claude/templates/coding_prompt.template.md` — The coding agent prompt with budget instructions
 
-## The Two Philosophies
-
-### Philosophy A: "Granularity-First" (Original Creator)
-
-The original AutoForge creator designed the system around **many tiny features** (165-405 per project). Each feature is a single testable behavior (e.g., "User can create a todo"). The Initializer agent creates ALL features upfront, and coding agents pick them up one by one (or in batches of 1-3).
-
-**The reasoning:** Small features are easy to test, easy to retry, and enable parallel execution. If one fails, the blast radius is tiny.
-
-**The problem:** This approach doesn't explicitly enforce context budget limits. It HOPES features stay small enough. And with 200+ features, you get massive session overhead — each agent session spends ~30 turns on orientation and wrap-up, producing zero code.
-
-### Philosophy B: "Budget-First" (Current Owner)
-
-The current owner added a **hard 45% context window cap** (turn 120 wrap-up, turn 135 done, SDK max_turns=150 hard stop). This is NON-NEGOTIABLE. The owner spent 3 weeks debugging issues caused by agents exceeding 50% context, and will never allow that again.
-
-**The reasoning:** Agent quality degrades past 50% context usage. By capping at 45%, every feature gets implemented correctly the first time. Quality over quantity.
-
-**The problem:** With 200+ tiny features, many sessions waste 70-80% of their context budget on features that only need 20-30% of it. The batch size cap of 3 doesn't help enough.
-
-### The Goal: Merge Both
-
-Create features that are:
-1. **Independently testable** (from Philosophy A)
-2. **Sized to fill the 45% budget** (from Philosophy B)
-3. **Wide dependency graphs** (from Philosophy A — enables parallel agents)
-4. **Minimizing session overhead** (from Philosophy B — fewer sessions needed)
+**Match existing patterns exactly.** The settings system already has toggles, button groups, and dropdowns. New controls must look and behave identically to existing ones.
 
 ---
 
-## What Needs to Change
+## The 9 Levers
 
-### Change 1: Initializer Prompt — Feature Sizing Rules
+### Primary Controls (adjust per project — shown prominently in UI)
 
-**File:** `.claude/templates/initializer_prompt.template.md`
+| # | Lever | Key | Type | Range | Default | What It Controls |
+|---|-------|-----|------|-------|---------|------------------|
+| 1 | Context Budget Target | `context_budget_pct` | int | 15-50 | 30 | % of context window before agent starts wrapping up |
+| 2 | Max Batch Size | `batch_size` | int | 1-7 | 3 | Max features packed per coding agent session |
+| 3 | Max Parallel Agents | (already exists) | int | 1-5 | 3 | Concurrent coding agents |
 
-**Current state (lines 65-83):** The sizing guidelines say:
-- Small features: 2-5 steps (orchestrator may batch 2-3)
-- Medium features: 6-10 steps (one per session)
-- Large features: 10+ steps (must be split if 15+ complex steps)
-- Rule: No feature should require more than ~120 turns
+### Advanced Controls (tune over time — collapsed/expandable section in UI)
 
-**What's wrong:** These guidelines create features that are SMALLER than the budget allows. A 2-step feature uses ~30 turns of a 120-turn budget (25%). Even batching 3 of these only fills 75%. The guidelines optimize for granularity, not budget utilization.
+| # | Lever | Key | Type | Range | Default | What It Controls |
+|---|-------|-----|------|-------|---------|------------------|
+| 4 | Hard Stop Buffer | `hard_stop_buffer_pct` | int | 3-15 | 5 | % above target before forced stop |
+| 5 | Turns Per Step Estimate | `turns_per_step` | int | 5-20 | 10 | Base turn cost per feature step (for batch packing) |
+| 6 | Min Feature Turns | `min_feature_turns` | int | 15-50 | 30 | Floor turn estimate even for tiny features |
+| 7 | Checkpoint Interval | `budget_checkpoint_interval` | int | 10-40 | 30 | How often agent sees budget warning messages |
+| 8 | Max Feature Retries | `max_feature_retries` | int | 1-5 | 3 | Retry attempts before marking feature failed |
+| 9 | Max Total Agents | `max_total_agents` | int | 5-15 | 10 | Hard ceiling on all agent processes (coding + testing + review) |
 
-**What to change:** Rewrite the sizing section to be **context-budget-first**. Key principles:
-- Target feature size: 40-80 estimated turns (33-67% of the 120-turn budget)
-- This leaves room for batching 1-2 features per session, or running a medium feature solo
-- Group related small behaviors into single features when they share the same code paths
-- Split only when a feature would exceed 100 estimated turns
-- Keep each feature independently testable — the feature's steps must define a complete, verifiable behavior
+### Derived Values (auto-calculated, shown read-only in UI)
 
-**Specific rewrite needed for the sizing guidelines section:**
+These are NOT stored in settings. They're computed from the primary/advanced levers and displayed so the user sees what their settings mean in practice.
 
-Replace the current "Small/Medium/Large" tiers with a budget-aware approach:
-- **Compact features (3-5 steps, ~30-50 turns):** These are quick wins. The orchestrator will batch 2-3 of these together to fill the budget. Good for: form validation, empty states, navigation tests, responsive checks.
-- **Standard features (6-10 steps, ~60-100 turns):** The sweet spot. One per session. These should be the MAJORITY of features. Good for: full CRUD on an entity, a complete UI page with interactions, an API endpoint with validation and error handling.
-- **Maximum features (11-12 steps, ~100-120 turns):** Use sparingly. These fill the entire budget solo. Good for: complex multi-step workflows, integration features that touch many parts of the stack.
-- **NEVER create features over 12 steps.** If a behavior needs more, split it into two features with a dependency. Each part must be independently testable.
+| Derived Value | Formula | Example at 30% budget |
+|---|---|---|
+| Budget Target Turn | `context_budget_pct / 100 * 300` | Turn 90 |
+| Hard Stop Turn | `(context_budget_pct + hard_stop_buffer_pct) / 100 * 300` | Turn 105 |
+| Max Turns (SDK) | `hard_stop_turn + 10` | 115 |
+| Usable Turns | `target_turn - 20` (orientation overhead) | 70 |
+| Est. Features/Session | `usable_turns / (turns_per_step * avg_steps)` | ~2-3 |
 
-**Also update the feature count tiers (lines 54-57):**
+The `300` constant represents the full context capacity in turns. The current system uses 150 max_turns as a hard ceiling, but that maps to roughly 50% of the context window. Full capacity is ~300 turns.
 
-Current:
-```
-- Simple apps: ~165 tests
-- Medium apps: ~265 tests
-- Advanced apps: ~405+ tests
-```
+---
 
-Replace with budget-aware tiers:
-```
-- Simple apps: 30-55 features
-- Medium apps: 55-80 features
-- Advanced apps: 80-120 features
-```
+## Implementation: File-by-File
 
-The total number of features is LOWER because each feature is LARGER (but still within budget). The same total work gets done in fewer sessions with less overhead.
+### File 1: `server/schemas.py` — Add to Pydantic Models
 
-**Critical:** The mandatory infrastructure features (indices 0-4) stay exactly as they are. The 20 mandatory test categories stay exactly as they are. The dependency rules stay exactly as they are. We are ONLY changing how features are SIZED, not how they are structured or categorized.
+**Add to `SettingsResponse`** (around line 429, after existing fields):
 
-### Change 2: Initializer Prompt — Feature Grouping Rules (NEW)
-
-**File:** `.claude/templates/initializer_prompt.template.md`
-
-**Add a new section** after the sizing guidelines that teaches the Initializer HOW to group small behaviors into budget-efficient features without losing testability.
-
-**Content for new "Feature Grouping" section:**
-
-```markdown
-### FEATURE GROUPING (Maximize Budget Utilization)
-
-Small behaviors that share code paths should be GROUPED into a single feature.
-Each grouped feature must still be independently testable — the steps must
-define a complete verification sequence.
-
-**When to group:**
-- Same entity, same page (e.g., "Create todo" + "form validates required fields"
-  + "success toast appears" = one feature: "User can create a todo with
-  validation and feedback")
-- Same API endpoint, multiple validations (e.g., "returns 401 for no auth" +
-  "returns 400 for invalid body" + "returns 201 for valid request" = one feature:
-  "API validates and processes todo creation requests")
-- Same UI component, multiple states (e.g., "shows loading skeleton" +
-  "shows empty state" + "shows populated list" = one feature: "Todo list
-  displays correct state for loading, empty, and populated conditions")
-
-**When NOT to group:**
-- Different entities (don't combine user CRUD with todo CRUD)
-- Different pages (don't combine dashboard tests with settings tests)
-- Unrelated concerns (don't combine accessibility with performance)
-- Features that have different dependency requirements
-
-**Grouping examples:**
-
-BAD (3 tiny features, each wastes 75% of budget):
-  Feature A: "User can create a todo" (2 steps, ~30 turns)
-  Feature B: "Create form validates required fields" (2 steps, ~30 turns)
-  Feature C: "Success toast appears on create" (2 steps, ~30 turns)
-
-GOOD (1 standard feature, uses ~60% of budget):
-  Feature A: "User can create a todo with validation and feedback" (6 steps, ~60 turns)
-    Step 1: Navigate to todo list, click "New Todo"
-    Step 2: Submit empty form, verify validation errors on required fields
-    Step 3: Fill in valid data, submit
-    Step 4: Verify success toast appears
-    Step 5: Verify todo appears in the list
-    Step 6: Verify todo persists after page refresh
-```
-
-### Change 3: Parallel Orchestrator — Batch Size Limits
-
-**File:** `parallel_orchestrator.py`
-
-**Current state (line 208):**
 ```python
-self.batch_size = min(max(batch_size, 1), 3)  # Clamp 1-3
+# Agent Budget Settings
+context_budget_pct: int = 30
+hard_stop_buffer_pct: int = 5
+turns_per_step: int = 10
+min_feature_turns: int = 30
+budget_checkpoint_interval: int = 30
+max_feature_retries: int = 3
+max_total_agents: int = 10
 ```
 
-**What's wrong:** The cap of 3 is too restrictive for budget-efficient batching. If you have 3 compact features (30 turns each = 90 turns total), there's room for a 4th. The current cap prevents this.
+**Add to `SettingsUpdate`** (around line 462, after existing fields):
 
-**What to change:** Increase the clamp to 5:
 ```python
-self.batch_size = min(max(batch_size, 1), 5)  # Clamp 1-5
+# Agent Budget Settings
+context_budget_pct: int | None = None
+hard_stop_buffer_pct: int | None = None
+turns_per_step: int | None = None
+min_feature_turns: int | None = None
+budget_checkpoint_interval: int | None = None
+max_feature_retries: int | None = None
+max_total_agents: int | None = None
 ```
 
-**Also update the CLI argument validation** in `autonomous_agent_demo.py` (around line 183-187):
+**Add validators** to `SettingsUpdate`:
+
 ```python
-# Current: parser.add_argument('--batch-size', type=int, default=3, choices=range(1, 4))
-# Change to: parser.add_argument('--batch-size', type=int, default=3, choices=range(1, 6))
+@field_validator('context_budget_pct')
+@classmethod
+def validate_context_budget(cls, v: int | None) -> int | None:
+    if v is not None and (v < 15 or v > 50):
+        raise ValueError("context_budget_pct must be between 15 and 50")
+    return v
+
+@field_validator('hard_stop_buffer_pct')
+@classmethod
+def validate_hard_stop_buffer(cls, v: int | None) -> int | None:
+    if v is not None and (v < 3 or v > 15):
+        raise ValueError("hard_stop_buffer_pct must be between 3 and 15")
+    return v
+
+@field_validator('turns_per_step')
+@classmethod
+def validate_turns_per_step(cls, v: int | None) -> int | None:
+    if v is not None and (v < 5 or v > 20):
+        raise ValueError("turns_per_step must be between 5 and 20")
+    return v
+
+@field_validator('min_feature_turns')
+@classmethod
+def validate_min_feature_turns(cls, v: int | None) -> int | None:
+    if v is not None and (v < 15 or v > 50):
+        raise ValueError("min_feature_turns must be between 15 and 50")
+    return v
+
+@field_validator('budget_checkpoint_interval')
+@classmethod
+def validate_checkpoint_interval(cls, v: int | None) -> int | None:
+    if v is not None and (v < 10 or v > 40):
+        raise ValueError("budget_checkpoint_interval must be between 10 and 40")
+    return v
+
+@field_validator('max_feature_retries')
+@classmethod
+def validate_max_retries(cls, v: int | None) -> int | None:
+    if v is not None and (v < 1 or v > 5):
+        raise ValueError("max_feature_retries must be between 1 and 5")
+    return v
+
+@field_validator('max_total_agents')
+@classmethod
+def validate_max_total_agents(cls, v: int | None) -> int | None:
+    if v is not None and (v < 5 or v > 15):
+        raise ValueError("max_total_agents must be between 5 and 15")
+    return v
 ```
 
-**Why 5 and not unlimited:** The orchestrator's batch builder still respects the 120-turn budget limit (`BUDGET_USABLE_TURNS`). Even with batch_size=5, it won't add more features than fit in the budget. The cap prevents pathological cases where many trivial features (1-step each) get batched into an unmanageable set.
+### File 2: `server/routers/settings.py` — Read/Write Settings
 
-**Note:** The default of 3 stays the same. This just raises the CEILING for power users who want more aggressive batching.
+**In GET handler** (around line 118, add to SettingsResponse constructor):
 
-### Change 4: Parallel Orchestrator — Turn Estimation Enhancement
-
-**File:** `parallel_orchestrator.py`
-
-**Current state (lines 403-419):**
 ```python
-@staticmethod
-def _estimate_feature_turns(feature: dict) -> int:
-    steps = feature.get("steps") or []
-    step_count = len(steps) if isinstance(steps, list) else 0
-    return max(step_count * TURNS_PER_STEP, MIN_FEATURE_TURNS)
+context_budget_pct=_parse_int(all_settings.get("context_budget_pct"), 30),
+hard_stop_buffer_pct=_parse_int(all_settings.get("hard_stop_buffer_pct"), 5),
+turns_per_step=_parse_int(all_settings.get("turns_per_step"), 10),
+min_feature_turns=_parse_int(all_settings.get("min_feature_turns"), 30),
+budget_checkpoint_interval=_parse_int(all_settings.get("budget_checkpoint_interval"), 30),
+max_feature_retries=_parse_int(all_settings.get("max_feature_retries"), 3),
+max_total_agents=_parse_int(all_settings.get("max_total_agents"), 10),
 ```
 
-**What's wrong:** All steps are treated as equal complexity. "Create a database table" and "Implement full WebSocket proxy with event translation, buffering, and reconnection handling" both count as 10 turns.
+**In PATCH handler** (around line 145, add after existing update blocks):
 
-**What to change:** Use step text length as an additional signal:
 ```python
-@staticmethod
-def _estimate_feature_turns(feature: dict) -> int:
+if update.context_budget_pct is not None:
+    set_setting("context_budget_pct", str(update.context_budget_pct))
+
+if update.hard_stop_buffer_pct is not None:
+    set_setting("hard_stop_buffer_pct", str(update.hard_stop_buffer_pct))
+
+if update.turns_per_step is not None:
+    set_setting("turns_per_step", str(update.turns_per_step))
+
+if update.min_feature_turns is not None:
+    set_setting("min_feature_turns", str(update.min_feature_turns))
+
+if update.budget_checkpoint_interval is not None:
+    set_setting("budget_checkpoint_interval", str(update.budget_checkpoint_interval))
+
+if update.max_feature_retries is not None:
+    set_setting("max_feature_retries", str(update.max_feature_retries))
+
+if update.max_total_agents is not None:
+    set_setting("max_total_agents", str(update.max_total_agents))
+```
+
+**In PATCH response** (around line 226, add to SettingsResponse constructor):
+Same as GET handler above — repeat the `_parse_int()` calls.
+
+### File 3: `ui/src/lib/types.ts` — Add TypeScript Types
+
+**Add to the Settings interface** (find the existing Settings type):
+
+```typescript
+// Agent Budget Settings
+context_budget_pct: number
+hard_stop_buffer_pct: number
+turns_per_step: number
+min_feature_turns: number
+budget_checkpoint_interval: number
+max_feature_retries: number
+max_total_agents: number
+```
+
+### File 4: `ui/src/components/SettingsModal.tsx` — UI Controls
+
+**Add a new section** in the settings modal. Place it AFTER the existing "Build Settings" section and BEFORE "API Provider". Use an expandable/collapsible pattern for the advanced controls.
+
+**Handlers** (add near existing handlers):
+
+```typescript
+const handleContextBudgetChange = (value: number) => {
+  if (!updateSettings.isPending) {
+    updateSettings.mutate({ context_budget_pct: value })
+  }
+}
+
+const handleHardStopBufferChange = (value: number) => {
+  if (!updateSettings.isPending) {
+    updateSettings.mutate({ hard_stop_buffer_pct: value })
+  }
+}
+
+const handleTurnsPerStepChange = (value: number) => {
+  if (!updateSettings.isPending) {
+    updateSettings.mutate({ turns_per_step: value })
+  }
+}
+
+const handleMinFeatureTurnsChange = (value: number) => {
+  if (!updateSettings.isPending) {
+    updateSettings.mutate({ min_feature_turns: value })
+  }
+}
+
+const handleCheckpointIntervalChange = (value: number) => {
+  if (!updateSettings.isPending) {
+    updateSettings.mutate({ budget_checkpoint_interval: value })
+  }
+}
+
+const handleMaxFeatureRetriesChange = (value: number) => {
+  if (!updateSettings.isPending) {
+    updateSettings.mutate({ max_feature_retries: value })
+  }
+}
+
+const handleMaxTotalAgentsChange = (value: number) => {
+  if (!updateSettings.isPending) {
+    updateSettings.mutate({ max_total_agents: value })
+  }
+}
+```
+
+**Add state for advanced section toggle:**
+
+```typescript
+const [showAdvancedBudget, setShowAdvancedBudget] = useState(false)
+```
+
+**UI Layout for the section:**
+
+```
+Agent Context Budget
+├── Context Budget Target: [20%] [25%] [30%] [35%] [40%] [45%]   ← button group
+├── Max Batch Size: [1] [2] [3] [5] [7]                          ← button group (update existing)
+├── Derived values (read-only display):
+│   ├── Target Turn: 90 / Hard Stop Turn: 105 / Max Turns: 115
+│   └── Usable Turns: 70 / Est. Features/Session: ~2-3
+│
+└── [▶ Advanced Budget Controls]                                   ← collapsible
+    ├── Hard Stop Buffer: [3%] [5%] [8%] [10%] [15%]             ← button group
+    ├── Turns Per Step: [5] [8] [10] [15] [20]                   ← button group
+    ├── Min Feature Turns: [15] [20] [30] [40] [50]              ← button group
+    ├── Checkpoint Interval: [10] [15] [20] [30] [40]            ← button group
+    ├── Max Feature Retries: [1] [2] [3] [4] [5]                 ← button group
+    └── Max Total Agents: [5] [8] [10] [12] [15]                 ← button group
+```
+
+**Derived values display** (compute in the component):
+
+```typescript
+const budgetPct = settings?.context_budget_pct ?? 30
+const bufferPct = settings?.hard_stop_buffer_pct ?? 5
+const targetTurn = Math.round(budgetPct / 100 * 300)
+const hardStopTurn = Math.round((budgetPct + bufferPct) / 100 * 300)
+const maxTurns = hardStopTurn + 10
+const usableTurns = targetTurn - 20
+const turnsPerStep = settings?.turns_per_step ?? 10
+const estFeaturesPerSession = Math.max(1, Math.round(usableTurns / (turnsPerStep * 5)))  // Assume avg 5 steps
+```
+
+**For the existing batch_size control**, update the button options from `[1, 2, 3]` to `[1, 2, 3, 5, 7]`.
+
+### File 5: `agent.py` — Read Budget Settings Dynamically
+
+**Current hardcoded constants (lines 55-60):**
+
+```python
+BUDGET_TARGET_TURNS = 135
+BUDGET_WARN_TURNS = 120
+BUDGET_CHECKPOINT_INTERVAL = 30
+MAX_CODING_TURNS = 150
+```
+
+**Replace with dynamic loading.** Add an import and helper function:
+
+```python
+from registry import get_setting
+
+def _get_budget_constants() -> tuple[int, int, int, int]:
+    """Calculate budget constants from settings."""
+    budget_pct = int(get_setting("context_budget_pct", "30"))
+    buffer_pct = int(get_setting("hard_stop_buffer_pct", "5"))
+    checkpoint = int(get_setting("budget_checkpoint_interval", "30"))
+
+    target_turn = round(budget_pct / 100 * 300)
+    hard_stop_turn = round((budget_pct + buffer_pct) / 100 * 300)
+    max_turns = hard_stop_turn + 10
+    # Warn 15 turns before target
+    warn_turn = max(target_turn - 15, checkpoint)
+
+    return target_turn, warn_turn, checkpoint, max_turns
+```
+
+**In `run_agent_session()`**, replace the hardcoded constants with the dynamic values:
+
+```python
+async def run_agent_session(...):
+    budget_target, budget_warn, checkpoint_interval, max_coding_turns = _get_budget_constants()
+    # ... rest of function uses these local variables instead of module constants ...
+```
+
+**Keep the module-level constants as FALLBACK defaults** in case `get_setting()` fails:
+
+```python
+# Fallback defaults (overridden by settings from registry.db)
+DEFAULT_BUDGET_TARGET_TURNS = 90   # 30% of 300
+DEFAULT_BUDGET_WARN_TURNS = 75     # 15 turns before target
+DEFAULT_BUDGET_CHECKPOINT_INTERVAL = 30
+DEFAULT_MAX_CODING_TURNS = 115     # hard stop (35%) + 10 buffer
+```
+
+### File 6: `parallel_orchestrator.py` — Read Budget Settings Dynamically
+
+**Current hardcoded constants (lines 139-145):**
+
+```python
+BUDGET_USABLE_TURNS = 120
+TURNS_PER_STEP = 10
+MIN_FEATURE_TURNS = 30
+```
+
+**Replace with settings-aware loading in the constructor.** Add to `__init__()`:
+
+```python
+from registry import get_setting
+
+# In __init__, after existing assignments:
+budget_pct = int(get_setting("context_budget_pct", "30"))
+target_turn = round(budget_pct / 100 * 300)
+self._budget_usable_turns = target_turn - 20  # Subtract orientation overhead
+self._turns_per_step = int(get_setting("turns_per_step", "10"))
+self._min_feature_turns = int(get_setting("min_feature_turns", "30"))
+self._max_feature_retries = int(get_setting("max_feature_retries", "3"))
+
+# Also read max_total_agents
+max_total = int(get_setting("max_total_agents", "10"))
+# Replace the hardcoded MAX_TOTAL_AGENTS constant usage
+```
+
+**Update `_estimate_feature_turns()`** to use instance variables instead of module constants. Change from `@staticmethod` to a regular method:
+
+```python
+def _estimate_feature_turns(self, feature: dict) -> int:
     steps = feature.get("steps") or []
     if not isinstance(steps, list) or not steps:
-        return MIN_FEATURE_TURNS
+        return self._min_feature_turns
 
     total = 0
     for step in steps:
         step_text = str(step) if step else ""
-        # Base cost per step
-        step_turns = TURNS_PER_STEP
+        step_turns = self._turns_per_step
         # Complex steps (long descriptions) get a multiplier
-        if len(step_text) > 200:
-            step_turns = int(step_turns * 1.5)  # 15 turns for complex steps
-        elif len(step_text) > 400:
-            step_turns = int(step_turns * 2.0)  # 20 turns for very complex steps
+        if len(step_text) > 400:
+            step_turns = int(step_turns * 2.0)
+        elif len(step_text) > 200:
+            step_turns = int(step_turns * 1.5)
         total += step_turns
 
-    return max(total, MIN_FEATURE_TURNS)
+    return max(total, self._min_feature_turns)
 ```
 
-**Why step text length:** A step that says "Create users table with id, name, email columns" is 50 chars and simple. A step that says "Implement WebSocket proxy that validates JWT from Authorization header, looks up worker URL from builds table, opens proxied connection, translates event formats, persists key events back to database, and handles reconnection with event replay" is 250+ chars and complex. Length correlates with complexity.
+**Update batch_size clamp (line 208):**
 
-**Consider also:** Adding a `complexity_hint` field to the Feature model in `api/database.py` — but this is a larger change that affects the MCP server and Initializer. The text-length approach is simpler and doesn't require schema changes.
-
-### Change 5: Coding Prompt — Batch Workflow Clarity
-
-**File:** `.claude/templates/coding_prompt.template.md`
-
-**Current state:** The batch workflow (injected by `get_batch_feature_prompt()` in `prompts.py`) says "process features IN ORDER" and "check your budget after each."
-
-**What to add:** Make the budget-awareness more explicit:
-
-After completing each feature in a batch, the agent should estimate remaining budget:
-```
-After marking a feature passing, estimate your remaining budget:
-- Count your approximate turn number (each tool call + response ≈ 1 turn)
-- If under turn 90: proceed to next feature
-- If between turn 90-110: proceed only if next feature is compact (≤ 5 steps)
-- If over turn 110: skip remaining features, begin wrap-up
-- If over turn 120: wrap up immediately, no new implementation
+```python
+# Current: self.batch_size = min(max(batch_size, 1), 3)
+# Change to: self.batch_size = min(max(batch_size, 1), 7)
 ```
 
-### Change 6: The Spec Format — Feature Count Guidance
+**Update `build_feature_batches()`** to use `self._budget_usable_turns` instead of the module constant `BUDGET_USABLE_TURNS`. Search for all references to the constant and replace.
 
-**File:** `.claude/autoforge-prd-context.md`
+**Keep module-level constants as documentation defaults:**
 
-**Current state (Appendix B):**
-```
-Feature count reference:
-- Simple: 25-55 features (expanded to ~165 test cases by Initializer)
-- Medium: ~105 features (expanded to ~265 test cases)
-- Advanced: 155-205 features (expanded to ~405 test cases)
-```
-
-**What's wrong:** This implies the Initializer EXPANDS features. But reading the actual code, the Initializer creates EXACTLY the number specified in `feature_count`. There is no expansion. The Initializer prompt says "You must create exactly [FEATURE_COUNT] features." So the context doc is misleading.
-
-**What to change:**
-```
-Feature count reference (budget-aware sizing):
-- Simple apps (utility, calculator, notes): 30-55 features
-- Medium apps (blog, task manager with auth): 55-80 features
-- Advanced apps (e-commerce, CRM, SaaS): 80-120 features
-
-Each feature should be sized to use 30-100 estimated agent turns (of 120 usable).
-The Initializer creates EXACTLY the number specified — it does not expand them.
+```python
+# Default values (overridden by settings from registry.db in __init__)
+DEFAULT_BUDGET_USABLE_TURNS = 70   # 30% budget: turn 90 - 20 orientation
+DEFAULT_TURNS_PER_STEP = 10
+DEFAULT_MIN_FEATURE_TURNS = 30
 ```
 
-**Also update Section 1.4 "Feature Writing Rules" (around line 296-299):**
-Remove the "expanded to N test cases" language. Replace with:
+### File 7: `client.py` — Dynamic max_turns
+
+**Current (lines 353-362):**
+
+```python
+max_turns_map = {
+    "coding": 150,
+    "testing": 75,
+    ...
+}
 ```
-The Initializer creates exactly the number of features specified in <feature_count>.
-Each feature must be independently testable and sized to fit within one coding agent's
-45% context budget (~120 usable turns).
+
+**Change coding agent max_turns to be dynamic:**
+
+```python
+from registry import get_setting
+
+# Calculate coding max_turns from budget settings
+budget_pct = int(get_setting("context_budget_pct", "30"))
+buffer_pct = int(get_setting("hard_stop_buffer_pct", "5"))
+hard_stop_turn = round((budget_pct + buffer_pct) / 100 * 300)
+coding_max_turns = hard_stop_turn + 10
+
+max_turns_map = {
+    "coding": coding_max_turns,
+    "testing": 75,          # Testing doesn't use budget settings
+    "initializer": 200,     # Initializer doesn't use budget settings
+    "reviewer": 100,        # Reviewer doesn't use budget settings
+    "qa": 250,              # QA doesn't use budget settings
+    "spec-analyzer": 75,
+    "architect": 100,
+}
 ```
 
----
+### File 8: `autonomous_agent_demo.py` — Update CLI Args
 
-## Files to Modify (Complete List)
+**Update `--batch-size` argument:**
 
-| # | File | What Changes | Priority |
-|---|------|-------------|----------|
-| 1 | `.claude/templates/initializer_prompt.template.md` | Feature sizing rules, feature count tiers, add grouping rules | CRITICAL |
-| 2 | `parallel_orchestrator.py` | Batch size clamp (3→5), turn estimation enhancement | HIGH |
-| 3 | `autonomous_agent_demo.py` | CLI batch-size choices (1-4 → 1-6) | HIGH |
-| 4 | `.claude/templates/coding_prompt.template.md` | Budget-awareness in batch workflow | MEDIUM |
-| 5 | `.claude/autoforge-prd-context.md` | Feature count tiers, remove "expansion" language | MEDIUM |
-| 6 | `prompts.py` | get_batch_feature_prompt() — enhance budget instructions | LOW |
+```python
+# Current:
+parser.add_argument('--batch-size', type=int, default=3, help="...(1-3, default: 3)")
+
+# Change to:
+parser.add_argument('--batch-size', type=int, default=3, help="Max features per coding agent batch (1-7, default: 3)")
+```
+
+Remove the `choices=range(1, 4)` constraint if present — the orchestrator handles clamping.
+
+### File 9: `prompts.py` — Dynamic Budget in Prompts
+
+**In `get_single_feature_prompt()`** (around line 364), replace the hardcoded "45%" text:
+
+```python
+from registry import get_setting
+
+budget_pct = int(get_setting("context_budget_pct", "30"))
+buffer_pct = int(get_setting("hard_stop_buffer_pct", "5"))
+target_turn = round(budget_pct / 100 * 300)
+hard_stop_pct = budget_pct + buffer_pct
+warn_turn = max(target_turn - 15, 30)
+
+single_feature_header = f"""## ASSIGNED FEATURE: #{feature_id}
+
+**Context Budget: {budget_pct}% target, {hard_stop_pct}% hard stop.** Wrap up by turn {warn_turn}, done by turn {target_turn}.
+
+Work ONLY on this feature. ...
+```
+
+**In `get_batch_feature_prompt()`** (around line 399), same dynamic replacement:
+
+```python
+budget_pct = int(get_setting("context_budget_pct", "30"))
+buffer_pct = int(get_setting("hard_stop_buffer_pct", "5"))
+target_turn = round(budget_pct / 100 * 300)
+hard_stop_pct = budget_pct + buffer_pct
+warn_turn = max(target_turn - 15, 30)
+
+batch_header = f"""## ASSIGNED FEATURES (BATCH): {ids_str}
+
+**Context Budget: {budget_pct}% target, {hard_stop_pct}% hard stop.** Wrap up by turn {warn_turn}, done by turn {target_turn}.
+...
+### Budget-Aware Workflow for each feature:
+...
+6. **CHECK YOUR BUDGET** - if you are past turn {warn_turn}, wrap up and stop
+...
+```
+
+### File 10: `.claude/templates/coding_prompt.template.md` — Placeholders
+
+**Replace hardcoded budget numbers with placeholders** that `prompts.py` fills in. In the "CONTEXT BUDGET MANAGEMENT" section (lines 8-35):
+
+Replace:
+```
+Your target is **45% context usage** per session with a **hard stop at 48%**.
+```
+
+With:
+```
+Your target is **[BUDGET_TARGET_PCT]% context usage** per session with a **hard stop at [HARD_STOP_PCT]%**.
+```
+
+Replace:
+```
+- **Turn count**: You have approximately **135 turns** total (45% of your capacity). Wrap-up should begin by **turn 120**. You MUST be committed and done by **turn 135**.
+```
+
+With:
+```
+- **Turn count**: You have approximately **[BUDGET_TARGET_TURN] turns** total ([BUDGET_TARGET_PCT]% of your capacity). Wrap-up should begin by **turn [BUDGET_WARN_TURN]**. You MUST be committed and done by **turn [BUDGET_TARGET_TURN]**.
+```
+
+**Then in `prompts.py`, `get_coding_prompt()`** (or wherever the template is loaded), replace these placeholders:
+
+```python
+budget_pct = int(get_setting("context_budget_pct", "30"))
+buffer_pct = int(get_setting("hard_stop_buffer_pct", "5"))
+target_turn = round(budget_pct / 100 * 300)
+hard_stop_pct = budget_pct + buffer_pct
+warn_turn = max(target_turn - 15, 30)
+
+prompt = prompt.replace("[BUDGET_TARGET_PCT]", str(budget_pct))
+prompt = prompt.replace("[HARD_STOP_PCT]", str(hard_stop_pct))
+prompt = prompt.replace("[BUDGET_TARGET_TURN]", str(target_turn))
+prompt = prompt.replace("[BUDGET_WARN_TURN]", str(warn_turn))
+```
 
 ---
 
 ## What NOT to Change
 
-These parts of the system are solid and should be preserved exactly:
+1. **The feature creation system** — Keep the Initializer's granular features (165-405 per project). Keep the 20 mandatory test categories. Keep the 5 infrastructure features. Keep the wide dependency graphs. Keep `feature_create_bulk`. Keep `feature_split`. All of this stays exactly as-is.
 
-1. **The 45% context budget cap** — Non-negotiable. Turn 120 wrap-up, turn 135 done, SDK max_turns=150.
-2. **Budget checkpoint messages** in `agent.py` — Every 30 turns, the agent sees its estimated usage.
-3. **The 5 mandatory infrastructure features** — Indices 0-4, no dependencies, run first.
-4. **The 20 mandatory test categories** — All 20 must be covered in every project.
-5. **The `feature_split` MCP tool** — Runtime escape valve for features that turn out too large.
+2. **The feature count tiers in the Initializer prompt** — Keep Simple: ~165, Medium: ~265, Advanced: ~405. These define feature GRANULARITY, not session management.
+
+3. **The `autoforge-prd-context.md`** — Leave the reference tiers as they are. The user now understands these correctly and wants to keep the granular approach.
+
+4. **Testing/review/QA agent max_turns** — Only coding agent max_turns is dynamic. Testing (75), Initializer (200), Reviewer (100), QA (250) stay hardcoded.
+
+5. **The `feature_split` MCP tool** — Still available as a runtime escape valve.
+
 6. **The dependency system** — DAG enforcement, wide graphs, no cycles.
-7. **The `feature_create_bulk` tool** — Features are created in SQLite, immutable after creation.
-8. **Parallel orchestrator core logic** — Agent spawning, process management, crash recovery.
-9. **The Feature model schema** in `api/database.py` — Don't add fields unless absolutely necessary.
 
 ---
 
 ## Verification Checklist
 
-After making all changes, verify:
+After implementing all changes:
 
-- [ ] Read the initializer prompt end-to-end — does the sizing section make sense with the budget?
-- [ ] Read the coding prompt end-to-end — does the batch workflow make sense with larger features?
-- [ ] Trace a hypothetical build: 60-feature advanced app, batch_size=3, 3 parallel agents. How many sessions? How much context wasted on overhead?
-- [ ] Compare to current: 265-feature advanced app, batch_size=3, 3 parallel agents. How many sessions? How much overhead?
-- [ ] Check: can the Initializer still create features across all 20 mandatory test categories with 80-120 features instead of 265?
-- [ ] Check: does the turn estimation enhancement work correctly for features with no steps (returns MIN_FEATURE_TURNS)?
-- [ ] Check: does increasing batch_size clamp to 5 cause any issues in the batch builder's turn budget logic?
-- [ ] Check: is the `feature_count` placeholder still handled correctly in the spec → prompt flow?
-- [ ] Check: does the context doc's guidance match the initializer prompt's rules? No contradictions?
-- [ ] Run existing tests: `python -m pytest test_client.py`, `python -m pytest test_dependency_resolver.py`
-- [ ] Run security tests: `python test_security.py`, `python test_security_integration.py`
+- [ ] Set context_budget_pct to 30 in the UI. Verify: agent.py prints budget messages referencing turn 90 (not 135)
+- [ ] Set context_budget_pct to 45 in the UI. Verify: behavior matches the CURRENT system exactly (backward compatible)
+- [ ] Set context_budget_pct to 20 in the UI. Verify: max_turns in client.py calculates to ~85 (25% of 300 + 10)
+- [ ] Set batch_size to 5 in the UI. Verify: orchestrator accepts it (no clamp to 3)
+- [ ] Set batch_size to 10 in the UI. Verify: orchestrator clamps to 7
+- [ ] Verify derived values in UI update live when sliders change
+- [ ] Verify advanced section is collapsed by default, expandable
+- [ ] Run tests: `python -m pytest test_client.py`
+- [ ] Run tests: `python -m pytest test_dependency_resolver.py`
+- [ ] Run security tests: `python test_security.py`
 - [ ] Run linting: `ruff check .`
+- [ ] Run UI lint: `cd ui && npm run lint`
+- [ ] Run UI build: `cd ui && npm run build`
+- [ ] Start the server and open the Settings modal — all new controls appear and save correctly
+- [ ] Start a build with non-default settings — verify the coding agent sees the correct budget numbers in its prompt
 
 ---
 
-## Edge Cases to Think About
+## Edge Cases
 
-1. **A feature with 1 step but that step is extremely complex** — The text-length heuristic should catch this, but verify.
+1. **Settings not yet saved** — If a setting key doesn't exist in registry.db, `get_setting(key, default)` returns the default. All new settings have safe defaults that match (or improve upon) the current behavior.
 
-2. **A project where ALL features are compact (3-4 steps)** — With batch_size=5, the builder should pack 3-4 per session. Does this work correctly?
+2. **Budget so low the agent can't do anything** — At 15% budget: target turn 45, usable turns 25. A feature with 3 steps (30 min turns) barely fits. The batch builder won't pack more than 1 feature. This is intentional — 15% is the "maximum quality, minimum throughput" extreme.
 
-3. **A project with a very linear dependency chain** — Even with wide graph instructions, some domains are inherently linear (auth → profile → settings). Does the batch builder handle chains well?
+3. **Budget at 50% (maximum)** — Target turn 150, hard stop turn 165, max turns 175. This exceeds the current max_turns of 150. The system works but operates in the zone where quality starts degrading. The UI should show a warning when budget exceeds 40%: "Higher budgets risk quality degradation."
 
-4. **The Initializer creating exactly 80 features** — Is 80 enough to cover all 20 test categories? The minimum distribution per category would need to average 4 features per category. Some categories (like Infrastructure at exactly 5) are fixed, leaving 75 for 19 categories ≈ 4 each. That's tight but workable for a medium app.
+4. **Changing settings mid-build** — Settings are read at agent session START (in `create_client()` and `run_agent_session()`). Changing settings mid-build affects the NEXT agent session, not currently running ones. This is the correct behavior.
 
-5. **Backward compatibility** — Existing projects with 200+ features should still work. The batch builder doesn't care how many features there are, just how big each one is. So this change is backward-compatible.
+5. **The `_estimate_feature_turns` change from @staticmethod to method** — This affects all callers in parallel_orchestrator.py. Search for `_estimate_feature_turns(` and update each call from `ParallelOrchestrator._estimate_feature_turns(feature)` to `self._estimate_feature_turns(feature)`.
 
-6. **The `--batch-features` CLI flag** — This lets users specify exact feature IDs for a batch. Does the turn budget still apply? Check `parallel_orchestrator.py` for how `batch_features` mode interacts with the budget.
+6. **Import cycles** — `agent.py` and `parallel_orchestrator.py` both import from `registry.py`. Verify no circular imports exist. `registry.py` should not import from either of them.
 
 ---
 
-## The Big Picture
+## Per-Project Override (Future Enhancement)
 
-The original system was designed by someone who didn't enforce context budget limits — he relied on feature granularity to implicitly keep sessions manageable. The current owner added explicit budget enforcement (45% cap) which is the RIGHT call, but the feature sizing was never updated to match.
+The current implementation uses global settings only. A natural next step is per-project overrides stored in `.autoforge/agent_config.yaml`:
 
-This handoff aligns them: features are sized TO the budget, not hoping to fit within it. The result is:
-- Same quality guarantees (45% cap preserved)
-- Same testability (each feature independently verifiable)
-- Same parallelism (wide dependency graphs)
-- Fewer sessions (40-80 features instead of 165-405)
-- Less overhead (each session does more productive work)
-- Better budget utilization (features fill 50-80% of budget instead of 15-25%)
+```yaml
+# .autoforge/agent_config.yaml (optional, overrides global settings)
+context_budget_pct: 20
+batch_size: 2
+max_feature_retries: 5
+```
 
-This is the final piece that makes the two systems work as one.
+This is NOT part of this implementation. Mention it in a code comment for future reference, but do not build it now. Global settings are sufficient for the first iteration.
+
+---
+
+## Summary
+
+This implementation turns 6 hardcoded constants scattered across 4 Python files into 9 configurable levers accessible from the Settings UI. The feature creation system stays exactly as the original creator designed it. What changes is how aggressively the system utilizes each coding agent's context window.
+
+The owner can now dial in their preferred quality/throughput tradeoff per project: 20% for mission-critical apps (maximum quality, more sessions), 40% for quick prototypes (fast builds, good-enough quality). The default of 30% provides excellent quality with reasonable throughput.

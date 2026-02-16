@@ -69,6 +69,10 @@ There are two paths through this process:
 **Quick Path** (recommended for most users): You describe what you want, agent derives the technical details
 **Detailed Path**: You want input on technology choices, database design, API structure, etc.
 
+**KEY INSIGHT: The user's initial "rant" gives you ~60% of the picture. Phase 4G (Gap Analysis) completes the other ~40%.**
+
+The flow is: User rants about features → You reconstruct the full app picture → You identify missing puzzle pieces → You ask about gaps (or auto-fill based on confidence threshold) → Complete spec.
+
 **CRITICAL: This is a CONVERSATION, not a form.**
 
 - Ask questions for ONE phase at a time
@@ -255,7 +259,7 @@ For each type of "thing" users create or manage, confirm the navigation flow:
 >
 > Does that match your expectations, or do you have different preferences for any of these?"
 
-**Keep asking follow-up questions until you have a complete picture.** For each feature area, understand:
+**Keep asking follow-up questions until the user signals they're done describing features.** For each feature area discussed, understand:
 
 - What the user sees
 - What actions they can take
@@ -263,9 +267,155 @@ For each type of "thing" users create or manage, confirm the navigation flow:
 - Who is allowed to do it (permissions)
 - What errors could occur
 
+**When the user finishes their rant/description**, acknowledge what they've said, then transition to Phase 4G (Gap Analysis). Say something like: "Great, I think I've got a solid picture. Let me analyze what we've covered and figure out what's missing..."
+
+## Phase 4G: Gap Analysis & Smart Fill (THE PUZZLE COMPLETION PHASE)
+
+After the user finishes describing their app (their "rant"), they've likely given you ~60% of the full picture. Your job now is to **reconstruct the complete puzzle** and identify the missing pieces.
+
+**This phase has 4 steps:**
+
+### Step 1: Reconstruct the Full Picture
+
+Silently analyze everything the user said and build a mental model of the **complete application**. Think about:
+
+- What screens/pages exist end-to-end (from first visit to power user)
+- The complete data lifecycle (creation → storage → retrieval → update → deletion → archival)
+- Every user role and their complete permission matrix
+- All state transitions (what triggers what, what blocks what)
+- The full error surface (what can go wrong at every step)
+- Edge cases (empty states, limits, concurrent users, offline behavior)
+- Integration points (external services, APIs, webhooks, notifications)
+- Security boundaries (authentication flows, authorization checks, data isolation)
+- Performance considerations (caching, pagination, search indexing)
+- The onboarding flow (first-time user experience from signup to value)
+
+### Step 2: Identify Every Gap
+
+Scan the reconstructed picture against this **completeness checklist** and identify every missing puzzle piece:
+
+**Core Identity Gaps:**
+- [ ] Clear value proposition for the specific target user
+- [ ] Differentiation from existing solutions
+
+**User Flow Gaps:**
+- [ ] First-time user onboarding experience
+- [ ] Authentication flow details (signup, login, password reset, session management)
+- [ ] Primary user journey (step by step, screen by screen)
+- [ ] Secondary user journeys (settings, profile, admin tasks)
+- [ ] Exit/offboarding flow (account deletion, data export)
+
+**Data & State Gaps:**
+- [ ] All entities the user creates or manages
+- [ ] Relationships between entities (one-to-many, many-to-many)
+- [ ] Data validation rules (required fields, formats, limits)
+- [ ] What happens to related data when something is deleted (cascade vs orphan)
+- [ ] Data ownership and visibility (who can see what)
+- [ ] Default values and initial state
+
+**Feature Completeness Gaps:**
+- [ ] CRUD operations for every entity (create, read, update, delete)
+- [ ] List/detail/edit flow for each entity type
+- [ ] Search and filtering for list views
+- [ ] Sorting and pagination
+- [ ] Bulk operations (multi-select, bulk delete, bulk export)
+- [ ] Notification triggers (what events notify users)
+
+**UI/UX Gaps:**
+- [ ] Navigation structure (sidebar, tabs, breadcrumbs)
+- [ ] Responsive behavior (mobile, tablet, desktop)
+- [ ] Loading states and skeleton screens
+- [ ] Empty states (what shows when there's no data)
+- [ ] Error states (what shows when something fails)
+- [ ] Success feedback (toasts, redirects, confirmations)
+- [ ] Accessibility considerations
+
+**Security & Edge Case Gaps:**
+- [ ] Input validation and sanitization
+- [ ] Rate limiting for sensitive operations
+- [ ] Concurrent edit handling (optimistic locking, last-write-wins)
+- [ ] Maximum limits (file sizes, text lengths, item counts)
+- [ ] What happens when external services are unavailable
+
+**Business Logic Gaps:**
+- [ ] Workflow rules (what triggers what automatically)
+- [ ] Calculated/derived fields
+- [ ] Scheduling or time-based logic
+- [ ] Status transitions and their rules
+
+### Step 3: Score Confidence & Ask for Threshold
+
+For each gap, assign a **confidence score** (0-100%) representing how sure you are about what the answer SHOULD be based on context clues from the user's rant.
+
+**Scoring guidelines:**
+- **90-100%**: Obvious from context (e.g., user mentioned "users can create posts" → they obviously need to edit and delete posts too)
+- **75-89%**: Strong inference (e.g., user described a multi-user app → probably needs authentication with email/password)
+- **50-74%**: Reasonable guess but could go either way (e.g., should search be real-time or submit-based?)
+- **Below 50%**: Genuinely unclear, could be multiple valid approaches (e.g., should deleted items be soft-deleted or permanently removed?)
+
+**Present the gap analysis to the user:**
+
+> "Great rant! I've got a solid picture of what you're building. Let me show you where we stand:
+>
+> **What I've got clearly:** [2-3 sentence summary of what's well-defined]
+>
+> **Gaps I found:** I identified **X missing pieces** that a complete spec needs. Here's the breakdown:
+>
+> - **Y gaps** where I'm 85%+ confident I know what you'd want (I can auto-fill these)
+> - **Z gaps** where I'm less sure and should ask you
+>
+> **How do you want to handle the gaps?**
+>
+> 1. **Ask me everything** — Walk me through all X gaps so nothing is assumed
+> 2. **Smart fill (Recommended)** — Auto-fill anything above 75% confidence, ask me the rest
+> 3. **Trust the AI** — Auto-fill anything above 50% confidence, only ask about truly ambiguous stuff
+> 4. **Just fill it all in** — You decide everything, I'll review at the end"
+
+### Step 4: Execute the Gap-Fill Process
+
+Based on the user's chosen threshold:
+
+**For gaps ABOVE the confidence threshold (auto-fill):**
+Present them as a summary batch so the user can scan and override:
+
+> "Here's what I'm filling in automatically (all above your X% threshold). **Scan this list** — if anything looks wrong, just tell me the number:
+>
+> 1. ✅ **Password reset flow** (92% confident): Email-based reset with token link, 24hr expiry
+> 2. ✅ **Delete behavior** (88% confident): Soft delete with 30-day recovery period
+> 3. ✅ **Empty states** (95% confident): Friendly illustration + 'Create your first [item]' CTA
+> 4. ✅ **Session timeout** (85% confident): 30-day remember me, 24hr without
+> [... etc]
+>
+> **All look good, or want to change any?**"
+
+If the user says "looks good" or similar → accept all auto-fills and move on.
+If they point out specific numbers → discuss and update those items.
+
+**For gaps BELOW the confidence threshold (ask the user):**
+Ask about these in natural conversation, grouped by topic. Do NOT dump all questions at once. Ask 2-4 related questions at a time:
+
+> "Now let me ask about the parts I'm less sure about:
+>
+> **About [Topic Area]:**
+> 1. [Question about gap] — I was leaning toward [option A] but it could also be [option B]. What do you think?
+> 2. [Question about gap]"
+
+For each question, share what you THINK the answer is with your reasoning. The user can either confirm ("yeah that sounds right") or correct you. This makes it fast — they're validating, not starting from scratch.
+
+**Continue asking in batches until all gaps are filled.**
+
+**IMPORTANT behavioral rules for this phase:**
+- Do NOT skip this phase. Even if the user was detailed, there are ALWAYS gaps.
+- Do NOT make this phase feel like a quiz. Frame it as "let me make sure I've got the complete picture."
+- If the user says "I don't care about that" or "whatever you think" for specific gaps → fill those in using your best judgment and note the confidence.
+- If the user says something like "I'm done, just fill in the rest" at any point → switch to auto-fill mode for ALL remaining gaps regardless of confidence and show the summary.
+- Keep the energy conversational. This should feel like a collaborator saying "one more thing..." not an interrogation.
+
+---
+
 ## Phase 4L: Derive Feature Count (DO NOT ASK THE USER)
 
-After gathering all features, **you** (the agent) should tally up the testable features. Do NOT ask the user how many features they want - derive it from what was discussed.
+After gathering all features **and completing the gap analysis**, **you** (the agent) should tally up the testable features. Do NOT ask the user how many features they want - derive it from what was discussed AND what was filled in during gap analysis.
 
 **Typical ranges for reference:**
 
@@ -639,7 +789,10 @@ Replace `[X]` with their feature count.
 - **Derive, don't interrogate**: For non-technical users, derive database schema, API endpoints, and architecture from their feature descriptions. Don't ask them to specify these.
 - **Use plain language**: Instead of "What entities need CRUD operations?", ask "What things can users create, edit, or delete?"
 - **Be thorough on features**: This is where to spend time. Keep asking follow-up questions until you have a complete picture.
-- **Derive feature count, don't guess**: After gathering requirements, tally up testable features yourself and present the estimate. Don't use fixed tiers or ask users to guess.
+- **Gap analysis is NOT optional**: After the user's rant, ALWAYS run Phase 4G. Even detailed users leave gaps. The puzzle analogy: their rant gives you 60% of the pieces, gap analysis fills the other 40%.
+- **Respect the user's energy level**: If they say "just fill it in" or seem burned out, switch to full auto-fill mode. Show them the summary so they can override, but don't force them through every question.
+- **Confidence scores are honest**: Don't inflate scores to skip questions. A 70% is a 70% — you're genuinely unsure. An 85% means you're almost certain. Be calibrated.
+- **Derive feature count, don't guess**: After gathering requirements AND completing gap analysis, tally up testable features yourself and present the estimate. Don't use fixed tiers or ask users to guess.
 - **Validate before generating**: Present a summary including your derived feature count and get explicit approval before creating files.
 
 ---

@@ -35,7 +35,10 @@ class SpecChatSession:
     - Phase 1: Project Overview (name, description, audience)
     - Phase 2: Involvement Level (Quick vs Detailed mode)
     - Phase 3: Technology Preferences
-    - Phase 4: Features (main exploration phase)
+    - Phase 4: Features (main exploration phase - the user's "rant")
+    - Phase 4G: Gap Analysis & Smart Fill (identify missing puzzle pieces,
+      score confidence, auto-fill above threshold, ask about the rest)
+    - Phase 4L: Derive Feature Count
     - Phase 5: Technical Details (derived or discussed)
     - Phase 6-7: Success Criteria & Approval
     """
@@ -147,6 +150,26 @@ class SpecChatSession:
             "```\n"
         )
         system_prompt = system_prompt + identity_ctx
+
+        # Inject gap analysis reminder to ensure Claude runs Phase 4G after the user's rant
+        gap_analysis_ctx = (
+            "\n\n## GAP ANALYSIS REMINDER\n\n"
+            "After the user finishes describing their features (Phase 4), you MUST run Phase 4G: Gap Analysis & Smart Fill.\n\n"
+            "The user's rant typically covers ~60% of what's needed. Your job is to:\n"
+            "1. **Reconstruct** the complete app picture from everything they said\n"
+            "2. **Identify** every missing puzzle piece against the completeness checklist\n"
+            "3. **Score** each gap with a confidence percentage (how sure you are about the right answer)\n"
+            "4. **Ask the user** for their confidence threshold preference:\n"
+            "   - Ask me everything (0% threshold)\n"
+            "   - Smart fill above 75% (recommended)\n"
+            "   - Trust the AI above 50%\n"
+            "   - Just fill it all in (100% threshold)\n"
+            "5. **Auto-fill** gaps above the threshold and present them for review\n"
+            "6. **Ask about** gaps below the threshold in conversational batches\n\n"
+            "This phase is NOT optional. Even detailed users leave gaps.\n"
+            "If the user seems burned out, respect that — offer to auto-fill everything.\n"
+        )
+        system_prompt = system_prompt + gap_analysis_ctx
 
         # Inject boilerplate context if the project was created from a boilerplate
         from .boilerplate_manager import get_boilerplate_option, load_project_config

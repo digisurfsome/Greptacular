@@ -210,7 +210,7 @@ The FastAPI server provides REST and WebSocket endpoints for the UI:
 - `scheduler_service.py` - APScheduler-based automated agent scheduling
 - `dev_server_manager.py` - Dev server lifecycle management
 - `assistant_chat_session.py` / `assistant_database.py` - Assistant chat sessions with SQLite persistence
-- `spec_chat_session.py` - Spec creation chat sessions
+- `spec_chat_session.py` - Spec creation chat sessions (includes gap analysis context injection)
 - `expand_chat_session.py` - Expand project chat sessions
 - `chat_constants.py` - Shared constants for chat services
 
@@ -430,7 +430,7 @@ Alternative providers are configured via the **Settings UI** (gear icon > API Pr
 ## Claude Code Integration
 
 **Slash commands** (`.claude/commands/`):
-- `/create-spec` - Interactive spec creation for new projects
+- `/create-spec` - Interactive spec creation for new projects (includes gap analysis & smart fill with confidence thresholds)
 - `/expand-project` - Expand existing project with new features
 - `/gsd-to-autoforge-spec` - Convert GSD codebase mapping to app_spec.txt
 - `/check-code` - Run lint and type-check for code quality

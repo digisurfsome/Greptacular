@@ -551,10 +551,15 @@ Based on the scope:
 - Multi-book library: 10 features
 - Context budget controls: 10 features
 - Usage metering: 10 features
+- Book search & purchase: 8 features
+- Affiliate tracking: 5 features
+- Reading list: 5 features
+- Price comparison UI: 5 features
+- Ecosystem API: 5 features
 - Settings: 5 features
 - Infrastructure: 5 features
 
-**Total: ~125 features (Medium tier)**
+**Total: ~153 features (Medium tier)**
 
 ---
 
@@ -580,6 +585,252 @@ Based on the scope:
 - API access (query knowledge bases programmatically)
 - Priority analysis (faster queue)
 - Custom analysis prompts (editable in settings, like AutoForge's advisor prompts)
+
+---
+
+## Book Search & Purchase Integration (Ebook API + Affiliate Revenue)
+
+### Overview
+
+BookBrain includes a built-in book search and purchase feature. Users can discover, preview, and buy ebooks directly from the app. Purchase links use affiliate tracking to generate commission revenue — a passive income stream alongside SaaS subscriptions.
+
+### Primary Integration: eBooks.com
+
+**Why eBooks.com is the primary partner:**
+- Full REST API for search, metadata, and purchase links (`api.ebooks.com`)
+- Affiliate program: **10-15% commission** on ebook sales
+- 45-day cookie duration (user can buy up to 45 days after clicking)
+- 35,000+ publisher partners, millions of titles
+- Ebook Engine platform for deeper integration (white-label ebook store)
+- Monthly payouts via PayPal or bank transfer ($50 minimum)
+- API provides: ISBN lookup, title/author search, pricing, cover images, format info, direct purchase URLs
+
+**Integration approach:**
+```python
+# Book search via eBooks.com API
+class EBooksComClient:
+    BASE_URL = "https://api.ebooks.com/api/v1"
+
+    async def search(self, query: str, limit: int = 20) -> list[BookResult]:
+        """Search by title, author, ISBN, or keywords"""
+        resp = await self.session.get(f"{self.BASE_URL}/search", params={
+            "q": query,
+            "limit": limit,
+            "affiliate_id": self.affiliate_id,
+        })
+        return [BookResult.from_api(item) for item in resp.json()["results"]]
+
+    async def get_book(self, isbn: str) -> BookDetail:
+        """Get full metadata + purchase link with affiliate tracking"""
+        resp = await self.session.get(f"{self.BASE_URL}/books/{isbn}", params={
+            "affiliate_id": self.affiliate_id,
+        })
+        return BookDetail.from_api(resp.json())
+
+    def get_purchase_url(self, isbn: str) -> str:
+        """Generate affiliate-tracked purchase link"""
+        return f"https://www.ebooks.com/book/{isbn}/?aid={self.affiliate_id}"
+```
+
+### Secondary Integrations (Multi-Source)
+
+To maximize coverage and give users options, BookBrain aggregates from multiple sources:
+
+| Provider | Use Case | Commission | API Cost | Coverage |
+|----------|----------|-----------|----------|----------|
+| **eBooks.com** | Primary purchase links | 10-15% | Free (with affiliate account) | Millions of ebooks |
+| **Google Books API** | Metadata, previews, public domain | None (metadata only) | Free (1,000 req/day) | 40M+ titles metadata |
+| **Open Library** | Free/public domain books | N/A (free books) | Free, no key needed | 30M+ titles, 2M+ readable |
+| **Amazon Associates** | Fallback purchase links | 1-4.5% | Free (with Associates account) | Everything |
+| **Bookshop.org** | Indie bookstore option | 10% | Affiliate links only (no API) | 10M+ titles |
+| **Apple Books** | iOS/Mac users | 7% | Via Apple Services Partners | Large catalog |
+| **ISBNdb** | Metadata enrichment | N/A (metadata only) | $10-50/mo (tiered) | 43M titles |
+
+### Search Architecture
+
+```
+User searches "Awaken the Giant Within"
+         ↓
+BookBrain Search Aggregator
+         ↓
+┌────────────────┬────────────────┬────────────────┐
+│  eBooks.com    │  Google Books  │  Open Library   │
+│  (purchase)    │  (metadata)    │  (free copies)  │
+└────────┬───────┴────────┬───────┴────────┬────────┘
+         └────────────────┼────────────────┘
+                          ↓
+              Deduplicate by ISBN
+                          ↓
+              Unified BookResult:
+              - Title, Author, Cover
+              - Prices from each store
+              - Free versions if available
+              - "Buy" buttons with affiliate links
+              - "Already have it? Upload your copy"
+```
+
+### UI: Book Search & Purchase
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  Find a Book                                    [Search 🔍]  │
+│  ┌──────────────────────────────────────────────────────────┐│
+│  │ awaken the giant within                                  ││
+│  └──────────────────────────────────────────────────────────┘│
+│                                                              │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │ 📖 Awaken the Giant Within                             │  │
+│  │    Tony Robbins · 544 pages · Self-Help                │  │
+│  │                                                        │  │
+│  │    ★★★★☆ 4.3 (12,847 ratings)                         │  │
+│  │                                                        │  │
+│  │    Buy Ebook:                                          │  │
+│  │    [eBooks.com — $12.99] [Amazon — $14.99]             │  │
+│  │    [Apple Books — $13.99] [Bookshop.org — $14.99]      │  │
+│  │                                                        │  │
+│  │    Free Options:                                       │  │
+│  │    [Open Library — Borrow]                             │  │
+│  │                                                        │  │
+│  │    Already own it?                                     │  │
+│  │    [Upload PDF] [Upload EPUB]                          │  │
+│  │                                                        │  │
+│  │    [Preview Excerpt]  [Add to Reading List]            │  │
+│  └────────────────────────────────────────────────────────┘  │
+│                                                              │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │ 📖 Unlimited Power                                     │  │
+│  │    Tony Robbins · 448 pages · Self-Help                │  │
+│  │    ...                                                 │  │
+│  └────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### Revenue Projection (Conservative)
+
+Assumptions: 1,000 active BookBrain users, 30% click a purchase link per month, 10% of clicks convert to purchase, average ebook price $12.
+
+```
+Monthly clicks:       1,000 × 30% = 300 clicks
+Monthly conversions:  300 × 10% = 30 purchases
+Avg revenue per sale: $12 × 12% avg commission = $1.44
+Monthly affiliate:    30 × $1.44 = $43.20
+
+At 10,000 users:      $432/month affiliate revenue (on top of SaaS subscriptions)
+At 100,000 users:     $4,320/month affiliate revenue
+```
+
+This is passive income — no cost to generate, scales with user base.
+
+### Database Additions
+
+```sql
+-- Book catalog cache (avoid re-fetching metadata)
+CREATE TABLE book_catalog (
+    isbn TEXT PRIMARY KEY,
+    title TEXT,
+    author TEXT,
+    cover_url TEXT,
+    page_count INT,
+    categories TEXT, -- JSON array
+    description TEXT,
+    avg_rating FLOAT,
+    rating_count INT,
+    prices JSONB, -- {"ebooks_com": 12.99, "amazon": 14.99, ...}
+    affiliate_urls JSONB, -- {"ebooks_com": "https://...", "amazon": "https://...", ...}
+    free_urls JSONB, -- {"open_library": "https://...", "gutenberg": "https://..."}
+    last_updated TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Affiliate click tracking
+CREATE TABLE affiliate_clicks (
+    id INTEGER PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id),
+    isbn TEXT,
+    provider TEXT, -- ebooks_com, amazon, apple, bookshop
+    clicked_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Reading list / wishlist
+CREATE TABLE reading_list (
+    id INTEGER PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id),
+    isbn TEXT,
+    title TEXT,
+    author TEXT,
+    status TEXT DEFAULT 'want_to_read', -- want_to_read, reading, completed
+    added_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+### Additional API Endpoints
+
+```
+BOOK SEARCH
+  GET    /api/search/books?q=...            (search across all providers)
+  GET    /api/search/books/:isbn            (get unified book detail)
+  GET    /api/search/books/:isbn/prices     (get current prices from all stores)
+
+READING LIST
+  GET    /api/reading-list                  (user's reading list)
+  POST   /api/reading-list                  (add book to list)
+  PATCH  /api/reading-list/:id              (update status)
+  DELETE /api/reading-list/:id              (remove from list)
+
+AFFILIATE
+  POST   /api/affiliate/click               (track click for analytics)
+  GET    /api/admin/affiliate/stats          (admin: click/conversion stats)
+```
+
+### Settings (Ebook Integration)
+
+| Setting | Key | Type | Default | Description |
+|---------|-----|------|---------|-------------|
+| eBooks.com Affiliate ID | `ebooks_com_affiliate_id` | string | "" | Your eBooks.com affiliate ID |
+| Amazon Associates Tag | `amazon_associates_tag` | string | "" | Your Amazon Associates tracking tag |
+| Apple Services Partner ID | `apple_partner_id` | string | "" | Apple Services Performance Partners token |
+| Bookshop.org Affiliate ID | `bookshop_affiliate_id` | string | "" | Bookshop.org affiliate ID |
+| Default Store | `default_book_store` | string | "ebooks_com" | Which store's "Buy" button appears first |
+| Show Free Options | `show_free_book_options` | bool | true | Show Open Library / Gutenberg links |
+| ISBNdb API Key | `isbndb_api_key` | string | "" | For enriched metadata (optional) |
+
+### Updated Feature Count
+
+Adding book search & purchase:
+- Book search aggregation: 8 features
+- Affiliate tracking: 5 features
+- Reading list: 5 features
+- Price comparison UI: 5 features
+
+**Updated Total: ~148 features (Medium tier)**
+
+---
+
+## Ecosystem Integration
+
+BookBrain is designed as App 1 of a connected ecosystem:
+
+```
+BookBrain (extract knowledge) → LearnPath (learn techniques) → Life Board (apply to projects)
+```
+
+**Full ecosystem spec:** `.claude/generated-prds/learnpath-ecosystem-spec.md`
+
+**What BookBrain exports:**
+- Extracted techniques (name, category, difficulty, steps, source)
+- Concepts and mental models
+- Action items with priority levels
+
+**Ecosystem API contract:**
+```json
+POST /api/ecosystem/techniques/export
+{
+  "target_app": "learnpath",
+  "techniques": [...]
+}
+```
+
+**Migration path:** BookBrain starts with SQLite for personal use / quick build. When the ecosystem launches, migrate to Supabase for shared auth and real-time sync across web + mobile apps.
 
 ---
 
@@ -619,3 +870,7 @@ Use AutoForge's design system — pick a style during the build:
 6. Context budget prevents wasteful token usage without limiting functionality
 7. Switching between CLI and API mode requires only changing an environment variable
 8. Token costs in API mode are visible and controllable by both admin and user
+9. Book search returns results from multiple stores with prices in under 2 seconds
+10. Affiliate purchase links track correctly with 45-day cookie attribution
+11. Techniques can be exported to LearnPath via ecosystem API in <30 seconds
+12. Migration from SQLite to Supabase preserves all existing user data

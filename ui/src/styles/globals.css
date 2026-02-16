@@ -79,6 +79,17 @@
   --color-category-6: #a855f7;
   --color-category-7: #3b82f6;
 
+  /* Pipeline status badge colors */
+  --color-pipeline-passing: #3b82f6;
+  --color-pipeline-passing-fg: #ffffff;
+  --color-pipeline-passing-border: #1d4ed8;
+  --color-pipeline-reviewed: #10b981;
+  --color-pipeline-reviewed-fg: #ffffff;
+  --color-pipeline-reviewed-border: #047857;
+  --color-pipeline-qa-verified: #f59e0b;
+  --color-pipeline-qa-verified-fg: #451a03;
+  --color-pipeline-qa-verified-border: #b45309;
+
   /* Font stacks */
   --font-sans: 'Open Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
@@ -157,6 +168,17 @@
   --color-category-5: #fb923c;
   --color-category-6: #c084fc;
   --color-category-7: #60a5fa;
+
+  /* Pipeline status badge colors for dark mode */
+  --color-pipeline-passing: #60a5fa;
+  --color-pipeline-passing-fg: #ffffff;
+  --color-pipeline-passing-border: #3b82f6;
+  --color-pipeline-reviewed: #34d399;
+  --color-pipeline-reviewed-fg: #ffffff;
+  --color-pipeline-reviewed-border: #10b981;
+  --color-pipeline-qa-verified: #fbbf24;
+  --color-pipeline-qa-verified-fg: #451a03;
+  --color-pipeline-qa-verified-border: #f59e0b;
 }
 
 /* ============================================================================

@@ -324,6 +324,7 @@ export const AGENT_MASCOTS = [
   'Pixel', 'Byte', 'Nova', 'Chip', 'Bolt',    // Tech-inspired
   'Dash', 'Zap', 'Gizmo', 'Turbo', 'Blip',    // Energetic
   'Neon', 'Widget', 'Zippy', 'Quirk', 'Flux', // Playful
+  'Lens', 'Aegis', 'Iris',                     // QA pipeline (reviewer, qa, computer_use)
 ] as const
 export type AgentMascot = typeof AGENT_MASCOTS[number]
 

@@ -174,11 +174,18 @@ def _get_style_context(project_dir: Path | None) -> str:
 
         style_id = config.get("style")
         accent_id = config.get("accent_style")
+        custom_colors = config.get("custom_colors", {})
         if style_id:
             try:
-                from server.services.style_manager import get_mixed_style_prompt, get_style_guide_markdown
+                from server.services.style_manager import (
+                    apply_custom_colors,
+                    get_mixed_style_prompt,
+                    get_style_guide_markdown,
+                )
                 if accent_id:
                     guide = get_mixed_style_prompt(style_id, accent_id)
+                elif custom_colors:
+                    guide = apply_custom_colors(style_id, custom_colors)
                 else:
                     guide = get_style_guide_markdown(style_id)
                 if guide:

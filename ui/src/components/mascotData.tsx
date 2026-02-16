@@ -56,6 +56,10 @@ export const AVATAR_COLORS: Record<AgentMascot, MascotColorPalette> = {
   Zippy: { primary: '#F59E0B', secondary: '#FBBF24', accent: '#FEF3C7' },  // Orange-yellow
   Quirk: { primary: '#0EA5E9', secondary: '#38BDF8', accent: '#E0F2FE' },  // Sky
   Flux: { primary: '#7C3AED', secondary: '#8B5CF6', accent: '#EDE9FE' },   // Purple
+  // QA pipeline
+  Lens: { primary: '#0891B2', secondary: '#22D3EE', accent: '#CFFAFE' },   // Cyan-700 (reviewer)
+  Aegis: { primary: '#059669', secondary: '#34D399', accent: '#D1FAE5' },  // Emerald-600 (qa)
+  Iris: { primary: '#7C3AED', secondary: '#A78BFA', accent: '#EDE9FE' },   // Violet-600 (computer_use)
 }
 
 // ---------------------------------------------------------------------------
@@ -493,6 +497,67 @@ function UnknownSVG({ colors, size }: MascotSVGProps) {
 }
 
 // ---------------------------------------------------------------------------
+// QA pipeline mascots
+// ---------------------------------------------------------------------------
+
+/** Lens — a magnifying glass character for the reviewer agent. */
+function LensSVG({ colors, size }: MascotSVGProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" fill="none">
+      {/* Lens body */}
+      <circle cx="28" cy="28" r="20" fill={colors.accent} stroke={colors.primary} strokeWidth="4" />
+      <circle cx="28" cy="28" r="14" fill="white" opacity="0.3" />
+      {/* Handle */}
+      <line x1="42" y1="42" x2="58" y2="58" stroke={colors.primary} strokeWidth="6" strokeLinecap="round" />
+      <line x1="42" y1="42" x2="58" y2="58" stroke={colors.secondary} strokeWidth="3" strokeLinecap="round" />
+      {/* Eyes */}
+      <circle cx="22" cy="26" r="3" fill={colors.primary} />
+      <circle cx="34" cy="26" r="3" fill={colors.primary} />
+      <circle cx="23" cy="25" r="1" fill="white" />
+      <circle cx="35" cy="25" r="1" fill="white" />
+      {/* Smile */}
+      <path d="M24,32 Q28,36 32,32" stroke={colors.primary} strokeWidth="2" fill="none" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+/** Aegis — a shield character for the QA agent. */
+function AegisSVG({ colors, size }: MascotSVGProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" fill="none">
+      {/* Shield body */}
+      <path d="M32,6 L54,18 L54,36 Q54,54 32,60 Q10,54 10,36 L10,18 Z" fill={colors.primary} />
+      <path d="M32,10 L50,20 L50,36 Q50,50 32,56 Q14,50 14,36 L14,20 Z" fill={colors.secondary} />
+      {/* Checkmark */}
+      <path d="M22,34 L28,40 L42,26" stroke={colors.accent} strokeWidth="4" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      {/* Eyes */}
+      <circle cx="26" cy="28" r="2.5" fill="white" />
+      <circle cx="38" cy="28" r="2.5" fill="white" />
+      <circle cx="26.5" cy="28.5" r="1" fill="#1a1a1a" />
+      <circle cx="38.5" cy="28.5" r="1" fill="#1a1a1a" />
+    </svg>
+  )
+}
+
+/** Iris — an eye character for the computer_use agent. */
+function IrisSVG({ colors, size }: MascotSVGProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" fill="none">
+      {/* Eye shape */}
+      <path d="M4,32 Q32,8 60,32 Q32,56 4,32 Z" fill={colors.accent} stroke={colors.primary} strokeWidth="3" />
+      {/* Iris */}
+      <circle cx="32" cy="32" r="14" fill={colors.primary} />
+      <circle cx="32" cy="32" r="10" fill={colors.secondary} />
+      {/* Pupil */}
+      <circle cx="32" cy="32" r="5" fill="#1a1a1a" />
+      {/* Highlight */}
+      <circle cx="36" cy="28" r="3" fill="white" opacity="0.8" />
+      <circle cx="28" cy="34" r="1.5" fill="white" opacity="0.4" />
+    </svg>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Mascot component lookup
 // ---------------------------------------------------------------------------
 
@@ -522,6 +587,10 @@ export const MASCOT_SVGS: Record<AgentMascot, React.FC<MascotSVGProps>> = {
   Zippy: ZippySVG,
   Quirk: QuirkSVG,
   Flux: FluxSVG,
+  // QA pipeline
+  Lens: LensSVG,
+  Aegis: AegisSVG,
+  Iris: IrisSVG,
 }
 
 /** The SVG component for unknown agents. Exported separately because

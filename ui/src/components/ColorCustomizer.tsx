@@ -54,7 +54,7 @@ function isValidHex(value: string): boolean {
 }
 
 export function ColorCustomizer({ styleGuide, customColors, onChange, selectedPaletteId, onPaletteSelect }: ColorCustomizerProps) {
-  const [isOpen, setIsOpen] = useState(true)
+  const [isOpen, setIsOpen] = useState(false)
 
   const hasChanges = Object.keys(customColors).length > 0
 

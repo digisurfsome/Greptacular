@@ -85,33 +85,15 @@ This adds auto-generated docs, performance profiling, and security audit after b
 Output: .claude/generated-prds/post-build-reports-spec.xml
 ```
 
-### AGENT 5 — DevOps + VPS Deploy
+### AGENT 5 — DevOps Pipeline
 ```
 1. .claude/handoffs/devops-pipeline-handoff.md
-2. .claude/handoffs/self-deploy-vps-handoff.md
 
-These are TWO related PRDs about infrastructure — CI/CD pipeline generation and one-click VPS deployment.
+This adds CI/CD pipeline generation, monitoring setup, and auto-update agent.
 Output: .claude/generated-prds/devops-pipeline-spec.xml
-Output: .claude/generated-prds/self-deploy-vps-spec.xml
 ```
 
-### AGENT 6 — Credit-Based Pricing System
-```
-1. .claude/handoffs/credit-pricing-system-handoff.md
-
-This adds the monetization layer — credits, BYOK, Stripe integration, usage metering.
-Output: .claude/generated-prds/credit-pricing-spec.xml
-```
-
-### AGENT 7 — Platform Marketplace
-```
-1. .claude/handoffs/platform-marketplace-handoff.md
-
-This adds boilerplate, style, and plugin marketplaces.
-Output: .claude/generated-prds/platform-marketplace-spec.xml
-```
-
-### AGENT 8 — Knowledge Base + Idea Integration
+### AGENT 6 — Knowledge Base + Idea Integration
 ```
 1. .claude/handoffs/knowledge-base-tutorial-handoff.md
 2. .claude/handoffs/idea-code-integration-handoff.md
@@ -121,34 +103,45 @@ Output: .claude/generated-prds/knowledge-base-spec.xml
 Output: .claude/generated-prds/idea-code-integration-spec.xml
 ```
 
-### AGENT 9 — Style Features Bundle
+### AGENT 7 — Style Features Bundle
 ```
 1. .claude/handoffs/style-preview-grid-handoff.md
 2. .claude/handoffs/color-customization-handoff.md
 3. .claude/handoffs/color-picker-preview-task.md
 4. .claude/handoffs/style-mixing-handoff.md
-5. .claude/handoffs/screenshot-style-extractor-handoff.md
 
-These are FIVE related features about the style system — preview grid, color customization, color picker, style mixing, and screenshot-to-style extraction. They can be ONE combined PRD since they all modify the style picker UI.
+These are FOUR related features about the style system — preview grid, color customization, color picker, and style mixing. They can be ONE combined PRD since they all modify the style picker UI.
 Output: .claude/generated-prds/style-features-spec.xml
 ```
 
-### AGENT 10 — StyleVault Giveaway App
-```
-1. .claude/handoffs/style-picker-giveaway-spec.md
+---
 
-This is a STANDALONE APP (not an AutoForge addition). It's a lead-magnet giveaway app for showcasing the 12 design styles with 25 curated color palettes.
-Output: .claude/generated-prds/stylevault-giveaway-spec.xml
+## HANDOFFS NOT IN AGENT CONVERSION (Direct Implementation Guides)
 
-NOTE: This is a separate React app, not a modification to AutoForge. The app_spec should reflect a new project build.
-```
+These handoffs are written as direct implementation instructions for working on AutoForge's own codebase. They don't go through the Initializer → Coding Agent pipeline — they're meant to be implemented directly by a developer or Claude Code agent:
 
-### AGENT 11 — Domain Finder Tool
-```
-1. .claude/handoffs/domain-finder-handoff.md
+- `.claude/handoffs/mentor-standards-integration-handoff.md` — Adds coding standards to prompt templates
+- `.claude/handoffs/ui-realignment-handoff.md` — UI cleanup to standardize typography/spacing/colors
+- `.claude/handoffs/boilerplate-autoforge-bridge-handoff.md` (Feature 10 only) — Adds BUILD_AUTH_TOKEN, --callback-url, --build-id flags to AutoForge
 
-This is a STANDALONE APP — a domain availability checker tool.
-Output: .claude/generated-prds/domain-finder-spec.xml
+---
 
-NOTE: This is a separate app, not a modification to AutoForge.
-```
+## WEBSITE PROJECT (Separate from AutoForge enhancements)
+
+These handoffs describe the autoforge.com website, which is a separate project built using AutoForge with the Gen-Ai SaaS boilerplate:
+
+- `.claude/handoffs/self-deploy-vps-handoff.md` — The website app (landing page, dashboard, Fly.io provisioning)
+- `.claude/handoffs/boilerplate-autoforge-bridge-handoff.md` (Features 1-9, 11) — Website-side build orchestration, WebSocket proxy, artifact delivery, auth bridge, etc.
+- `.claude/generated-prds/self-deploy-vps-spec.xml` — Already generated website spec
+
+---
+
+## STRIPPED OUT (Saved for later)
+
+These handoffs were removed from the repo and saved separately. They can be re-added when ready:
+
+- `credit-pricing-system-handoff.md` / `credit-pricing-system-handoff-v2.md` — Pricing/credits/Stripe
+- `platform-marketplace-handoff.md` — Boilerplate/style/plugin marketplaces
+- `style-picker-giveaway-spec.md` — Standalone lead magnet app (StyleVault)
+- `domain-finder-handoff.md` — Standalone domain checker app
+- `screenshot-style-extractor-handoff.md` — Screenshot-to-style extraction feature

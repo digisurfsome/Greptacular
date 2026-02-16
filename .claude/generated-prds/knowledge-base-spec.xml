@@ -5,9 +5,7 @@
     A post-build documentation agent system for AutoForge that automatically generates
     a complete knowledge base, tutorial video scripts, and an embedded in-app help system
     for every AutoForge-built project. Runs after all features pass, producing professional
-    onboarding materials so every app ships with documentation out of the box. Offered as
-    a tiered premium add-on ($49-99 per project) that differentiates AutoForge from
-    competitors that ship code with no docs.
+    onboarding materials so every app ships with documentation out of the box.
   </overview>
 
   <technology_stack>
@@ -69,7 +67,7 @@
     </ui_data_layer>
 
     <ui_components>
-      - Add a Knowledge Base section to SettingsModal.tsx with auto-generate toggle checkbox and tier dropdown (Basic $49 / Full $79 / Premium $99) following existing settings section patterns
+      - Add a Knowledge Base section to SettingsModal.tsx with auto-generate toggle checkbox and tier dropdown (Basic / Full / Premium) following existing settings section patterns
       - Add Sage mascot (book/scroll theme) to AgentMissionControl.tsx for the knowledge-base agent with Reading, Writing, and Screenshotting states displayed alongside existing mascots (Spark, Fizz, Octo, Hoot, Buzz)
       - Add a Docs tab to the project view tab navigation (alongside Kanban, Graph, Terminal) showing KB generation status card with progress bar and action buttons (Start, Stop, Regenerate)
       - Display a docs file browser within the Docs tab showing the generated docs tree (index.md, features/, api/, screenshots/) with inline markdown preview and download-as-zip button

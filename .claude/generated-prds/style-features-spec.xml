@@ -2,12 +2,11 @@
   <project_name>autoforge-style-features</project_name>
 
   <overview>
-    A suite of five interconnected style system enhancements for the AutoForge UI and agent
+    A suite of four interconnected style system enhancements for the AutoForge UI and agent
     pipeline. Includes: (1) UI realignment to a locked-in design system, (2) base+accent
-    style mixing for generated apps, (3) per-project color customization, (4) a full-screen
-    style preview engine with live token-based rendering, and (5) a screenshot-to-style
-    extractor using vision LLM analysis. These features collectively transform style selection
-    from a simple picker into an interactive design studio within AutoForge.
+    style mixing for generated apps, (3) per-project color customization, and (4) a full-screen
+    style preview engine with live token-based rendering. These features collectively transform
+    style selection from a simple picker into an interactive design studio within AutoForge.
   </overview>
 
   <technology_stack>
@@ -28,7 +27,6 @@
     </communication>
     <additional_libraries>
       <library>Playwright (screenshot generation script)</library>
-      <library>Claude/vision LLM API (screenshot style extraction)</library>
     </additional_libraries>
   </technology_stack>
 
@@ -41,11 +39,10 @@
       - server/services/style_modifiers.py with 4 accessibility modifiers
       - ui/src/components/NewProjectModal.tsx with existing style picker
       - ui/src/styles/globals.css with 6 theme variants
-      - Claude API key or vision-capable LLM access (for screenshot extractor)
     </environment_setup>
   </prerequisites>
 
-  <feature_count>20</feature_count>
+  <feature_count>17</feature_count>
 
   <core_features>
     <ui_realignment>
@@ -77,13 +74,8 @@
       - System provides a dedicated route at /#/style-preview/:styleId/:page for chromeless preview rendering and a Playwright script at scripts/generate-style-screenshots.ts that generates 48 static PNG screenshots (12 styles x 4 pages) saved to ui/public/style-previews/
     </style_preview>
 
-    <screenshot_extractor>
-      - System analyzes uploaded screenshots via style_extractor.py service and POST /api/styles/extract-from-screenshot endpoint, returning identified primary/accent styles with confidence scores, extracted tokens, and style guide markdown
-      - User can upload a screenshot via drag-and-drop in the Extract from Screenshot tab of the style picker and accept the extracted style via Use This Style, which saves tokens as a custom-extracted style in project_config.json
-    </screenshot_extractor>
-
     <error_handling>
-      - System displays an error toast with Retry button when screenshot analysis fails due to timeout, invalid image format, or API error, and shows inline validation errors for invalid hex color values in the ColorCustomizer
+      - System shows inline validation errors for invalid hex color values in the ColorCustomizer and validates accent compatibility before saving
     </error_handling>
   </core_features>
 
@@ -107,7 +99,6 @@
         project_config.json (per-project, in .autoforge/) gains:
         - accent_style (TEXT, nullable, must be in base style's compatibility list)
         - custom_colors (DICT of color_name to hex_value, only non-default overrides stored)
-        - style_id value "custom-extracted" (reserved for screenshot-extracted styles)
       </project_config_json>
       <css_variables>
         globals.css gains variables across all 6 theme variants:
@@ -126,9 +117,6 @@
       - GET /api/styles/{style_id}/accent-compatibility (returns list of compatible accent style IDs with preview data)
       - GET /api/styles/combinations (returns all valid base+accent pairs with compatibility metadata)
     </style_mixing>
-    <screenshot_extraction>
-      - POST /api/styles/extract-from-screenshot (accepts {image: base64_string}, returns style analysis with identification, tokens, and formatted outputs)
-    </screenshot_extraction>
     <projects_updated>
       - POST /api/projects (updated: accepts optional accent_style and custom_colors in request body)
     </projects_updated>
@@ -138,7 +126,7 @@
     <main_structure>
       - Existing AutoForge layout unchanged (header, sidebar, main content area)
       - NewProjectModal style step expanded to full-width (max-w-7xl) for style preview grid
-      - Style picker gains 3 tabs: Browse Styles (enhanced with previews), Describe Your App (existing), Extract from Screenshot (new)
+      - Style picker enhanced with full-width preview grid: Browse Styles (enhanced with previews), Describe Your App (existing)
       - Full-screen preview overlay renders above the modal when hovering/clicking a style card
       - ColorCustomizer appears as collapsible section below style selection
       - Accent style picker appears as optional step after base style selection
@@ -194,14 +182,12 @@
     <page_patterns>
       - Style selection: Browse Grid -> Hover/Click -> Full Preview -> Select
       - Color customization: Style selected -> Expand customizer -> Adjust -> Preview updates
-      - Screenshot extraction: Upload -> Loading -> Results -> Accept or Retry
       - Accent mixing: Base selected -> Show compatible accents -> Preview combination -> Confirm
     </page_patterns>
     <feedback_protocol>
-      - Screenshot analysis: show loading spinner during LLM processing, display results with confidence
       - Color changes: preview updates immediately (no save needed until project creation)
       - Style selection: highlight selected card, preview overlay dismisses on selection
-      - Error states: failed screenshot analysis shows error toast with Retry button, invalid hex shows inline error
+      - Error states: invalid hex shows inline error, incompatible accent selection is prevented
     </feedback_protocol>
     <polish_requirements>
       - Style card hover: 300ms delay before full preview opens (prevent accidental triggers)
@@ -222,7 +208,7 @@
 
   <coding_standards>
     <architecture>
-      - All new backend logic in server/services/ (style_extractor.py, updates to style_manager.py)
+      - All new backend logic in server/services/ (updates to style_manager.py)
       - All new API endpoints in server/routers/ (updates to projects.py and styles endpoints)
       - All new React components in ui/src/components/ (StylePreview.tsx, StyleFullPreview.tsx, ColorCustomizer.tsx)
       - TypeScript interfaces for all data types in ui/src/lib/types.ts
@@ -234,7 +220,6 @@
       - Route renders preview without modal chrome (for Playwright screenshots and sharing)
     </routing>
     <error_handling>
-      - Screenshot extraction: handle LLM timeout, invalid image format, rate limiting with error toast and Retry
       - Color customization: validate hex format inline, warn on low contrast between text and background
       - Style mixing: validate accent is in base's compatibility list before saving
       - Preview rendering: graceful fallback if token data is missing or malformed
@@ -277,15 +262,6 @@
       7. On project creation, only changed colors are saved to custom_colors in config
     </color_customization_flow>
 
-    <screenshot_extraction_flow>
-      1. User clicks the "Extract from Screenshot" tab in the style picker
-      2. User drags and drops a screenshot onto the upload area (or clicks to browse)
-      3. Loading spinner appears while the vision LLM analyzes the image
-      4. Results display: detected style name, confidence score, extracted color palette
-      5. User clicks "Use This Style" to adopt the extracted tokens
-      6. Extracted tokens saved as custom-extracted style; style guide generated from tokens
-      7. Flow continues to modifier/accent selection as with any other style choice
-    </screenshot_extraction_flow>
   </key_interactions>
 
   <implementation_steps>
@@ -305,7 +281,6 @@
         - Add accent_compatibility data to all 12 styles in STYLE_REGISTRY
         - Add get_style_with_overrides() color override support to style_manager.py
         - Expose full style tokens in GET /api/styles response
-        - Create style_extractor.py service with vision LLM integration
       </tasks>
     </step>
     <step number="3">
@@ -314,7 +289,6 @@
         - Add style mixing API endpoints (accent-compatibility, combinations)
         - Update project config and prompts.py to store and use accent_style
         - Update project creation API and prompts.py for custom_colors
-        - Add POST /api/styles/extract-from-screenshot endpoint
       </tasks>
     </step>
     <step number="4">
@@ -331,7 +305,6 @@
       <tasks>
         - Add accent style picker UI to NewProjectModal
         - Create ColorCustomizer component and wire into NewProjectModal
-        - Add Extract from Screenshot tab with upload and results UI
         - Update TypeScript types, API client, and TanStack Query hooks
       </tasks>
     </step>
@@ -340,7 +313,7 @@
       <tasks>
         - Create Playwright screenshot generation script (48 images)
         - Implement fanned card stack with static thumbnails and hover/click animation
-        - Add error handling: screenshot failure toast, hex validation, accent compatibility guard
+        - Add error handling: hex validation, accent compatibility guard
         - Verify all features work across all 6 theme variants in light and dark mode
       </tasks>
     </step>
@@ -352,17 +325,15 @@
       - Full-screen preview renders 4 distinct pages (Landing, Dashboard, Settings, Feed) for each style
       - Accent style mixing generates correct combined prompts with base layout + accent interactive elements
       - Color customization overrides propagate correctly through style guide generation to agent prompts
-      - Screenshot extractor returns plausible style identification and usable extracted tokens
       - Fanned card stack displays 4 static screenshots per style with smooth hover/click animations
       - No hardcoded color values remain in any UI component (all use CSS variables)
-      - Error states display correctly: screenshot failure shows toast with retry, invalid hex shows inline error
+      - Error states display correctly: invalid hex shows inline error, incompatible accent selection is prevented
     </functionality>
     <user_experience>
       - Style differences are immediately visible in the grid without hovering (compact previews)
       - Full preview opens smoothly after 300ms hover delay, not jarring
       - Color customizer provides instant visual feedback as colors are adjusted
       - Accent picker only shows compatible options (no invalid combinations possible)
-      - Screenshot upload shows clear loading state and confident results
       - All interactions work in both light and dark mode across all 6 themes
       - Keyboard navigation works for style grid, preview tabs, and all interactive elements
     </user_experience>

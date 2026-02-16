@@ -6,7 +6,7 @@ AutoForge builds complete apps autonomously. But every app it ships today has ze
 
 90% of SaaS apps have terrible onboarding. This is the gap: a new agent type that auto-generates a full knowledge base, tutorial video scripts, and an embedded in-app help system for every AutoForge-built project. Every app ships with professional onboarding out of the box.
 
-**This is a premium add-on feature** -- charged as a separate credit ($49-99 per project). The AI cost per run is ~$5-15 (75-100 turns on a Max subscription), selling for $49-99. High margin, high perceived value, and a clear competitive differentiator against Bolt, Lovable, and every other AI code generator that ships code with no docs.
+**This is a key differentiator feature** -- a clear competitive advantage against Bolt, Lovable, and every other AI code generator that ships code with no docs.
 
 ---
 
@@ -904,32 +904,6 @@ if agent_type == "knowledge-base" and kb_tier == "premium":
 
 ---
 
-## Revenue Model
-
-| Tier | Price | What You Get | Agent Turns | AI Cost (Max Sub) |
-|---|---|---|---|---|
-| Basic Knowledge Base | $49 | Markdown docs + screenshots | 75-100 | ~$0 |
-| Full Knowledge Base + Scripts | $79 | Docs + screenshots + tutorial video scripts | 100-150 | ~$0 |
-| Knowledge Base + In-App Help | $99 | Docs + screenshots + scripts + embedded help system | 130-180 | ~$0 |
-
-On a Max subscription ($100/mo or $200/mo), the AI cost is zero -- it is included in the subscription. The only cost is rate limit usage. At $49-99 per project, this is pure margin after the subscription is paid for.
-
-For API users (not on Max), the AI cost per run is ~$5-15 depending on project size. Still 80-90% margin at the $49-99 price point.
-
-### Revenue Projections
-
-Assuming 20% of AutoForge projects opt in to the knowledge base add-on:
-
-| Monthly Projects | Opt-In Rate | Add-On Revenue | Average Tier |
-|---|---|---|---|
-| 50 | 20% (10) | $790/mo | $79 |
-| 200 | 20% (40) | $3,160/mo | $79 |
-| 1,000 | 20% (200) | $15,800/mo | $79 |
-
-This is recurring per-project revenue that scales with project volume.
-
----
-
 ## Server API Changes
 
 ### New Endpoints
@@ -1004,7 +978,7 @@ Add a "Knowledge Base" section to `SettingsModal.tsx`:
 ```
 Knowledge Base
   [ ] Auto-generate after build completes
-  Tier: [Basic ▼]  (dropdown: Basic $49, Full $79, Premium $99)
+  Tier: [Basic ▼]  (dropdown: Basic, Full, Premium)
 ```
 
 When auto-generate is enabled, the orchestrator spawns the knowledge-base agent automatically after all features pass. When disabled, the user can manually trigger it from the project dashboard.
@@ -1130,7 +1104,7 @@ Build a tool that takes the tutorial scripts and produces finished MP4 videos:
 4. Add title cards, transitions, and branding
 5. Output MP4 files to `docs/tutorials/videos/`
 
-This turns the $79 "Full" tier into a $149+ tier with actual rendered videos.
+This turns the "Full" tier into a higher-value offering with actual rendered videos.
 
 ### Multi-Language Documentation
 
@@ -1184,7 +1158,7 @@ When features are updated after initial documentation:
 - It spawns AFTER all features pass, in parallel with the QA agent (no conflicts)
 - The agent only reads application code -- it writes exclusively to `docs/` and (for premium tier) `src/components/help/`
 - The turn budget scales with project size: small projects (~60 turns), large projects (~200 turns)
-- The tiered pricing ($49/$79/$99) is set high enough to be premium but low enough that the cost is trivial compared to the value of professional documentation
+- The tiered system (Basic/Full/Premium) provides increasing levels of documentation output
 - All output is git-committed by the agent, so the docs are version-controlled alongside the code
 - The `--kb-tier` flag can be set via CLI, API, or the UI settings modal
 - Consider adding a `--kb-only` flag that skips the build and just generates docs for an already-built project

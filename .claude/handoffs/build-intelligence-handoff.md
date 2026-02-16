@@ -481,18 +481,6 @@ The score determines how the build proceeds:
 
 The blocking threshold is configurable in settings (default: 2.0). Users who understand the risks can set it to 0 to disable blocking entirely.
 
-### Monetization Tiers (SaaS Only)
-
-This is a natural consulting upsell for the SaaS product:
-
-| Tier | Price | What You Get |
-|---|---|---|
-| Free | $0 | Overall score (1-5), top 3 critical issues |
-| Premium | $29-49 | Full detailed report with per-feature scoring, all recommendations |
-| Concierge | $199-499 | AutoForge rewrites the spec for you (agent iterates until score >= 4.0) |
-
-The Concierge tier runs a spec-improvement agent that takes the scoring feedback, rewrites vague features, resolves contradictions, and adds missing flows. It iterates until the score reaches 4.0 or the user approves the result. This is pure margin -- the agent runs on the user's Max subscription, the only cost is the scoring infrastructure.
-
 ### Implementation
 
 #### 2.1 Scoring Engine
@@ -964,41 +952,6 @@ For the SaaS Concierge tier ($199-499), the spec improvement agent runs 3-5 iter
 - Monthly report: One Claude call per month for SaaS admin
 
 **Total incremental cost: Effectively zero.** The intelligence system piggybacks on existing build processes and adds negligible storage and compute overhead.
-
----
-
-## Revenue Implications
-
-### Direct Revenue (SaaS Only)
-
-| Revenue Stream | Price | Est. Monthly Volume | Monthly Revenue |
-|---|---|---|---|
-| Premium spec reports | $29-49 | 50-100 reports | $1,450 - $4,900 |
-| Concierge spec rewrites | $199-499 | 5-15 engagements | $995 - $7,485 |
-
-Conservative estimate at 500 SaaS users: **$2,500 - $12,000/month** additional revenue from PRD scoring alone.
-
-### Indirect Revenue (Retention + Conversion)
-
-- **Reduced churn:** Builds succeed more often when agents are warned about pitfalls. Fewer "this tool doesn't work" cancellations.
-- **Higher conversion:** Build time estimates and quality scores give users confidence to start. Removes the "will this actually work?" anxiety.
-- **Word of mouth:** "AutoForge told me my spec had a contradiction before I wasted 4 hours" is a compelling story.
-- **Competitive moat:** No competitor tracks build intelligence. This is proprietary data that gets more valuable with every user. Network effect: more users -> better patterns -> better builds -> more users.
-
-### The Flywheel
-
-```
-More users
-  -> more builds
-    -> more intelligence data
-      -> better prompts
-        -> higher build quality
-          -> more satisfied users
-            -> more referrals
-              -> more users (repeat)
-```
-
-This is the core strategic advantage. Build intelligence is a network effect that competitors cannot replicate without the build volume to train on.
 
 ---
 

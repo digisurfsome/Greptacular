@@ -14,7 +14,7 @@ This handoff specifies three new post-build agent types that close the gap betwe
 
 These three agents are complementary to the self-deploy VPS system (see `self-deploy-vps-handoff.md`). The VPS system handles provisioning infrastructure; these agents handle what runs on that infrastructure and keeping it healthy over time.
 
-**Why this matters for the business:** The CI/CD and monitoring agents are one-time value-adds that justify a higher initial price. The auto-update agent is a recurring service that generates monthly revenue even after the build is complete -- the customer keeps paying because the agent keeps maintaining their app.
+**Why this matters:** The CI/CD and monitoring agents are one-time post-build additions. The auto-update agent is an ongoing service that keeps the app maintained -- dependencies stay current, security patches get applied, and the app doesn't rot.
 
 ---
 
@@ -530,7 +530,7 @@ Dependencies rot. NPM packages release security patches weekly. Frameworks ship 
 
 A new agent type (`--agent-type auto-update`) that runs on a recurring schedule, updates dependencies safely, verifies nothing broke, and creates a PR with the changes. If tests fail, it rolls back everything and files an issue.
 
-This is the recurring revenue engine: $9-19/month per project for "managed maintenance." Even after the initial build is complete and paid for, the customer keeps paying because the agent keeps their app current and secure.
+This is managed maintenance for projects. Even after the initial build is complete, the agent keeps the app current and secure automatically.
 
 ### What It Does Each Run
 
@@ -1048,48 +1048,6 @@ For context, a single coding agent session is 100-150 turns. The entire post-bui
 
 ---
 
-## Revenue and Pricing
-
-### One-Time Agents (CI/CD + Monitoring)
-
-These run once after the build and are included in the project build price. They increase the perceived value of AutoForge without adding significant cost:
-
-- "AutoForge doesn't just build your app. It deploys it."
-- Justifies a $50-100 price increase on the build tier
-- Zero ongoing cost after the initial run
-
-### Auto-Update Agent (Recurring Revenue)
-
-This is the SaaS play. The auto-update agent creates a recurring maintenance relationship:
-
-| Tier | Price | Frequency | What's Included |
-|---|---|---|---|
-| Basic | $9/mo | Monthly | Security patches, semver-compatible updates, maintenance report |
-| Standard | $14/mo | Biweekly | Above + aggressive updates, PR creation, failure notifications |
-| Premium | $19/mo | Weekly | Above + priority scheduling, Slack/Discord alerts, rollback support |
-
-**Unit economics per project:**
-
-| Metric | Value |
-|---|---|
-| Revenue per project | $9-19/mo |
-| Claude Max subscription cost (amortized) | ~$2-4/mo per project (100 turns/mo out of ~10,000/mo budget) |
-| Infrastructure cost | $0 (runs on user's machine or existing VPS) |
-| **Gross margin** | **75-90%** |
-
-**Scale projections:**
-
-| Projects | Monthly Revenue | Monthly Cost | Monthly Profit |
-|---|---|---|---|
-| 50 | $700 | $150 | $550 |
-| 200 | $2,800 | $600 | $2,200 |
-| 500 | $7,000 | $1,500 | $5,500 |
-| 1,000 | $14,000 | $3,000 | $11,000 |
-
-The key insight: each maintenance run is ~25 turns (very cheap), but the customer pays $9-19/month for the peace of mind that their dependencies are current and their app is not accumulating security debt. The margin is enormous because the work is trivial for an agent.
-
----
-
 ## Security Considerations
 
 ### CI/CD Agent
@@ -1150,7 +1108,7 @@ The `ScheduleModal.tsx` UI is extended with a "Maintenance" section, or a separa
 - All three agents run through Claude Code under the Max subscription -- zero additional API cost beyond rate limit usage
 - None of the three agents need Playwright. They are all "headless" agents that read code, write files, and run CLI commands
 - The CI/CD and monitoring agents are one-shot (run once after build). The auto-update agent is recurring
-- The auto-update agent is the revenue play. Prioritize getting it reliable and well-tested because customers will be paying monthly for it
+- The auto-update agent is the most impactful of the three. Prioritize getting it reliable and well-tested
 - All three agents should be configurable via the Settings modal in the UI -- which features to enable, which platform to target, which monitoring tools to use
 - The `--dry-run` flag for the auto-update agent is essential for testing. Let users see what would happen before enabling automatic updates
 - Consider a "DevOps Report" that combines the CI/CD, monitoring, and first maintenance run into a single deliverable the user can review

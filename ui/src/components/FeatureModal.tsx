@@ -15,24 +15,23 @@ import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Separator } from '@/components/ui/separator'
 
-// Generate consistent color for category
-function getCategoryColor(category: string): string {
-  const colors = [
-    'bg-pink-500',
-    'bg-cyan-500',
-    'bg-green-500',
-    'bg-yellow-500',
-    'bg-orange-500',
-    'bg-purple-500',
-    'bg-blue-500',
-  ]
+// Generate consistent CSS variable color for category (matches FeatureCard.tsx)
+const CATEGORY_COLOR_VARS = [
+  'var(--color-category-1)',
+  'var(--color-category-2)',
+  'var(--color-category-3)',
+  'var(--color-category-4)',
+  'var(--color-category-5)',
+  'var(--color-category-6)',
+  'var(--color-category-7)',
+]
 
+function getCategoryColorVar(category: string): string {
   let hash = 0
   for (let i = 0; i < category.length; i++) {
     hash = category.charCodeAt(i) + ((hash << 5) - hash)
   }
-
-  return colors[Math.abs(hash) % colors.length]
+  return CATEGORY_COLOR_VARS[Math.abs(hash) % CATEGORY_COLOR_VARS.length]
 }
 
 interface FeatureModalProps {
@@ -106,7 +105,7 @@ export function FeatureModal({ feature, projectName, onClose }: FeatureModalProp
         {/* Header */}
         <DialogHeader className="p-6 pb-4">
           <div className="flex items-start gap-3">
-            <Badge className={`${getCategoryColor(feature.category)} text-white`}>
+            <Badge className="text-white" style={{ backgroundColor: getCategoryColorVar(feature.category) }}>
               {feature.category}
             </Badge>
           </div>

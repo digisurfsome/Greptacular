@@ -110,6 +110,10 @@ function getMascotColor(name: AgentMascot): string {
     Zippy: '#F59E0B',
     Quirk: '#0EA5E9',
     Flux: '#7C3AED',
+    // QA pipeline
+    Lens: '#0891B2',
+    Aegis: '#059669',
+    Iris: '#7C3AED',
   }
   return colors[name] || '#6B7280'
 }

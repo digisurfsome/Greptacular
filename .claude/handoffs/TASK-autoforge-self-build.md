@@ -332,16 +332,39 @@ The phases are recommended, not required. Within a phase, the order matters (e.g
 
 ## Quick Reference: All 11 Items at a Glance
 
-| # | Name | Type | Spec/Handoff File | Phase |
-|---|------|------|-------------------|-------|
-| 1 | QA Pipeline | Spec Run | `qa-pipeline-spec.xml` | 1 |
-| 2 | Pre-Build Intelligence | Spec Run | `pre-build-intelligence-spec.xml` | 1 |
-| 3 | Mentor Standards | Direct Impl | `mentor-standards-integration-handoff.md` | 1 |
-| 4 | Build Intelligence | Spec Run | `build-intelligence-spec.xml` | 2 |
-| 5 | Post-Build Reports | Spec Run | `post-build-reports-spec.xml` | 2 |
-| 6 | UI Realignment | Direct Impl | `ui-realignment-handoff.md` | 3 |
-| 7 | Style Features | Spec Run | `style-features-spec.xml` | 3 |
-| 8 | Idea Code Integration | Spec Run | `idea-code-integration-spec.xml` | 3 |
-| 9 | DevOps Pipeline | Spec Run | `devops-pipeline-spec.xml` | 4 |
-| 10 | Knowledge Base | Spec Run | `knowledge-base-spec.xml` | 4 |
-| 11 | Bridge Feature 10 | Direct Impl | `boilerplate-autoforge-bridge-handoff.md` (F10 only) | 4 |
+| # | Name | Type | Spec/Handoff File | Phase | Status |
+|---|------|------|-------------------|-------|--------|
+| 1 | QA Pipeline | Spec Run | `qa-pipeline-spec.xml` | 1 | DONE (aligned) |
+| 2 | Pre-Build Intelligence | Spec Run | `pre-build-intelligence-spec.xml` | 1 | DONE (backend; UI viewers pending) |
+| 3 | Mentor Standards | Direct Impl | `mentor-standards-integration-handoff.md` | 1 | DONE |
+| 4 | Build Intelligence | Spec Run | `build-intelligence-spec.xml` | 2 | NOT STARTED |
+| 5 | Post-Build Reports | Spec Run | `post-build-reports-spec.xml` | 2 | NOT STARTED |
+| 6 | UI Realignment | Direct Impl | `ui-realignment-handoff.md` | 3 | DONE (aligned) |
+| 7 | Style Features | Spec Run | `style-features-spec.xml` | 3 | DONE (fanned cards + screenshots pending) |
+| 8 | Idea Code Integration | Spec Run | `idea-code-integration-spec.xml` | 3 | PARTIAL (core extraction works; persistence + prompt injection pending) |
+| 9 | DevOps Pipeline | Spec Run | `devops-pipeline-spec.xml` | 4 | NOT STARTED |
+| 10 | Knowledge Base | Spec Run | `knowledge-base-spec.xml` | 4 | NOT STARTED |
+| 11 | Bridge Feature 10 | Direct Impl | `boilerplate-autoforge-bridge-handoff.md` (F10 only) | 4 | NOT STARTED |
+
+---
+
+## Alignment Fixes Applied
+
+The following consistency/alignment issues were identified and fixed:
+
+1. **FeatureModal.tsx** — Category badge colors were hardcoded (`bg-pink-500`, `bg-purple-500`, etc.) while `FeatureCard.tsx` had already been migrated to CSS variables (`var(--color-category-N)`). Fixed to use the same CSS variable approach.
+
+2. **ColorCustomizer.tsx** — Component docstring says "Collapsed by default" but `isOpen` was initialized to `true`. Fixed to `useState(false)`.
+
+3. **prompts.py `_get_style_context()`** — When users customize colors via the UI `ColorCustomizer`, those custom colors were stored in `project_config.json` but never read by the prompt system. The coding agent received the default style colors even when the user had customized them. Fixed by reading `custom_colors` from config and calling `apply_custom_colors()` from `style_manager.py`.
+
+4. **QA pipeline mascots** — Added three dedicated mascots for QA pipeline agent types: Lens (reviewer), Aegis (QA), Iris (computer_use). Added to `types.ts` (AgentMascot union), `mascotData.tsx` (color palettes + SVG components), and `ActivityFeed.tsx` (color lookup).
+
+5. **PipelineStatusBadge.tsx** — Replaced hardcoded Tailwind classes (`bg-amber-400`, `bg-emerald-500`, `bg-blue-500`) with CSS variables (`--color-pipeline-*`), consistent with the STYLE_GUIDE.md design system. Added light and dark mode variants in `globals.css`.
+
+## Remaining Known Gaps (Not Alignment — Future Work)
+
+- **Item 1**: `v1.0-qa-passed` git tag on QA success not implemented; `_check_computer_use_ready()` orchestrator method missing
+- **Item 2**: UI components for spec analysis viewer, architecture tab, and pipeline stepper not yet built (backend is complete)
+- **Item 7**: Fanned card stack with static PNG thumbnails and screenshot generation script not implemented (live StylePreview components used instead)
+- **Item 8**: No persistence layer for extracted styles (ephemeral only); CRUD APIs, normalization, and prompt injection pipeline not built

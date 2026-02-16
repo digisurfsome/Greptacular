@@ -1,0 +1,564 @@
+<project_specification>
+  <project_name>autoforge-website-bridge</project_name>
+
+  <overview>
+    AutoForge Website Bridge is the integration layer that connects the autoforge.com SaaS
+    website (built on the Gen-Ai boilerplate) to AutoForge build workers running on cloud VMs.
+    It enables users to start builds from the web UI, stream real-time progress via WebSocket,
+    receive packaged project artifacts on completion, and manage specs and project expansion --
+    all with multi-tenant isolation and Supabase JWT authentication. The bridge turns two
+    separate systems (a static SaaS shell and a local coding agent) into a unified cloud
+    build platform.
+
+    Built on the Gen-Ai SaaS boilerplate (React 18 + Vite + Tailwind + shadcn/ui + Supabase
+    Auth + Stripe), this project adds build orchestration, worker management, artifact delivery,
+    and real-time streaming to the existing website infrastructure.
+  </overview>
+
+  <technology_stack>
+    <frontend>
+      <framework>React 18 with Vite (Gen-Ai boilerplate)</framework>
+      <styling>Tailwind CSS with shadcn/ui and Radix UI</styling>
+      <state_management>React hooks, context, and Supabase realtime subscriptions</state_management>
+      <routing>React Router</routing>
+      <port>3000</port>
+    </frontend>
+    <backend>
+      <runtime>Supabase (Postgres, Auth, Edge Functions, Row-Level Security)</runtime>
+      <database>Supabase Postgres (extends existing Gen-Ai boilerplate schema)</database>
+      <billing>Stripe (subscriptions, one-time purchases, credit system -- already in boilerplate)</billing>
+      <email>Resend (transactional email -- already in boilerplate)</email>
+      <worker_provider>Fly.io Machines API for ephemeral build worker VMs</worker_provider>
+      <artifact_storage>Cloudflare R2 / AWS S3 for build artifact storage</artifact_storage>
+    </backend>
+    <communication>
+      <api>RESTful endpoints + Supabase Edge Functions + WebSocket for real-time streaming</api>
+    </communication>
+    <deployment>
+      <web_platform>Vercel (autoforge.com)</web_platform>
+      <build_workers>Fly.io Machines (ephemeral, per-build)</build_workers>
+    </deployment>
+  </technology_stack>
+
+  <prerequisites>
+    <environment_setup>
+      - Node.js 18+ installed
+      - npm package manager
+      - Supabase project configured (Auth, Postgres, Edge Functions)
+      - Stripe account with test and live API keys (already in boilerplate)
+      - Fly.io account with API token for worker provisioning
+      - Cloudflare R2 or AWS S3 bucket for artifact storage
+      - Resend account for transactional email (already in boilerplate)
+      - Gen-Ai boilerplate cloned as project base with autoforge.com branding applied
+      - BUILD_JWT_SECRET for signing per-build auth tokens
+      - PLATFORM_ANTHROPIC_API_KEY for managed (non-BYOK) builds
+    </environment_setup>
+  </prerequisites>
+
+  <feature_count>18</feature_count>
+
+  <core_features>
+    <infrastructure>
+      - System connects to Supabase Postgres and returns data from a test query
+      - System applies database migrations creating builds, build_workers, and user_specs tables with all columns, indexes, and RLS policies
+      - Data persists in Supabase Postgres across Edge Function restarts and redeployments
+      - System contains no mock data patterns, in-memory stores, or hardcoded sample data
+      - API endpoints query real Supabase Postgres via the Supabase client, not stubs
+    </infrastructure>
+
+    <build_orchestrator>
+      - POST /api/builds/start validates Supabase JWT, checks credit balance, consumes credit atomically, inserts a builds row with status 'queued', and returns build_id with WebSocket URL
+      - Build orchestrator checks the build_workers table for an idle worker and assigns it to the build, updating worker status to 'assigned' and build status to 'provisioning'
+      - When no idle worker is available, build orchestrator provisions a new Fly.io Machine via the Machines API with the correct Docker image, environment variables, and resource allocation
+      - Build orchestrator configures the assigned worker by writing app_spec.txt, setting environment variables (ANTHROPIC_API_KEY, BUILD_AUTH_TOKEN, BUILD_CALLBACK_URL), and starting the AutoForge process
+      - Build orchestrator manages a priority queue for builds when all workers are busy, returning queue position to the user
+      - Build orchestrator tears down worker VMs within 10 minutes of build completion by stopping and destroying the Fly Machine
+    </build_orchestrator>
+
+    <websocket_proxy>
+      - WebSocket endpoint at /api/builds/{build_id}/ws accepts a Supabase JWT, validates ownership, looks up the worker URL from the builds table, and opens a proxied WebSocket connection to the worker
+      - Proxy translates AutoForge internal event format (progress, agent_status, log, agent_update) into the SaaS build_progress format with build_id, timestamp, and structured data payload
+      - Proxy persists key events back to the builds table: features_completed, features_total, progress_percentage, current_phase, and status transitions
+      - Proxy buffers the last 100 events per build and replays missed events on client reconnection
+    </websocket_proxy>
+
+    <artifact_delivery>
+      - On build completion, worker packages project files into a tar.gz archive excluding node_modules, .git, venv, __pycache__, and .autoforge directories
+      - System uploads the archive and any generated reports (spec-analysis.md, ARCHITECTURE.md, qa-report.md) to cloud storage at builds/{user_id}/{build_id}/ path
+      - System generates pre-signed download URLs with 7-day expiry and writes artifact_url, artifact_size_bytes, and artifact_expires_at to the builds table
+      - GET /api/builds/{build_id}/download validates Supabase JWT, confirms ownership, and returns a 302 redirect to the pre-signed cloud storage URL
+      - GET /api/builds/{build_id}/reports returns rendered spec_analysis_md, architecture_md, and qa_report_md from the builds table
+    </artifact_delivery>
+
+    <multi_tenant_isolation>
+      - Each build runs on a separate Fly.io Machine with its own ephemeral filesystem at /builds/{build_id}/, destroyed after completion
+      - Workers run on a private network and are only reachable through the WebSocket proxy -- no direct inbound access from the internet
+      - All Supabase tables (builds, build_workers, user_specs) enforce Row-Level Security policies so users can only access their own data
+      - BYOK API keys are decrypted from the byok_keys table only at worker provisioning time and injected via environment variable -- never written to disk on the worker
+      - Platform Anthropic API key is injected via environment variable and never exposed in client-side code or logs
+    </multi_tenant_isolation>
+
+    <authentication_bridge>
+      - All /api/builds/* endpoints validate the Supabase JWT from the Authorization header and extract user_id for database queries
+      - On worker provisioning, the orchestrator generates a short-lived BUILD_AUTH_TOKEN JWT (signed with BUILD_JWT_SECRET) with claims containing build_id, user_id, and expiry set to build duration plus 1 hour
+      - The WebSocket proxy includes the BUILD_AUTH_TOKEN in the X-Build-Token header when forwarding requests to the worker
+      - The callback and heartbeat endpoints validate the X-Build-Token header from workers to ensure only the assigned worker can report on a build
+    </authentication_bridge>
+
+    <build_callbacks>
+      - POST /api/builds/{build_id}/callback accepts events (started, phase_change, progress, completed, failed, crashed) with X-Build-Token validation
+      - On 'completed' callback, system updates build status, records duration_minutes, triggers artifact packaging, and sends completion email via Resend
+      - On 'failed' callback, system updates build status with error_message, packages any completed work, and triggers auto-refund if retry_count exceeds max_retries
+      - On 'crashed' callback (or heartbeat timeout), system checks retry_count against max_retries, re-provisions worker preserving features.db if retries remain, or marks build as failed with refund
+    </build_callbacks>
+
+    <worker_health_monitoring>
+      - POST /api/builds/{build_id}/heartbeat accepts periodic health reports (cpu_percent, memory_percent, disk_percent, agent_pid, active_agents) with X-Build-Token validation, updating last_heartbeat_at on the build_workers table
+      - Background job checks all running workers every 60 seconds and marks any worker with no heartbeat for 90 seconds as unhealthy
+      - Workers with no heartbeat for 180 seconds are treated as crashed, triggering the crash recovery flow (retry or fail with refund)
+      - Builds running longer than BUILD_WORKER_TIMEOUT_MINUTES (default 180) are automatically terminated with a timeout error and partial artifact packaging
+      - Admin dashboard extension displays worker pool utilization, unhealthy workers, and builds exceeding time limits
+    </worker_health_monitoring>
+
+    <build_dashboard>
+      - /builds/new page displays a multi-step wizard: Step 1 (app spec input with paste/upload/AI-chat options), Step 2 (boilerplate selection grid), Step 3 (style picker with preview), Step 4 (build config: credit type, BYOK toggle, YOLO mode, model selection), Step 5 (review summary with cost and Start Build button)
+      - /builds/{id} page displays real-time build view with progress bar (features completed/total), phase indicator (Spec Analysis to Testing), agent cards with mascot names and current feature, scrolling log stream with feature-level filtering, mini kanban board (Pending/In Progress/Done), and Pause/Resume/Cancel action buttons
+      - /builds/{id}/results page displays download button (tar.gz with 7-day link), rendered spec analysis and architecture reports, QA report with test results, and build metrics (duration, tokens, features completed/failed)
+      - /builds page displays build history list with status badges, date, features total/passing, credits used, and filters for status and date range
+      - /dashboard page shows overview cards for active builds, recent builds, and credit balance with quick-action links
+    </build_dashboard>
+
+    <spec_creation_chat>
+      - user_specs table stores saved specifications with id, user_id, name, content (app_spec.txt), and chat_history (JSONB) with RLS policies enforcing user-scoped access
+      - WebSocket endpoint at /api/specs/chat/ws accepts Supabase JWT and streams an AI-assisted spec creation conversation using the Anthropic Messages API with the spec creation system prompt template
+      - Spec creation uses claude-sonnet-4-5 model directly from the web app server (no build worker needed) and returns a structured app_spec.txt on completion
+      - /specs page displays list of saved specs with name, creation date, edit/delete/duplicate actions, and empty state with CTA
+      - /specs/new page provides chat-based spec creation interface with streaming response display
+      - /specs/{id}/edit page provides text editor for manual spec editing plus chat-based refinement option
+    </spec_creation_chat>
+
+    <project_expand_assistant>
+      - POST /api/builds/{build_id}/expand validates Supabase JWT, confirms build ownership and completed status, deducts 1 additional credit, provisions a worker with the original project files downloaded from cloud storage, and returns expansion_build_id with WebSocket URL
+      - POST /api/builds/{build_id}/assistant/message accepts a message string and optional conversation_id, downloads project files to a temporary directory, and streams a Claude API response with file context for read-only project Q&A
+      - /builds/{id}/results page includes "Add Features" button that triggers the expand flow and "Ask About This Project" chat panel for the assistant
+    </project_expand_assistant>
+
+    <build_admin>
+      - Admin builds page at /admin/builds displays all builds across all users with columns for status, user email, worker ID, duration, credits consumed, and action buttons for refund and force-terminate
+      - Admin workers page at /admin/workers displays worker pool table with status, region, current build, last heartbeat, and terminate button
+      - POST /api/admin/builds/{id}/refund performs manual credit refund for a failed or cancelled build (admin only)
+      - POST /api/admin/workers/{id}/terminate force-terminates a worker VM and marks the associated build as failed (admin only)
+      - Admin routes are protected with role-based access from the Gen-Ai boilerplate's admin system
+    </build_admin>
+  </core_features>
+
+  <database_schema>
+    <tables>
+      <builds>
+        NOTE: Supabase Postgres table for central build tracking
+        - id (UUID PRIMARY KEY DEFAULT gen_random_uuid())
+        - user_id (UUID NOT NULL, FOREIGN KEY -> auth.users(id) ON DELETE CASCADE)
+        - project_name (TEXT NOT NULL)
+        - credit_type (TEXT NOT NULL)
+        - is_byok (BOOLEAN DEFAULT false)
+        - worker_id (TEXT, worker VM identifier)
+        - worker_url (TEXT, internal URL to worker's AutoForge API)
+        - worker_region (TEXT, deployment region)
+        - app_spec (TEXT NOT NULL, full app_spec.txt content)
+        - boilerplate_id (TEXT)
+        - style_id (TEXT)
+        - custom_colors (JSONB)
+        - yolo_mode (BOOLEAN DEFAULT false)
+        - model (TEXT DEFAULT 'claude-sonnet-4-5-20250929')
+        - max_concurrency (INTEGER DEFAULT 3)
+        - batch_size (INTEGER DEFAULT 3)
+        - anthropic_api_key_encrypted (BYTEA, re-encrypted BYOK key for transit)
+        - status (TEXT NOT NULL DEFAULT 'queued', CHECK IN ('queued', 'provisioning', 'initializing', 'building', 'testing', 'packaging', 'completed', 'failed', 'cancelled', 'refunded'))
+        - features_total (INTEGER DEFAULT 0)
+        - features_completed (INTEGER DEFAULT 0)
+        - features_failed (INTEGER DEFAULT 0)
+        - current_phase (TEXT)
+        - progress_percentage (NUMERIC(5,2) DEFAULT 0)
+        - artifact_url (TEXT, cloud storage URL for packaged project)
+        - artifact_size_bytes (BIGINT)
+        - artifact_expires_at (TIMESTAMPTZ, pre-signed URL expiry)
+        - spec_analysis_md (TEXT)
+        - architecture_md (TEXT)
+        - qa_report_md (TEXT)
+        - queued_at (TIMESTAMPTZ DEFAULT now())
+        - started_at (TIMESTAMPTZ)
+        - completed_at (TIMESTAMPTZ)
+        - duration_minutes (INTEGER)
+        - error_message (TEXT)
+        - retry_count (INTEGER DEFAULT 0)
+        - max_retries (INTEGER DEFAULT 2)
+        - created_at (TIMESTAMPTZ NOT NULL DEFAULT now())
+        - updated_at (TIMESTAMPTZ NOT NULL DEFAULT now())
+        INDEX: idx_builds_user ON builds(user_id, created_at DESC)
+        INDEX: idx_builds_status ON builds(status) WHERE status IN ('queued', 'provisioning', 'building')
+        INDEX: idx_builds_worker ON builds(worker_id) WHERE worker_id IS NOT NULL
+        RLS: Users can SELECT only their own rows (auth.uid() = user_id)
+      </builds>
+
+      <build_workers>
+        NOTE: Supabase Postgres table for worker VM pool tracking
+        - id (TEXT PRIMARY KEY, VM identifier from cloud provider)
+        - provider (TEXT NOT NULL, 'fly' or 'gcp' or 'aws')
+        - region (TEXT NOT NULL)
+        - status (TEXT NOT NULL DEFAULT 'idle', CHECK IN ('idle', 'provisioning', 'assigned', 'running', 'draining', 'terminated'))
+        - current_build_id (UUID, FOREIGN KEY -> builds(id))
+        - ip_address (TEXT)
+        - internal_url (TEXT, private network URL)
+        - machine_type (TEXT, e.g. 'shared-cpu-4x')
+        - created_at (TIMESTAMPTZ DEFAULT now())
+        - last_heartbeat_at (TIMESTAMPTZ)
+        - terminated_at (TIMESTAMPTZ)
+        INDEX: idx_build_workers_status ON build_workers(status) WHERE status IN ('idle', 'assigned', 'running')
+      </build_workers>
+
+      <user_specs>
+        NOTE: Supabase Postgres table for saved app specifications
+        - id (UUID PRIMARY KEY DEFAULT gen_random_uuid())
+        - user_id (UUID NOT NULL, FOREIGN KEY -> auth.users(id) ON DELETE CASCADE)
+        - name (TEXT NOT NULL)
+        - content (TEXT NOT NULL, app_spec.txt content)
+        - chat_history (JSONB, conversation context for refinement)
+        - created_at (TIMESTAMPTZ NOT NULL DEFAULT now())
+        - updated_at (TIMESTAMPTZ NOT NULL DEFAULT now())
+        INDEX: idx_user_specs_user_id ON user_specs(user_id)
+        RLS: Users can full CRUD on their own rows (auth.uid() = user_id)
+      </user_specs>
+    </tables>
+  </database_schema>
+
+  <api_endpoints_summary>
+    <build_lifecycle>
+      - GET /api/builds (list user's builds with pagination, status filter, date range)
+      - POST /api/builds/start (validate JWT, check credits, consume credit, create build, assign worker, return build_id + ws_url)
+      - GET /api/builds/{id} (get build details including progress, worker info, and timing)
+      - POST /api/builds/{id}/cancel (cancel build, refund credit if not yet started)
+      - POST /api/builds/{id}/pause (pause active build via worker API)
+      - POST /api/builds/{id}/resume (resume paused build via worker API)
+      - WS /api/builds/{id}/ws (real-time progress streaming via WebSocket proxy)
+      - GET /api/builds/{id}/download (302 redirect to pre-signed artifact URL)
+      - GET /api/builds/{id}/reports (spec analysis, architecture, QA report content)
+      - POST /api/builds/{id}/expand (start expansion build with original project files)
+      - POST /api/builds/{id}/assistant/message (project Q&A chat with streamed response)
+    </build_lifecycle>
+
+    <build_callbacks>
+      - POST /api/builds/{id}/callback (worker lifecycle events: started, phase_change, progress, completed, failed, crashed)
+      - POST /api/builds/{id}/heartbeat (worker health reports with CPU, memory, disk metrics)
+    </build_callbacks>
+
+    <spec_management>
+      - GET /api/specs (list user's saved specs with pagination)
+      - POST /api/specs (create new spec)
+      - GET /api/specs/{id} (get spec content and chat history)
+      - PATCH /api/specs/{id} (update spec name or content)
+      - DELETE /api/specs/{id} (delete spec)
+      - WS /api/specs/chat/ws (AI-assisted spec creation via streaming chat)
+    </spec_management>
+
+    <build_admin>
+      - GET /api/admin/builds (list all builds with filters -- admin only)
+      - GET /api/admin/workers (worker pool status and health -- admin only)
+      - POST /api/admin/builds/{id}/refund (manual credit refund -- admin only)
+      - POST /api/admin/workers/{id}/terminate (force terminate worker -- admin only)
+    </build_admin>
+  </api_endpoints_summary>
+
+  <ui_layout>
+    <main_structure>
+      - Header with navigation and user menu (from Gen-Ai boilerplate)
+      - Sidebar with navigation links: Dashboard, New Build, Builds, Specs, Settings (collapsible on mobile)
+      - Main content area for current page
+    </main_structure>
+    <pages>
+      - /dashboard: Active builds overview, recent builds, credit balance, quick actions
+      - /builds/new: Multi-step new build wizard (spec, boilerplate, style, config, review)
+      - /builds: Build history list with status badges, filters, search
+      - /builds/{id}: Live build view with progress, logs, agents, kanban, actions
+      - /builds/{id}/results: Completed build with download, reports, metrics, expand, assistant
+      - /specs: Saved specs list with CRUD actions
+      - /specs/new: Chat-based spec creation
+      - /specs/{id}/edit: Spec editor with chat refinement
+      - /admin/builds: All builds admin view (admin only)
+      - /admin/workers: Worker pool management (admin only)
+    </pages>
+  </ui_layout>
+
+  <design_system>
+    <color_palette>
+      NOTE: Inherits Gen-Ai boilerplate defaults with AutoForge branding
+      - Primary: #6366F1 (indigo -- AutoForge brand)
+      - Secondary: #8B5CF6 (violet -- accent)
+      - Background: #FFFFFF (light), #0F172A (dark)
+      - Text: #1E293B (light), #E2E8F0 (dark)
+      - Error: #EF4444
+      - Success: #10B981
+      - Warning: #F59E0B
+      - Muted: #64748B
+    </color_palette>
+    <typography>
+      - Font family: Inter, system-ui, sans-serif
+      - Headings: font-bold
+      - Body: font-normal
+      - Code: JetBrains Mono, monospace
+    </typography>
+    <spacing>
+      - Base unit: 4px (Tailwind default)
+      - Card padding: p-6 (24px)
+      - Section gap: gap-8 (32px)
+      - Form field gap: gap-4 (16px)
+      - Page max-width: max-w-7xl (1280px) centered
+    </spacing>
+    <components>
+      - Use shadcn/ui and Radix UI components from boilerplate
+      - Consistent border-radius: rounded-lg (8px)
+      - Consistent shadow: shadow-sm for cards, shadow-lg for modals
+      - Button variants: default, destructive, outline, secondary, ghost, link
+    </components>
+  </design_system>
+
+  <ui_ux_standards>
+    <banned_patterns>
+      - alert(), confirm(), prompt() -- Use shadcn/ui Dialog and Toast instead
+      - Text-only empty states -- Use EmptyState component with icon + CTA
+      - Loading states that just say "Loading..." -- Use Skeleton components from shadcn/ui
+      - Delete without confirmation -- Always use AlertDialog (shadcn/ui ConfirmModal equivalent)
+      - Raw timestamps -- Format as relative time using date-fns or similar
+      - Hardcoded API keys in source code -- Always use environment variables
+      - Inline styles -- Tailwind utility classes only
+    </banned_patterns>
+    <required_components>
+      - Dialog (Modal), AlertDialog (ConfirmModal), Toast notification system
+      - Skeleton loader, EmptyState with icon and CTA, ErrorBoundary
+      - Button with loading spinner state, Avatar with fallback initials
+      - Badge for status indicators (queued, building, completed, failed)
+      - Progress bar for build progress and provisioning status
+    </required_components>
+    <page_patterns>
+      - List View -> Detail View (read-only) -> Edit View
+      - Never open directly into edit mode from a list
+      - Separate view and edit concerns
+      - Wizard flows use multi-step modal with back/next navigation and progress indicator
+    </page_patterns>
+    <feedback_protocol>
+      - Success: toast + navigate. Error: toast + stay + keep data.
+      - Delete: confirm dialog -> loading -> toast + redirect
+      - Build start: confirm credit deduction -> loading -> redirect to live build view
+      - Long operations (provisioning, packaging): real-time status messages via WebSocket
+    </feedback_protocol>
+    <polish_requirements>
+      - Relative dates, text truncation, back navigation, hover states, focus states
+      - Autofocus first input in forms, search/filter on lists with 5+ items
+      - Retry action on every error state, loading skeletons for async data
+    </polish_requirements>
+    <accessibility_basics>
+      - Focus rings on interactive elements, Escape closes dialogs
+      - aria-labels on icon-only buttons, labels on all form inputs
+      - Keyboard navigation through wizard steps
+    </accessibility_basics>
+  </ui_ux_standards>
+
+  <coding_standards>
+    <architecture>
+      - Gen-Ai boilerplate conventions for all web platform code
+      - One component per file, feature folders for grouping
+      - Service layer: Supabase client calls in services/hooks, not UI components
+      - TypeScript interfaces for all data types, no 'any'
+      - Environment variables for all secrets and configuration
+      - Edge Functions for server-side operations requiring secrets (Fly.io API token, BUILD_JWT_SECRET)
+    </architecture>
+    <routing>
+      - Public routes: none (all bridge features require authentication)
+      - Protected routes: dashboard, builds, specs, settings (Supabase auth guard from boilerplate)
+      - Admin routes: admin builds, admin workers (role-based access from boilerplate)
+      - 404 catch-all route
+    </routing>
+    <error_handling>
+      - ErrorBoundary wraps entire app (already in boilerplate)
+      - User-friendly error messages, not raw errors
+      - Retry action on every error state
+      - Graceful degradation when Fly.io API is unreachable
+      - Callback and heartbeat endpoints return 200 even on internal errors to prevent retry flooding
+      - WebSocket proxy handles disconnection and reconnection gracefully with event replay
+    </error_handling>
+    <security>
+      - Supabase JWT validation on all API endpoints
+      - Per-build BUILD_AUTH_TOKEN JWTs for worker-to-web-app communication
+      - BYOK keys decrypted only at provisioning time, injected via env var, never written to disk
+      - Workers on private network, no direct inbound access
+      - Workers destroyed within 10 minutes of build completion
+      - Stripe webhook signature verification on all webhook handlers (from boilerplate)
+      - Admin routes use server-side role verification, not just frontend guards
+    </security>
+  </coding_standards>
+
+  <key_interactions>
+    <start_build_flow>
+      1. User navigates to /builds/new
+      2. User enters app spec (paste, upload, or AI-chat creation)
+      3. User selects boilerplate and style
+      4. User configures build (credit type, BYOK, YOLO, model)
+      5. User reviews summary and clicks Start Build
+      6. System validates JWT, checks credit balance, consumes credit
+      7. System creates builds row, assigns or provisions worker
+      8. User is redirected to /builds/{id} live view
+      9. WebSocket proxy streams real-time progress, logs, and agent state
+      10. Build completes: artifact packaged, email sent, results page available
+    </start_build_flow>
+
+    <build_failure_and_recovery_flow>
+      1. Worker process crashes or heartbeat times out (180s)
+      2. Orchestrator detects failure via missing heartbeat or crash callback
+      3. If retry_count < max_retries: re-provision worker, copy features.db, restart agent
+      4. WebSocket notifies user of retry with status update
+      5. If max retries exceeded: mark build as failed, package completed work
+      6. System triggers auto-refund and sends failure notification email
+      7. User sees failed build with partial download and error details
+    </build_failure_and_recovery_flow>
+
+    <spec_creation_flow>
+      1. User navigates to /specs/new
+      2. Chat interface opens with AI-assisted spec creation
+      3. User describes their app idea through conversation
+      4. Claude generates structured app_spec.txt
+      5. User reviews and optionally refines the spec
+      6. User saves spec to user_specs table
+      7. Saved spec is available in the new build wizard's spec selection step
+    </spec_creation_flow>
+  </key_interactions>
+
+  <implementation_steps>
+    <step number="1">
+      <title>Database Schema and Infrastructure</title>
+      <tasks>
+        - Create builds, build_workers, and user_specs tables in Supabase with all columns, constraints, and indexes
+        - Apply Row-Level Security policies on all new tables
+        - Verify data persistence across Edge Function restarts
+        - Create TypeScript interfaces for all database entities
+      </tasks>
+    </step>
+    <step number="2">
+      <title>Authentication Bridge and Build Start API</title>
+      <tasks>
+        - Implement Supabase JWT validation middleware for /api/builds/* routes
+        - Implement BUILD_AUTH_TOKEN generation (JWT signing with BUILD_JWT_SECRET)
+        - Build POST /api/builds/start endpoint with credit validation and atomic consumption
+        - Build GET /api/builds and GET /api/builds/{id} endpoints
+      </tasks>
+    </step>
+    <step number="3">
+      <title>Build Orchestrator and Worker Provisioning</title>
+      <tasks>
+        - Implement Fly.io Machines API integration (create, configure, start, stop, destroy)
+        - Build worker assignment logic (check pool, provision new, queue management)
+        - Implement worker configuration (write app_spec, set env vars, start AutoForge)
+        - Build worker teardown logic (stop, destroy after grace period)
+      </tasks>
+    </step>
+    <step number="4">
+      <title>WebSocket Proxy and Real-Time Streaming</title>
+      <tasks>
+        - Build WebSocket endpoint at /api/builds/{id}/ws with JWT validation
+        - Implement proxy connection to worker WebSocket with BUILD_AUTH_TOKEN
+        - Implement event format translation (AutoForge internal to SaaS format)
+        - Implement event persistence (update builds table on progress/status changes)
+        - Implement event buffering and replay on reconnection
+      </tasks>
+    </step>
+    <step number="5">
+      <title>Build Callbacks and Health Monitoring</title>
+      <tasks>
+        - Build POST /api/builds/{id}/callback endpoint with token validation
+        - Build POST /api/builds/{id}/heartbeat endpoint with token validation
+        - Implement crash recovery flow (retry logic, features.db preservation)
+        - Implement timeout enforcement (BUILD_WORKER_TIMEOUT_MINUTES)
+        - Build background health check job (60-second interval)
+      </tasks>
+    </step>
+    <step number="6">
+      <title>Artifact Delivery</title>
+      <tasks>
+        - Implement artifact packaging on worker (tar.gz with exclusions)
+        - Implement cloud storage upload (R2/S3) with report files
+        - Implement pre-signed URL generation with 7-day expiry
+        - Build GET /api/builds/{id}/download endpoint
+        - Build GET /api/builds/{id}/reports endpoint
+        - Send completion email via Resend with download link
+      </tasks>
+    </step>
+    <step number="7">
+      <title>Build Dashboard UI</title>
+      <tasks>
+        - Build /builds/new multi-step wizard (spec, boilerplate, style, config, review)
+        - Build /builds/{id} live build view (progress, logs, agents, kanban, actions)
+        - Build /builds/{id}/results page (download, reports, metrics)
+        - Build /builds history list with status badges and filters
+        - Build /dashboard overview cards (active builds, recent builds, credits)
+      </tasks>
+    </step>
+    <step number="8">
+      <title>Spec Management</title>
+      <tasks>
+        - Build spec creation chat WebSocket with Anthropic Messages API
+        - Build /specs list page with CRUD actions
+        - Build /specs/new chat-based creation interface
+        - Build /specs/{id}/edit page with text editor and chat refinement
+        - Wire saved specs into the new build wizard
+      </tasks>
+    </step>
+    <step number="9">
+      <title>Project Expand and Assistant</title>
+      <tasks>
+        - Build POST /api/builds/{id}/expand endpoint (re-provision worker with existing files)
+        - Build POST /api/builds/{id}/assistant/message endpoint (Claude API with file context)
+        - Add "Add Features" button and "Ask About This Project" chat panel to results page
+      </tasks>
+    </step>
+    <step number="10">
+      <title>Admin and Multi-Tenant Isolation</title>
+      <tasks>
+        - Build /admin/builds page with all-builds table and action buttons
+        - Build /admin/workers page with pool status and terminate button
+        - Build POST /api/admin/builds/{id}/refund endpoint
+        - Build POST /api/admin/workers/{id}/terminate endpoint
+        - Verify multi-tenant isolation: RLS policies, private networking, ephemeral filesystems
+        - Verify BYOK key handling: decrypt only at provisioning, inject via env var
+      </tasks>
+    </step>
+  </implementation_steps>
+
+  <success_criteria>
+    <functionality>
+      - User can start a build from the web UI and see real-time progress via WebSocket
+      - Build orchestrator provisions, configures, and tears down workers automatically
+      - Completed builds produce downloadable project archives with reports
+      - Failed builds retry automatically and refund credits when retries are exhausted
+      - Worker health monitoring detects crashes and timeouts within 180 seconds
+      - Spec creation chat generates valid app_spec.txt without needing a build worker
+      - Project expand correctly re-provisions a worker with the original project files
+      - Multi-tenant isolation ensures users cannot access other users' builds, workers, or data
+      - BYOK keys are never exposed in logs, client-side code, or written to worker disk
+    </functionality>
+    <user_experience>
+      - Build wizard guides users through spec, boilerplate, style, and config selection
+      - Live build view provides real-time feedback with progress bar, agent cards, and log stream
+      - Build results page clearly presents download, reports, and expansion options
+      - All pages responsive on mobile (375px), tablet (768px), desktop (1920px)
+      - All actions provide immediate visual feedback via toasts and status updates
+      - Reconnecting to a live build replays missed events seamlessly
+    </user_experience>
+    <technical_quality>
+      - Zero console errors in browser
+      - All Supabase tables protected by Row-Level Security policies
+      - API keys never exposed in client-side code
+      - Webhook and callback handlers validate auth tokens on every request
+      - WebSocket proxy handles disconnection gracefully with event buffering
+      - TypeScript strict mode with no 'any' types
+      - All Edge Functions include proper error handling and rollback logic
+    </technical_quality>
+  </success_criteria>
+</project_specification>

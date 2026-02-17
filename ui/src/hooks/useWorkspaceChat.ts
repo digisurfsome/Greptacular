@@ -32,7 +32,7 @@ interface UseWorkspaceChatReturn {
   };
   pendingInjection: PendingInjection | null;
   setPendingInjection: (injection: PendingInjection | null) => void;
-  start: (conversationId?: number | null, workingDirectory?: string) => void;
+  start: (conversationId?: number | null, workingDirectory?: string, contextMode?: string) => void;
   sendMessage: (content: string, attachments?: ImageAttachment[]) => void;
   disconnect: () => void;
   clearMessages: () => void;
@@ -279,7 +279,7 @@ export function useWorkspaceChat({
   }, [onError]);
 
   const start = useCallback(
-    (existingConversationId?: number | null, workingDirectory?: string) => {
+    (existingConversationId?: number | null, workingDirectory?: string, contextMode?: string) => {
       // Clear any pending check timeout from a previous call
       if (checkAndSendTimeoutRef.current) {
         clearTimeout(checkAndSendTimeoutRef.current);
@@ -297,6 +297,7 @@ export function useWorkspaceChat({
             type: string;
             conversation_id?: number;
             working_directory?: string;
+            context_mode?: string;
           } = { type: "start" };
 
           if (existingConversationId) {
@@ -306,6 +307,7 @@ export function useWorkspaceChat({
           if (workingDirectory) {
             payload.working_directory = workingDirectory;
           }
+          payload.context_mode = contextMode || "1m";
 
           if (import.meta.env.DEV) {
             console.debug('[useWorkspaceChat] Sending start message:', payload);

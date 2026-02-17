@@ -646,7 +646,7 @@ async def workspace_chat_websocket(websocket: WebSocket):
     Message protocol:
 
     Client -> Server:
-    - {"type": "start", "conversation_id": int | null, "working_directory": "..."} - Start/resume session
+    - {"type": "start", "conversation_id": int | null, "working_directory": "...", "context_mode": "1m"|"200k"} - Start/resume session
     - {"type": "message", "content": "..."} - Send user message
     - {"type": "answer", "answers": {...}} - Answer to structured questions
     - {"type": "ping"} - Keep-alive ping
@@ -704,12 +704,18 @@ async def workspace_chat_websocket(websocket: WebSocket):
                     )
 
                     try:
+                        # Extract context mode from start message (default to "1m")
+                        context_mode = message.get("context_mode", "1m")
+                        if context_mode not in ("1m", "200k"):
+                            context_mode = "1m"
+
                         # Create a new workspace session
                         logger.debug(f"Creating workspace session {session_id}")
                         session = await ws_create_session(
                             session_id,
                             conversation_id=conversation_id,
                             working_directory=working_directory,
+                            context_mode=context_mode,
                         )
                         logger.debug("Workspace session created, starting...")
 

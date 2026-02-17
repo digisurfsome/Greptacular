@@ -124,6 +124,17 @@ export function WorkspaceChat({
   const imageInputRef = useRef<HTMLInputElement>(null)
   const [isDragging, setIsDragging] = useState(false)
 
+  // Context mode: "1m" (1,000,000 tokens with beta) or "200k" (200,000 tokens standard).
+  // Persisted to localStorage so the preference survives page reloads.
+  // Takes effect on the NEXT session start, not the current active session.
+  const [contextMode, setContextMode] = useState<'1m' | '200k'>(() => {
+    return (localStorage.getItem('workspace-context-mode') as '1m' | '200k') || '1m'
+  })
+
+  useEffect(() => {
+    localStorage.setItem('workspace-context-mode', contextMode)
+  }, [contextMode])
+
   // Memoize error handler to keep hook reference stable
   const handleError = useCallback((error: string) => {
     console.error('Workspace chat error:', error)
@@ -168,9 +179,9 @@ export function WorkspaceChat({
     },
   })
 
-  // Context budget usage for warning state
-  const usagePercent = contextBudget.messageTokens > 0
-    ? ((contextBudget.messageTokens + contextBudget.summaryTokens) / 1_000_000) * 100
+  // Context budget usage for warning state (uses actual context window from server)
+  const usagePercent = contextBudget.messageTokens > 0 && contextWindow > 0
+    ? ((contextBudget.messageTokens + contextBudget.summaryTokens) / contextWindow) * 100
     : 0
 
   // Notify parent when a new conversation is created via WebSocket
@@ -210,9 +221,9 @@ export function WorkspaceChat({
     // Start/resume the selected conversation, passing the working directory
     // so the agent session uses the repo clone as its cwd.
     if (conversationId !== null) {
-      start(conversationId, workingDirectory ?? undefined)
+      start(conversationId, workingDirectory ?? undefined, contextMode)
     }
-  }, [conversationId, isLoadingConversation, activeConversationId, start, disconnect, clearMessages, workingDirectory])
+  }, [conversationId, isLoadingConversation, activeConversationId, start, disconnect, clearMessages, workingDirectory, contextMode])
 
   // Smart auto-scroll: only scroll if user is near the bottom
   const handleScroll = useCallback(() => {
@@ -403,7 +414,7 @@ export function WorkspaceChat({
     // After a delay (to let the session initialize), send the user message.
     // Pass workingDirectory so the new session uses the selected repo.
     if (conversationId === null && activeConversationId === null) {
-      start(undefined, workingDirectory ?? undefined)
+      start(undefined, workingDirectory ?? undefined, contextMode)
       setTimeout(() => {
         sendMessage(content, attachments)
       }, 500)
@@ -419,7 +430,7 @@ export function WorkspaceChat({
     if (effectiveId) {
       localStorage.removeItem(`${DRAFT_KEY_PREFIX}${effectiveId}`)
     }
-  }, [inputValue, isLoading, conversationId, activeConversationId, start, sendMessage, workingDirectory, pendingImages, pendingFiles])
+  }, [inputValue, isLoading, conversationId, activeConversationId, start, sendMessage, workingDirectory, pendingImages, pendingFiles, contextMode])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -543,14 +554,32 @@ export function WorkspaceChat({
         </div>
       )}
 
-      {/* Context budget bar — always visible */}
-      <EnhancedContextBudgetBar
-        totalBudget={contextWindow}
-        messageTokens={contextBudget.messageTokens || totalTokens}
-        summaryTokens={contextBudget.summaryTokens}
-        messageCount={contextBudget.messageCount}
-        isStreaming={isLoading}
-      />
+      {/* Context mode toggle + budget bar */}
+      <div className="flex items-center border-b border-border bg-card/80">
+        <div className="flex-1 border-b-0 [&>div]:border-b-0">
+          <EnhancedContextBudgetBar
+            totalBudget={contextWindow}
+            messageTokens={contextBudget.messageTokens || totalTokens}
+            summaryTokens={contextBudget.summaryTokens}
+            messageCount={contextBudget.messageCount}
+            isStreaming={isLoading}
+          />
+        </div>
+        <button
+          onClick={() => {
+            const newMode = contextMode === '1m' ? '200k' : '1m'
+            setContextMode(newMode)
+          }}
+          className={`flex-shrink-0 mr-4 text-[10px] font-mono font-bold px-2 py-0.5 rounded border transition-colors ${
+            contextMode === '1m'
+              ? 'bg-primary/10 text-primary border-primary/30'
+              : 'bg-muted text-muted-foreground border-border'
+          }`}
+          title={`Context window: ${contextMode === '1m' ? '1,000,000' : '200,000'} tokens. Click to switch. Takes effect on next session.`}
+        >
+          {contextMode === '1m' ? '1M ctx' : '200K ctx'}
+        </button>
+      </div>
 
       {/* Auto-summary pin */}
       <AutoSummaryPin

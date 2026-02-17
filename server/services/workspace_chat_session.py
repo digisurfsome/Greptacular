@@ -14,7 +14,7 @@ Forked from assistant_chat_session.py with key differences:
 - Global database (workspace_database), not per-project
 - Session registry keyed by session_id string, not project_name
 - Working directory configurable per-conversation (defaults to home directory)
-- 1,000,000 token context window with beta ``context-1m-2025-08-07``
+- Configurable context window: 1,000,000 tokens (beta ``context-1m-2025-08-07``) or 200,000 tokens
 """
 
 import json
@@ -73,6 +73,9 @@ MAX_HISTORY_MESSAGES = 100
 # This is the core capability of the workspace -- must match the beta flag below.
 CONTEXT_WINDOW_TOKENS = 1_000_000
 
+# Standard 200K context window (no beta flag required).
+CONTEXT_WINDOW_200K = 200_000
+
 
 def get_workspace_system_prompt(working_directory: str, model: str = "") -> str:
     """Generate the system prompt for the workspace agent.
@@ -128,6 +131,7 @@ class WorkspaceChatSession:
         session_id: str,
         conversation_id: Optional[int] = None,
         working_directory: Optional[str] = None,
+        context_mode: str = "1m",
     ):
         """Initialize the workspace chat session.
 
@@ -135,10 +139,14 @@ class WorkspaceChatSession:
             session_id: Unique identifier for this session (used as registry key).
             conversation_id: Optional existing conversation ID to resume.
             working_directory: Absolute path for the agent's cwd. Defaults to the user's home directory.
+            context_mode: Context window size -- ``"1m"`` (1,000,000 tokens with beta flag)
+                or ``"200k"`` (200,000 tokens, no beta). Defaults to ``"1m"``.
         """
         self.session_id = session_id
         self.conversation_id = conversation_id
         self.working_directory = working_directory or str(Path.home())
+        self.context_mode = context_mode
+        self.context_window = CONTEXT_WINDOW_TOKENS if context_mode == "1m" else CONTEXT_WINDOW_200K
         self.client: Optional[ClaudeSDKClient] = None
         self._client_entered: bool = False
         self.created_at = datetime.now()
@@ -265,10 +273,13 @@ class WorkspaceChatSession:
                     settings=str(settings_file.resolve()),
                     env=sdk_env,
                     hooks=hooks,
-                    # Enable 1M token context window -- the core capability of
-                    # the workspace. Disabled for alternative APIs that don't
-                    # support this beta header.
-                    betas=[] if is_alternative_api else ["context-1m-2025-08-07"],
+                    # Enable 1M token context window only in 1M mode.
+                    # Disabled for alternative APIs and when user selects 200K mode.
+                    betas=(
+                        []
+                        if is_alternative_api or self.context_mode != "1m"
+                        else ["context-1m-2025-08-07"]
+                    ),
                 )
             )
             logger.info("Entering workspace Claude client context...")
@@ -302,7 +313,7 @@ class WorkspaceChatSession:
                 yield {
                     "type": "token_usage",
                     "total_tokens": total,
-                    "context_window": CONTEXT_WINDOW_TOKENS,
+                    "context_window": self.context_window,
                 }
 
                 yield {"type": "response_done"}
@@ -503,7 +514,7 @@ class WorkspaceChatSession:
             yield {
                 "type": "token_usage",
                 "total_tokens": total,
-                "context_window": CONTEXT_WINDOW_TOKENS,
+                "context_window": self.context_window,
             }
 
     def get_conversation_id(self) -> Optional[int]:
@@ -536,6 +547,7 @@ async def create_session(
     session_id: str,
     conversation_id: Optional[int] = None,
     working_directory: Optional[str] = None,
+    context_mode: str = "1m",
 ) -> WorkspaceChatSession:
     """Create a new workspace session, closing any existing one with the same ID.
 
@@ -543,6 +555,7 @@ async def create_session(
         session_id: Unique identifier for the session.
         conversation_id: Optional conversation ID to resume.
         working_directory: Absolute path for the agent's working directory.
+        context_mode: Context window size -- ``"1m"`` or ``"200k"``. Defaults to ``"1m"``.
 
     Returns:
         The newly created session instance.
@@ -551,7 +564,12 @@ async def create_session(
 
     with _sessions_lock:
         old_session = _sessions.pop(session_id, None)
-        session = WorkspaceChatSession(session_id, conversation_id, working_directory)
+        session = WorkspaceChatSession(
+            session_id,
+            conversation_id=conversation_id,
+            working_directory=working_directory,
+            context_mode=context_mode,
+        )
         _sessions[session_id] = session
 
     if old_session:

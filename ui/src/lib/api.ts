@@ -28,6 +28,8 @@ import type {
   PathValidationResponse,
   AssistantConversation,
   AssistantConversationDetail,
+  WorkspaceConversation,
+  WorkspaceConversationDetail,
   Settings,
   SettingsUpdate,
   ModelsResponse,
@@ -643,4 +645,51 @@ export async function getComputerUseReport(projectName: string): Promise<Record<
 
 export async function getQAScreenshots(projectName: string): Promise<{ screenshots: { name: string; path: string }[] }> {
   return fetchJSON(`/projects/${encodeURIComponent(projectName)}/features/qa-screenshots`)
+}
+
+// ============================================================================
+// Workspace Chat API
+// ============================================================================
+
+export async function listWorkspaceConversations(): Promise<WorkspaceConversation[]> {
+  return fetchJSON('/workspace/conversations')
+}
+
+export async function getWorkspaceConversation(
+  conversationId: number
+): Promise<WorkspaceConversationDetail> {
+  return fetchJSON(`/workspace/conversations/${conversationId}`)
+}
+
+export async function createWorkspaceConversation(
+  options?: { category?: string; working_directory?: string }
+): Promise<WorkspaceConversation> {
+  return fetchJSON('/workspace/conversations', {
+    method: 'POST',
+    body: JSON.stringify(options ?? {}),
+  })
+}
+
+export async function updateWorkspaceConversation(
+  conversationId: number,
+  update: { title?: string; category?: string }
+): Promise<WorkspaceConversation> {
+  return fetchJSON(`/workspace/conversations/${conversationId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(update),
+  })
+}
+
+export async function deleteWorkspaceConversation(
+  conversationId: number
+): Promise<void> {
+  await fetchJSON(`/workspace/conversations/${conversationId}`, {
+    method: 'DELETE',
+  })
+}
+
+export async function getWorkspaceTokenUsage(
+  conversationId: number
+): Promise<{ total_tokens: number; context_window: number; usage_percent: number }> {
+  return fetchJSON(`/workspace/conversations/${conversationId}/tokens`)
 }

@@ -631,6 +631,54 @@ export type AssistantChatServerMessage =
   | AssistantChatPongMessage
 
 // ============================================================================
+// Workspace Chat Types
+// ============================================================================
+
+export interface WorkspaceConversation {
+  id: number
+  title: string | null
+  category: string
+  working_directory: string | null
+  created_at: string | null
+  updated_at: string | null
+  message_count: number
+}
+
+export interface WorkspaceMessage {
+  id: number
+  role: 'user' | 'assistant' | 'system'
+  content: string
+  token_estimate: number
+  timestamp: string | null
+}
+
+export interface WorkspaceConversationDetail {
+  id: number
+  title: string | null
+  category: string
+  working_directory: string | null
+  created_at: string | null
+  updated_at: string | null
+  messages: WorkspaceMessage[]
+  message_count: number
+}
+
+export interface WorkspaceChatTokenUsageMessage {
+  type: 'token_usage'
+  total_tokens: number
+  context_window: number
+}
+
+export type WorkspaceChatServerMessage =
+  | AssistantChatTextMessage
+  | AssistantChatToolCallMessage
+  | WorkspaceChatTokenUsageMessage
+  | AssistantChatResponseDoneMessage
+  | AssistantChatErrorMessage
+  | AssistantChatConversationCreatedMessage
+  | AssistantChatPongMessage
+
+// ============================================================================
 // Expand Chat Types
 // ============================================================================
 

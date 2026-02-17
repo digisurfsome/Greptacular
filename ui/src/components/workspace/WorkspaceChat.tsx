@@ -151,19 +151,26 @@ export function WorkspaceChat({
 
     // Only act when the ID has actually changed
     if (lastConversationIdRef.current === conversationId) return
-    const isSwitching = lastConversationIdRef.current !== undefined
+    const previousId = lastConversationIdRef.current
     lastConversationIdRef.current = conversationId
 
-    if (isSwitching) {
+    // When a new conversation is created via the active WebSocket (null → new ID),
+    // the session already owns this conversation. Don't tear it down.
+    if (previousId === null && conversationId !== null && activeConversationId === conversationId) {
+      return
+    }
+
+    // Genuine switch between conversations — disconnect the old session
+    if (previousId !== undefined) {
       disconnect()
       clearMessages()
     }
 
-    // Null means "new chat" -- start without an ID
+    // Start/resume the selected conversation
     if (conversationId !== null) {
       start(conversationId)
     }
-  }, [conversationId, isLoadingConversation, start, disconnect, clearMessages])
+  }, [conversationId, isLoadingConversation, activeConversationId, start, disconnect, clearMessages])
 
   // Smart auto-scroll: only scroll if user is near the bottom
   const handleScroll = useCallback(() => {
@@ -259,16 +266,14 @@ export function WorkspaceChat({
     const content = inputValue.trim()
     if (!content || isLoading) return
 
-    // If no conversation yet, start a new one with the first message
+    // If no conversation yet, start a new one with the first message.
+    // start() connects the WebSocket and sends "start" to the backend.
+    // After a delay (to let the session initialize), send the user message.
     if (conversationId === null && activeConversationId === null) {
       start()
-      const waitAndSend = (retries: number) => {
-        setTimeout(() => {
-          sendMessage(content)
-          if (retries <= 0) return
-        }, 200)
-      }
-      waitAndSend(5)
+      setTimeout(() => {
+        sendMessage(content)
+      }, 500)
     } else {
       sendMessage(content)
     }

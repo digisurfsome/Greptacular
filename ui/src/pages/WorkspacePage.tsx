@@ -11,9 +11,10 @@ import { WorkspaceSidebar } from '../components/workspace/WorkspaceSidebar'
 import { WorkspaceChat } from '../components/workspace/WorkspaceChat'
 import { WorkspaceLibrary } from '../components/workspace/WorkspaceLibrary'
 import { WorkspaceKeyboardHelp } from '../components/workspace/WorkspaceKeyboardHelp'
+import { WorkspaceUserGuide } from '../components/workspace/WorkspaceUserGuide'
 import { useWorkspaceKeyboardShortcuts } from '../hooks/useWorkspaceKeyboardShortcuts'
 import { exportConversationMarkdown } from '../lib/api'
-import { ArrowLeft, ChevronRight, Keyboard } from 'lucide-react'
+import { ArrowLeft, ChevronRight, Keyboard, BookOpen } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 /** Full-page workspace layout with keyboard shortcuts, breadcrumbs, and all Phase 4 features. */
@@ -22,6 +23,7 @@ export function WorkspacePage(): React.JSX.Element {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [libraryCollapsed, setLibraryCollapsed] = useState(false)
   const [showKeyboardHelp, setShowKeyboardHelp] = useState(false)
+  const [showUserGuide, setShowUserGuide] = useState(false)
   const chatInputRef = useRef<HTMLTextAreaElement | null>(null)
 
   const handleNewChat = useCallback(() => {
@@ -90,6 +92,16 @@ export function WorkspacePage(): React.JSX.Element {
           <Button
             variant="ghost"
             size="sm"
+            className="h-7 px-2 gap-1.5 text-muted-foreground hover:text-foreground"
+            onClick={() => setShowUserGuide(v => !v)}
+            title="User guide & notes"
+          >
+            <BookOpen size={14} />
+            <span className="text-[10px]">Guide</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
             className="h-7 px-2 text-muted-foreground hover:text-foreground"
             onClick={() => setShowKeyboardHelp(true)}
             title="Keyboard shortcuts (?)"
@@ -127,6 +139,12 @@ export function WorkspacePage(): React.JSX.Element {
       <WorkspaceKeyboardHelp
         isOpen={showKeyboardHelp}
         onClose={() => setShowKeyboardHelp(false)}
+      />
+
+      {/* Floating user guide & notes panel */}
+      <WorkspaceUserGuide
+        isOpen={showUserGuide}
+        onClose={() => setShowUserGuide(false)}
       />
     </div>
   )

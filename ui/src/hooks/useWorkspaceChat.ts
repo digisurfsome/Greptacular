@@ -10,7 +10,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import type { ChatMessage, WorkspaceChatServerMessage } from "../lib/types";
+import type { ChatMessage, WorkspaceChatServerMessage, PendingInjection } from "../lib/types";
 
 type ConnectionStatus = "disconnected" | "connecting" | "connected" | "error";
 
@@ -30,6 +30,8 @@ interface UseWorkspaceChatReturn {
     summaryTokens: number;
     messageCount: number;
   };
+  pendingInjection: PendingInjection | null;
+  setPendingInjection: (injection: PendingInjection | null) => void;
   start: (conversationId?: number | null, workingDirectory?: string) => void;
   sendMessage: (content: string) => void;
   disconnect: () => void;
@@ -65,6 +67,7 @@ export function useWorkspaceChat({
     summaryTokens: 0,
     messageCount: 0,
   });
+  const [pendingInjection, setPendingInjection] = useState<PendingInjection | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const currentAssistantMessageRef = useRef<string | null>(null);
@@ -327,7 +330,25 @@ export function useWorkspaceChat({
         return;
       }
 
-      // Add user message to chat
+      let fullMessage = content;
+
+      // Prepend injection content if present
+      if (pendingInjection) {
+        const injectedLines = [
+          `--- Injected from "${pendingInjection.sourceTitle}" ---`,
+          ...pendingInjection.messages.map(
+            (m) =>
+              `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`,
+          ),
+          `--- End injection ---`,
+          "",
+          content,
+        ];
+        fullMessage = injectedLines.join("\n");
+        setPendingInjection(null);
+      }
+
+      // Add user message to chat (show original content, not the injected version)
       setMessages((prev) => [
         ...prev,
         {
@@ -343,11 +364,11 @@ export function useWorkspaceChat({
       wsRef.current.send(
         JSON.stringify({
           type: "message",
-          content,
+          content: fullMessage,
         }),
       );
     },
-    [onError],
+    [onError, pendingInjection],
   );
 
   const disconnect = useCallback(() => {
@@ -377,6 +398,8 @@ export function useWorkspaceChat({
     totalTokens,
     contextWindow,
     contextBudget,
+    pendingInjection,
+    setPendingInjection,
     start,
     sendMessage,
     disconnect,

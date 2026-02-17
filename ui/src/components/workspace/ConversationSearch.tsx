@@ -117,6 +117,7 @@ export function ConversationSearch({
           placeholder="Search conversations..."
           className="w-full pl-8 pr-8 py-1.5 text-xs border border-border rounded bg-input text-foreground placeholder:text-muted-foreground outline-none ring-ring focus:ring-1"
           aria-label="Search conversations"
+          data-workspace-search=""
         />
         {query && (
           <button

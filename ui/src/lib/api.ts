@@ -33,6 +33,9 @@ import type {
   WorkspaceCategory,
   WorkspaceSummary,
   WorkspaceSearchResult,
+  ForkResponse,
+  PaginatedMessages,
+  InjectResponse,
   LibraryFile,
   ConnectedRepo,
   RepoTreeEntry,
@@ -906,4 +909,67 @@ export async function getRepoFile(repoId: number, path: string): Promise<{ conte
 
 export async function syncRepository(repoId: number): Promise<ConnectedRepo> {
   return fetchJSON(`/workspace/repos/${repoId}/sync`, { method: 'POST' })
+}
+
+// ============================================================================
+// Workspace Phase 4 API (Fork, Inject, Export, Paginated Messages)
+// ============================================================================
+
+export async function forkConversation(
+  conversationId: number,
+  forkAtMessageId: number | null = null,
+): Promise<ForkResponse> {
+  return fetchJSON(`/workspace/conversations/${conversationId}/fork`, {
+    method: 'POST',
+    body: JSON.stringify({ fork_at_message_id: forkAtMessageId }),
+  })
+}
+
+export async function getConversationMessages(
+  conversationId: number,
+  limit = 50,
+  offset = 0,
+): Promise<PaginatedMessages> {
+  return fetchJSON(
+    `/workspace/conversations/${conversationId}/messages?limit=${limit}&offset=${offset}`,
+  )
+}
+
+export async function exportConversationMarkdown(conversationId: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/workspace/conversations/${conversationId}/export?format=markdown`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Export failed' }))
+    throw new Error(err.detail || `HTTP ${res.status}`)
+  }
+
+  const disposition = res.headers.get('Content-Disposition')
+  let filename = 'conversation.md'
+  if (disposition) {
+    const match = disposition.match(/filename="?([^"]+)"?/)
+    if (match) filename = match[1]
+  }
+
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+export async function getInjectionContent(
+  targetConversationId: number,
+  sourceConversationId: number,
+  messageIds: number[] | 'all',
+): Promise<InjectResponse> {
+  return fetchJSON(`/workspace/conversations/${targetConversationId}/inject`, {
+    method: 'POST',
+    body: JSON.stringify({
+      source_conversation_id: sourceConversationId,
+      message_ids: messageIds,
+    }),
+  })
 }

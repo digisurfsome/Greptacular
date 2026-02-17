@@ -247,17 +247,17 @@ export function WorkspaceSidebar({
                   return (
                     <div
                       key={conv.id}
-                      className="relative"
+                      className="relative mb-1"
                       onMouseEnter={() => handleMouseEnter(conv.id)}
                       onMouseLeave={handleMouseLeave}
                     >
                       <button
                         type="button"
                         onClick={() => onSelectConversation(conv.id)}
-                        className={`w-full flex items-center gap-2 px-2 py-2 rounded-md text-left transition-colors ${
+                        className={`w-full flex items-center gap-2 px-2 py-2 rounded-lg border text-left transition-colors ${
                           isActive
-                            ? 'bg-accent text-accent-foreground'
-                            : 'hover:bg-muted text-foreground'
+                            ? 'bg-accent text-accent-foreground border-primary/30'
+                            : 'hover:bg-muted text-foreground border-border'
                         }`}
                         aria-current={isActive ? 'page' : undefined}
                       >

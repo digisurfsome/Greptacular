@@ -421,7 +421,7 @@ def get_conversation(conversation_id: int) -> Optional[dict]:
                     "token_estimate": m.token_estimate,
                     "timestamp": m.timestamp.isoformat() if m.timestamp else None,
                 }
-                for m in sorted(conversation.messages, key=lambda x: x.timestamp or datetime.min.replace(tzinfo=timezone.utc))
+                for m in sorted(conversation.messages, key=lambda x: x.timestamp or datetime.min)
             ],
         }
     finally:

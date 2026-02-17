@@ -1,6 +1,5 @@
 """Phase 4 Test Suite — Chat Forking, Inject, Export, Navigation, Keyboard Shortcuts, Polish"""
 
-import os
 import sys
 import tempfile
 import unittest
@@ -44,8 +43,9 @@ class TestForkedFromColumn(unittest.TestCase):
         self.assertTrue(col.nullable)
 
     def test_forked_from_column_is_integer(self):
-        from server.services.workspace_database import WorkspaceConversation
         from sqlalchemy import Integer
+
+        from server.services.workspace_database import WorkspaceConversation
         col = WorkspaceConversation.__table__.columns["forked_from_id"]
         self.assertIsInstance(col.type, Integer)
 

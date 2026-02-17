@@ -1,9 +1,9 @@
 /**
  * EnhancedContextBudgetBar
  *
- * Segmented context budget visualization with color-coded segments
- * for summary, messages, library files, and repository context.
- * Features hover tooltips, animated transitions, and warning states.
+ * Large, always-visible context window meter for the workspace.
+ * Shows token usage at a glance with a bold progress bar,
+ * percentage, and color-coded segments.
  */
 
 import { useMemo } from 'react'
@@ -35,7 +35,7 @@ interface EnhancedContextBudgetBarProps {
 /** Format a token count as a human-readable string with K/M suffixes. */
 export function formatTokenCount(tokens: number): string {
   if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`
-  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(0)}K`
+  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(1)}K`
   return String(tokens)
 }
 
@@ -46,7 +46,15 @@ export function getContextWarningClass(usagePercent: number): string {
   return ''
 }
 
-/** Segmented context budget bar with hover tooltips and streaming shimmer. */
+/** Pick a color for the percentage text based on usage. */
+function usageColor(percent: number): string {
+  if (percent > 90) return 'text-destructive'
+  if (percent > 75) return 'text-orange-400'
+  if (percent > 50) return 'text-yellow-400'
+  return 'text-emerald-400'
+}
+
+/** Large, always-visible context budget meter. */
 export function EnhancedContextBudgetBar({
   totalBudget,
   messageTokens,
@@ -57,6 +65,7 @@ export function EnhancedContextBudgetBar({
   isStreaming = false,
 }: EnhancedContextBudgetBarProps): React.JSX.Element {
   const usedTokens = messageTokens + summaryTokens + libraryTokens + repoTokens
+  const usagePercent = totalBudget > 0 ? (usedTokens / totalBudget) * 100 : 0
 
   const segments: ContextBudgetSegment[] = useMemo(() => [
     {
@@ -101,17 +110,25 @@ export function EnhancedContextBudgetBar({
   }, [segmentWidths])
 
   return (
-    <div className="px-4 py-2 border-b border-border bg-card">
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-xs text-muted-foreground">
-          Context: {formatTokenCount(usedTokens)} / {formatTokenCount(totalBudget)}
+    <div className="px-4 py-3 border-b border-border bg-card/80">
+      {/* Main row: usage left, token counts center, messages right */}
+      <div className="flex items-center justify-between mb-2">
+        <span className={`text-lg font-bold tabular-nums ${usageColor(usagePercent)}`}>
+          {usagePercent < 1 && usagePercent > 0 ? usagePercent.toFixed(2) : usagePercent.toFixed(1)}%
         </span>
-        <span className="text-xs text-muted-foreground">
-          {messageCount} messages
+
+        <span className="text-base font-semibold text-foreground tabular-nums">
+          {formatTokenCount(usedTokens)}{' '}
+          <span className="text-muted-foreground font-normal">/ {formatTokenCount(totalBudget)}</span>
+        </span>
+
+        <span className="text-sm text-muted-foreground tabular-nums">
+          {messageCount} msg{messageCount !== 1 ? 's' : ''}
         </span>
       </div>
 
-      <div className="relative h-2 rounded-full bg-muted overflow-hidden">
+      {/* Thick progress bar */}
+      <div className="relative h-4 rounded-full bg-muted overflow-hidden">
         {segments.map((segment, i) => {
           if (segment.tokens <= 0) return null
           return (
@@ -124,7 +141,7 @@ export function EnhancedContextBudgetBar({
               }}
               title={`${segment.label}: ${formatTokenCount(segment.tokens)} tokens`}
             >
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block z-10">
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:block z-10">
                 <div className="bg-popover text-popover-foreground text-xs rounded-md px-2 py-1 shadow-md border border-border whitespace-nowrap">
                   {segment.label}: {formatTokenCount(segment.tokens)} tokens
                   {segment.label === 'Messages' && ` across ${messageCount} messages`}
@@ -135,7 +152,7 @@ export function EnhancedContextBudgetBar({
         })}
 
         {isStreaming && (
-          <div className="absolute top-0 right-0 h-full w-8 animate-shimmer bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+          <div className="absolute top-0 right-0 h-full w-12 animate-shimmer bg-gradient-to-r from-transparent via-white/20 to-transparent" />
         )}
       </div>
     </div>

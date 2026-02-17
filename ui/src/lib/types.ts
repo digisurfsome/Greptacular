@@ -640,6 +640,7 @@ export interface WorkspaceConversation {
   category: string
   working_directory: string | null
   pinned: boolean
+  tags: string  // comma-separated tags
   created_at: string | null
   updated_at: string | null
   message_count: number
@@ -658,6 +659,7 @@ export interface WorkspaceConversationDetail {
   title: string | null
   category: string
   working_directory: string | null
+  tags: string  // comma-separated tags
   created_at: string | null
   updated_at: string | null
   messages: WorkspaceMessage[]
@@ -676,11 +678,18 @@ export interface WorkspaceChatTokenUpdateMessage {
   message_count: number
 }
 
+export interface WorkspaceChatRateLimitLoggedMessage {
+  type: 'rate_limit_logged'
+  event_type: string
+  tokens_at_hit: number
+}
+
 export type WorkspaceChatServerMessage =
   | AssistantChatTextMessage
   | AssistantChatToolCallMessage
   | WorkspaceChatTokenUsageMessage
   | WorkspaceChatTokenUpdateMessage
+  | WorkspaceChatRateLimitLoggedMessage
   | AssistantChatResponseDoneMessage
   | AssistantChatErrorMessage
   | AssistantChatConversationCreatedMessage

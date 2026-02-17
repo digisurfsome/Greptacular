@@ -21,8 +21,9 @@ import {
   ArrowDownToLine,
   Download,
   X,
-  Plus,
   WifiOff,
+  Paperclip,
+  ImagePlus,
 } from 'lucide-react'
 import { useWorkspaceChat } from '@/hooks/useWorkspaceChat'
 import { useWorkspaceConversation } from '@/hooks/useWorkspaceConversations'
@@ -36,13 +37,14 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getWorkspaceSummary, regenerateWorkspaceSummary, exportConversationMarkdown } from '@/lib/api'
+import { getWorkspaceSummary, regenerateWorkspaceSummary, exportConversationMarkdown, updateWorkspaceConversation } from '@/lib/api'
 import { WorkspaceChatHeader } from './WorkspaceChatHeader'
 import { EnhancedContextBudgetBar, getContextWarningClass } from './EnhancedContextBudgetBar'
+import { UsageDashboard } from './UsageDashboard'
 import { AutoSummaryPin } from './AutoSummaryPin'
 import { ChatForkModal } from './ChatForkModal'
 import { InjectFromChatModal } from './InjectFromChatModal'
-import type { ChatMessage as ChatMessageType, WorkspaceMessage, PendingInjection } from '@/lib/types'
+import type { ChatMessage as ChatMessageType, WorkspaceMessage, PendingInjection, ImageAttachment } from '@/lib/types'
 
 const DRAFT_KEY_PREFIX = 'workspace-draft-'
 
@@ -51,6 +53,8 @@ interface WorkspaceChatProps {
   onConversationCreated: (id: number) => void
   onNewConversation?: () => void
   chatInputRef?: React.RefObject<HTMLTextAreaElement | null>
+  /** Optional working directory (e.g. from the RepoSelector) for the agent session. */
+  workingDirectory?: string | null
 }
 
 /** Generate a unique ID for local messages. */
@@ -66,12 +70,44 @@ function dedupKey(msg: ChatMessageType): string {
   return `${msg.role}:${msg.timestamp.getTime()}:${msg.content.slice(0, 80)}`
 }
 
+/** Convert a File to an ImageAttachment (base64). */
+async function fileToImageAttachment(file: File): Promise<ImageAttachment> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = reader.result as string
+      const base64Data = result.split(',')[1] // Remove data:...;base64, prefix
+      resolve({
+        id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+        filename: file.name,
+        mimeType: file.type as 'image/jpeg' | 'image/png',
+        base64Data,
+        previewUrl: result,
+        size: file.size,
+      })
+    }
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
+/** Convert a File to a text string for inline inclusion. */
+async function fileToText(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = reject
+    reader.readAsText(file)
+  })
+}
+
 /** Main chat area with messages, input, and WebSocket communication. */
 export function WorkspaceChat({
   conversationId,
   onConversationCreated,
   onNewConversation,
   chatInputRef: externalInputRef,
+  workingDirectory,
 }: WorkspaceChatProps): React.JSX.Element {
   const [inputValue, setInputValue] = useState('')
   const messagesContainerRef = useRef<HTMLDivElement>(null)
@@ -82,6 +118,24 @@ export function WorkspaceChat({
   const [isUserScrolledUp, setIsUserScrolledUp] = useState(false)
   const [showForkModal, setShowForkModal] = useState(false)
   const [showInjectModal, setShowInjectModal] = useState(false)
+  const [pendingFiles, setPendingFiles] = useState<File[]>([])
+  const [pendingImages, setPendingImages] = useState<ImageAttachment[]>([])
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const imageInputRef = useRef<HTMLInputElement>(null)
+  const [isDragging, setIsDragging] = useState(false)
+  const [contextToast, setContextToast] = useState<string | null>(null)
+  const contextToastTimerRef = useRef<number | null>(null)
+
+  // Context mode: "1m" (1,000,000 tokens with beta) or "200k" (200,000 tokens standard).
+  // Persisted to localStorage so the preference survives page reloads.
+  // Takes effect on the NEXT session start, not the current active session.
+  const [contextMode, setContextMode] = useState<'1m' | '200k'>(() => {
+    return (localStorage.getItem('workspace-context-mode') as '1m' | '200k') || '1m'
+  })
+
+  useEffect(() => {
+    localStorage.setItem('workspace-context-mode', contextMode)
+  }, [contextMode])
 
   // Memoize error handler to keep hook reference stable
   const handleError = useCallback((error: string) => {
@@ -93,9 +147,9 @@ export function WorkspaceChat({
     messages: liveMessages,
     isLoading,
     connectionStatus,
+    lastError,
     conversationId: activeConversationId,
     totalTokens,
-    contextWindow,
     contextBudget,
     pendingInjection,
     setPendingInjection,
@@ -127,9 +181,10 @@ export function WorkspaceChat({
     },
   })
 
-  // Context budget usage for warning state
-  const usagePercent = contextBudget.messageTokens > 0
-    ? ((contextBudget.messageTokens + contextBudget.summaryTokens) / 1_000_000) * 100
+  // Context budget usage for warning state (follows the local context mode toggle)
+  const displayBudget = contextMode === '1m' ? 1_000_000 : 200_000
+  const usagePercent = contextBudget.messageTokens > 0 && displayBudget > 0
+    ? ((contextBudget.messageTokens + contextBudget.summaryTokens) / displayBudget) * 100
     : 0
 
   // Notify parent when a new conversation is created via WebSocket
@@ -151,19 +206,27 @@ export function WorkspaceChat({
 
     // Only act when the ID has actually changed
     if (lastConversationIdRef.current === conversationId) return
-    const isSwitching = lastConversationIdRef.current !== undefined
+    const previousId = lastConversationIdRef.current
     lastConversationIdRef.current = conversationId
 
-    if (isSwitching) {
+    // When a new conversation is created via the active WebSocket (null → new ID),
+    // the session already owns this conversation. Don't tear it down.
+    if (previousId === null && conversationId !== null && activeConversationId === conversationId) {
+      return
+    }
+
+    // Genuine switch between conversations — disconnect the old session
+    if (previousId !== undefined) {
       disconnect()
       clearMessages()
     }
 
-    // Null means "new chat" -- start without an ID
+    // Start/resume the selected conversation, passing the working directory
+    // so the agent session uses the repo clone as its cwd.
     if (conversationId !== null) {
-      start(conversationId)
+      start(conversationId, workingDirectory ?? undefined, contextMode)
     }
-  }, [conversationId, isLoadingConversation, start, disconnect, clearMessages])
+  }, [conversationId, isLoadingConversation, activeConversationId, start, disconnect, clearMessages, workingDirectory, contextMode])
 
   // Smart auto-scroll: only scroll if user is near the bottom
   const handleScroll = useCallback(() => {
@@ -254,25 +317,118 @@ export function WorkspaceChat({
       }))
   }, [conversationDetail])
 
+  // Image processing: convert image files to base64 ImageAttachment objects
+  const processImageFiles = useCallback(async (files: File[]) => {
+    const imageFiles = files.filter(f =>
+      f.type === 'image/jpeg' || f.type === 'image/png' || f.type === 'image/gif' || f.type === 'image/webp'
+    )
+    if (imageFiles.length === 0) return
+
+    const maxSize = 10 * 1024 * 1024 // 10MB
+    const validFiles = imageFiles.filter(f => f.size <= maxSize)
+
+    const newAttachments = await Promise.all(validFiles.map(fileToImageAttachment))
+    setPendingImages(prev => [...prev, ...newAttachments])
+  }, [])
+
+  // File processing: separate images from other files
+  const processFiles = useCallback(async (files: File[]) => {
+    const imageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+    const images = files.filter(f => imageTypes.includes(f.type))
+    const otherFiles = files.filter(f => !imageTypes.includes(f.type))
+
+    if (images.length > 0) {
+      await processImageFiles(images)
+    }
+
+    if (otherFiles.length > 0) {
+      setPendingFiles(prev => [...prev, ...otherFiles])
+    }
+  }, [processImageFiles])
+
+  // Drag and drop handlers
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(true)
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    // Only set dragging false if we're leaving the drop zone entirely
+    if (e.currentTarget === e.target) {
+      setIsDragging(false)
+    }
+  }, [])
+
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+
+    const files = Array.from(e.dataTransfer.files)
+    if (files.length > 0) {
+      await processFiles(files)
+    }
+  }, [processFiles])
+
+  // Clipboard paste handler for images
+  const handlePaste = useCallback(async (e: React.ClipboardEvent) => {
+    const items = Array.from(e.clipboardData.items)
+    const imageItems = items.filter(item => item.type.startsWith('image/'))
+
+    if (imageItems.length > 0) {
+      e.preventDefault() // Prevent default paste behavior for images
+      const files = imageItems
+        .map(item => item.getAsFile())
+        .filter((f): f is File => f !== null)
+
+      await processImageFiles(files)
+    }
+    // For non-image paste, let the default textarea behavior handle it
+  }, [processImageFiles])
+
   // Send handler
-  const handleSend = useCallback(() => {
-    const content = inputValue.trim()
-    if (!content || isLoading) return
+  const handleSend = useCallback(async () => {
+    let content = inputValue.trim()
+    if (!content && pendingImages.length === 0 && pendingFiles.length === 0) return
+    if (isLoading) return
+
+    // Append file contents as text
+    if (pendingFiles.length > 0) {
+      const fileContents = await Promise.all(
+        pendingFiles.map(async (file) => {
+          try {
+            const text = await fileToText(file)
+            return `\n--- File: ${file.name} ---\n${text}\n--- End: ${file.name} ---`
+          } catch {
+            return `\n--- File: ${file.name} (could not read) ---`
+          }
+        })
+      )
+      content = content + fileContents.join('\n')
+    }
+
+    const attachments = pendingImages.length > 0 ? [...pendingImages] : undefined
 
     // If no conversation yet, start a new one first. The hook will queue
     // the message and dispatch it once the session is ready.
+    // Pass workingDirectory so the new session uses the selected repo.
     if (conversationId === null && activeConversationId === null) {
-      start()
+      start(undefined, workingDirectory ?? undefined, contextMode)
     }
-    sendMessage(content)
+    sendMessage(content, attachments)
 
     setInputValue('')
+    setPendingImages([])
+    setPendingFiles([])
     // Clear draft after sending
     const effectiveId = conversationId ?? activeConversationId
     if (effectiveId) {
       localStorage.removeItem(`${DRAFT_KEY_PREFIX}${effectiveId}`)
     }
-  }, [inputValue, isLoading, conversationId, activeConversationId, start, sendMessage])
+  }, [inputValue, isLoading, conversationId, activeConversationId, start, sendMessage, workingDirectory, pendingImages, pendingFiles, contextMode])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -284,24 +440,52 @@ export function WorkspaceChat({
     [handleSend],
   )
 
-  // Title/category update handlers are no-ops at this level.
-  const handleUpdateTitle = useCallback(
-    () => void 0 as void,
-    [],
-  ) as (title: string) => void
-
-  const handleUpdateCategory = useCallback(
-    () => void 0 as void,
-    [],
-  ) as (category: string) => void
-
   const effectiveConversationId = conversationId ?? activeConversationId
   const effectiveTitle = conversationDetail?.title ?? null
   const effectiveCategory = conversationDetail?.category ?? 'general'
+  const effectiveTags = conversationDetail?.tags ?? ''
   const hasActiveChat = effectiveConversationId !== null
 
-  // Empty state when no conversation is selected
-  const showEmptyState = conversationId === null && displayMessages.length === 0
+  // Track whether WebSocket reconnection has been exhausted
+  const reconnectionExhausted = connectionStatus === 'disconnected' && hasActiveChat
+
+  // Conversation field update handlers: persist changes via the PATCH API
+  // and invalidate the query cache so the sidebar stays in sync.
+  const handleUpdateTitle = useCallback(
+    (newTitle: string) => {
+      if (!effectiveConversationId) return
+      updateWorkspaceConversation(effectiveConversationId, { title: newTitle })
+        .then(() => queryClient.invalidateQueries({ queryKey: ['workspace'] }))
+        .catch((err) => console.error('Failed to update title:', err))
+    },
+    [effectiveConversationId, queryClient],
+  )
+
+  const handleUpdateCategory = useCallback(
+    (newCategory: string) => {
+      if (!effectiveConversationId) return
+      updateWorkspaceConversation(effectiveConversationId, { category: newCategory })
+        .then(() => queryClient.invalidateQueries({ queryKey: ['workspace'] }))
+        .catch((err) => console.error('Failed to update category:', err))
+    },
+    [effectiveConversationId, queryClient],
+  )
+
+  const handleUpdateTags = useCallback(
+    (newTags: string) => {
+      if (!effectiveConversationId) return
+      updateWorkspaceConversation(effectiveConversationId, { tags: newTags })
+        .then(() => queryClient.invalidateQueries({ queryKey: ['workspace'] }))
+        .catch((err) => console.error('Failed to update tags:', err))
+    },
+    [effectiveConversationId, queryClient],
+  )
+
+  // Empty state when no conversation is selected or created via WebSocket.
+  // Check BOTH conversationId (prop from parent) and activeConversationId (from WS hook)
+  // to prevent showing empty state when a conversation was just created via WebSocket
+  // but the parent hasn't propagated the update yet.
+  const showEmptyState = conversationId === null && activeConversationId === null && displayMessages.length === 0
 
   const handleExport = useCallback(() => {
     if (effectiveConversationId) {
@@ -329,9 +513,12 @@ export function WorkspaceChat({
             conversationId={effectiveConversationId}
             title={effectiveTitle}
             category={effectiveCategory}
+            tags={effectiveTags}
             connectionStatus={connectionStatus}
             onUpdateTitle={handleUpdateTitle}
             onUpdateCategory={handleUpdateCategory}
+            onUpdateTags={handleUpdateTags}
+            workingDirectory={workingDirectory}
           />
         </div>
 
@@ -363,24 +550,88 @@ export function WorkspaceChat({
         )}
       </div>
 
-      {/* Disconnection banner */}
+      {/* Disconnection banner with retry capability */}
       {connectionStatus === 'disconnected' && hasActiveChat && (
         <div className="bg-destructive/10 border-b border-destructive/20 px-4 py-2 text-sm text-destructive flex items-center gap-2">
           <WifiOff size={14} />
-          Connection lost. Reconnecting...
+          <span className="truncate">{lastError ? `Connection lost: ${lastError.slice(0, 100)}` : 'Connection lost.'}</span>
+          <button
+            onClick={() => {
+              disconnect()
+              clearMessages()
+              if (effectiveConversationId !== null) {
+                start(effectiveConversationId, workingDirectory ?? undefined, contextMode)
+              }
+            }}
+            className="underline font-medium hover:text-destructive/80 flex-shrink-0"
+          >
+            Retry
+          </button>
         </div>
       )}
 
-      {/* Context budget bar */}
-      {(totalTokens > 0 || contextBudget.messageTokens > 0) && (
-        <EnhancedContextBudgetBar
-          totalBudget={contextWindow}
-          messageTokens={contextBudget.messageTokens || totalTokens}
-          summaryTokens={contextBudget.summaryTokens}
-          messageCount={contextBudget.messageCount}
-          isStreaming={isLoading}
-        />
+      {/* Context mode toggle + budget bar */}
+      <div className="flex items-center border-b border-border bg-card/80">
+        <div className="flex-1 border-b-0 [&>div]:border-b-0">
+          <EnhancedContextBudgetBar
+            totalBudget={contextMode === '1m' ? 1_000_000 : 200_000}
+            messageTokens={contextBudget.messageTokens || totalTokens}
+            summaryTokens={contextBudget.summaryTokens}
+            messageCount={contextBudget.messageCount}
+            isStreaming={isLoading}
+          />
+        </div>
+        <button
+          onClick={() => {
+            const newMode = contextMode === '1m' ? '200k' : '1m'
+            setContextMode(newMode)
+            // Show toast confirming what will happen on next conversation
+            const msg = newMode === '1m'
+              ? 'Switching to 1M tokens — active next conversation'
+              : 'Switching to 200K tokens — active next conversation'
+            setContextToast(msg)
+            // Clear any existing timer and set new auto-dismiss
+            if (contextToastTimerRef.current) clearTimeout(contextToastTimerRef.current)
+            contextToastTimerRef.current = window.setTimeout(() => {
+              setContextToast(null)
+              contextToastTimerRef.current = null
+            }, 8000)
+          }}
+          className={`flex-shrink-0 mr-4 text-[10px] font-mono font-bold px-2 py-0.5 rounded border transition-colors ${
+            contextMode === '1m'
+              ? 'bg-primary/10 text-primary border-primary/30'
+              : 'bg-muted text-muted-foreground border-border'
+          }`}
+          title={`Context window: ${contextMode === '1m' ? '1,000,000' : '200,000'} tokens. Click to switch. Takes effect on next session.`}
+        >
+          {contextMode === '1m' ? '1M ctx' : '200K ctx'}
+        </button>
+      </div>
+
+      {/* Context mode toast notification */}
+      {contextToast && (
+        <div className="flex items-center justify-between px-4 py-2 bg-primary/10 border-b border-primary/20 text-sm text-primary animate-slide-in">
+          <span>{contextToast}</span>
+          <button
+            onClick={() => {
+              setContextToast(null)
+              if (contextToastTimerRef.current) {
+                clearTimeout(contextToastTimerRef.current)
+                contextToastTimerRef.current = null
+              }
+            }}
+            className="ml-3 text-primary/60 hover:text-primary text-xs"
+          >
+            dismiss
+          </button>
+        </div>
       )}
+
+      {/* Usage dashboard */}
+      <UsageDashboard
+        conversationId={conversationId ?? activeConversationId}
+        contextMode={contextMode}
+      />
 
       {/* Auto-summary pin */}
       <AutoSummaryPin
@@ -407,12 +658,56 @@ export function WorkspaceChat({
               <p className="text-sm mb-6 max-w-sm">
                 Start your first conversation to brainstorm ideas, explore concepts, or get help with your projects.
               </p>
-              {onNewConversation && (
-                <Button onClick={onNewConversation}>
-                  <Plus size={16} className="mr-2" />
-                  Start a Conversation
-                </Button>
+              <p className="text-xs text-muted-foreground mb-4">
+                Type a message below and press Enter to begin.
+              </p>
+            </div>
+          </div>
+        ) : reconnectionExhausted && displayMessages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
+            <WifiOff size={48} className="text-muted-foreground/30" />
+            <div className="text-center max-w-md">
+              <h2 className="text-lg font-semibold text-foreground mb-2">
+                Connection Failed
+              </h2>
+              {lastError ? (
+                <div className="mb-4 p-3 bg-destructive/5 border border-destructive/20 rounded-md text-sm text-left">
+                  <p className="font-medium text-destructive mb-1">Error details:</p>
+                  <p className="text-muted-foreground">{lastError}</p>
+                </div>
+              ) : (
+                <p className="text-sm mb-4">
+                  Could not connect to the workspace server. The server may be restarting or unavailable.
+                </p>
               )}
+              <p className="text-xs text-muted-foreground mb-4">
+                If you&apos;re seeing this repeatedly, the Claude API may be rate-limited. Wait a few minutes and try again.
+              </p>
+              <div className="flex gap-2 justify-center">
+                <Button
+                  onClick={() => {
+                    disconnect()
+                    clearMessages()
+                    if (effectiveConversationId !== null) {
+                      start(effectiveConversationId, workingDirectory ?? undefined, contextMode)
+                    }
+                  }}
+                >
+                  Retry Connection
+                </Button>
+                {onNewConversation && (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      disconnect()
+                      clearMessages()
+                      onNewConversation()
+                    }}
+                  >
+                    Back to Conversations
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
         ) : isLoadingConversation ? (
@@ -462,21 +757,123 @@ export function WorkspaceChat({
       )}
 
       {/* Input area */}
-      <div className="border-t border-border p-4 bg-card">
+      <div
+        className={`border-t border-border p-4 bg-card transition-colors ${isDragging ? 'ring-2 ring-primary bg-primary/5' : ''}`}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        {/* Drag overlay indicator */}
+        {isDragging && (
+          <div className="flex items-center justify-center py-3 mb-3 border-2 border-dashed border-primary rounded-md text-sm text-primary">
+            <ImagePlus size={16} className="mr-2" />
+            Drop files or images here
+          </div>
+        )}
+
+        {/* Pending images preview */}
+        {pendingImages.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-3">
+            {pendingImages.map((img) => (
+              <div key={img.id} className="relative group">
+                <img
+                  src={img.previewUrl}
+                  alt={img.filename}
+                  className="w-16 h-16 object-cover rounded border border-border"
+                />
+                <button
+                  onClick={() => setPendingImages(prev => prev.filter(i => i.id !== img.id))}
+                  className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <X size={10} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Pending files preview */}
+        {pendingFiles.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-3">
+            {pendingFiles.map((file, i) => (
+              <div key={`${file.name}-${i}`} className="flex items-center gap-1.5 px-2 py-1 bg-muted rounded text-xs text-foreground group">
+                <Paperclip size={12} />
+                <span className="truncate max-w-[120px]">{file.name}</span>
+                <button
+                  onClick={() => setPendingFiles(prev => prev.filter((_, idx) => idx !== i))}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className="flex gap-2">
+          {/* File upload button */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-[44px] px-2 text-muted-foreground hover:text-foreground"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isLoading || isLoadingConversation}
+            title="Attach file"
+          >
+            <Paperclip size={18} />
+          </Button>
+
+          {/* Image upload button */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-[44px] px-2 text-muted-foreground hover:text-foreground"
+            onClick={() => imageInputRef.current?.click()}
+            disabled={isLoading || isLoadingConversation}
+            title="Attach image"
+          >
+            <ImagePlus size={18} />
+          </Button>
+
+          {/* Hidden file inputs */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              const files = Array.from(e.target.files || [])
+              if (files.length > 0) processFiles(files)
+              e.target.value = '' // Reset so same file can be selected again
+            }}
+          />
+          <input
+            ref={imageInputRef}
+            type="file"
+            multiple
+            accept="image/jpeg,image/png,image/gif,image/webp"
+            className="hidden"
+            onChange={(e) => {
+              const files = Array.from(e.target.files || [])
+              if (files.length > 0) processImageFiles(files)
+              e.target.value = ''
+            }}
+          />
+
           <textarea
             ref={inputRef as React.RefObject<HTMLTextAreaElement>}
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask anything..."
+            onPaste={handlePaste}
+            placeholder="Ask anything... (paste images with Ctrl+V)"
             disabled={isLoading || isLoadingConversation}
             className="flex-1 resize-none min-h-[44px] max-h-[120px] rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none ring-ring focus:ring-1 disabled:cursor-not-allowed disabled:opacity-50"
             rows={1}
           />
           <Button
             onClick={handleSend}
-            disabled={!inputValue.trim() || isLoading || isLoadingConversation}
+            disabled={(!inputValue.trim() && pendingImages.length === 0 && pendingFiles.length === 0) || isLoading || isLoadingConversation}
             title="Send message"
           >
             {isLoading ? (
@@ -487,7 +884,7 @@ export function WorkspaceChat({
           </Button>
         </div>
         <p className="text-xs text-muted-foreground mt-2">
-          Press Enter to send, Shift+Enter for new line
+          Enter to send, Shift+Enter for new line. Drag &amp; drop or paste images.
         </p>
       </div>
 

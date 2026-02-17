@@ -14,7 +14,7 @@ Forked from assistant_chat_session.py with key differences:
 - Global database (workspace_database), not per-project
 - Session registry keyed by session_id string, not project_name
 - Working directory configurable per-conversation (defaults to home directory)
-- 1,000,000 token context window with beta ``context-1m-2025-08-07``
+- Configurable context window: 1,000,000 tokens (beta ``context-1m-2025-08-07``) or 200,000 tokens
 """
 
 import json
@@ -25,13 +25,14 @@ import sys
 import threading
 from datetime import datetime
 from pathlib import Path
-from typing import AsyncGenerator, Optional
+from typing import Any, AsyncGenerator, Optional
 
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from claude_agent_sdk.types import HookMatcher
 from dotenv import load_dotenv
 
-from .chat_constants import ROOT_DIR  # noqa: F401
+from ..schemas import ImageAttachment
+from .chat_constants import ROOT_DIR, make_multimodal_message  # noqa: F401
 from .workspace_database import (
     add_message,
     create_conversation,
@@ -72,17 +73,22 @@ MAX_HISTORY_MESSAGES = 100
 # This is the core capability of the workspace -- must match the beta flag below.
 CONTEXT_WINDOW_TOKENS = 1_000_000
 
+# Standard 200K context window (no beta flag required).
+CONTEXT_WINDOW_200K = 200_000
 
-def get_workspace_system_prompt(working_directory: str) -> str:
+
+def get_workspace_system_prompt(working_directory: str, model: str = "") -> str:
     """Generate the system prompt for the workspace agent.
 
     Args:
         working_directory: Absolute path to the agent's working directory.
+        model: The model ID being used (e.g. "claude-opus-4-6").
 
     Returns:
         A system prompt string describing the workspace agent's capabilities and guidelines.
     """
     return f"""You are an expert coding assistant in the IdeaForge Workspace.
+You are powered by {model or 'Claude'} with a 1,000,000 token context window.
 
 You have full access to the filesystem and can read, write, edit files, and run bash commands.
 Your current working directory is: {working_directory}
@@ -125,6 +131,7 @@ class WorkspaceChatSession:
         session_id: str,
         conversation_id: Optional[int] = None,
         working_directory: Optional[str] = None,
+        context_mode: str = "1m",
     ):
         """Initialize the workspace chat session.
 
@@ -132,10 +139,14 @@ class WorkspaceChatSession:
             session_id: Unique identifier for this session (used as registry key).
             conversation_id: Optional existing conversation ID to resume.
             working_directory: Absolute path for the agent's cwd. Defaults to the user's home directory.
+            context_mode: Context window size -- ``"1m"`` (1,000,000 tokens with beta flag)
+                or ``"200k"`` (200,000 tokens, no beta). Defaults to ``"1m"``.
         """
         self.session_id = session_id
         self.conversation_id = conversation_id
         self.working_directory = working_directory or str(Path.home())
+        self.context_mode = context_mode
+        self.context_window = CONTEXT_WINDOW_TOKENS if context_mode == "1m" else CONTEXT_WINDOW_200K
         self.client: Optional[ClaudeSDKClient] = None
         self._client_entered: bool = False
         self.created_at = datetime.now()
@@ -181,30 +192,56 @@ class WorkspaceChatSession:
         # Security settings: full tools with acceptEdits permission mode.
         # Written to a dedicated file since there is no project directory.
         # -----------------------------------------------------------------
-        permissions_list = [
-            "Read",
-            "Write",
-            "Edit",
-            "Bash",
-            "Glob",
-            "Grep",
-            "WebFetch",
-            "WebSearch",
-        ]
+        try:
+            permissions_list = [
+                "Read",
+                "Write",
+                "Edit",
+                "Bash",
+                "Glob",
+                "Grep",
+                "WebFetch",
+                "WebSearch",
+            ]
 
-        security_settings = {
-            "sandbox": {"enabled": False},
-            "permissions": {
-                "defaultMode": "acceptEdits",
-                "allow": permissions_list,
-            },
-        }
+            security_settings = {
+                "sandbox": {"enabled": False},
+                "permissions": {
+                    "defaultMode": "acceptEdits",
+                    "allow": permissions_list,
+                },
+            }
 
-        settings_dir = Path.home() / ".autoforge"
-        settings_dir.mkdir(parents=True, exist_ok=True)
-        settings_file = settings_dir / ".workspace_claude_settings.json"
-        with open(settings_file, "w") as f:
-            json.dump(security_settings, f, indent=2)
+            settings_dir = Path.home() / ".autoforge"
+            settings_dir.mkdir(parents=True, exist_ok=True)
+            settings_file = settings_dir / ".workspace_claude_settings.json"
+            with open(settings_file, "w") as f:
+                json.dump(security_settings, f, indent=2)
+        except Exception as e:
+            logger.exception("Failed to write workspace security settings")
+            yield {"type": "error", "content": f"Failed to write settings: {str(e)}"}
+            yield {"type": "response_done"}
+            return
+
+        # -----------------------------------------------------------------
+        # Claude SDK client: full tools, bash security hook, 1M context beta.
+        # -----------------------------------------------------------------
+        system_cli = shutil.which("claude")
+
+        try:
+            from registry import DEFAULT_MODEL, get_effective_sdk_env
+            sdk_env = get_effective_sdk_env()
+        except Exception as e:
+            logger.exception("Failed to load registry/SDK environment")
+            yield {"type": "error", "content": f"Failed to load configuration: {str(e)}"}
+            yield {"type": "response_done"}
+            return
+
+        # Determine model from SDK env (provider-aware) or fallback to env/default
+        model = (
+            sdk_env.get("ANTHROPIC_DEFAULT_OPUS_MODEL")
+            or os.getenv("ANTHROPIC_DEFAULT_OPUS_MODEL", DEFAULT_MODEL)
+        )
 
         # -----------------------------------------------------------------
         # System prompt: written as CLAUDE.md in a scratch directory so the
@@ -214,24 +251,10 @@ class WorkspaceChatSession:
         workspace_scratch = Path.home() / ".autoforge" / ".workspace_scratch"
         workspace_scratch.mkdir(parents=True, exist_ok=True)
         claude_md_path = workspace_scratch / "CLAUDE.md"
-        system_prompt = get_workspace_system_prompt(self.working_directory)
+        system_prompt = get_workspace_system_prompt(self.working_directory, model=model)
         with open(claude_md_path, "w", encoding="utf-8") as f:
             f.write(system_prompt)
         logger.info(f"Wrote workspace system prompt to {claude_md_path}")
-
-        # -----------------------------------------------------------------
-        # Claude SDK client: full tools, bash security hook, 1M context beta.
-        # -----------------------------------------------------------------
-        system_cli = shutil.which("claude")
-
-        from registry import DEFAULT_MODEL, get_effective_sdk_env
-        sdk_env = get_effective_sdk_env()
-
-        # Determine model from SDK env (provider-aware) or fallback to env/default
-        model = (
-            sdk_env.get("ANTHROPIC_DEFAULT_OPUS_MODEL")
-            or os.getenv("ANTHROPIC_DEFAULT_OPUS_MODEL", DEFAULT_MODEL)
-        )
 
         # Detect alternative API mode (Ollama, GLM, Vertex AI) -- these do not
         # support the 1M context beta, so we must disable it.
@@ -262,10 +285,13 @@ class WorkspaceChatSession:
                     settings=str(settings_file.resolve()),
                     env=sdk_env,
                     hooks=hooks,
-                    # Enable 1M token context window -- the core capability of
-                    # the workspace. Disabled for alternative APIs that don't
-                    # support this beta header.
-                    betas=[] if is_alternative_api else ["context-1m-2025-08-07"],
+                    # Enable 1M token context window only in 1M mode.
+                    # Disabled for alternative APIs and when user selects 200K mode.
+                    betas=(
+                        []
+                        if is_alternative_api or self.context_mode != "1m"
+                        else ["context-1m-2025-08-07"]
+                    ),
                 )
             )
             logger.info("Entering workspace Claude client context...")
@@ -275,6 +301,7 @@ class WorkspaceChatSession:
         except Exception as e:
             logger.exception("Failed to create workspace Claude client")
             yield {"type": "error", "content": f"Failed to initialize workspace: {str(e)}"}
+            yield {"type": "response_done"}
             return
 
         # Send initial greeting only for NEW conversations.
@@ -296,10 +323,13 @@ class WorkspaceChatSession:
 
                 # Yield initial token usage so the client can render the meter
                 total = get_conversation_token_total(self.conversation_id)
+                from . import workspace_database as db
+                msg_count = db.get_message_count(self.conversation_id)
                 yield {
                     "type": "token_usage",
                     "total_tokens": total,
-                    "context_window": CONTEXT_WINDOW_TOKENS,
+                    "context_window": self.context_window,
+                    "message_count": msg_count,
                 }
 
                 yield {"type": "response_done"}
@@ -307,11 +337,22 @@ class WorkspaceChatSession:
                 logger.exception("Failed to send workspace greeting")
                 yield {"type": "error", "content": f"Failed to start conversation: {str(e)}"}
         else:
-            # Resumed conversation -- history will be loaded on first message.
-            # _history_loaded stays False so send_message() includes history.
+            # Resumed conversation -- yield current token totals so the meter
+            # shows existing usage immediately, then signal response_done.
+            total = get_conversation_token_total(self.conversation_id)
+            from . import workspace_database as db
+            msg_count = db.get_message_count(self.conversation_id)
+            yield {
+                "type": "token_usage",
+                "total_tokens": total,
+                "context_window": self.context_window,
+                "message_count": msg_count,
+            }
             yield {"type": "response_done"}
 
-    async def send_message(self, user_message: str) -> AsyncGenerator[dict, None]:
+    async def send_message(
+        self, user_message: str, attachments: list[ImageAttachment] | None = None
+    ) -> AsyncGenerator[dict, None]:
         """Send a user message and stream Claude's response.
 
         For resumed conversations, the first call automatically loads messages
@@ -319,6 +360,7 @@ class WorkspaceChatSession:
 
         Args:
             user_message: The user's message text.
+            attachments: Optional list of image attachments to include.
 
         Yields:
             Message chunks:
@@ -399,14 +441,45 @@ class WorkspaceChatSession:
                 logger.warning("Failed to load library context: %s", e)
 
         try:
-            async for chunk in self._query_claude(message_to_send):
+            async for chunk in self._query_claude(message_to_send, attachments=attachments):
                 yield chunk
             yield {"type": "response_done"}
         except Exception as e:
             logger.exception("Error during workspace Claude query")
+            error_str = str(e).lower()
             yield {"type": "error", "content": f"Error: {str(e)}"}
 
-    async def _query_claude(self, message: str) -> AsyncGenerator[dict, None]:
+            # Auto-detect rate limit errors and log them for calibration
+            rate_limit_patterns = [
+                "rate limit", "rate_limit", "ratelimit",
+                "usage limit", "usage_limit",
+                "too many requests", "429",
+                "capacity", "overloaded",
+                "please wait", "try again later",
+                "resume at", "resume usage",
+            ]
+            if any(p in error_str for p in rate_limit_patterns):
+                try:
+                    from . import workspace_database as db
+                    usage = db.get_usage_by_period("daily")
+                    db.log_rate_limit_event(
+                        event_type="daily",
+                        tokens_at_hit=usage["total_tokens"],
+                        message_count_at_hit=usage["message_count"],
+                        notes=f"Auto-detected: {str(e)[:200]}",
+                    )
+                    logger.info("Auto-logged rate limit event from error: %s", str(e)[:100])
+                    yield {
+                        "type": "rate_limit_logged",
+                        "event_type": "daily",
+                        "tokens_at_hit": usage["total_tokens"],
+                    }
+                except Exception as log_err:
+                    logger.warning("Failed to auto-log rate limit: %s", log_err)
+
+    async def _query_claude(
+        self, message: str, attachments: list[ImageAttachment] | None = None
+    ) -> AsyncGenerator[dict, None]:
         """Stream a response from Claude for the given message.
 
         Accumulates the full response text, computes a token estimate, stores
@@ -415,6 +488,7 @@ class WorkspaceChatSession:
 
         Args:
             message: The message (or history-prefixed message) to send to Claude.
+            attachments: Optional list of image attachments to include.
 
         Yields:
             Message chunks:
@@ -425,8 +499,24 @@ class WorkspaceChatSession:
         if not self.client:
             return
 
-        # Send message to Claude
-        await self.client.query(message)
+        # Build the message content -- multimodal if attachments are present
+        if attachments and len(attachments) > 0:
+            content_blocks: list[dict[str, Any]] = []
+            if message:
+                content_blocks.append({"type": "text", "text": message})
+            for att in attachments:
+                content_blocks.append({
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": att.mimeType,
+                        "data": att.base64Data,
+                    }
+                })
+            await self.client.query(make_multimodal_message(content_blocks))
+            logger.info(f"Sent multimodal message with {len(attachments)} image(s)")
+        else:
+            await self.client.query(message)
 
         full_response = ""
 
@@ -475,11 +565,20 @@ class WorkspaceChatSession:
 
             # Yield token usage update so the client can render the context-window meter
             total = get_conversation_token_total(self.conversation_id)
+            from . import workspace_database as db
+            msg_count = db.get_message_count(self.conversation_id)
             yield {
                 "type": "token_usage",
                 "total_tokens": total,
-                "context_window": CONTEXT_WINDOW_TOKENS,
+                "context_window": self.context_window,
+                "message_count": msg_count,
             }
+
+            # Log premium-zone usage for cost tracking
+            try:
+                db.log_premium_usage(self.conversation_id)
+            except Exception as e:
+                logger.warning(f"Failed to log premium usage: {e}")
 
     def get_conversation_id(self) -> Optional[int]:
         """Get the current conversation ID."""
@@ -511,6 +610,7 @@ async def create_session(
     session_id: str,
     conversation_id: Optional[int] = None,
     working_directory: Optional[str] = None,
+    context_mode: str = "1m",
 ) -> WorkspaceChatSession:
     """Create a new workspace session, closing any existing one with the same ID.
 
@@ -518,6 +618,7 @@ async def create_session(
         session_id: Unique identifier for the session.
         conversation_id: Optional conversation ID to resume.
         working_directory: Absolute path for the agent's working directory.
+        context_mode: Context window size -- ``"1m"`` or ``"200k"``. Defaults to ``"1m"``.
 
     Returns:
         The newly created session instance.
@@ -526,7 +627,12 @@ async def create_session(
 
     with _sessions_lock:
         old_session = _sessions.pop(session_id, None)
-        session = WorkspaceChatSession(session_id, conversation_id, working_directory)
+        session = WorkspaceChatSession(
+            session_id,
+            conversation_id=conversation_id,
+            working_directory=working_directory,
+            context_mode=context_mode,
+        )
         _sessions[session_id] = session
 
     if old_session:

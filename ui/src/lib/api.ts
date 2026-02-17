@@ -681,11 +681,21 @@ export async function createWorkspaceConversation(
 
 export async function updateWorkspaceConversation(
   conversationId: number,
-  update: { title?: string; category?: string; pinned?: boolean }
+  update: { title?: string; category?: string; pinned?: boolean; tags?: string }
 ): Promise<WorkspaceConversation> {
   return fetchJSON(`/workspace/conversations/${conversationId}`, {
     method: 'PATCH',
     body: JSON.stringify(update),
+  })
+}
+
+export async function updateWorkspaceConversationTags(
+  conversationId: number,
+  tags: string
+): Promise<WorkspaceConversation> {
+  return fetchJSON(`/workspace/conversations/${conversationId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ tags }),
   })
 }
 
@@ -912,6 +922,38 @@ export async function syncRepository(repoId: number): Promise<ConnectedRepo> {
 }
 
 // ============================================================================
+// Workspace GitHub Repo Selector API
+// ============================================================================
+
+export interface GitHubRepo {
+  name: string
+  nameWithOwner: string
+  url: string
+  description: string | null
+  updatedAt: string
+  isPrivate: boolean
+}
+
+export interface GitHubReposResponse {
+  repos: GitHubRepo[]
+  error: string | null
+}
+
+export async function listGitHubRepos(): Promise<GitHubReposResponse> {
+  return fetchJSON('/workspace/github/repos')
+}
+
+export async function cloneGitHubRepo(
+  repoUrl: string,
+  repoName: string,
+): Promise<{ local_path: string }> {
+  return fetchJSON('/workspace/github/clone', {
+    method: 'POST',
+    body: JSON.stringify({ repo_url: repoUrl, repo_name: repoName }),
+  })
+}
+
+// ============================================================================
 // Workspace Phase 4 API (Fork, Inject, Export, Paginated Messages)
 // ============================================================================
 
@@ -972,4 +1014,111 @@ export async function getInjectionContent(
       message_ids: messageIds,
     }),
   })
+}
+
+// ============================================================================
+// Git Branch Management API
+// ============================================================================
+
+export async function getGitBranches(
+  workingDirectory: string
+): Promise<{ current_branch: string; branches: string[] }> {
+  return fetchJSON(
+    `/workspace/git/branches?working_directory=${encodeURIComponent(workingDirectory)}`
+  )
+}
+
+export async function renameGitBranch(
+  workingDirectory: string,
+  oldName: string,
+  newName: string
+): Promise<{ success: boolean; old_name: string; new_name: string; remote_updated: boolean; message: string }> {
+  return fetchJSON(
+    `/workspace/git/branch/rename?working_directory=${encodeURIComponent(workingDirectory)}`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ old_name: oldName, new_name: newName }),
+    }
+  )
+}
+
+// ============================================================================
+// Usage Tracking API
+// ============================================================================
+
+export interface UsagePeriod {
+  period: string
+  label: string
+  total_tokens: number
+  conversation_count: number
+  message_count: number
+  since: string
+}
+
+export interface UsageSummary {
+  daily: UsagePeriod
+  weekly: UsagePeriod
+  monthly: UsagePeriod
+}
+
+export interface CostZone {
+  total_tokens: number
+  standard_tokens: number
+  premium_tokens: number
+  standard_limit: number
+  estimated_cost: {
+    standard_portion: number
+    premium_portion: number
+    total: number
+    all_standard_equivalent: number
+    premium_surcharge: number
+  }
+  cost_zone: 'standard' | 'premium'
+}
+
+export async function getUsageSummary(): Promise<UsageSummary> {
+  return fetchJSON('/workspace/usage')
+}
+
+export async function getConversationCost(conversationId: number): Promise<CostZone> {
+  return fetchJSON(`/workspace/conversations/${conversationId}/cost`)
+}
+
+export interface RateLimitEvent {
+  id: number
+  event_type: string
+  timestamp: string
+  tokens_at_hit: number
+  premium_tokens_at_hit: number
+  message_count_at_hit: number
+  period_start: string
+  notes: string | null
+}
+
+export interface CalibratedLimit {
+  estimated_limit: number | null
+  safe_limit: number | null
+  sample_count: number
+  last_hit: string | null
+  confidence: 'none' | 'low' | 'medium' | 'high'
+}
+
+export interface CalibrationData {
+  daily: CalibratedLimit
+  weekly: CalibratedLimit
+  monthly: CalibratedLimit
+}
+
+export async function logRateLimit(eventType: string, notes?: string): Promise<RateLimitEvent> {
+  const params = new URLSearchParams({ event_type: eventType })
+  if (notes) params.append('notes', notes)
+  return fetchJSON(`/workspace/usage/rate-limit?${params}`, { method: 'POST' })
+}
+
+export async function getCalibration(): Promise<CalibrationData> {
+  return fetchJSON('/workspace/usage/calibration')
+}
+
+export async function getRateLimitHistory(): Promise<RateLimitEvent[]> {
+  return fetchJSON('/workspace/usage/rate-limits')
 }

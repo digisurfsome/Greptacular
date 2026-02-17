@@ -10,7 +10,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import type { ChatMessage, WorkspaceChatServerMessage, PendingInjection } from "../lib/types";
+import type { ChatMessage, WorkspaceChatServerMessage, PendingInjection, ImageAttachment } from "../lib/types";
 
 type ConnectionStatus = "disconnected" | "connecting" | "connected" | "error";
 
@@ -22,6 +22,7 @@ interface UseWorkspaceChatReturn {
   messages: ChatMessage[];
   isLoading: boolean;
   connectionStatus: ConnectionStatus;
+  lastError: string | null;
   conversationId: number | null;
   totalTokens: number;
   contextWindow: number;
@@ -32,8 +33,8 @@ interface UseWorkspaceChatReturn {
   };
   pendingInjection: PendingInjection | null;
   setPendingInjection: (injection: PendingInjection | null) => void;
-  start: (conversationId?: number | null, workingDirectory?: string) => void;
-  sendMessage: (content: string) => void;
+  start: (conversationId?: number | null, workingDirectory?: string, contextMode?: string) => void;
+  sendMessage: (content: string, attachments?: ImageAttachment[]) => void;
   disconnect: () => void;
   clearMessages: () => void;
 }
@@ -68,6 +69,7 @@ export function useWorkspaceChat({
     messageCount: 0,
   });
   const [pendingInjection, setPendingInjection] = useState<PendingInjection | null>(null);
+  const [lastError, setLastError] = useState<string | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const currentAssistantMessageRef = useRef<string | null>(null);
@@ -77,11 +79,19 @@ export function useWorkspaceChat({
   const reconnectTimeoutRef = useRef<number | null>(null);
   const checkAndSendTimeoutRef = useRef<number | null>(null);
 
+  // Store the last "start" params so we can re-send on reconnect.
+  // Without this, auto-reconnect creates a bare WebSocket with no server session.
+  const lastStartParamsRef = useRef<{
+    conversationId?: number;
+    workingDirectory?: string;
+    contextMode?: string;
+  } | null>(null);
+
   // Session readiness tracking: prevents sending messages before the backend
   // session is fully established (Claude SDK client created, greeting sent).
   const sessionReadyRef = useRef(false);
-  // Queue a single message to be sent once the session becomes ready.
-  const queuedMessageRef = useRef<string | null>(null);
+  // Queue the WebSocket payload to be sent once the session becomes ready.
+  const queuedPayloadRef = useRef<Record<string, unknown> | null>(null);
 
   // Clean up all timers and the WebSocket on unmount
   useEffect(() => {
@@ -100,7 +110,7 @@ export function useWorkspaceChat({
       }
       currentAssistantMessageRef.current = null;
       sessionReadyRef.current = false;
-      queuedMessageRef.current = null;
+      queuedPayloadRef.current = null;
     };
   }, []);
 
@@ -124,6 +134,8 @@ export function useWorkspaceChat({
 
     ws.onopen = () => {
       setConnectionStatus("connected");
+      setLastError(null);
+      const wasReconnect = reconnectAttempts.current > 0;
       reconnectAttempts.current = 0;
 
       // Start ping interval to keep the connection alive
@@ -132,13 +144,44 @@ export function useWorkspaceChat({
           ws.send(JSON.stringify({ type: "ping" }));
         }
       }, 30000);
+
+      // On reconnect, automatically re-send the "start" message so the
+      // server creates a new session for this WebSocket connection.
+      // Without this, the server has no session and returns
+      // "No active session. Send 'start' first." on every message.
+      if (wasReconnect && lastStartParamsRef.current) {
+        sessionReadyRef.current = false;
+        const params = lastStartParamsRef.current;
+        const payload: Record<string, unknown> = { type: "start" };
+        if (params.conversationId) {
+          payload.conversation_id = params.conversationId;
+        }
+        if (params.workingDirectory) {
+          payload.working_directory = params.workingDirectory;
+        }
+        payload.context_mode = params.contextMode || "1m";
+
+        if (import.meta.env.DEV) {
+          console.debug('[useWorkspaceChat] Re-sending start on reconnect:', payload);
+        }
+        ws.send(JSON.stringify(payload));
+      }
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
       setConnectionStatus("disconnected");
       if (pingIntervalRef.current) {
         clearInterval(pingIntervalRef.current);
         pingIntervalRef.current = null;
+      }
+
+      // Capture close reason for display on the Connection Failed screen
+      if (event.code !== 1000 && event.code !== 1001) {
+        const reason = event.reason
+          || (event.code === 1006
+            ? "Server connection dropped unexpectedly. The workspace server may have crashed or be rate-limited."
+            : `WebSocket closed (code ${event.code})`);
+        setLastError(reason);
       }
 
       // Attempt reconnection with exponential backoff if not intentionally closed
@@ -154,6 +197,7 @@ export function useWorkspaceChat({
 
     ws.onerror = () => {
       setConnectionStatus("error");
+      setLastError("Could not connect to the workspace server. Check that the server is running.");
       onError?.("WebSocket connection error");
     };
 
@@ -213,12 +257,13 @@ export function useWorkspaceChat({
           }
 
           case "token_usage": {
-            const tokenData = data as { total_tokens: number; context_window: number };
+            const tokenData = data as { total_tokens: number; context_window: number; message_count?: number };
             setTotalTokens(tokenData.total_tokens);
             setContextWindow(tokenData.context_window);
             setContextBudget(prev => ({
               ...prev,
               messageTokens: tokenData.total_tokens,
+              messageCount: tokenData.message_count ?? prev.messageCount,
             }));
             break;
           }
@@ -258,32 +303,65 @@ export function useWorkspaceChat({
             });
 
             // Dispatch any message that was queued while waiting for session readiness
-            if (queuedMessageRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
-              const queued = queuedMessageRef.current;
-              queuedMessageRef.current = null;
+            if (queuedPayloadRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
+              const queued = queuedPayloadRef.current;
+              queuedPayloadRef.current = null;
               // Keep isLoading true since we're immediately sending the queued message
-              wsRef.current.send(
-                JSON.stringify({ type: "message", content: queued }),
-              );
+              wsRef.current.send(JSON.stringify(queued));
             } else {
               setIsLoading(false);
             }
             break;
           }
 
+          case "rate_limit_logged": {
+            // Backend auto-detected a rate limit and logged it
+            const rlData = data as { event_type: string; tokens_at_hit: number };
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: generateId(),
+                role: "system",
+                content: `Rate limit detected and logged for calibration (${rlData.event_type}, ${rlData.tokens_at_hit.toLocaleString()} tokens). Meters will update automatically.`,
+                timestamp: new Date(),
+              },
+            ]);
+            break;
+          }
+
           case "error": {
             setIsLoading(false);
+            setLastError(data.content || "Unknown error");
             onError?.(data.content);
+
+            // Check if this is a rate limit error -- auto-log via API as fallback
+            const errorContent = (data.content || "").toLowerCase();
+            const rateLimitPatterns = [
+              "rate limit", "rate_limit", "ratelimit",
+              "usage limit", "too many requests", "429",
+              "please wait", "try again", "resume at",
+              "capacity", "overloaded",
+            ];
+            const isRateLimit = rateLimitPatterns.some((p) => errorContent.includes(p));
 
             setMessages((prev) => [
               ...prev,
               {
                 id: generateId(),
                 role: "system",
-                content: `Error: ${data.content}`,
+                content: isRateLimit
+                  ? `Rate limit hit! ${data.content}\n\nThis has been auto-logged to calibrate your usage meters.`
+                  : `Error: ${data.content}`,
                 timestamp: new Date(),
               },
             ]);
+
+            // Frontend fallback: if backend didn't catch it, log via REST
+            if (isRateLimit) {
+              import("@/lib/api").then(({ logRateLimit: logRL }) => {
+                logRL("daily", `Frontend auto-detected: ${data.content?.slice(0, 200)}`).catch(() => {});
+              });
+            }
             break;
           }
 
@@ -299,22 +377,33 @@ export function useWorkspaceChat({
   }, [onError]);
 
   const start = useCallback(
-    (existingConversationId?: number | null, workingDirectory?: string) => {
+    (existingConversationId?: number | null, workingDirectory?: string, contextMode?: string) => {
       // Clear any pending check timeout from a previous call
       if (checkAndSendTimeoutRef.current) {
         clearTimeout(checkAndSendTimeoutRef.current);
         checkAndSendTimeoutRef.current = null;
       }
 
+      // Save start params so auto-reconnect can re-send the "start" message
+      lastStartParamsRef.current = {
+        conversationId: existingConversationId ?? undefined,
+        workingDirectory,
+        contextMode,
+      };
+
       // Reset session readiness — the session is not ready until we receive
       // the first response_done after the "start" message is processed.
       sessionReadyRef.current = false;
-      queuedMessageRef.current = null;
+      queuedPayloadRef.current = null;
 
       connect();
 
-      // Wait for connection then send start message
+      // Wait for connection then send start message, with timeout protection
+      let checkAttempts = 0;
+      const maxCheckAttempts = 100; // 10 seconds max (100 * 100ms)
+
       const checkAndSend = () => {
+        checkAttempts++;
         if (wsRef.current?.readyState === WebSocket.OPEN) {
           checkAndSendTimeoutRef.current = null;
           setIsLoading(true);
@@ -322,6 +411,7 @@ export function useWorkspaceChat({
             type: string;
             conversation_id?: number;
             working_directory?: string;
+            context_mode?: string;
           } = { type: "start" };
 
           if (existingConversationId) {
@@ -331,25 +421,34 @@ export function useWorkspaceChat({
           if (workingDirectory) {
             payload.working_directory = workingDirectory;
           }
+          payload.context_mode = contextMode || "1m";
 
           if (import.meta.env.DEV) {
             console.debug('[useWorkspaceChat] Sending start message:', payload);
           }
           wsRef.current.send(JSON.stringify(payload));
-        } else if (wsRef.current?.readyState === WebSocket.CONNECTING) {
+        } else if (
+          wsRef.current?.readyState === WebSocket.CONNECTING &&
+          checkAttempts < maxCheckAttempts
+        ) {
           checkAndSendTimeoutRef.current = window.setTimeout(checkAndSend, 100);
         } else {
+          // Connection failed or timed out
           checkAndSendTimeoutRef.current = null;
+          if (checkAttempts >= maxCheckAttempts) {
+            onError?.("Connection timed out. The workspace server may be unavailable.");
+            setConnectionStatus("disconnected");
+          }
         }
       };
 
       checkAndSendTimeoutRef.current = window.setTimeout(checkAndSend, 100);
     },
-    [connect],
+    [connect, onError],
   );
 
   const sendMessage = useCallback(
-    (content: string) => {
+    (content: string, attachments?: ImageAttachment[]) => {
       let fullMessage = content;
 
       // Prepend injection content if present
@@ -369,48 +468,66 @@ export function useWorkspaceChat({
       }
 
       // Add user message to chat immediately (show original content, not the injected version)
+      // Include attachments so they render inline in the message bubble
       setMessages((prev) => [
         ...prev,
         {
           id: generateId(),
           role: "user",
           content,
+          attachments,
           timestamp: new Date(),
         },
       ]);
 
       setIsLoading(true);
 
+      // Build WebSocket payload with optional attachments
+      const wsPayload: Record<string, unknown> = {
+        type: "message",
+        content: fullMessage,
+      };
+
+      if (attachments && attachments.length > 0) {
+        wsPayload.attachments = attachments.map((att) => ({
+          filename: att.filename,
+          mimeType: att.mimeType,
+          base64Data: att.base64Data,
+        }));
+      }
+
       // If the WebSocket isn't open yet or the backend session isn't ready
-      // (start still processing), queue the message to be sent when
+      // (start still processing), queue the payload to be sent when
       // the session confirms readiness via response_done.
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN || !sessionReadyRef.current) {
-        queuedMessageRef.current = fullMessage;
+        queuedPayloadRef.current = wsPayload;
         return;
       }
 
-      wsRef.current.send(
-        JSON.stringify({
-          type: "message",
-          content: fullMessage,
-        }),
-      );
+      wsRef.current.send(JSON.stringify(wsPayload));
     },
     [onError, pendingInjection],
   );
 
   const disconnect = useCallback(() => {
-    reconnectAttempts.current = maxReconnectAttempts; // Prevent reconnection
+    reconnectAttempts.current = maxReconnectAttempts; // Prevent auto-reconnection
+    lastStartParamsRef.current = null; // Clear so reconnect doesn't re-send stale start
     sessionReadyRef.current = false;
-    queuedMessageRef.current = null;
+    queuedPayloadRef.current = null;
     if (pingIntervalRef.current) {
       clearInterval(pingIntervalRef.current);
       pingIntervalRef.current = null;
+    }
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
     }
     if (wsRef.current) {
       wsRef.current.close();
       wsRef.current = null;
     }
+    // Reset reconnect attempts so subsequent start() calls get fresh retries
+    reconnectAttempts.current = 0;
     setConnectionStatus("disconnected");
   }, []);
 
@@ -419,13 +536,14 @@ export function useWorkspaceChat({
     setTotalTokens(0);
     setContextBudget({ messageTokens: 0, summaryTokens: 0, messageCount: 0 });
     sessionReadyRef.current = false;
-    queuedMessageRef.current = null;
+    queuedPayloadRef.current = null;
   }, []);
 
   return {
     messages,
     isLoading,
     connectionStatus,
+    lastError,
     conversationId,
     totalTokens,
     contextWindow,

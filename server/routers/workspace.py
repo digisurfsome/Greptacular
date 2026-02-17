@@ -30,6 +30,7 @@ class WorkspaceConversationSummary(BaseModel):
     category: str
     working_directory: Optional[str]
     pinned: bool = False
+    tags: str = ""
     created_at: Optional[str]
     updated_at: Optional[str]
     message_count: int
@@ -67,6 +68,7 @@ class ConversationUpdateRequest(BaseModel):
     title: Optional[str] = None
     category: Optional[str] = None
     pinned: Optional[bool] = None
+    tags: Optional[str] = None
 
 
 # ============================================================================
@@ -96,6 +98,8 @@ async def create_new_conversation(body: ConversationCreateRequest):
         title=str(conversation.title) if conversation.title else None,
         category=str(conversation.category),
         working_directory=str(conversation.working_directory) if conversation.working_directory else None,
+        pinned=bool(conversation.pinned) if hasattr(conversation, 'pinned') else False,
+        tags="",
         created_at=conversation.created_at.isoformat() if conversation.created_at else None,
         updated_at=conversation.updated_at.isoformat() if conversation.updated_at else None,
         message_count=0,
@@ -133,6 +137,7 @@ async def update_conversation(conversation_id: int, body: ConversationUpdateRequ
         title=body.title,
         category=body.category,
         pinned=body.pinned,
+        tags=body.tags,
     )
     if not updated:
         raise HTTPException(status_code=404, detail="Conversation not found")
@@ -142,6 +147,8 @@ async def update_conversation(conversation_id: int, body: ConversationUpdateRequ
         title=updated["title"],
         category=updated["category"],
         working_directory=updated["working_directory"],
+        pinned=updated.get("pinned", False),
+        tags=updated.get("tags", ""),
         created_at=updated["created_at"],
         updated_at=updated["updated_at"],
         message_count=updated.get("message_count", 0),
@@ -349,6 +356,87 @@ async def search_conversations_endpoint(q: str = "", limit: int = 20):
 
 
 # ============================================================================
+# Usage Tracking Endpoints
+# ============================================================================
+
+@router.get("/usage")
+async def get_usage_overview():
+    """Get usage summary across daily, weekly, and monthly periods."""
+    from ..services import workspace_database as db
+    return db.get_usage_summary()
+
+
+@router.get("/usage/{period}")
+async def get_usage_period(period: str):
+    """Get usage for a specific period (daily, weekly, monthly)."""
+    if period not in ("daily", "weekly", "monthly"):
+        raise HTTPException(status_code=400, detail="Period must be daily, weekly, or monthly")
+
+    from ..services import workspace_database as db
+    return db.get_usage_by_period(period)
+
+
+@router.get("/conversations/{conversation_id}/cost")
+async def get_conversation_cost(conversation_id: int):
+    """Get cost zone breakdown for a conversation."""
+    from ..services import workspace_database as db
+
+    result = db.get_conversation_cost_zones(conversation_id)
+    if result["total_tokens"] == 0:
+        # Check if conversation exists
+        conv = db.get_conversation(conversation_id)
+        if not conv:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+
+    return result
+
+
+@router.post("/usage/rate-limit")
+async def log_rate_limit(event_type: str, notes: str | None = None):
+    """Log a rate limit event for calibration.
+
+    Call this when you hit a rate limit (5-hour wait, weekly cap, etc.)
+    to help calibrate the usage prediction meters.
+    """
+    if event_type not in ("daily", "weekly", "monthly"):
+        raise HTTPException(status_code=400, detail="event_type must be daily, weekly, or monthly")
+
+    from ..services import workspace_database as db
+
+    # Get current usage to record what the limits looked like at time of hit
+    usage = db.get_usage_by_period(event_type)
+    result = db.log_rate_limit_event(
+        event_type=event_type,
+        tokens_at_hit=usage["total_tokens"],
+        premium_tokens_at_hit=0,  # Will be filled by the premium ledger
+        message_count_at_hit=usage["message_count"],
+        notes=notes,
+    )
+    return result
+
+
+@router.get("/usage/rate-limits")
+async def get_rate_limits():
+    """Get rate limit event history."""
+    from ..services import workspace_database as db
+    return db.get_rate_limit_history()
+
+
+@router.get("/usage/calibration")
+async def get_calibration():
+    """Get calibrated limits based on historical rate limit events."""
+    from ..services import workspace_database as db
+    return db.get_calibrated_limits()
+
+
+@router.get("/usage/premium")
+async def get_premium_summary():
+    """Get premium-zone usage summary across all conversations."""
+    from ..services import workspace_database as db
+    return db.get_premium_usage_summary()
+
+
+# ============================================================================
 # Fork, Paginate, Export, Inject Endpoints (Phase 4)
 # ============================================================================
 
@@ -473,6 +561,161 @@ async def get_injection_content(conversation_id: int, body: InjectRequest):
 
 
 # ============================================================================
+# GitHub Repo Selector Endpoints
+# ============================================================================
+
+class GitHubCloneRequest(BaseModel):
+    """Request body for cloning a GitHub repository."""
+    repo_url: str
+    repo_name: str
+
+
+@router.get("/github/repos")
+async def list_github_repos():
+    """List GitHub repos available via the `gh` CLI."""
+    from ..services.workspace_github import list_github_repos as gh_list_repos
+
+    return gh_list_repos()
+
+
+@router.post("/github/clone")
+async def clone_github_repo(body: GitHubCloneRequest):
+    """Clone a GitHub repo locally and return the local path."""
+    from ..services.workspace_github import ensure_repo_cloned
+
+    if not body.repo_url or not body.repo_name:
+        raise HTTPException(status_code=400, detail="repo_url and repo_name are required")
+
+    try:
+        local_path = ensure_repo_cloned(body.repo_url, body.repo_name)
+        return {"local_path": local_path}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+# ============================================================================
+# Git Branch Management Endpoints
+# ============================================================================
+
+class BranchRenameRequest(BaseModel):
+    """Request body for renaming a git branch."""
+    old_name: str
+    new_name: str
+
+
+class BranchInfoResponse(BaseModel):
+    """Response model for branch information."""
+    current_branch: str
+    branches: list[str]
+
+
+@router.get("/git/branches")
+async def list_git_branches(working_directory: str):
+    """List git branches for a working directory."""
+    import subprocess
+    from pathlib import Path
+
+    work_dir = Path(working_directory)
+    if not work_dir.is_dir():
+        raise HTTPException(status_code=400, detail="Invalid working directory")
+
+    try:
+        result = subprocess.run(
+            ["git", "branch", "--list", "--no-color"],
+            cwd=str(work_dir),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            raise HTTPException(status_code=400, detail="Not a git repository")
+
+        branches = []
+        current = "main"
+        for line in result.stdout.strip().splitlines():
+            line = line.strip()
+            if line.startswith("* "):
+                current = line[2:].strip()
+                branches.append(current)
+            elif line:
+                branches.append(line)
+
+        return BranchInfoResponse(current_branch=current, branches=branches)
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=504, detail="Git command timed out")
+    except FileNotFoundError:
+        raise HTTPException(status_code=500, detail="Git not found on system")
+
+
+@router.post("/git/branch/rename")
+async def rename_git_branch(body: BranchRenameRequest, working_directory: str):
+    """Rename a git branch locally and update remote."""
+    import subprocess
+    from pathlib import Path
+
+    work_dir = Path(working_directory)
+    if not work_dir.is_dir():
+        raise HTTPException(status_code=400, detail="Invalid working directory")
+
+    old_name = body.old_name.strip()
+    new_name = body.new_name.strip()
+
+    if not old_name or not new_name:
+        raise HTTPException(status_code=400, detail="Branch names cannot be empty")
+    if old_name in ("main", "master"):
+        raise HTTPException(status_code=400, detail="Cannot rename main/master branch")
+
+    try:
+        # Rename the local branch
+        result = subprocess.run(
+            ["git", "branch", "-m", old_name, new_name],
+            cwd=str(work_dir),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            raise HTTPException(
+                status_code=400, detail=f"Failed to rename branch: {result.stderr.strip()}"
+            )
+
+        # Try to update remote (delete old, push new)
+        # Delete old remote branch (ignore errors if it doesn't exist on remote)
+        subprocess.run(
+            ["git", "push", "origin", "--delete", old_name],
+            cwd=str(work_dir),
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+        # Push new branch name and set upstream
+        push_result = subprocess.run(
+            ["git", "push", "-u", "origin", new_name],
+            cwd=str(work_dir),
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+        remote_updated = push_result.returncode == 0
+
+        return {
+            "success": True,
+            "old_name": old_name,
+            "new_name": new_name,
+            "remote_updated": remote_updated,
+            "message": f"Branch renamed from '{old_name}' to '{new_name}'" + (
+                " (remote updated)" if remote_updated else " (local only - push manually)"
+            ),
+        }
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=504, detail="Git command timed out")
+    except FileNotFoundError:
+        raise HTTPException(status_code=500, detail="Git not found on system")
+
+
+# ============================================================================
 # WebSocket Endpoint
 # ============================================================================
 
@@ -484,7 +727,7 @@ async def workspace_chat_websocket(websocket: WebSocket):
     Message protocol:
 
     Client -> Server:
-    - {"type": "start", "conversation_id": int | null, "working_directory": "..."} - Start/resume session
+    - {"type": "start", "conversation_id": int | null, "working_directory": "...", "context_mode": "1m"|"200k"} - Start/resume session
     - {"type": "message", "content": "..."} - Send user message
     - {"type": "answer", "answers": {...}} - Answer to structured questions
     - {"type": "ping"} - Keep-alive ping
@@ -542,12 +785,18 @@ async def workspace_chat_websocket(websocket: WebSocket):
                     )
 
                     try:
+                        # Extract context mode from start message (default to "1m")
+                        context_mode = message.get("context_mode", "1m")
+                        if context_mode not in ("1m", "200k"):
+                            context_mode = "1m"
+
                         # Create a new workspace session
                         logger.debug(f"Creating workspace session {session_id}")
                         session = await ws_create_session(
                             session_id,
                             conversation_id=conversation_id,
                             working_directory=working_directory,
+                            context_mode=context_mode,
                         )
                         logger.debug("Workspace session created, starting...")
 
@@ -582,8 +831,18 @@ async def workspace_chat_websocket(websocket: WebSocket):
                         })
                         continue
 
+                    # Extract optional image attachments
+                    raw_attachments = message.get("attachments", [])
+                    attachments = None
+                    if raw_attachments:
+                        from ..schemas import ImageAttachment
+                        try:
+                            attachments = [ImageAttachment(**att) for att in raw_attachments]
+                        except Exception as e:
+                            logger.warning("Invalid attachment data: %s", e)
+
                     # Stream Claude's response
-                    async for chunk in session.send_message(user_content):
+                    async for chunk in session.send_message(user_content, attachments=attachments):
                         await websocket.send_json(chunk)
 
                 elif msg_type == "answer":

@@ -77,6 +77,12 @@ export function useWorkspaceChat({
   const reconnectTimeoutRef = useRef<number | null>(null);
   const checkAndSendTimeoutRef = useRef<number | null>(null);
 
+  // Session readiness tracking: prevents sending messages before the backend
+  // session is fully established (Claude SDK client created, greeting sent).
+  const sessionReadyRef = useRef(false);
+  // Queue a single message to be sent once the session becomes ready.
+  const queuedMessageRef = useRef<string | null>(null);
+
   // Clean up all timers and the WebSocket on unmount
   useEffect(() => {
     return () => {
@@ -93,6 +99,8 @@ export function useWorkspaceChat({
         wsRef.current.close();
       }
       currentAssistantMessageRef.current = null;
+      sessionReadyRef.current = false;
+      queuedMessageRef.current = null;
     };
   }, []);
 
@@ -231,8 +239,8 @@ export function useWorkspaceChat({
           }
 
           case "response_done": {
-            setIsLoading(false);
             currentAssistantMessageRef.current = null;
+            sessionReadyRef.current = true;
 
             // Mark current streaming message as complete
             setMessages((prev) => {
@@ -248,6 +256,18 @@ export function useWorkspaceChat({
               }
               return prev;
             });
+
+            // Dispatch any message that was queued while waiting for session readiness
+            if (queuedMessageRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
+              const queued = queuedMessageRef.current;
+              queuedMessageRef.current = null;
+              // Keep isLoading true since we're immediately sending the queued message
+              wsRef.current.send(
+                JSON.stringify({ type: "message", content: queued }),
+              );
+            } else {
+              setIsLoading(false);
+            }
             break;
           }
 
@@ -285,6 +305,11 @@ export function useWorkspaceChat({
         clearTimeout(checkAndSendTimeoutRef.current);
         checkAndSendTimeoutRef.current = null;
       }
+
+      // Reset session readiness — the session is not ready until we receive
+      // the first response_done after the "start" message is processed.
+      sessionReadyRef.current = false;
+      queuedMessageRef.current = null;
 
       connect();
 
@@ -325,11 +350,6 @@ export function useWorkspaceChat({
 
   const sendMessage = useCallback(
     (content: string) => {
-      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-        onError?.("Not connected");
-        return;
-      }
-
       let fullMessage = content;
 
       // Prepend injection content if present
@@ -348,7 +368,7 @@ export function useWorkspaceChat({
         setPendingInjection(null);
       }
 
-      // Add user message to chat (show original content, not the injected version)
+      // Add user message to chat immediately (show original content, not the injected version)
       setMessages((prev) => [
         ...prev,
         {
@@ -360,6 +380,14 @@ export function useWorkspaceChat({
       ]);
 
       setIsLoading(true);
+
+      // If the WebSocket isn't open yet or the backend session isn't ready
+      // (start still processing), queue the message to be sent when
+      // the session confirms readiness via response_done.
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN || !sessionReadyRef.current) {
+        queuedMessageRef.current = fullMessage;
+        return;
+      }
 
       wsRef.current.send(
         JSON.stringify({
@@ -373,6 +401,8 @@ export function useWorkspaceChat({
 
   const disconnect = useCallback(() => {
     reconnectAttempts.current = maxReconnectAttempts; // Prevent reconnection
+    sessionReadyRef.current = false;
+    queuedMessageRef.current = null;
     if (pingIntervalRef.current) {
       clearInterval(pingIntervalRef.current);
       pingIntervalRef.current = null;
@@ -388,6 +418,8 @@ export function useWorkspaceChat({
     setMessages([]);
     setTotalTokens(0);
     setContextBudget({ messageTokens: 0, summaryTokens: 0, messageCount: 0 });
+    sessionReadyRef.current = false;
+    queuedMessageRef.current = null;
   }, []);
 
   return {

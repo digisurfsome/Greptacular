@@ -259,19 +259,12 @@ export function WorkspaceChat({
     const content = inputValue.trim()
     if (!content || isLoading) return
 
-    // If no conversation yet, start a new one with the first message
+    // If no conversation yet, start a new one first. The hook will queue
+    // the message and dispatch it once the session is ready.
     if (conversationId === null && activeConversationId === null) {
       start()
-      const waitAndSend = (retries: number) => {
-        setTimeout(() => {
-          sendMessage(content)
-          if (retries <= 0) return
-        }, 200)
-      }
-      waitAndSend(5)
-    } else {
-      sendMessage(content)
     }
+    sendMessage(content)
 
     setInputValue('')
     // Clear draft after sending

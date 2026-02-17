@@ -323,8 +323,12 @@ export function useWorkspaceChat({
 
       connect();
 
-      // Wait for connection then send start message
+      // Wait for connection then send start message, with timeout protection
+      let checkAttempts = 0;
+      const maxCheckAttempts = 100; // 10 seconds max (100 * 100ms)
+
       const checkAndSend = () => {
+        checkAttempts++;
         if (wsRef.current?.readyState === WebSocket.OPEN) {
           checkAndSendTimeoutRef.current = null;
           setIsLoading(true);
@@ -348,16 +352,24 @@ export function useWorkspaceChat({
             console.debug('[useWorkspaceChat] Sending start message:', payload);
           }
           wsRef.current.send(JSON.stringify(payload));
-        } else if (wsRef.current?.readyState === WebSocket.CONNECTING) {
+        } else if (
+          wsRef.current?.readyState === WebSocket.CONNECTING &&
+          checkAttempts < maxCheckAttempts
+        ) {
           checkAndSendTimeoutRef.current = window.setTimeout(checkAndSend, 100);
         } else {
+          // Connection failed or timed out
           checkAndSendTimeoutRef.current = null;
+          if (checkAttempts >= maxCheckAttempts) {
+            onError?.("Connection timed out. The workspace server may be unavailable.");
+            setConnectionStatus("disconnected");
+          }
         }
       };
 
       checkAndSendTimeoutRef.current = window.setTimeout(checkAndSend, 100);
     },
-    [connect],
+    [connect, onError],
   );
 
   const sendMessage = useCallback(
@@ -424,15 +436,21 @@ export function useWorkspaceChat({
   );
 
   const disconnect = useCallback(() => {
-    reconnectAttempts.current = maxReconnectAttempts; // Prevent reconnection
+    reconnectAttempts.current = maxReconnectAttempts; // Prevent auto-reconnection
     if (pingIntervalRef.current) {
       clearInterval(pingIntervalRef.current);
       pingIntervalRef.current = null;
+    }
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
     }
     if (wsRef.current) {
       wsRef.current.close();
       wsRef.current = null;
     }
+    // Reset reconnect attempts so subsequent start() calls get fresh retries
+    reconnectAttempts.current = 0;
     setConnectionStatus("disconnected");
   }, []);
 

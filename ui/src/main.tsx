@@ -5,7 +5,6 @@ import App from './App'
 import { StylePreviewPage } from './components/StylePreviewPage'
 import { QuadPreviewPage } from './components/QuadPreviewPage'
 import { WorkspacePage } from './pages/WorkspacePage'
-import { isStylePreviewRoute, isQuadPreviewRoute, isWorkspaceRoute } from './lib/routes'
 import './styles/globals.css'
 
 const queryClient = new QueryClient({
@@ -25,22 +24,21 @@ const queryClient = new QueryClient({
  * - Everything else → Main App
  */
 function Root() {
-  // Track hash changes so route switches trigger re-renders
   const [hash, setHash] = useState(window.location.hash)
+
   useEffect(() => {
-    const onHashChange = () => setHash(window.location.hash)
-    window.addEventListener('hashchange', onHashChange)
-    return () => window.removeEventListener('hashchange', onHashChange)
+    const handler = () => setHash(window.location.hash)
+    window.addEventListener('hashchange', handler)
+    return () => window.removeEventListener('hashchange', handler)
   }, [])
 
-  // Use hash in conditions to satisfy the linter (referential dependency)
-  if (hash.startsWith('#/style-preview/') && isStylePreviewRoute()) {
+  if (hash.startsWith('#/style-preview/')) {
     return <StylePreviewPage />
   }
-  if (hash.startsWith('#/quad-preview/') && isQuadPreviewRoute()) {
+  if (hash.startsWith('#/quad-preview/')) {
     return <QuadPreviewPage />
   }
-  if ((hash === '#/workspace' || hash.startsWith('#/workspace/')) && isWorkspaceRoute()) {
+  if (hash === '#/workspace' || hash.startsWith('#/workspace/')) {
     return <WorkspacePage />
   }
   return <App />

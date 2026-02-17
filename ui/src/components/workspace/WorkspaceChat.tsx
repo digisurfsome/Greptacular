@@ -412,18 +412,13 @@ export function WorkspaceChat({
 
     const attachments = pendingImages.length > 0 ? [...pendingImages] : undefined
 
-    // If no conversation yet, start a new one with the first message.
-    // start() connects the WebSocket and sends "start" to the backend.
-    // After a delay (to let the session initialize), send the user message.
+    // If no conversation yet, start a new one first. The hook will queue
+    // the message and dispatch it once the session is ready.
     // Pass workingDirectory so the new session uses the selected repo.
     if (conversationId === null && activeConversationId === null) {
       start(undefined, workingDirectory ?? undefined, contextMode)
-      setTimeout(() => {
-        sendMessage(content, attachments)
-      }, 500)
-    } else {
-      sendMessage(content, attachments)
     }
+    sendMessage(content, attachments)
 
     setInputValue('')
     setPendingImages([])

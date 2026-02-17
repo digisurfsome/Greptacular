@@ -87,6 +87,12 @@ export function useWorkspaceChat({
     contextMode?: string;
   } | null>(null);
 
+  // Session readiness tracking: prevents sending messages before the backend
+  // session is fully established (Claude SDK client created, greeting sent).
+  const sessionReadyRef = useRef(false);
+  // Queue the WebSocket payload to be sent once the session becomes ready.
+  const queuedPayloadRef = useRef<Record<string, unknown> | null>(null);
+
   // Clean up all timers and the WebSocket on unmount
   useEffect(() => {
     return () => {
@@ -103,6 +109,8 @@ export function useWorkspaceChat({
         wsRef.current.close();
       }
       currentAssistantMessageRef.current = null;
+      sessionReadyRef.current = false;
+      queuedPayloadRef.current = null;
     };
   }, []);
 
@@ -142,6 +150,7 @@ export function useWorkspaceChat({
       // Without this, the server has no session and returns
       // "No active session. Send 'start' first." on every message.
       if (wasReconnect && lastStartParamsRef.current) {
+        sessionReadyRef.current = false;
         const params = lastStartParamsRef.current;
         const payload: Record<string, unknown> = { type: "start" };
         if (params.conversationId) {
@@ -275,8 +284,8 @@ export function useWorkspaceChat({
           }
 
           case "response_done": {
-            setIsLoading(false);
             currentAssistantMessageRef.current = null;
+            sessionReadyRef.current = true;
 
             // Mark current streaming message as complete
             setMessages((prev) => {
@@ -292,6 +301,16 @@ export function useWorkspaceChat({
               }
               return prev;
             });
+
+            // Dispatch any message that was queued while waiting for session readiness
+            if (queuedPayloadRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
+              const queued = queuedPayloadRef.current;
+              queuedPayloadRef.current = null;
+              // Keep isLoading true since we're immediately sending the queued message
+              wsRef.current.send(JSON.stringify(queued));
+            } else {
+              setIsLoading(false);
+            }
             break;
           }
 
@@ -372,6 +391,11 @@ export function useWorkspaceChat({
         contextMode,
       };
 
+      // Reset session readiness — the session is not ready until we receive
+      // the first response_done after the "start" message is processed.
+      sessionReadyRef.current = false;
+      queuedPayloadRef.current = null;
+
       connect();
 
       // Wait for connection then send start message, with timeout protection
@@ -425,11 +449,6 @@ export function useWorkspaceChat({
 
   const sendMessage = useCallback(
     (content: string, attachments?: ImageAttachment[]) => {
-      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-        onError?.("Not connected");
-        return;
-      }
-
       let fullMessage = content;
 
       // Prepend injection content if present
@@ -448,7 +467,7 @@ export function useWorkspaceChat({
         setPendingInjection(null);
       }
 
-      // Add user message to chat (show original content, not the injected version)
+      // Add user message to chat immediately (show original content, not the injected version)
       // Include attachments so they render inline in the message bubble
       setMessages((prev) => [
         ...prev,
@@ -464,11 +483,7 @@ export function useWorkspaceChat({
       setIsLoading(true);
 
       // Build WebSocket payload with optional attachments
-      const wsPayload: {
-        type: string;
-        content: string;
-        attachments?: { filename: string; mimeType: string; base64Data: string }[];
-      } = {
+      const wsPayload: Record<string, unknown> = {
         type: "message",
         content: fullMessage,
       };
@@ -481,6 +496,14 @@ export function useWorkspaceChat({
         }));
       }
 
+      // If the WebSocket isn't open yet or the backend session isn't ready
+      // (start still processing), queue the payload to be sent when
+      // the session confirms readiness via response_done.
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN || !sessionReadyRef.current) {
+        queuedPayloadRef.current = wsPayload;
+        return;
+      }
+
       wsRef.current.send(JSON.stringify(wsPayload));
     },
     [onError, pendingInjection],
@@ -489,6 +512,8 @@ export function useWorkspaceChat({
   const disconnect = useCallback(() => {
     reconnectAttempts.current = maxReconnectAttempts; // Prevent auto-reconnection
     lastStartParamsRef.current = null; // Clear so reconnect doesn't re-send stale start
+    sessionReadyRef.current = false;
+    queuedPayloadRef.current = null;
     if (pingIntervalRef.current) {
       clearInterval(pingIntervalRef.current);
       pingIntervalRef.current = null;
@@ -510,6 +535,8 @@ export function useWorkspaceChat({
     setMessages([]);
     setTotalTokens(0);
     setContextBudget({ messageTokens: 0, summaryTokens: 0, messageCount: 0 });
+    sessionReadyRef.current = false;
+    queuedPayloadRef.current = null;
   }, []);
 
   return {

@@ -33,6 +33,9 @@ import type {
   WorkspaceCategory,
   WorkspaceSummary,
   WorkspaceSearchResult,
+  LibraryFile,
+  ConnectedRepo,
+  RepoTreeEntry,
   Settings,
   SettingsUpdate,
   ModelsResponse,
@@ -771,4 +774,136 @@ export async function searchWorkspaceConversations(
 ): Promise<WorkspaceSearchResult[]> {
   const params = new URLSearchParams({ q: query, limit: String(limit) })
   return fetchJSON(`/workspace/search?${params.toString()}`)
+}
+
+// ============================================================================
+// Workspace Library API (Phase 3)
+// ============================================================================
+
+export async function listGlobalLibraryFiles(): Promise<LibraryFile[]> {
+  return fetchJSON('/workspace/library')
+}
+
+export async function listConversationLibraryFiles(conversationId: number): Promise<LibraryFile[]> {
+  return fetchJSON(`/workspace/library/conversation/${conversationId}`)
+}
+
+export async function uploadLibraryFile(
+  file: File,
+  conversationId?: number,
+  displayName?: string,
+  tags?: string,
+): Promise<LibraryFile> {
+  const formData = new FormData()
+  formData.append('file', file)
+  if (conversationId != null) formData.append('conversation_id', String(conversationId))
+  if (displayName) formData.append('display_name', displayName)
+  if (tags) formData.append('tags', tags)
+
+  const response = await fetch(`${API_BASE}/workspace/library/upload`, {
+    method: 'POST',
+    body: formData,
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Upload failed' }))
+    throw new Error(error.detail || `HTTP ${response.status}`)
+  }
+  return response.json()
+}
+
+export async function uploadLibraryText(
+  filename: string,
+  content: string,
+  conversationId?: number,
+  displayName?: string,
+  tags?: string,
+): Promise<LibraryFile> {
+  return fetchJSON('/workspace/library/upload-text', {
+    method: 'POST',
+    body: JSON.stringify({
+      filename,
+      content,
+      conversation_id: conversationId ?? null,
+      display_name: displayName ?? null,
+      tags: tags ?? null,
+    }),
+  })
+}
+
+export async function getLibraryFileContent(fileId: number): Promise<{ content: string }> {
+  return fetchJSON(`/workspace/library/${fileId}/content`)
+}
+
+export async function updateLibraryFile(
+  fileId: number,
+  data: { display_name?: string; tags?: string },
+): Promise<LibraryFile> {
+  return fetchJSON(`/workspace/library/${fileId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function deleteLibraryFile(fileId: number): Promise<void> {
+  await fetchJSON(`/workspace/library/${fileId}`, { method: 'DELETE' })
+}
+
+export async function toggleLibraryFile(
+  fileId: number,
+  conversationId: number,
+): Promise<LibraryFile> {
+  return fetchJSON(`/workspace/library/${fileId}/toggle/${conversationId}`, {
+    method: 'POST',
+  })
+}
+
+export async function getActiveLibraryFiles(conversationId: number): Promise<LibraryFile[]> {
+  return fetchJSON(`/workspace/library/active/${conversationId}`)
+}
+
+// ============================================================================
+// Workspace Repository API (Phase 3)
+// ============================================================================
+
+export async function connectRepository(
+  repoUrl: string,
+  token: string,
+  branch: string = 'main',
+  conversationId?: number,
+): Promise<ConnectedRepo> {
+  return fetchJSON('/workspace/repos/connect', {
+    method: 'POST',
+    body: JSON.stringify({
+      repo_url: repoUrl,
+      token,
+      branch,
+      conversation_id: conversationId ?? null,
+    }),
+  })
+}
+
+export async function disconnectRepository(
+  repoId: number,
+  deleteLocal: boolean = false,
+): Promise<void> {
+  await fetchJSON(`/workspace/repos/${repoId}?delete_local=${deleteLocal}`, {
+    method: 'DELETE',
+  })
+}
+
+export async function listRepositories(conversationId?: number): Promise<ConnectedRepo[]> {
+  const params = conversationId != null ? `?conversation_id=${conversationId}` : ''
+  return fetchJSON(`/workspace/repos${params}`)
+}
+
+export async function getRepoTree(repoId: number): Promise<RepoTreeEntry[]> {
+  return fetchJSON(`/workspace/repos/${repoId}/tree`)
+}
+
+export async function getRepoFile(repoId: number, path: string): Promise<{ content: string; path: string }> {
+  return fetchJSON(`/workspace/repos/${repoId}/file?path=${encodeURIComponent(path)}`)
+}
+
+export async function syncRepository(repoId: number): Promise<ConnectedRepo> {
+  return fetchJSON(`/workspace/repos/${repoId}/sync`, { method: 'POST' })
 }

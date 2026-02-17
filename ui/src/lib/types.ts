@@ -724,8 +724,43 @@ export interface WorkspaceContextBudget {
   total_budget: number
   message_tokens: number
   summary_tokens: number
+  library_tokens: number
+  repo_tokens: number
   message_count: number
   usage_percent: number
+}
+
+// ============================================================================
+// Workspace Library Types (Phase 3)
+// ============================================================================
+
+export interface LibraryFile {
+  id: number
+  conversation_id: number | null
+  filename: string
+  display_name: string | null
+  file_type: string
+  file_size: number
+  tags: string | null
+  active_in_context: boolean
+  created_at: string
+}
+
+export interface ConnectedRepo {
+  id: number
+  conversation_id: number | null
+  repo_url: string
+  repo_name: string
+  local_path: string | null
+  branch: string
+  last_synced_at: string | null
+  created_at: string
+}
+
+export interface RepoTreeEntry {
+  path: string
+  type: 'file' | 'dir'
+  size: number
 }
 
 // ============================================================================

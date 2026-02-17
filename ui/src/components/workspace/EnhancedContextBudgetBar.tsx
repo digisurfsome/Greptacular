@@ -2,8 +2,8 @@
  * EnhancedContextBudgetBar
  *
  * Segmented context budget visualization with color-coded segments
- * for summary and message tokens, hover tooltips, animated transitions,
- * and warning states at high usage thresholds.
+ * for summary, messages, library files, and repository context.
+ * Features hover tooltips, animated transitions, and warning states.
  */
 
 import { useMemo } from 'react'
@@ -22,6 +22,10 @@ interface EnhancedContextBudgetBarProps {
   messageTokens: number
   /** Tokens used by the current summary */
   summaryTokens: number
+  /** Tokens used by library files in context */
+  libraryTokens?: number
+  /** Tokens used by repository context */
+  repoTokens?: number
   /** Number of messages loaded in context */
   messageCount: number
   /** Whether a response is currently streaming */
@@ -47,10 +51,12 @@ export function EnhancedContextBudgetBar({
   totalBudget,
   messageTokens,
   summaryTokens,
+  libraryTokens = 0,
+  repoTokens = 0,
   messageCount,
   isStreaming = false,
 }: EnhancedContextBudgetBarProps): React.JSX.Element {
-  const usedTokens = messageTokens + summaryTokens
+  const usedTokens = messageTokens + summaryTokens + libraryTokens + repoTokens
 
   const segments: ContextBudgetSegment[] = useMemo(() => [
     {
@@ -65,10 +71,22 @@ export function EnhancedContextBudgetBar({
       color: 'bg-primary/30',
       hoverColor: 'hover:bg-primary/40',
     },
-  ], [summaryTokens, messageTokens])
+    {
+      label: 'Library',
+      tokens: libraryTokens,
+      color: 'bg-blue-500/50',
+      hoverColor: 'hover:bg-blue-500/60',
+    },
+    {
+      label: 'Repos',
+      tokens: repoTokens,
+      color: 'bg-green-500/50',
+      hoverColor: 'hover:bg-green-500/60',
+    },
+  ], [summaryTokens, messageTokens, libraryTokens, repoTokens])
 
   const segmentWidths = useMemo(() => {
-    if (totalBudget === 0) return [0, 0]
+    if (totalBudget === 0) return segments.map(() => 0)
     return segments.map(s => Math.max(0, (s.tokens / totalBudget) * 100))
   }, [segments, totalBudget])
 

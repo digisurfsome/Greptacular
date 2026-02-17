@@ -11,7 +11,7 @@ import json
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -518,3 +518,210 @@ async def workspace_chat_websocket(websocket: WebSocket):
         # Clean up the session on disconnect -- workspace sessions are not resumed
         # across WebSocket connections (unlike the assistant which keeps sessions alive).
         await ws_remove_session(session_id)
+
+
+# ============================================================================
+# Library Endpoints
+# ============================================================================
+
+@router.get("/library")
+async def list_global_library_files():
+    """List all global library files (not attached to any conversation)."""
+    from ..services.workspace_library import list_global_files
+    return list_global_files()
+
+
+@router.get("/library/conversation/{conversation_id}")
+async def list_conversation_library_files(conversation_id: int):
+    """List files for a conversation (global + per-chat)."""
+    from ..services.workspace_library import list_conversation_files
+    return list_conversation_files(conversation_id)
+
+
+@router.get("/library/active/{conversation_id}")
+async def get_active_library_files(conversation_id: int):
+    """Get all files currently active in a conversation's context."""
+    from ..services.workspace_library import get_active_files
+    return get_active_files(conversation_id)
+
+
+@router.post("/library/upload")
+async def upload_library_file(
+    file: UploadFile = File(...),
+    conversation_id: Optional[int] = Form(None),
+    display_name: Optional[str] = Form(None),
+    tags: Optional[str] = Form(None),
+):
+    """Upload a file to the library via multipart form data."""
+    from ..services.workspace_library import MAX_FILE_SIZE, upload_file, validate_file_extension
+
+    content = await file.read()
+    if len(content) > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large. Maximum size is {MAX_FILE_SIZE // (1024*1024)}MB."
+        )
+
+    filename = file.filename or "untitled"
+    if not validate_file_extension(filename):
+        raise HTTPException(status_code=400, detail=f"File type not supported: {filename}")
+
+    result = upload_file(
+        filename=filename,
+        content=content,
+        conversation_id=conversation_id,
+        display_name=display_name,
+        tags=tags,
+    )
+    return result
+
+
+@router.post("/library/upload-text")
+async def upload_text_content(body: dict):
+    """Upload text content directly (for paste operations)."""
+    from ..services.workspace_library import upload_text
+
+    filename = body.get("filename", "untitled.txt")
+    content = body.get("content", "")
+    if not content:
+        raise HTTPException(status_code=400, detail="Content is required")
+
+    result = upload_text(
+        filename=filename,
+        text_content=content,
+        conversation_id=body.get("conversation_id"),
+        display_name=body.get("display_name"),
+        tags=body.get("tags"),
+    )
+    return result
+
+
+@router.get("/library/{file_id}/content")
+async def get_library_file_content(file_id: int):
+    """Get the content of a library file."""
+    from ..services.workspace_library import get_file_content
+
+    content = get_file_content(file_id)
+    if content is None:
+        raise HTTPException(status_code=404, detail="File not found or content unavailable")
+    return {"content": content}
+
+
+@router.patch("/library/{file_id}")
+async def update_library_file(file_id: int, body: dict):
+    """Update file metadata (display_name, tags)."""
+    from ..services.workspace_library import update_file_metadata
+
+    result = update_file_metadata(
+        file_id=file_id,
+        display_name=body.get("display_name"),
+        tags=body.get("tags"),
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail="File not found")
+    return result
+
+
+@router.delete("/library/{file_id}")
+async def delete_library_file(file_id: int):
+    """Delete a library file."""
+    from ..services.workspace_library import delete_file
+
+    success = delete_file(file_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="File not found")
+    return {"success": True}
+
+
+@router.post("/library/{file_id}/toggle/{conversation_id}")
+async def toggle_library_file_context(file_id: int, conversation_id: int):
+    """Toggle a file's active/inactive status in a conversation's context."""
+    from ..services.workspace_library import toggle_file_in_context
+
+    result = toggle_file_in_context(file_id, conversation_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="File not found")
+    return result
+
+
+# ============================================================================
+# Repository Endpoints
+# ============================================================================
+
+@router.post("/repos/connect")
+async def connect_repository(body: dict):
+    """Connect a GitHub repository."""
+    from ..services.workspace_repos import connect_repo
+
+    repo_url = body.get("repo_url", "")
+    token = body.get("token", "")
+    branch = body.get("branch", "main")
+    conversation_id = body.get("conversation_id")
+
+    if not repo_url:
+        raise HTTPException(status_code=400, detail="Repository URL is required")
+    if not token:
+        raise HTTPException(status_code=400, detail="Personal access token is required")
+
+    try:
+        result = connect_repo(
+            repo_url=repo_url,
+            token=token,
+            branch=branch,
+            conversation_id=conversation_id,
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/repos/{repo_id}")
+async def disconnect_repository(repo_id: int, delete_local: bool = False):
+    """Disconnect a repo and optionally delete local clone."""
+    from ..services.workspace_repos import disconnect_repo
+
+    success = disconnect_repo(repo_id, delete_local=delete_local)
+    if not success:
+        raise HTTPException(status_code=404, detail="Repository not found")
+    return {"success": True}
+
+
+@router.get("/repos")
+async def list_repositories(conversation_id: Optional[int] = None):
+    """List connected repositories."""
+    from ..services.workspace_repos import list_repos
+    return list_repos(conversation_id=conversation_id)
+
+
+@router.get("/repos/{repo_id}/tree")
+async def get_repository_tree(repo_id: int):
+    """Get file tree for a connected repo."""
+    from ..services.workspace_repos import get_repo_tree
+
+    tree = get_repo_tree(repo_id)
+    if tree is None:
+        raise HTTPException(status_code=404, detail="Repository not found")
+    return tree
+
+
+@router.get("/repos/{repo_id}/file")
+async def get_repository_file(repo_id: int, path: str):
+    """Read a specific file from a connected repo."""
+    from ..services.workspace_repos import get_repo_file
+
+    content = get_repo_file(repo_id, path)
+    if content is None:
+        raise HTTPException(status_code=404, detail="File not found or binary file")
+    return {"content": content, "path": path}
+
+
+@router.post("/repos/{repo_id}/sync")
+async def sync_repository(repo_id: int):
+    """Pull latest changes for a connected repo."""
+    from ..services.workspace_repos import sync_repo
+
+    try:
+        result = sync_repo(repo_id)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))

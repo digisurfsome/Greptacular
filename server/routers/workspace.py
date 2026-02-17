@@ -29,6 +29,7 @@ class WorkspaceConversationSummary(BaseModel):
     title: Optional[str]
     category: str
     working_directory: Optional[str]
+    pinned: bool = False
     created_at: Optional[str]
     updated_at: Optional[str]
     message_count: int

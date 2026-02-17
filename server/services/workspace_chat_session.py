@@ -21,6 +21,7 @@ import json
 import logging
 import os
 import shutil
+import sys
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -30,8 +31,6 @@ from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from claude_agent_sdk.types import HookMatcher
 from dotenv import load_dotenv
 
-from security import bash_security_hook
-
 from .chat_constants import ROOT_DIR  # noqa: F401
 from .workspace_database import (
     add_message,
@@ -39,6 +38,13 @@ from .workspace_database import (
     estimate_tokens,
     get_conversation_token_total,
 )
+
+# Ensure project root is on sys.path before importing root-level modules
+_root_str = str(Path(__file__).parent.parent.parent)
+if _root_str not in sys.path:
+    sys.path.insert(0, _root_str)
+
+from security import bash_security_hook  # noqa: E402
 
 # Load environment variables from .env file if present
 load_dotenv()

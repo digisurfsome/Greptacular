@@ -38,7 +38,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getWorkspaceSummary, regenerateWorkspaceSummary, exportConversationMarkdown } from '@/lib/api'
+import { getWorkspaceSummary, regenerateWorkspaceSummary, exportConversationMarkdown, updateWorkspaceConversation } from '@/lib/api'
 import { WorkspaceChatHeader } from './WorkspaceChatHeader'
 import { EnhancedContextBudgetBar, getContextWarningClass } from './EnhancedContextBudgetBar'
 import { AutoSummaryPin } from './AutoSummaryPin'
@@ -431,21 +431,43 @@ export function WorkspaceChat({
     [handleSend],
   )
 
-  // Title/category update handlers are no-ops at this level.
-  const handleUpdateTitle = useCallback(
-    () => void 0 as void,
-    [],
-  ) as (title: string) => void
-
-  const handleUpdateCategory = useCallback(
-    () => void 0 as void,
-    [],
-  ) as (category: string) => void
-
   const effectiveConversationId = conversationId ?? activeConversationId
   const effectiveTitle = conversationDetail?.title ?? null
   const effectiveCategory = conversationDetail?.category ?? 'general'
+  const effectiveTags = conversationDetail?.tags ?? ''
   const hasActiveChat = effectiveConversationId !== null
+
+  // Conversation field update handlers: persist changes via the PATCH API
+  // and invalidate the query cache so the sidebar stays in sync.
+  const handleUpdateTitle = useCallback(
+    (newTitle: string) => {
+      if (!effectiveConversationId) return
+      updateWorkspaceConversation(effectiveConversationId, { title: newTitle })
+        .then(() => queryClient.invalidateQueries({ queryKey: ['workspace'] }))
+        .catch((err) => console.error('Failed to update title:', err))
+    },
+    [effectiveConversationId, queryClient],
+  )
+
+  const handleUpdateCategory = useCallback(
+    (newCategory: string) => {
+      if (!effectiveConversationId) return
+      updateWorkspaceConversation(effectiveConversationId, { category: newCategory })
+        .then(() => queryClient.invalidateQueries({ queryKey: ['workspace'] }))
+        .catch((err) => console.error('Failed to update category:', err))
+    },
+    [effectiveConversationId, queryClient],
+  )
+
+  const handleUpdateTags = useCallback(
+    (newTags: string) => {
+      if (!effectiveConversationId) return
+      updateWorkspaceConversation(effectiveConversationId, { tags: newTags })
+        .then(() => queryClient.invalidateQueries({ queryKey: ['workspace'] }))
+        .catch((err) => console.error('Failed to update tags:', err))
+    },
+    [effectiveConversationId, queryClient],
+  )
 
   // Empty state when no conversation is selected
   const showEmptyState = conversationId === null && displayMessages.length === 0
@@ -476,9 +498,12 @@ export function WorkspaceChat({
             conversationId={effectiveConversationId}
             title={effectiveTitle}
             category={effectiveCategory}
+            tags={effectiveTags}
             connectionStatus={connectionStatus}
             onUpdateTitle={handleUpdateTitle}
             onUpdateCategory={handleUpdateCategory}
+            onUpdateTags={handleUpdateTags}
+            workingDirectory={workingDirectory}
           />
         </div>
 

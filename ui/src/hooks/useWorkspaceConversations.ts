@@ -46,7 +46,7 @@ export function useCreateWorkspaceConversation() {
   })
 }
 
-/** Hook to update a workspace conversation title or category. */
+/** Hook to update a workspace conversation title, category, or tags. */
 export function useUpdateWorkspaceConversation() {
   const queryClient = useQueryClient()
   return useMutation({
@@ -54,11 +54,13 @@ export function useUpdateWorkspaceConversation() {
       conversationId,
       title,
       category,
+      tags,
     }: {
       conversationId: number
       title?: string
       category?: string
-    }) => updateWorkspaceConversation(conversationId, { title, category }),
+      tags?: string
+    }) => updateWorkspaceConversation(conversationId, { title, category, tags }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [...CONVERSATIONS_KEY] })
     },

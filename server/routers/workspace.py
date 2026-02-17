@@ -30,6 +30,7 @@ class WorkspaceConversationSummary(BaseModel):
     category: str
     working_directory: Optional[str]
     pinned: bool = False
+    tags: str = ""
     created_at: Optional[str]
     updated_at: Optional[str]
     message_count: int
@@ -67,6 +68,7 @@ class ConversationUpdateRequest(BaseModel):
     title: Optional[str] = None
     category: Optional[str] = None
     pinned: Optional[bool] = None
+    tags: Optional[str] = None
 
 
 # ============================================================================
@@ -97,6 +99,7 @@ async def create_new_conversation(body: ConversationCreateRequest):
         category=str(conversation.category),
         working_directory=str(conversation.working_directory) if conversation.working_directory else None,
         pinned=bool(conversation.pinned) if hasattr(conversation, 'pinned') else False,
+        tags="",
         created_at=conversation.created_at.isoformat() if conversation.created_at else None,
         updated_at=conversation.updated_at.isoformat() if conversation.updated_at else None,
         message_count=0,
@@ -134,6 +137,7 @@ async def update_conversation(conversation_id: int, body: ConversationUpdateRequ
         title=body.title,
         category=body.category,
         pinned=body.pinned,
+        tags=body.tags,
     )
     if not updated:
         raise HTTPException(status_code=404, detail="Conversation not found")
@@ -144,6 +148,7 @@ async def update_conversation(conversation_id: int, body: ConversationUpdateRequ
         category=updated["category"],
         working_directory=updated["working_directory"],
         pinned=updated.get("pinned", False),
+        tags=updated.get("tags", ""),
         created_at=updated["created_at"],
         updated_at=updated["updated_at"],
         message_count=updated.get("message_count", 0),
@@ -505,6 +510,128 @@ async def clone_github_repo(body: GitHubCloneRequest):
         return {"local_path": local_path}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ============================================================================
+# Git Branch Management Endpoints
+# ============================================================================
+
+class BranchRenameRequest(BaseModel):
+    """Request body for renaming a git branch."""
+    old_name: str
+    new_name: str
+
+
+class BranchInfoResponse(BaseModel):
+    """Response model for branch information."""
+    current_branch: str
+    branches: list[str]
+
+
+@router.get("/git/branches")
+async def list_git_branches(working_directory: str):
+    """List git branches for a working directory."""
+    import subprocess
+    from pathlib import Path
+
+    work_dir = Path(working_directory)
+    if not work_dir.is_dir():
+        raise HTTPException(status_code=400, detail="Invalid working directory")
+
+    try:
+        result = subprocess.run(
+            ["git", "branch", "--list", "--no-color"],
+            cwd=str(work_dir),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            raise HTTPException(status_code=400, detail="Not a git repository")
+
+        branches = []
+        current = "main"
+        for line in result.stdout.strip().splitlines():
+            line = line.strip()
+            if line.startswith("* "):
+                current = line[2:].strip()
+                branches.append(current)
+            elif line:
+                branches.append(line)
+
+        return BranchInfoResponse(current_branch=current, branches=branches)
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=504, detail="Git command timed out")
+    except FileNotFoundError:
+        raise HTTPException(status_code=500, detail="Git not found on system")
+
+
+@router.post("/git/branch/rename")
+async def rename_git_branch(body: BranchRenameRequest, working_directory: str):
+    """Rename a git branch locally and update remote."""
+    import subprocess
+    from pathlib import Path
+
+    work_dir = Path(working_directory)
+    if not work_dir.is_dir():
+        raise HTTPException(status_code=400, detail="Invalid working directory")
+
+    old_name = body.old_name.strip()
+    new_name = body.new_name.strip()
+
+    if not old_name or not new_name:
+        raise HTTPException(status_code=400, detail="Branch names cannot be empty")
+    if old_name in ("main", "master"):
+        raise HTTPException(status_code=400, detail="Cannot rename main/master branch")
+
+    try:
+        # Rename the local branch
+        result = subprocess.run(
+            ["git", "branch", "-m", old_name, new_name],
+            cwd=str(work_dir),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            raise HTTPException(
+                status_code=400, detail=f"Failed to rename branch: {result.stderr.strip()}"
+            )
+
+        # Try to update remote (delete old, push new)
+        # Delete old remote branch (ignore errors if it doesn't exist on remote)
+        subprocess.run(
+            ["git", "push", "origin", "--delete", old_name],
+            cwd=str(work_dir),
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+        # Push new branch name and set upstream
+        push_result = subprocess.run(
+            ["git", "push", "-u", "origin", new_name],
+            cwd=str(work_dir),
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+        remote_updated = push_result.returncode == 0
+
+        return {
+            "success": True,
+            "old_name": old_name,
+            "new_name": new_name,
+            "remote_updated": remote_updated,
+            "message": f"Branch renamed from '{old_name}' to '{new_name}'" + (
+                " (remote updated)" if remote_updated else " (local only - push manually)"
+            ),
+        }
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=504, detail="Git command timed out")
+    except FileNotFoundError:
+        raise HTTPException(status_code=500, detail="Git not found on system")
 
 
 # ============================================================================

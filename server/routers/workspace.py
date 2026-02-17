@@ -391,6 +391,51 @@ async def get_conversation_cost(conversation_id: int):
     return result
 
 
+@router.post("/usage/rate-limit")
+async def log_rate_limit(event_type: str, notes: str | None = None):
+    """Log a rate limit event for calibration.
+
+    Call this when you hit a rate limit (5-hour wait, weekly cap, etc.)
+    to help calibrate the usage prediction meters.
+    """
+    if event_type not in ("daily", "weekly", "monthly"):
+        raise HTTPException(status_code=400, detail="event_type must be daily, weekly, or monthly")
+
+    from ..services import workspace_database as db
+
+    # Get current usage to record what the limits looked like at time of hit
+    usage = db.get_usage_by_period(event_type)
+    result = db.log_rate_limit_event(
+        event_type=event_type,
+        tokens_at_hit=usage["total_tokens"],
+        premium_tokens_at_hit=0,  # Will be filled by the premium ledger
+        message_count_at_hit=usage["message_count"],
+        notes=notes,
+    )
+    return result
+
+
+@router.get("/usage/rate-limits")
+async def get_rate_limits():
+    """Get rate limit event history."""
+    from ..services import workspace_database as db
+    return db.get_rate_limit_history()
+
+
+@router.get("/usage/calibration")
+async def get_calibration():
+    """Get calibrated limits based on historical rate limit events."""
+    from ..services import workspace_database as db
+    return db.get_calibrated_limits()
+
+
+@router.get("/usage/premium")
+async def get_premium_summary():
+    """Get premium-zone usage summary across all conversations."""
+    from ..services import workspace_database as db
+    return db.get_premium_usage_summary()
+
+
 # ============================================================================
 # Fork, Paginate, Export, Inject Endpoints (Phase 4)
 # ============================================================================

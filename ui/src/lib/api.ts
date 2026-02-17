@@ -1083,3 +1083,42 @@ export async function getUsageSummary(): Promise<UsageSummary> {
 export async function getConversationCost(conversationId: number): Promise<CostZone> {
   return fetchJSON(`/workspace/conversations/${conversationId}/cost`)
 }
+
+export interface RateLimitEvent {
+  id: number
+  event_type: string
+  timestamp: string
+  tokens_at_hit: number
+  premium_tokens_at_hit: number
+  message_count_at_hit: number
+  period_start: string
+  notes: string | null
+}
+
+export interface CalibratedLimit {
+  estimated_limit: number | null
+  safe_limit: number | null
+  sample_count: number
+  last_hit: string | null
+  confidence: 'none' | 'low' | 'medium' | 'high'
+}
+
+export interface CalibrationData {
+  daily: CalibratedLimit
+  weekly: CalibratedLimit
+  monthly: CalibratedLimit
+}
+
+export async function logRateLimit(eventType: string, notes?: string): Promise<RateLimitEvent> {
+  const params = new URLSearchParams({ event_type: eventType })
+  if (notes) params.append('notes', notes)
+  return fetchJSON(`/workspace/usage/rate-limit?${params}`, { method: 'POST' })
+}
+
+export async function getCalibration(): Promise<CalibrationData> {
+  return fetchJSON('/workspace/usage/calibration')
+}
+
+export async function getRateLimitHistory(): Promise<RateLimitEvent[]> {
+  return fetchJSON('/workspace/usage/rate-limits')
+}

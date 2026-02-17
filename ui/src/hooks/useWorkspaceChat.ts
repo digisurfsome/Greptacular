@@ -205,12 +205,13 @@ export function useWorkspaceChat({
           }
 
           case "token_usage": {
-            const tokenData = data as { total_tokens: number; context_window: number };
+            const tokenData = data as { total_tokens: number; context_window: number; message_count?: number };
             setTotalTokens(tokenData.total_tokens);
             setContextWindow(tokenData.context_window);
             setContextBudget(prev => ({
               ...prev,
               messageTokens: tokenData.total_tokens,
+              messageCount: tokenData.message_count ?? prev.messageCount,
             }));
             break;
           }

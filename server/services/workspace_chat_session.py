@@ -310,10 +310,13 @@ class WorkspaceChatSession:
 
                 # Yield initial token usage so the client can render the meter
                 total = get_conversation_token_total(self.conversation_id)
+                from . import workspace_database as db
+                msg_count = db.get_message_count(self.conversation_id)
                 yield {
                     "type": "token_usage",
                     "total_tokens": total,
                     "context_window": self.context_window,
+                    "message_count": msg_count,
                 }
 
                 yield {"type": "response_done"}
@@ -321,8 +324,17 @@ class WorkspaceChatSession:
                 logger.exception("Failed to send workspace greeting")
                 yield {"type": "error", "content": f"Failed to start conversation: {str(e)}"}
         else:
-            # Resumed conversation -- history will be loaded on first message.
-            # _history_loaded stays False so send_message() includes history.
+            # Resumed conversation -- yield current token totals so the meter
+            # shows existing usage immediately, then signal response_done.
+            total = get_conversation_token_total(self.conversation_id)
+            from . import workspace_database as db
+            msg_count = db.get_message_count(self.conversation_id)
+            yield {
+                "type": "token_usage",
+                "total_tokens": total,
+                "context_window": self.context_window,
+                "message_count": msg_count,
+            }
             yield {"type": "response_done"}
 
     async def send_message(
@@ -511,11 +523,20 @@ class WorkspaceChatSession:
 
             # Yield token usage update so the client can render the context-window meter
             total = get_conversation_token_total(self.conversation_id)
+            from . import workspace_database as db
+            msg_count = db.get_message_count(self.conversation_id)
             yield {
                 "type": "token_usage",
                 "total_tokens": total,
                 "context_window": self.context_window,
+                "message_count": msg_count,
             }
+
+            # Log premium-zone usage for cost tracking
+            try:
+                db.log_premium_usage(self.conversation_id)
+            except Exception as e:
+                logger.warning(f"Failed to log premium usage: {e}")
 
     def get_conversation_id(self) -> Optional[int]:
         """Get the current conversation ID."""

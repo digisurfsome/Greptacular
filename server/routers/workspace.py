@@ -29,6 +29,7 @@ class WorkspaceConversationSummary(BaseModel):
     title: Optional[str]
     category: str
     working_directory: Optional[str]
+    pinned: bool = False
     created_at: Optional[str]
     updated_at: Optional[str]
     message_count: int
@@ -95,6 +96,7 @@ async def create_new_conversation(body: ConversationCreateRequest):
         title=str(conversation.title) if conversation.title else None,
         category=str(conversation.category),
         working_directory=str(conversation.working_directory) if conversation.working_directory else None,
+        pinned=bool(conversation.pinned) if hasattr(conversation, 'pinned') else False,
         created_at=conversation.created_at.isoformat() if conversation.created_at else None,
         updated_at=conversation.updated_at.isoformat() if conversation.updated_at else None,
         message_count=0,
@@ -141,6 +143,7 @@ async def update_conversation(conversation_id: int, body: ConversationUpdateRequ
         title=updated["title"],
         category=updated["category"],
         working_directory=updated["working_directory"],
+        pinned=updated.get("pinned", False),
         created_at=updated["created_at"],
         updated_at=updated["updated_at"],
         message_count=updated.get("message_count", 0),

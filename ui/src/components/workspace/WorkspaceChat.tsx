@@ -383,16 +383,14 @@ export function WorkspaceChat({
         </div>
       )}
 
-      {/* Context budget bar */}
-      {(totalTokens > 0 || contextBudget.messageTokens > 0) && (
-        <EnhancedContextBudgetBar
-          totalBudget={contextWindow}
-          messageTokens={contextBudget.messageTokens || totalTokens}
-          summaryTokens={contextBudget.summaryTokens}
-          messageCount={contextBudget.messageCount}
-          isStreaming={isLoading}
-        />
-      )}
+      {/* Context budget bar — always visible */}
+      <EnhancedContextBudgetBar
+        totalBudget={contextWindow}
+        messageTokens={contextBudget.messageTokens || totalTokens}
+        summaryTokens={contextBudget.summaryTokens}
+        messageCount={contextBudget.messageCount}
+        isStreaming={isLoading}
+      />
 
       {/* Auto-summary pin */}
       <AutoSummaryPin

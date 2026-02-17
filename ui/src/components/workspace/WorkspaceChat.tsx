@@ -124,6 +124,8 @@ export function WorkspaceChat({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
   const [isDragging, setIsDragging] = useState(false)
+  const [contextToast, setContextToast] = useState<string | null>(null)
+  const contextToastTimerRef = useRef<number | null>(null)
 
   // Context mode: "1m" (1,000,000 tokens with beta) or "200k" (200,000 tokens standard).
   // Persisted to localStorage so the preference survives page reloads.
@@ -148,7 +150,6 @@ export function WorkspaceChat({
     connectionStatus,
     conversationId: activeConversationId,
     totalTokens,
-    contextWindow,
     contextBudget,
     pendingInjection,
     setPendingInjection,
@@ -180,9 +181,10 @@ export function WorkspaceChat({
     },
   })
 
-  // Context budget usage for warning state (uses actual context window from server)
-  const usagePercent = contextBudget.messageTokens > 0 && contextWindow > 0
-    ? ((contextBudget.messageTokens + contextBudget.summaryTokens) / contextWindow) * 100
+  // Context budget usage for warning state (follows the local context mode toggle)
+  const displayBudget = contextMode === '1m' ? 1_000_000 : 200_000
+  const usagePercent = contextBudget.messageTokens > 0 && displayBudget > 0
+    ? ((contextBudget.messageTokens + contextBudget.summaryTokens) / displayBudget) * 100
     : 0
 
   // Notify parent when a new conversation is created via WebSocket
@@ -559,7 +561,7 @@ export function WorkspaceChat({
       <div className="flex items-center border-b border-border bg-card/80">
         <div className="flex-1 border-b-0 [&>div]:border-b-0">
           <EnhancedContextBudgetBar
-            totalBudget={contextWindow}
+            totalBudget={contextMode === '1m' ? 1_000_000 : 200_000}
             messageTokens={contextBudget.messageTokens || totalTokens}
             summaryTokens={contextBudget.summaryTokens}
             messageCount={contextBudget.messageCount}
@@ -570,6 +572,17 @@ export function WorkspaceChat({
           onClick={() => {
             const newMode = contextMode === '1m' ? '200k' : '1m'
             setContextMode(newMode)
+            // Show toast confirming what will happen on next conversation
+            const msg = newMode === '1m'
+              ? 'Switching to 1M tokens — active next conversation'
+              : 'Switching to 200K tokens — active next conversation'
+            setContextToast(msg)
+            // Clear any existing timer and set new auto-dismiss
+            if (contextToastTimerRef.current) clearTimeout(contextToastTimerRef.current)
+            contextToastTimerRef.current = window.setTimeout(() => {
+              setContextToast(null)
+              contextToastTimerRef.current = null
+            }, 8000)
           }}
           className={`flex-shrink-0 mr-4 text-[10px] font-mono font-bold px-2 py-0.5 rounded border transition-colors ${
             contextMode === '1m'
@@ -581,6 +594,25 @@ export function WorkspaceChat({
           {contextMode === '1m' ? '1M ctx' : '200K ctx'}
         </button>
       </div>
+
+      {/* Context mode toast notification */}
+      {contextToast && (
+        <div className="flex items-center justify-between px-4 py-2 bg-primary/10 border-b border-primary/20 text-sm text-primary animate-slide-in">
+          <span>{contextToast}</span>
+          <button
+            onClick={() => {
+              setContextToast(null)
+              if (contextToastTimerRef.current) {
+                clearTimeout(contextToastTimerRef.current)
+                contextToastTimerRef.current = null
+              }
+            }}
+            className="ml-3 text-primary/60 hover:text-primary text-xs"
+          >
+            dismiss
+          </button>
+        </div>
+      )}
 
       {/* Usage dashboard */}
       <UsageDashboard

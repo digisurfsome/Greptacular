@@ -21,7 +21,6 @@ import {
   ArrowDownToLine,
   Download,
   X,
-  Plus,
   WifiOff,
   Paperclip,
   ImagePlus,
@@ -106,7 +105,6 @@ async function fileToText(file: File): Promise<string> {
 export function WorkspaceChat({
   conversationId,
   onConversationCreated,
-  onNewConversation,
   chatInputRef: externalInputRef,
   workingDirectory,
 }: WorkspaceChatProps): React.JSX.Element {
@@ -451,6 +449,9 @@ export function WorkspaceChat({
   const effectiveTags = conversationDetail?.tags ?? ''
   const hasActiveChat = effectiveConversationId !== null
 
+  // Track whether WebSocket reconnection has been exhausted
+  const reconnectionExhausted = connectionStatus === 'disconnected' && hasActiveChat
+
   // Conversation field update handlers: persist changes via the PATCH API
   // and invalidate the query cache so the sidebar stays in sync.
   const handleUpdateTitle = useCallback(
@@ -483,8 +484,11 @@ export function WorkspaceChat({
     [effectiveConversationId, queryClient],
   )
 
-  // Empty state when no conversation is selected
-  const showEmptyState = conversationId === null && displayMessages.length === 0
+  // Empty state when no conversation is selected or created via WebSocket.
+  // Check BOTH conversationId (prop from parent) and activeConversationId (from WS hook)
+  // to prevent showing empty state when a conversation was just created via WebSocket
+  // but the parent hasn't propagated the update yet.
+  const showEmptyState = conversationId === null && activeConversationId === null && displayMessages.length === 0
 
   const handleExport = useCallback(() => {
     if (effectiveConversationId) {
@@ -549,11 +553,24 @@ export function WorkspaceChat({
         )}
       </div>
 
-      {/* Disconnection banner */}
+      {/* Disconnection banner with retry capability */}
       {connectionStatus === 'disconnected' && hasActiveChat && (
         <div className="bg-destructive/10 border-b border-destructive/20 px-4 py-2 text-sm text-destructive flex items-center gap-2">
           <WifiOff size={14} />
-          Connection lost. Reconnecting...
+          <span>Connection lost.</span>
+          <button
+            onClick={() => {
+              // Manually retry: disconnect cleanly, then start a fresh session
+              disconnect()
+              clearMessages()
+              if (effectiveConversationId !== null) {
+                start(effectiveConversationId, workingDirectory ?? undefined, contextMode)
+              }
+            }}
+            className="underline font-medium hover:text-destructive/80"
+          >
+            Retry connection
+          </button>
         </div>
       )}
 
@@ -645,12 +662,32 @@ export function WorkspaceChat({
               <p className="text-sm mb-6 max-w-sm">
                 Start your first conversation to brainstorm ideas, explore concepts, or get help with your projects.
               </p>
-              {onNewConversation && (
-                <Button onClick={onNewConversation}>
-                  <Plus size={16} className="mr-2" />
-                  Start a Conversation
-                </Button>
-              )}
+              <p className="text-xs text-muted-foreground mb-4">
+                Type a message below and press Enter to begin.
+              </p>
+            </div>
+          </div>
+        ) : reconnectionExhausted && displayMessages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
+            <WifiOff size={48} className="text-muted-foreground/30" />
+            <div className="text-center">
+              <h2 className="text-lg font-semibold text-foreground mb-2">
+                Connection Failed
+              </h2>
+              <p className="text-sm mb-6 max-w-sm">
+                Could not connect to the workspace server. The server may be restarting or unavailable.
+              </p>
+              <Button
+                onClick={() => {
+                  disconnect()
+                  clearMessages()
+                  if (effectiveConversationId !== null) {
+                    start(effectiveConversationId, workingDirectory ?? undefined, contextMode)
+                  }
+                }}
+              >
+                Retry Connection
+              </Button>
             </div>
           </div>
         ) : isLoadingConversation ? (

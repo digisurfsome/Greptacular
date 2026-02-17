@@ -382,6 +382,16 @@ class WorkspaceChatSession:
                     f"messages={len(history_messages)}, tokens={loaded_tokens + summary_tokens}"
                 )
 
+        # Inject active library file content into the message
+        if self.conversation_id:
+            try:
+                from .workspace_library import get_active_files_context
+                library_context, library_tokens = get_active_files_context(self.conversation_id)
+                if library_context:
+                    message_to_send = f"{library_context}\n\n{message_to_send}"
+            except Exception as e:
+                logger.warning("Failed to load library context: %s", e)
+
         try:
             async for chunk in self._query_claude(message_to_send):
                 yield chunk

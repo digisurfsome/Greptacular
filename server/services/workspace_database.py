@@ -12,7 +12,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text, create_engine, func
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    create_engine,
+    func,
+)
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, relationship, sessionmaker
 
@@ -103,6 +114,72 @@ class WorkspaceCategory(Base):
     name = Column(String(100), nullable=False, unique=True)
     color = Column(String(7), nullable=True)  # hex color, e.g. "#3b82f6"
     sort_order = Column(Integer, default=0)
+    created_at = Column(DateTime, default=_utc_now)
+
+
+class WorkspaceLibraryFile(Base):
+    """A file in the workspace library."""
+    __tablename__ = "workspace_library_files"
+
+    id = Column(Integer, primary_key=True, index=True)
+    conversation_id = Column(
+        Integer,
+        ForeignKey("workspace_conversations.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    filename = Column(String(500), nullable=False)
+    display_name = Column(String(200), nullable=True)
+    file_type = Column(String(50), nullable=True)  # 'doc', 'spec', 'template', 'upload', 'code'
+    content = Column(Text, nullable=True)  # cached content (NULL for large files)
+    file_path = Column(String(500), nullable=True)  # disk path for large files
+    file_size = Column(Integer, nullable=True)
+    tags = Column(String(500), nullable=True)  # comma-separated
+    active_in_context = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=_utc_now)
+
+
+class WorkspaceFileActivation(Base):
+    """Per-conversation activation state for global library files."""
+    __tablename__ = "workspace_file_activations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    file_id = Column(
+        Integer,
+        ForeignKey("workspace_library_files.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    conversation_id = Column(
+        Integer,
+        ForeignKey("workspace_conversations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    active = Column(Boolean, default=True)
+
+    __table_args__ = (
+        UniqueConstraint("file_id", "conversation_id", name="uq_file_conversation"),
+    )
+
+
+class WorkspaceConnectedRepo(Base):
+    """A connected GitHub repository."""
+    __tablename__ = "workspace_connected_repos"
+
+    id = Column(Integer, primary_key=True, index=True)
+    conversation_id = Column(
+        Integer,
+        ForeignKey("workspace_conversations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    repo_url = Column(String(500), nullable=False)
+    repo_name = Column(String(200), nullable=False)
+    local_path = Column(String(500), nullable=True)
+    access_token_ref = Column(String(100), nullable=True)
+    branch = Column(String(100), default="main")
+    last_synced_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=_utc_now)
 
 

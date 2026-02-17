@@ -1,20 +1,23 @@
 /**
- * WorkspacePage - Full-page workspace layout with sidebar and chat area.
+ * WorkspacePage - Full-page workspace layout with sidebar, chat, and library panel.
  *
  * Provides a standalone coding workspace at /#/workspace with multi-conversation
- * management, full Claude agent capabilities, and real-time context budget tracking.
+ * management, full Claude agent capabilities, file library, GitHub repos,
+ * and real-time context budget tracking.
  */
 
 import { useState, useCallback } from 'react'
 import { WorkspaceSidebar } from '../components/workspace/WorkspaceSidebar'
 import { WorkspaceChat } from '../components/workspace/WorkspaceChat'
+import { WorkspaceLibrary } from '../components/workspace/WorkspaceLibrary'
 import { ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
-/** Full-page workspace layout with conversation sidebar and chat area. */
+/** Full-page workspace layout with conversation sidebar, chat area, and library panel. */
 export function WorkspacePage(): React.JSX.Element {
   const [activeConversationId, setActiveConversationId] = useState<number | null>(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [libraryCollapsed, setLibraryCollapsed] = useState(false)
 
   const handleNewChat = useCallback(() => {
     setActiveConversationId(null)
@@ -46,7 +49,7 @@ export function WorkspacePage(): React.JSX.Element {
         </span>
       </div>
 
-      {/* Main content area */}
+      {/* Main content area: sidebar | chat | library */}
       <div className="flex flex-1 overflow-hidden">
         <WorkspaceSidebar
           activeConversationId={activeConversationId}
@@ -55,9 +58,16 @@ export function WorkspacePage(): React.JSX.Element {
           onNewChat={handleNewChat}
           onSelectConversation={handleSelectConversation}
         />
-        <WorkspaceChat
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <WorkspaceChat
+            conversationId={activeConversationId}
+            onConversationCreated={handleConversationCreated}
+          />
+        </div>
+        <WorkspaceLibrary
           conversationId={activeConversationId}
-          onConversationCreated={handleConversationCreated}
+          collapsed={libraryCollapsed}
+          onToggleCollapse={() => setLibraryCollapsed(!libraryCollapsed)}
         />
       </div>
     </div>

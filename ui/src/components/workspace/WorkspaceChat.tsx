@@ -51,6 +51,8 @@ interface WorkspaceChatProps {
   onConversationCreated: (id: number) => void
   onNewConversation?: () => void
   chatInputRef?: React.RefObject<HTMLTextAreaElement | null>
+  /** Optional working directory (e.g. from the RepoSelector) for the agent session. */
+  workingDirectory?: string | null
 }
 
 /** Generate a unique ID for local messages. */
@@ -72,6 +74,7 @@ export function WorkspaceChat({
   onConversationCreated,
   onNewConversation,
   chatInputRef: externalInputRef,
+  workingDirectory,
 }: WorkspaceChatProps): React.JSX.Element {
   const [inputValue, setInputValue] = useState('')
   const messagesContainerRef = useRef<HTMLDivElement>(null)
@@ -166,11 +169,12 @@ export function WorkspaceChat({
       clearMessages()
     }
 
-    // Start/resume the selected conversation
+    // Start/resume the selected conversation, passing the working directory
+    // so the agent session uses the repo clone as its cwd.
     if (conversationId !== null) {
-      start(conversationId)
+      start(conversationId, workingDirectory ?? undefined)
     }
-  }, [conversationId, isLoadingConversation, activeConversationId, start, disconnect, clearMessages])
+  }, [conversationId, isLoadingConversation, activeConversationId, start, disconnect, clearMessages, workingDirectory])
 
   // Smart auto-scroll: only scroll if user is near the bottom
   const handleScroll = useCallback(() => {
@@ -269,8 +273,9 @@ export function WorkspaceChat({
     // If no conversation yet, start a new one with the first message.
     // start() connects the WebSocket and sends "start" to the backend.
     // After a delay (to let the session initialize), send the user message.
+    // Pass workingDirectory so the new session uses the selected repo.
     if (conversationId === null && activeConversationId === null) {
-      start()
+      start(undefined, workingDirectory ?? undefined)
       setTimeout(() => {
         sendMessage(content)
       }, 500)
@@ -284,7 +289,7 @@ export function WorkspaceChat({
     if (effectiveId) {
       localStorage.removeItem(`${DRAFT_KEY_PREFIX}${effectiveId}`)
     }
-  }, [inputValue, isLoading, conversationId, activeConversationId, start, sendMessage])
+  }, [inputValue, isLoading, conversationId, activeConversationId, start, sendMessage, workingDirectory])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {

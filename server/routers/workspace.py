@@ -475,6 +475,39 @@ async def get_injection_content(conversation_id: int, body: InjectRequest):
 
 
 # ============================================================================
+# GitHub Repo Selector Endpoints
+# ============================================================================
+
+class GitHubCloneRequest(BaseModel):
+    """Request body for cloning a GitHub repository."""
+    repo_url: str
+    repo_name: str
+
+
+@router.get("/github/repos")
+async def list_github_repos():
+    """List GitHub repos available via the `gh` CLI."""
+    from ..services.workspace_github import list_github_repos as gh_list_repos
+
+    return gh_list_repos()
+
+
+@router.post("/github/clone")
+async def clone_github_repo(body: GitHubCloneRequest):
+    """Clone a GitHub repo locally and return the local path."""
+    from ..services.workspace_github import ensure_repo_cloned
+
+    if not body.repo_url or not body.repo_name:
+        raise HTTPException(status_code=400, detail="repo_url and repo_name are required")
+
+    try:
+        local_path = ensure_repo_cloned(body.repo_url, body.repo_name)
+        return {"local_path": local_path}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+# ============================================================================
 # WebSocket Endpoint
 # ============================================================================
 

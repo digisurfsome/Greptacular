@@ -12,6 +12,7 @@ import { WorkspaceChat } from '../components/workspace/WorkspaceChat'
 import { WorkspaceLibrary } from '../components/workspace/WorkspaceLibrary'
 import { WorkspaceKeyboardHelp } from '../components/workspace/WorkspaceKeyboardHelp'
 import { WorkspaceUserGuide } from '../components/workspace/WorkspaceUserGuide'
+import { RepoSelector } from '../components/workspace/RepoSelector'
 import { useWorkspaceKeyboardShortcuts } from '../hooks/useWorkspaceKeyboardShortcuts'
 import { exportConversationMarkdown } from '../lib/api'
 import { ArrowLeft, ChevronRight, Keyboard, BookOpen } from 'lucide-react'
@@ -20,6 +21,7 @@ import { Button } from '@/components/ui/button'
 /** Full-page workspace layout with keyboard shortcuts, breadcrumbs, and all Phase 4 features. */
 export function WorkspacePage(): React.JSX.Element {
   const [activeConversationId, setActiveConversationId] = useState<number | null>(null)
+  const [workingDirectory, setWorkingDirectory] = useState<string | null>(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [libraryCollapsed, setLibraryCollapsed] = useState(false)
   const [showKeyboardHelp, setShowKeyboardHelp] = useState(false)
@@ -56,6 +58,10 @@ export function WorkspacePage(): React.JSX.Element {
     chatInputRef.current?.focus()
   }, [])
 
+  const handleRepoSelect = useCallback((localPath: string) => {
+    setWorkingDirectory(localPath || null)
+  }, [])
+
   // Register workspace keyboard shortcuts
   useWorkspaceKeyboardShortcuts({
     onNewConversation: handleNewChat,
@@ -86,6 +92,11 @@ export function WorkspacePage(): React.JSX.Element {
           <span className="text-xs font-semibold text-foreground">
             Workspace
           </span>
+          <ChevronRight size={12} className="text-muted-foreground" />
+          <RepoSelector
+            onSelect={handleRepoSelect}
+            selectedPath={workingDirectory}
+          />
         </nav>
 
         <div className="ml-auto flex items-center gap-1">
@@ -126,6 +137,7 @@ export function WorkspacePage(): React.JSX.Element {
             onConversationCreated={handleConversationCreated}
             onNewConversation={handleNewChat}
             chatInputRef={chatInputRef}
+            workingDirectory={workingDirectory}
           />
         </div>
         <WorkspaceLibrary

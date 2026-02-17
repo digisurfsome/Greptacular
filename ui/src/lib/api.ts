@@ -912,6 +912,38 @@ export async function syncRepository(repoId: number): Promise<ConnectedRepo> {
 }
 
 // ============================================================================
+// Workspace GitHub Repo Selector API
+// ============================================================================
+
+export interface GitHubRepo {
+  name: string
+  nameWithOwner: string
+  url: string
+  description: string | null
+  updatedAt: string
+  isPrivate: boolean
+}
+
+export interface GitHubReposResponse {
+  repos: GitHubRepo[]
+  error: string | null
+}
+
+export async function listGitHubRepos(): Promise<GitHubReposResponse> {
+  return fetchJSON('/workspace/github/repos')
+}
+
+export async function cloneGitHubRepo(
+  repoUrl: string,
+  repoName: string,
+): Promise<{ local_path: string }> {
+  return fetchJSON('/workspace/github/clone', {
+    method: 'POST',
+    body: JSON.stringify({ repo_url: repoUrl, repo_name: repoName }),
+  })
+}
+
+// ============================================================================
 // Workspace Phase 4 API (Fork, Inject, Export, Paginated Messages)
 // ============================================================================
 

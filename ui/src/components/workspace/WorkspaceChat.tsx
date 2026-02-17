@@ -259,16 +259,10 @@ export function WorkspaceChat({
     const content = inputValue.trim()
     if (!content || isLoading) return
 
-    // If no conversation yet, start a new one with the first message
+    // If no conversation yet, start a new one and queue the message.
+    // The hook will send it automatically after the start handshake completes.
     if (conversationId === null && activeConversationId === null) {
-      start()
-      const waitAndSend = (retries: number) => {
-        setTimeout(() => {
-          sendMessage(content)
-          if (retries <= 0) return
-        }, 200)
-      }
-      waitAndSend(5)
+      start(null, undefined, content)
     } else {
       sendMessage(content)
     }

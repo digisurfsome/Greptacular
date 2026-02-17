@@ -32,7 +32,7 @@ interface UseWorkspaceChatReturn {
   };
   pendingInjection: PendingInjection | null;
   setPendingInjection: (injection: PendingInjection | null) => void;
-  start: (conversationId?: number | null, workingDirectory?: string) => void;
+  start: (conversationId?: number | null, workingDirectory?: string, initialMessage?: string) => void;
   sendMessage: (content: string) => void;
   disconnect: () => void;
   clearMessages: () => void;
@@ -76,6 +76,7 @@ export function useWorkspaceChat({
   const pingIntervalRef = useRef<number | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
   const checkAndSendTimeoutRef = useRef<number | null>(null);
+  const pendingFirstMessageRef = useRef<string | null>(null);
 
   // Clean up all timers and the WebSocket on unmount
   useEffect(() => {
@@ -231,6 +232,27 @@ export function useWorkspaceChat({
           }
 
           case "response_done": {
+            // If there's a queued first message (from start-with-message),
+            // send it now that the session is ready instead of stopping loading.
+            if (pendingFirstMessageRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
+              const queuedMessage = pendingFirstMessageRef.current;
+              pendingFirstMessageRef.current = null;
+
+              // Mark any streaming greeting as complete before sending
+              setMessages((prev) => {
+                const lastMessage = prev[prev.length - 1];
+                if (lastMessage?.role === "assistant" && lastMessage.isStreaming) {
+                  return [...prev.slice(0, -1), { ...lastMessage, isStreaming: false }];
+                }
+                return prev;
+              });
+
+              wsRef.current.send(
+                JSON.stringify({ type: "message", content: queuedMessage }),
+              );
+              break;
+            }
+
             setIsLoading(false);
             currentAssistantMessageRef.current = null;
 
@@ -279,11 +301,27 @@ export function useWorkspaceChat({
   }, [onError]);
 
   const start = useCallback(
-    (existingConversationId?: number | null, workingDirectory?: string) => {
+    (existingConversationId?: number | null, workingDirectory?: string, initialMessage?: string) => {
       // Clear any pending check timeout from a previous call
       if (checkAndSendTimeoutRef.current) {
         clearTimeout(checkAndSendTimeoutRef.current);
         checkAndSendTimeoutRef.current = null;
+      }
+
+      // Queue the initial message to be sent after the start handshake completes.
+      // The response_done handler will pick this up and send it automatically.
+      if (initialMessage) {
+        pendingFirstMessageRef.current = initialMessage;
+        // Show the user message immediately (optimistic)
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: generateId(),
+            role: "user" as const,
+            content: initialMessage,
+            timestamp: new Date(),
+          },
+        ]);
       }
 
       connect();

@@ -8,7 +8,7 @@ Uses a global database at ``~/.autoforge/workspace.db`` (not per-project).
 
 import logging
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -16,6 +16,7 @@ from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     String,
@@ -187,6 +188,33 @@ class WorkspaceConnectedRepo(Base):
     branch = Column(String(100), default="main")
     last_synced_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=_utc_now)
+
+
+class WorkspaceRateLimitEvent(Base):
+    """Records when a rate limit is hit (5-hour daily, weekly, or monthly)."""
+    __tablename__ = "workspace_rate_limit_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    event_type = Column(String, nullable=False)  # "daily", "weekly", "monthly"
+    timestamp = Column(DateTime, default=_utc_now)
+    tokens_at_hit = Column(Integer, nullable=False, default=0)  # Total tokens used when limit was hit
+    premium_tokens_at_hit = Column(Integer, nullable=False, default=0)  # Tokens in 200K+ zone at hit
+    message_count_at_hit = Column(Integer, nullable=False, default=0)
+    period_start = Column(DateTime, nullable=False)  # Start of the period (day/week/month)
+    notes = Column(String, nullable=True)
+
+
+class WorkspacePremiumLedger(Base):
+    """Tracks premium-zone (>200K) token usage per conversation for cost analysis."""
+    __tablename__ = "workspace_premium_ledger"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    conversation_id = Column(Integer, nullable=False)
+    timestamp = Column(DateTime, default=_utc_now)
+    total_tokens = Column(Integer, nullable=False, default=0)  # Total conversation tokens at this point
+    standard_tokens = Column(Integer, nullable=False, default=0)  # 0-200K portion
+    premium_tokens = Column(Integer, nullable=False, default=0)  # 200K+ portion
+    estimated_cost = Column(Float, nullable=False, default=0.0)  # API-equivalent cost at this point
 
 
 # ============================================================================
@@ -1343,5 +1371,382 @@ def export_conversation_markdown(conversation_id: int) -> str:
             lines.append("")
 
         return "\n".join(lines)
+    finally:
+        session.close()
+
+
+# ============================================================================
+# Usage Tracking Operations
+# ============================================================================
+
+def get_usage_by_period(period: str = "daily") -> dict:
+    """Get token usage aggregated by time period.
+
+    Args:
+        period: "daily", "weekly", or "monthly"
+
+    Returns:
+        Dict with total_tokens, conversation_count, and period_label.
+    """
+    session = get_db_session()
+    try:
+        now = _utc_now()
+
+        if period == "daily":
+            cutoff = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            label = "Today"
+        elif period == "weekly":
+            # Start of current week (Monday)
+            days_since_monday = now.weekday()
+            cutoff = (now - timedelta(days=days_since_monday)).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
+            label = "This Week"
+        else:  # monthly
+            cutoff = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            label = "This Month"
+
+        # Sum all message token estimates since cutoff
+        total = (
+            session.query(func.coalesce(func.sum(WorkspaceMessage.token_estimate), 0))
+            .filter(WorkspaceMessage.timestamp >= cutoff)
+            .scalar()
+        )
+
+        # Count distinct conversations with activity in this period
+        conv_count = (
+            session.query(func.count(func.distinct(WorkspaceMessage.conversation_id)))
+            .filter(WorkspaceMessage.timestamp >= cutoff)
+            .scalar()
+        )
+
+        # Count messages in this period
+        msg_count = (
+            session.query(func.count(WorkspaceMessage.id))
+            .filter(WorkspaceMessage.timestamp >= cutoff)
+            .scalar()
+        )
+
+        return {
+            "period": period,
+            "label": label,
+            "total_tokens": int(total),
+            "conversation_count": int(conv_count or 0),
+            "message_count": int(msg_count or 0),
+            "since": cutoff.isoformat(),
+        }
+    finally:
+        session.close()
+
+
+def get_conversation_cost_zones(conversation_id: int) -> dict:
+    """Calculate the cost zone breakdown for a conversation.
+
+    Tokens in 0-200K are "standard tier", tokens beyond 200K are "premium tier"
+    (approximately 1.5x cost for extended context).
+
+    Args:
+        conversation_id: The conversation to analyze.
+
+    Returns:
+        Dict with standard_tokens, premium_tokens, and estimated costs.
+    """
+    session = get_db_session()
+    try:
+        total = (
+            session.query(func.coalesce(func.sum(WorkspaceMessage.token_estimate), 0))
+            .filter(WorkspaceMessage.conversation_id == conversation_id)
+            .scalar()
+        )
+        total = int(total)
+
+        STANDARD_LIMIT = 200_000
+        # API pricing for Claude Opus 4 (per million tokens)
+        STANDARD_INPUT_RATE = 15.0  # $/MTok
+        PREMIUM_MULTIPLIER = 1.5  # ~50% more for extended context
+        PREMIUM_INPUT_RATE = STANDARD_INPUT_RATE * PREMIUM_MULTIPLIER  # $22.50/MTok
+
+        standard_tokens = min(total, STANDARD_LIMIT)
+        premium_tokens = max(0, total - STANDARD_LIMIT)
+
+        standard_cost = (standard_tokens / 1_000_000) * STANDARD_INPUT_RATE
+        premium_cost = (premium_tokens / 1_000_000) * PREMIUM_INPUT_RATE
+        total_cost = standard_cost + premium_cost
+
+        # What it would cost if ALL tokens were standard rate
+        all_standard_cost = (total / 1_000_000) * STANDARD_INPUT_RATE
+
+        return {
+            "total_tokens": total,
+            "standard_tokens": standard_tokens,
+            "premium_tokens": premium_tokens,
+            "standard_limit": STANDARD_LIMIT,
+            "estimated_cost": {
+                "standard_portion": round(standard_cost, 4),
+                "premium_portion": round(premium_cost, 4),
+                "total": round(total_cost, 4),
+                "all_standard_equivalent": round(all_standard_cost, 4),
+                "premium_surcharge": round(
+                    premium_cost - (premium_tokens / 1_000_000 * STANDARD_INPUT_RATE), 4
+                ),
+            },
+            "cost_zone": "standard" if premium_tokens == 0 else "premium",
+        }
+    finally:
+        session.close()
+
+
+def get_usage_summary() -> dict:
+    """Get a comprehensive usage summary across all time periods.
+
+    Returns:
+        Dict with daily, weekly, monthly usage and rate limit events.
+    """
+    daily = get_usage_by_period("daily")
+    weekly = get_usage_by_period("weekly")
+    monthly = get_usage_by_period("monthly")
+
+    return {
+        "daily": daily,
+        "weekly": weekly,
+        "monthly": monthly,
+    }
+
+
+# ============================================================================
+# Rate Limit Learning Operations
+# ============================================================================
+
+def log_rate_limit_event(
+    event_type: str,
+    tokens_at_hit: int,
+    premium_tokens_at_hit: int = 0,
+    message_count_at_hit: int = 0,
+    notes: str | None = None,
+) -> dict:
+    """Log a rate limit event for calibration.
+
+    Args:
+        event_type: "daily", "weekly", or "monthly"
+        tokens_at_hit: Total tokens used when the limit was hit.
+        premium_tokens_at_hit: Tokens in the 200K+ premium zone.
+        message_count_at_hit: Number of messages sent during the period.
+        notes: Optional notes about the event.
+
+    Returns:
+        Dict with the created event data.
+    """
+    session = get_db_session()
+    try:
+        now = _utc_now()
+
+        if event_type == "daily":
+            period_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        elif event_type == "weekly":
+            days_since_monday = now.weekday()
+            period_start = (now - timedelta(days=days_since_monday)).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
+        else:  # monthly
+            period_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+        event = WorkspaceRateLimitEvent(
+            event_type=event_type,
+            timestamp=now,
+            tokens_at_hit=tokens_at_hit,
+            premium_tokens_at_hit=premium_tokens_at_hit,
+            message_count_at_hit=message_count_at_hit,
+            period_start=period_start,
+            notes=notes,
+        )
+        session.add(event)
+        session.commit()
+
+        return {
+            "id": event.id,
+            "event_type": event.event_type,
+            "timestamp": event.timestamp.isoformat(),
+            "tokens_at_hit": event.tokens_at_hit,
+            "premium_tokens_at_hit": event.premium_tokens_at_hit,
+            "message_count_at_hit": event.message_count_at_hit,
+            "period_start": event.period_start.isoformat(),
+        }
+    finally:
+        session.close()
+
+
+def log_premium_usage(conversation_id: int) -> dict | None:
+    """Log premium-zone usage for a conversation if it's in the premium zone.
+
+    Called after each message to track when conversations enter the premium zone.
+    Only creates a ledger entry if the conversation exceeds 200,000 tokens.
+
+    Returns:
+        Dict with the ledger entry data, or None if not in premium zone.
+    """
+    session = get_db_session()
+    try:
+        total = (
+            session.query(func.coalesce(func.sum(WorkspaceMessage.token_estimate), 0))
+            .filter(WorkspaceMessage.conversation_id == conversation_id)
+            .scalar()
+        )
+        total = int(total)
+        STANDARD_LIMIT = 200_000
+
+        if total <= STANDARD_LIMIT:
+            return None
+
+        standard_tokens = STANDARD_LIMIT
+        premium_tokens = total - STANDARD_LIMIT
+
+        STANDARD_RATE = 15.0  # $/MTok
+        PREMIUM_RATE = 22.5   # $/MTok (1.5x)
+        cost = (standard_tokens / 1_000_000 * STANDARD_RATE) + (premium_tokens / 1_000_000 * PREMIUM_RATE)
+
+        entry = WorkspacePremiumLedger(
+            conversation_id=conversation_id,
+            total_tokens=total,
+            standard_tokens=standard_tokens,
+            premium_tokens=premium_tokens,
+            estimated_cost=round(cost, 4),
+        )
+        session.add(entry)
+        session.commit()
+
+        return {
+            "conversation_id": conversation_id,
+            "total_tokens": total,
+            "standard_tokens": standard_tokens,
+            "premium_tokens": premium_tokens,
+            "estimated_cost": round(cost, 4),
+        }
+    finally:
+        session.close()
+
+
+def get_rate_limit_history(limit: int = 20) -> list[dict]:
+    """Get recent rate limit events for calibration analysis.
+
+    Returns:
+        List of rate limit event dicts, most recent first.
+    """
+    session = get_db_session()
+    try:
+        events = (
+            session.query(WorkspaceRateLimitEvent)
+            .order_by(WorkspaceRateLimitEvent.timestamp.desc())
+            .limit(limit)
+            .all()
+        )
+        return [
+            {
+                "id": e.id,
+                "event_type": e.event_type,
+                "timestamp": e.timestamp.isoformat() if e.timestamp else None,
+                "tokens_at_hit": e.tokens_at_hit,
+                "premium_tokens_at_hit": e.premium_tokens_at_hit,
+                "message_count_at_hit": e.message_count_at_hit,
+                "period_start": e.period_start.isoformat() if e.period_start else None,
+                "notes": e.notes,
+            }
+            for e in events
+        ]
+    finally:
+        session.close()
+
+
+def get_calibrated_limits() -> dict:
+    """Calculate calibrated limits based on historical rate limit events.
+
+    Uses the most recent rate limit event of each type (daily, weekly, monthly)
+    to estimate token limits. Applies a 10% safety margin.
+
+    Returns:
+        Dict with estimated limits for each period type and confidence data.
+    """
+    session = get_db_session()
+    try:
+        result = {}
+        for period_type in ("daily", "weekly", "monthly"):
+            events = (
+                session.query(WorkspaceRateLimitEvent)
+                .filter(WorkspaceRateLimitEvent.event_type == period_type)
+                .order_by(WorkspaceRateLimitEvent.timestamp.desc())
+                .limit(5)
+                .all()
+            )
+            if events:
+                # Average the token counts from recent hits
+                avg_tokens = sum(e.tokens_at_hit for e in events) / len(events)
+                # Apply 10% safety margin (warn at 90% of observed limit)
+                safe_limit = int(avg_tokens * 0.90)
+                result[period_type] = {
+                    "estimated_limit": int(avg_tokens),
+                    "safe_limit": safe_limit,
+                    "sample_count": len(events),
+                    "last_hit": events[0].timestamp.isoformat() if events[0].timestamp else None,
+                    "confidence": "high" if len(events) >= 3 else "medium" if len(events) >= 2 else "low",
+                }
+            else:
+                result[period_type] = {
+                    "estimated_limit": None,
+                    "safe_limit": None,
+                    "sample_count": 0,
+                    "last_hit": None,
+                    "confidence": "none",
+                }
+        return result
+    finally:
+        session.close()
+
+
+def get_premium_usage_summary() -> dict:
+    """Get a summary of premium-zone usage across all conversations.
+
+    Returns:
+        Dict with total premium tokens, total estimated cost, and
+        per-conversation breakdown.
+    """
+    session = get_db_session()
+    try:
+        # Get the latest ledger entry for each conversation
+        from sqlalchemy import func as sa_func
+
+        subquery = (
+            session.query(
+                WorkspacePremiumLedger.conversation_id,
+                sa_func.max(WorkspacePremiumLedger.id).label("max_id"),
+            )
+            .group_by(WorkspacePremiumLedger.conversation_id)
+            .subquery()
+        )
+
+        latest_entries = (
+            session.query(WorkspacePremiumLedger)
+            .join(subquery, WorkspacePremiumLedger.id == subquery.c.max_id)
+            .all()
+        )
+
+        total_premium = sum(e.premium_tokens for e in latest_entries)
+        total_cost = sum(e.estimated_cost for e in latest_entries)
+
+        conversations = [
+            {
+                "conversation_id": e.conversation_id,
+                "total_tokens": e.total_tokens,
+                "premium_tokens": e.premium_tokens,
+                "estimated_cost": e.estimated_cost,
+                "timestamp": e.timestamp.isoformat() if e.timestamp else None,
+            }
+            for e in latest_entries
+        ]
+
+        return {
+            "total_premium_tokens": total_premium,
+            "total_estimated_cost": round(total_cost, 4),
+            "conversations_in_premium": len(conversations),
+            "conversations": conversations,
+        }
     finally:
         session.close()

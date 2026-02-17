@@ -1041,3 +1041,84 @@ export async function renameGitBranch(
     }
   )
 }
+
+// ============================================================================
+// Usage Tracking API
+// ============================================================================
+
+export interface UsagePeriod {
+  period: string
+  label: string
+  total_tokens: number
+  conversation_count: number
+  message_count: number
+  since: string
+}
+
+export interface UsageSummary {
+  daily: UsagePeriod
+  weekly: UsagePeriod
+  monthly: UsagePeriod
+}
+
+export interface CostZone {
+  total_tokens: number
+  standard_tokens: number
+  premium_tokens: number
+  standard_limit: number
+  estimated_cost: {
+    standard_portion: number
+    premium_portion: number
+    total: number
+    all_standard_equivalent: number
+    premium_surcharge: number
+  }
+  cost_zone: 'standard' | 'premium'
+}
+
+export async function getUsageSummary(): Promise<UsageSummary> {
+  return fetchJSON('/workspace/usage')
+}
+
+export async function getConversationCost(conversationId: number): Promise<CostZone> {
+  return fetchJSON(`/workspace/conversations/${conversationId}/cost`)
+}
+
+export interface RateLimitEvent {
+  id: number
+  event_type: string
+  timestamp: string
+  tokens_at_hit: number
+  premium_tokens_at_hit: number
+  message_count_at_hit: number
+  period_start: string
+  notes: string | null
+}
+
+export interface CalibratedLimit {
+  estimated_limit: number | null
+  safe_limit: number | null
+  sample_count: number
+  last_hit: string | null
+  confidence: 'none' | 'low' | 'medium' | 'high'
+}
+
+export interface CalibrationData {
+  daily: CalibratedLimit
+  weekly: CalibratedLimit
+  monthly: CalibratedLimit
+}
+
+export async function logRateLimit(eventType: string, notes?: string): Promise<RateLimitEvent> {
+  const params = new URLSearchParams({ event_type: eventType })
+  if (notes) params.append('notes', notes)
+  return fetchJSON(`/workspace/usage/rate-limit?${params}`, { method: 'POST' })
+}
+
+export async function getCalibration(): Promise<CalibrationData> {
+  return fetchJSON('/workspace/usage/calibration')
+}
+
+export async function getRateLimitHistory(): Promise<RateLimitEvent[]> {
+  return fetchJSON('/workspace/usage/rate-limits')
+}

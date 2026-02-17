@@ -356,6 +356,87 @@ async def search_conversations_endpoint(q: str = "", limit: int = 20):
 
 
 # ============================================================================
+# Usage Tracking Endpoints
+# ============================================================================
+
+@router.get("/usage")
+async def get_usage_overview():
+    """Get usage summary across daily, weekly, and monthly periods."""
+    from ..services import workspace_database as db
+    return db.get_usage_summary()
+
+
+@router.get("/usage/{period}")
+async def get_usage_period(period: str):
+    """Get usage for a specific period (daily, weekly, monthly)."""
+    if period not in ("daily", "weekly", "monthly"):
+        raise HTTPException(status_code=400, detail="Period must be daily, weekly, or monthly")
+
+    from ..services import workspace_database as db
+    return db.get_usage_by_period(period)
+
+
+@router.get("/conversations/{conversation_id}/cost")
+async def get_conversation_cost(conversation_id: int):
+    """Get cost zone breakdown for a conversation."""
+    from ..services import workspace_database as db
+
+    result = db.get_conversation_cost_zones(conversation_id)
+    if result["total_tokens"] == 0:
+        # Check if conversation exists
+        conv = db.get_conversation(conversation_id)
+        if not conv:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+
+    return result
+
+
+@router.post("/usage/rate-limit")
+async def log_rate_limit(event_type: str, notes: str | None = None):
+    """Log a rate limit event for calibration.
+
+    Call this when you hit a rate limit (5-hour wait, weekly cap, etc.)
+    to help calibrate the usage prediction meters.
+    """
+    if event_type not in ("daily", "weekly", "monthly"):
+        raise HTTPException(status_code=400, detail="event_type must be daily, weekly, or monthly")
+
+    from ..services import workspace_database as db
+
+    # Get current usage to record what the limits looked like at time of hit
+    usage = db.get_usage_by_period(event_type)
+    result = db.log_rate_limit_event(
+        event_type=event_type,
+        tokens_at_hit=usage["total_tokens"],
+        premium_tokens_at_hit=0,  # Will be filled by the premium ledger
+        message_count_at_hit=usage["message_count"],
+        notes=notes,
+    )
+    return result
+
+
+@router.get("/usage/rate-limits")
+async def get_rate_limits():
+    """Get rate limit event history."""
+    from ..services import workspace_database as db
+    return db.get_rate_limit_history()
+
+
+@router.get("/usage/calibration")
+async def get_calibration():
+    """Get calibrated limits based on historical rate limit events."""
+    from ..services import workspace_database as db
+    return db.get_calibrated_limits()
+
+
+@router.get("/usage/premium")
+async def get_premium_summary():
+    """Get premium-zone usage summary across all conversations."""
+    from ..services import workspace_database as db
+    return db.get_premium_usage_summary()
+
+
+# ============================================================================
 # Fork, Paginate, Export, Inject Endpoints (Phase 4)
 # ============================================================================
 
@@ -646,7 +727,7 @@ async def workspace_chat_websocket(websocket: WebSocket):
     Message protocol:
 
     Client -> Server:
-    - {"type": "start", "conversation_id": int | null, "working_directory": "..."} - Start/resume session
+    - {"type": "start", "conversation_id": int | null, "working_directory": "...", "context_mode": "1m"|"200k"} - Start/resume session
     - {"type": "message", "content": "..."} - Send user message
     - {"type": "answer", "answers": {...}} - Answer to structured questions
     - {"type": "ping"} - Keep-alive ping
@@ -704,12 +785,18 @@ async def workspace_chat_websocket(websocket: WebSocket):
                     )
 
                     try:
+                        # Extract context mode from start message (default to "1m")
+                        context_mode = message.get("context_mode", "1m")
+                        if context_mode not in ("1m", "200k"):
+                            context_mode = "1m"
+
                         # Create a new workspace session
                         logger.debug(f"Creating workspace session {session_id}")
                         session = await ws_create_session(
                             session_id,
                             conversation_id=conversation_id,
                             working_directory=working_directory,
+                            context_mode=context_mode,
                         )
                         logger.debug("Workspace session created, starting...")
 

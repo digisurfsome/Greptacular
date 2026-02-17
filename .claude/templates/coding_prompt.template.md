@@ -28,10 +28,49 @@ You don't have a token counter, so use these proxies:
 
 1. Stop implementing new code
 2. Commit all working code with descriptive message
-3. Update claude-progress.txt with what's done and what's next
-4. Mark features passing ONLY if fully verified
-5. If feature is partially done, leave it as in_progress with clear notes about what remains
-6. Ensure no uncommitted changes, app in working state
+3. **Push to remote** (`git push`) so all work is saved on the branch
+4. Update claude-progress.txt with what's done and what's next
+5. Mark features passing ONLY if fully verified
+6. If feature is partially done, leave it as in_progress with clear notes about what remains
+7. Ensure no uncommitted changes, app in working state
+
+---
+
+### STEP 0: BRANCH SETUP (MANDATORY - BEFORE ANY CODING)
+
+**CRITICAL: NEVER commit directly to `main`. Always work on a dedicated branch.**
+
+Before doing anything else, set up your working branch:
+
+```bash
+# 1. Check what branch you're on
+CURRENT_BRANCH=$(git branch --show-current)
+echo "Currently on: $CURRENT_BRANCH"
+
+# 2. If on main, create a new branch. If already on an agent branch, stay on it.
+if [ "$CURRENT_BRANCH" = "main" ] || [ "$CURRENT_BRANCH" = "master" ]; then
+  # Generate branch name: DayAbbrev-MM-DD-YY-HHMM-short-description
+  # Replace "short-description" with 2-3 words describing your assigned work
+  DAY=$(date +%a)        # Mon, Tue, Wed, Thu, Fri, Sat, Sun
+  DATESTAMP=$(date +%m-%d-%y-%H%M)  # MM-DD-YY-HHMM
+  BRANCH_NAME="${DAY}-${DATESTAMP}-describe-your-work"
+  # Example: Mon-02-17-26-1246-auth-module
+  # Example: Thu-03-05-26-0915-dashboard-layout
+
+  git checkout -b "$BRANCH_NAME"
+  git push -u origin "$BRANCH_NAME"
+  echo "Created and pushed branch: $BRANCH_NAME"
+fi
+```
+
+**Branch naming rules:**
+- Format: `DayAbbrev-MM-DD-YY-HHMM-short-description`
+- Use 2-3 lowercase words for the description, separated by hyphens
+- The description should reflect the feature(s) you're working on
+- Examples: `Mon-02-17-26-1246-auth-module`, `Fri-03-21-26-0830-user-dashboard`, `Wed-04-09-26-1455-api-endpoints`
+- NO random hashes. NO prefixes like "claude/" or "agent/". Keep it human-readable.
+
+**If you are resuming on an existing agent branch** (not `main`), stay on it -- do not create a new one.
 
 ---
 
@@ -263,18 +302,20 @@ Use the feature_mark_passing tool with feature_id=42
 
 **ONLY MARK A FEATURE AS PASSING AFTER VERIFICATION WITH SCREENSHOTS.**
 
-### STEP 7: COMMIT YOUR PROGRESS
+### STEP 7: COMMIT AND PUSH YOUR PROGRESS
 
-Make a descriptive git commit.
+Make a descriptive git commit **and push to remote** so the branch is always up to date.
 
 **Git Commit Rules:**
 - ALWAYS use simple `-m` flag for commit messages
 - NEVER use heredocs (`cat <<EOF` or `<<'EOF'`) - they fail in sandbox mode with "can't create temp file for here document: operation not permitted"
-- For multi-line messages, use multiple `-m` flags:
+- For multi-line messages, use multiple `-m` flags
+- ALWAYS push after committing so CI/CD and deployment services (Railway, Vercel, etc.) can pick up changes immediately
 
 ```bash
 git add .
 git commit -m "Implement [feature name] - verified end-to-end" -m "- Added [specific changes]" -m "- Tested with browser automation" -m "- Marked feature #X as passing"
+git push
 ```
 
 Or use a single descriptive message:
@@ -282,7 +323,10 @@ Or use a single descriptive message:
 ```bash
 git add .
 git commit -m "feat: implement [feature name] with browser verification"
+git push
 ```
+
+**IMPORTANT:** You should be on your agent branch (created in Step 0), NOT on `main`. If `git push` fails because the upstream isn't set, run `git push -u origin $(git branch --show-current)` once.
 
 ### STEP 8: UPDATE PROGRESS NOTES
 
@@ -299,10 +343,11 @@ Update `claude-progress.txt` with:
 Your context budget is at its limit. You MUST wrap up NOW:
 
 1. Commit all working code
-2. Update claude-progress.txt with what was accomplished and what remains
-3. Mark features as passing ONLY if tests verified
-4. Ensure no uncommitted changes
-5. Leave app in working state (no broken features)
+2. **Push to remote** (`git push`) -- all work must be on the remote branch
+3. Update claude-progress.txt with what was accomplished and what remains
+4. Mark features as passing ONLY if tests verified
+5. Ensure no uncommitted changes
+6. Leave app in working state (no broken features)
 
 **DO NOT start new implementation work during wrap-up.** If you have uncommitted changes, commit them. If a feature is partially done, document the exact state clearly in claude-progress.txt so the next agent can continue seamlessly.
 

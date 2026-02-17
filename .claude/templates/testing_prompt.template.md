@@ -95,15 +95,14 @@ A regression has been introduced. You MUST fix it:
    Use the feature_mark_passing tool with feature_id={id}
    ```
 
-6. **Commit the fix:**
+6. **Commit and push the fix:**
    ```bash
    git add .
-   git commit -m "Fix regression in [feature name]
-
-   - [Describe what was broken]
-   - [Describe the fix]
-   - Verified with browser automation"
+   git commit -m "Fix regression in [feature name]" -m "- [Describe what was broken]" -m "- [Describe the fix]" -m "- Verified with browser automation"
+   git push
    ```
+
+   **Note:** Use multiple `-m` flags instead of heredocs (heredocs fail in sandbox mode). Always push after committing so the branch stays up to date for CI/CD and deployment services.
 
 ---
 

@@ -105,6 +105,7 @@ async function fileToText(file: File): Promise<string> {
 export function WorkspaceChat({
   conversationId,
   onConversationCreated,
+  onNewConversation,
   chatInputRef: externalInputRef,
   workingDirectory,
 }: WorkspaceChatProps): React.JSX.Element {
@@ -146,6 +147,7 @@ export function WorkspaceChat({
     messages: liveMessages,
     isLoading,
     connectionStatus,
+    lastError,
     conversationId: activeConversationId,
     totalTokens,
     contextBudget,
@@ -557,19 +559,18 @@ export function WorkspaceChat({
       {connectionStatus === 'disconnected' && hasActiveChat && (
         <div className="bg-destructive/10 border-b border-destructive/20 px-4 py-2 text-sm text-destructive flex items-center gap-2">
           <WifiOff size={14} />
-          <span>Connection lost.</span>
+          <span className="truncate">{lastError ? `Connection lost: ${lastError.slice(0, 100)}` : 'Connection lost.'}</span>
           <button
             onClick={() => {
-              // Manually retry: disconnect cleanly, then start a fresh session
               disconnect()
               clearMessages()
               if (effectiveConversationId !== null) {
                 start(effectiveConversationId, workingDirectory ?? undefined, contextMode)
               }
             }}
-            className="underline font-medium hover:text-destructive/80"
+            className="underline font-medium hover:text-destructive/80 flex-shrink-0"
           >
-            Retry connection
+            Retry
           </button>
         </div>
       )}
@@ -670,24 +671,48 @@ export function WorkspaceChat({
         ) : reconnectionExhausted && displayMessages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
             <WifiOff size={48} className="text-muted-foreground/30" />
-            <div className="text-center">
+            <div className="text-center max-w-md">
               <h2 className="text-lg font-semibold text-foreground mb-2">
                 Connection Failed
               </h2>
-              <p className="text-sm mb-6 max-w-sm">
-                Could not connect to the workspace server. The server may be restarting or unavailable.
+              {lastError ? (
+                <div className="mb-4 p-3 bg-destructive/5 border border-destructive/20 rounded-md text-sm text-left">
+                  <p className="font-medium text-destructive mb-1">Error details:</p>
+                  <p className="text-muted-foreground">{lastError}</p>
+                </div>
+              ) : (
+                <p className="text-sm mb-4">
+                  Could not connect to the workspace server. The server may be restarting or unavailable.
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground mb-4">
+                If you&apos;re seeing this repeatedly, the Claude API may be rate-limited. Wait a few minutes and try again.
               </p>
-              <Button
-                onClick={() => {
-                  disconnect()
-                  clearMessages()
-                  if (effectiveConversationId !== null) {
-                    start(effectiveConversationId, workingDirectory ?? undefined, contextMode)
-                  }
-                }}
-              >
-                Retry Connection
-              </Button>
+              <div className="flex gap-2 justify-center">
+                <Button
+                  onClick={() => {
+                    disconnect()
+                    clearMessages()
+                    if (effectiveConversationId !== null) {
+                      start(effectiveConversationId, workingDirectory ?? undefined, contextMode)
+                    }
+                  }}
+                >
+                  Retry Connection
+                </Button>
+                {onNewConversation && (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      disconnect()
+                      clearMessages()
+                      onNewConversation()
+                    }}
+                  >
+                    Back to Conversations
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
         ) : isLoadingConversation ? (

@@ -22,6 +22,7 @@ interface UseWorkspaceChatReturn {
   messages: ChatMessage[];
   isLoading: boolean;
   connectionStatus: ConnectionStatus;
+  lastError: string | null;
   conversationId: number | null;
   totalTokens: number;
   contextWindow: number;
@@ -68,6 +69,7 @@ export function useWorkspaceChat({
     messageCount: 0,
   });
   const [pendingInjection, setPendingInjection] = useState<PendingInjection | null>(null);
+  const [lastError, setLastError] = useState<string | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const currentAssistantMessageRef = useRef<string | null>(null);
@@ -76,6 +78,14 @@ export function useWorkspaceChat({
   const pingIntervalRef = useRef<number | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
   const checkAndSendTimeoutRef = useRef<number | null>(null);
+
+  // Store the last "start" params so we can re-send on reconnect.
+  // Without this, auto-reconnect creates a bare WebSocket with no server session.
+  const lastStartParamsRef = useRef<{
+    conversationId?: number;
+    workingDirectory?: string;
+    contextMode?: string;
+  } | null>(null);
 
   // Clean up all timers and the WebSocket on unmount
   useEffect(() => {
@@ -116,6 +126,8 @@ export function useWorkspaceChat({
 
     ws.onopen = () => {
       setConnectionStatus("connected");
+      setLastError(null);
+      const wasReconnect = reconnectAttempts.current > 0;
       reconnectAttempts.current = 0;
 
       // Start ping interval to keep the connection alive
@@ -124,13 +136,43 @@ export function useWorkspaceChat({
           ws.send(JSON.stringify({ type: "ping" }));
         }
       }, 30000);
+
+      // On reconnect, automatically re-send the "start" message so the
+      // server creates a new session for this WebSocket connection.
+      // Without this, the server has no session and returns
+      // "No active session. Send 'start' first." on every message.
+      if (wasReconnect && lastStartParamsRef.current) {
+        const params = lastStartParamsRef.current;
+        const payload: Record<string, unknown> = { type: "start" };
+        if (params.conversationId) {
+          payload.conversation_id = params.conversationId;
+        }
+        if (params.workingDirectory) {
+          payload.working_directory = params.workingDirectory;
+        }
+        payload.context_mode = params.contextMode || "1m";
+
+        if (import.meta.env.DEV) {
+          console.debug('[useWorkspaceChat] Re-sending start on reconnect:', payload);
+        }
+        ws.send(JSON.stringify(payload));
+      }
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
       setConnectionStatus("disconnected");
       if (pingIntervalRef.current) {
         clearInterval(pingIntervalRef.current);
         pingIntervalRef.current = null;
+      }
+
+      // Capture close reason for display on the Connection Failed screen
+      if (event.code !== 1000 && event.code !== 1001) {
+        const reason = event.reason
+          || (event.code === 1006
+            ? "Server connection dropped unexpectedly. The workspace server may have crashed or be rate-limited."
+            : `WebSocket closed (code ${event.code})`);
+        setLastError(reason);
       }
 
       // Attempt reconnection with exponential backoff if not intentionally closed
@@ -146,6 +188,7 @@ export function useWorkspaceChat({
 
     ws.onerror = () => {
       setConnectionStatus("error");
+      setLastError("Could not connect to the workspace server. Check that the server is running.");
       onError?.("WebSocket connection error");
     };
 
@@ -269,6 +312,7 @@ export function useWorkspaceChat({
 
           case "error": {
             setIsLoading(false);
+            setLastError(data.content || "Unknown error");
             onError?.(data.content);
 
             // Check if this is a rate limit error -- auto-log via API as fallback
@@ -320,6 +364,13 @@ export function useWorkspaceChat({
         clearTimeout(checkAndSendTimeoutRef.current);
         checkAndSendTimeoutRef.current = null;
       }
+
+      // Save start params so auto-reconnect can re-send the "start" message
+      lastStartParamsRef.current = {
+        conversationId: existingConversationId ?? undefined,
+        workingDirectory,
+        contextMode,
+      };
 
       connect();
 
@@ -437,6 +488,7 @@ export function useWorkspaceChat({
 
   const disconnect = useCallback(() => {
     reconnectAttempts.current = maxReconnectAttempts; // Prevent auto-reconnection
+    lastStartParamsRef.current = null; // Clear so reconnect doesn't re-send stale start
     if (pingIntervalRef.current) {
       clearInterval(pingIntervalRef.current);
       pingIntervalRef.current = null;
@@ -464,6 +516,7 @@ export function useWorkspaceChat({
     messages,
     isLoading,
     connectionStatus,
+    lastError,
     conversationId,
     totalTokens,
     contextWindow,

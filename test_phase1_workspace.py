@@ -124,8 +124,8 @@ class TestConversationCRUD(unittest.TestCase):
 
     def test_get_conversations_ordering(self):
         """Most recently updated first."""
-        c1 = self.db.create_conversation(title="Old")
-        c2 = self.db.create_conversation(title="New")
+        self.db.create_conversation(title="Old")
+        self.db.create_conversation(title="New")
         # c2 was created after c1, so it should be first
         result = self.db.get_conversations()
         self.assertEqual(result[0]["title"], "New")
@@ -307,7 +307,7 @@ class TestMessageOperations(unittest.TestCase):
 
     def test_timestamp_updates_conversation(self):
         """Adding a message should update the conversation's updated_at."""
-        before = self.db.get_conversation(self.conv.id)
+        self.db.get_conversation(self.conv.id)
         self.db.add_message(self.conv.id, "user", "update me")
         after = self.db.get_conversation(self.conv.id)
         # updated_at should have changed (or at least not be earlier)
@@ -450,6 +450,7 @@ class TestDatabaseModels(unittest.TestCase):
 
     def test_tables_create_in_sqlite(self):
         from sqlalchemy import create_engine, inspect
+
         from server.services.workspace_database import Base
         db_path = Path(TEMP_DIR) / "test_models.db"
         engine = create_engine(f"sqlite:///{db_path}")
@@ -757,8 +758,9 @@ class TestPydanticModels(unittest.TestCase):
         self.assertEqual(s.message_count, 5)
 
     def test_summary_model_missing_id(self):
-        from server.routers.workspace import WorkspaceConversationSummary
         from pydantic import ValidationError
+
+        from server.routers.workspace import WorkspaceConversationSummary
         with self.assertRaises(ValidationError):
             WorkspaceConversationSummary(
                 title="Test", category="general", working_directory=None,
@@ -867,7 +869,7 @@ class TestConversationLifecycle(unittest.TestCase):
         """get_conversations reflects creates and deletes."""
         self.assertEqual(len(self.db.get_conversations()), 0)
         c1 = self.db.create_conversation(title="A")
-        c2 = self.db.create_conversation(title="B")
+        self.db.create_conversation(title="B")
         self.assertEqual(len(self.db.get_conversations()), 2)
         self.db.delete_conversation(c1.id)
         remaining = self.db.get_conversations()

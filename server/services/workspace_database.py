@@ -65,6 +65,11 @@ class WorkspaceConversation(Base):
     token_count = Column(Integer, nullable=False, default=0)
     summary = Column(Text, nullable=True)
     summary_updated_at = Column(DateTime, nullable=True)
+    forked_from_id = Column(
+        Integer,
+        ForeignKey("workspace_conversations.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     created_at = Column(DateTime, default=_utc_now)
     updated_at = Column(DateTime, default=_utc_now, onupdate=_utc_now)
 
@@ -248,6 +253,10 @@ def get_engine() -> Engine:
             if "summary_updated_at" not in existing_cols:
                 cursor.execute(
                     "ALTER TABLE workspace_conversations ADD COLUMN summary_updated_at DATETIME"
+                )
+            if "forked_from_id" not in existing_cols:
+                cursor.execute(
+                    "ALTER TABLE workspace_conversations ADD COLUMN forked_from_id INTEGER"
                 )
             conn.commit()
             conn.close()
@@ -1110,5 +1119,217 @@ def get_messages_for_context(
         selected.reverse()
         return selected, total_tokens
 
+    finally:
+        session.close()
+
+
+# ============================================================================
+# Fork, Paginate, and Export Operations (Phase 4)
+# ============================================================================
+
+def fork_conversation(
+    conversation_id: int,
+    fork_at_message_id: int | None = None,
+) -> dict:
+    """Fork a conversation, copying messages up to fork_at_message_id.
+
+    Args:
+        conversation_id: The source conversation ID.
+        fork_at_message_id: Copy messages up to and including this message.
+            If None, copies all messages.
+
+    Returns:
+        Dict representing the new conversation (same shape as get_conversations items).
+
+    Raises:
+        ValueError: If conversation_id or fork_at_message_id not found.
+    """
+    session = get_db_session()
+    try:
+        source = (
+            session.query(WorkspaceConversation)
+            .filter(WorkspaceConversation.id == conversation_id)
+            .first()
+        )
+        if not source:
+            raise ValueError(f"Conversation {conversation_id} not found")
+
+        fork_title = f"{source.title or 'Untitled'} (fork)"
+
+        new_conv = WorkspaceConversation(
+            title=fork_title,
+            category=source.category,
+            pinned=0,
+            token_count=0,
+            forked_from_id=conversation_id,
+        )
+        session.add(new_conv)
+        session.flush()
+
+        query = (
+            session.query(WorkspaceMessage)
+            .filter(WorkspaceMessage.conversation_id == conversation_id)
+            .order_by(WorkspaceMessage.id.asc())
+        )
+
+        if fork_at_message_id is not None:
+            fork_msg = (
+                session.query(WorkspaceMessage)
+                .filter_by(id=fork_at_message_id, conversation_id=conversation_id)
+                .first()
+            )
+            if not fork_msg:
+                raise ValueError(
+                    f"Message {fork_at_message_id} not found in conversation {conversation_id}"
+                )
+            query = query.filter(WorkspaceMessage.id <= fork_at_message_id)
+
+        messages = query.all()
+
+        total_tokens = 0
+        for msg in messages:
+            new_msg = WorkspaceMessage(
+                conversation_id=new_conv.id,
+                role=msg.role,
+                content=msg.content,
+                token_estimate=msg.token_estimate,
+            )
+            session.add(new_msg)
+            total_tokens += msg.token_estimate or 0
+
+        new_conv.token_count = total_tokens
+        session.commit()
+        session.refresh(new_conv)
+
+        return {
+            "id": new_conv.id,
+            "title": new_conv.title,
+            "category": new_conv.category,
+            "pinned": bool(new_conv.pinned),
+            "token_count": new_conv.token_count,
+            "forked_from_id": new_conv.forked_from_id,
+            "created_at": new_conv.created_at.isoformat() if new_conv.created_at else None,
+            "updated_at": new_conv.updated_at.isoformat() if new_conv.updated_at else None,
+            "message_count": len(messages),
+        }
+    finally:
+        session.close()
+
+
+def get_messages_paginated(
+    conversation_id: int,
+    limit: int = 50,
+    offset: int = 0,
+) -> dict:
+    """Get paginated messages for a conversation.
+
+    Args:
+        conversation_id: The conversation to retrieve messages from.
+        limit: Maximum number of messages to return.
+        offset: Number of messages to skip.
+
+    Returns:
+        Dict with ``messages`` list and ``total`` count.
+    """
+    session = get_db_session()
+    try:
+        total = (
+            session.query(func.count(WorkspaceMessage.id))
+            .filter(WorkspaceMessage.conversation_id == conversation_id)
+            .scalar()
+        ) or 0
+
+        messages = (
+            session.query(WorkspaceMessage)
+            .filter(WorkspaceMessage.conversation_id == conversation_id)
+            .order_by(WorkspaceMessage.id.asc())
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+
+        return {
+            "messages": [
+                {
+                    "id": m.id,
+                    "role": m.role,
+                    "content": m.content,
+                    "token_estimate": m.token_estimate,
+                    "timestamp": m.timestamp.isoformat() if m.timestamp else None,
+                }
+                for m in messages
+            ],
+            "total": total,
+        }
+    finally:
+        session.close()
+
+
+def export_conversation_markdown(conversation_id: int) -> str:
+    """Export a conversation as formatted markdown.
+
+    Args:
+        conversation_id: The conversation to export.
+
+    Returns:
+        Markdown string.
+
+    Raises:
+        ValueError: If conversation not found.
+    """
+    session = get_db_session()
+    try:
+        conv = (
+            session.query(WorkspaceConversation)
+            .filter(WorkspaceConversation.id == conversation_id)
+            .first()
+        )
+        if not conv:
+            raise ValueError(f"Conversation {conversation_id} not found")
+
+        messages = (
+            session.query(WorkspaceMessage)
+            .filter(WorkspaceMessage.conversation_id == conversation_id)
+            .order_by(WorkspaceMessage.id.asc())
+            .all()
+        )
+
+        lines: list[str] = []
+        lines.append(f"# {conv.title or 'Untitled Conversation'}")
+        lines.append("")
+
+        if conv.category:
+            lines.append(f"**Category:** {conv.category}")
+        if conv.created_at:
+            lines.append(f"**Created:** {conv.created_at.strftime('%Y-%m-%d %H:%M UTC')}")
+        lines.append(f"**Messages:** {len(messages)}")
+        if conv.token_count:
+            lines.append(f"**Tokens Used:** {conv.token_count:,}")
+        lines.append("")
+
+        if conv.summary:
+            lines.append("---")
+            lines.append("")
+            lines.append("## Summary")
+            lines.append("")
+            lines.append(conv.summary)
+            lines.append("")
+
+        lines.append("---")
+        lines.append("")
+        lines.append("## Conversation")
+        lines.append("")
+
+        for msg in messages:
+            role_label = "User" if msg.role == "user" else "Assistant"
+            timestamp_str = ""
+            if msg.timestamp:
+                timestamp_str = f" ({msg.timestamp.strftime('%Y-%m-%d %H:%M UTC')})"
+            lines.append(f"**{role_label}**{timestamp_str}:")
+            lines.append("")
+            lines.append(msg.content)
+            lines.append("")
+
+        return "\n".join(lines)
     finally:
         session.close()

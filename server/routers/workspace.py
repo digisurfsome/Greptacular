@@ -348,6 +348,130 @@ async def search_conversations_endpoint(q: str = "", limit: int = 20):
 
 
 # ============================================================================
+# Fork, Paginate, Export, Inject Endpoints (Phase 4)
+# ============================================================================
+
+class ForkRequest(BaseModel):
+    """Request body for forking a conversation."""
+    fork_at_message_id: Optional[int] = None
+
+
+@router.post("/conversations/{conversation_id}/fork")
+async def fork_conversation_endpoint(conversation_id: int, body: ForkRequest):
+    """Fork a conversation from a specific message point."""
+    from ..services.workspace_database import fork_conversation as db_fork
+
+    try:
+        new_conversation = db_fork(
+            conversation_id=conversation_id,
+            fork_at_message_id=body.fork_at_message_id,
+        )
+        return new_conversation
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.get("/conversations/{conversation_id}/messages")
+async def get_conversation_messages(
+    conversation_id: int,
+    limit: int = 50,
+    offset: int = 0,
+):
+    """Get paginated messages for a conversation."""
+    from ..services.workspace_database import get_messages_paginated
+
+    if limit < 1 or limit > 200:
+        raise HTTPException(status_code=400, detail="limit must be between 1 and 200")
+    if offset < 0:
+        raise HTTPException(status_code=400, detail="offset must be non-negative")
+
+    return get_messages_paginated(
+        conversation_id=conversation_id,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get("/conversations/{conversation_id}/export")
+async def export_conversation_endpoint(conversation_id: int, format: str = "markdown"):
+    """Export a conversation as a downloadable file."""
+    if format != "markdown":
+        raise HTTPException(status_code=400, detail="Only 'markdown' format is supported")
+
+    from ..services.workspace_database import export_conversation_markdown, get_conversation
+
+    try:
+        markdown_content = export_conversation_markdown(conversation_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    conv = get_conversation(conversation_id)
+    safe_title = (conv.get("title") or "conversation").replace(" ", "_") if conv else "conversation"
+    safe_title = "".join(c for c in safe_title if c.isalnum() or c in ("_", "-"))
+    filename = f"{safe_title}_{conversation_id}.md"
+
+    from fastapi.responses import Response
+
+    return Response(
+        content=markdown_content,
+        media_type="text/markdown",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+        },
+    )
+
+
+class InjectRequest(BaseModel):
+    """Request body for injecting messages from another conversation."""
+    source_conversation_id: int
+    message_ids: list[int] | str  # list of IDs or "all"
+
+
+@router.post("/conversations/{conversation_id}/inject")
+async def get_injection_content(conversation_id: int, body: InjectRequest):
+    """Fetch formatted injection content from a source conversation.
+
+    Returns the formatted injection text that the frontend will prepend
+    to the user's next message. Does NOT modify any conversations.
+    """
+    from ..services.workspace_database import get_conversation, get_messages_paginated
+
+    source = get_conversation(body.source_conversation_id)
+    if not source:
+        raise HTTPException(status_code=404, detail="Source conversation not found")
+
+    target = get_conversation(conversation_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="Target conversation not found")
+
+    source_title = source.get("title") or "Untitled"
+
+    result = get_messages_paginated(body.source_conversation_id, limit=500, offset=0)
+    all_messages = result["messages"]
+
+    if body.message_ids == "all":
+        selected = all_messages
+    else:
+        id_set = set(body.message_ids) if isinstance(body.message_ids, list) else set()
+        selected = [m for m in all_messages if m["id"] in id_set]
+
+    if not selected:
+        raise HTTPException(status_code=400, detail="No messages selected for injection")
+
+    formatted_messages = []
+    for m in selected:
+        role_label = "User" if m["role"] == "user" else "Assistant"
+        formatted_messages.append(f"{role_label}: {m['content']}")
+
+    return {
+        "source_title": source_title,
+        "source_conversation_id": body.source_conversation_id,
+        "message_count": len(selected),
+        "formatted_messages": formatted_messages,
+    }
+
+
+# ============================================================================
 # WebSocket Endpoint
 # ============================================================================
 

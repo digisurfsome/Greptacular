@@ -18,7 +18,7 @@ import {
   syncRepository,
   getRepoTree,
 } from '../lib/api'
-import type { LibraryFile, ConnectedRepo, RepoTreeEntry } from '../lib/types'
+// Types (LibraryFile, ConnectedRepo, RepoTreeEntry) are inferred from API return types
 
 // Query keys
 const LIBRARY_KEYS = {

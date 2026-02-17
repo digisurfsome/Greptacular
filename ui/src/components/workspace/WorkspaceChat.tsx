@@ -6,25 +6,51 @@
  * conversation. Merges initial REST-loaded messages with live WebSocket
  * messages using Map-based deduplication. Handles both new conversation
  * creation (conversationId === null) and resuming existing conversations.
+ *
+ * Phase 4 additions: fork/inject/export actions via header dropdown,
+ * injection indicator, draft persistence, smart auto-scroll.
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
-import { Send, Loader2, MessageSquare } from 'lucide-react'
+import {
+  Send,
+  Loader2,
+  MessageSquare,
+  MoreHorizontal,
+  GitFork,
+  ArrowDownToLine,
+  Download,
+  X,
+  Plus,
+  WifiOff,
+} from 'lucide-react'
 import { useWorkspaceChat } from '@/hooks/useWorkspaceChat'
 import { useWorkspaceConversation } from '@/hooks/useWorkspaceConversations'
 import { ChatMessage } from '@/components/ChatMessage'
 import { isSubmitEnter } from '@/lib/keyboard'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getWorkspaceSummary, regenerateWorkspaceSummary } from '@/lib/api'
+import { getWorkspaceSummary, regenerateWorkspaceSummary, exportConversationMarkdown } from '@/lib/api'
 import { WorkspaceChatHeader } from './WorkspaceChatHeader'
 import { EnhancedContextBudgetBar, getContextWarningClass } from './EnhancedContextBudgetBar'
 import { AutoSummaryPin } from './AutoSummaryPin'
-import type { ChatMessage as ChatMessageType } from '@/lib/types'
+import { ChatForkModal } from './ChatForkModal'
+import { InjectFromChatModal } from './InjectFromChatModal'
+import type { ChatMessage as ChatMessageType, WorkspaceMessage, PendingInjection } from '@/lib/types'
+
+const DRAFT_KEY_PREFIX = 'workspace-draft-'
 
 interface WorkspaceChatProps {
   conversationId: number | null
   onConversationCreated: (id: number) => void
+  onNewConversation?: () => void
+  chatInputRef?: React.RefObject<HTMLTextAreaElement | null>
 }
 
 /** Generate a unique ID for local messages. */
@@ -34,8 +60,7 @@ function generateId(): string {
 
 /**
  * Build a dedup key for a message to detect duplicates across REST and
- * WebSocket sources. Falls back to the message ID when content/timestamp
- * pairs are not suitable.
+ * WebSocket sources.
  */
 function dedupKey(msg: ChatMessageType): string {
   return `${msg.role}:${msg.timestamp.getTime()}:${msg.content.slice(0, 80)}`
@@ -45,11 +70,18 @@ function dedupKey(msg: ChatMessageType): string {
 export function WorkspaceChat({
   conversationId,
   onConversationCreated,
+  onNewConversation,
+  chatInputRef: externalInputRef,
 }: WorkspaceChatProps): React.JSX.Element {
   const [inputValue, setInputValue] = useState('')
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const internalInputRef = useRef<HTMLTextAreaElement>(null)
+  const inputRef = externalInputRef ?? internalInputRef
   const lastConversationIdRef = useRef<number | null | undefined>(undefined)
+  const [isUserScrolledUp, setIsUserScrolledUp] = useState(false)
+  const [showForkModal, setShowForkModal] = useState(false)
+  const [showInjectModal, setShowInjectModal] = useState(false)
 
   // Memoize error handler to keep hook reference stable
   const handleError = useCallback((error: string) => {
@@ -65,6 +97,8 @@ export function WorkspaceChat({
     totalTokens,
     contextWindow,
     contextBudget,
+    pendingInjection,
+    setPendingInjection,
     start,
     sendMessage,
     disconnect,
@@ -131,17 +165,53 @@ export function WorkspaceChat({
     }
   }, [conversationId, isLoadingConversation, start, disconnect, clearMessages])
 
-  // Auto-scroll to bottom when new messages arrive
+  // Smart auto-scroll: only scroll if user is near the bottom
+  const handleScroll = useCallback(() => {
+    const container = messagesContainerRef.current
+    if (!container) return
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight
+    setIsUserScrolledUp(distanceFromBottom > 100)
+  }, [])
+
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [liveMessages])
+    if (!isUserScrolledUp) {
+      messagesContainerRef.current?.scrollTo({
+        top: messagesContainerRef.current.scrollHeight,
+        behavior: 'smooth',
+      })
+    }
+  }, [liveMessages.length, isUserScrolledUp])
 
   // Focus input when not loading
   useEffect(() => {
     if (!isLoading) {
       inputRef.current?.focus()
     }
-  }, [isLoading])
+  }, [isLoading, inputRef])
+
+  // Draft persistence: load draft when switching conversations
+  useEffect(() => {
+    if (conversationId !== null) {
+      const draft = localStorage.getItem(`${DRAFT_KEY_PREFIX}${conversationId}`)
+      setInputValue(draft || '')
+    } else {
+      setInputValue('')
+    }
+  }, [conversationId])
+
+  // Draft persistence: save draft on input change (debounced)
+  useEffect(() => {
+    const effectiveId = conversationId ?? activeConversationId
+    if (!effectiveId) return
+    const timer = setTimeout(() => {
+      if (inputValue) {
+        localStorage.setItem(`${DRAFT_KEY_PREFIX}${effectiveId}`, inputValue)
+      } else {
+        localStorage.removeItem(`${DRAFT_KEY_PREFIX}${effectiveId}`)
+      }
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [inputValue, conversationId, activeConversationId])
 
   // Convert REST messages to ChatMessageType format for merging
   const initialMessages: ChatMessageType[] = useMemo(() => {
@@ -170,6 +240,20 @@ export function WorkspaceChat({
     return Array.from(seen.values())
   }, [initialMessages, liveMessages])
 
+  // Build WorkspaceMessage[] for the fork modal from REST conversation detail
+  const forkableMessages: WorkspaceMessage[] = useMemo(() => {
+    if (!conversationDetail?.messages) return []
+    return conversationDetail.messages
+      .filter((m) => m.role === 'user' || m.role === 'assistant')
+      .map((m) => ({
+        id: m.id,
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+        token_estimate: m.token_estimate,
+        timestamp: m.timestamp,
+      }))
+  }, [conversationDetail])
+
   // Send handler
   const handleSend = useCallback(() => {
     const content = inputValue.trim()
@@ -178,7 +262,6 @@ export function WorkspaceChat({
     // If no conversation yet, start a new one with the first message
     if (conversationId === null && activeConversationId === null) {
       start()
-      // Wait briefly for WebSocket to connect, then send
       const waitAndSend = (retries: number) => {
         setTimeout(() => {
           sendMessage(content)
@@ -191,6 +274,11 @@ export function WorkspaceChat({
     }
 
     setInputValue('')
+    // Clear draft after sending
+    const effectiveId = conversationId ?? activeConversationId
+    if (effectiveId) {
+      localStorage.removeItem(`${DRAFT_KEY_PREFIX}${effectiveId}`)
+    }
   }, [inputValue, isLoading, conversationId, activeConversationId, start, sendMessage])
 
   const handleKeyDown = useCallback(
@@ -204,7 +292,6 @@ export function WorkspaceChat({
   )
 
   // Title/category update handlers are no-ops at this level.
-  // The parent page manages mutations via useUpdateWorkspaceConversation.
   const handleUpdateTitle = useCallback(
     () => void 0 as void,
     [],
@@ -215,23 +302,81 @@ export function WorkspaceChat({
     [],
   ) as (category: string) => void
 
+  const effectiveConversationId = conversationId ?? activeConversationId
   const effectiveTitle = conversationDetail?.title ?? null
   const effectiveCategory = conversationDetail?.category ?? 'general'
+  const hasActiveChat = effectiveConversationId !== null
 
   // Empty state when no conversation is selected
   const showEmptyState = conversationId === null && displayMessages.length === 0
 
+  const handleExport = useCallback(() => {
+    if (effectiveConversationId) {
+      exportConversationMarkdown(effectiveConversationId)
+    }
+  }, [effectiveConversationId])
+
+  const handleForkCreated = useCallback((newId: number) => {
+    setShowForkModal(false)
+    onConversationCreated(newId)
+    queryClient.invalidateQueries({ queryKey: ['workspace-conversations'] })
+  }, [onConversationCreated, queryClient])
+
+  const handleInject = useCallback((injection: PendingInjection) => {
+    setPendingInjection(injection)
+    setShowInjectModal(false)
+  }, [setPendingInjection])
+
   return (
     <div className={`flex flex-col h-full bg-background transition-colors duration-500 ${getContextWarningClass(usagePercent)}`}>
-      {/* Header */}
-      <WorkspaceChatHeader
-        conversationId={conversationId ?? activeConversationId}
-        title={effectiveTitle}
-        category={effectiveCategory}
-        connectionStatus={connectionStatus}
-        onUpdateTitle={handleUpdateTitle}
-        onUpdateCategory={handleUpdateCategory}
-      />
+      {/* Header with actions dropdown */}
+      <div className="flex items-center border-b border-border bg-card">
+        <div className="flex-1">
+          <WorkspaceChatHeader
+            conversationId={effectiveConversationId}
+            title={effectiveTitle}
+            category={effectiveCategory}
+            connectionStatus={connectionStatus}
+            onUpdateTitle={handleUpdateTitle}
+            onUpdateCategory={handleUpdateCategory}
+          />
+        </div>
+
+        {/* Actions dropdown */}
+        {hasActiveChat && (
+          <div className="pr-3">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm">
+                  <MoreHorizontal size={16} />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setShowForkModal(true)}>
+                  <GitFork size={14} className="mr-2" />
+                  Fork Chat
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setShowInjectModal(true)}>
+                  <ArrowDownToLine size={14} className="mr-2" />
+                  Inject from Chat
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExport}>
+                  <Download size={14} className="mr-2" />
+                  Export as Markdown
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        )}
+      </div>
+
+      {/* Disconnection banner */}
+      {connectionStatus === 'disconnected' && hasActiveChat && (
+        <div className="bg-destructive/10 border-b border-destructive/20 px-4 py-2 text-sm text-destructive flex items-center gap-2">
+          <WifiOff size={14} />
+          Connection lost. Reconnecting...
+        </div>
+      )}
 
       {/* Context budget bar */}
       {(totalTokens > 0 || contextBudget.messageTokens > 0) && (
@@ -254,17 +399,27 @@ export function WorkspaceChat({
       />
 
       {/* Messages area */}
-      <div className="flex-1 overflow-y-auto">
+      <div
+        ref={messagesContainerRef}
+        className="flex-1 overflow-y-auto"
+        onScroll={handleScroll}
+      >
         {showEmptyState ? (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
-            <MessageSquare size={40} strokeWidth={1.5} />
+            <MessageSquare size={48} className="text-muted-foreground/30" />
             <div className="text-center">
-              <p className="text-base font-medium text-foreground">
-                IdeaForge Workspace
+              <h2 className="text-lg font-semibold text-foreground mb-2">
+                No conversations yet
+              </h2>
+              <p className="text-sm mb-6 max-w-sm">
+                Start your first conversation to brainstorm ideas, explore concepts, or get help with your projects.
               </p>
-              <p className="text-sm mt-1">
-                Start a new chat or select a conversation
-              </p>
+              {onNewConversation && (
+                <Button onClick={onNewConversation}>
+                  <Plus size={16} className="mr-2" />
+                  Start a Conversation
+                </Button>
+              )}
             </div>
           </div>
         ) : isLoadingConversation ? (
@@ -297,11 +452,27 @@ export function WorkspaceChat({
         </div>
       )}
 
+      {/* Injection indicator */}
+      {pendingInjection && (
+        <div className="flex items-center gap-2 px-4 py-2 bg-muted border-t border-border text-sm text-muted-foreground">
+          <ArrowDownToLine size={14} />
+          <span>
+            Injecting {pendingInjection.messages.length} message{pendingInjection.messages.length !== 1 ? 's' : ''} from &quot;{pendingInjection.sourceTitle}&quot;
+          </span>
+          <button
+            onClick={() => setPendingInjection(null)}
+            className="ml-auto text-muted-foreground hover:text-foreground"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
       {/* Input area */}
       <div className="border-t border-border p-4 bg-card">
         <div className="flex gap-2">
           <textarea
-            ref={inputRef}
+            ref={inputRef as React.RefObject<HTMLTextAreaElement>}
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -326,6 +497,28 @@ export function WorkspaceChat({
           Press Enter to send, Shift+Enter for new line
         </p>
       </div>
+
+      {/* Fork modal */}
+      {showForkModal && effectiveConversationId && (
+        <ChatForkModal
+          isOpen={showForkModal}
+          onClose={() => setShowForkModal(false)}
+          conversationId={effectiveConversationId}
+          conversationTitle={effectiveTitle || 'Untitled'}
+          messages={forkableMessages}
+          onForkCreated={handleForkCreated}
+        />
+      )}
+
+      {/* Inject modal */}
+      {showInjectModal && effectiveConversationId && (
+        <InjectFromChatModal
+          isOpen={showInjectModal}
+          onClose={() => setShowInjectModal(false)}
+          currentConversationId={effectiveConversationId}
+          onInject={handleInject}
+        />
+      )}
     </div>
   )
 }

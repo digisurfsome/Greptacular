@@ -433,7 +433,36 @@ class WorkspaceChatSession:
             yield {"type": "response_done"}
         except Exception as e:
             logger.exception("Error during workspace Claude query")
+            error_str = str(e).lower()
             yield {"type": "error", "content": f"Error: {str(e)}"}
+
+            # Auto-detect rate limit errors and log them for calibration
+            rate_limit_patterns = [
+                "rate limit", "rate_limit", "ratelimit",
+                "usage limit", "usage_limit",
+                "too many requests", "429",
+                "capacity", "overloaded",
+                "please wait", "try again later",
+                "resume at", "resume usage",
+            ]
+            if any(p in error_str for p in rate_limit_patterns):
+                try:
+                    from . import workspace_database as db
+                    usage = db.get_usage_by_period("daily")
+                    db.log_rate_limit_event(
+                        event_type="daily",
+                        tokens_at_hit=usage["total_tokens"],
+                        message_count_at_hit=usage["message_count"],
+                        notes=f"Auto-detected: {str(e)[:200]}",
+                    )
+                    logger.info("Auto-logged rate limit event from error: %s", str(e)[:100])
+                    yield {
+                        "type": "rate_limit_logged",
+                        "event_type": "daily",
+                        "tokens_at_hit": usage["total_tokens"],
+                    }
+                except Exception as log_err:
+                    logger.warning("Failed to auto-log rate limit: %s", log_err)
 
     async def _query_claude(
         self, message: str, attachments: list[ImageAttachment] | None = None

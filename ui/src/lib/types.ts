@@ -678,11 +678,18 @@ export interface WorkspaceChatTokenUpdateMessage {
   message_count: number
 }
 
+export interface WorkspaceChatRateLimitLoggedMessage {
+  type: 'rate_limit_logged'
+  event_type: string
+  tokens_at_hit: number
+}
+
 export type WorkspaceChatServerMessage =
   | AssistantChatTextMessage
   | AssistantChatToolCallMessage
   | WorkspaceChatTokenUsageMessage
   | WorkspaceChatTokenUpdateMessage
+  | WorkspaceChatRateLimitLoggedMessage
   | AssistantChatResponseDoneMessage
   | AssistantChatErrorMessage
   | AssistantChatConversationCreatedMessage

@@ -252,19 +252,53 @@ export function useWorkspaceChat({
             break;
           }
 
+          case "rate_limit_logged": {
+            // Backend auto-detected a rate limit and logged it
+            const rlData = data as { event_type: string; tokens_at_hit: number };
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: generateId(),
+                role: "system",
+                content: `Rate limit detected and logged for calibration (${rlData.event_type}, ${rlData.tokens_at_hit.toLocaleString()} tokens). Meters will update automatically.`,
+                timestamp: new Date(),
+              },
+            ]);
+            break;
+          }
+
           case "error": {
             setIsLoading(false);
             onError?.(data.content);
+
+            // Check if this is a rate limit error -- auto-log via API as fallback
+            const errorContent = (data.content || "").toLowerCase();
+            const rateLimitPatterns = [
+              "rate limit", "rate_limit", "ratelimit",
+              "usage limit", "too many requests", "429",
+              "please wait", "try again", "resume at",
+              "capacity", "overloaded",
+            ];
+            const isRateLimit = rateLimitPatterns.some((p) => errorContent.includes(p));
 
             setMessages((prev) => [
               ...prev,
               {
                 id: generateId(),
                 role: "system",
-                content: `Error: ${data.content}`,
+                content: isRateLimit
+                  ? `Rate limit hit! ${data.content}\n\nThis has been auto-logged to calibrate your usage meters.`
+                  : `Error: ${data.content}`,
                 timestamp: new Date(),
               },
             ]);
+
+            // Frontend fallback: if backend didn't catch it, log via REST
+            if (isRateLimit) {
+              import("@/lib/api").then(({ logRateLimit: logRL }) => {
+                logRL("daily", `Frontend auto-detected: ${data.content?.slice(0, 200)}`).catch(() => {});
+              });
+            }
             break;
           }
 

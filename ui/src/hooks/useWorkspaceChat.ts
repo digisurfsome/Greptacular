@@ -79,6 +79,14 @@ export function useWorkspaceChat({
   const reconnectTimeoutRef = useRef<number | null>(null);
   const checkAndSendTimeoutRef = useRef<number | null>(null);
 
+  // Store the last "start" params so we can re-send on reconnect.
+  // Without this, auto-reconnect creates a bare WebSocket with no server session.
+  const lastStartParamsRef = useRef<{
+    conversationId?: number;
+    workingDirectory?: string;
+    contextMode?: string;
+  } | null>(null);
+
   // Clean up all timers and the WebSocket on unmount
   useEffect(() => {
     return () => {
@@ -119,6 +127,7 @@ export function useWorkspaceChat({
     ws.onopen = () => {
       setConnectionStatus("connected");
       setLastError(null);
+      const wasReconnect = reconnectAttempts.current > 0;
       reconnectAttempts.current = 0;
 
       // Start ping interval to keep the connection alive
@@ -127,6 +136,27 @@ export function useWorkspaceChat({
           ws.send(JSON.stringify({ type: "ping" }));
         }
       }, 30000);
+
+      // On reconnect, automatically re-send the "start" message so the
+      // server creates a new session for this WebSocket connection.
+      // Without this, the server has no session and returns
+      // "No active session. Send 'start' first." on every message.
+      if (wasReconnect && lastStartParamsRef.current) {
+        const params = lastStartParamsRef.current;
+        const payload: Record<string, unknown> = { type: "start" };
+        if (params.conversationId) {
+          payload.conversation_id = params.conversationId;
+        }
+        if (params.workingDirectory) {
+          payload.working_directory = params.workingDirectory;
+        }
+        payload.context_mode = params.contextMode || "1m";
+
+        if (import.meta.env.DEV) {
+          console.debug('[useWorkspaceChat] Re-sending start on reconnect:', payload);
+        }
+        ws.send(JSON.stringify(payload));
+      }
     };
 
     ws.onclose = (event) => {
@@ -335,6 +365,13 @@ export function useWorkspaceChat({
         checkAndSendTimeoutRef.current = null;
       }
 
+      // Save start params so auto-reconnect can re-send the "start" message
+      lastStartParamsRef.current = {
+        conversationId: existingConversationId ?? undefined,
+        workingDirectory,
+        contextMode,
+      };
+
       connect();
 
       // Wait for connection then send start message, with timeout protection
@@ -451,6 +488,7 @@ export function useWorkspaceChat({
 
   const disconnect = useCallback(() => {
     reconnectAttempts.current = maxReconnectAttempts; // Prevent auto-reconnection
+    lastStartParamsRef.current = null; // Clear so reconnect doesn't re-send stale start
     if (pingIntervalRef.current) {
       clearInterval(pingIntervalRef.current);
       pingIntervalRef.current = null;

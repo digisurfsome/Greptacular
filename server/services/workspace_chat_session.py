@@ -73,16 +73,18 @@ MAX_HISTORY_MESSAGES = 100
 CONTEXT_WINDOW_TOKENS = 1_000_000
 
 
-def get_workspace_system_prompt(working_directory: str) -> str:
+def get_workspace_system_prompt(working_directory: str, model: str = "") -> str:
     """Generate the system prompt for the workspace agent.
 
     Args:
         working_directory: Absolute path to the agent's working directory.
+        model: The model ID being used (e.g. "claude-opus-4-6").
 
     Returns:
         A system prompt string describing the workspace agent's capabilities and guidelines.
     """
     return f"""You are an expert coding assistant in the IdeaForge Workspace.
+You are powered by {model or 'Claude'} with a 1,000,000 token context window.
 
 You have full access to the filesystem and can read, write, edit files, and run bash commands.
 Your current working directory is: {working_directory}
@@ -214,7 +216,7 @@ class WorkspaceChatSession:
         workspace_scratch = Path.home() / ".autoforge" / ".workspace_scratch"
         workspace_scratch.mkdir(parents=True, exist_ok=True)
         claude_md_path = workspace_scratch / "CLAUDE.md"
-        system_prompt = get_workspace_system_prompt(self.working_directory)
+        system_prompt = get_workspace_system_prompt(self.working_directory, model=model)
         with open(claude_md_path, "w", encoding="utf-8") as f:
             f.write(system_prompt)
         logger.info(f"Wrote workspace system prompt to {claude_md_path}")

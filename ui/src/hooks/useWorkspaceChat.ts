@@ -25,6 +25,11 @@ interface UseWorkspaceChatReturn {
   conversationId: number | null;
   totalTokens: number;
   contextWindow: number;
+  contextBudget: {
+    messageTokens: number;
+    summaryTokens: number;
+    messageCount: number;
+  };
   start: (conversationId?: number | null, workingDirectory?: string) => void;
   sendMessage: (content: string) => void;
   disconnect: () => void;
@@ -51,6 +56,15 @@ export function useWorkspaceChat({
   const [conversationId, setConversationId] = useState<number | null>(null);
   const [totalTokens, setTotalTokens] = useState(0);
   const [contextWindow, setContextWindow] = useState(1_000_000);
+  const [contextBudget, setContextBudget] = useState<{
+    messageTokens: number;
+    summaryTokens: number;
+    messageCount: number;
+  }>({
+    messageTokens: 0,
+    summaryTokens: 0,
+    messageCount: 0,
+  });
 
   const wsRef = useRef<WebSocket | null>(null);
   const currentAssistantMessageRef = useRef<string | null>(null);
@@ -191,6 +205,20 @@ export function useWorkspaceChat({
             const tokenData = data as { total_tokens: number; context_window: number };
             setTotalTokens(tokenData.total_tokens);
             setContextWindow(tokenData.context_window);
+            setContextBudget(prev => ({
+              ...prev,
+              messageTokens: tokenData.total_tokens,
+            }));
+            break;
+          }
+
+          case "token_update": {
+            const updateData = data as { token_count: number; message_count: number };
+            setContextBudget(prev => ({
+              ...prev,
+              messageTokens: updateData.token_count ?? prev.messageTokens,
+              messageCount: updateData.message_count ?? prev.messageCount,
+            }));
             break;
           }
 
@@ -338,6 +366,7 @@ export function useWorkspaceChat({
   const clearMessages = useCallback(() => {
     setMessages([]);
     setTotalTokens(0);
+    setContextBudget({ messageTokens: 0, summaryTokens: 0, messageCount: 0 });
   }, []);
 
   return {
@@ -347,6 +376,7 @@ export function useWorkspaceChat({
     conversationId,
     totalTokens,
     contextWindow,
+    contextBudget,
     start,
     sendMessage,
     disconnect,

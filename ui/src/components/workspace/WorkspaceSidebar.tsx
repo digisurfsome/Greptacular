@@ -1,27 +1,38 @@
 /**
  * Workspace Sidebar
  *
- * Collapsible sidebar that lists workspace conversations grouped by date
- * (Today, Yesterday, This Week, Older). Provides search filtering, a
- * new-chat button, and per-item delete with confirmation. The active
- * conversation is visually highlighted.
+ * Collapsible sidebar that lists workspace conversations grouped by
+ * category with pinned items at the top. Provides server-side search,
+ * a new-chat button, per-item pin/delete, and a category manager modal.
  */
 
 import { useState, useCallback, useMemo } from 'react'
 import {
   Plus,
-  Search,
   Trash2,
   PanelLeftClose,
   PanelLeftOpen,
   MessageSquare,
+  Pin,
+  Star,
+  Settings,
 } from 'lucide-react'
 import {
   useWorkspaceConversations,
   useDeleteWorkspaceConversation,
+  useTogglePin,
 } from '@/hooks/useWorkspaceConversations'
+import {
+  useWorkspaceCategories,
+  useCreateCategory,
+  useUpdateCategory,
+  useDeleteCategory,
+} from '@/hooks/useWorkspaceCategories'
+import { reorderWorkspaceCategories } from '@/lib/api'
+import { ConversationSearch } from './ConversationSearch'
+import { CategoryManager } from './CategoryManager'
 import { Button } from '@/components/ui/button'
-import type { WorkspaceConversation } from '@/lib/types'
+import type { WorkspaceConversation, WorkspaceCategory } from '@/lib/types'
 
 interface WorkspaceSidebarProps {
   activeConversationId: number | null
@@ -32,41 +43,8 @@ interface WorkspaceSidebarProps {
 }
 
 // ---------------------------------------------------------------------------
-// Category badge colors
+// Helpers
 // ---------------------------------------------------------------------------
-
-const categoryColors: Record<string, string> = {
-  general: 'bg-secondary text-secondary-foreground',
-  debugging: 'bg-destructive/10 text-destructive',
-  refactoring: 'bg-primary/10 text-primary',
-  feature: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300',
-  exploration: 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300',
-}
-
-// ---------------------------------------------------------------------------
-// Date grouping helpers
-// ---------------------------------------------------------------------------
-
-type DateGroup = 'Today' | 'Yesterday' | 'This Week' | 'Older'
-
-/** Classify a date string into a display group relative to the current day. */
-function getDateGroup(dateString: string | null): DateGroup {
-  if (!dateString) return 'Older'
-
-  const date = new Date(dateString)
-  const now = new Date()
-
-  // Zero-out time portions for clean day comparison
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const target = new Date(date.getFullYear(), date.getMonth(), date.getDate())
-  const diffMs = today.getTime() - target.getTime()
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
-
-  if (diffDays === 0) return 'Today'
-  if (diffDays === 1) return 'Yesterday'
-  if (diffDays < 7) return 'This Week'
-  return 'Older'
-}
 
 /** Format a date string as a human-friendly relative time. */
 function relativeTime(dateString: string | null): string {
@@ -85,14 +63,11 @@ function relativeTime(dateString: string | null): string {
   return `${diffDays}d ago`
 }
 
-// Ordered groups for rendering
-const GROUP_ORDER: DateGroup[] = ['Today', 'Yesterday', 'This Week', 'Older']
-
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
-/** Conversation list sidebar with search, new chat, and date-grouped items. */
+/** Conversation list sidebar with search, categories, pinning, and category management. */
 export function WorkspaceSidebar({
   activeConversationId,
   collapsed,
@@ -102,9 +77,16 @@ export function WorkspaceSidebar({
 }: WorkspaceSidebarProps): React.JSX.Element {
   const [search, setSearch] = useState('')
   const [hoveredId, setHoveredId] = useState<number | null>(null)
+  const [showCategoryManager, setShowCategoryManager] = useState(false)
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({})
 
   const { data: conversations, isLoading } = useWorkspaceConversations()
   const deleteMutation = useDeleteWorkspaceConversation()
+  const { data: categories = [] } = useWorkspaceCategories()
+  const createCategoryMut = useCreateCategory()
+  const updateCategoryMut = useUpdateCategory()
+  const deleteCategoryMut = useDeleteCategory()
+  const togglePinMut = useTogglePin()
 
   /** Filter conversations by search term (case-insensitive substring). */
   const filtered = useMemo(() => {
@@ -117,22 +99,49 @@ export function WorkspaceSidebar({
     )
   }, [conversations, search])
 
-  /** Group filtered conversations by date. */
+  /** Group filtered conversations by category with pinned at top. */
   const grouped = useMemo(() => {
-    const groups: Record<DateGroup, WorkspaceConversation[]> = {
-      Today: [],
-      Yesterday: [],
-      'This Week': [],
-      Older: [],
+    const groups: Record<string, WorkspaceConversation[]> = {}
+
+    // Pinned conversations go in a special group
+    const pinned = filtered.filter(c => c.pinned)
+    if (pinned.length > 0) {
+      groups['__pinned__'] = pinned
     }
 
-    for (const conv of filtered) {
-      const group = getDateGroup(conv.updated_at)
-      groups[group].push(conv)
+    // Group remaining by category
+    const unpinned = filtered.filter(c => !c.pinned)
+    for (const conv of unpinned) {
+      const cat = conv.category || 'Uncategorized'
+      if (!groups[cat]) groups[cat] = []
+      groups[cat].push(conv)
     }
 
     return groups
   }, [filtered])
+
+  const categoryOrder = useMemo(() => {
+    const order: string[] = []
+    if (grouped['__pinned__']) order.push('__pinned__')
+    for (const cat of categories) {
+      if (grouped[cat.name]) order.push(cat.name)
+    }
+    // Add any categories that appear in conversations but not in the categories list
+    for (const key of Object.keys(grouped)) {
+      if (key !== '__pinned__' && !order.includes(key)) {
+        order.push(key)
+      }
+    }
+    return order
+  }, [grouped, categories])
+
+  const toggleCollapsed = useCallback((key: string) => {
+    setCollapsedGroups(prev => ({ ...prev, [key]: !prev[key] }))
+  }, [])
+
+  const handleTogglePin = useCallback((convId: number, pinned: boolean) => {
+    togglePinMut.mutate({ conversationId: convId, pinned })
+  }, [togglePinMut])
 
   const handleDelete = useCallback(
     (e: React.MouseEvent, id: number) => {
@@ -142,13 +151,6 @@ export function WorkspaceSidebar({
       }
     },
     [deleteMutation],
-  )
-
-  const handleSearchChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      setSearch(e.target.value)
-    },
-    [],
   )
 
   const handleMouseEnter = useCallback((id: number) => {
@@ -197,20 +199,10 @@ export function WorkspaceSidebar({
 
       {/* Search */}
       <div className="px-3 pb-2">
-        <div className="relative">
-          <Search
-            size={14}
-            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
-          />
-          <input
-            type="text"
-            value={search}
-            onChange={handleSearchChange}
-            placeholder="Search conversations..."
-            className="w-full pl-8 pr-3 py-1.5 text-xs border border-border rounded bg-input text-foreground placeholder:text-muted-foreground outline-none ring-ring focus:ring-1"
-            aria-label="Search conversations"
-          />
-        </div>
+        <ConversationSearch
+          onSelectConversation={(id) => onSelectConversation(id)}
+          onFilterChange={(filter) => setSearch(filter)}
+        />
       </div>
 
       {/* Conversation list */}
@@ -225,75 +217,82 @@ export function WorkspaceSidebar({
             <span>{search ? 'No matching conversations' : 'No conversations yet'}</span>
           </div>
         ) : (
-          GROUP_ORDER.map((group) => {
-            const items = grouped[group]
-            if (items.length === 0) return null
+          categoryOrder.map(groupKey => {
+            const isPin = groupKey === '__pinned__'
+            const label = isPin ? 'Pinned' : groupKey
+            const category = categories.find((c: WorkspaceCategory) => c.name === groupKey)
+            const items = grouped[groupKey]
 
             return (
-              <div key={group} className="mb-2">
-                {/* Group heading */}
-                <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  {group}
-                </div>
+              <div key={groupKey} className="mb-2">
+                <button
+                  onClick={() => toggleCollapsed(groupKey)}
+                  className="flex items-center gap-2 w-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground"
+                >
+                  {category?.color && (
+                    <span
+                      className="w-2 h-2 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: category.color }}
+                    />
+                  )}
+                  {isPin && <Star size={10} className="text-primary" />}
+                  <span className="truncate">{label}</span>
+                  <span className="ml-auto text-muted-foreground/50">{items.length}</span>
+                </button>
 
-                {/* Conversation items */}
-                {items.map((conv) => {
+                {!collapsedGroups[groupKey] && items.map((conv) => {
                   const isActive = conv.id === activeConversationId
                   const isHovered = conv.id === hoveredId
-                  const badgeClass =
-                    categoryColors[conv.category] ?? categoryColors.general
 
                   return (
-                    <button
+                    <div
                       key={conv.id}
-                      type="button"
-                      onClick={() => onSelectConversation(conv.id)}
+                      className="relative"
                       onMouseEnter={() => handleMouseEnter(conv.id)}
                       onMouseLeave={handleMouseLeave}
-                      className={`w-full flex items-start gap-2 px-2 py-2 rounded-md text-left transition-colors ${
-                        isActive
-                          ? 'bg-accent text-accent-foreground'
-                          : 'hover:bg-muted text-foreground'
-                      }`}
-                      aria-current={isActive ? 'page' : undefined}
                     >
-                      {/* Content */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <span
-                            className={`text-xs font-medium truncate ${
-                              conv.title ? '' : 'italic text-muted-foreground'
-                            }`}
-                          >
+                      <button
+                        type="button"
+                        onClick={() => onSelectConversation(conv.id)}
+                        className={`w-full flex items-center gap-2 px-2 py-2 rounded-md text-left transition-colors ${
+                          isActive
+                            ? 'bg-accent text-accent-foreground'
+                            : 'hover:bg-muted text-foreground'
+                        }`}
+                        aria-current={isActive ? 'page' : undefined}
+                      >
+                        {conv.pinned && <Star size={10} className="text-primary flex-shrink-0" />}
+                        <div className="flex-1 min-w-0">
+                          <span className={`text-xs font-medium truncate block ${conv.title ? '' : 'italic text-muted-foreground'}`}>
                             {conv.title ?? 'Untitled'}
-                          </span>
-                        </div>
-
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <span
-                            className={`inline-block text-[10px] px-1.5 py-0.5 rounded-full font-medium ${badgeClass}`}
-                          >
-                            {conv.category}
                           </span>
                           <span className="text-[10px] text-muted-foreground">
                             {relativeTime(conv.updated_at)}
                           </span>
                         </div>
-                      </div>
 
-                      {/* Delete button (visible on hover) */}
-                      {isHovered && (
-                        <button
-                          type="button"
-                          onClick={(e) => handleDelete(e, conv.id)}
-                          className="flex-shrink-0 p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
-                          title="Delete conversation"
-                          aria-label={`Delete conversation: ${conv.title ?? 'Untitled'}`}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      )}
-                    </button>
+                        {isHovered && (
+                          <div className="flex items-center gap-0.5 flex-shrink-0">
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); handleTogglePin(conv.id, !conv.pinned) }}
+                              className="p-1 rounded hover:bg-accent text-muted-foreground"
+                              title={conv.pinned ? 'Unpin' : 'Pin'}
+                            >
+                              <Pin size={12} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => handleDelete(e, conv.id)}
+                              className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                              title="Delete"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        )}
+                      </button>
+                    </div>
                   )
                 })}
               </div>
@@ -301,6 +300,27 @@ export function WorkspaceSidebar({
           })
         )}
       </div>
+
+      {/* Category management */}
+      <button
+        onClick={() => setShowCategoryManager(true)}
+        className="flex items-center gap-2 w-full px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors border-t border-border"
+      >
+        <Settings size={14} />
+        Manage Categories
+      </button>
+
+      {showCategoryManager && (
+        <CategoryManager
+          open={showCategoryManager}
+          onClose={() => setShowCategoryManager(false)}
+          categories={categories}
+          onCreateCategory={async (name, color) => { await createCategoryMut.mutateAsync({ name, color }) }}
+          onUpdateCategory={async (id, name, color) => { await updateCategoryMut.mutateAsync({ id, name, color }) }}
+          onDeleteCategory={async (id) => { await deleteCategoryMut.mutateAsync(id) }}
+          onReorderCategories={async (orderedIds) => { await reorderWorkspaceCategories(orderedIds) }}
+        />
+      )}
     </div>
   )
 }

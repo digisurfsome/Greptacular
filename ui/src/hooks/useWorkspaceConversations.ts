@@ -75,3 +75,27 @@ export function useDeleteWorkspaceConversation() {
     },
   })
 }
+
+/** Hook to toggle a workspace conversation's pinned state. */
+export function useTogglePin() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ conversationId, pinned }: { conversationId: number; pinned: boolean }) =>
+      updateWorkspaceConversation(conversationId, { pinned }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [...CONVERSATIONS_KEY] })
+    },
+  })
+}
+
+/** Hook to change a workspace conversation's category. */
+export function useChangeCategory() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ conversationId, category }: { conversationId: number; category: string }) =>
+      updateWorkspaceConversation(conversationId, { category }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [...CONVERSATIONS_KEY] })
+    },
+  })
+}

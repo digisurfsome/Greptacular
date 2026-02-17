@@ -30,6 +30,9 @@ import type {
   AssistantConversationDetail,
   WorkspaceConversation,
   WorkspaceConversationDetail,
+  WorkspaceCategory,
+  WorkspaceSummary,
+  WorkspaceSearchResult,
   Settings,
   SettingsUpdate,
   ModelsResponse,
@@ -672,7 +675,7 @@ export async function createWorkspaceConversation(
 
 export async function updateWorkspaceConversation(
   conversationId: number,
-  update: { title?: string; category?: string }
+  update: { title?: string; category?: string; pinned?: boolean }
 ): Promise<WorkspaceConversation> {
   return fetchJSON(`/workspace/conversations/${conversationId}`, {
     method: 'PATCH',
@@ -692,4 +695,80 @@ export async function getWorkspaceTokenUsage(
   conversationId: number
 ): Promise<{ total_tokens: number; context_window: number; usage_percent: number }> {
   return fetchJSON(`/workspace/conversations/${conversationId}/tokens`)
+}
+
+// ============================================================================
+// Workspace Categories API
+// ============================================================================
+
+export async function listWorkspaceCategories(): Promise<WorkspaceCategory[]> {
+  return fetchJSON('/workspace/categories')
+}
+
+export async function createWorkspaceCategory(
+  name: string,
+  color: string
+): Promise<WorkspaceCategory> {
+  return fetchJSON('/workspace/categories', {
+    method: 'POST',
+    body: JSON.stringify({ name, color }),
+  })
+}
+
+export async function updateWorkspaceCategory(
+  id: number,
+  name: string,
+  color: string
+): Promise<WorkspaceCategory> {
+  return fetchJSON(`/workspace/categories/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name, color }),
+  })
+}
+
+export async function deleteWorkspaceCategory(
+  id: number
+): Promise<void> {
+  await fetchJSON(`/workspace/categories/${id}`, {
+    method: 'DELETE',
+  })
+}
+
+export async function reorderWorkspaceCategories(
+  orderedIds: number[]
+): Promise<WorkspaceCategory[]> {
+  return fetchJSON('/workspace/categories/reorder', {
+    method: 'POST',
+    body: JSON.stringify({ ordered_ids: orderedIds }),
+  })
+}
+
+// ============================================================================
+// Workspace Summary API
+// ============================================================================
+
+export async function getWorkspaceSummary(
+  conversationId: number
+): Promise<WorkspaceSummary | null> {
+  return fetchJSON(`/workspace/conversations/${conversationId}/summary`)
+}
+
+export async function regenerateWorkspaceSummary(
+  conversationId: number
+): Promise<WorkspaceSummary> {
+  return fetchJSON(`/workspace/conversations/${conversationId}/summarize`, {
+    method: 'POST',
+  })
+}
+
+// ============================================================================
+// Workspace Search API
+// ============================================================================
+
+export async function searchWorkspaceConversations(
+  query: string,
+  limit: number = 20
+): Promise<WorkspaceSearchResult[]> {
+  const params = new URLSearchParams({ q: query, limit: String(limit) })
+  return fetchJSON(`/workspace/search?${params.toString()}`)
 }

@@ -38,7 +38,6 @@ from .workspace_database import (
     create_conversation,
     estimate_tokens,
     get_conversation_token_total,
-    get_messages,
 )
 
 # Load environment variables from .env file if present
@@ -309,8 +308,8 @@ class WorkspaceChatSession:
     async def send_message(self, user_message: str) -> AsyncGenerator[dict, None]:
         """Send a user message and stream Claude's response.
 
-        For resumed conversations, the first call automatically loads up to
-        ``MAX_HISTORY_MESSAGES`` from the database with no per-message truncation.
+        For resumed conversations, the first call automatically loads messages
+        from the database using a dynamic token budget strategy with optional summary context.
 
         Args:
             user_message: The user's message text.
@@ -336,28 +335,52 @@ class WorkspaceChatSession:
         add_message(self.conversation_id, "user", user_message, user_tokens)
 
         # For resumed conversations, include full history context in the first message.
-        # Unlike the assistant (which caps at 35 messages and truncates to 500 chars),
-        # the workspace loads up to MAX_HISTORY_MESSAGES with NO per-message truncation.
+        # Uses dynamic token-budget loading: summary first, then recent messages
+        # up to the remaining budget (no fixed message cap or per-message truncation).
         message_to_send = user_message
         if not self._history_loaded:
             self._history_loaded = True
-            history = get_messages(self.conversation_id)
-            # Exclude the message we just added (it is the last one)
-            history = history[:-1] if history else []
-            # Cap to the last MAX_HISTORY_MESSAGES -- NO per-message truncation
-            if len(history) > MAX_HISTORY_MESSAGES:
-                history = history[-MAX_HISTORY_MESSAGES:]
-            if history:
-                history_lines = ["[Previous conversation history for context:]"]
-                for msg in history:
-                    role = "User" if msg["role"] == "user" else "Assistant"
-                    content = msg["content"]
-                    # NO truncation -- send full message content
-                    history_lines.append(f"{role}: {content}")
+            from . import workspace_database as db
+
+            # Load the latest summary first
+            latest_summary = db.get_latest_summary(self.conversation_id)
+            summary_context = ""
+            summary_tokens = 0
+            if latest_summary:
+                summary_context = latest_summary["summary"]
+                summary_tokens = latest_summary.get("token_estimate", len(summary_context) // 4)
+
+            # Calculate remaining budget for messages (reserve space for summary)
+            MESSAGE_TOKEN_BUDGET = 400_000
+            remaining_budget = MESSAGE_TOKEN_BUDGET - summary_tokens
+
+            # Load messages dynamically up to the budget
+            history_messages, loaded_tokens = db.get_messages_for_context(
+                self.conversation_id,
+                token_budget=remaining_budget,
+            )
+            # Exclude the current message we just added (it's the last one chronologically)
+            if history_messages and history_messages[-1]["content"] == user_message:
+                history_messages = history_messages[:-1]
+
+            if summary_context or history_messages:
+                history_lines: list[str] = []
+                if summary_context:
+                    history_lines.append("[Conversation summary:]")
+                    history_lines.append(summary_context)
+                    history_lines.append("")
+                if history_messages:
+                    history_lines.append("[Recent conversation history:]")
+                    for msg in history_messages:
+                        role = "User" if msg["role"] == "user" else "Assistant"
+                        history_lines.append(f"{role}: {msg['content']}")
                 history_lines.append("[End of history. Continue the conversation:]")
                 history_lines.append(f"User: {user_message}")
                 message_to_send = "\n".join(history_lines)
-                logger.info(f"Loaded {len(history)} messages from workspace conversation history")
+                logger.info(
+                    f"Loaded context: summary={bool(summary_context)}, "
+                    f"messages={len(history_messages)}, tokens={loaded_tokens + summary_tokens}"
+                )
 
         try:
             async for chunk in self._query_claude(message_to_send):
@@ -418,6 +441,21 @@ class WorkspaceChatSession:
         if full_response and self.conversation_id is not None:
             response_tokens = estimate_tokens(full_response)
             add_message(self.conversation_id, "assistant", full_response, response_tokens)
+
+            # Trigger auto-summary check in background
+            try:
+                from . import workspace_database as db
+                from .workspace_summary import trigger_summary_generation
+                messages_list = db.get_messages(self.conversation_id)
+                message_count = len(messages_list)
+                await trigger_summary_generation(
+                    conversation_id=self.conversation_id,
+                    get_messages_fn=db.get_messages,
+                    save_summary_fn=db.save_summary,
+                    message_count=message_count,
+                )
+            except Exception as e:
+                logger.warning(f"Failed to trigger summary generation: {e}")
 
             # Yield token usage update so the client can render the context-window meter
             total = get_conversation_token_total(self.conversation_id)

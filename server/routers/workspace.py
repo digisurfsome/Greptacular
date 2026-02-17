@@ -65,6 +65,7 @@ class ConversationUpdateRequest(BaseModel):
     """Request body for updating a workspace conversation."""
     title: Optional[str] = None
     category: Optional[str] = None
+    pinned: Optional[bool] = None
 
 
 # ============================================================================
@@ -130,6 +131,7 @@ async def update_conversation(conversation_id: int, body: ConversationUpdateRequ
         conversation_id,
         title=body.title,
         category=body.category,
+        pinned=body.pinned,
     )
     if not updated:
         raise HTTPException(status_code=404, detail="Conversation not found")
@@ -169,6 +171,180 @@ async def get_conversation_tokens(conversation_id: int):
         "context_window": CONTEXT_WINDOW_TOKENS,
         "usage_percent": round(total / CONTEXT_WINDOW_TOKENS * 100, 1) if CONTEXT_WINDOW_TOKENS > 0 else 0,
     }
+
+
+# ============================================================================
+# Summary Endpoints
+# ============================================================================
+
+class SummaryResponse(BaseModel):
+    """Response model for a conversation summary."""
+    id: int
+    conversation_id: int
+    summary: str
+    message_count: int
+    token_estimate: int
+    created_at: Optional[str]
+
+
+@router.get("/conversations/{conversation_id}/summary")
+async def get_conversation_summary(conversation_id: int):
+    """Get the latest summary for a conversation."""
+    from ..services import workspace_database as db
+
+    summary = db.get_latest_summary(conversation_id)
+    if not summary:
+        return None
+    return SummaryResponse(**summary)
+
+
+@router.post("/conversations/{conversation_id}/summarize", response_model=SummaryResponse)
+async def force_regenerate_summary(conversation_id: int):
+    """Force regenerate the summary for a conversation."""
+    from ..services import workspace_database as db
+    from ..services.workspace_summary import generate_summary
+
+    # Verify conversation exists
+    conversation = db.get_conversation(conversation_id)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    # Get all messages
+    messages = db.get_messages(conversation_id)
+    if not messages:
+        raise HTTPException(status_code=400, detail="No messages to summarize")
+
+    # Generate summary (awaited since this is a manual trigger)
+    summary_text = await generate_summary(conversation_id, messages, len(messages))
+    if not summary_text:
+        raise HTTPException(status_code=500, detail="Summary generation failed")
+
+    # Save it
+    result = db.save_summary(conversation_id, summary_text, len(messages))
+    return SummaryResponse(**result)
+
+
+# ============================================================================
+# Category Endpoints
+# ============================================================================
+
+class CategoryCreate(BaseModel):
+    """Request body for creating a new workspace category."""
+    name: str
+    color: Optional[str] = None
+
+
+class CategoryUpdate(BaseModel):
+    """Request body for updating a workspace category."""
+    name: Optional[str] = None
+    color: Optional[str] = None
+
+
+class CategoryResponse(BaseModel):
+    """Response model for a workspace category."""
+    id: int
+    name: str
+    color: Optional[str]
+    sort_order: int
+    created_at: Optional[str]
+
+
+class CategoryReorder(BaseModel):
+    """Request body for reordering workspace categories."""
+    ordered_ids: list[int]
+
+
+@router.get("/categories", response_model=list[CategoryResponse])
+async def list_categories():
+    """List all workspace categories ordered by sort_order."""
+    from ..services import workspace_database as db
+
+    categories = db.get_categories()
+    return [CategoryResponse(**c) for c in categories]
+
+
+@router.post("/categories", response_model=CategoryResponse, status_code=201)
+async def create_category(body: CategoryCreate):
+    """Create a new workspace category."""
+    from ..services import workspace_database as db
+
+    if not body.name or not body.name.strip():
+        raise HTTPException(status_code=400, detail="Category name is required")
+    if body.name.strip().lower() == "uncategorized":
+        raise HTTPException(status_code=400, detail="Cannot create a category named 'Uncategorized'")
+    try:
+        category = db.create_category(body.name.strip(), body.color)
+        return CategoryResponse(**category)
+    except Exception as e:
+        if "UNIQUE" in str(e).upper():
+            raise HTTPException(status_code=409, detail="Category name already exists")
+        raise
+
+
+@router.patch("/categories/{category_id}", response_model=CategoryResponse)
+async def update_category_endpoint(category_id: int, body: CategoryUpdate):
+    """Update a category's name or color."""
+    from ..services import workspace_database as db
+
+    if body.name and body.name.strip().lower() == "uncategorized":
+        raise HTTPException(status_code=400, detail="Cannot rename to 'Uncategorized'")
+    result = db.update_category(category_id, name=body.name, color=body.color)
+    if not result:
+        raise HTTPException(status_code=404, detail="Category not found")
+    return CategoryResponse(**result)
+
+
+@router.delete("/categories/{category_id}")
+async def delete_category_endpoint(category_id: int):
+    """Delete a category. Conversations in this category become Uncategorized."""
+    from ..services import workspace_database as db
+
+    success = db.delete_category(category_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Category not found")
+    return {"success": True, "message": "Category deleted"}
+
+
+@router.post("/categories/reorder", response_model=list[CategoryResponse])
+async def reorder_categories_endpoint(body: CategoryReorder):
+    """Reorder categories by providing an ordered list of IDs."""
+    from ..services import workspace_database as db
+
+    categories = db.reorder_categories(body.ordered_ids)
+    return [CategoryResponse(**c) for c in categories]
+
+
+# ============================================================================
+# Search Endpoint
+# ============================================================================
+
+class SearchExcerpt(BaseModel):
+    """A single matching excerpt from a message."""
+    message_id: int
+    role: str
+    excerpt: str
+
+
+class SearchResultItem(BaseModel):
+    """A search result with conversation info and matching excerpts."""
+    conversation_id: int
+    conversation_title: Optional[str]
+    category: str
+    matching_excerpts: list[SearchExcerpt]
+
+
+@router.get("/search", response_model=list[SearchResultItem])
+async def search_conversations_endpoint(q: str = "", limit: int = 20):
+    """Full-text search across workspace conversations and messages."""
+    if not q or len(q.strip()) < 2:
+        raise HTTPException(status_code=400, detail="Query must be at least 2 characters")
+    if limit < 1 or limit > 100:
+        limit = 20
+
+    from ..services import workspace_database as db
+
+    results = db.search_conversations(q.strip(), limit=limit)
+    return [SearchResultItem(**r) for r in results]
 
 
 # ============================================================================

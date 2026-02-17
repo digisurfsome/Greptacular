@@ -15,8 +15,11 @@ import { useWorkspaceConversation } from '@/hooks/useWorkspaceConversations'
 import { ChatMessage } from '@/components/ChatMessage'
 import { isSubmitEnter } from '@/lib/keyboard'
 import { Button } from '@/components/ui/button'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { getWorkspaceSummary, regenerateWorkspaceSummary } from '@/lib/api'
 import { WorkspaceChatHeader } from './WorkspaceChatHeader'
-import { ContextBudgetBar } from './ContextBudgetBar'
+import { EnhancedContextBudgetBar, getContextWarningClass } from './EnhancedContextBudgetBar'
+import { AutoSummaryPin } from './AutoSummaryPin'
 import type { ChatMessage as ChatMessageType } from '@/lib/types'
 
 interface WorkspaceChatProps {
@@ -61,6 +64,7 @@ export function WorkspaceChat({
     conversationId: activeConversationId,
     totalTokens,
     contextWindow,
+    contextBudget,
     start,
     sendMessage,
     disconnect,
@@ -70,6 +74,29 @@ export function WorkspaceChat({
   // REST query for initial messages when resuming a conversation
   const { data: conversationDetail, isLoading: isLoadingConversation } =
     useWorkspaceConversation(conversationId)
+
+  // Summary query and mutation for auto-summary pin
+  const queryClient = useQueryClient()
+
+  const { data: summary } = useQuery({
+    queryKey: ['workspace', 'summary', conversationId ?? activeConversationId],
+    queryFn: () => getWorkspaceSummary((conversationId ?? activeConversationId)!),
+    enabled: (conversationId ?? activeConversationId) !== null,
+  })
+
+  const regenerateMutation = useMutation({
+    mutationFn: () => regenerateWorkspaceSummary((conversationId ?? activeConversationId)!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['workspace', 'summary', conversationId ?? activeConversationId],
+      })
+    },
+  })
+
+  // Context budget usage for warning state
+  const usagePercent = contextBudget.messageTokens > 0
+    ? ((contextBudget.messageTokens + contextBudget.summaryTokens) / 1_000_000) * 100
+    : 0
 
   // Notify parent when a new conversation is created via WebSocket
   const previousActiveIdRef = useRef<number | null>(activeConversationId)
@@ -195,7 +222,7 @@ export function WorkspaceChat({
   const showEmptyState = conversationId === null && displayMessages.length === 0
 
   return (
-    <div className="flex flex-col h-full bg-background">
+    <div className={`flex flex-col h-full bg-background transition-colors duration-500 ${getContextWarningClass(usagePercent)}`}>
       {/* Header */}
       <WorkspaceChatHeader
         conversationId={conversationId ?? activeConversationId}
@@ -207,12 +234,24 @@ export function WorkspaceChat({
       />
 
       {/* Context budget bar */}
-      {totalTokens > 0 && (
-        <ContextBudgetBar
-          totalTokens={totalTokens}
-          contextWindow={contextWindow}
+      {(totalTokens > 0 || contextBudget.messageTokens > 0) && (
+        <EnhancedContextBudgetBar
+          totalBudget={contextWindow}
+          messageTokens={contextBudget.messageTokens || totalTokens}
+          summaryTokens={contextBudget.summaryTokens}
+          messageCount={contextBudget.messageCount}
+          isStreaming={isLoading}
         />
       )}
+
+      {/* Auto-summary pin */}
+      <AutoSummaryPin
+        summary={summary?.summary ?? null}
+        updatedAt={summary?.created_at ?? null}
+        messagesCovered={summary?.message_count ?? null}
+        onRegenerate={() => regenerateMutation.mutate()}
+        isRegenerating={regenerateMutation.isPending}
+      />
 
       {/* Messages area */}
       <div className="flex-1 overflow-y-auto">

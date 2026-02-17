@@ -631,6 +631,104 @@ export type AssistantChatServerMessage =
   | AssistantChatPongMessage
 
 // ============================================================================
+// Workspace Chat Types
+// ============================================================================
+
+export interface WorkspaceConversation {
+  id: number
+  title: string | null
+  category: string
+  working_directory: string | null
+  pinned: boolean
+  created_at: string | null
+  updated_at: string | null
+  message_count: number
+}
+
+export interface WorkspaceMessage {
+  id: number
+  role: 'user' | 'assistant' | 'system'
+  content: string
+  token_estimate: number
+  timestamp: string | null
+}
+
+export interface WorkspaceConversationDetail {
+  id: number
+  title: string | null
+  category: string
+  working_directory: string | null
+  created_at: string | null
+  updated_at: string | null
+  messages: WorkspaceMessage[]
+  message_count: number
+}
+
+export interface WorkspaceChatTokenUsageMessage {
+  type: 'token_usage'
+  total_tokens: number
+  context_window: number
+}
+
+export interface WorkspaceChatTokenUpdateMessage {
+  type: 'token_update'
+  token_count: number
+  message_count: number
+}
+
+export type WorkspaceChatServerMessage =
+  | AssistantChatTextMessage
+  | AssistantChatToolCallMessage
+  | WorkspaceChatTokenUsageMessage
+  | WorkspaceChatTokenUpdateMessage
+  | AssistantChatResponseDoneMessage
+  | AssistantChatErrorMessage
+  | AssistantChatConversationCreatedMessage
+  | AssistantChatPongMessage
+
+// ============================================================================
+// Workspace Types (Phase 2)
+// ============================================================================
+
+export interface WorkspaceCategory {
+  id: number
+  name: string
+  color: string | null
+  sort_order: number
+  created_at: string
+}
+
+export interface WorkspaceSummary {
+  id: number
+  conversation_id: number
+  summary: string
+  message_count: number
+  token_estimate: number
+  created_at: string | null
+}
+
+export interface WorkspaceSearchExcerpt {
+  message_id: number
+  role: string
+  excerpt: string
+}
+
+export interface WorkspaceSearchResult {
+  conversation_id: number
+  conversation_title: string | null
+  category: string
+  matching_excerpts: WorkspaceSearchExcerpt[]
+}
+
+export interface WorkspaceContextBudget {
+  total_budget: number
+  message_tokens: number
+  summary_tokens: number
+  message_count: number
+  usage_percent: number
+}
+
+// ============================================================================
 // Expand Chat Types
 // ============================================================================
 

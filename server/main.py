@@ -42,6 +42,7 @@ from .routers import (
     spec_creation_router,
     styles_router,
     terminal_router,
+    workspace_router,
 )
 from .schemas import SetupStatus
 from .services.assistant_chat_session import cleanup_all_sessions as cleanup_assistant_sessions
@@ -54,6 +55,7 @@ from .services.expand_chat_session import cleanup_all_expand_sessions
 from .services.process_manager import cleanup_all_managers, cleanup_orphaned_locks
 from .services.scheduler_service import cleanup_scheduler, get_scheduler
 from .services.terminal_manager import cleanup_all_terminals
+from .services.workspace_chat_session import cleanup_all_workspace_sessions
 from .websocket import project_websocket
 
 # Paths
@@ -81,6 +83,7 @@ async def lifespan(app: FastAPI):
     await cleanup_all_expand_sessions()
     await cleanup_all_terminals()
     await cleanup_all_devservers()
+    await cleanup_all_workspace_sessions()
 
 
 # Create FastAPI app
@@ -162,6 +165,7 @@ app.include_router(filesystem_router)
 app.include_router(assistant_chat_router)
 app.include_router(settings_router)
 app.include_router(terminal_router)
+app.include_router(workspace_router)
 
 
 # ============================================================================

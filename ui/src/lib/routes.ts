@@ -20,3 +20,12 @@ export function isStylePreviewRoute(): boolean {
 export function isQuadPreviewRoute(): boolean {
   return window.location.hash.startsWith('#/quad-preview/')
 }
+
+/**
+ * Check if the current URL hash matches the workspace route.
+ * Format: /#/workspace
+ */
+export function isWorkspaceRoute(): boolean {
+  return window.location.hash === '#/workspace' ||
+         window.location.hash.startsWith('#/workspace/')
+}

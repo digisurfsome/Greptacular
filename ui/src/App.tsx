@@ -28,7 +28,7 @@ import { ThemeSelector } from './components/ThemeSelector'
 import { ResetProjectModal } from './components/ResetProjectModal'
 import { ProjectSetupRequired } from './components/ProjectSetupRequired'
 import { getDependencyGraph, startAgent } from './lib/api'
-import { Loader2, Settings, Moon, Sun, RotateCcw, BookOpen } from 'lucide-react'
+import { Loader2, Settings, Moon, Sun, RotateCcw, BookOpen, MessageSquare } from 'lucide-react'
 import type { Feature } from './lib/types'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -337,6 +337,18 @@ function App() {
                   )}
                 </>
               )}
+
+              {/* Workspace link */}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => { window.location.hash = '#/workspace' }}
+                title="Open IdeaForge Workspace"
+              >
+                <MessageSquare size={16} />
+                <span className="hidden sm:inline text-xs">Workspace</span>
+              </Button>
 
               {/* Docs link */}
               <Button

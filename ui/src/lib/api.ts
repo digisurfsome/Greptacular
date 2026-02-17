@@ -1041,3 +1041,45 @@ export async function renameGitBranch(
     }
   )
 }
+
+// ============================================================================
+// Usage Tracking API
+// ============================================================================
+
+export interface UsagePeriod {
+  period: string
+  label: string
+  total_tokens: number
+  conversation_count: number
+  message_count: number
+  since: string
+}
+
+export interface UsageSummary {
+  daily: UsagePeriod
+  weekly: UsagePeriod
+  monthly: UsagePeriod
+}
+
+export interface CostZone {
+  total_tokens: number
+  standard_tokens: number
+  premium_tokens: number
+  standard_limit: number
+  estimated_cost: {
+    standard_portion: number
+    premium_portion: number
+    total: number
+    all_standard_equivalent: number
+    premium_surcharge: number
+  }
+  cost_zone: 'standard' | 'premium'
+}
+
+export async function getUsageSummary(): Promise<UsageSummary> {
+  return fetchJSON('/workspace/usage')
+}
+
+export async function getConversationCost(conversationId: number): Promise<CostZone> {
+  return fetchJSON(`/workspace/conversations/${conversationId}/cost`)
+}

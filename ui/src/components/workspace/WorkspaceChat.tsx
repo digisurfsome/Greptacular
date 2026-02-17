@@ -41,6 +41,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getWorkspaceSummary, regenerateWorkspaceSummary, exportConversationMarkdown, updateWorkspaceConversation } from '@/lib/api'
 import { WorkspaceChatHeader } from './WorkspaceChatHeader'
 import { EnhancedContextBudgetBar, getContextWarningClass } from './EnhancedContextBudgetBar'
+import { UsageDashboard } from './UsageDashboard'
 import { AutoSummaryPin } from './AutoSummaryPin'
 import { ChatForkModal } from './ChatForkModal'
 import { InjectFromChatModal } from './InjectFromChatModal'
@@ -580,6 +581,12 @@ export function WorkspaceChat({
           {contextMode === '1m' ? '1M ctx' : '200K ctx'}
         </button>
       </div>
+
+      {/* Usage dashboard */}
+      <UsageDashboard
+        conversationId={conversationId ?? activeConversationId}
+        contextMode={contextMode}
+      />
 
       {/* Auto-summary pin */}
       <AutoSummaryPin

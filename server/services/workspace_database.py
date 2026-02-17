@@ -8,7 +8,7 @@ Uses a global database at ``~/.autoforge/workspace.db`` (not per-project).
 
 import logging
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -1345,3 +1345,141 @@ def export_conversation_markdown(conversation_id: int) -> str:
         return "\n".join(lines)
     finally:
         session.close()
+
+
+# ============================================================================
+# Usage Tracking Operations
+# ============================================================================
+
+def get_usage_by_period(period: str = "daily") -> dict:
+    """Get token usage aggregated by time period.
+
+    Args:
+        period: "daily", "weekly", or "monthly"
+
+    Returns:
+        Dict with total_tokens, conversation_count, and period_label.
+    """
+    session = get_db_session()
+    try:
+        now = _utc_now()
+
+        if period == "daily":
+            cutoff = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            label = "Today"
+        elif period == "weekly":
+            # Start of current week (Monday)
+            days_since_monday = now.weekday()
+            cutoff = (now - timedelta(days=days_since_monday)).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
+            label = "This Week"
+        else:  # monthly
+            cutoff = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            label = "This Month"
+
+        # Sum all message token estimates since cutoff
+        total = (
+            session.query(func.coalesce(func.sum(WorkspaceMessage.token_estimate), 0))
+            .filter(WorkspaceMessage.timestamp >= cutoff)
+            .scalar()
+        )
+
+        # Count distinct conversations with activity in this period
+        conv_count = (
+            session.query(func.count(func.distinct(WorkspaceMessage.conversation_id)))
+            .filter(WorkspaceMessage.timestamp >= cutoff)
+            .scalar()
+        )
+
+        # Count messages in this period
+        msg_count = (
+            session.query(func.count(WorkspaceMessage.id))
+            .filter(WorkspaceMessage.timestamp >= cutoff)
+            .scalar()
+        )
+
+        return {
+            "period": period,
+            "label": label,
+            "total_tokens": int(total),
+            "conversation_count": int(conv_count or 0),
+            "message_count": int(msg_count or 0),
+            "since": cutoff.isoformat(),
+        }
+    finally:
+        session.close()
+
+
+def get_conversation_cost_zones(conversation_id: int) -> dict:
+    """Calculate the cost zone breakdown for a conversation.
+
+    Tokens in 0-200K are "standard tier", tokens beyond 200K are "premium tier"
+    (approximately 1.5x cost for extended context).
+
+    Args:
+        conversation_id: The conversation to analyze.
+
+    Returns:
+        Dict with standard_tokens, premium_tokens, and estimated costs.
+    """
+    session = get_db_session()
+    try:
+        total = (
+            session.query(func.coalesce(func.sum(WorkspaceMessage.token_estimate), 0))
+            .filter(WorkspaceMessage.conversation_id == conversation_id)
+            .scalar()
+        )
+        total = int(total)
+
+        STANDARD_LIMIT = 200_000
+        # API pricing for Claude Opus 4 (per million tokens)
+        STANDARD_INPUT_RATE = 15.0  # $/MTok
+        PREMIUM_MULTIPLIER = 1.5  # ~50% more for extended context
+        PREMIUM_INPUT_RATE = STANDARD_INPUT_RATE * PREMIUM_MULTIPLIER  # $22.50/MTok
+
+        standard_tokens = min(total, STANDARD_LIMIT)
+        premium_tokens = max(0, total - STANDARD_LIMIT)
+
+        standard_cost = (standard_tokens / 1_000_000) * STANDARD_INPUT_RATE
+        premium_cost = (premium_tokens / 1_000_000) * PREMIUM_INPUT_RATE
+        total_cost = standard_cost + premium_cost
+
+        # What it would cost if ALL tokens were standard rate
+        all_standard_cost = (total / 1_000_000) * STANDARD_INPUT_RATE
+
+        return {
+            "total_tokens": total,
+            "standard_tokens": standard_tokens,
+            "premium_tokens": premium_tokens,
+            "standard_limit": STANDARD_LIMIT,
+            "estimated_cost": {
+                "standard_portion": round(standard_cost, 4),
+                "premium_portion": round(premium_cost, 4),
+                "total": round(total_cost, 4),
+                "all_standard_equivalent": round(all_standard_cost, 4),
+                "premium_surcharge": round(
+                    premium_cost - (premium_tokens / 1_000_000 * STANDARD_INPUT_RATE), 4
+                ),
+            },
+            "cost_zone": "standard" if premium_tokens == 0 else "premium",
+        }
+    finally:
+        session.close()
+
+
+def get_usage_summary() -> dict:
+    """Get a comprehensive usage summary across all time periods.
+
+    Returns:
+        Dict with daily, weekly, monthly usage and rate limit events.
+    """
+    daily = get_usage_by_period("daily")
+    weekly = get_usage_by_period("weekly")
+    monthly = get_usage_by_period("monthly")
+
+    return {
+        "daily": daily,
+        "weekly": weekly,
+        "monthly": monthly,
+    }

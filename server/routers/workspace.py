@@ -356,6 +356,42 @@ async def search_conversations_endpoint(q: str = "", limit: int = 20):
 
 
 # ============================================================================
+# Usage Tracking Endpoints
+# ============================================================================
+
+@router.get("/usage")
+async def get_usage_overview():
+    """Get usage summary across daily, weekly, and monthly periods."""
+    from ..services import workspace_database as db
+    return db.get_usage_summary()
+
+
+@router.get("/usage/{period}")
+async def get_usage_period(period: str):
+    """Get usage for a specific period (daily, weekly, monthly)."""
+    if period not in ("daily", "weekly", "monthly"):
+        raise HTTPException(status_code=400, detail="Period must be daily, weekly, or monthly")
+
+    from ..services import workspace_database as db
+    return db.get_usage_by_period(period)
+
+
+@router.get("/conversations/{conversation_id}/cost")
+async def get_conversation_cost(conversation_id: int):
+    """Get cost zone breakdown for a conversation."""
+    from ..services import workspace_database as db
+
+    result = db.get_conversation_cost_zones(conversation_id)
+    if result["total_tokens"] == 0:
+        # Check if conversation exists
+        conv = db.get_conversation(conversation_id)
+        if not conv:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+
+    return result
+
+
+# ============================================================================
 # Fork, Paginate, Export, Inject Endpoints (Phase 4)
 # ============================================================================
 

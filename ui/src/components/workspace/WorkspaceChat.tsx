@@ -148,7 +148,6 @@ export function WorkspaceChat({
     connectionStatus,
     conversationId: activeConversationId,
     totalTokens,
-    contextWindow,
     contextBudget,
     pendingInjection,
     setPendingInjection,

@@ -10,7 +10,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import type { ChatMessage, WorkspaceChatServerMessage, PendingInjection } from "../lib/types";
+import type { ChatMessage, WorkspaceChatServerMessage, PendingInjection, ImageAttachment } from "../lib/types";
 
 type ConnectionStatus = "disconnected" | "connecting" | "connected" | "error";
 
@@ -33,7 +33,7 @@ interface UseWorkspaceChatReturn {
   pendingInjection: PendingInjection | null;
   setPendingInjection: (injection: PendingInjection | null) => void;
   start: (conversationId?: number | null, workingDirectory?: string) => void;
-  sendMessage: (content: string) => void;
+  sendMessage: (content: string, attachments?: ImageAttachment[]) => void;
   disconnect: () => void;
   clearMessages: () => void;
 }
@@ -324,7 +324,7 @@ export function useWorkspaceChat({
   );
 
   const sendMessage = useCallback(
-    (content: string) => {
+    (content: string, attachments?: ImageAttachment[]) => {
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
         onError?.("Not connected");
         return;
@@ -349,24 +349,39 @@ export function useWorkspaceChat({
       }
 
       // Add user message to chat (show original content, not the injected version)
+      // Include attachments so they render inline in the message bubble
       setMessages((prev) => [
         ...prev,
         {
           id: generateId(),
           role: "user",
           content,
+          attachments,
           timestamp: new Date(),
         },
       ]);
 
       setIsLoading(true);
 
-      wsRef.current.send(
-        JSON.stringify({
-          type: "message",
-          content: fullMessage,
-        }),
-      );
+      // Build WebSocket payload with optional attachments
+      const wsPayload: {
+        type: string;
+        content: string;
+        attachments?: { filename: string; mimeType: string; base64Data: string }[];
+      } = {
+        type: "message",
+        content: fullMessage,
+      };
+
+      if (attachments && attachments.length > 0) {
+        wsPayload.attachments = attachments.map((att) => ({
+          filename: att.filename,
+          mimeType: att.mimeType,
+          base64Data: att.base64Data,
+        }));
+      }
+
+      wsRef.current.send(JSON.stringify(wsPayload));
     },
     [onError, pendingInjection],
   );

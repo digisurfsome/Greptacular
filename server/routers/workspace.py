@@ -617,8 +617,18 @@ async def workspace_chat_websocket(websocket: WebSocket):
                         })
                         continue
 
+                    # Extract optional image attachments
+                    raw_attachments = message.get("attachments", [])
+                    attachments = None
+                    if raw_attachments:
+                        from ..schemas import ImageAttachment
+                        try:
+                            attachments = [ImageAttachment(**att) for att in raw_attachments]
+                        except Exception as e:
+                            logger.warning("Invalid attachment data: %s", e)
+
                     # Stream Claude's response
-                    async for chunk in session.send_message(user_content):
+                    async for chunk in session.send_message(user_content, attachments=attachments):
                         await websocket.send_json(chunk)
 
                 elif msg_type == "answer":

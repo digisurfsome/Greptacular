@@ -24,7 +24,7 @@ import shutil
 import threading
 from datetime import datetime
 from pathlib import Path
-from typing import AsyncGenerator, Optional
+from typing import Any, AsyncGenerator, Optional
 
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from claude_agent_sdk.types import HookMatcher
@@ -32,7 +32,8 @@ from dotenv import load_dotenv
 
 from security import bash_security_hook
 
-from .chat_constants import ROOT_DIR  # noqa: F401
+from ..schemas import ImageAttachment
+from .chat_constants import ROOT_DIR, make_multimodal_message  # noqa: F401
 from .workspace_database import (
     add_message,
     create_conversation,
@@ -203,19 +204,6 @@ class WorkspaceChatSession:
             json.dump(security_settings, f, indent=2)
 
         # -----------------------------------------------------------------
-        # System prompt: written as CLAUDE.md in a scratch directory so the
-        # SDK reads it via setting_sources=["project"] without clobbering
-        # any existing CLAUDE.md in the user's actual working directory.
-        # -----------------------------------------------------------------
-        workspace_scratch = Path.home() / ".autoforge" / ".workspace_scratch"
-        workspace_scratch.mkdir(parents=True, exist_ok=True)
-        claude_md_path = workspace_scratch / "CLAUDE.md"
-        system_prompt = get_workspace_system_prompt(self.working_directory, model=model)
-        with open(claude_md_path, "w", encoding="utf-8") as f:
-            f.write(system_prompt)
-        logger.info(f"Wrote workspace system prompt to {claude_md_path}")
-
-        # -----------------------------------------------------------------
         # Claude SDK client: full tools, bash security hook, 1M context beta.
         # -----------------------------------------------------------------
         system_cli = shutil.which("claude")
@@ -228,6 +216,19 @@ class WorkspaceChatSession:
             sdk_env.get("ANTHROPIC_DEFAULT_OPUS_MODEL")
             or os.getenv("ANTHROPIC_DEFAULT_OPUS_MODEL", DEFAULT_MODEL)
         )
+
+        # -----------------------------------------------------------------
+        # System prompt: written as CLAUDE.md in a scratch directory so the
+        # SDK reads it via setting_sources=["project"] without clobbering
+        # any existing CLAUDE.md in the user's actual working directory.
+        # -----------------------------------------------------------------
+        workspace_scratch = Path.home() / ".autoforge" / ".workspace_scratch"
+        workspace_scratch.mkdir(parents=True, exist_ok=True)
+        claude_md_path = workspace_scratch / "CLAUDE.md"
+        system_prompt = get_workspace_system_prompt(self.working_directory, model=model)
+        with open(claude_md_path, "w", encoding="utf-8") as f:
+            f.write(system_prompt)
+        logger.info(f"Wrote workspace system prompt to {claude_md_path}")
 
         # Detect alternative API mode (Ollama, GLM, Vertex AI) -- these do not
         # support the 1M context beta, so we must disable it.
@@ -307,7 +308,9 @@ class WorkspaceChatSession:
             # _history_loaded stays False so send_message() includes history.
             yield {"type": "response_done"}
 
-    async def send_message(self, user_message: str) -> AsyncGenerator[dict, None]:
+    async def send_message(
+        self, user_message: str, attachments: list[ImageAttachment] | None = None
+    ) -> AsyncGenerator[dict, None]:
         """Send a user message and stream Claude's response.
 
         For resumed conversations, the first call automatically loads messages
@@ -315,6 +318,7 @@ class WorkspaceChatSession:
 
         Args:
             user_message: The user's message text.
+            attachments: Optional list of image attachments to include.
 
         Yields:
             Message chunks:
@@ -395,14 +399,16 @@ class WorkspaceChatSession:
                 logger.warning("Failed to load library context: %s", e)
 
         try:
-            async for chunk in self._query_claude(message_to_send):
+            async for chunk in self._query_claude(message_to_send, attachments=attachments):
                 yield chunk
             yield {"type": "response_done"}
         except Exception as e:
             logger.exception("Error during workspace Claude query")
             yield {"type": "error", "content": f"Error: {str(e)}"}
 
-    async def _query_claude(self, message: str) -> AsyncGenerator[dict, None]:
+    async def _query_claude(
+        self, message: str, attachments: list[ImageAttachment] | None = None
+    ) -> AsyncGenerator[dict, None]:
         """Stream a response from Claude for the given message.
 
         Accumulates the full response text, computes a token estimate, stores
@@ -411,6 +417,7 @@ class WorkspaceChatSession:
 
         Args:
             message: The message (or history-prefixed message) to send to Claude.
+            attachments: Optional list of image attachments to include.
 
         Yields:
             Message chunks:
@@ -421,8 +428,24 @@ class WorkspaceChatSession:
         if not self.client:
             return
 
-        # Send message to Claude
-        await self.client.query(message)
+        # Build the message content -- multimodal if attachments are present
+        if attachments and len(attachments) > 0:
+            content_blocks: list[dict[str, Any]] = []
+            if message:
+                content_blocks.append({"type": "text", "text": message})
+            for att in attachments:
+                content_blocks.append({
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": att.mimeType,
+                        "data": att.base64Data,
+                    }
+                })
+            await self.client.query(make_multimodal_message(content_blocks))
+            logger.info(f"Sent multimodal message with {len(attachments)} image(s)")
+        else:
+            await self.client.query(message)
 
         full_response = ""
 

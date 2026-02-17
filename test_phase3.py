@@ -82,7 +82,9 @@ class TestDatabaseModels(unittest.TestCase):
 
     def test_models_importable(self):
         from server.services.workspace_database import (
-            WorkspaceLibraryFile, WorkspaceFileActivation, WorkspaceConnectedRepo,
+            WorkspaceConnectedRepo,
+            WorkspaceFileActivation,
+            WorkspaceLibraryFile,
         )
         self.assertEqual(WorkspaceLibraryFile.__tablename__, "workspace_library_files")
         self.assertEqual(WorkspaceFileActivation.__tablename__, "workspace_file_activations")
@@ -116,6 +118,7 @@ class TestDatabaseModels(unittest.TestCase):
 
     def test_tables_create_in_sqlite(self):
         from sqlalchemy import create_engine, inspect
+
         from server.services.workspace_database import Base
         db_path = Path(TEMP_DIR) / "test_models.db"
         engine = create_engine(f"sqlite:///{db_path}")
@@ -157,7 +160,7 @@ class TestLibraryService(unittest.TestCase):
         self.assertFalse(validate_file_extension("archive.zip"))
 
     def test_upload_and_get_small_file(self):
-        from server.services.workspace_library import upload_file, get_file_content
+        from server.services.workspace_library import get_file_content, upload_file
         r = upload_file("small.txt", b"hello world")
         self.assertEqual(r["filename"], "small.txt")
         self.assertEqual(r["file_type"], "doc")
@@ -166,20 +169,20 @@ class TestLibraryService(unittest.TestCase):
         self.assertEqual(get_file_content(r["id"]), "hello world")
 
     def test_upload_text(self):
-        from server.services.workspace_library import upload_text, get_file_content
+        from server.services.workspace_library import get_file_content, upload_text
         r = upload_text("notes.md", "# Notes")
         self.assertEqual(r["file_type"], "doc")
         self.assertEqual(get_file_content(r["id"]), "# Notes")
 
     def test_delete_file(self):
-        from server.services.workspace_library import upload_text, delete_file, get_file_content
+        from server.services.workspace_library import delete_file, get_file_content, upload_text
         r = upload_text("del.txt", "bye")
         self.assertTrue(delete_file(r["id"]))
         self.assertIsNone(get_file_content(r["id"]))
         self.assertFalse(delete_file(r["id"]))
 
     def test_list_global_files(self):
-        from server.services.workspace_library import upload_text, list_global_files
+        from server.services.workspace_library import list_global_files, upload_text
         upload_text("g1.txt", "a")
         upload_text("g2.txt", "b")
         names = [f["filename"] for f in list_global_files()]
@@ -187,7 +190,7 @@ class TestLibraryService(unittest.TestCase):
         self.assertIn("g2.txt", names)
 
     def test_update_metadata(self):
-        from server.services.workspace_library import upload_text, update_file_metadata
+        from server.services.workspace_library import update_file_metadata, upload_text
         r = upload_text("m.txt", "x")
         u = update_file_metadata(r["id"], display_name="Renamed", tags="a,b")
         self.assertEqual(u["display_name"], "Renamed")
@@ -198,7 +201,7 @@ class TestLibraryService(unittest.TestCase):
         self.assertIsNone(update_file_metadata(99999, display_name="nope"))
 
     def test_large_file_on_disk(self):
-        from server.services.workspace_library import upload_file, get_file_content
+        from server.services.workspace_library import get_file_content, upload_file
         big = b"x" * (101 * 1024)
         r = upload_file("large.txt", big)
         self.assertEqual(r["file_size"], len(big))
@@ -223,8 +226,8 @@ class TestLibraryIntegration(unittest.TestCase):
         db._engine_cache.clear()
 
     def test_toggle_global_file(self):
-        from server.services.workspace_library import upload_text, toggle_file_in_context
         from server.services.workspace_database import create_conversation
+        from server.services.workspace_library import toggle_file_in_context, upload_text
         conv = create_conversation(title="Toggle Test")
         f = upload_text("t.txt", "content")
         t1 = toggle_file_in_context(f["id"], conv.id)
@@ -235,8 +238,8 @@ class TestLibraryIntegration(unittest.TestCase):
         self.assertTrue(t3["active_in_context"])
 
     def test_toggle_per_chat_file(self):
-        from server.services.workspace_library import upload_text, toggle_file_in_context
         from server.services.workspace_database import create_conversation
+        from server.services.workspace_library import toggle_file_in_context, upload_text
         conv = create_conversation(title="PerChat")
         f = upload_text("pc.txt", "chat", conversation_id=conv.id)
         self.assertFalse(f["active_in_context"])
@@ -248,8 +251,8 @@ class TestLibraryIntegration(unittest.TestCase):
         self.assertIsNone(toggle_file_in_context(99999, 99999))
 
     def test_active_files_context_string(self):
-        from server.services.workspace_library import upload_text, toggle_file_in_context, get_active_files_context
         from server.services.workspace_database import create_conversation
+        from server.services.workspace_library import get_active_files_context, toggle_file_in_context, upload_text
         conv = create_conversation(title="Ctx Build")
         f1 = upload_text("s.json", '{"k":"v"}')
         f2 = upload_text("n.md", "# Notes")
@@ -264,8 +267,8 @@ class TestLibraryIntegration(unittest.TestCase):
         self.assertIn("--- End File ---", ctx)
 
     def test_conversation_files_includes_global(self):
-        from server.services.workspace_library import upload_text, list_conversation_files
         from server.services.workspace_database import create_conversation
+        from server.services.workspace_library import list_conversation_files, upload_text
         conv = create_conversation(title="List")
         upload_text("gf.txt", "global")
         upload_text("cf.txt", "chat", conversation_id=conv.id)
@@ -318,8 +321,8 @@ class TestReposService(unittest.TestCase):
         self.assertEqual(_local_dir_name("https://github.com/o/r"), "o_r")
 
     def test_path_traversal_blocked(self):
-        from server.services.workspace_repos import get_repo_file
         from server.services.workspace_database import WorkspaceConnectedRepo
+        from server.services.workspace_repos import get_repo_file
         repo_dir = Path(TEMP_DIR) / "traversal_repo"
         repo_dir.mkdir(exist_ok=True)
         (repo_dir / "safe.txt").write_text("safe")
@@ -346,8 +349,8 @@ class TestReposService(unittest.TestCase):
         (Path(TEMP_DIR) / "secret.txt").unlink()
 
     def test_repo_tree(self):
-        from server.services.workspace_repos import get_repo_tree
         from server.services.workspace_database import WorkspaceConnectedRepo
+        from server.services.workspace_repos import get_repo_tree
         rd = Path(TEMP_DIR) / "tree_repo2"
         rd.mkdir(exist_ok=True)
         (rd / "README.md").write_text("# Hi")

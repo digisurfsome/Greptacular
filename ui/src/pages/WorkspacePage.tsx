@@ -3,21 +3,26 @@
  *
  * Provides a standalone coding workspace at /#/workspace with multi-conversation
  * management, full Claude agent capabilities, file library, GitHub repos,
- * and real-time context budget tracking.
+ * real-time context budget tracking, keyboard shortcuts, and breadcrumb navigation.
  */
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { WorkspaceSidebar } from '../components/workspace/WorkspaceSidebar'
 import { WorkspaceChat } from '../components/workspace/WorkspaceChat'
 import { WorkspaceLibrary } from '../components/workspace/WorkspaceLibrary'
-import { ArrowLeft } from 'lucide-react'
+import { WorkspaceKeyboardHelp } from '../components/workspace/WorkspaceKeyboardHelp'
+import { useWorkspaceKeyboardShortcuts } from '../hooks/useWorkspaceKeyboardShortcuts'
+import { exportConversationMarkdown } from '../lib/api'
+import { ArrowLeft, ChevronRight, Keyboard } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
-/** Full-page workspace layout with conversation sidebar, chat area, and library panel. */
+/** Full-page workspace layout with keyboard shortcuts, breadcrumbs, and all Phase 4 features. */
 export function WorkspacePage(): React.JSX.Element {
   const [activeConversationId, setActiveConversationId] = useState<number | null>(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [libraryCollapsed, setLibraryCollapsed] = useState(false)
+  const [showKeyboardHelp, setShowKeyboardHelp] = useState(false)
+  const chatInputRef = useRef<HTMLTextAreaElement | null>(null)
 
   const handleNewChat = useCallback(() => {
     setActiveConversationId(null)
@@ -31,22 +36,67 @@ export function WorkspacePage(): React.JSX.Element {
     setActiveConversationId(id)
   }, [])
 
+  const handleExportChat = useCallback(() => {
+    if (activeConversationId) {
+      exportConversationMarkdown(activeConversationId)
+    }
+  }, [activeConversationId])
+
+  const handleFocusSearch = useCallback(() => {
+    // Focus the sidebar search input
+    const searchInput = document.querySelector(
+      '[data-workspace-search]',
+    ) as HTMLInputElement | null
+    searchInput?.focus()
+  }, [])
+
+  const handleFocusChatInput = useCallback(() => {
+    chatInputRef.current?.focus()
+  }, [])
+
+  // Register workspace keyboard shortcuts
+  useWorkspaceKeyboardShortcuts({
+    onNewConversation: handleNewChat,
+    onToggleLibrary: () => setLibraryCollapsed((v) => !v),
+    onToggleSidebar: () => setSidebarCollapsed((v) => !v),
+    onFocusSearch: handleFocusSearch,
+    onExportChat: handleExportChat,
+    onShowShortcutsHelp: () => setShowKeyboardHelp(true),
+    onFocusChatInput: handleFocusChatInput,
+    hasActiveConversation: activeConversationId !== null,
+  })
+
   return (
     <div className="h-screen flex flex-col bg-background">
-      {/* Top bar with back-to-projects link */}
+      {/* Breadcrumb navigation bar */}
       <div className="flex items-center h-10 px-3 border-b border-border bg-card shrink-0">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="gap-1.5 text-muted-foreground hover:text-foreground"
-          onClick={() => { window.location.hash = '' }}
-        >
-          <ArrowLeft size={14} />
-          <span className="text-xs">Back to Projects</span>
-        </Button>
-        <span className="ml-3 text-sm font-semibold text-foreground">
-          IdeaForge Workspace
-        </span>
+        <nav className="flex items-center gap-1 text-sm" aria-label="Breadcrumb">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-1.5 text-muted-foreground hover:text-foreground h-7 px-2"
+            onClick={() => { window.location.hash = '' }}
+          >
+            <ArrowLeft size={14} />
+            <span className="text-xs">AutoForge</span>
+          </Button>
+          <ChevronRight size={12} className="text-muted-foreground" />
+          <span className="text-xs font-semibold text-foreground">
+            Workspace
+          </span>
+        </nav>
+
+        <div className="ml-auto flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-muted-foreground hover:text-foreground"
+            onClick={() => setShowKeyboardHelp(true)}
+            title="Keyboard shortcuts (?)"
+          >
+            <Keyboard size={14} />
+          </Button>
+        </div>
       </div>
 
       {/* Main content area: sidebar | chat | library */}
@@ -62,6 +112,8 @@ export function WorkspacePage(): React.JSX.Element {
           <WorkspaceChat
             conversationId={activeConversationId}
             onConversationCreated={handleConversationCreated}
+            onNewConversation={handleNewChat}
+            chatInputRef={chatInputRef}
           />
         </div>
         <WorkspaceLibrary
@@ -70,6 +122,12 @@ export function WorkspacePage(): React.JSX.Element {
           onToggleCollapse={() => setLibraryCollapsed(!libraryCollapsed)}
         />
       </div>
+
+      {/* Keyboard shortcuts help modal */}
+      <WorkspaceKeyboardHelp
+        isOpen={showKeyboardHelp}
+        onClose={() => setShowKeyboardHelp(false)}
+      />
     </div>
   )
 }

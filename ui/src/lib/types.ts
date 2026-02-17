@@ -764,6 +764,40 @@ export interface RepoTreeEntry {
 }
 
 // ============================================================================
+// Workspace Phase 4 Types
+// ============================================================================
+
+export interface ForkResponse {
+  id: number
+  title: string
+  category: string | null
+  pinned: boolean
+  token_count: number
+  forked_from_id: number
+  created_at: string | null
+  updated_at: string | null
+  message_count: number
+}
+
+export interface PaginatedMessages {
+  messages: WorkspaceMessage[]
+  total: number
+}
+
+export interface PendingInjection {
+  sourceTitle: string
+  sourceConversationId: number
+  messages: { role: string; content: string }[]
+}
+
+export interface InjectResponse {
+  source_title: string
+  source_conversation_id: number
+  message_count: number
+  formatted_messages: string[]
+}
+
+// ============================================================================
 // Expand Chat Types
 // ============================================================================
 

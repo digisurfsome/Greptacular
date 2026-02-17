@@ -114,7 +114,7 @@ export function EnhancedContextBudgetBar({
       {/* Main row: usage left, token counts center, messages right */}
       <div className="flex items-center justify-between mb-2">
         <span className={`text-lg font-bold tabular-nums ${usageColor(usagePercent)}`}>
-          {usagePercent.toFixed(1)}%
+          {usagePercent < 1 && usagePercent > 0 ? usagePercent.toFixed(2) : usagePercent.toFixed(1)}%
         </span>
 
         <span className="text-base font-semibold text-foreground tabular-nums">

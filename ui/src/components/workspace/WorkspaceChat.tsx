@@ -180,9 +180,10 @@ export function WorkspaceChat({
     },
   })
 
-  // Context budget usage for warning state (uses actual context window from server)
-  const usagePercent = contextBudget.messageTokens > 0 && contextWindow > 0
-    ? ((contextBudget.messageTokens + contextBudget.summaryTokens) / contextWindow) * 100
+  // Context budget usage for warning state (follows the local context mode toggle)
+  const displayBudget = contextMode === '1m' ? 1_000_000 : 200_000
+  const usagePercent = contextBudget.messageTokens > 0 && displayBudget > 0
+    ? ((contextBudget.messageTokens + contextBudget.summaryTokens) / displayBudget) * 100
     : 0
 
   // Notify parent when a new conversation is created via WebSocket
@@ -559,7 +560,7 @@ export function WorkspaceChat({
       <div className="flex items-center border-b border-border bg-card/80">
         <div className="flex-1 border-b-0 [&>div]:border-b-0">
           <EnhancedContextBudgetBar
-            totalBudget={contextWindow}
+            totalBudget={contextMode === '1m' ? 1_000_000 : 200_000}
             messageTokens={contextBudget.messageTokens || totalTokens}
             summaryTokens={contextBudget.summaryTokens}
             messageCount={contextBudget.messageCount}

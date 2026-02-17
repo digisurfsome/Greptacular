@@ -681,11 +681,21 @@ export async function createWorkspaceConversation(
 
 export async function updateWorkspaceConversation(
   conversationId: number,
-  update: { title?: string; category?: string; pinned?: boolean }
+  update: { title?: string; category?: string; pinned?: boolean; tags?: string }
 ): Promise<WorkspaceConversation> {
   return fetchJSON(`/workspace/conversations/${conversationId}`, {
     method: 'PATCH',
     body: JSON.stringify(update),
+  })
+}
+
+export async function updateWorkspaceConversationTags(
+  conversationId: number,
+  tags: string
+): Promise<WorkspaceConversation> {
+  return fetchJSON(`/workspace/conversations/${conversationId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ tags }),
   })
 }
 
@@ -1004,4 +1014,30 @@ export async function getInjectionContent(
       message_ids: messageIds,
     }),
   })
+}
+
+// ============================================================================
+// Git Branch Management API
+// ============================================================================
+
+export async function getGitBranches(
+  workingDirectory: string
+): Promise<{ current_branch: string; branches: string[] }> {
+  return fetchJSON(
+    `/workspace/git/branches?working_directory=${encodeURIComponent(workingDirectory)}`
+  )
+}
+
+export async function renameGitBranch(
+  workingDirectory: string,
+  oldName: string,
+  newName: string
+): Promise<{ success: boolean; old_name: string; new_name: string; remote_updated: boolean; message: string }> {
+  return fetchJSON(
+    `/workspace/git/branch/rename?working_directory=${encodeURIComponent(workingDirectory)}`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ old_name: oldName, new_name: newName }),
+    }
+  )
 }

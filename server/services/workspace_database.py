@@ -62,6 +62,7 @@ class WorkspaceConversation(Base):
     category = Column(String(50), nullable=False, default="general")
     working_directory = Column(Text, nullable=True)  # Optional cwd for the conversation
     pinned = Column(Integer, nullable=False, default=0)  # Boolean as int for SQLite
+    tags = Column(String(500), nullable=True)  # comma-separated tags
     token_count = Column(Integer, nullable=False, default=0)
     summary = Column(Text, nullable=True)
     summary_updated_at = Column(DateTime, nullable=True)
@@ -258,6 +259,8 @@ def get_engine() -> Engine:
                 cursor.execute(
                     "ALTER TABLE workspace_conversations ADD COLUMN forked_from_id INTEGER"
                 )
+            if "tags" not in existing_cols:
+                cursor.execute("ALTER TABLE workspace_conversations ADD COLUMN tags TEXT")
             conn.commit()
             conn.close()
 
@@ -372,6 +375,7 @@ def get_conversations(category: Optional[str] = None) -> list[dict]:
                 "category": row.WorkspaceConversation.category,
                 "working_directory": row.WorkspaceConversation.working_directory,
                 "pinned": bool(row.WorkspaceConversation.pinned),
+                "tags": row.WorkspaceConversation.tags or "",
                 "created_at": (
                     row.WorkspaceConversation.created_at.isoformat()
                     if row.WorkspaceConversation.created_at else None
@@ -411,6 +415,7 @@ def get_conversation(conversation_id: int) -> Optional[dict]:
             "title": conversation.title,
             "category": conversation.category,
             "working_directory": conversation.working_directory,
+            "tags": conversation.tags or "",
             "created_at": conversation.created_at.isoformat() if conversation.created_at else None,
             "updated_at": conversation.updated_at.isoformat() if conversation.updated_at else None,
             "messages": [
@@ -460,6 +465,7 @@ def update_conversation(
     category: Optional[str] = None,
     working_directory: Optional[str] = None,
     pinned: Optional[bool] = None,
+    tags: Optional[str] = None,
 ) -> Optional[dict]:
     """Update a conversation's metadata.
 
@@ -471,6 +477,7 @@ def update_conversation(
         category: New category, or None to leave unchanged.
         working_directory: New working directory, or None to leave unchanged.
         pinned: New pinned state, or None to leave unchanged.
+        tags: New comma-separated tags, or None to leave unchanged.
 
     Returns:
         Updated conversation dict, or None if the conversation was not found.
@@ -493,6 +500,8 @@ def update_conversation(
             conversation.working_directory = working_directory
         if pinned is not None:
             conversation.pinned = 1 if pinned else 0
+        if tags is not None:
+            conversation.tags = tags
 
         conversation.updated_at = _utc_now()
         session.commit()
@@ -511,6 +520,7 @@ def update_conversation(
             "category": conversation.category,
             "working_directory": conversation.working_directory,
             "pinned": bool(conversation.pinned),
+            "tags": conversation.tags or "",
             "created_at": conversation.created_at.isoformat() if conversation.created_at else None,
             "updated_at": conversation.updated_at.isoformat() if conversation.updated_at else None,
             "message_count": msg_count,
@@ -1160,6 +1170,7 @@ def fork_conversation(
             title=fork_title,
             category=source.category,
             pinned=0,
+            tags=source.tags,
             token_count=0,
             forked_from_id=conversation_id,
         )
@@ -1206,6 +1217,7 @@ def fork_conversation(
             "title": new_conv.title,
             "category": new_conv.category,
             "pinned": bool(new_conv.pinned),
+            "tags": new_conv.tags or "",
             "token_count": new_conv.token_count,
             "forked_from_id": new_conv.forked_from_id,
             "created_at": new_conv.created_at.isoformat() if new_conv.created_at else None,

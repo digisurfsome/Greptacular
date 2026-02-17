@@ -1,4 +1,4 @@
-import { StrictMode } from 'react'
+import { StrictMode, useState, useEffect } from 'react'
 import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import App from './App'
@@ -25,13 +25,22 @@ const queryClient = new QueryClient({
  * - Everything else → Main App
  */
 function Root() {
-  if (isStylePreviewRoute()) {
+  // Track hash changes so route switches trigger re-renders
+  const [hash, setHash] = useState(window.location.hash)
+  useEffect(() => {
+    const onHashChange = () => setHash(window.location.hash)
+    window.addEventListener('hashchange', onHashChange)
+    return () => window.removeEventListener('hashchange', onHashChange)
+  }, [])
+
+  // Use hash in conditions to satisfy the linter (referential dependency)
+  if (hash.startsWith('#/style-preview/') && isStylePreviewRoute()) {
     return <StylePreviewPage />
   }
-  if (isQuadPreviewRoute()) {
+  if (hash.startsWith('#/quad-preview/') && isQuadPreviewRoute()) {
     return <QuadPreviewPage />
   }
-  if (isWorkspaceRoute()) {
+  if ((hash === '#/workspace' || hash.startsWith('#/workspace/')) && isWorkspaceRoute()) {
     return <WorkspacePage />
   }
   return <App />

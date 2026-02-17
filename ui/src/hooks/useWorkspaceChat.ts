@@ -22,6 +22,7 @@ interface UseWorkspaceChatReturn {
   messages: ChatMessage[];
   isLoading: boolean;
   connectionStatus: ConnectionStatus;
+  lastError: string | null;
   conversationId: number | null;
   totalTokens: number;
   contextWindow: number;
@@ -68,6 +69,7 @@ export function useWorkspaceChat({
     messageCount: 0,
   });
   const [pendingInjection, setPendingInjection] = useState<PendingInjection | null>(null);
+  const [lastError, setLastError] = useState<string | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const currentAssistantMessageRef = useRef<string | null>(null);
@@ -116,6 +118,7 @@ export function useWorkspaceChat({
 
     ws.onopen = () => {
       setConnectionStatus("connected");
+      setLastError(null);
       reconnectAttempts.current = 0;
 
       // Start ping interval to keep the connection alive
@@ -126,11 +129,20 @@ export function useWorkspaceChat({
       }, 30000);
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
       setConnectionStatus("disconnected");
       if (pingIntervalRef.current) {
         clearInterval(pingIntervalRef.current);
         pingIntervalRef.current = null;
+      }
+
+      // Capture close reason for display on the Connection Failed screen
+      if (event.code !== 1000 && event.code !== 1001) {
+        const reason = event.reason
+          || (event.code === 1006
+            ? "Server connection dropped unexpectedly. The workspace server may have crashed or be rate-limited."
+            : `WebSocket closed (code ${event.code})`);
+        setLastError(reason);
       }
 
       // Attempt reconnection with exponential backoff if not intentionally closed
@@ -146,6 +158,7 @@ export function useWorkspaceChat({
 
     ws.onerror = () => {
       setConnectionStatus("error");
+      setLastError("Could not connect to the workspace server. Check that the server is running.");
       onError?.("WebSocket connection error");
     };
 
@@ -269,6 +282,7 @@ export function useWorkspaceChat({
 
           case "error": {
             setIsLoading(false);
+            setLastError(data.content || "Unknown error");
             onError?.(data.content);
 
             // Check if this is a rate limit error -- auto-log via API as fallback
@@ -464,6 +478,7 @@ export function useWorkspaceChat({
     messages,
     isLoading,
     connectionStatus,
+    lastError,
     conversationId,
     totalTokens,
     contextWindow,

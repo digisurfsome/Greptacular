@@ -192,38 +192,50 @@ class WorkspaceChatSession:
         # Security settings: full tools with acceptEdits permission mode.
         # Written to a dedicated file since there is no project directory.
         # -----------------------------------------------------------------
-        permissions_list = [
-            "Read",
-            "Write",
-            "Edit",
-            "Bash",
-            "Glob",
-            "Grep",
-            "WebFetch",
-            "WebSearch",
-        ]
+        try:
+            permissions_list = [
+                "Read",
+                "Write",
+                "Edit",
+                "Bash",
+                "Glob",
+                "Grep",
+                "WebFetch",
+                "WebSearch",
+            ]
 
-        security_settings = {
-            "sandbox": {"enabled": False},
-            "permissions": {
-                "defaultMode": "acceptEdits",
-                "allow": permissions_list,
-            },
-        }
+            security_settings = {
+                "sandbox": {"enabled": False},
+                "permissions": {
+                    "defaultMode": "acceptEdits",
+                    "allow": permissions_list,
+                },
+            }
 
-        settings_dir = Path.home() / ".autoforge"
-        settings_dir.mkdir(parents=True, exist_ok=True)
-        settings_file = settings_dir / ".workspace_claude_settings.json"
-        with open(settings_file, "w") as f:
-            json.dump(security_settings, f, indent=2)
+            settings_dir = Path.home() / ".autoforge"
+            settings_dir.mkdir(parents=True, exist_ok=True)
+            settings_file = settings_dir / ".workspace_claude_settings.json"
+            with open(settings_file, "w") as f:
+                json.dump(security_settings, f, indent=2)
+        except Exception as e:
+            logger.exception("Failed to write workspace security settings")
+            yield {"type": "error", "content": f"Failed to write settings: {str(e)}"}
+            yield {"type": "response_done"}
+            return
 
         # -----------------------------------------------------------------
         # Claude SDK client: full tools, bash security hook, 1M context beta.
         # -----------------------------------------------------------------
         system_cli = shutil.which("claude")
 
-        from registry import DEFAULT_MODEL, get_effective_sdk_env
-        sdk_env = get_effective_sdk_env()
+        try:
+            from registry import DEFAULT_MODEL, get_effective_sdk_env
+            sdk_env = get_effective_sdk_env()
+        except Exception as e:
+            logger.exception("Failed to load registry/SDK environment")
+            yield {"type": "error", "content": f"Failed to load configuration: {str(e)}"}
+            yield {"type": "response_done"}
+            return
 
         # Determine model from SDK env (provider-aware) or fallback to env/default
         model = (
@@ -289,6 +301,7 @@ class WorkspaceChatSession:
         except Exception as e:
             logger.exception("Failed to create workspace Claude client")
             yield {"type": "error", "content": f"Failed to initialize workspace: {str(e)}"}
+            yield {"type": "response_done"}
             return
 
         # Send initial greeting only for NEW conversations.

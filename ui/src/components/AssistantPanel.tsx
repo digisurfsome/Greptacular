@@ -7,11 +7,11 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { X, Bot } from 'lucide-react'
 import { AssistantChat } from './AssistantChat'
 import { useConversation } from '../hooks/useConversations'
 import type { ChatMessage } from '../lib/types'
-import { Button } from '@/components/ui/button'
 
 interface AssistantPanelProps {
   projectName: string
@@ -117,13 +117,21 @@ export function AssistantPanel({ projectName, isOpen, onClose }: AssistantPanelP
     setConversationId(id)
   }, [])
 
-  return (
+  // Close handler with stopPropagation to prevent any parent interference
+  const handleCloseClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation()
+    e.preventDefault()
+    onClose()
+  }, [onClose])
+
+  // Render via portal to document.body to avoid stacking context issues in #root
+  return createPortal(
     <>
       {/* Backdrop - click to close */}
       {isOpen && (
         <div
           className="fixed inset-0 bg-black/20 z-[55] transition-opacity duration-300"
-          onClick={onClose}
+          onClick={handleCloseClick}
           aria-hidden="true"
         />
       )}
@@ -135,7 +143,7 @@ export function AssistantPanel({ projectName, isOpen, onClose }: AssistantPanelP
           w-[400px] max-w-[90vw]
           bg-card
           border-l border-border
-          transform transition-transform duration-300 ease-out
+          transition-transform duration-300 ease-out
           flex flex-col shadow-xl
           ${isOpen ? 'translate-x-0' : 'translate-x-full'}
         `}
@@ -154,16 +162,15 @@ export function AssistantPanel({ projectName, isOpen, onClose }: AssistantPanelP
               <p className="text-xs opacity-80 font-mono">{projectName}</p>
             </div>
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onClose}
-            className="text-primary-foreground hover:bg-primary-foreground/20"
+          <button
+            type="button"
+            onClick={handleCloseClick}
+            className="size-9 inline-flex items-center justify-center rounded-md text-primary-foreground hover:bg-primary-foreground/20 transition-colors"
             title="Close Assistant (Press A)"
             aria-label="Close Assistant"
           >
             <X size={18} />
-          </Button>
+          </button>
         </div>
 
         {/* Chat area */}
@@ -181,6 +188,7 @@ export function AssistantPanel({ projectName, isOpen, onClose }: AssistantPanelP
           )}
         </div>
       </div>
-    </>
+    </>,
+    document.body
   )
 }

@@ -8,7 +8,7 @@
  * On 1M API panels, shows:
  * - Live dollar cost that updates as tokens increase
  * - 200K pricing cliff marker (amber line on the progress bar)
- * - STD RATE / 2x RATE indicator when crossing the threshold
+ * - STD / EXT pricing indicator when crossing the threshold
  */
 
 import { useMemo } from 'react'
@@ -164,12 +164,17 @@ export function EnhancedContextBudgetBar({
             }`}>
               {estimateInputCost(usedTokens, preferredModel!)}
             </span>
-            <span className={`text-[9px] font-mono font-bold px-1 py-0.5 rounded ${
-              isExtendedPricing
-                ? 'bg-amber-500/20 text-amber-500'
-                : 'bg-emerald-500/20 text-emerald-500'
-            }`}>
-              {isExtendedPricing ? '2x' : 'STD'}
+            <span
+              className={`text-[9px] font-mono font-bold px-1 py-0.5 rounded ${
+                isExtendedPricing
+                  ? 'bg-amber-500/20 text-amber-500'
+                  : 'bg-emerald-500/20 text-emerald-500'
+              }`}
+              title={isExtendedPricing
+                ? 'Extended pricing: input 2x, output 1.5x'
+                : 'Standard pricing tier'}
+            >
+              {isExtendedPricing ? 'EXT' : 'STD'}
             </span>
           </div>
         )}
@@ -216,7 +221,7 @@ export function EnhancedContextBudgetBar({
               isExtendedPricing ? 'bg-amber-500' : 'bg-amber-500/50'
             }`}
             style={{ left: '20%' }}
-            title="200K pricing threshold — above this, all tokens cost 2x input / 1.5x output"
+            title="200K pricing threshold — above this, extended rates apply (input 2x, output ~1.5x)"
           />
         )}
 

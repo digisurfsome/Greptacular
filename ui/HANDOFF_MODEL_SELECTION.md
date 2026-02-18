@@ -168,7 +168,7 @@ Cache reads are always free for first 5 minutes.
 
 When using the 1M context API panels (PRD Builder and Coder), there's a pricing
 cliff at 200K input tokens. Once input exceeds 200K, ALL tokens (even the first
-200K) are billed at 2x input / 1.5x output. This means the user has a strong
+200K) are billed at extended rates (input 2x, output ~1.5x). This means the user has a strong
 incentive to keep conversations under 200K when possible — especially on the
 PRD Builder panel where they can front-load research on the free subscription panel.
 
@@ -193,7 +193,7 @@ Add a vertical marker line at the 200K position (on 1M context panels):
   <div
     className="absolute top-0 h-full w-0.5 bg-amber-500 z-10"
     style={{ left: '20%' }}  // 200K / 1M = 20%
-    title="200K pricing threshold — tokens above this cost 2x input / 1.5x output"
+    title="200K pricing threshold — extended rates apply (input 2x, output ~1.5x)"
   >
     {/* Label above the marker */}
     <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 text-[9px] font-bold text-amber-500 whitespace-nowrap">
@@ -219,7 +219,7 @@ the conversation is in standard or premium pricing:
       ? 'bg-amber-500/20 text-amber-500'
       : 'bg-emerald-500/20 text-emerald-500'
   }`}>
-    {usedTokens > 200_000 ? '2x RATE' : 'STD RATE'}
+    {usedTokens > 200_000 ? 'EXT' : 'STD'}
   </span>
 )}
 ```
@@ -279,7 +279,7 @@ the budget bar. The cost display only shows on 1M panels where it matters.
 For a 1M panel under 200K:
 ```
 ┌──────────────────────────────────────────────┐
-│  8.2%    82.3K / 1.0M    12 msgs   STD RATE │
+│  8.2%    82.3K / 1.0M    12 msgs   STD │
 │ [████░░░░|░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] │
 │         ↑                                    │
 │        200K                                  │
@@ -290,7 +290,7 @@ For a 1M panel under 200K:
 For a 1M panel OVER 200K:
 ```
 ┌──────────────────────────────────────────────┐
-│  28.5%   285K / 1.0M    34 msgs    2x RATE  │
+│  28.5%   285K / 1.0M    34 msgs    EXT  │
 │ [█████████████|░░░░░░░░░░░░░░░░░░░░░░░░░░░░] │
 │              ↑ (amber marker, bar turns amber)│
 │             200K                              │

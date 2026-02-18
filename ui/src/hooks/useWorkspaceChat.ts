@@ -33,7 +33,7 @@ interface UseWorkspaceChatReturn {
   };
   pendingInjection: PendingInjection | null;
   setPendingInjection: (injection: PendingInjection | null) => void;
-  start: (conversationId?: number | null, workingDirectory?: string, contextMode?: string) => void;
+  start: (conversationId?: number | null, workingDirectory?: string, contextMode?: string, costSettings?: Record<string, unknown>) => void;
   sendMessage: (content: string, attachments?: ImageAttachment[]) => void;
   disconnect: () => void;
   clearMessages: () => void;
@@ -85,6 +85,7 @@ export function useWorkspaceChat({
     conversationId?: number;
     workingDirectory?: string;
     contextMode?: string;
+    costSettings?: Record<string, unknown>;
   } | null>(null);
 
   // Session readiness tracking: prevents sending messages before the backend
@@ -160,6 +161,9 @@ export function useWorkspaceChat({
           payload.working_directory = params.workingDirectory;
         }
         payload.context_mode = params.contextMode || "1m";
+        if (params.costSettings) {
+          payload.cost_settings = params.costSettings;
+        }
 
         if (import.meta.env.DEV) {
           console.debug('[useWorkspaceChat] Re-sending start on reconnect:', payload);
@@ -384,7 +388,7 @@ export function useWorkspaceChat({
   }, [onError]);
 
   const start = useCallback(
-    (existingConversationId?: number | null, workingDirectory?: string, contextMode?: string) => {
+    (existingConversationId?: number | null, workingDirectory?: string, contextMode?: string, costSettings?: Record<string, unknown>) => {
       // Clear any pending check timeout from a previous call
       if (checkAndSendTimeoutRef.current) {
         clearTimeout(checkAndSendTimeoutRef.current);
@@ -396,6 +400,7 @@ export function useWorkspaceChat({
         conversationId: existingConversationId ?? undefined,
         workingDirectory,
         contextMode,
+        costSettings,
       };
 
       // Reset session readiness — the session is not ready until we receive
@@ -419,6 +424,7 @@ export function useWorkspaceChat({
             conversation_id?: number;
             working_directory?: string;
             context_mode?: string;
+            cost_settings?: Record<string, unknown>;
           } = { type: "start" };
 
           if (existingConversationId) {
@@ -429,6 +435,9 @@ export function useWorkspaceChat({
             payload.working_directory = workingDirectory;
           }
           payload.context_mode = contextMode || "1m";
+          if (costSettings) {
+            payload.cost_settings = costSettings;
+          }
 
           if (import.meta.env.DEV) {
             console.debug('[useWorkspaceChat] Sending start message:', payload);

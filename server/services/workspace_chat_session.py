@@ -9,7 +9,7 @@ Forked from assistant_chat_session.py with key differences:
 - ``acceptEdits`` permission mode (not bypassPermissions)
 - Bash security hook via HookMatcher for safe command execution
 - No MCP servers (workspace is project-agnostic)
-- 100-message context loading with NO per-message truncation
+- Token-budget context loading (100K cap) with NO per-message truncation
 - Token estimation tracked per-message
 - Global database (workspace_database), not per-project
 - Session registry keyed by session_id string, not project_name
@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Any, AsyncGenerator, Optional
 
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
-from claude_agent_sdk.types import HookMatcher
+from claude_agent_sdk.types import HookMatcher, SyncHookJSONOutput
 from dotenv import load_dotenv
 
 from ..schemas import ImageAttachment
@@ -75,6 +75,46 @@ CONTEXT_WINDOW_TOKENS = 1_000_000
 
 # Standard 200K context window (no beta flag required).
 CONTEXT_WINDOW_200K = 200_000
+
+# Cost control defaults.  Overridable per-session via the WebSocket ``start`` message.
+# These values represent the "economy" baseline; higher values increase quality and cost.
+DEFAULT_COST_SETTINGS = {
+    "effort": "low",              # Thinking effort: "low", "medium", "high"
+    "max_tokens": 16384,          # Output token cap per response (4096-65536)
+    "max_turns": 50,              # Max agent turns per message (10-100)
+    "history_budget": 100_000,    # Token budget for history on resume (25000-400000)
+    "library_cap": 50_000,        # Token cap for library file injection (10000-200000)
+}
+
+# Validation ranges for cost settings (min, max)
+COST_SETTING_RANGES = {
+    "max_tokens": (4096, 65536),
+    "max_turns": (10, 100),
+    "history_budget": (25_000, 400_000),
+    "library_cap": (10_000, 200_000),
+}
+VALID_EFFORT_LEVELS = ("low", "medium", "high")
+
+
+def validate_cost_settings(raw: dict) -> dict:
+    """Validate and clamp cost settings, returning a clean dict with defaults for missing keys."""
+    result = dict(DEFAULT_COST_SETTINGS)
+
+    effort = raw.get("effort")
+    if effort in VALID_EFFORT_LEVELS:
+        result["effort"] = effort
+
+    for key in ("max_tokens", "max_turns", "history_budget", "library_cap"):
+        val = raw.get(key)
+        if val is not None:
+            try:
+                val = int(val)
+                lo, hi = COST_SETTING_RANGES[key]
+                result[key] = max(lo, min(hi, val))
+            except (ValueError, TypeError):
+                pass  # keep default
+
+    return result
 
 
 def get_workspace_system_prompt(working_directory: str, model: str = "") -> str:
@@ -132,6 +172,7 @@ class WorkspaceChatSession:
         conversation_id: Optional[int] = None,
         working_directory: Optional[str] = None,
         context_mode: str = "1m",
+        cost_settings: Optional[dict] = None,
     ):
         """Initialize the workspace chat session.
 
@@ -141,12 +182,15 @@ class WorkspaceChatSession:
             working_directory: Absolute path for the agent's cwd. Defaults to the user's home directory.
             context_mode: Context window size -- ``"1m"`` (1,000,000 tokens with beta flag)
                 or ``"200k"`` (200,000 tokens, no beta). Defaults to ``"1m"``.
+            cost_settings: Optional dict of cost control overrides (effort, max_tokens,
+                max_turns, history_budget, library_cap). Missing keys use defaults.
         """
         self.session_id = session_id
         self.conversation_id = conversation_id
         self.working_directory = working_directory or str(Path.home())
         self.context_mode = context_mode
         self.context_window = CONTEXT_WINDOW_TOKENS if context_mode == "1m" else CONTEXT_WINDOW_200K
+        self.cost_settings = validate_cost_settings(cost_settings or {})
         self.client: Optional[ClaudeSDKClient] = None
         self._client_entered: bool = False
         self.created_at = datetime.now()
@@ -274,14 +318,54 @@ class WorkspaceChatSession:
         is_alternative_api = bool(base_url) or is_vertex
 
         # Bash security hook -- same allowlist-based hook the coding agent uses
+        # PreCompact hook -- guides summarization to keep context lean and cheap
+        async def workspace_pre_compact_hook(input_data, tool_use_id=None, context=None):
+            """Guide compaction to discard verbose tool results and keep costs low."""
+            trigger = input_data.get("trigger", "auto")
+            logger.info(f"[Workspace] Context compaction triggered ({trigger})")
+
+            compaction_guidance = "\n".join([
+                "## Workspace Compaction Guidelines",
+                "Keep the conversation lean to minimize token costs.",
+                "",
+                "## DISCARD (verbose/redundant)",
+                "- Full file contents from Read tool results (keep only: 'Read file X, ~N lines')",
+                "- Large Grep/Glob outputs (keep only: 'Found N matches in these files: ...')",
+                "- Full Bash command outputs (keep only: command + success/failure + key output lines)",
+                "- Repeated reads of the same file",
+                "- CSS/HTML/JSON content dumps",
+                "",
+                "## PRESERVE (important context)",
+                "- What the user asked for and key decisions made",
+                "- Files that were created or modified (paths only)",
+                "- Current task state and any open questions",
+                "- Error messages that are still relevant",
+            ])
+
+            return SyncHookJSONOutput(
+                hookSpecificOutput={  # type: ignore[typeddict-item]
+                    "hookEventName": "PreCompact",
+                    "customInstructions": compaction_guidance,
+                }
+            )
+
         hooks = {
             "PreToolUse": [
                 HookMatcher(matcher="Bash", hooks=[bash_security_hook])
-            ]
+            ],
+            "PreCompact": [
+                HookMatcher(hooks=[workspace_pre_compact_hook])
+            ],
         }
 
         try:
             logger.info(f"Creating workspace ClaudeSDKClient for session {self.session_id}...")
+            cs = self.cost_settings
+            logger.info(
+                f"Cost settings: effort={cs['effort']}, max_tokens={cs['max_tokens']}, "
+                f"max_turns={cs['max_turns']}, history_budget={cs['history_budget']}, "
+                f"library_cap={cs['library_cap']}"
+            )
             self.client = ClaudeSDKClient(
                 options=ClaudeAgentOptions(
                     model=model,
@@ -291,7 +375,10 @@ class WorkspaceChatSession:
                     setting_sources=["project"],
                     allowed_tools=WORKSPACE_BUILTIN_TOOLS,
                     permission_mode="acceptEdits",
-                    max_turns=100,
+                    # Cost controls from user dashboard (see DEFAULT_COST_SETTINGS).
+                    max_turns=cs["max_turns"],
+                    max_tokens=cs["max_tokens"],
+                    effort=cs["effort"],
                     cwd=str(workspace_scratch),  # Scratch dir for CLAUDE.md
                     settings=str(settings_file.resolve()),
                     env=sdk_env,
@@ -409,8 +496,10 @@ class WorkspaceChatSession:
                 summary_context = latest_summary["summary"]
                 summary_tokens = latest_summary.get("token_estimate", len(summary_context) // 4)
 
-            # Calculate remaining budget for messages (reserve space for summary)
-            MESSAGE_TOKEN_BUDGET = 400_000
+            # Calculate remaining budget for messages (reserve space for summary).
+            # Configurable via cost dashboard to avoid pushing input into
+            # long-context premium pricing (above 200K: 2× input & 1.5× output).
+            MESSAGE_TOKEN_BUDGET = self.cost_settings["history_budget"]
             remaining_budget = MESSAGE_TOKEN_BUDGET - summary_tokens
 
             # Load messages dynamically up to the budget
@@ -445,7 +534,9 @@ class WorkspaceChatSession:
         if self.conversation_id:
             try:
                 from .workspace_library import get_active_files_context
-                library_context, library_tokens = get_active_files_context(self.conversation_id)
+                library_context, library_tokens = get_active_files_context(
+                    self.conversation_id, token_cap=self.cost_settings["library_cap"]
+                )
                 if library_context:
                     message_to_send = f"{library_context}\n\n{message_to_send}"
             except Exception as e:
@@ -624,6 +715,7 @@ async def create_session(
     conversation_id: Optional[int] = None,
     working_directory: Optional[str] = None,
     context_mode: str = "1m",
+    cost_settings: Optional[dict] = None,
 ) -> WorkspaceChatSession:
     """Create a new workspace session, closing any existing one with the same ID.
 
@@ -632,6 +724,7 @@ async def create_session(
         conversation_id: Optional conversation ID to resume.
         working_directory: Absolute path for the agent's working directory.
         context_mode: Context window size -- ``"1m"`` or ``"200k"``. Defaults to ``"1m"``.
+        cost_settings: Optional dict of cost control overrides.
 
     Returns:
         The newly created session instance.
@@ -645,6 +738,7 @@ async def create_session(
             conversation_id=conversation_id,
             working_directory=working_directory,
             context_mode=context_mode,
+            cost_settings=cost_settings,
         )
         _sessions[session_id] = session
 

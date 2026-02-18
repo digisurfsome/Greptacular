@@ -436,9 +436,14 @@ def get_active_files_context(conversation_id: int) -> tuple[str, int]:
     """
     Build the context string for all active files in a conversation.
 
+    Enforces a 50K token cap to prevent library files from inflating every
+    message's input cost (each token is billed on every subsequent turn).
+
     Returns:
         Tuple of (context_string, estimated_token_count)
     """
+    LIBRARY_TOKEN_CAP = 50_000
+
     active_files = get_active_files(conversation_id)
     if not active_files:
         return "", 0
@@ -453,7 +458,14 @@ def get_active_files_context(conversation_id: int) -> tuple[str, int]:
                 f"{content}\n"
                 f"--- End File ---"
             )
+            block_tokens = len(block) // 4
+            if total_tokens + block_tokens > LIBRARY_TOKEN_CAP:
+                logger.warning(
+                    "Library injection capped at ~%d tokens. Skipping '%s' (%d tokens).",
+                    total_tokens, f['display_name'], block_tokens,
+                )
+                break
             parts.append(block)
-            total_tokens += len(block) // 4  # same estimation as workspace_database.py
+            total_tokens += block_tokens
 
     return "\n\n".join(parts), total_tokens

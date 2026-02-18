@@ -9,7 +9,7 @@ Forked from assistant_chat_session.py with key differences:
 - ``acceptEdits`` permission mode (not bypassPermissions)
 - Bash security hook via HookMatcher for safe command execution
 - No MCP servers (workspace is project-agnostic)
-- 100-message context loading with NO per-message truncation
+- Token-budget context loading (100K cap) with NO per-message truncation
 - Token estimation tracked per-message
 - Global database (workspace_database), not per-project
 - Session registry keyed by session_id string, not project_name
@@ -291,7 +291,11 @@ class WorkspaceChatSession:
                     setting_sources=["project"],
                     allowed_tools=WORKSPACE_BUILTIN_TOOLS,
                     permission_mode="acceptEdits",
-                    max_turns=100,
+                    max_turns=50,
+                    # Cost guardrails: cap output tokens and use low effort to
+                    # minimize thinking tokens ($25/MTok output on Opus 4.6).
+                    max_tokens=16384,
+                    effort="low",
                     cwd=str(workspace_scratch),  # Scratch dir for CLAUDE.md
                     settings=str(settings_file.resolve()),
                     env=sdk_env,
@@ -409,8 +413,10 @@ class WorkspaceChatSession:
                 summary_context = latest_summary["summary"]
                 summary_tokens = latest_summary.get("token_estimate", len(summary_context) // 4)
 
-            # Calculate remaining budget for messages (reserve space for summary)
-            MESSAGE_TOKEN_BUDGET = 400_000
+            # Calculate remaining budget for messages (reserve space for summary).
+            # Kept low to avoid pushing input into long-context premium pricing
+            # (above 200K input tokens, Opus 4.6 charges 2× input & 1.5× output).
+            MESSAGE_TOKEN_BUDGET = 100_000
             remaining_budget = MESSAGE_TOKEN_BUDGET - summary_tokens
 
             # Load messages dynamically up to the budget

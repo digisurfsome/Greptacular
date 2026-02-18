@@ -89,13 +89,29 @@ async def generate_summary(
         # Determine the Haiku model to use
         model = os.getenv("ANTHROPIC_DEFAULT_HAIKU_MODEL", "claude-3-5-haiku-20241022")
 
-        # Build the messages payload: include all provided messages as context
+        # Build the messages payload: only the LAST 30 messages to cap Haiku costs.
+        # Previous summaries already capture earlier context, so we only need
+        # recent messages.  Also enforce a ~50K token budget (len//4 estimate).
+        MAX_SUMMARY_MESSAGES = 30
+        SUMMARY_INPUT_TOKEN_CAP = 50_000
+        recent_messages = messages[-MAX_SUMMARY_MESSAGES:] if len(messages) > MAX_SUMMARY_MESSAGES else messages
+
         formatted_messages: list[dict] = []
-        for msg in messages:
+        token_estimate = 0
+        for msg in recent_messages:
             role = msg.get("role", "user")
             content = msg.get("content", "")
             if role in ("user", "assistant") and content.strip():
+                msg_tokens = len(content) // 4
+                if token_estimate + msg_tokens > SUMMARY_INPUT_TOKEN_CAP:
+                    # Truncate this message to fit within budget
+                    remaining = (SUMMARY_INPUT_TOKEN_CAP - token_estimate) * 4
+                    if remaining > 200:
+                        content = content[:remaining] + "\n[...truncated for summary...]"
+                    else:
+                        break
                 formatted_messages.append({"role": role, "content": content})
+                token_estimate += len(content) // 4
 
         if not formatted_messages:
             logger.warning("No messages to summarize for conversation %d", conversation_id)

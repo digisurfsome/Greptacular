@@ -2,7 +2,7 @@
  * Assistant Panel Component
  *
  * Slide-in panel container for the project assistant chat.
- * Slides in from the right side of the screen.
+ * Renders as a portal on document.body when open.
  * Manages conversation state with localStorage persistence.
  */
 
@@ -44,10 +44,25 @@ function setStoredConversationId(projectName: string, conversationId: number | n
 }
 
 export function AssistantPanel({ projectName, isOpen, onClose }: AssistantPanelProps) {
-  // Capture-phase Escape handler — fires before the textarea can swallow the event
+  // Keep a stable ref to onClose so native DOM listeners always call the latest version
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
 
+  // Native DOM click listener on the close button — bypasses React event system entirely
+  const closeBtnRef = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    const btn = closeBtnRef.current
+    if (!btn || !isOpen) return
+    const handleNativeClick = (e: MouseEvent) => {
+      e.stopPropagation()
+      e.preventDefault()
+      onCloseRef.current()
+    }
+    btn.addEventListener('click', handleNativeClick, true) // capture phase
+    return () => btn.removeEventListener('click', handleNativeClick, true)
+  }, [isOpen])
+
+  // Capture-phase Escape handler — fires before the textarea can swallow the event
   useEffect(() => {
     if (!isOpen) return
     const handleEscape = (e: KeyboardEvent) => {
@@ -117,39 +132,24 @@ export function AssistantPanel({ projectName, isOpen, onClose }: AssistantPanelP
     setConversationId(id)
   }, [])
 
-  // Close handler with stopPropagation to prevent any parent interference
-  const handleCloseClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation()
-    e.preventDefault()
-    onClose()
-  }, [onClose])
+  // When closed, don't render anything at all — no CSS hide, no off-screen panel.
+  // This guarantees the panel disappears regardless of CSS/transition/stacking issues.
+  if (!isOpen) return null
 
-  // Render via portal to document.body to avoid stacking context issues in #root
   return createPortal(
     <>
       {/* Backdrop - click to close */}
-      {isOpen && (
-        <div
-          className="fixed inset-0 bg-black/20 z-[55] transition-opacity duration-300"
-          onClick={handleCloseClick}
-          aria-hidden="true"
-        />
-      )}
+      <div
+        className="fixed inset-0 bg-black/20 z-[55]"
+        onClick={() => onCloseRef.current()}
+        aria-hidden="true"
+      />
 
       {/* Panel */}
       <div
-        className={`
-          fixed right-0 top-0 bottom-0 z-[60]
-          w-[400px] max-w-[90vw]
-          bg-card
-          border-l border-border
-          transition-transform duration-300 ease-out
-          flex flex-col shadow-xl
-          ${isOpen ? 'translate-x-0' : 'translate-x-full'}
-        `}
+        className="fixed right-0 top-0 bottom-0 z-[60] w-[400px] max-w-[90vw] bg-card border-l border-border flex flex-col shadow-xl"
         role="dialog"
         aria-label="Project Assistant"
-        aria-hidden={!isOpen}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-primary text-primary-foreground">
@@ -163,8 +163,9 @@ export function AssistantPanel({ projectName, isOpen, onClose }: AssistantPanelP
             </div>
           </div>
           <button
+            ref={closeBtnRef}
             type="button"
-            onClick={handleCloseClick}
+            onClick={() => onCloseRef.current()}
             className="size-9 inline-flex items-center justify-center rounded-md text-primary-foreground hover:bg-primary-foreground/20 transition-colors"
             title="Close Assistant (Press A)"
             aria-label="Close Assistant"
@@ -175,17 +176,15 @@ export function AssistantPanel({ projectName, isOpen, onClose }: AssistantPanelP
 
         {/* Chat area */}
         <div className="flex-1 overflow-hidden">
-          {isOpen && (
-            <AssistantChat
-              projectName={projectName}
-              conversationId={conversationId}
-              initialMessages={initialMessages}
-              isLoadingConversation={isLoadingConversation}
-              onNewChat={handleNewChat}
-              onSelectConversation={handleSelectConversation}
-              onConversationCreated={handleConversationCreated}
-            />
-          )}
+          <AssistantChat
+            projectName={projectName}
+            conversationId={conversationId}
+            initialMessages={initialMessages}
+            isLoadingConversation={isLoadingConversation}
+            onNewChat={handleNewChat}
+            onSelectConversation={handleSelectConversation}
+            onConversationCreated={handleConversationCreated}
+          />
         </div>
       </div>
     </>,

@@ -21,6 +21,9 @@ RATE_LIMIT_REGEX_PATTERNS = [
     r"\b429\s+too\s+many",        # "429 too many"
     r"\b(?:server|api|system)\s+(?:is\s+)?overloaded\b",  # "server is overloaded", "api overloaded"
     r"\bquota\s*exceeded\b",      # "quota exceeded"
+    r"\bcredit\s+balance\b",      # "credit balance is too low"
+    r"\bbalance\s+too\s+low\b",   # "balance too low"
+    r"\binsufficient\s+credit\b", # "insufficient credit"
 ]
 
 # Compiled regex for efficient matching

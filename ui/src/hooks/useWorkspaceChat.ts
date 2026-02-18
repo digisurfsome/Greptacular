@@ -334,24 +334,31 @@ export function useWorkspaceChat({
             setLastError(data.content || "Unknown error");
             onError?.(data.content);
 
-            // Check if this is a rate limit error -- auto-log via API as fallback
+            // Check if this is a rate limit or billing error -- auto-log via API as fallback
             const errorContent = (data.content || "").toLowerCase();
             const rateLimitPatterns = [
               "rate limit", "rate_limit", "ratelimit",
               "usage limit", "too many requests", "429",
               "please wait", "try again", "resume at",
               "capacity", "overloaded",
+              "credit balance", "balance too low",
+              "insufficient credit", "billing",
             ];
             const isRateLimit = rateLimitPatterns.some((p) => errorContent.includes(p));
+            const isBillingError = ["credit balance", "balance too low", "insufficient credit"].some(
+              (p) => errorContent.includes(p),
+            );
 
             setMessages((prev) => [
               ...prev,
               {
                 id: generateId(),
                 role: "system",
-                content: isRateLimit
-                  ? `Rate limit hit! ${data.content}\n\nThis has been auto-logged to calibrate your usage meters.`
-                  : `Error: ${data.content}`,
+                content: isBillingError
+                  ? `API billing error: ${data.content}\n\nYour API credit balance may be depleted. Top up at console.anthropic.com or switch to 200K mode to use your subscription.`
+                  : isRateLimit
+                    ? `Rate limit hit! ${data.content}\n\nThis has been auto-logged to calibrate your usage meters.`
+                    : `Error: ${data.content}`,
                 timestamp: new Date(),
               },
             ]);

@@ -10,6 +10,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { Wifi, WifiOff, Loader2, Tag, X, Plus, GitBranch, Pencil } from 'lucide-react'
 import { getGitBranches, renameGitBranch } from '@/lib/api'
+import { useWorkspaceCategories } from '@/hooks/useWorkspaceCategories'
 
 interface WorkspaceChatHeaderProps {
   conversationId: number | null
@@ -23,14 +24,14 @@ interface WorkspaceChatHeaderProps {
   workingDirectory?: string | null
 }
 
-/** Ordered list of available conversation categories. */
-const CATEGORIES = [
+/** Default categories used as fallbacks when no custom categories exist. */
+const DEFAULT_CATEGORIES = [
   'general',
   'debugging',
   'refactoring',
   'feature',
   'exploration',
-] as const
+]
 
 /** Branch names that should not be renamed. */
 const PROTECTED_BRANCHES = ['main', 'master']
@@ -105,6 +106,23 @@ export function WorkspaceChatHeader({
   const [branchEditValue, setBranchEditValue] = useState('')
   const [branchLoading, setBranchLoading] = useState(false)
   const branchInputRef = useRef<HTMLInputElement>(null)
+
+  // Fetch custom categories and merge with defaults
+  const { data: customCategories = [] } = useWorkspaceCategories()
+  const allCategories = useMemo(() => {
+    const customNames = customCategories.map((c) => c.name)
+    const merged = [...DEFAULT_CATEGORIES]
+    for (const name of customNames) {
+      if (!merged.includes(name)) {
+        merged.push(name)
+      }
+    }
+    // Ensure current category is always in the list (even if deleted)
+    if (category && !merged.includes(category)) {
+      merged.push(category)
+    }
+    return merged
+  }, [customCategories, category])
 
   // Focus the title input when entering edit mode
   useEffect(() => {
@@ -314,7 +332,7 @@ export function WorkspaceChatHeader({
             className="text-xs bg-input border border-border rounded px-1.5 py-0.5 text-foreground outline-none ring-ring focus:ring-1"
             aria-label="Conversation category"
           >
-            {CATEGORIES.map((cat) => (
+            {allCategories.map((cat) => (
               <option key={cat} value={cat}>
                 {cat}
               </option>

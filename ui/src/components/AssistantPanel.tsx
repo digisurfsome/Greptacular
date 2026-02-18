@@ -105,7 +105,7 @@ export function AssistantPanel({ projectName, isOpen, onClose }: AssistantPanelP
       {/* Backdrop - click to close */}
       {isOpen && (
         <div
-          className="fixed inset-0 bg-black/20 z-40 transition-opacity duration-300"
+          className="fixed inset-0 bg-black/20 z-[55] transition-opacity duration-300"
           onClick={onClose}
           aria-hidden="true"
         />
@@ -114,7 +114,7 @@ export function AssistantPanel({ projectName, isOpen, onClose }: AssistantPanelP
       {/* Panel */}
       <div
         className={`
-          fixed right-0 top-0 bottom-0 z-50
+          fixed right-0 top-0 bottom-0 z-[60]
           w-[400px] max-w-[90vw]
           bg-card
           border-l border-border

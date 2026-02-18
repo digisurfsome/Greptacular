@@ -71,6 +71,7 @@ class ConversationUpdateRequest(BaseModel):
     category: Optional[str] = None
     pinned: Optional[bool] = None
     tags: Optional[str] = None
+    context_mode: Optional[str] = None
 
 
 # ============================================================================
@@ -142,6 +143,7 @@ async def update_conversation(conversation_id: int, body: ConversationUpdateRequ
         category=body.category,
         pinned=body.pinned,
         tags=body.tags,
+        context_mode=body.context_mode,
     )
     if not updated:
         raise HTTPException(status_code=404, detail="Conversation not found")

@@ -517,6 +517,7 @@ def update_conversation(
     working_directory: Optional[str] = None,
     pinned: Optional[bool] = None,
     tags: Optional[str] = None,
+    context_mode: Optional[str] = None,
 ) -> Optional[dict]:
     """Update a conversation's metadata.
 
@@ -529,6 +530,7 @@ def update_conversation(
         working_directory: New working directory, or None to leave unchanged.
         pinned: New pinned state, or None to leave unchanged.
         tags: New comma-separated tags, or None to leave unchanged.
+        context_mode: New context mode (``"1m"`` or ``"200k"``), or None to leave unchanged.
 
     Returns:
         Updated conversation dict, or None if the conversation was not found.
@@ -553,6 +555,8 @@ def update_conversation(
             conversation.pinned = 1 if pinned else 0
         if tags is not None:
             conversation.tags = tags
+        if context_mode is not None:
+            conversation.context_mode = context_mode
 
         conversation.updated_at = _utc_now()
         session.commit()

@@ -491,9 +491,20 @@ def create_client(
     # Build environment overrides for API endpoint configuration
     # Uses get_effective_sdk_env() which reads provider settings from the database,
     # ensuring UI-configured alternative providers (GLM, Ollama, Kimi, Custom) propagate
-    # correctly to the Claude CLI subprocess
+    # correctly to the Claude CLI subprocess.
+    #
+    # Smart billing routing: only the initializer agent (which uses 1M context for
+    # PRD breakdown) needs API billing.  All other agents (coding, testing, reviewer,
+    # qa, etc.) strip the API key so the CLI falls back to subscription OAuth.
     from registry import get_effective_sdk_env
-    sdk_env = get_effective_sdk_env()
+    use_api_billing = agent_type == "initializer"
+    sdk_env = get_effective_sdk_env(force_subscription=not use_api_billing)
+
+    # Log billing mode so the user can verify which path is active
+    if use_api_billing:
+        print(f"   - Billing: API key (1M context, agent_type={agent_type})")
+    else:
+        print(f"   - Billing: Subscription (200K context, agent_type={agent_type})")
 
     # Detect alternative API mode (Ollama, GLM, or Vertex AI)
     base_url = sdk_env.get("ANTHROPIC_BASE_URL", "")
@@ -634,11 +645,16 @@ def create_client(
             cwd=str(project_dir.resolve()),
             settings=str(settings_file.resolve()),  # Use absolute path
             env=sdk_env,  # Pass API configuration overrides to CLI subprocess
-            # Enable extended context beta for better handling of long sessions.
-            # This provides up to 1M tokens of context with automatic compaction.
-            # See: https://docs.anthropic.com/en/api/beta-headers
-            # Disabled for alternative APIs (Ollama, GLM, Vertex AI) as they don't support this beta.
-            betas=[] if is_alternative_api else ["context-1m-2025-08-07"],
+            # 1M context beta: only enabled for the initializer agent (PRD breakdown)
+            # which needs the large context window and uses API billing.
+            # All other agents (coding, testing, reviewer, qa) use the standard 200K
+            # context window and run on subscription billing.
+            # Disabled entirely for alternative APIs (Ollama, GLM, Vertex AI).
+            betas=(
+                ["context-1m-2025-08-07"]
+                if use_api_billing and not is_alternative_api
+                else []
+            ),
             # Note on context management:
             # The Claude Agent SDK handles context management automatically through the
             # underlying Claude Code CLI. When context approaches limits, the CLI

@@ -101,3 +101,15 @@ export function useChangeCategory() {
     },
   })
 }
+
+/** Hook to toggle a workspace conversation's context mode between 1m and 200k. */
+export function useToggleContextMode() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ conversationId, context_mode }: { conversationId: number; context_mode: string }) =>
+      updateWorkspaceConversation(conversationId, { context_mode }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [...CONVERSATIONS_KEY] })
+    },
+  })
+}

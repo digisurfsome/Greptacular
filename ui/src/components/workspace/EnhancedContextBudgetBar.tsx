@@ -72,6 +72,12 @@ const INPUT_RATES = {
   sonnet: { standard: 3, extended: 6 },
 } as const
 
+// Output pricing per million tokens
+const OUTPUT_RATES = {
+  opus:   { standard: 25, extended: 37.5 },
+  sonnet: { standard: 15, extended: 22.5 },
+} as const
+
 /** Estimate the input cost for the current conversation. */
 function estimateInputCost(inputTokens: number, model: 'opus' | 'sonnet'): string {
   if (inputTokens <= 0) return '$0.00'
@@ -80,6 +86,32 @@ function estimateInputCost(inputTokens: number, model: 'opus' | 'sonnet'): strin
   const cost = (inputTokens / 1_000_000) * rate
   if (cost < 0.01) return '<$0.01'
   return `$${cost.toFixed(2)}`
+}
+
+/** Estimate the output cost using a heuristic ratio of output to input tokens. */
+function estimateOutputCost(inputTokens: number, model: 'opus' | 'sonnet'): { cost: string; outputTokens: number } {
+  if (inputTokens <= 0) return { cost: '$0.00', outputTokens: 0 }
+  // Heuristic: output tokens are roughly 30% of input tokens over a conversation
+  const estimatedOutput = Math.round(inputTokens * 0.3)
+  const isExtended = inputTokens > 200_000
+  const rate = isExtended ? OUTPUT_RATES[model].extended : OUTPUT_RATES[model].standard
+  const cost = (estimatedOutput / 1_000_000) * rate
+  return {
+    cost: cost < 0.01 ? '<$0.01' : `$${cost.toFixed(2)}`,
+    outputTokens: estimatedOutput,
+  }
+}
+
+/** Estimate total cost (input + estimated output). */
+function estimateTotalCost(inputTokens: number, model: 'opus' | 'sonnet'): string {
+  if (inputTokens <= 0) return '$0.00'
+  const isExtended = inputTokens > 200_000
+  const inputRate = isExtended ? INPUT_RATES[model].extended : INPUT_RATES[model].standard
+  const outputRate = isExtended ? OUTPUT_RATES[model].extended : OUTPUT_RATES[model].standard
+  const estimatedOutput = Math.round(inputTokens * 0.3)
+  const totalCost = (inputTokens / 1_000_000) * inputRate + (estimatedOutput / 1_000_000) * outputRate
+  if (totalCost < 0.01) return '<$0.01'
+  return `$${totalCost.toFixed(2)}`
 }
 
 /** Large, always-visible context budget meter. */
@@ -156,14 +188,19 @@ export function EnhancedContextBudgetBar({
           </span>
         </div>
 
-        {/* Center: live dollar cost (only on 1M API panels) */}
+        {/* Center: live dollar cost with output estimate (only on 1M API panels) */}
         {showCost && (
           <div className="flex items-center gap-1.5">
-            <span className={`text-base font-bold tabular-nums ${
-              isExtendedPricing ? 'text-amber-400' : 'text-emerald-400'
-            }`}>
-              {estimateInputCost(usedTokens, preferredModel!)}
-            </span>
+            <div className="flex flex-col items-center">
+              <span className={`text-base font-bold tabular-nums leading-none ${
+                isExtendedPricing ? 'text-amber-400' : 'text-emerald-400'
+              }`}>
+                {estimateTotalCost(usedTokens, preferredModel!)}
+              </span>
+              <span className="text-[9px] text-muted-foreground tabular-nums leading-tight">
+                in: {estimateInputCost(usedTokens, preferredModel!)} + out: ~{estimateOutputCost(usedTokens, preferredModel!).cost}
+              </span>
+            </div>
             <span
               className={`text-[9px] font-mono font-bold px-1 py-0.5 rounded ${
                 isExtendedPricing

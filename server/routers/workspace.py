@@ -71,6 +71,7 @@ class ConversationUpdateRequest(BaseModel):
     category: Optional[str] = None
     pinned: Optional[bool] = None
     tags: Optional[str] = None
+    context_mode: Optional[str] = None
 
 
 # ============================================================================
@@ -142,6 +143,7 @@ async def update_conversation(conversation_id: int, body: ConversationUpdateRequ
         category=body.category,
         pinned=body.pinned,
         tags=body.tags,
+        context_mode=body.context_mode,
     )
     if not updated:
         raise HTTPException(status_code=404, detail="Conversation not found")
@@ -798,6 +800,9 @@ async def workspace_chat_websocket(websocket: WebSocket):
                         # Extract cost control settings from start message
                         cost_settings = message.get("cost_settings")
 
+                        # Extract model preference from start message (for per-panel model routing)
+                        model = message.get("model")  # e.g. "opus", "sonnet", or None
+
                         # Create a new workspace session
                         logger.debug(f"Creating workspace session {session_id}")
                         session = await ws_create_session(
@@ -806,6 +811,7 @@ async def workspace_chat_websocket(websocket: WebSocket):
                             working_directory=working_directory,
                             context_mode=context_mode,
                             cost_settings=cost_settings,
+                            model=model,
                         )
                         logger.debug("Workspace session created, starting...")
 

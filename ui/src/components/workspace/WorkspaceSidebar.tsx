@@ -21,6 +21,7 @@ import {
   useWorkspaceConversations,
   useDeleteWorkspaceConversation,
   useTogglePin,
+  useToggleContextMode,
 } from '@/hooks/useWorkspaceConversations'
 import {
   useWorkspaceCategories,
@@ -87,6 +88,7 @@ export function WorkspaceSidebar({
   const updateCategoryMut = useUpdateCategory()
   const deleteCategoryMut = useDeleteCategory()
   const togglePinMut = useTogglePin()
+  const toggleContextModeMut = useToggleContextMode()
 
   /** Filter conversations by search term (case-insensitive substring). */
   const filtered = useMemo(() => {
@@ -251,14 +253,25 @@ export function WorkspaceSidebar({
                       onMouseEnter={() => handleMouseEnter(conv.id)}
                       onMouseLeave={handleMouseLeave}
                     >
-                      {/* Context mode badge — top-right corner, vibrant color */}
-                      <span className={`absolute -top-1 -right-1 z-10 text-[9px] font-mono font-extrabold px-1.5 py-0.5 rounded-md border shadow-sm ${
-                        conv.context_mode === '1m'
-                          ? 'bg-blue-600 text-white border-blue-400'
-                          : 'bg-zinc-700 text-zinc-200 border-zinc-500'
-                      }`}>
+                      {/* Context mode badge — top-right corner, clickable to toggle */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          toggleContextModeMut.mutate({
+                            conversationId: conv.id,
+                            context_mode: conv.context_mode === '1m' ? '200k' : '1m',
+                          })
+                        }}
+                        className={`absolute -top-1 -right-1 z-10 text-[9px] font-mono font-extrabold px-1.5 py-0.5 rounded-md border shadow-sm cursor-pointer transition-colors ${
+                          conv.context_mode === '1m'
+                            ? 'bg-blue-600 text-white border-blue-400 hover:bg-blue-500'
+                            : 'bg-zinc-700 text-zinc-200 border-zinc-500 hover:bg-zinc-600'
+                        }`}
+                        title={`Switch to ${conv.context_mode === '1m' ? '200K' : '1M'} context`}
+                      >
                         {conv.context_mode === '1m' ? '1M' : '200K'}
-                      </span>
+                      </button>
                       <button
                         type="button"
                         onClick={() => onSelectConversation(conv.id)}

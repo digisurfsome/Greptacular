@@ -173,6 +173,7 @@ class WorkspaceChatSession:
         working_directory: Optional[str] = None,
         context_mode: str = "1m",
         cost_settings: Optional[dict] = None,
+        model: Optional[str] = None,
     ):
         """Initialize the workspace chat session.
 
@@ -184,6 +185,8 @@ class WorkspaceChatSession:
                 or ``"200k"`` (200,000 tokens, no beta). Defaults to ``"1m"``.
             cost_settings: Optional dict of cost control overrides (effort, max_tokens,
                 max_turns, history_budget, library_cap). Missing keys use defaults.
+            model: Optional model shorthand for per-panel routing (``"opus"`` or ``"sonnet"``).
+                When ``None``, defaults to the Opus model.
         """
         self.session_id = session_id
         self.conversation_id = conversation_id
@@ -191,6 +194,7 @@ class WorkspaceChatSession:
         self.context_mode = context_mode
         self.context_window = CONTEXT_WINDOW_TOKENS if context_mode == "1m" else CONTEXT_WINDOW_200K
         self.cost_settings = validate_cost_settings(cost_settings or {})
+        self.model = model
         self.client: Optional[ClaudeSDKClient] = None
         self._client_entered: bool = False
         self.created_at = datetime.now()
@@ -292,11 +296,21 @@ class WorkspaceChatSession:
             yield {"type": "response_done"}
             return
 
-        # Determine model from SDK env (provider-aware) or fallback to env/default
-        model = (
-            sdk_env.get("ANTHROPIC_DEFAULT_OPUS_MODEL")
-            or os.getenv("ANTHROPIC_DEFAULT_OPUS_MODEL", DEFAULT_MODEL)
-        )
+        # Per-panel model routing: resolve the model shorthand to a full model ID.
+        # When self.model is set (from the UI panel), use it to pick the right model.
+        # Otherwise fall back to the environment default (Opus).
+        MODEL_MAP = {
+            "opus": (
+                sdk_env.get("ANTHROPIC_DEFAULT_OPUS_MODEL")
+                or os.getenv("ANTHROPIC_DEFAULT_OPUS_MODEL", DEFAULT_MODEL)
+            ),
+            "sonnet": (
+                sdk_env.get("ANTHROPIC_DEFAULT_SONNET_MODEL")
+                or os.getenv("ANTHROPIC_DEFAULT_SONNET_MODEL", "claude-sonnet-4-5-20250929")
+            ),
+        }
+        model = MODEL_MAP.get(self.model or "", MODEL_MAP["opus"])
+        logger.info(f"Resolved model: {self.model} -> {model}")
 
         # -----------------------------------------------------------------
         # System prompt: written as CLAUDE.md in a scratch directory so the
@@ -716,6 +730,7 @@ async def create_session(
     working_directory: Optional[str] = None,
     context_mode: str = "1m",
     cost_settings: Optional[dict] = None,
+    model: Optional[str] = None,
 ) -> WorkspaceChatSession:
     """Create a new workspace session, closing any existing one with the same ID.
 
@@ -725,6 +740,7 @@ async def create_session(
         working_directory: Absolute path for the agent's working directory.
         context_mode: Context window size -- ``"1m"`` or ``"200k"``. Defaults to ``"1m"``.
         cost_settings: Optional dict of cost control overrides.
+        model: Optional model shorthand for per-panel routing (``"opus"`` or ``"sonnet"``).
 
     Returns:
         The newly created session instance.
@@ -739,6 +755,7 @@ async def create_session(
             working_directory=working_directory,
             context_mode=context_mode,
             cost_settings=cost_settings,
+            model=model,
         )
         _sessions[session_id] = session
 

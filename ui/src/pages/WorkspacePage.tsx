@@ -10,11 +10,11 @@
  *   2. PRD Builder (Opus 4.6, 1M API) — create the PRD with codebase context
  *   3. Coder (Sonnet 4.6, 1M API) — execute the PRD
  *
- * The passoff editor overlays on the PRD panel. Auto-forward sends the PRD
- * panel's completed response directly to the Coder panel.
+ * The passoff editor is a tab alongside Chat in the PRD panel. Auto-forward
+ * sends the PRD panel's completed response directly to the Coder panel.
  */
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { WorkspaceSidebar } from '../components/workspace/WorkspaceSidebar'
 import { WorkspaceChat } from '../components/workspace/WorkspaceChat'
 import { WorkspaceLibrary } from '../components/workspace/WorkspaceLibrary'
@@ -32,7 +32,6 @@ import {
   Columns2,
   ChevronsLeft,
   ChevronsRight,
-  FileText,
   Zap,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -73,11 +72,26 @@ export function WorkspacePage(): React.JSX.Element {
   // Three-panel state (split view)
   const [prdConversationId, setPrdConversationId] = useState<number | null>(null)
   const [coderConversationId, setCoderConversationId] = useState<number | null>(null)
-  const [researchCollapsed, setResearchCollapsed] = useState(false)
-  const [prdCollapsed, setPrdCollapsed] = useState(false)
-  const [coderCollapsed, setCoderCollapsed] = useState(false)
+  const [researchCollapsed, setResearchCollapsed] = useState(() => {
+    try { return localStorage.getItem('workspace-panel-research') === 'collapsed' } catch { return false }
+  })
+  const [prdCollapsed, setPrdCollapsed] = useState(() => {
+    try { return localStorage.getItem('workspace-panel-prd') === 'collapsed' } catch { return false }
+  })
+  const [coderCollapsed, setCoderCollapsed] = useState(() => {
+    try { return localStorage.getItem('workspace-panel-coder') === 'collapsed' } catch { return false }
+  })
 
-  // Passoff editor state — overlays on PRD panel
+  // Persist panel collapse state to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('workspace-panel-research', researchCollapsed ? 'collapsed' : 'expanded')
+      localStorage.setItem('workspace-panel-prd', prdCollapsed ? 'collapsed' : 'expanded')
+      localStorage.setItem('workspace-panel-coder', coderCollapsed ? 'collapsed' : 'expanded')
+    } catch { /* ignore quota or security errors */ }
+  }, [researchCollapsed, prdCollapsed, coderCollapsed])
+
+  // Passoff editor state — tab alongside Chat in PRD panel
   const [passoffSections, setPassoffSections] = useState<PassoffSection[]>([])
   const [passoffPreamble, setPassoffPreamble] = useState('')
   const [showPassoffOverlay, setShowPassoffOverlay] = useState(false)
@@ -185,6 +199,9 @@ export function WorkspacePage(): React.JSX.Element {
     onShowShortcutsHelp: () => setShowKeyboardHelp(true),
     onFocusChatInput: handleFocusChatInput,
     hasActiveConversation: activeConversationId !== null,
+    onTogglePanel1: splitView ? () => setResearchCollapsed(v => !v) : undefined,
+    onTogglePanel2: splitView ? () => setPrdCollapsed(v => !v) : undefined,
+    onTogglePanel3: splitView ? () => setCoderCollapsed(v => !v) : undefined,
   })
 
   return (
@@ -240,6 +257,47 @@ export function WorkspacePage(): React.JSX.Element {
               <Zap size={14} />
               <span className="text-[10px]">Auto</span>
             </Button>
+          )}
+          {splitView && (
+            <>
+              <div className="w-px h-5 bg-border mx-1" />
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-[10px] text-muted-foreground hover:text-foreground"
+                onClick={() => { setResearchCollapsed(false); setPrdCollapsed(true); setCoderCollapsed(true) }}
+                title="Research Focus: only Research panel expanded"
+              >
+                R
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-[10px] text-muted-foreground hover:text-foreground"
+                onClick={() => { setResearchCollapsed(true); setPrdCollapsed(false); setCoderCollapsed(true) }}
+                title="Build Focus: only PRD Builder panel expanded"
+              >
+                P
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-[10px] text-muted-foreground hover:text-foreground"
+                onClick={() => { setResearchCollapsed(true); setPrdCollapsed(true); setCoderCollapsed(false) }}
+                title="Code Focus: only Coder panel expanded"
+              >
+                C
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-[10px] text-muted-foreground hover:text-foreground"
+                onClick={() => { setResearchCollapsed(false); setPrdCollapsed(false); setCoderCollapsed(false) }}
+                title="All panels expanded"
+              >
+                All
+              </Button>
+            </>
           )}
           <Button
             variant="ghost"
@@ -307,7 +365,7 @@ export function WorkspacePage(): React.JSX.Element {
               </div>
             )}
 
-            {/* Panel 2: PRD Builder (Opus 4.6, 1M API) with passoff overlay */}
+            {/* Panel 2: PRD Builder (Opus 4.6, 1M API) with passoff tabs */}
             {prdCollapsed ? (
               <CollapsedPanelBar
                 label="PRD BUILDER"
@@ -324,24 +382,43 @@ export function WorkspacePage(): React.JSX.Element {
                 >
                   <ChevronsLeft size={14} />
                 </button>
-                {/* Passoff overlay button */}
-                <button
-                  onClick={() => setShowPassoffOverlay(v => !v)}
-                  className={`absolute top-1 right-7 z-10 p-0.5 transition-colors ${
-                    showPassoffOverlay
-                      ? 'text-amber-500'
-                      : passoffSections.length > 0
-                        ? 'text-amber-500/60 hover:text-amber-500'
-                        : 'text-muted-foreground/40 hover:text-muted-foreground'
-                  }`}
-                  title={`Passoff editor (${passoffSections.length} sections)`}
-                >
-                  <FileText size={14} />
-                </button>
 
-                {/* Passoff overlay */}
-                {showPassoffOverlay && (
-                  <div className="absolute inset-0 z-20 bg-background/95 backdrop-blur-sm flex flex-col">
+                {/* Tab bar */}
+                <div className="flex items-center border-b border-border bg-card shrink-0">
+                  <button
+                    onClick={() => setShowPassoffOverlay(false)}
+                    className={`px-3 py-1.5 text-xs font-semibold border-b-2 transition-colors ${
+                      !showPassoffOverlay
+                        ? 'border-violet-500 text-violet-600'
+                        : 'border-transparent text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    Chat
+                  </button>
+                  <button
+                    onClick={() => setShowPassoffOverlay(true)}
+                    className={`px-3 py-1.5 text-xs font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${
+                      showPassoffOverlay
+                        ? 'border-amber-500 text-amber-600'
+                        : 'border-transparent text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    Passoff
+                    {passoffSections.length > 0 && (
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                        showPassoffOverlay
+                          ? 'bg-amber-500/20 text-amber-600'
+                          : 'bg-muted text-muted-foreground'
+                      }`}>
+                        {passoffSections.length}
+                      </span>
+                    )}
+                  </button>
+                </div>
+
+                {/* Tab content */}
+                {showPassoffOverlay ? (
+                  <div className="flex-1 overflow-hidden">
                     <PassoffEditor
                       sections={passoffSections}
                       onSectionsChange={setPassoffSections}
@@ -349,26 +426,21 @@ export function WorkspacePage(): React.JSX.Element {
                       preamble={passoffPreamble}
                       onPreambleChange={setPassoffPreamble}
                     />
-                    <button
-                      onClick={() => setShowPassoffOverlay(false)}
-                      className="absolute top-2 right-2 text-muted-foreground hover:text-foreground text-xs px-2 py-0.5 rounded border border-border bg-background"
-                    >
-                      Close
-                    </button>
                   </div>
+                ) : (
+                  <WorkspaceChat
+                    conversationId={prdConversationId}
+                    onConversationCreated={handlePrdConversationCreated}
+                    onNewConversation={handlePrdNewChat}
+                    workingDirectory={workingDirectory}
+                    fixedContextMode="1m"
+                    panelLabel="PRD BUILDER (Opus 4.6)"
+                    injectMessage={prdInjectMessage}
+                    onInjectConsumed={handlePrdInjectConsumed}
+                    onResponseComplete={handlePrdResponseComplete}
+                    preferredModel="opus"
+                  />
                 )}
-
-                <WorkspaceChat
-                  conversationId={prdConversationId}
-                  onConversationCreated={handlePrdConversationCreated}
-                  onNewConversation={handlePrdNewChat}
-                  workingDirectory={workingDirectory}
-                  fixedContextMode="1m"
-                  panelLabel="PRD BUILDER (Opus 4.6)"
-                  injectMessage={prdInjectMessage}
-                  onInjectConsumed={handlePrdInjectConsumed}
-                  onResponseComplete={handlePrdResponseComplete}
-                />
               </div>
             )}
 
@@ -398,6 +470,7 @@ export function WorkspacePage(): React.JSX.Element {
                   panelLabel="CODER (Sonnet 4.6)"
                   injectMessage={coderInjectMessage}
                   onInjectConsumed={handleCoderInjectConsumed}
+                  preferredModel="sonnet"
                 />
               </div>
             )}

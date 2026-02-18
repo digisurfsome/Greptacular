@@ -72,6 +72,8 @@ interface WorkspaceChatProps {
   onInjectConsumed?: () => void
   /** Called when the agent finishes responding, with the last assistant message content. Used for auto-forward. */
   onResponseComplete?: (content: string) => void
+  /** Model to use for this panel ('opus' | 'sonnet'). Passed through to the backend. */
+  preferredModel?: 'opus' | 'sonnet'
 }
 
 /** Generate a unique ID for local messages. */
@@ -131,6 +133,7 @@ export function WorkspaceChat({
   injectMessage,
   onInjectConsumed,
   onResponseComplete,
+  preferredModel,
 }: WorkspaceChatProps): React.JSX.Element {
   const [inputValue, setInputValue] = useState('')
   const messagesContainerRef = useRef<HTMLDivElement>(null)
@@ -264,9 +267,9 @@ export function WorkspaceChat({
     if (conversationId !== null) {
       const modeForSession = pendingContextModeRef.current
       setSessionContextMode(modeForSession)
-      start(conversationId, workingDirectory ?? undefined, modeForSession, costSettings as unknown as Record<string, unknown>)
+      start(conversationId, workingDirectory ?? undefined, modeForSession, costSettings as unknown as Record<string, unknown>, preferredModel)
     }
-  }, [conversationId, isLoadingConversation, activeConversationId, start, disconnect, clearMessages, workingDirectory, costSettings])
+  }, [conversationId, isLoadingConversation, activeConversationId, start, disconnect, clearMessages, workingDirectory, costSettings, preferredModel])
 
   // Smart auto-scroll: only scroll if user is near the bottom
   const handleScroll = useCallback(() => {
@@ -333,7 +336,7 @@ export function WorkspaceChat({
     if (!injectMessage || isLoading) return
     // If no conversation yet, start a new one
     if (conversationId === null && activeConversationId === null) {
-      start(undefined, workingDirectory ?? undefined, pendingContextModeRef.current, costSettings as unknown as Record<string, unknown>)
+      start(undefined, workingDirectory ?? undefined, pendingContextModeRef.current, costSettings as unknown as Record<string, unknown>, preferredModel)
     }
     sendMessage(injectMessage)
     onInjectConsumed?.()
@@ -479,7 +482,7 @@ export function WorkspaceChat({
     // the message and dispatch it once the session is ready.
     // Pass workingDirectory so the new session uses the selected repo.
     if (conversationId === null && activeConversationId === null) {
-      start(undefined, workingDirectory ?? undefined, pendingContextModeRef.current, costSettings as unknown as Record<string, unknown>)
+      start(undefined, workingDirectory ?? undefined, pendingContextModeRef.current, costSettings as unknown as Record<string, unknown>, preferredModel)
     }
     sendMessage(content, attachments)
 
@@ -623,7 +626,7 @@ export function WorkspaceChat({
               disconnect()
               clearMessages()
               if (effectiveConversationId !== null) {
-                start(effectiveConversationId, workingDirectory ?? undefined, pendingContextModeRef.current, costSettings as unknown as Record<string, unknown>)
+                start(effectiveConversationId, workingDirectory ?? undefined, pendingContextModeRef.current, costSettings as unknown as Record<string, unknown>, preferredModel)
               }
             }}
             className="underline font-medium hover:text-destructive/80 flex-shrink-0"
@@ -773,7 +776,7 @@ export function WorkspaceChat({
                     disconnect()
                     clearMessages()
                     if (effectiveConversationId !== null) {
-                      start(effectiveConversationId, workingDirectory ?? undefined, pendingContextModeRef.current, costSettings as unknown as Record<string, unknown>)
+                      start(effectiveConversationId, workingDirectory ?? undefined, pendingContextModeRef.current, costSettings as unknown as Record<string, unknown>, preferredModel)
                     }
                   }}
                 >

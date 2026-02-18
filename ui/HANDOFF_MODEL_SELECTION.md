@@ -175,7 +175,10 @@ PRD Builder panel where they can front-load research on the free subscription pa
 ### What Needs to Happen
 
 Add a 200K pricing threshold marker to the existing `EnhancedContextBudgetBar`
-so users can see at a glance whether they're in standard or premium pricing.
+on BOTH 1M API panels (PRD Builder AND Coder). The Coder panel meter is
+especially valuable — it teaches the user how much token budget coding tasks
+actually consume (file reads, code writes, test runs, iterations). Over time
+this builds intuition for estimating costs before starting a feature.
 
 ### File: `ui/src/components/workspace/EnhancedContextBudgetBar.tsx`
 
@@ -317,4 +320,23 @@ Strategy to stay under 200K on PRD Builder:
    in the passoff document (compact, targeted)
 3. The PRD Builder gets a clean, pre-digested plan instead of raw file dumps
 4. The PRD Builder only reads files when it MUST verify something specific
+
+## Note: Existing Project Organization
+
+The workspace already has category-based project organization. No new work
+needed — just documenting for context:
+
+- **Categories** — one per software project. Conversations group under them
+  in the sidebar. Collapsible, color-coded, reorderable.
+  - DB: `WorkspaceCategory` table (name, color, sort_order)
+  - UI: `CategoryManager.tsx` for CRUD
+- **Tags** — free-form per conversation (stored comma-separated)
+- **Pinning** — pin key conversations to sidebar top
+- **Search** — hybrid client+server search across message content
+- **Persistence** — SQLite at `~/.autoforge/workspace.db`
+- **Per-conversation working directory** — each conversation remembers
+  which repo it was working with
+
+The user's mental model: each software = a category, each feature build =
+a conversation within that category. All persistent, searchable, reviewable.
 

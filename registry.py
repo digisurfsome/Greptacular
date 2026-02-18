@@ -697,11 +697,18 @@ API_PROVIDERS: dict[str, dict[str, Any]] = {
 }
 
 
-def get_effective_sdk_env() -> dict[str, str]:
+def get_effective_sdk_env(*, force_subscription: bool = False) -> dict[str, str]:
     """Build environment variable dict for Claude SDK based on current API provider settings.
 
     When api_provider is "claude" (or unset), falls back to existing env vars (current behavior).
     For other providers, builds env dict from stored settings (api_base_url, api_auth_token, api_model).
+
+    Args:
+        force_subscription: When True, strip ``ANTHROPIC_API_KEY`` and ``ANTHROPIC_AUTH_TOKEN``
+            from the returned dict so the Claude CLI falls back to subscription OAuth
+            (``~/.claude/.credentials.json``).  Use this for agents that should NOT consume
+            API credits (e.g. coding/testing agents using the 200K context window).
+            The 1M context beta requires API billing, so set this to False for that mode.
 
     Returns:
         Dict ready to merge into subprocess env or pass to SDK.
@@ -717,6 +724,14 @@ def get_effective_sdk_env() -> dict[str, str]:
             value = os.getenv(var)
             if value:
                 sdk_env[var] = value
+
+        if force_subscription:
+            # Clear API credentials so CLI uses subscription OAuth instead.
+            # Setting to empty string overrides any value from os.environ when
+            # the SDK merges env dicts: {**os.environ, **sdk_env}.
+            sdk_env["ANTHROPIC_API_KEY"] = ""
+            sdk_env["ANTHROPIC_AUTH_TOKEN"] = ""
+
         return sdk_env
 
     # Alternative provider: build env from settings

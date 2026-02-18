@@ -265,9 +265,10 @@ class AssistantChatSession:
         # Use system Claude CLI
         system_cli = shutil.which("claude")
 
-        # Build environment overrides for API configuration
+        # Build environment overrides for API configuration.
+        # Assistant chat uses 200K context — force subscription to avoid API charges.
         from registry import DEFAULT_MODEL, get_effective_sdk_env
-        sdk_env = get_effective_sdk_env()
+        sdk_env = get_effective_sdk_env(force_subscription=True)
 
         # Determine model from SDK env (provider-aware) or fallback to env/default
         model = sdk_env.get("ANTHROPIC_DEFAULT_OPUS_MODEL") or os.getenv("ANTHROPIC_DEFAULT_OPUS_MODEL", DEFAULT_MODEL)

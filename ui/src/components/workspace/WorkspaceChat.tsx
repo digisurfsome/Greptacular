@@ -56,6 +56,14 @@ interface WorkspaceChatProps {
   chatInputRef?: React.RefObject<HTMLTextAreaElement | null>
   /** Optional working directory (e.g. from the RepoSelector) for the agent session. */
   workingDirectory?: string | null
+  /**
+   * Lock the context mode for this panel. When set, the mode toggle button is
+   * hidden and the panel always uses this mode. Used by split-view to create
+   * a "Research (Free/200K)" panel and an "Execute (API/1M)" panel.
+   */
+  fixedContextMode?: '1m' | '200k'
+  /** Optional label shown at the top of the panel (e.g. "Research (Free)"). */
+  panelLabel?: string
 }
 
 /** Generate a unique ID for local messages. */
@@ -109,6 +117,8 @@ export function WorkspaceChat({
   onNewConversation,
   chatInputRef: externalInputRef,
   workingDirectory,
+  fixedContextMode,
+  panelLabel,
 }: WorkspaceChatProps): React.JSX.Element {
   const [inputValue, setInputValue] = useState('')
   const messagesContainerRef = useRef<HTMLDivElement>(null)
@@ -128,18 +138,26 @@ export function WorkspaceChat({
   const contextToastTimerRef = useRef<number | null>(null)
 
   // Context mode: "1m" (1,000,000 tokens with beta) or "200k" (200,000 tokens standard).
-  // Persisted to localStorage so the preference survives page reloads.
-  // Takes effect on the NEXT session start, not the current active session.
+  // When fixedContextMode is set (split-view), the mode is locked and the toggle is hidden.
+  // Otherwise, it's persisted to localStorage and takes effect on the NEXT session start.
   //
   // pendingContextMode = what the user WANTS for the next session (persisted to localStorage).
   // sessionContextMode = what the CURRENT session is actually running on (drives gauge + button).
   // These diverge when the user toggles mid-chat.  They re-sync when a new session starts.
   const pendingContextModeRef = useRef<'1m' | '200k'>(
-    (localStorage.getItem('workspace-context-mode') as '1m' | '200k') || '1m'
+    fixedContextMode ?? ((localStorage.getItem('workspace-context-mode') as '1m' | '200k') || '1m')
   )
   const [sessionContextMode, setSessionContextMode] = useState<'1m' | '200k'>(
-    pendingContextModeRef.current
+    fixedContextMode ?? pendingContextModeRef.current
   )
+
+  // Keep pendingContextModeRef in sync when fixedContextMode changes
+  useEffect(() => {
+    if (fixedContextMode) {
+      pendingContextModeRef.current = fixedContextMode
+      setSessionContextMode(fixedContextMode)
+    }
+  }, [fixedContextMode])
 
   // Cost control settings -- persisted to localStorage, sent on session start.
   const [costSettings, setCostSettings] = useState<CostSettings>(loadCostSettings)
@@ -580,6 +598,17 @@ export function WorkspaceChat({
         </div>
       )}
 
+      {/* Panel label (split-view mode) */}
+      {panelLabel && (
+        <div className={`flex items-center justify-center px-3 py-1.5 text-xs font-bold tracking-wide border-b ${
+          fixedContextMode === '200k'
+            ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
+            : 'bg-violet-500/10 text-violet-600 border-violet-500/20'
+        }`}>
+          {panelLabel}
+        </div>
+      )}
+
       {/* Context mode toggle + budget bar */}
       <div className="flex items-center border-b border-border bg-card/80">
         <div className="flex-1 border-b-0 [&>div]:border-b-0">
@@ -591,7 +620,8 @@ export function WorkspaceChat({
             isStreaming={isLoading}
           />
         </div>
-        <button
+        {/* Hide toggle when mode is fixed (split-view panels) */}
+        {!fixedContextMode && <button
           onClick={() => {
             const newMode = pendingContextModeRef.current === '1m' ? '200k' : '1m'
             pendingContextModeRef.current = newMode
@@ -614,7 +644,7 @@ export function WorkspaceChat({
           title={`Context window: ${sessionContextMode === '1m' ? '1,000,000' : '200,000'} tokens. Click to switch. Takes effect on next session.`}
         >
           {sessionContextMode === '1m' ? '1M ctx' : '200K ctx'}
-        </button>
+        </button>}
       </div>
 
       {/* Context mode toast notification */}
@@ -886,7 +916,12 @@ export function WorkspaceChat({
           <Button
             onClick={handleSend}
             disabled={(!inputValue.trim() && pendingImages.length === 0 && pendingFiles.length === 0) || isLoading || isLoadingConversation}
-            title="Send message"
+            title={fixedContextMode === '200k' ? 'Send (Subscription)' : fixedContextMode === '1m' ? 'Send (API)' : 'Send message'}
+            className={fixedContextMode === '200k'
+              ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+              : fixedContextMode === '1m'
+                ? 'bg-violet-600 hover:bg-violet-700 text-white'
+                : undefined}
           >
             {isLoading ? (
               <Loader2 size={18} className="animate-spin" />

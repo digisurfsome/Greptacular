@@ -15,7 +15,7 @@ import { WorkspaceUserGuide } from '../components/workspace/WorkspaceUserGuide'
 import { RepoSelector } from '../components/workspace/RepoSelector'
 import { useWorkspaceKeyboardShortcuts } from '../hooks/useWorkspaceKeyboardShortcuts'
 import { exportConversationMarkdown } from '../lib/api'
-import { ArrowLeft, ChevronRight, Keyboard, BookOpen } from 'lucide-react'
+import { ArrowLeft, ChevronRight, Keyboard, BookOpen, Columns2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 /** Full-page workspace layout with keyboard shortcuts, breadcrumbs, and all Phase 4 features. */
@@ -26,6 +26,11 @@ export function WorkspacePage(): React.JSX.Element {
   const [libraryCollapsed, setLibraryCollapsed] = useState(false)
   const [showKeyboardHelp, setShowKeyboardHelp] = useState(false)
   const [showUserGuide, setShowUserGuide] = useState(false)
+  const [splitView, setSplitView] = useState(false)
+  // In split view, each panel has its own independent conversation.
+  // The left panel (Research/200K) uses activeConversationId.
+  // The right panel (Execute/1M) uses its own state.
+  const [rightConversationId, setRightConversationId] = useState<number | null>(null)
   const chatInputRef = useRef<HTMLTextAreaElement | null>(null)
 
   const handleNewChat = useCallback(() => {
@@ -60,6 +65,14 @@ export function WorkspacePage(): React.JSX.Element {
 
   const handleRepoSelect = useCallback((localPath: string) => {
     setWorkingDirectory(localPath || null)
+  }, [])
+
+  const handleRightConversationCreated = useCallback((id: number) => {
+    setRightConversationId(id)
+  }, [])
+
+  const handleRightNewChat = useCallback(() => {
+    setRightConversationId(null)
   }, [])
 
   // Register workspace keyboard shortcuts
@@ -101,6 +114,19 @@ export function WorkspacePage(): React.JSX.Element {
 
         <div className="ml-auto flex items-center gap-1">
           <Button
+            variant={splitView ? 'default' : 'ghost'}
+            size="sm"
+            className={`h-7 px-2 gap-1.5 ${splitView
+              ? 'bg-primary text-primary-foreground'
+              : 'text-muted-foreground hover:text-foreground'
+            }`}
+            onClick={() => setSplitView(v => !v)}
+            title="Split view: Research (Free) + Execute (API) side by side"
+          >
+            <Columns2 size={14} />
+            <span className="text-[10px]">Split</span>
+          </Button>
+          <Button
             variant="ghost"
             size="sm"
             className="h-7 px-2 gap-1.5 text-muted-foreground hover:text-foreground"
@@ -122,7 +148,7 @@ export function WorkspacePage(): React.JSX.Element {
         </div>
       </div>
 
-      {/* Main content area: sidebar | chat | library */}
+      {/* Main content area: sidebar | chat(s) | library */}
       <div className="flex flex-1 overflow-hidden">
         <WorkspaceSidebar
           activeConversationId={activeConversationId}
@@ -131,15 +157,47 @@ export function WorkspacePage(): React.JSX.Element {
           onNewChat={handleNewChat}
           onSelectConversation={handleSelectConversation}
         />
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <WorkspaceChat
-            conversationId={activeConversationId}
-            onConversationCreated={handleConversationCreated}
-            onNewConversation={handleNewChat}
-            chatInputRef={chatInputRef}
-            workingDirectory={workingDirectory}
-          />
-        </div>
+
+        {splitView ? (
+          /* Split view: two panels side by side */
+          <div className="flex-1 flex overflow-hidden">
+            {/* Left panel: Research (Subscription/200K) */}
+            <div className="flex-1 flex flex-col overflow-hidden border-r border-border">
+              <WorkspaceChat
+                conversationId={activeConversationId}
+                onConversationCreated={handleConversationCreated}
+                onNewConversation={handleNewChat}
+                chatInputRef={chatInputRef}
+                workingDirectory={workingDirectory}
+                fixedContextMode="200k"
+                panelLabel="RESEARCH (FREE)"
+              />
+            </div>
+            {/* Right panel: Execute (API/1M) */}
+            <div className="flex-1 flex flex-col overflow-hidden">
+              <WorkspaceChat
+                conversationId={rightConversationId}
+                onConversationCreated={handleRightConversationCreated}
+                onNewConversation={handleRightNewChat}
+                workingDirectory={workingDirectory}
+                fixedContextMode="1m"
+                panelLabel="EXECUTE (API)"
+              />
+            </div>
+          </div>
+        ) : (
+          /* Single panel: normal mode */
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <WorkspaceChat
+              conversationId={activeConversationId}
+              onConversationCreated={handleConversationCreated}
+              onNewConversation={handleNewChat}
+              chatInputRef={chatInputRef}
+              workingDirectory={workingDirectory}
+            />
+          </div>
+        )}
+
         <WorkspaceLibrary
           conversationId={activeConversationId}
           collapsed={libraryCollapsed}

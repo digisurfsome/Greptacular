@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Any, AsyncGenerator, Optional
 
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
-from claude_agent_sdk.types import HookMatcher
+from claude_agent_sdk.types import HookMatcher, SyncHookJSONOutput
 from dotenv import load_dotenv
 
 from ..schemas import ImageAttachment
@@ -318,10 +318,44 @@ class WorkspaceChatSession:
         is_alternative_api = bool(base_url) or is_vertex
 
         # Bash security hook -- same allowlist-based hook the coding agent uses
+        # PreCompact hook -- guides summarization to keep context lean and cheap
+        async def workspace_pre_compact_hook(input_data, tool_use_id=None, context=None):
+            """Guide compaction to discard verbose tool results and keep costs low."""
+            trigger = input_data.get("trigger", "auto")
+            logger.info(f"[Workspace] Context compaction triggered ({trigger})")
+
+            compaction_guidance = "\n".join([
+                "## Workspace Compaction Guidelines",
+                "Keep the conversation lean to minimize token costs.",
+                "",
+                "## DISCARD (verbose/redundant)",
+                "- Full file contents from Read tool results (keep only: 'Read file X, ~N lines')",
+                "- Large Grep/Glob outputs (keep only: 'Found N matches in these files: ...')",
+                "- Full Bash command outputs (keep only: command + success/failure + key output lines)",
+                "- Repeated reads of the same file",
+                "- CSS/HTML/JSON content dumps",
+                "",
+                "## PRESERVE (important context)",
+                "- What the user asked for and key decisions made",
+                "- Files that were created or modified (paths only)",
+                "- Current task state and any open questions",
+                "- Error messages that are still relevant",
+            ])
+
+            return SyncHookJSONOutput(
+                hookSpecificOutput={  # type: ignore[typeddict-item]
+                    "hookEventName": "PreCompact",
+                    "customInstructions": compaction_guidance,
+                }
+            )
+
         hooks = {
             "PreToolUse": [
                 HookMatcher(matcher="Bash", hooks=[bash_security_hook])
-            ]
+            ],
+            "PreCompact": [
+                HookMatcher(hooks=[workspace_pre_compact_hook])
+            ],
         }
 
         try:

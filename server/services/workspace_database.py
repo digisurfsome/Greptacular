@@ -295,18 +295,6 @@ def get_engine() -> Engine:
                     "ALTER TABLE workspace_conversations ADD COLUMN context_mode TEXT DEFAULT '1m'"
                 )
 
-            # One-time fix: early migration defaulted context_mode to '200k' but
-            # the workspace actually uses '1m' by default.  All conversations
-            # created before split-view existed were 1M context sessions.
-            cursor.execute("PRAGMA user_version")
-            db_version = cursor.fetchone()[0]
-            if db_version < 1:
-                cursor.execute(
-                    "UPDATE workspace_conversations SET context_mode = '1m' "
-                    "WHERE context_mode = '200k' OR context_mode IS NULL"
-                )
-                cursor.execute("PRAGMA user_version = 1")
-
             conn.commit()
             conn.close()
 
@@ -517,6 +505,7 @@ def update_conversation(
     working_directory: Optional[str] = None,
     pinned: Optional[bool] = None,
     tags: Optional[str] = None,
+    context_mode: Optional[str] = None,
 ) -> Optional[dict]:
     """Update a conversation's metadata.
 
@@ -529,6 +518,7 @@ def update_conversation(
         working_directory: New working directory, or None to leave unchanged.
         pinned: New pinned state, or None to leave unchanged.
         tags: New comma-separated tags, or None to leave unchanged.
+        context_mode: New context mode ("1m" or "200k"), or None to leave unchanged.
 
     Returns:
         Updated conversation dict, or None if the conversation was not found.
@@ -553,6 +543,8 @@ def update_conversation(
             conversation.pinned = 1 if pinned else 0
         if tags is not None:
             conversation.tags = tags
+        if context_mode is not None and context_mode in ("1m", "200k"):
+            conversation.context_mode = context_mode
 
         conversation.updated_at = _utc_now()
         session.commit()

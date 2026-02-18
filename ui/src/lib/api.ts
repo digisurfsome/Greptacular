@@ -681,7 +681,7 @@ export async function createWorkspaceConversation(
 
 export async function updateWorkspaceConversation(
   conversationId: number,
-  update: { title?: string; category?: string; pinned?: boolean; tags?: string }
+  update: { title?: string; category?: string; pinned?: boolean; tags?: string; context_mode?: string }
 ): Promise<WorkspaceConversation> {
   return fetchJSON(`/workspace/conversations/${conversationId}`, {
     method: 'PATCH',

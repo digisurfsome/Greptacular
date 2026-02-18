@@ -451,7 +451,7 @@ export function SpecCreationChat({
 
       {/* Completion footer */}
       {isComplete && (
-        <div className={`p-4 border-t-2 border-border ${initializerStatus === 'error' ? 'bg-destructive' : 'bg-green-500'
+        <div className={`p-4 border-t-2 border-border ${initializerStatus === 'error' ? 'bg-destructive' : 'bg-primary'
           }`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -493,7 +493,7 @@ export function SpecCreationChat({
                     onClick={() => setYoloEnabled(!yoloEnabled)}
                     variant={yoloEnabled ? "default" : "secondary"}
                     size="sm"
-                    className={yoloEnabled ? 'bg-yellow-500 hover:bg-yellow-600 text-yellow-900' : ''}
+                    className={yoloEnabled ? 'bg-accent hover:bg-accent/90 text-accent-foreground' : ''}
                     title="YOLO Mode: Skip testing for rapid prototyping"
                   >
                     <Zap size={16} />

@@ -104,7 +104,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
           {isReady && (
             <Button
               onClick={onComplete}
-              className="w-full mt-8 bg-green-500 hover:bg-green-600 text-white"
+              className="w-full mt-8 bg-primary hover:bg-primary/90 text-primary-foreground"
             >
               Continue to Dashboard
             </Button>

@@ -251,6 +251,14 @@ export function WorkspaceSidebar({
                       onMouseEnter={() => handleMouseEnter(conv.id)}
                       onMouseLeave={handleMouseLeave}
                     >
+                      {/* Context mode badge — top-right corner, vibrant color */}
+                      <span className={`absolute -top-1 -right-1 z-10 text-[9px] font-mono font-extrabold px-1.5 py-0.5 rounded-md border shadow-sm ${
+                        conv.context_mode === '1m'
+                          ? 'bg-blue-600 text-white border-blue-400'
+                          : 'bg-zinc-700 text-zinc-200 border-zinc-500'
+                      }`}>
+                        {conv.context_mode === '1m' ? '1M' : '200K'}
+                      </span>
                       <button
                         type="button"
                         onClick={() => onSelectConversation(conv.id)}
@@ -266,13 +274,6 @@ export function WorkspaceSidebar({
                           <div className="flex items-center gap-1">
                             <span className={`text-xs font-medium truncate ${conv.title ? '' : 'italic text-muted-foreground'}`}>
                               {conv.title ?? 'Untitled'}
-                            </span>
-                            <span className={`flex-shrink-0 text-[8px] font-mono font-bold px-1 rounded ${
-                              conv.context_mode === '1m'
-                                ? 'bg-primary/15 text-primary'
-                                : 'bg-muted text-muted-foreground'
-                            }`}>
-                              {conv.context_mode === '1m' ? '1M' : '200K'}
                             </span>
                           </div>
                           <span className="text-[10px] text-muted-foreground">

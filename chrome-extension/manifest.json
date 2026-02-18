@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Cloud Prompt Injector",
+  "version": "1.0",
+  "description": "Floating sidebar with prompt buttons that inject into Claude, ChatGPT, and Gemini chat input",
+  "content_scripts": [
+    {
+      "matches": [
+        "https://claude.ai/*",
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*",
+        "https://gemini.google.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "48": "icon48.png",
+    "128": "icon128.png"
+  }
+}

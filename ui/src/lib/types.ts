@@ -968,3 +968,73 @@ export interface NextRunResponse {
   is_currently_running: boolean
   active_schedule_count: number
 }
+
+// ============================================================================
+// Design Refinement Types
+// ============================================================================
+
+/** Options for the theme refinement step */
+export interface DesignRefinement {
+  shadowIntensity: 'none' | 'subtle' | 'medium' | 'deep' | 'dramatic'
+  animationSpeed: 'instant' | 'fast' | 'normal' | 'slow'
+  animationType: 'none' | 'fade' | 'slide' | 'scale' | 'bounce'
+  darkMode: 'light' | 'dark' | 'system' | 'toggle'
+  typographyScale: 'compact' | 'normal' | 'spacious'
+  headingWeight: 'light' | 'normal' | 'bold' | 'extra-bold'
+  layoutDensity: 'compact' | 'comfortable' | 'spacious'
+  focusRing: 'none' | 'subtle' | 'bold' | 'glow'
+  hoverEffect: 'none' | 'brighten' | 'darken' | 'lift' | 'grow'
+  borderRadius: 'sharp' | 'slight' | 'medium' | 'round' | 'pill'
+  borderStyle: 'none' | 'subtle' | 'defined' | 'bold'
+}
+
+/** Default refinement values */
+export const DEFAULT_REFINEMENT: DesignRefinement = {
+  shadowIntensity: 'medium',
+  animationSpeed: 'normal',
+  animationType: 'fade',
+  darkMode: 'light',
+  typographyScale: 'normal',
+  headingWeight: 'bold',
+  layoutDensity: 'comfortable',
+  focusRing: 'subtle',
+  hoverEffect: 'lift',
+  borderRadius: 'medium',
+  borderStyle: 'subtle',
+}
+
+// ============================================================================
+// Design Guide AI Action Types
+// ============================================================================
+
+/** Actions the AI design guide can send to control the page */
+export type DesignGuideAction =
+  | { action: 'select_style'; styleId: string }
+  | { action: 'set_accent_style'; styleId: string | null }
+  | { action: 'toggle_modifier'; modifierId: string }
+  | { action: 'set_palette'; paletteIndex: number }
+  | { action: 'set_custom_color'; colorKey: string; value: string }
+  | { action: 'switch_tab'; tab: 'base' | 'refine' }
+  | { action: 'set_refinement'; key: keyof DesignRefinement; value: string }
+  | { action: 'set_preview_mode'; mode: 'quad' | 'single' }
+  | { action: 'set_preview_page'; page: 'landing' | 'dashboard' | 'settings' | 'feed' }
+  | { action: 'highlight_option'; section: string; optionId: string }
+
+/** Messages from the design guide WebSocket */
+export interface DesignGuideMessage {
+  type: 'text' | 'action' | 'response_done' | 'error' | 'pong' | 'greeting'
+  content?: string
+  action?: DesignGuideAction
+}
+
+/** Current state sent to the AI for context */
+export interface DesignGuideContext {
+  styleId: string | null
+  accentStyleId: string | null
+  selectedModifiers: string[]
+  customColors: Record<string, string>
+  paletteId: string | null
+  designTab: 'base' | 'refine'
+  refinement: DesignRefinement
+  availableStyles: Array<{ id: string; name: string; category: string; description: string }>
+}

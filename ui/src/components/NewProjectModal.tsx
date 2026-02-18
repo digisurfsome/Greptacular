@@ -43,11 +43,16 @@ import { SpecCreationChat } from './SpecCreationChat'
 import { FolderBrowser } from './FolderBrowser'
 import { StylePreview } from './StylePreview'
 import type { PreviewPage } from './StylePreview'
+import { StyleCardPreview } from './StyleCardPreview'
+import { DesignGuidePanel } from './DesignGuidePanel'
 import { ColorCustomizer } from './ColorCustomizer'
 import { PALETTES } from '../data/palettes'
+import { FONT_OPTIONS } from '../data/fonts'
+import { REFINEMENT_GROUPS } from '../data/refinementOptions'
 import { paletteToCustomColors } from '../lib/paletteUtils'
 import { startAgent } from '../lib/api'
-import type { BoilerplateCategory, StyleOption, StyleExtractionResult } from '../lib/types'
+import type { BoilerplateCategory, StyleOption, StyleExtractionResult, DesignRefinement, DesignGuideAction } from '../lib/types'
+import { DEFAULT_REFINEMENT } from '../lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -255,6 +260,15 @@ export function NewProjectModal({
   const [favoriteStyles, setFavoriteStyles] = useState<Set<string>>(new Set())
   const [paletteIndex, setPaletteIndex] = useState(0)
 
+  // Design tab: base (style/colors) vs refine (detailed decisions)
+  const [designTab, setDesignTab] = useState<'base' | 'refine'>('base')
+
+  // Refinement options
+  const [refinement, setRefinement] = useState<DesignRefinement>(DEFAULT_REFINEMENT)
+
+  // Font selection
+  const [selectedFontId, setSelectedFontId] = useState<string | null>(null)
+
   // Quad view dynamic scaling
   const QUAD_INTERNAL_W = 1280
   const QUAD_INTERNAL_H = 800
@@ -283,9 +297,10 @@ export function NewProjectModal({
   const [screenshotExtracting, setScreenshotExtracting] = useState(false)
   const [extractionResult, setExtractionResult] = useState<StyleExtractionResult | null>(null)
 
-  // Suppress unused variable warning - specMethod may be used in future
+  // Suppress unused variable warnings - these may be used in future
   void _specMethod
   void _styleView
+  void paletteIndex
 
   const createProject = useCreateProject()
   const { data: boilerplateCategories, isLoading: boilerplatesLoading } = useBoilerplates()
@@ -347,6 +362,55 @@ export function NewProjectModal({
     setStep(newStep)
     onStepChange?.(newStep)
   }
+
+  // Action handler for the AI design guide panel -- must be before early return
+  // because useCallback is a hook and hooks cannot be called conditionally.
+  const handleDesignGuideAction = useCallback((action: DesignGuideAction) => {
+    switch (action.action) {
+      case 'select_style':
+        // Inline handleStyleSelect logic to avoid dependency on post-return function
+        setCustomColors({})
+        setStyleId(action.styleId)
+        break
+      case 'set_accent_style':
+        setAccentStyleId(action.styleId)
+        break
+      case 'toggle_modifier':
+        setSelectedModifiers(prev =>
+          prev.includes(action.modifierId)
+            ? prev.filter(id => id !== action.modifierId)
+            : prev.length < 3 ? [...prev, action.modifierId] : prev
+        )
+        break
+      case 'set_palette': {
+        const palette = PALETTES[action.paletteIndex]
+        if (palette) {
+          setPaletteIndex(action.paletteIndex)
+          setSelectedPaletteId(palette.id)
+          setCustomColors(paletteToCustomColors(palette))
+        }
+        break
+      }
+      case 'set_custom_color':
+        setCustomColors(prev => ({ ...prev, [action.colorKey]: action.value }))
+        break
+      case 'switch_tab':
+        setDesignTab(action.tab)
+        break
+      case 'set_refinement':
+        setRefinement(prev => ({ ...prev, [action.key]: action.value }))
+        break
+      case 'set_preview_mode':
+        setPreviewViewMode(action.mode)
+        break
+      case 'set_preview_page':
+        setPreviewPage(action.page)
+        break
+      case 'highlight_option':
+        // TODO: Implement highlight animation
+        break
+    }
+  }, [])
 
   if (!isOpen) return null
 
@@ -438,6 +502,7 @@ export function NewProjectModal({
           customColors: Object.keys(customColors).length > 0 ? customColors : undefined,
           accentStyle: accentStyleId,
           paletteId: selectedPaletteId,
+          fontId: selectedFontId,
         })
         changeStep('complete')
         setTimeout(() => {
@@ -460,6 +525,7 @@ export function NewProjectModal({
           customColors: Object.keys(customColors).length > 0 ? customColors : undefined,
           accentStyle: accentStyleId,
           paletteId: selectedPaletteId,
+          fontId: selectedFontId,
         })
         changeStep('chat')
       } catch (err: unknown) {
@@ -536,6 +602,9 @@ export function NewProjectModal({
     setExtractionResult(null)
     setFavoriteStyles(new Set())
     setPaletteIndex(0)
+    setDesignTab('base')
+    setRefinement(DEFAULT_REFINEMENT)
+    setSelectedFontId(null)
     onClose()
   }
 
@@ -558,6 +627,9 @@ export function NewProjectModal({
       setPreviewPage('landing')
       setFavoriteStyles(new Set())
       setPaletteIndex(0)
+      setDesignTab('base')
+      setRefinement(DEFAULT_REFINEMENT)
+      setSelectedFontId(null)
     } else if (step === 'method') {
       changeStep('style')
       setSpecMethod(null)
@@ -587,6 +659,9 @@ export function NewProjectModal({
       setPreviewPage('landing')
       setFavoriteStyles(new Set())
       setPaletteIndex(0)
+      setDesignTab('base')
+      setRefinement(DEFAULT_REFINEMENT)
+      setSelectedFontId(null)
     }
     if (targetIndex < 3) {
       // Going before boilerplate: reset boilerplate
@@ -1143,12 +1218,12 @@ export function NewProjectModal({
             )}
 
             {/* ==================================================== */}
-            {/* 3-COLUMN LAYOUT: base styles | controls | preview     */}
+            {/* 4-COLUMN LAYOUT: styles | controls | AI guide | preview */}
             {/* ==================================================== */}
             {stylePickerTab !== 'screenshot' && (
               <div className="flex-1 min-h-0 flex overflow-hidden">
-                {/* LEFT COLUMN: 12 Base Style Cards (4×3 compact grid) */}
-                <div className="w-[340px] shrink-0 border-r overflow-y-auto p-2">
+                {/* COLUMN 1: Style Cards — 3-col grid with mini previews */}
+                <div className="w-[380px] shrink-0 border-r overflow-y-auto p-2">
                   {stylesLoading && (
                     <div className="flex items-center justify-center gap-2 py-8 text-muted-foreground">
                       <Loader2 size={16} className="animate-spin" />
@@ -1156,9 +1231,8 @@ export function NewProjectModal({
                     </div>
                   )}
                   {!stylesLoading && filteredStyles.length > 0 && (
-                    <div className="grid grid-cols-4 gap-1.5">
+                    <div className="grid grid-cols-3 gap-2">
                       {filteredStyles.map((style: StyleOption) => {
-                        const swatches = STYLE_SWATCHES[style.id] || ['#3B82F6', '#FFFFFF', '#111827', '#22C55E']
                         const isSelected = styleId === style.id
                         const isFavorite = favoriteStyles.has(style.id)
                         const isRecommended = recommendedIds.has(style.id)
@@ -1166,7 +1240,7 @@ export function NewProjectModal({
                         return (
                           <div
                             key={style.id}
-                            className={`relative cursor-pointer rounded-md border p-1 transition-all ${
+                            className={`relative cursor-pointer rounded-lg border transition-all ${
                               isSelected ? 'border-primary ring-2 ring-primary/30 bg-primary/5' :
                               isRecommended ? 'border-primary/40 hover:border-primary' :
                               'border-border hover:border-primary/50'
@@ -1185,41 +1259,30 @@ export function NewProjectModal({
                                   return next
                                 })
                               }}
-                              className={`absolute top-0.5 right-0.5 z-10 p-0.5 rounded-sm transition-colors ${
+                              className={`absolute top-1 right-1 z-10 p-0.5 rounded-sm transition-colors ${
                                 isFavorite ? 'text-primary' : 'text-muted-foreground/30 hover:text-primary/80'
                               }`}
                             >
                               <Star size={10} fill={isFavorite ? 'currentColor' : 'none'} />
                             </button>
 
-                            {/* Color swatches row */}
-                            <div className="flex gap-0.5 mb-1">
-                              {swatches.map((color, i) => (
-                                <div
-                                  key={i}
-                                  className="h-2.5 w-2.5 rounded-sm border border-foreground/10"
-                                  style={{ backgroundColor: color }}
-                                />
-                              ))}
-                            </div>
-
-                            {/* Style name */}
-                            <p className="text-[9px] font-semibold leading-tight truncate">{style.name}</p>
-
-                            {/* Compact preview — buttons/card sample only */}
+                            {/* Mini preview showing button, card, input */}
                             {style.style_guide && (
-                              <div className="mt-1 w-full overflow-hidden rounded-sm" style={{ height: '42px' }}>
-                                <StylePreview
+                              <div className="w-full overflow-hidden rounded-t-lg" style={{ height: '80px' }}>
+                                <StyleCardPreview
                                   guide={style.style_guide}
-                                  size="compact"
-                                  styleName={style.name}
-                                  modifiers={selectedModifiers.length > 0 ? selectedModifiers : undefined}
                                   accentGuide={accentStyleId
                                     ? styles?.find((s: StyleOption) => s.id === accentStyleId)?.style_guide
                                     : undefined}
+                                  modifiers={selectedModifiers.length > 0 ? selectedModifiers : undefined}
                                 />
                               </div>
                             )}
+
+                            {/* Style name */}
+                            <div className="px-1.5 py-1">
+                              <p className="text-[9px] font-semibold leading-tight truncate">{style.name}</p>
+                            </div>
                           </div>
                         )
                       })}
@@ -1227,182 +1290,271 @@ export function NewProjectModal({
                   )}
                 </div>
 
-                {/* MIDDLE COLUMN: Controls stacked tight */}
-                <div className="w-[240px] shrink-0 border-r overflow-y-auto p-2 space-y-3">
-                  {/* Modifiers — compact checkboxes */}
-                  {modifiers && modifiers.length > 0 && (
-                    <div className="space-y-1">
-                      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Modifiers</span>
-                      <div className="space-y-0.5">
-                        {modifiers.map((mod) => {
-                          const isActive = selectedModifiers.includes(mod.id)
-                          return (
-                            <button
-                              key={mod.id}
-                              onClick={() => {
-                                setSelectedModifiers(prev =>
-                                  isActive
-                                    ? prev.filter(id => id !== mod.id)
-                                    : prev.length < 3
-                                      ? [...prev, mod.id]
-                                      : prev
+                {/* COLUMN 2: Controls with Base/Refine tabs */}
+                <div className="w-[220px] shrink-0 border-r overflow-y-auto flex flex-col">
+                  {/* Tab switcher */}
+                  <div className="shrink-0 flex border-b bg-muted/30">
+                    <button
+                      onClick={() => setDesignTab('base')}
+                      className={`flex-1 py-1.5 text-[10px] font-semibold text-center transition-colors ${
+                        designTab === 'base'
+                          ? 'bg-background text-foreground border-b-2 border-primary'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      Base
+                    </button>
+                    <button
+                      onClick={() => setDesignTab('refine')}
+                      className={`flex-1 py-1.5 text-[10px] font-semibold text-center transition-colors ${
+                        designTab === 'refine'
+                          ? 'bg-background text-foreground border-b-2 border-primary'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      Refine
+                    </button>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-2 space-y-3">
+                    {/* ===== BASE TAB ===== */}
+                    {designTab === 'base' && (
+                      <>
+                        {/* Modifiers -- compact checkboxes (keep existing) */}
+                        {modifiers && modifiers.length > 0 && (
+                          <div className="space-y-1">
+                            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Modifiers</span>
+                            <div className="space-y-0.5">
+                              {modifiers.map((mod) => {
+                                const isActive = selectedModifiers.includes(mod.id)
+                                return (
+                                  <button
+                                    key={mod.id}
+                                    onClick={() => {
+                                      setSelectedModifiers(prev =>
+                                        isActive
+                                          ? prev.filter(id => id !== mod.id)
+                                          : prev.length < 3
+                                            ? [...prev, mod.id]
+                                            : prev
+                                      )
+                                    }}
+                                    className={`w-full text-left px-1.5 py-1 rounded border transition-colors flex items-center gap-1.5 ${
+                                      isActive
+                                        ? 'border-primary bg-primary/10'
+                                        : 'border-border hover:border-primary/50'
+                                    }`}
+                                    title={mod.description}
+                                  >
+                                    <div className={`w-3 h-3 rounded-sm border flex items-center justify-center shrink-0 ${
+                                      isActive ? 'bg-primary border-primary' : 'border-muted-foreground/30'
+                                    }`}>
+                                      {isActive && <Check size={8} className="text-primary-foreground" />}
+                                    </div>
+                                    <span className="text-[10px] font-medium truncate">{mod.name}</span>
+                                  </button>
                                 )
-                              }}
-                              className={`w-full text-left px-1.5 py-1 rounded border transition-colors flex items-center gap-1.5 ${
-                                isActive
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="border-t" />
+
+                        {/* Accent Styles -- compact pills (keep existing) */}
+                        <div className="space-y-1">
+                          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Accent Style</span>
+                          <div className="grid grid-cols-3 gap-1">
+                            {/* None pill */}
+                            <button
+                              type="button"
+                              onClick={() => setAccentStyleId(null)}
+                              className={`text-left px-1 py-0.5 rounded border transition-colors ${
+                                !accentStyleId
                                   ? 'border-primary bg-primary/10'
                                   : 'border-border hover:border-primary/50'
                               }`}
-                              title={mod.description}
                             >
-                              <div className={`w-3 h-3 rounded-sm border flex items-center justify-center shrink-0 ${
-                                isActive ? 'bg-primary border-primary' : 'border-muted-foreground/30'
-                              }`}>
-                                {isActive && <Check size={8} className="text-primary-foreground" />}
-                              </div>
-                              <span className="text-[10px] font-medium truncate">{mod.name}</span>
+                              <span className="text-[9px] font-medium text-muted-foreground">None</span>
                             </button>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="border-t" />
-
-                  {/* Accent Styles — ALL 12 shown as compact pills */}
-                  <div className="space-y-1">
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Accent Style</span>
-                    <div className="grid grid-cols-3 gap-1">
-                      {/* None pill */}
-                      <button
-                        type="button"
-                        onClick={() => setAccentStyleId(null)}
-                        className={`text-left px-1 py-0.5 rounded border transition-colors ${
-                          !accentStyleId
-                            ? 'border-primary bg-primary/10'
-                            : 'border-border hover:border-primary/50'
-                        }`}
-                      >
-                        <span className="text-[9px] font-medium text-muted-foreground">None</span>
-                      </button>
-                      {/* All styles as possible accents (except current base) */}
-                      {styles?.filter((s: StyleOption) => s.id !== styleId).map((style: StyleOption) => {
-                        const swatches = STYLE_SWATCHES[style.id] || ['#3B82F6', '#FFFFFF', '#111827']
-                        const isActive = accentStyleId === style.id
-                        return (
-                          <button
-                            key={style.id}
-                            type="button"
-                            onClick={() => setAccentStyleId(isActive ? null : style.id)}
-                            className={`text-left px-1 py-0.5 rounded border transition-colors ${
-                              isActive
-                                ? 'border-primary bg-primary/10'
-                                : 'border-border hover:border-primary/50'
-                            }`}
-                          >
-                            <div className="flex gap-0.5 mb-0.5">
-                              {swatches.slice(0, 3).map((color, i) => (
-                                <div
-                                  key={i}
-                                  className="w-2 h-2 rounded-full border border-foreground/10"
-                                  style={{ backgroundColor: color }}
-                                />
-                              ))}
-                            </div>
-                            <span className="text-[8px] font-medium leading-tight line-clamp-1">{style.name}</span>
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-
-                  <div className="border-t" />
-
-                  {/* Color Palettes — arrow navigation */}
-                  <div className="space-y-1">
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Color Palette</span>
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const newIdx = (paletteIndex - 1 + PALETTES.length) % PALETTES.length
-                          setPaletteIndex(newIdx)
-                          const palette = PALETTES[newIdx]
-                          setSelectedPaletteId(palette.id)
-                          setCustomColors(paletteToCustomColors(palette))
-                        }}
-                        className="p-0.5 rounded hover:bg-muted shrink-0"
-                      >
-                        <ArrowLeft size={12} />
-                      </button>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex gap-0.5 justify-center">
-                          {(() => {
-                            const pal = PALETTES[paletteIndex]
-                            return [pal.brand, pal.background, pal.surface, pal.text, pal.accent, pal.muted].map((c, i) => (
-                              <span
-                                key={i}
-                                className="w-4 h-4 rounded-full border border-foreground/10 shrink-0"
-                                style={{ backgroundColor: c }}
-                              />
-                            ))
-                          })()}
+                            {/* All styles as possible accents */}
+                            {styles?.filter((s: StyleOption) => s.id !== styleId).map((style: StyleOption) => {
+                              const swatches = STYLE_SWATCHES[style.id] || ['#3B82F6', '#FFFFFF', '#111827']
+                              const isActive = accentStyleId === style.id
+                              return (
+                                <button
+                                  key={style.id}
+                                  type="button"
+                                  onClick={() => setAccentStyleId(isActive ? null : style.id)}
+                                  className={`text-left px-1 py-0.5 rounded border transition-colors ${
+                                    isActive
+                                      ? 'border-primary bg-primary/10'
+                                      : 'border-border hover:border-primary/50'
+                                  }`}
+                                >
+                                  <div className="flex gap-0.5 mb-0.5">
+                                    {swatches.slice(0, 3).map((color, i) => (
+                                      <div
+                                        key={i}
+                                        className="w-2 h-2 rounded-full border border-foreground/10"
+                                        style={{ backgroundColor: color }}
+                                      />
+                                    ))}
+                                  </div>
+                                  <span className="text-[8px] font-medium leading-tight line-clamp-1">{style.name}</span>
+                                </button>
+                              )
+                            })}
+                          </div>
                         </div>
-                        <p className="text-[9px] text-center text-muted-foreground mt-0.5 truncate">
-                          {PALETTES[paletteIndex].name}
-                        </p>
+
+                        <div className="border-t" />
+
+                        {/* Color Palettes -- GRID FORMAT (replacing arrow navigation) */}
+                        <div className="space-y-1">
+                          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Color Palette</span>
+                          <div className="grid grid-cols-3 gap-1 max-h-[200px] overflow-y-auto">
+                            {PALETTES.map((palette, idx) => {
+                              const isActive = selectedPaletteId === palette.id
+                              return (
+                                <button
+                                  key={palette.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setPaletteIndex(idx)
+                                    setSelectedPaletteId(palette.id)
+                                    setCustomColors(paletteToCustomColors(palette))
+                                  }}
+                                  className={`px-1 py-1 rounded border transition-colors ${
+                                    isActive
+                                      ? 'border-primary bg-primary/10'
+                                      : 'border-border hover:border-primary/50'
+                                  }`}
+                                  title={palette.name}
+                                >
+                                  <div className="flex gap-0.5 justify-center mb-0.5">
+                                    {[palette.brand, palette.background, palette.accent].map((c, i) => (
+                                      <div
+                                        key={i}
+                                        className="w-2.5 h-2.5 rounded-full border border-foreground/10"
+                                        style={{ backgroundColor: c }}
+                                      />
+                                    ))}
+                                  </div>
+                                  <span className="text-[7px] font-medium leading-tight line-clamp-1 text-center block">{palette.name}</span>
+                                </button>
+                              )
+                            })}
+                          </div>
+                          {selectedPaletteId && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedPaletteId(null)
+                                setCustomColors({})
+                              }}
+                              className="w-full text-[9px] text-muted-foreground hover:text-foreground transition-colors text-center"
+                            >
+                              Reset to style default
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="border-t" />
+
+                        {/* Font Selection */}
+                        <div className="space-y-1">
+                          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Font</span>
+                          <div className="grid grid-cols-2 gap-1 max-h-[160px] overflow-y-auto">
+                            {FONT_OPTIONS.map((font) => {
+                              const isActive = selectedFontId === font.id
+                              return (
+                                <button
+                                  key={font.id}
+                                  type="button"
+                                  onClick={() => setSelectedFontId(isActive ? null : font.id)}
+                                  className={`text-left px-1.5 py-1 rounded border transition-colors ${
+                                    isActive
+                                      ? 'border-primary bg-primary/10'
+                                      : 'border-border hover:border-primary/50'
+                                  }`}
+                                >
+                                  <span
+                                    className="text-[10px] font-medium leading-tight block truncate"
+                                    style={{ fontFamily: font.family }}
+                                  >
+                                    {font.name}
+                                  </span>
+                                  <span className="text-[7px] text-muted-foreground">{font.category}</span>
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+
+                        <div className="border-t" />
+
+                        {/* Color Customizer (individual tweaks) - keep existing */}
+                        {(() => {
+                          const selected = styles?.find((s: StyleOption) => s.id === styleId)
+                          if (!selected?.style_guide) return null
+                          return (
+                            <ColorCustomizer
+                              styleGuide={selected.style_guide}
+                              customColors={customColors}
+                              onChange={setCustomColors}
+                              selectedPaletteId={selectedPaletteId}
+                              onPaletteSelect={setSelectedPaletteId}
+                            />
+                          )
+                        })()}
+                      </>
+                    )}
+
+                    {/* ===== REFINE TAB ===== */}
+                    {designTab === 'refine' && (
+                      <div className="space-y-3">
+                        {REFINEMENT_GROUPS.map((group) => (
+                          <div key={group.key} className="space-y-1">
+                            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                              {group.label}
+                            </span>
+                            <p className="text-[8px] text-muted-foreground leading-tight mb-1">
+                              {group.description}
+                            </p>
+                            <div className="flex flex-wrap gap-1">
+                              {group.options.map((option) => {
+                                const isActive = refinement[group.key] === option.value
+                                return (
+                                  <button
+                                    key={option.value}
+                                    type="button"
+                                    onClick={() => setRefinement(prev => ({ ...prev, [group.key]: option.value }))}
+                                    className={`px-1.5 py-0.5 rounded border text-[9px] font-medium transition-colors ${
+                                      isActive
+                                        ? 'border-primary bg-primary/10 text-foreground'
+                                        : 'border-border text-muted-foreground hover:border-primary/50 hover:text-foreground'
+                                    }`}
+                                    title={option.description}
+                                  >
+                                    {option.label}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const newIdx = (paletteIndex + 1) % PALETTES.length
-                          setPaletteIndex(newIdx)
-                          const palette = PALETTES[newIdx]
-                          setSelectedPaletteId(palette.id)
-                          setCustomColors(paletteToCustomColors(palette))
-                        }}
-                        className="p-0.5 rounded hover:bg-muted shrink-0"
-                      >
-                        <ArrowRight size={12} />
-                      </button>
-                    </div>
-                    <p className="text-[8px] text-center text-muted-foreground">
-                      {paletteIndex + 1} / {PALETTES.length}
-                    </p>
-                    {selectedPaletteId && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedPaletteId(null)
-                          setCustomColors({})
-                        }}
-                        className="w-full text-[9px] text-muted-foreground hover:text-foreground transition-colors text-center"
-                      >
-                        Reset to style default
-                      </button>
                     )}
                   </div>
-
-                  <div className="border-t" />
-
-                  {/* Color Customizer (individual tweaks) */}
-                  {(() => {
-                    const selected = styles?.find((s: StyleOption) => s.id === styleId)
-                    if (!selected?.style_guide) return null
-                    return (
-                      <ColorCustomizer
-                        styleGuide={selected.style_guide}
-                        customColors={customColors}
-                        onChange={setCustomColors}
-                        selectedPaletteId={selectedPaletteId}
-                        onPaletteSelect={setSelectedPaletteId}
-                      />
-                    )
-                  })()}
                 </div>
 
-                {/* RIGHT PANEL: Preview area with favorites bar */}
+                {/* COLUMN 3: AI Design Guide */}
+                <DesignGuidePanel
+                  onAction={handleDesignGuideAction}
+                />
+
+                {/* COLUMN 4: Preview (keep existing quad/single view) */}
                 <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
                   {/* View controls bar */}
                   <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 border-b bg-muted/30">

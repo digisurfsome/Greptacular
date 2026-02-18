@@ -29,7 +29,7 @@ export function useCreateProject() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ name, path, specMethod, boilerplateId, styleId, modifierIds, customColors, accentStyle, paletteId }: {
+    mutationFn: ({ name, path, specMethod, boilerplateId, styleId, modifierIds, customColors, accentStyle, paletteId, fontId }: {
       name: string
       path: string
       specMethod?: 'claude' | 'manual'
@@ -39,8 +39,9 @@ export function useCreateProject() {
       customColors?: Record<string, string>
       accentStyle?: string | null
       paletteId?: string | null
+      fontId?: string | null
     }) =>
-      api.createProject(name, path, specMethod, boilerplateId, styleId, modifierIds, customColors, accentStyle, paletteId),
+      api.createProject(name, path, specMethod, boilerplateId, styleId, modifierIds, customColors, accentStyle, paletteId, fontId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] })
     },

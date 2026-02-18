@@ -64,6 +64,12 @@ interface WorkspaceChatProps {
   fixedContextMode?: '1m' | '200k'
   /** Optional label shown at the top of the panel (e.g. "Research (Free)"). */
   panelLabel?: string
+  /** Callback to send assistant message content to the passoff editor. Shown only in split-view. */
+  onCopyToPassoff?: (content: string) => void
+  /** Inject a message into this panel's input and auto-send it. Used by the passoff "Send to Execute" button. */
+  injectMessage?: string | null
+  /** Called after the injected message is consumed, to clear it. */
+  onInjectConsumed?: () => void
 }
 
 /** Generate a unique ID for local messages. */
@@ -119,6 +125,9 @@ export function WorkspaceChat({
   workingDirectory,
   fixedContextMode,
   panelLabel,
+  onCopyToPassoff,
+  injectMessage,
+  onInjectConsumed,
 }: WorkspaceChatProps): React.JSX.Element {
   const [inputValue, setInputValue] = useState('')
   const messagesContainerRef = useRef<HTMLDivElement>(null)
@@ -303,6 +312,17 @@ export function WorkspaceChat({
     }, 300)
     return () => clearTimeout(timer)
   }, [inputValue, conversationId, activeConversationId])
+
+  // Handle injected messages (e.g. from passoff "Send to Execute")
+  useEffect(() => {
+    if (!injectMessage || isLoading) return
+    // If no conversation yet, start a new one
+    if (conversationId === null && activeConversationId === null) {
+      start(undefined, workingDirectory ?? undefined, pendingContextModeRef.current, costSettings as unknown as Record<string, unknown>)
+    }
+    sendMessage(injectMessage)
+    onInjectConsumed?.()
+  }, [injectMessage]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Convert REST messages to ChatMessageType format for merging
   const initialMessages: ChatMessageType[] = useMemo(() => {
@@ -765,6 +785,7 @@ export function WorkspaceChat({
               <ChatMessage
                 key={message.id ?? generateId()}
                 message={message}
+                onCopyToPassoff={onCopyToPassoff}
               />
             ))}
             <div ref={messagesEndRef} />

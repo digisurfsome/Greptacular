@@ -13,6 +13,7 @@ import { WorkspaceLibrary } from '../components/workspace/WorkspaceLibrary'
 import { WorkspaceKeyboardHelp } from '../components/workspace/WorkspaceKeyboardHelp'
 import { WorkspaceUserGuide } from '../components/workspace/WorkspaceUserGuide'
 import { RepoSelector } from '../components/workspace/RepoSelector'
+import { PassoffEditor, type PassoffSection } from '../components/workspace/PassoffEditor'
 import { useWorkspaceKeyboardShortcuts } from '../hooks/useWorkspaceKeyboardShortcuts'
 import { exportConversationMarkdown } from '../lib/api'
 import { ArrowLeft, ChevronRight, Keyboard, BookOpen, Columns2 } from 'lucide-react'
@@ -31,6 +32,10 @@ export function WorkspacePage(): React.JSX.Element {
   // The left panel (Research/200K) uses activeConversationId.
   // The right panel (Execute/1M) uses its own state.
   const [rightConversationId, setRightConversationId] = useState<number | null>(null)
+  // Passoff editor state — staging area between Research and Execute panels
+  const [passoffSections, setPassoffSections] = useState<PassoffSection[]>([])
+  const [passoffPreamble, setPassoffPreamble] = useState('')
+  const [executeInjectMessage, setExecuteInjectMessage] = useState<string | null>(null)
   const chatInputRef = useRef<HTMLTextAreaElement | null>(null)
 
   const handleNewChat = useCallback(() => {
@@ -73,6 +78,21 @@ export function WorkspacePage(): React.JSX.Element {
 
   const handleRightNewChat = useCallback(() => {
     setRightConversationId(null)
+  }, [])
+
+  // Passoff: add a section from an assistant message in the Research panel
+  const handleCopyToPassoff = useCallback((content: string) => {
+    const id = `sec-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
+    setPassoffSections(prev => [...prev, { id, title: '', content }])
+  }, [])
+
+  // Passoff: send the full document to the Execute panel
+  const handleSendToExecute = useCallback((fullDocument: string) => {
+    setExecuteInjectMessage(fullDocument)
+  }, [])
+
+  const handleInjectConsumed = useCallback(() => {
+    setExecuteInjectMessage(null)
   }, [])
 
   // Register workspace keyboard shortcuts
@@ -159,10 +179,10 @@ export function WorkspacePage(): React.JSX.Element {
         />
 
         {splitView ? (
-          /* Split view: two panels side by side */
+          /* Split view: Research | Passoff | Execute */
           <div className="flex-1 flex overflow-hidden">
             {/* Left panel: Research (Subscription/200K) */}
-            <div className="flex-1 flex flex-col overflow-hidden border-r border-border">
+            <div className="flex-[2] min-w-0 flex flex-col overflow-hidden border-r border-border">
               <WorkspaceChat
                 conversationId={activeConversationId}
                 onConversationCreated={handleConversationCreated}
@@ -170,18 +190,31 @@ export function WorkspacePage(): React.JSX.Element {
                 chatInputRef={chatInputRef}
                 workingDirectory={workingDirectory}
                 fixedContextMode="200k"
-                panelLabel="RESEARCH (FREE)"
+                panelLabel="RESEARCH (200K)"
+                onCopyToPassoff={handleCopyToPassoff}
+              />
+            </div>
+            {/* Middle: Passoff editor */}
+            <div className="w-72 min-w-[240px] max-w-[360px] flex flex-col overflow-hidden border-r border-border">
+              <PassoffEditor
+                sections={passoffSections}
+                onSectionsChange={setPassoffSections}
+                onSendToExecute={handleSendToExecute}
+                preamble={passoffPreamble}
+                onPreambleChange={setPassoffPreamble}
               />
             </div>
             {/* Right panel: Execute (API/1M) */}
-            <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="flex-[2] min-w-0 flex flex-col overflow-hidden">
               <WorkspaceChat
                 conversationId={rightConversationId}
                 onConversationCreated={handleRightConversationCreated}
                 onNewConversation={handleRightNewChat}
                 workingDirectory={workingDirectory}
                 fixedContextMode="1m"
-                panelLabel="EXECUTE (API)"
+                panelLabel="EXECUTE (1M)"
+                injectMessage={executeInjectMessage}
+                onInjectConsumed={handleInjectConsumed}
               />
             </div>
           </div>

@@ -611,7 +611,7 @@ export function NewProjectModal({
   // =========================================================================
   if (step === 'chat') {
     return createPortal(
-      <div className="fixed inset-0 z-50 bg-background flex flex-col">
+      <div className="fixed inset-0 z-[70] bg-background flex flex-col">
         <SpecCreationChat
           projectName={projectName.trim()}
           onComplete={handleSpecComplete}
@@ -630,7 +630,7 @@ export function NewProjectModal({
   // All other steps: full-screen portal with nav bar + step progress
   // =========================================================================
   return createPortal(
-    <div className="fixed inset-0 z-50 bg-background flex flex-col h-screen overflow-hidden">
+    <div className="fixed inset-0 z-[70] bg-background flex flex-col h-screen overflow-hidden">
       {/* Top Navigation Bar with Step Progress */}
       <StepProgressBar
         currentStep={step}
@@ -762,26 +762,28 @@ export function NewProjectModal({
         {/* Step 2: Folder Selection                                         */}
         {/* ---------------------------------------------------------------- */}
         {step === 'folder' && (
-          <div className="flex-1 flex flex-col min-h-0">
-            {/* Header */}
-            <div className="px-6 py-4 border-b shrink-0">
-              <div className="flex items-center gap-3">
-                <Folder size={24} className="text-primary" />
-                <div>
-                  <h2 className="text-lg font-semibold">Select Project Location</h2>
-                  <p className="text-sm text-muted-foreground">
-                    Select the folder to use for project <span className="font-semibold font-mono">{projectName}</span>. Create a new folder or choose an existing one.
-                  </p>
+          <div className="flex-1 flex flex-col items-center min-h-0 py-4">
+            <div className="w-full max-w-2xl flex flex-col min-h-0 flex-1 border rounded-lg overflow-hidden bg-card">
+              {/* Header */}
+              <div className="px-6 py-4 border-b shrink-0">
+                <div className="flex items-center gap-3">
+                  <Folder size={24} className="text-primary" />
+                  <div>
+                    <h2 className="text-lg font-semibold">Select Project Location</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Select the folder to use for project <span className="font-semibold font-mono">{projectName}</span>. Create a new folder or choose an existing one.
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Folder Browser - takes remaining space */}
-            <div className="flex-1 overflow-hidden">
-              <FolderBrowser
-                onSelect={handleFolderSelect}
-                onCancel={handleFolderCancel}
-              />
+              {/* Folder Browser - takes remaining space */}
+              <div className="flex-1 overflow-hidden">
+                <FolderBrowser
+                  onSelect={handleFolderSelect}
+                  onCancel={handleFolderCancel}
+                />
+              </div>
             </div>
           </div>
         )}

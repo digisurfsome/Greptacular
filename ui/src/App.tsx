@@ -145,8 +145,11 @@ function App() {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if user is typing in an input
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+      // Ignore if user is typing in an input (except Escape, which should always close modals/panels)
+      if (
+        e.key !== 'Escape' &&
+        (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)
+      ) {
         return
       }
 

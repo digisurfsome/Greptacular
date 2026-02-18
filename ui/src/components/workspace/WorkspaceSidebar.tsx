@@ -16,9 +16,11 @@ import {
   Pin,
   Star,
   Settings,
+  ChevronDown,
 } from 'lucide-react'
 import {
   useWorkspaceConversations,
+  useCreateWorkspaceConversation,
   useDeleteWorkspaceConversation,
   useTogglePin,
   useToggleContextMode,
@@ -33,6 +35,14 @@ import { reorderWorkspaceCategories } from '@/lib/api'
 import { ConversationSearch } from './ConversationSearch'
 import { CategoryManager } from './CategoryManager'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu'
 import type { WorkspaceConversation, WorkspaceCategory } from '@/lib/types'
 
 interface WorkspaceSidebarProps {
@@ -82,6 +92,7 @@ export function WorkspaceSidebar({
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({})
 
   const { data: conversations, isLoading } = useWorkspaceConversations()
+  const createConversationMut = useCreateWorkspaceConversation()
   const deleteMutation = useDeleteWorkspaceConversation()
   const { data: categories = [] } = useWorkspaceCategories()
   const createCategoryMut = useCreateCategory()
@@ -89,6 +100,18 @@ export function WorkspaceSidebar({
   const deleteCategoryMut = useDeleteCategory()
   const togglePinMut = useTogglePin()
   const toggleContextModeMut = useToggleContextMode()
+
+  /** Create a new conversation in a specific category and select it. */
+  const handleNewChatInCategory = useCallback(
+    (categoryName: string) => {
+      createConversationMut.mutate({ category: categoryName }, {
+        onSuccess: (newConv) => {
+          onSelectConversation(newConv.id)
+        },
+      })
+    },
+    [createConversationMut, onSelectConversation],
+  )
 
   /** Filter conversations by search term (case-insensitive substring). */
   const filtered = useMemo(() => {
@@ -188,15 +211,43 @@ export function WorkspaceSidebar({
         </Button>
       </div>
 
-      {/* New Chat button */}
-      <div className="px-3 py-2">
+      {/* New Chat button with category dropdown */}
+      <div className="px-3 py-2 flex gap-1">
         <Button
-          className="w-full"
+          className="flex-1"
           onClick={onNewChat}
         >
           <Plus size={16} />
           New Chat
         </Button>
+        {categories.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="icon" variant="outline" className="shrink-0 w-8" title="New chat in category...">
+                <ChevronDown size={14} />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuLabel className="text-xs">New chat in category</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {categories.map((cat) => (
+                <DropdownMenuItem
+                  key={cat.id}
+                  onClick={() => handleNewChatInCategory(cat.name)}
+                  className="gap-2 text-xs"
+                >
+                  {cat.color && (
+                    <span
+                      className="w-2 h-2 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: cat.color }}
+                    />
+                  )}
+                  {cat.name}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
 
       {/* Search */}

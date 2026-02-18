@@ -6,7 +6,7 @@
  * Manages conversation state with localStorage persistence.
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { X, Bot } from 'lucide-react'
 import { AssistantChat } from './AssistantChat'
 import { useConversation } from '../hooks/useConversations'
@@ -44,6 +44,23 @@ function setStoredConversationId(projectName: string, conversationId: number | n
 }
 
 export function AssistantPanel({ projectName, isOpen, onClose }: AssistantPanelProps) {
+  // Capture-phase Escape handler — fires before the textarea can swallow the event
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
+
+  useEffect(() => {
+    if (!isOpen) return
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        e.stopPropagation()
+        onCloseRef.current()
+      }
+    }
+    window.addEventListener('keydown', handleEscape, true) // capture phase
+    return () => window.removeEventListener('keydown', handleEscape, true)
+  }, [isOpen])
+
   // Load initial conversation ID from localStorage
   const [conversationId, setConversationId] = useState<number | null>(() =>
     getStoredConversationId(projectName)

@@ -432,17 +432,21 @@ def update_file_metadata(
         session.close()
 
 
-def get_active_files_context(conversation_id: int) -> tuple[str, int]:
+def get_active_files_context(conversation_id: int, token_cap: int = 50_000) -> tuple[str, int]:
     """
     Build the context string for all active files in a conversation.
 
-    Enforces a 50K token cap to prevent library files from inflating every
+    Enforces a token cap to prevent library files from inflating every
     message's input cost (each token is billed on every subsequent turn).
+
+    Args:
+        conversation_id: The conversation ID.
+        token_cap: Maximum tokens for library injection (default 50K).
 
     Returns:
         Tuple of (context_string, estimated_token_count)
     """
-    LIBRARY_TOKEN_CAP = 50_000
+    LIBRARY_TOKEN_CAP = token_cap
 
     active_files = get_active_files(conversation_id)
     if not active_files:

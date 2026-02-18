@@ -44,6 +44,7 @@ import { UsageDashboard } from './UsageDashboard'
 import { AutoSummaryPin } from './AutoSummaryPin'
 import { ChatForkModal } from './ChatForkModal'
 import { InjectFromChatModal } from './InjectFromChatModal'
+import CostControls, { loadCostSettings, type CostSettings } from './CostControls'
 import type { ChatMessage as ChatMessageType, WorkspaceMessage, PendingInjection, ImageAttachment } from '@/lib/types'
 
 const DRAFT_KEY_PREFIX = 'workspace-draft-'
@@ -140,6 +141,9 @@ export function WorkspaceChat({
     pendingContextModeRef.current
   )
 
+  // Cost control settings -- persisted to localStorage, sent on session start.
+  const [costSettings, setCostSettings] = useState<CostSettings>(loadCostSettings)
+
   // Memoize error handler to keep hook reference stable
   const handleError = useCallback((error: string) => {
     console.error('Workspace chat error:', error)
@@ -230,9 +234,9 @@ export function WorkspaceChat({
     if (conversationId !== null) {
       const modeForSession = pendingContextModeRef.current
       setSessionContextMode(modeForSession)
-      start(conversationId, workingDirectory ?? undefined, modeForSession)
+      start(conversationId, workingDirectory ?? undefined, modeForSession, costSettings as unknown as Record<string, unknown>)
     }
-  }, [conversationId, isLoadingConversation, activeConversationId, start, disconnect, clearMessages, workingDirectory])
+  }, [conversationId, isLoadingConversation, activeConversationId, start, disconnect, clearMessages, workingDirectory, costSettings])
 
   // Smart auto-scroll: only scroll if user is near the bottom
   const handleScroll = useCallback(() => {
@@ -422,7 +426,7 @@ export function WorkspaceChat({
     // the message and dispatch it once the session is ready.
     // Pass workingDirectory so the new session uses the selected repo.
     if (conversationId === null && activeConversationId === null) {
-      start(undefined, workingDirectory ?? undefined, contextMode)
+      start(undefined, workingDirectory ?? undefined, pendingContextModeRef.current, costSettings as unknown as Record<string, unknown>)
     }
     sendMessage(content, attachments)
 
@@ -434,7 +438,7 @@ export function WorkspaceChat({
     if (effectiveId) {
       localStorage.removeItem(`${DRAFT_KEY_PREFIX}${effectiveId}`)
     }
-  }, [inputValue, isLoading, conversationId, activeConversationId, start, sendMessage, workingDirectory, pendingImages, pendingFiles, contextMode])
+  }, [inputValue, isLoading, conversationId, activeConversationId, start, sendMessage, workingDirectory, pendingImages, pendingFiles, sessionContextMode, costSettings])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -566,7 +570,7 @@ export function WorkspaceChat({
               disconnect()
               clearMessages()
               if (effectiveConversationId !== null) {
-                start(effectiveConversationId, workingDirectory ?? undefined, contextMode)
+                start(effectiveConversationId, workingDirectory ?? undefined, pendingContextModeRef.current, costSettings as unknown as Record<string, unknown>)
               }
             }}
             className="underline font-medium hover:text-destructive/80 flex-shrink-0"
@@ -632,10 +636,13 @@ export function WorkspaceChat({
         </div>
       )}
 
+      {/* Cost controls — user-adjustable "stick shift" for API spend */}
+      <CostControls settings={costSettings} onChange={setCostSettings} />
+
       {/* Usage dashboard */}
       <UsageDashboard
         conversationId={conversationId ?? activeConversationId}
-        contextMode={contextMode}
+        contextMode={sessionContextMode}
       />
 
       {/* Auto-summary pin */}
@@ -694,7 +701,7 @@ export function WorkspaceChat({
                     disconnect()
                     clearMessages()
                     if (effectiveConversationId !== null) {
-                      start(effectiveConversationId, workingDirectory ?? undefined, contextMode)
+                      start(effectiveConversationId, workingDirectory ?? undefined, pendingContextModeRef.current, costSettings as unknown as Record<string, unknown>)
                     }
                   }}
                 >

@@ -31,6 +31,9 @@ const shortcuts: Shortcut[] = [
   { key: `${modKey}+F`, description: 'Focus search' },
   { key: `${modKey}+E`, description: 'Export current chat', context: 'with active chat' },
   { key: '/', description: 'Focus chat input' },
+  { key: '1', description: 'Toggle Research panel', context: 'split view' },
+  { key: '2', description: 'Toggle PRD Builder panel', context: 'split view' },
+  { key: '3', description: 'Toggle Coder panel', context: 'split view' },
   { key: '?', description: 'Show this help' },
   { key: 'Esc', description: 'Close modal' },
 ]

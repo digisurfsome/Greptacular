@@ -18,6 +18,12 @@ interface UseWorkspaceKeyboardShortcutsOptions {
   onShowShortcutsHelp: () => void
   onFocusChatInput: () => void
   hasActiveConversation: boolean
+  /** Toggle panel 1 (Research) — only active in split view */
+  onTogglePanel1?: () => void
+  /** Toggle panel 2 (PRD Builder) — only active in split view */
+  onTogglePanel2?: () => void
+  /** Toggle panel 3 (Coder) — only active in split view */
+  onTogglePanel3?: () => void
 }
 
 /** Registers workspace keyboard shortcut listeners. */
@@ -78,6 +84,23 @@ export function useWorkspaceKeyboardShortcuts(
       ) {
         e.preventDefault()
         options.onFocusChatInput()
+        return
+      }
+
+      // 1, 2, 3: Toggle split-view panels
+      if (e.key === '1' && options.onTogglePanel1) {
+        e.preventDefault()
+        options.onTogglePanel1()
+        return
+      }
+      if (e.key === '2' && options.onTogglePanel2) {
+        e.preventDefault()
+        options.onTogglePanel2()
+        return
+      }
+      if (e.key === '3' && options.onTogglePanel3) {
+        e.preventDefault()
+        options.onTogglePanel3()
         return
       }
 

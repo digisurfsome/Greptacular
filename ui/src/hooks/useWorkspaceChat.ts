@@ -33,7 +33,7 @@ interface UseWorkspaceChatReturn {
   };
   pendingInjection: PendingInjection | null;
   setPendingInjection: (injection: PendingInjection | null) => void;
-  start: (conversationId?: number | null, workingDirectory?: string, contextMode?: string, costSettings?: Record<string, unknown>) => void;
+  start: (conversationId?: number | null, workingDirectory?: string, contextMode?: string, costSettings?: Record<string, unknown>, model?: string) => void;
   sendMessage: (content: string, attachments?: ImageAttachment[]) => void;
   disconnect: () => void;
   clearMessages: () => void;
@@ -86,6 +86,7 @@ export function useWorkspaceChat({
     workingDirectory?: string;
     contextMode?: string;
     costSettings?: Record<string, unknown>;
+    model?: string;
   } | null>(null);
 
   // Session readiness tracking: prevents sending messages before the backend
@@ -163,6 +164,9 @@ export function useWorkspaceChat({
         payload.context_mode = params.contextMode || "1m";
         if (params.costSettings) {
           payload.cost_settings = params.costSettings;
+        }
+        if (params.model) {
+          payload.model = params.model;
         }
 
         if (import.meta.env.DEV) {
@@ -388,7 +392,7 @@ export function useWorkspaceChat({
   }, [onError]);
 
   const start = useCallback(
-    (existingConversationId?: number | null, workingDirectory?: string, contextMode?: string, costSettings?: Record<string, unknown>) => {
+    (existingConversationId?: number | null, workingDirectory?: string, contextMode?: string, costSettings?: Record<string, unknown>, model?: string) => {
       // Clear any pending check timeout from a previous call
       if (checkAndSendTimeoutRef.current) {
         clearTimeout(checkAndSendTimeoutRef.current);
@@ -401,6 +405,7 @@ export function useWorkspaceChat({
         workingDirectory,
         contextMode,
         costSettings,
+        model,
       };
 
       // Reset session readiness — the session is not ready until we receive
@@ -425,6 +430,7 @@ export function useWorkspaceChat({
             working_directory?: string;
             context_mode?: string;
             cost_settings?: Record<string, unknown>;
+            model?: string;
           } = { type: "start" };
 
           if (existingConversationId) {
@@ -437,6 +443,9 @@ export function useWorkspaceChat({
           payload.context_mode = contextMode || "1m";
           if (costSettings) {
             payload.cost_settings = costSettings;
+          }
+          if (model) {
+            payload.model = model;
           }
 
           if (import.meta.env.DEV) {

@@ -70,6 +70,8 @@ interface WorkspaceChatProps {
   injectMessage?: string | null
   /** Called after the injected message is consumed, to clear it. */
   onInjectConsumed?: () => void
+  /** Called when the agent finishes responding, with the last assistant message content. Used for auto-forward. */
+  onResponseComplete?: (content: string) => void
 }
 
 /** Generate a unique ID for local messages. */
@@ -128,6 +130,7 @@ export function WorkspaceChat({
   onCopyToPassoff,
   injectMessage,
   onInjectConsumed,
+  onResponseComplete,
 }: WorkspaceChatProps): React.JSX.Element {
   const [inputValue, setInputValue] = useState('')
   const messagesContainerRef = useRef<HTMLDivElement>(null)
@@ -281,6 +284,18 @@ export function WorkspaceChat({
       })
     }
   }, [liveMessages.length, isUserScrolledUp])
+
+  // Detect response completion (isLoading true→false) for auto-forward
+  const prevLoadingRef = useRef(false)
+  useEffect(() => {
+    if (prevLoadingRef.current && !isLoading && onResponseComplete) {
+      const lastMessage = liveMessages[liveMessages.length - 1]
+      if (lastMessage?.role === 'assistant' && lastMessage.content) {
+        onResponseComplete(lastMessage.content)
+      }
+    }
+    prevLoadingRef.current = isLoading
+  }, [isLoading, liveMessages, onResponseComplete])
 
   // Focus input when not loading
   useEffect(() => {
@@ -621,9 +636,11 @@ export function WorkspaceChat({
       {/* Panel label (split-view mode) */}
       {panelLabel && (
         <div className={`flex items-center justify-center px-3 py-1.5 text-xs font-bold tracking-wide border-b ${
-          fixedContextMode === '200k'
+          panelLabel.includes('RESEARCH')
             ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
-            : 'bg-violet-500/10 text-violet-600 border-violet-500/20'
+            : panelLabel.includes('CODER')
+              ? 'bg-cyan-500/10 text-cyan-600 border-cyan-500/20'
+              : 'bg-violet-500/10 text-violet-600 border-violet-500/20'
         }`}>
           {panelLabel}
         </div>
@@ -938,11 +955,15 @@ export function WorkspaceChat({
             onClick={handleSend}
             disabled={(!inputValue.trim() && pendingImages.length === 0 && pendingFiles.length === 0) || isLoading || isLoadingConversation}
             title={fixedContextMode === '200k' ? 'Send (Subscription)' : fixedContextMode === '1m' ? 'Send (API)' : 'Send message'}
-            className={fixedContextMode === '200k'
-              ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-              : fixedContextMode === '1m'
-                ? 'bg-violet-600 hover:bg-violet-700 text-white'
-                : undefined}
+            className={
+              panelLabel?.includes('RESEARCH')
+                ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                : panelLabel?.includes('CODER')
+                  ? 'bg-cyan-600 hover:bg-cyan-700 text-white'
+                  : panelLabel?.includes('PRD')
+                    ? 'bg-violet-600 hover:bg-violet-700 text-white'
+                    : undefined
+            }
           >
             {isLoading ? (
               <Loader2 size={18} className="animate-spin" />

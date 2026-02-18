@@ -23,8 +23,8 @@ export const THEMES: ThemeOption[] = [
   {
     id: 'claude',
     name: 'Claude',
-    description: 'Warm beige tones with orange accents',
-    previewColors: { primary: '#c75b2a', background: '#faf6f0', accent: '#f5ede4' }
+    description: 'Warm beige tones with rich orange',
+    previewColors: { primary: '#c44e1a', background: '#fcfaf7', accent: '#f0e8dc' }
   },
   {
     id: 'neo-brutalism',

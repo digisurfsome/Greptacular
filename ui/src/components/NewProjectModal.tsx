@@ -1096,7 +1096,7 @@ export function NewProjectModal({
                                 return swatches.slice(0, 6).map((c, i) => (
                                   <div
                                     key={i}
-                                    className="h-5 w-6 rounded border border-black/10"
+                                    className="h-5 w-6 rounded border border-foreground/10"
                                     style={{ backgroundColor: c }}
                                     title={c}
                                   />
@@ -1188,7 +1188,7 @@ export function NewProjectModal({
                                 })
                               }}
                               className={`absolute top-0.5 right-0.5 z-10 p-0.5 rounded-sm transition-colors ${
-                                isFavorite ? 'text-yellow-500' : 'text-muted-foreground/30 hover:text-yellow-400'
+                                isFavorite ? 'text-primary' : 'text-muted-foreground/30 hover:text-primary/80'
                               }`}
                             >
                               <Star size={10} fill={isFavorite ? 'currentColor' : 'none'} />
@@ -1199,7 +1199,7 @@ export function NewProjectModal({
                               {swatches.map((color, i) => (
                                 <div
                                   key={i}
-                                  className="h-2.5 w-2.5 rounded-sm border border-black/10"
+                                  className="h-2.5 w-2.5 rounded-sm border border-foreground/10"
                                   style={{ backgroundColor: color }}
                                 />
                               ))}
@@ -1307,7 +1307,7 @@ export function NewProjectModal({
                               {swatches.slice(0, 3).map((color, i) => (
                                 <div
                                   key={i}
-                                  className="w-2 h-2 rounded-full border border-black/10"
+                                  className="w-2 h-2 rounded-full border border-foreground/10"
                                   style={{ backgroundColor: color }}
                                 />
                               ))}
@@ -1345,7 +1345,7 @@ export function NewProjectModal({
                             return [pal.brand, pal.background, pal.surface, pal.text, pal.accent, pal.muted].map((c, i) => (
                               <span
                                 key={i}
-                                className="w-4 h-4 rounded-full border border-black/10 shrink-0"
+                                className="w-4 h-4 rounded-full border border-foreground/10 shrink-0"
                                 style={{ backgroundColor: c }}
                               />
                             ))
@@ -1447,8 +1447,8 @@ export function NewProjectModal({
 
                   {/* Favorites bar */}
                   {favoriteStyles.size > 0 && (
-                    <div className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 border-b bg-yellow-50/50 dark:bg-yellow-950/20">
-                      <Star size={10} className="text-yellow-500 shrink-0" fill="currentColor" />
+                    <div className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 border-b bg-primary/5">
+                      <Star size={10} className="text-primary shrink-0" fill="currentColor" />
                       <span className="text-[9px] font-medium text-muted-foreground shrink-0">Favorites:</span>
                       <div className="flex gap-1 overflow-x-auto">
                         {Array.from(favoriteStyles).map(favId => {
@@ -1469,7 +1469,7 @@ export function NewProjectModal({
                                 {swatches.slice(0, 3).map((color, i) => (
                                   <div
                                     key={i}
-                                    className="w-2 h-2 rounded-sm border border-black/10"
+                                    className="w-2 h-2 rounded-sm border border-foreground/10"
                                     style={{ backgroundColor: color }}
                                   />
                                 ))}
@@ -1525,10 +1525,10 @@ export function NewProjectModal({
                                   setPreviewViewMode('single')
                                 }}
                               >
-                                <div className="absolute top-1.5 left-1.5 z-10 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-black/60 text-white backdrop-blur-sm pointer-events-none">
+                                <div className="absolute top-1.5 left-1.5 z-10 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-foreground/60 text-background backdrop-blur-sm pointer-events-none">
                                   {page.label}
                                 </div>
-                                <div className="absolute top-1.5 right-1.5 z-10 opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded bg-black/60 text-white backdrop-blur-sm pointer-events-none">
+                                <div className="absolute top-1.5 right-1.5 z-10 opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded bg-foreground/60 text-background backdrop-blur-sm pointer-events-none">
                                   <Maximize2 size={10} />
                                 </div>
                                 <div

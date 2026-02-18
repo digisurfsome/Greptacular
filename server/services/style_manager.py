@@ -2117,6 +2117,660 @@ def save_style_guide(
         return None
 
 
+# =============================================================================
+# Theme File Generation (CSS + JSON solidification)
+# =============================================================================
+
+
+def _darken_hex(hex_color: str, percent: float) -> str:
+    """Darken a hex color by a given percentage (0-100).
+
+    Clamps each RGB channel downward proportionally.  Non-hex values
+    (e.g. rgba() strings, gradients) are returned unchanged because
+    they cannot be meaningfully darkened with simple channel math.
+
+    Args:
+        hex_color: A CSS hex color string such as ``#3B82F6``.
+        percent: The amount to darken, where 15 means 15 % darker.
+
+    Returns:
+        The darkened hex color, or the original string if it is not
+        a valid hex value.
+    """
+    color = hex_color.strip().lstrip("#")
+    if len(color) not in (3, 6) or not all(c in "0123456789abcdefABCDEF" for c in color):
+        return hex_color  # Not a simple hex color; return as-is
+
+    # Expand shorthand (#abc -> #aabbcc)
+    if len(color) == 3:
+        color = "".join(c * 2 for c in color)
+
+    factor = 1.0 - (percent / 100.0)
+    r = max(0, int(int(color[0:2], 16) * factor))
+    g = max(0, int(int(color[2:4], 16) * factor))
+    b = max(0, int(int(color[4:6], 16) * factor))
+    return f"#{r:02X}{g:02X}{b:02X}"
+
+
+def _lighten_hex(hex_color: str, percent: float) -> str:
+    """Lighten a hex color by a given percentage (0-100).
+
+    Moves each RGB channel toward 255 proportionally.  Non-hex values
+    are returned unchanged.
+
+    Args:
+        hex_color: A CSS hex color string such as ``#2563EB``.
+        percent: The amount to lighten, where 20 means 20 % lighter.
+
+    Returns:
+        The lightened hex color, or the original string if it is not
+        a valid hex value.
+    """
+    color = hex_color.strip().lstrip("#")
+    if len(color) not in (3, 6) or not all(c in "0123456789abcdefABCDEF" for c in color):
+        return hex_color
+
+    if len(color) == 3:
+        color = "".join(c * 2 for c in color)
+
+    factor = percent / 100.0
+    r = min(255, int(int(color[0:2], 16) + (255 - int(color[0:2], 16)) * factor))
+    g = min(255, int(int(color[2:4], 16) + (255 - int(color[2:4], 16)) * factor))
+    b = min(255, int(int(color[4:6], 16) + (255 - int(color[4:6], 16)) * factor))
+    return f"#{r:02X}{g:02X}{b:02X}"
+
+
+def _is_hex_color(value: str) -> bool:
+    """Return True if *value* looks like a 3- or 6-digit hex color."""
+    stripped = value.strip().lstrip("#")
+    return len(stripped) in (3, 6) and all(c in "0123456789abcdefABCDEF" for c in stripped)
+
+
+def generate_dark_mode_variant(tokens: dict) -> dict:
+    """Generate a dark-mode variant from light-mode color tokens.
+
+    The transformation follows standard dark-mode design principles:
+
+    * **Surfaces** are inverted -- the lightest surface becomes the darkest.
+    * **Text** colors are inverted so they remain readable on dark backgrounds.
+    * **Brand** colors are slightly brightened for better visibility on dark.
+    * **Border** colors are shifted to subtle dark-friendly values.
+    * **Status** colors are left unchanged (already vibrant enough).
+
+    Args:
+        tokens: A ``color_tokens`` dict from a style's ``style_guide``.
+            Expected keys: ``brand``, ``surface``, ``text``, ``border``,
+            ``status``.
+
+    Returns:
+        A new ``color_tokens`` dict with dark-mode values.  Non-hex values
+        (rgba, gradients) are given sensible dark-mode defaults rather
+        than transformed.
+    """
+    import copy
+
+    dark = copy.deepcopy(tokens)
+
+    # --- Surfaces: invert order (lightest->darkest) ---------------------------
+    surfaces = dark.get("surface", {})
+    if isinstance(surfaces, dict):
+        # Detect whether original is already dark (canvas is a dark color)
+        canvas = surfaces.get("canvas", "")
+        is_already_dark = _is_hex_color(canvas) and _luminance(canvas) < 0.2
+
+        if not is_already_dark:
+            # Light -> dark: assign standard dark surface values
+            surfaces["canvas"] = "#0F172A"
+            surfaces["base"] = "#1E293B"
+            surfaces["muted"] = "#334155"
+        # If already dark, leave as-is
+
+    # --- Text: invert for dark background -------------------------------------
+    text = dark.get("text", {})
+    if isinstance(text, dict):
+        original_primary = tokens.get("text", {}).get("primary", "")
+        if _is_hex_color(original_primary) and _luminance(original_primary) < 0.5:
+            # Was dark text on light background -> make light text on dark background
+            text["primary"] = "#F1F5F9"
+            text["secondary"] = "#94A3B8"
+            text["tertiary"] = "#64748B"
+        # If primary was already light (dark-mode style), leave as-is
+
+    # --- Brand: lighten slightly for dark background visibility ---------------
+    brand = dark.get("brand", {})
+    if isinstance(brand, dict):
+        for key in ("light", "DEFAULT", "dark"):
+            val = brand.get(key, "")
+            if _is_hex_color(val):
+                brand[key] = _lighten_hex(val, 10)
+
+    # --- Borders: shift to dark-friendly values -------------------------------
+    border = dark.get("border", {})
+    if isinstance(border, dict):
+        border["subtle"] = "#1E293B"
+        if "DEFAULT" in border:
+            border["DEFAULT"] = "#334155"
+
+    # Status colors are intentionally unchanged -- they are already vibrant
+    # enough to read on dark backgrounds.
+
+    return dark
+
+
+def _luminance(hex_color: str) -> float:
+    """Compute relative luminance (0.0 dark .. 1.0 light) for a hex color.
+
+    Uses the simplified sRGB luminance formula:
+    ``L = 0.2126 * R + 0.7152 * G + 0.0722 * B`` (with linear RGB).
+
+    Non-hex inputs return 0.5 as a neutral fallback.
+    """
+    color = hex_color.strip().lstrip("#")
+    if len(color) not in (3, 6) or not all(c in "0123456789abcdefABCDEF" for c in color):
+        return 0.5  # Unknown format -- neutral fallback
+
+    if len(color) == 3:
+        color = "".join(c * 2 for c in color)
+
+    r = int(color[0:2], 16) / 255.0
+    g = int(color[2:4], 16) / 255.0
+    b = int(color[4:6], 16) / 255.0
+
+    # Linearize (simplified gamma)
+    def linearize(c: float) -> float:
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+    return 0.2126 * linearize(r) + 0.7152 * linearize(g) + 0.0722 * linearize(b)
+
+
+def _build_dark_mode_css_block(dark_tokens: dict) -> str:
+    """Build the ``@media (prefers-color-scheme: dark)`` CSS block.
+
+    Generates CSS custom property overrides inside a dark-mode media
+    query so the theme automatically adapts to the user's OS preference.
+
+    Args:
+        dark_tokens: Color tokens dict produced by
+            :func:`generate_dark_mode_variant`.
+
+    Returns:
+        A CSS string containing the full ``@media`` block.
+    """
+    brand = dark_tokens.get("brand", {})
+    surface = dark_tokens.get("surface", {})
+    text = dark_tokens.get("text", {})
+    border = dark_tokens.get("border", {})
+
+    lines = [
+        "",
+        "/* Dark mode - auto-generated from light theme */",
+        "@media (prefers-color-scheme: dark) {",
+        "  :root {",
+    ]
+
+    # Brand overrides
+    if isinstance(brand, dict):
+        if brand.get("light"):
+            lines.append(f"    --color-brand-light: {brand['light']};")
+        if brand.get("DEFAULT"):
+            lines.append(f"    --color-brand: {brand['DEFAULT']};")
+        if brand.get("dark"):
+            lines.append(f"    --color-brand-dark: {brand['dark']};")
+
+    # Surface overrides
+    if isinstance(surface, dict):
+        if surface.get("canvas"):
+            lines.append(f"    --color-surface-canvas: {surface['canvas']};")
+        if surface.get("base"):
+            lines.append(f"    --color-surface-base: {surface['base']};")
+        if surface.get("muted"):
+            lines.append(f"    --color-surface-muted: {surface['muted']};")
+
+    # Text overrides
+    if isinstance(text, dict):
+        if text.get("primary"):
+            lines.append(f"    --color-text-primary: {text['primary']};")
+        if text.get("secondary"):
+            lines.append(f"    --color-text-secondary: {text['secondary']};")
+        if text.get("tertiary"):
+            lines.append(f"    --color-text-tertiary: {text['tertiary']};")
+
+    # Border overrides
+    if isinstance(border, dict):
+        if border.get("subtle"):
+            lines.append(f"    --color-border-subtle: {border['subtle']};")
+
+    lines.extend([
+        "",
+        "    /* Semantic mappings */",
+        "    --background: var(--color-surface-canvas);",
+        "    --foreground: var(--color-text-primary);",
+        "    --card: var(--color-surface-base);",
+        "    --card-foreground: var(--color-text-primary);",
+        "    --primary: var(--color-brand);",
+        "    --primary-foreground: #ffffff;",
+        "    --secondary: var(--color-surface-muted);",
+        "    --secondary-foreground: var(--color-text-primary);",
+        "    --muted: var(--color-surface-muted);",
+        "    --muted-foreground: var(--color-text-secondary);",
+        "    --accent: var(--color-brand-light);",
+        "    --accent-foreground: var(--color-text-primary);",
+        "    --border: var(--color-border-subtle);",
+        "    --input: var(--color-border-subtle);",
+        "    --ring: var(--color-brand);",
+        "  }",
+        "}",
+    ])
+
+    return "\n".join(lines)
+
+
+def generate_theme_files(
+    project_dir: str | Path,
+    style_id: str,
+    custom_colors: dict[str, str] | None = None,
+    accent_id: str | None = None,
+    modifiers: list[str] | None = None,
+    palette_id: str | None = None,
+) -> dict[str, Path] | None:
+    """Generate concrete CSS and JSON theme files from style selections.
+
+    This is the "theme solidification" step -- it transforms the abstract
+    style registry data into files the generated project can consume
+    directly:
+
+    1. ``src/styles/theme.css`` -- Tailwind v4 ``@theme`` CSS with all
+       custom properties, base layer reset, optional modifier overrides,
+       accent overrides, and an auto-generated dark-mode media query.
+    2. ``src/styles/theme-tokens.json`` -- Machine-readable JSON dump of
+       every resolved token for programmatic access.
+    3. ``.autoforge/style_guide.md`` -- Human-readable markdown (delegates
+       to :func:`save_style_guide`).
+
+    Args:
+        project_dir: Root directory of the project.
+        style_id: Base style ID from ``STYLE_REGISTRY``.
+        custom_colors: Optional color role overrides (same format as
+            :func:`apply_custom_colors`).
+        accent_id: Optional accent style ID for interactive elements.
+        modifiers: Optional list of modifier IDs (e.g.
+            ``["high-contrast-buttons", "larger-type"]``).
+        palette_id: Optional palette identifier.  If provided, its
+            colors are merged *before* ``custom_colors`` so that
+            explicit custom colors take priority.
+
+    Returns:
+        A dict mapping file purpose to its :class:`~pathlib.Path`, e.g.::
+
+            {
+                "theme_css": Path(".../src/styles/theme.css"),
+                "theme_tokens": Path(".../src/styles/theme-tokens.json"),
+                "style_guide": Path(".../.autoforge/style_guide.md"),
+            }
+
+        Returns ``None`` if the style ID is invalid.
+    """
+    import copy
+
+    project_dir = Path(project_dir)
+
+    style = get_style_option(style_id)
+    if not style:
+        logger.error("generate_theme_files: unknown style_id '%s'", style_id)
+        return None
+
+    # Deep-copy tokens so we never mutate the global registry
+    guide = copy.deepcopy(style["style_guide"])
+    tokens = guide["color_tokens"]
+    typo = guide["typography"]
+    spacing = guide["spacing"]
+    components = guide["components"]
+    tw_config = guide["tailwind_config"]
+
+    # ---- Apply palette colors (lowest priority) ------------------------------
+    if palette_id and custom_colors and "palette_colors" in custom_colors:
+        # palette_colors is a pass-through convenience -- callers may stash
+        # pre-resolved palette colors inside custom_colors under this key.
+        # Remove it so it does not interfere with the normal role mapping.
+        custom_colors = dict(custom_colors)  # shallow copy to avoid mutation
+        custom_colors.pop("palette_colors", None)
+
+    # ---- Apply custom color overrides (highest priority) ---------------------
+    color_mapping = {
+        "primary": ("brand", "DEFAULT"),
+        "secondary": ("brand", "dark"),
+        "accent": ("brand", "light"),
+        "background": ("surface", "canvas"),
+        "surface": ("surface", "base"),
+        "text": ("text", "primary"),
+    }
+
+    if custom_colors:
+        for role, hex_value in custom_colors.items():
+            if role in color_mapping:
+                group, key = color_mapping[role]
+                if group in tokens and isinstance(tokens[group], dict):
+                    tokens[group][key] = hex_value
+
+    # ---- Resolve accent style overrides --------------------------------------
+    accent_name: str | None = None
+    accent_overrides: dict | None = None
+    if accent_id:
+        accent_compat = ACCENT_COMPATIBILITY.get(accent_id)
+        accent_style = get_style_option(accent_id)
+        if accent_compat and accent_style:
+            accent_name = accent_style["name"]
+            accent_overrides = accent_compat["accent_token_overrides"]
+
+    # ---- Resolve modifier adjustments ----------------------------------------
+    active_modifiers: list[str] = []
+    modifier_css_blocks: list[str] = []
+
+    if modifiers:
+        from .style_modifiers import get_modifier
+
+        for mid in modifiers:
+            mod = get_modifier(mid)
+            if not mod:
+                logger.warning("generate_theme_files: skipping unknown modifier '%s'", mid)
+                continue
+            active_modifiers.append(mid)
+
+            if mid == "high-contrast-buttons":
+                # Darken brand by 15 % for higher button contrast
+                brand_default = tokens.get("brand", {}).get("DEFAULT", "")
+                darkened = _darken_hex(brand_default, 15)
+                modifier_css_blocks.append(
+                    "\n  /* Modifier: High Contrast Buttons */\n"
+                    f"  --color-brand-btn: {darkened};\n"
+                    "  --btn-border-width: 2px;\n"
+                    "  --btn-font-weight: 700;\n"
+                    "  --btn-min-height: 44px;"
+                )
+
+            elif mid == "large-touch-targets":
+                modifier_css_blocks.append(
+                    "\n  /* Modifier: Large Touch Targets */\n"
+                    "  --spacing-touch-min: 48px;\n"
+                    "  --btn-min-height: 48px;\n"
+                    "  --input-min-height: 48px;"
+                )
+
+            elif mid == "high-contrast-text":
+                # Darken primary text and lighten tertiary less for higher contrast
+                primary = tokens.get("text", {}).get("primary", "")
+                darkened_primary = _darken_hex(primary, 10) if _is_hex_color(primary) else primary
+                modifier_css_blocks.append(
+                    "\n  /* Modifier: High Contrast Text */\n"
+                    f"  --color-text-primary: {darkened_primary};\n"
+                    "  --body-font-weight: 500;\n"
+                    "  --small-text-font-weight: 600;"
+                )
+
+            elif mid == "larger-type":
+                modifier_css_blocks.append(
+                    "\n  /* Modifier: Larger Type Scale */\n"
+                    "  --font-size-body: 18px;\n"
+                    "  --font-size-micro: 16px;\n"
+                    "  --line-height-body: 1.8;\n"
+                    "  --type-scale-factor: 1.15;"
+                )
+
+    # ---- Build theme.css content ---------------------------------------------
+    font_family = typo.get("font_family", "Inter")
+    # Quote font names that contain spaces for CSS
+    font_parts = [f.strip() for f in font_family.split(",")]
+    css_font_list = ", ".join(
+        f"'{f}'" if " " in f else f for f in font_parts
+    )
+
+    card_radius = tw_config.get("borderRadius", {}).get("card", "8px")
+    input_radius = tw_config.get("borderRadius", {}).get("input", "6px")
+    button_radius = tw_config.get("borderRadius", {}).get("btn", "6px")
+    card_shadow = tw_config.get("boxShadow", {}).get("card", "none")
+
+    base_unit = spacing.get("base_unit", "4px")
+
+    # Surface, text, border, status may contain non-hex values (rgba, gradients);
+    # we output them regardless and let CSS handle it.
+    brand = tokens.get("brand", {})
+    surface = tokens.get("surface", {})
+    text_colors = tokens.get("text", {})
+    border_colors = tokens.get("border", {})
+    status = tokens.get("status", {})
+
+    css_lines = [
+        "/* Auto-generated theme from AutoForge style selections */",
+        f"/* Style: {style['name']} | Accent: {accent_name or 'None'} | Palette: {palette_id or 'Default'} */",
+        "",
+        '@import "tailwindcss";',
+        "",
+        "@theme {",
+        "  /* Brand Colors */",
+        f"  --color-brand-light: {brand.get('light', '#60A5FA')};",
+        f"  --color-brand: {brand.get('DEFAULT', '#3B82F6')};",
+        f"  --color-brand-dark: {brand.get('dark', '#2563EB')};",
+        "",
+        "  /* Surface Colors */",
+        f"  --color-surface-canvas: {surface.get('canvas', '#FFFFFF')};",
+        f"  --color-surface-base: {surface.get('base', '#F8FAFC')};",
+        f"  --color-surface-muted: {surface.get('muted', '#F1F5F9')};",
+        "",
+        "  /* Text Colors */",
+        f"  --color-text-primary: {text_colors.get('primary', '#0F172A')};",
+        f"  --color-text-secondary: {text_colors.get('secondary', '#475569')};",
+        f"  --color-text-tertiary: {text_colors.get('tertiary', '#94A3B8')};",
+        "",
+        "  /* Border Colors */",
+        f"  --color-border-subtle: {border_colors.get('subtle', '#E2E8F0')};",
+        "",
+        "  /* Status Colors */",
+        f"  --color-success: {status.get('success', '#22C55E')};",
+        f"  --color-error: {status.get('error', '#EF4444')};",
+        f"  --color-warning: {status.get('warning', '#F59E0B')};",
+        f"  --color-info: {status.get('info', '#3B82F6')};",
+        "",
+        "  /* Typography */",
+        f"  --font-sans: {css_font_list}, ui-sans-serif, system-ui, sans-serif;",
+        "",
+        "  /* Spacing */",
+        f"  --spacing-base: {base_unit};",
+        "",
+        "  /* Border Radius */",
+        f"  --radius-card: {card_radius};",
+        f"  --radius-input: {input_radius};",
+        f"  --radius-btn: {button_radius};",
+        "",
+        "  /* Shadows */",
+        f"  --shadow-card: {card_shadow};",
+    ]
+
+    # Append modifier overrides inside the @theme block
+    for block in modifier_css_blocks:
+        css_lines.append(block)
+
+    css_lines.append("}")
+
+    # ---- Accent overrides section --------------------------------------------
+    if accent_overrides and accent_name:
+        css_lines.extend([
+            "",
+            f"/* Accent overrides: {accent_name} (interactive elements only) */",
+            "@layer components {",
+        ])
+
+        btn_overrides = accent_overrides.get("buttons", {})
+        if btn_overrides:
+            css_lines.append("  .btn-primary {")
+            if "radius" in btn_overrides:
+                css_lines.append(f"    border-radius: {btn_overrides['radius']};")
+            if "border" in btn_overrides:
+                css_lines.append(f"    border: {btn_overrides['border']};")
+            if "shadow" in btn_overrides:
+                css_lines.append(f"    box-shadow: {btn_overrides['shadow']};")
+            if "background" in btn_overrides:
+                css_lines.append(f"    background: {btn_overrides['background']};")
+            if "backdrop_filter" in btn_overrides:
+                css_lines.append(f"    backdrop-filter: {btn_overrides['backdrop_filter']};")
+            css_lines.append("  }")
+
+        input_overrides = accent_overrides.get("inputs", {})
+        if input_overrides:
+            css_lines.append("  .input-field {")
+            if "radius" in input_overrides:
+                css_lines.append(f"    border-radius: {input_overrides['radius']};")
+            if "border" in input_overrides:
+                css_lines.append(f"    border: {input_overrides['border']};")
+            if "shadow" in input_overrides:
+                css_lines.append(f"    box-shadow: {input_overrides['shadow']};")
+            if "background" in input_overrides:
+                css_lines.append(f"    background: {input_overrides['background']};")
+            if "backdrop_filter" in input_overrides:
+                css_lines.append(f"    backdrop-filter: {input_overrides['backdrop_filter']};")
+            css_lines.append("  }")
+
+        focus_overrides = accent_overrides.get("focus_rings", {})
+        if focus_overrides and "style" in focus_overrides:
+            css_lines.extend([
+                "  :focus-visible {",
+                f"    box-shadow: {focus_overrides['style']};",
+                "    outline: none;",
+                "  }",
+            ])
+
+        css_lines.append("}")
+
+    # ---- Base layer: semantic variable mappings --------------------------------
+    css_lines.extend([
+        "",
+        "/* Base layer - applies theme tokens globally */",
+        "@layer base {",
+        "  :root {",
+        "    --background: var(--color-surface-canvas);",
+        "    --foreground: var(--color-text-primary);",
+        "    --card: var(--color-surface-base);",
+        "    --card-foreground: var(--color-text-primary);",
+        "    --primary: var(--color-brand);",
+        "    --primary-foreground: #ffffff;",
+        "    --secondary: var(--color-surface-muted);",
+        "    --secondary-foreground: var(--color-text-primary);",
+        "    --muted: var(--color-surface-muted);",
+        "    --muted-foreground: var(--color-text-secondary);",
+        "    --accent: var(--color-brand-light);",
+        "    --accent-foreground: var(--color-text-primary);",
+        "    --destructive: var(--color-error);",
+        "    --border: var(--color-border-subtle);",
+        "    --input: var(--color-border-subtle);",
+        "    --ring: var(--color-brand);",
+        "  }",
+        "",
+        "  * {",
+        "    border-color: var(--border);",
+        "  }",
+        "",
+        "  body {",
+        "    background-color: var(--background);",
+        "    color: var(--foreground);",
+        "    font-family: var(--font-sans);",
+        "  }",
+        "}",
+    ])
+
+    # ---- Dark mode auto-variant ----------------------------------------------
+    dark_tokens = generate_dark_mode_variant(tokens)
+    dark_css = _build_dark_mode_css_block(dark_tokens)
+    css_lines.append(dark_css)
+
+    # Trailing newline
+    css_lines.append("")
+
+    css_content = "\n".join(css_lines)
+
+    # ---- Build theme-tokens.json ---------------------------------------------
+    token_data = {
+        "style": style_id,
+        "accent": accent_id,
+        "palette": palette_id,
+        "modifiers": active_modifiers,
+        "tokens": {
+            "colors": {
+                "brand": tokens.get("brand", {}),
+                "surface": tokens.get("surface", {}),
+                "text": tokens.get("text", {}),
+                "border": tokens.get("border", {}),
+                "status": tokens.get("status", {}),
+            },
+            "typography": {
+                "font_family": typo.get("font_family", "Inter"),
+                "hierarchy": typo.get("hierarchy", []),
+            },
+            "spacing": {
+                "base_unit": spacing.get("base_unit", "4px"),
+                "density": spacing.get("density", "Balanced"),
+                "card_gap": spacing.get("card_gap", "16px"),
+                "section_gap": spacing.get("section_gap", "24px"),
+            },
+            "components": {
+                "cards": components.get("cards", {}),
+                "buttons": components.get("buttons", {}),
+                "inputs": components.get("inputs", {}),
+            },
+            "border_radius": tw_config.get("borderRadius", {}),
+            "box_shadow": tw_config.get("boxShadow", {}),
+        },
+        "dark_mode_tokens": {
+            "colors": {
+                "brand": dark_tokens.get("brand", {}),
+                "surface": dark_tokens.get("surface", {}),
+                "text": dark_tokens.get("text", {}),
+                "border": dark_tokens.get("border", {}),
+                "status": dark_tokens.get("status", tokens.get("status", {})),
+            },
+        },
+    }
+
+    if accent_overrides:
+        token_data["accent_overrides"] = accent_overrides
+
+    tokens_json_content = json.dumps(token_data, indent=2, ensure_ascii=False)
+
+    # ---- Write files ---------------------------------------------------------
+    styles_dir = project_dir / "src" / "styles"
+    try:
+        styles_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        logger.error("Failed to create styles directory %s: %s", styles_dir, e)
+        return None
+
+    theme_css_path = styles_dir / "theme.css"
+    tokens_json_path = styles_dir / "theme-tokens.json"
+
+    result_paths: dict[str, Path] = {}
+
+    try:
+        theme_css_path.write_text(css_content, encoding="utf-8")
+        result_paths["theme_css"] = theme_css_path
+        logger.info("Generated theme CSS at %s", theme_css_path)
+    except OSError as e:
+        logger.error("Failed to write theme.css to %s: %s", theme_css_path, e)
+        return None
+
+    try:
+        tokens_json_path.write_text(tokens_json_content, encoding="utf-8")
+        result_paths["theme_tokens"] = tokens_json_path
+        logger.info("Generated theme tokens JSON at %s", tokens_json_path)
+    except OSError as e:
+        logger.error("Failed to write theme-tokens.json to %s: %s", tokens_json_path, e)
+        return None
+
+    # Also generate the style guide markdown via the existing function
+    guide_path = save_style_guide(project_dir, style_id, custom_colors, accent_id)
+    if guide_path:
+        result_paths["style_guide"] = guide_path
+
+    return result_paths
+
+
 def get_audience_profiles() -> dict:
     """Return the audience matching profiles for the API."""
     return {

@@ -107,6 +107,7 @@ from ..services.boilerplate_manager import (
 )
 from ..services.style_manager import (
     ACCENT_COMPATIBILITY,
+    generate_theme_files,
     get_accent_styles,
     get_audience_profiles,
     get_style_guide_markdown,
@@ -556,6 +557,15 @@ async def create_project(project: ProjectCreate):
     # Save style guide if a style was selected (with custom color overrides and optional accent)
     if style_id:
         save_style_guide(project_path, style_id, custom_colors=custom_colors, accent_id=accent_style)
+        # Generate actual CSS theme files (theme solidification)
+        generate_theme_files(
+            project_dir=project_path,
+            style_id=style_id,
+            custom_colors=custom_colors if custom_colors else None,
+            accent_id=accent_style,
+            modifiers=project.modifier_ids or None,
+            palette_id=palette_id,
+        )
 
     # Register in registry
     try:

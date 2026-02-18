@@ -263,9 +263,18 @@ export function WorkspaceSidebar({
                       >
                         {conv.pinned && <Star size={10} className="text-primary flex-shrink-0" />}
                         <div className="flex-1 min-w-0">
-                          <span className={`text-xs font-medium truncate block ${conv.title ? '' : 'italic text-muted-foreground'}`}>
-                            {conv.title ?? 'Untitled'}
-                          </span>
+                          <div className="flex items-center gap-1">
+                            <span className={`text-xs font-medium truncate ${conv.title ? '' : 'italic text-muted-foreground'}`}>
+                              {conv.title ?? 'Untitled'}
+                            </span>
+                            <span className={`flex-shrink-0 text-[8px] font-mono font-bold px-1 rounded ${
+                              conv.context_mode === '1m'
+                                ? 'bg-primary/15 text-primary'
+                                : 'bg-muted text-muted-foreground'
+                            }`}>
+                              {conv.context_mode === '1m' ? '1M' : '200K'}
+                            </span>
+                          </div>
                           <span className="text-[10px] text-muted-foreground">
                             {relativeTime(conv.updated_at)}
                           </span>

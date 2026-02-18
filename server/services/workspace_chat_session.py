@@ -184,7 +184,10 @@ class WorkspaceChatSession:
 
         # Create a new conversation in the global workspace database if needed
         if is_new_conversation:
-            conv = create_conversation(working_directory=self.working_directory)
+            conv = create_conversation(
+                working_directory=self.working_directory,
+                context_mode=self.context_mode,
+            )
             self.conversation_id = int(conv.id)  # type coercion: Column[int] -> int
             yield {"type": "conversation_created", "conversation_id": self.conversation_id}
 
@@ -457,7 +460,7 @@ class WorkspaceChatSession:
             error_str = str(e).lower()
             yield {"type": "error", "content": f"Error: {str(e)}"}
 
-            # Auto-detect rate limit errors and log them for calibration
+            # Auto-detect rate limit / billing errors and log them for calibration
             rate_limit_patterns = [
                 "rate limit", "rate_limit", "ratelimit",
                 "usage limit", "usage_limit",
@@ -465,6 +468,8 @@ class WorkspaceChatSession:
                 "capacity", "overloaded",
                 "please wait", "try again later",
                 "resume at", "resume usage",
+                "credit balance", "balance too low",
+                "insufficient credit", "billing",
             ]
             if any(p in error_str for p in rate_limit_patterns):
                 try:

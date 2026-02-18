@@ -129,13 +129,16 @@ export function WorkspaceChat({
   // Context mode: "1m" (1,000,000 tokens with beta) or "200k" (200,000 tokens standard).
   // Persisted to localStorage so the preference survives page reloads.
   // Takes effect on the NEXT session start, not the current active session.
-  const [contextMode, setContextMode] = useState<'1m' | '200k'>(() => {
-    return (localStorage.getItem('workspace-context-mode') as '1m' | '200k') || '1m'
-  })
-
-  useEffect(() => {
-    localStorage.setItem('workspace-context-mode', contextMode)
-  }, [contextMode])
+  //
+  // pendingContextMode = what the user WANTS for the next session (persisted to localStorage).
+  // sessionContextMode = what the CURRENT session is actually running on (drives gauge + button).
+  // These diverge when the user toggles mid-chat.  They re-sync when a new session starts.
+  const pendingContextModeRef = useRef<'1m' | '200k'>(
+    (localStorage.getItem('workspace-context-mode') as '1m' | '200k') || '1m'
+  )
+  const [sessionContextMode, setSessionContextMode] = useState<'1m' | '200k'>(
+    pendingContextModeRef.current
+  )
 
   // Memoize error handler to keep hook reference stable
   const handleError = useCallback((error: string) => {
@@ -181,8 +184,8 @@ export function WorkspaceChat({
     },
   })
 
-  // Context budget usage for warning state (follows the local context mode toggle)
-  const displayBudget = contextMode === '1m' ? 1_000_000 : 200_000
+  // Context budget usage for warning state (follows the ACTIVE session mode, not pending)
+  const displayBudget = sessionContextMode === '1m' ? 1_000_000 : 200_000
   const usagePercent = contextBudget.messageTokens > 0 && displayBudget > 0
     ? ((contextBudget.messageTokens + contextBudget.summaryTokens) / displayBudget) * 100
     : 0
@@ -223,10 +226,13 @@ export function WorkspaceChat({
 
     // Start/resume the selected conversation, passing the working directory
     // so the agent session uses the repo clone as its cwd.
+    // Sync the session mode to the pending preference at session start.
     if (conversationId !== null) {
-      start(conversationId, workingDirectory ?? undefined, contextMode)
+      const modeForSession = pendingContextModeRef.current
+      setSessionContextMode(modeForSession)
+      start(conversationId, workingDirectory ?? undefined, modeForSession)
     }
-  }, [conversationId, isLoadingConversation, activeConversationId, start, disconnect, clearMessages, workingDirectory, contextMode])
+  }, [conversationId, isLoadingConversation, activeConversationId, start, disconnect, clearMessages, workingDirectory])
 
   // Smart auto-scroll: only scroll if user is near the bottom
   const handleScroll = useCallback(() => {
@@ -574,7 +580,7 @@ export function WorkspaceChat({
       <div className="flex items-center border-b border-border bg-card/80">
         <div className="flex-1 border-b-0 [&>div]:border-b-0">
           <EnhancedContextBudgetBar
-            totalBudget={contextMode === '1m' ? 1_000_000 : 200_000}
+            totalBudget={sessionContextMode === '1m' ? 1_000_000 : 200_000}
             messageTokens={contextBudget.messageTokens || totalTokens}
             summaryTokens={contextBudget.summaryTokens}
             messageCount={contextBudget.messageCount}
@@ -583,13 +589,12 @@ export function WorkspaceChat({
         </div>
         <button
           onClick={() => {
-            const newMode = contextMode === '1m' ? '200k' : '1m'
-            setContextMode(newMode)
-            // Show toast confirming what will happen on next conversation
-            const msg = newMode === '1m'
-              ? 'Switching to 1M tokens — active next conversation'
-              : 'Switching to 200K tokens — active next conversation'
-            setContextToast(msg)
+            const newMode = pendingContextModeRef.current === '1m' ? '200k' : '1m'
+            pendingContextModeRef.current = newMode
+            localStorage.setItem('workspace-context-mode', newMode)
+            // Show toast — button and gauge stay on the ACTIVE mode
+            const label = newMode === '1m' ? '1M' : '200K'
+            setContextToast(`Next conversation will use ${label} context window`)
             // Clear any existing timer and set new auto-dismiss
             if (contextToastTimerRef.current) clearTimeout(contextToastTimerRef.current)
             contextToastTimerRef.current = window.setTimeout(() => {
@@ -598,13 +603,13 @@ export function WorkspaceChat({
             }, 8000)
           }}
           className={`flex-shrink-0 mr-4 text-[10px] font-mono font-bold px-2 py-0.5 rounded border transition-colors ${
-            contextMode === '1m'
+            sessionContextMode === '1m'
               ? 'bg-primary/10 text-primary border-primary/30'
               : 'bg-muted text-muted-foreground border-border'
           }`}
-          title={`Context window: ${contextMode === '1m' ? '1,000,000' : '200,000'} tokens. Click to switch. Takes effect on next session.`}
+          title={`Context window: ${sessionContextMode === '1m' ? '1,000,000' : '200,000'} tokens. Click to switch. Takes effect on next session.`}
         >
-          {contextMode === '1m' ? '1M ctx' : '200K ctx'}
+          {sessionContextMode === '1m' ? '1M ctx' : '200K ctx'}
         </button>
       </div>
 

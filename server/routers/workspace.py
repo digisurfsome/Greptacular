@@ -31,6 +31,7 @@ class WorkspaceConversationSummary(BaseModel):
     working_directory: Optional[str]
     pinned: bool = False
     tags: str = ""
+    context_mode: str = "200k"
     created_at: Optional[str]
     updated_at: Optional[str]
     message_count: int
@@ -61,6 +62,7 @@ class ConversationCreateRequest(BaseModel):
     """Request body for creating a new workspace conversation."""
     category: str = "general"
     working_directory: Optional[str] = None
+    context_mode: str = "200k"
 
 
 class ConversationUpdateRequest(BaseModel):
@@ -92,6 +94,7 @@ async def create_new_conversation(body: ConversationCreateRequest):
     conversation = create_conversation(
         category=body.category,
         working_directory=body.working_directory,
+        context_mode=body.context_mode,
     )
     return WorkspaceConversationSummary(
         id=int(conversation.id),
@@ -100,6 +103,7 @@ async def create_new_conversation(body: ConversationCreateRequest):
         working_directory=str(conversation.working_directory) if conversation.working_directory else None,
         pinned=bool(conversation.pinned) if hasattr(conversation, 'pinned') else False,
         tags="",
+        context_mode=str(conversation.context_mode) if conversation.context_mode else "200k",
         created_at=conversation.created_at.isoformat() if conversation.created_at else None,
         updated_at=conversation.updated_at.isoformat() if conversation.updated_at else None,
         message_count=0,
@@ -149,6 +153,7 @@ async def update_conversation(conversation_id: int, body: ConversationUpdateRequ
         working_directory=updated["working_directory"],
         pinned=updated.get("pinned", False),
         tags=updated.get("tags", ""),
+        context_mode=updated.get("context_mode", "200k"),
         created_at=updated["created_at"],
         updated_at=updated["updated_at"],
         message_count=updated.get("message_count", 0),

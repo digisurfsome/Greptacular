@@ -31,7 +31,7 @@ class WorkspaceConversationSummary(BaseModel):
     working_directory: Optional[str]
     pinned: bool = False
     tags: str = ""
-    context_mode: str = "200k"
+    context_mode: str = "1m"
     created_at: Optional[str]
     updated_at: Optional[str]
     message_count: int
@@ -62,7 +62,7 @@ class ConversationCreateRequest(BaseModel):
     """Request body for creating a new workspace conversation."""
     category: str = "general"
     working_directory: Optional[str] = None
-    context_mode: str = "200k"
+    context_mode: str = "1m"
 
 
 class ConversationUpdateRequest(BaseModel):
@@ -103,7 +103,7 @@ async def create_new_conversation(body: ConversationCreateRequest):
         working_directory=str(conversation.working_directory) if conversation.working_directory else None,
         pinned=bool(conversation.pinned) if hasattr(conversation, 'pinned') else False,
         tags="",
-        context_mode=str(conversation.context_mode) if conversation.context_mode else "200k",
+        context_mode=str(conversation.context_mode) if conversation.context_mode else "1m",
         created_at=conversation.created_at.isoformat() if conversation.created_at else None,
         updated_at=conversation.updated_at.isoformat() if conversation.updated_at else None,
         message_count=0,
@@ -153,7 +153,7 @@ async def update_conversation(conversation_id: int, body: ConversationUpdateRequ
         working_directory=updated["working_directory"],
         pinned=updated.get("pinned", False),
         tags=updated.get("tags", ""),
-        context_mode=updated.get("context_mode", "200k"),
+        context_mode=updated.get("context_mode", "1m"),
         created_at=updated["created_at"],
         updated_at=updated["updated_at"],
         message_count=updated.get("message_count", 0),
@@ -795,6 +795,9 @@ async def workspace_chat_websocket(websocket: WebSocket):
                         if context_mode not in ("1m", "200k"):
                             context_mode = "1m"
 
+                        # Extract cost control settings from start message
+                        cost_settings = message.get("cost_settings")
+
                         # Create a new workspace session
                         logger.debug(f"Creating workspace session {session_id}")
                         session = await ws_create_session(
@@ -802,6 +805,7 @@ async def workspace_chat_websocket(websocket: WebSocket):
                             conversation_id=conversation_id,
                             working_directory=working_directory,
                             context_mode=context_mode,
+                            cost_settings=cost_settings,
                         )
                         logger.debug("Workspace session created, starting...")
 

@@ -44,6 +44,7 @@ import { UsageDashboard } from './UsageDashboard'
 import { AutoSummaryPin } from './AutoSummaryPin'
 import { ChatForkModal } from './ChatForkModal'
 import { InjectFromChatModal } from './InjectFromChatModal'
+import CostControls, { loadCostSettings, type CostSettings } from './CostControls'
 import type { ChatMessage as ChatMessageType, WorkspaceMessage, PendingInjection, ImageAttachment } from '@/lib/types'
 
 const DRAFT_KEY_PREFIX = 'workspace-draft-'
@@ -55,6 +56,22 @@ interface WorkspaceChatProps {
   chatInputRef?: React.RefObject<HTMLTextAreaElement | null>
   /** Optional working directory (e.g. from the RepoSelector) for the agent session. */
   workingDirectory?: string | null
+  /**
+   * Lock the context mode for this panel. When set, the mode toggle button is
+   * hidden and the panel always uses this mode. Used by split-view to create
+   * a "Research (Free/200K)" panel and an "Execute (API/1M)" panel.
+   */
+  fixedContextMode?: '1m' | '200k'
+  /** Optional label shown at the top of the panel (e.g. "Research (Free)"). */
+  panelLabel?: string
+  /** Callback to send assistant message content to the passoff editor. Shown only in split-view. */
+  onCopyToPassoff?: (content: string) => void
+  /** Inject a message into this panel's input and auto-send it. Used by the passoff "Send to Execute" button. */
+  injectMessage?: string | null
+  /** Called after the injected message is consumed, to clear it. */
+  onInjectConsumed?: () => void
+  /** Called when the agent finishes responding, with the last assistant message content. Used for auto-forward. */
+  onResponseComplete?: (content: string) => void
 }
 
 /** Generate a unique ID for local messages. */
@@ -108,6 +125,12 @@ export function WorkspaceChat({
   onNewConversation,
   chatInputRef: externalInputRef,
   workingDirectory,
+  fixedContextMode,
+  panelLabel,
+  onCopyToPassoff,
+  injectMessage,
+  onInjectConsumed,
+  onResponseComplete,
 }: WorkspaceChatProps): React.JSX.Element {
   const [inputValue, setInputValue] = useState('')
   const messagesContainerRef = useRef<HTMLDivElement>(null)
@@ -127,18 +150,29 @@ export function WorkspaceChat({
   const contextToastTimerRef = useRef<number | null>(null)
 
   // Context mode: "1m" (1,000,000 tokens with beta) or "200k" (200,000 tokens standard).
-  // Persisted to localStorage so the preference survives page reloads.
-  // Takes effect on the NEXT session start, not the current active session.
+  // When fixedContextMode is set (split-view), the mode is locked and the toggle is hidden.
+  // Otherwise, it's persisted to localStorage and takes effect on the NEXT session start.
   //
   // pendingContextMode = what the user WANTS for the next session (persisted to localStorage).
   // sessionContextMode = what the CURRENT session is actually running on (drives gauge + button).
   // These diverge when the user toggles mid-chat.  They re-sync when a new session starts.
   const pendingContextModeRef = useRef<'1m' | '200k'>(
-    (localStorage.getItem('workspace-context-mode') as '1m' | '200k') || '1m'
+    fixedContextMode ?? ((localStorage.getItem('workspace-context-mode') as '1m' | '200k') || '1m')
   )
   const [sessionContextMode, setSessionContextMode] = useState<'1m' | '200k'>(
-    pendingContextModeRef.current
+    fixedContextMode ?? pendingContextModeRef.current
   )
+
+  // Keep pendingContextModeRef in sync when fixedContextMode changes
+  useEffect(() => {
+    if (fixedContextMode) {
+      pendingContextModeRef.current = fixedContextMode
+      setSessionContextMode(fixedContextMode)
+    }
+  }, [fixedContextMode])
+
+  // Cost control settings -- persisted to localStorage, sent on session start.
+  const [costSettings, setCostSettings] = useState<CostSettings>(loadCostSettings)
 
   // Memoize error handler to keep hook reference stable
   const handleError = useCallback((error: string) => {
@@ -230,9 +264,9 @@ export function WorkspaceChat({
     if (conversationId !== null) {
       const modeForSession = pendingContextModeRef.current
       setSessionContextMode(modeForSession)
-      start(conversationId, workingDirectory ?? undefined, modeForSession)
+      start(conversationId, workingDirectory ?? undefined, modeForSession, costSettings as unknown as Record<string, unknown>)
     }
-  }, [conversationId, isLoadingConversation, activeConversationId, start, disconnect, clearMessages, workingDirectory])
+  }, [conversationId, isLoadingConversation, activeConversationId, start, disconnect, clearMessages, workingDirectory, costSettings])
 
   // Smart auto-scroll: only scroll if user is near the bottom
   const handleScroll = useCallback(() => {
@@ -250,6 +284,18 @@ export function WorkspaceChat({
       })
     }
   }, [liveMessages.length, isUserScrolledUp])
+
+  // Detect response completion (isLoading true→false) for auto-forward
+  const prevLoadingRef = useRef(false)
+  useEffect(() => {
+    if (prevLoadingRef.current && !isLoading && onResponseComplete) {
+      const lastMessage = liveMessages[liveMessages.length - 1]
+      if (lastMessage?.role === 'assistant' && lastMessage.content) {
+        onResponseComplete(lastMessage.content)
+      }
+    }
+    prevLoadingRef.current = isLoading
+  }, [isLoading, liveMessages, onResponseComplete])
 
   // Focus input when not loading
   useEffect(() => {
@@ -281,6 +327,17 @@ export function WorkspaceChat({
     }, 300)
     return () => clearTimeout(timer)
   }, [inputValue, conversationId, activeConversationId])
+
+  // Handle injected messages (e.g. from passoff "Send to Execute")
+  useEffect(() => {
+    if (!injectMessage || isLoading) return
+    // If no conversation yet, start a new one
+    if (conversationId === null && activeConversationId === null) {
+      start(undefined, workingDirectory ?? undefined, pendingContextModeRef.current, costSettings as unknown as Record<string, unknown>)
+    }
+    sendMessage(injectMessage)
+    onInjectConsumed?.()
+  }, [injectMessage]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Convert REST messages to ChatMessageType format for merging
   const initialMessages: ChatMessageType[] = useMemo(() => {
@@ -422,7 +479,7 @@ export function WorkspaceChat({
     // the message and dispatch it once the session is ready.
     // Pass workingDirectory so the new session uses the selected repo.
     if (conversationId === null && activeConversationId === null) {
-      start(undefined, workingDirectory ?? undefined, contextMode)
+      start(undefined, workingDirectory ?? undefined, pendingContextModeRef.current, costSettings as unknown as Record<string, unknown>)
     }
     sendMessage(content, attachments)
 
@@ -434,7 +491,7 @@ export function WorkspaceChat({
     if (effectiveId) {
       localStorage.removeItem(`${DRAFT_KEY_PREFIX}${effectiveId}`)
     }
-  }, [inputValue, isLoading, conversationId, activeConversationId, start, sendMessage, workingDirectory, pendingImages, pendingFiles, contextMode])
+  }, [inputValue, isLoading, conversationId, activeConversationId, start, sendMessage, workingDirectory, pendingImages, pendingFiles, sessionContextMode, costSettings])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -566,13 +623,26 @@ export function WorkspaceChat({
               disconnect()
               clearMessages()
               if (effectiveConversationId !== null) {
-                start(effectiveConversationId, workingDirectory ?? undefined, contextMode)
+                start(effectiveConversationId, workingDirectory ?? undefined, pendingContextModeRef.current, costSettings as unknown as Record<string, unknown>)
               }
             }}
             className="underline font-medium hover:text-destructive/80 flex-shrink-0"
           >
             Retry
           </button>
+        </div>
+      )}
+
+      {/* Panel label (split-view mode) */}
+      {panelLabel && (
+        <div className={`flex items-center justify-center px-3 py-1.5 text-xs font-bold tracking-wide border-b ${
+          panelLabel.includes('RESEARCH')
+            ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
+            : panelLabel.includes('CODER')
+              ? 'bg-cyan-500/10 text-cyan-600 border-cyan-500/20'
+              : 'bg-violet-500/10 text-violet-600 border-violet-500/20'
+        }`}>
+          {panelLabel}
         </div>
       )}
 
@@ -585,9 +655,15 @@ export function WorkspaceChat({
             summaryTokens={contextBudget.summaryTokens}
             messageCount={contextBudget.messageCount}
             isStreaming={isLoading}
+            preferredModel={
+              panelLabel?.includes('Sonnet') ? 'sonnet'
+                : panelLabel?.includes('Opus') ? 'opus'
+                  : undefined
+            }
           />
         </div>
-        <button
+        {/* Hide toggle when mode is fixed (split-view panels) */}
+        {!fixedContextMode && <button
           onClick={() => {
             const newMode = pendingContextModeRef.current === '1m' ? '200k' : '1m'
             pendingContextModeRef.current = newMode
@@ -610,7 +686,7 @@ export function WorkspaceChat({
           title={`Context window: ${sessionContextMode === '1m' ? '1,000,000' : '200,000'} tokens. Click to switch. Takes effect on next session.`}
         >
           {sessionContextMode === '1m' ? '1M ctx' : '200K ctx'}
-        </button>
+        </button>}
       </div>
 
       {/* Context mode toast notification */}
@@ -632,10 +708,13 @@ export function WorkspaceChat({
         </div>
       )}
 
+      {/* Cost controls — user-adjustable "stick shift" for API spend */}
+      <CostControls settings={costSettings} onChange={setCostSettings} />
+
       {/* Usage dashboard */}
       <UsageDashboard
         conversationId={conversationId ?? activeConversationId}
-        contextMode={contextMode}
+        contextMode={sessionContextMode}
       />
 
       {/* Auto-summary pin */}
@@ -694,7 +773,7 @@ export function WorkspaceChat({
                     disconnect()
                     clearMessages()
                     if (effectiveConversationId !== null) {
-                      start(effectiveConversationId, workingDirectory ?? undefined, contextMode)
+                      start(effectiveConversationId, workingDirectory ?? undefined, pendingContextModeRef.current, costSettings as unknown as Record<string, unknown>)
                     }
                   }}
                 >
@@ -728,6 +807,7 @@ export function WorkspaceChat({
               <ChatMessage
                 key={message.id ?? generateId()}
                 message={message}
+                onCopyToPassoff={onCopyToPassoff}
               />
             ))}
             <div ref={messagesEndRef} />
@@ -879,7 +959,16 @@ export function WorkspaceChat({
           <Button
             onClick={handleSend}
             disabled={(!inputValue.trim() && pendingImages.length === 0 && pendingFiles.length === 0) || isLoading || isLoadingConversation}
-            title="Send message"
+            title={fixedContextMode === '200k' ? 'Send (Subscription)' : fixedContextMode === '1m' ? 'Send (API)' : 'Send message'}
+            className={
+              panelLabel?.includes('RESEARCH')
+                ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                : panelLabel?.includes('CODER')
+                  ? 'bg-cyan-600 hover:bg-cyan-700 text-white'
+                  : panelLabel?.includes('PRD')
+                    ? 'bg-violet-600 hover:bg-violet-700 text-white'
+                    : undefined
+            }
           >
             {isLoading ? (
               <Loader2 size={18} className="animate-spin" />

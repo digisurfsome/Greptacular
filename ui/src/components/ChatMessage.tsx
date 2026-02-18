@@ -6,7 +6,7 @@
  */
 
 import { memo } from 'react'
-import { Bot, User, Info } from 'lucide-react'
+import { Bot, User, Info, ClipboardCopy } from 'lucide-react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { ChatMessage as ChatMessageType } from '../lib/types'
@@ -14,6 +14,8 @@ import { Card } from '@/components/ui/card'
 
 interface ChatMessageProps {
   message: ChatMessageType
+  /** When provided, shows a "Passoff" button on assistant messages that sends content to the passoff editor. */
+  onCopyToPassoff?: (content: string) => void
 }
 
 // Stable references for memo — avoids re-renders
@@ -27,7 +29,7 @@ const markdownComponents: Components = {
   ),
 }
 
-export const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
+export const ChatMessage = memo(function ChatMessage({ message, onCopyToPassoff }: ChatMessageProps) {
   const { role, content, attachments, timestamp, isStreaming } = message
 
   // Format timestamp
@@ -127,6 +129,20 @@ export const ChatMessage = memo(function ChatMessage({ message }: ChatMessagePro
             {/* Streaming indicator */}
             {isStreaming && (
               <span className="inline-block w-2 h-4 bg-primary ml-1 animate-pulse rounded" />
+            )}
+
+            {/* Passoff button — only on assistant messages when handler is provided */}
+            {role === 'assistant' && onCopyToPassoff && !isStreaming && content && (
+              <div className="mt-2 pt-1.5 border-t border-border/30">
+                <button
+                  onClick={() => onCopyToPassoff(content)}
+                  className="flex items-center gap-1.5 text-[10px] text-amber-600/70 hover:text-amber-600 transition-colors"
+                  title="Send this message to the Passoff editor"
+                >
+                  <ClipboardCopy size={11} />
+                  Passoff
+                </button>
+              </div>
             )}
           </Card>
 

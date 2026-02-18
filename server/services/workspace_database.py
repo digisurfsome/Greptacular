@@ -64,6 +64,7 @@ class WorkspaceConversation(Base):
     working_directory = Column(Text, nullable=True)  # Optional cwd for the conversation
     pinned = Column(Integer, nullable=False, default=0)  # Boolean as int for SQLite
     tags = Column(String(500), nullable=True)  # comma-separated tags
+    context_mode = Column(String(10), nullable=True, default="200k")  # "1m" or "200k"
     token_count = Column(Integer, nullable=False, default=0)
     summary = Column(Text, nullable=True)
     summary_updated_at = Column(DateTime, nullable=True)
@@ -289,6 +290,10 @@ def get_engine() -> Engine:
                 )
             if "tags" not in existing_cols:
                 cursor.execute("ALTER TABLE workspace_conversations ADD COLUMN tags TEXT")
+            if "context_mode" not in existing_cols:
+                cursor.execute(
+                    "ALTER TABLE workspace_conversations ADD COLUMN context_mode TEXT DEFAULT '200k'"
+                )
             conn.commit()
             conn.close()
 
@@ -328,6 +333,7 @@ def create_conversation(
     title: Optional[str] = None,
     category: str = "general",
     working_directory: Optional[str] = None,
+    context_mode: Optional[str] = None,
 ) -> WorkspaceConversation:
     """Create a new workspace conversation.
 
@@ -336,6 +342,7 @@ def create_conversation(
             auto-generated from the first user message.
         category: Conversation category (default: "general").
         working_directory: Optional working directory path for the conversation.
+        context_mode: Context window mode ("1m" or "200k").
 
     Returns:
         The newly created WorkspaceConversation instance.
@@ -346,6 +353,7 @@ def create_conversation(
             title=title,
             category=category,
             working_directory=working_directory,
+            context_mode=context_mode or "200k",
         )
         session.add(conversation)
         session.commit()
@@ -404,6 +412,7 @@ def get_conversations(category: Optional[str] = None) -> list[dict]:
                 "working_directory": row.WorkspaceConversation.working_directory,
                 "pinned": bool(row.WorkspaceConversation.pinned),
                 "tags": row.WorkspaceConversation.tags or "",
+                "context_mode": row.WorkspaceConversation.context_mode or "200k",
                 "created_at": (
                     row.WorkspaceConversation.created_at.isoformat()
                     if row.WorkspaceConversation.created_at else None
@@ -444,6 +453,7 @@ def get_conversation(conversation_id: int) -> Optional[dict]:
             "category": conversation.category,
             "working_directory": conversation.working_directory,
             "tags": conversation.tags or "",
+            "context_mode": conversation.context_mode or "200k",
             "created_at": conversation.created_at.isoformat() if conversation.created_at else None,
             "updated_at": conversation.updated_at.isoformat() if conversation.updated_at else None,
             "messages": [
@@ -549,6 +559,7 @@ def update_conversation(
             "working_directory": conversation.working_directory,
             "pinned": bool(conversation.pinned),
             "tags": conversation.tags or "",
+            "context_mode": conversation.context_mode or "200k",
             "created_at": conversation.created_at.isoformat() if conversation.created_at else None,
             "updated_at": conversation.updated_at.isoformat() if conversation.updated_at else None,
             "message_count": msg_count,
@@ -1199,6 +1210,7 @@ def fork_conversation(
             category=source.category,
             pinned=0,
             tags=source.tags,
+            context_mode=source.context_mode or "200k",
             token_count=0,
             forked_from_id=conversation_id,
         )
@@ -1246,6 +1258,7 @@ def fork_conversation(
             "category": new_conv.category,
             "pinned": bool(new_conv.pinned),
             "tags": new_conv.tags or "",
+            "context_mode": new_conv.context_mode or "200k",
             "token_count": new_conv.token_count,
             "forked_from_id": new_conv.forked_from_id,
             "created_at": new_conv.created_at.isoformat() if new_conv.created_at else None,

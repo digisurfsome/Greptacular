@@ -641,6 +641,7 @@ export interface WorkspaceConversation {
   working_directory: string | null
   pinned: boolean
   tags: string  // comma-separated tags
+  context_mode: '1m' | '200k'  // context window mode used for this conversation
   created_at: string | null
   updated_at: string | null
   message_count: number

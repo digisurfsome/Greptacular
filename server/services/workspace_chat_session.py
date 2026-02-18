@@ -184,7 +184,10 @@ class WorkspaceChatSession:
 
         # Create a new conversation in the global workspace database if needed
         if is_new_conversation:
-            conv = create_conversation(working_directory=self.working_directory)
+            conv = create_conversation(
+                working_directory=self.working_directory,
+                context_mode=self.context_mode,
+            )
             self.conversation_id = int(conv.id)  # type coercion: Column[int] -> int
             yield {"type": "conversation_created", "conversation_id": self.conversation_id}
 

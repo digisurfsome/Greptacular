@@ -161,3 +161,160 @@ Sonnet is 40% cheaper than Opus at both tiers.
 | Sonnet 4.6 | $3.75/MTok | $6/MTok |
 
 Cache reads are always free for first 5 minutes.
+
+## Task 4: Token Meter with 200K Pricing Cliff Indicator
+
+### Why This Matters
+
+When using the 1M context API panels (PRD Builder and Coder), there's a pricing
+cliff at 200K input tokens. Once input exceeds 200K, ALL tokens (even the first
+200K) are billed at 2x input / 1.5x output. This means the user has a strong
+incentive to keep conversations under 200K when possible — especially on the
+PRD Builder panel where they can front-load research on the free subscription panel.
+
+### What Needs to Happen
+
+Add a 200K pricing threshold marker to the existing `EnhancedContextBudgetBar`
+so users can see at a glance whether they're in standard or premium pricing.
+
+### File: `ui/src/components/workspace/EnhancedContextBudgetBar.tsx`
+
+#### 1. Add pricing threshold marker to the progress bar
+
+The component already renders a thick `h-4` progress bar with token segments.
+Add a vertical marker line at the 200K position (on 1M context panels):
+
+```tsx
+{/* 200K pricing cliff marker — only on 1M context panels */}
+{totalBudget === 1_000_000 && (
+  <div
+    className="absolute top-0 h-full w-0.5 bg-amber-500 z-10"
+    style={{ left: '20%' }}  // 200K / 1M = 20%
+    title="200K pricing threshold — tokens above this cost 2x input / 1.5x output"
+  >
+    {/* Label above the marker */}
+    <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 text-[9px] font-bold text-amber-500 whitespace-nowrap">
+      200K
+    </span>
+  </div>
+)}
+```
+
+Insert this inside the progress bar div (line ~131, after the segments map
+and before the streaming shimmer).
+
+#### 2. Add pricing tier label to the stats row
+
+After the message count on the right side of the stats row, show whether
+the conversation is in standard or premium pricing:
+
+```tsx
+{/* Pricing tier indicator for 1M panels */}
+{totalBudget === 1_000_000 && (
+  <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${
+    usedTokens > 200_000
+      ? 'bg-amber-500/20 text-amber-500'
+      : 'bg-emerald-500/20 text-emerald-500'
+  }`}>
+    {usedTokens > 200_000 ? '2x RATE' : 'STD RATE'}
+  </span>
+)}
+```
+
+#### 3. Color shift when crossing threshold
+
+Update the `usageColor()` function to account for the pricing cliff.
+When on a 1M panel, crossing 200K should trigger amber/warning colors
+even though 200K out of 1M is only 20%:
+
+```tsx
+function usageColor(percent: number, totalBudget: number, usedTokens: number): string {
+  // On 1M panels, warn early at the 200K pricing cliff
+  if (totalBudget === 1_000_000 && usedTokens > 200_000) {
+    if (percent > 90) return 'text-destructive'
+    return 'text-amber-400'  // Premium pricing zone
+  }
+  // Standard thresholds
+  if (percent > 90) return 'text-destructive'
+  if (percent > 75) return 'text-orange-400'
+  if (percent > 50) return 'text-yellow-400'
+  return 'text-emerald-400'
+}
+```
+
+#### 4. Add estimated cost display (optional but valuable)
+
+Show the approximate cost of the current conversation based on token count
+and pricing tier. This helps the user make informed decisions about whether
+to keep going or start fresh.
+
+```tsx
+// Calculate estimated cost
+function estimateCost(inputTokens: number, model: 'opus' | 'sonnet'): string {
+  const isExtended = inputTokens > 200_000
+  const rates = {
+    opus:   { standard: 5, extended: 10 },
+    sonnet: { standard: 3, extended: 6 },
+  }
+  const rate = isExtended ? rates[model].extended : rates[model].standard
+  const cost = (inputTokens / 1_000_000) * rate
+  return cost < 0.01 ? '<$0.01' : `~$${cost.toFixed(2)}`
+}
+```
+
+To use this, `EnhancedContextBudgetBar` would need a new optional prop:
+```tsx
+/** Model name for cost estimation on API panels */
+preferredModel?: 'opus' | 'sonnet'
+```
+
+This gets passed from WorkspaceChat (which knows its panelLabel) down to
+the budget bar. The cost display only shows on 1M panels where it matters.
+
+### Visual Result
+
+For a 1M panel under 200K:
+```
+┌──────────────────────────────────────────────┐
+│  8.2%    82.3K / 1.0M    12 msgs   STD RATE │
+│ [████░░░░|░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] │
+│         ↑                                    │
+│        200K                                  │
+│        marker                                │
+└──────────────────────────────────────────────┘
+```
+
+For a 1M panel OVER 200K:
+```
+┌──────────────────────────────────────────────┐
+│  28.5%   285K / 1.0M    34 msgs    2x RATE  │
+│ [█████████████|░░░░░░░░░░░░░░░░░░░░░░░░░░░░] │
+│              ↑ (amber marker, bar turns amber)│
+│             200K                              │
+└──────────────────────────────────────────────┘
+```
+
+### Research panel (200K subscription) — no changes needed
+The research panel uses `totalBudget === 200_000` so the 200K marker
+won't render. The existing usage colors are sufficient since there's no
+pricing cliff on the subscription panel.
+
+### How tool use (file reads, web research) affects tokens
+
+Important context for the user: when the agent reads files (via Read, Grep,
+Glob tools) or does web research, those tool results become part of the
+conversation history. Every subsequent message re-sends the FULL history
+including all tool results. So a single file read of 5K tokens becomes 5K
+tokens added to EVERY future message in that conversation.
+
+This is why the meter is critical — file reads compound. If the agent reads
+10 files averaging 5K each, that's 50K tokens added permanently to the
+conversation. Combined with the back-and-forth, it can push past 200K fast.
+
+Strategy to stay under 200K on PRD Builder:
+1. Do file exploration on the Research (subscription) panel — free
+2. Have the Research agent include specific code snippets and file locations
+   in the passoff document (compact, targeted)
+3. The PRD Builder gets a clean, pre-digested plan instead of raw file dumps
+4. The PRD Builder only reads files when it MUST verify something specific
+

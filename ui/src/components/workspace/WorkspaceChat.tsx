@@ -655,6 +655,11 @@ export function WorkspaceChat({
             summaryTokens={contextBudget.summaryTokens}
             messageCount={contextBudget.messageCount}
             isStreaming={isLoading}
+            preferredModel={
+              panelLabel?.includes('Sonnet') ? 'sonnet'
+                : panelLabel?.includes('Opus') ? 'opus'
+                  : undefined
+            }
           />
         </div>
         {/* Hide toggle when mode is fixed (split-view panels) */}

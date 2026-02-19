@@ -126,7 +126,7 @@ export function DesignGuidePanel({
   }
 
   return (
-    <div className="w-[220px] shrink-0 border-r flex flex-col bg-background">
+    <div className="w-[200px] shrink-0 border-r border-border/50 flex flex-col bg-background">
       {/* Header */}
       <div className="shrink-0 flex items-center justify-between px-2 py-1.5 border-b bg-primary/5">
         <div className="flex items-center gap-1.5">

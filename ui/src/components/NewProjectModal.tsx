@@ -37,6 +37,8 @@ import {
   Grid2x2,
   Maximize2,
   Star,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
 import { useCreateProject, useBoilerplates, useStyles, useStyleProfiles, useStyleRecommendations, useStyleModifiers, useDescriptionRecommendation, useExtractStyleFromScreenshot } from '../hooks/useProjects'
 import { SpecCreationChat } from './SpecCreationChat'
@@ -99,6 +101,34 @@ const STYLE_SWATCHES: Record<string, string[]> = {
   'cyberpunk': ['#06B6D4', '#09090B', '#F43F5E', '#FBBF24'],
   'dark-mode': ['#3B82F6', '#0F172A', '#1E293B', '#F1F5F9'],
   'warmer-shades': ['#D97706', '#FFFBF5', '#FFF8F0', '#292524'],
+}
+
+// ---------------------------------------------------------------------------
+// Pill-shaped Prev/Next Navigator
+// ---------------------------------------------------------------------------
+
+/** Compact pill with left/right arrows to cycle through items in a section */
+function PillNav({ onPrev, onNext }: { onPrev: () => void; onNext: () => void }) {
+  return (
+    <div className="flex items-center justify-center mb-1">
+      <div className="flex items-center border border-border rounded-full overflow-hidden">
+        <button
+          type="button"
+          onClick={onPrev}
+          className="px-1.5 py-0.5 hover:bg-muted/50 transition-colors border-r border-border"
+        >
+          <ChevronLeft size={10} />
+        </button>
+        <button
+          type="button"
+          onClick={onNext}
+          className="px-1.5 py-0.5 hover:bg-muted/50 transition-colors"
+        >
+          <ChevronRight size={10} />
+        </button>
+      </div>
+    </div>
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -1225,7 +1255,7 @@ export function NewProjectModal({
             {stylePickerTab !== 'screenshot' && (
               <div className="flex-1 min-h-0 flex overflow-hidden">
                 {/* COLUMN 1: Style Cards — 3-col grid with mini previews */}
-                <div className="w-[380px] shrink-0 border-r overflow-y-auto p-2">
+                <div className="w-[380px] shrink-0 border-r border-border/50 overflow-y-auto p-2">
                   {stylesLoading && (
                     <div className="flex items-center justify-center gap-2 py-8 text-muted-foreground">
                       <Loader2 size={16} className="animate-spin" />
@@ -1233,6 +1263,21 @@ export function NewProjectModal({
                     </div>
                   )}
                   {!stylesLoading && filteredStyles.length > 0 && (
+                    <>
+                    <PillNav
+                      onPrev={() => {
+                        if (!filteredStyles.length) return
+                        const idx = filteredStyles.findIndex((s: StyleOption) => s.id === styleId)
+                        const prev = (idx <= 0 ? filteredStyles.length : idx) - 1
+                        handleStyleSelect(filteredStyles[prev].id)
+                      }}
+                      onNext={() => {
+                        if (!filteredStyles.length) return
+                        const idx = filteredStyles.findIndex((s: StyleOption) => s.id === styleId)
+                        const next = (idx + 1) % filteredStyles.length
+                        handleStyleSelect(filteredStyles[next].id)
+                      }}
+                    />
                     <div className="grid grid-cols-3 gap-2">
                       {filteredStyles.map((style: StyleOption) => {
                         const isSelected = styleId === style.id
@@ -1289,11 +1334,12 @@ export function NewProjectModal({
                         )
                       })}
                     </div>
+                    </>
                   )}
                 </div>
 
-                {/* COLUMN 2: Controls with Base/Refine tabs */}
-                <div className="w-[220px] shrink-0 border-r overflow-y-auto flex flex-col">
+                {/* COLUMN 2a: Accent Style + Modifiers */}
+                <div className="w-[180px] shrink-0 border-r border-border/50 overflow-y-auto flex flex-col">
                   {/* Tab switcher */}
                   <div className="shrink-0 flex border-b bg-muted/30">
                     <button
@@ -1322,10 +1368,26 @@ export function NewProjectModal({
                     {/* ===== BASE TAB ===== */}
                     {designTab === 'base' && (
                       <>
-                        {/* Modifiers -- compact checkboxes (keep existing) */}
+                        {/* Modifiers -- compact checkboxes */}
                         {modifiers && modifiers.length > 0 && (
                           <div className="space-y-1">
-                            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Modifiers</span>
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Modifiers</span>
+                              <PillNav
+                                onPrev={() => {
+                                  if (!modifiers?.length) return
+                                  const currentIdx = modifiers.findIndex(m => selectedModifiers.includes(m.id))
+                                  const prev = (currentIdx <= 0 ? modifiers.length : currentIdx) - 1
+                                  setSelectedModifiers([modifiers[prev].id])
+                                }}
+                                onNext={() => {
+                                  if (!modifiers?.length) return
+                                  const currentIdx = modifiers.findIndex(m => selectedModifiers.includes(m.id))
+                                  const next = (currentIdx + 1) % modifiers.length
+                                  setSelectedModifiers([modifiers[next].id])
+                                }}
+                              />
+                            </div>
                             <div className="space-y-0.5">
                               {modifiers.map((mod) => {
                                 const isActive = selectedModifiers.includes(mod.id)
@@ -1363,9 +1425,27 @@ export function NewProjectModal({
 
                         <div className="border-t" />
 
-                        {/* Accent Styles -- compact pills (keep existing) */}
+                        {/* Accent Styles -- compact pills */}
                         <div className="space-y-1">
-                          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Accent Style</span>
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Accent Style</span>
+                            <PillNav
+                              onPrev={() => {
+                                const opts = styles?.filter((s: StyleOption) => s.id !== styleId) || []
+                                if (!opts.length) return
+                                const idx = opts.findIndex((s: StyleOption) => s.id === accentStyleId)
+                                const prev = (idx <= 0 ? opts.length : idx) - 1
+                                setAccentStyleId(opts[prev].id)
+                              }}
+                              onNext={() => {
+                                const opts = styles?.filter((s: StyleOption) => s.id !== styleId) || []
+                                if (!opts.length) return
+                                const idx = opts.findIndex((s: StyleOption) => s.id === accentStyleId)
+                                const next = (idx + 1) % opts.length
+                                setAccentStyleId(opts[next].id)
+                              }}
+                            />
+                          </div>
                           <div className="grid grid-cols-3 gap-1">
                             {/* None pill */}
                             <button
@@ -1410,106 +1490,6 @@ export function NewProjectModal({
                           </div>
                         </div>
 
-                        <div className="border-t" />
-
-                        {/* Color Palettes -- GRID FORMAT (replacing arrow navigation) */}
-                        <div className="space-y-1">
-                          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Color Palette</span>
-                          <div className="grid grid-cols-3 gap-1 max-h-[200px] overflow-y-auto">
-                            {PALETTES.map((palette, idx) => {
-                              const isActive = selectedPaletteId === palette.id
-                              return (
-                                <button
-                                  key={palette.id}
-                                  type="button"
-                                  onClick={() => {
-                                    setPaletteIndex(idx)
-                                    setSelectedPaletteId(palette.id)
-                                    setCustomColors(paletteToCustomColors(palette))
-                                  }}
-                                  className={`px-1 py-1 rounded border transition-colors ${
-                                    isActive
-                                      ? 'border-primary bg-primary/10'
-                                      : 'border-border hover:border-primary/50'
-                                  }`}
-                                  title={palette.name}
-                                >
-                                  <div className="flex gap-0.5 justify-center mb-0.5">
-                                    {[palette.brand, palette.background, palette.accent].map((c, i) => (
-                                      <div
-                                        key={i}
-                                        className="w-2.5 h-2.5 rounded-full border border-foreground/10"
-                                        style={{ backgroundColor: c }}
-                                      />
-                                    ))}
-                                  </div>
-                                  <span className="text-[7px] font-medium leading-tight line-clamp-1 text-center block">{palette.name}</span>
-                                </button>
-                              )
-                            })}
-                          </div>
-                          {selectedPaletteId && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSelectedPaletteId(null)
-                                setCustomColors({})
-                              }}
-                              className="w-full text-[9px] text-muted-foreground hover:text-foreground transition-colors text-center"
-                            >
-                              Reset to style default
-                            </button>
-                          )}
-                        </div>
-
-                        <div className="border-t" />
-
-                        {/* Font Selection */}
-                        <div className="space-y-1">
-                          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Font</span>
-                          <div className="grid grid-cols-2 gap-1 max-h-[160px] overflow-y-auto">
-                            {FONT_OPTIONS.map((font) => {
-                              const isActive = selectedFontId === font.id
-                              return (
-                                <button
-                                  key={font.id}
-                                  type="button"
-                                  onClick={() => setSelectedFontId(isActive ? null : font.id)}
-                                  className={`text-left px-1.5 py-1 rounded border transition-colors ${
-                                    isActive
-                                      ? 'border-primary bg-primary/10'
-                                      : 'border-border hover:border-primary/50'
-                                  }`}
-                                >
-                                  <span
-                                    className="text-[10px] font-medium leading-tight block truncate"
-                                    style={{ fontFamily: font.family }}
-                                  >
-                                    {font.name}
-                                  </span>
-                                  <span className="text-[7px] text-muted-foreground">{font.category}</span>
-                                </button>
-                              )
-                            })}
-                          </div>
-                        </div>
-
-                        <div className="border-t" />
-
-                        {/* Color Customizer (individual tweaks) - keep existing */}
-                        {(() => {
-                          const selected = styles?.find((s: StyleOption) => s.id === styleId)
-                          if (!selected?.style_guide) return null
-                          return (
-                            <ColorCustomizer
-                              styleGuide={selected.style_guide}
-                              customColors={customColors}
-                              onChange={setCustomColors}
-                              selectedPaletteId={selectedPaletteId}
-                              onPaletteSelect={setSelectedPaletteId}
-                            />
-                          )
-                        })()}
                       </>
                     )}
 
@@ -1549,6 +1529,140 @@ export function NewProjectModal({
                       </div>
                     )}
                   </div>
+                </div>
+
+                {/* COLUMN 2b: Color Palette + Fonts + Customize Colors */}
+                <div className="w-[200px] shrink-0 border-r border-border/50 overflow-y-auto p-2 space-y-2">
+                  {/* Color Palettes */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Color Palette</span>
+                      <PillNav
+                        onPrev={() => {
+                          const idx = PALETTES.findIndex(p => p.id === selectedPaletteId)
+                          const prev = (idx <= 0 ? PALETTES.length : idx) - 1
+                          setPaletteIndex(prev)
+                          setSelectedPaletteId(PALETTES[prev].id)
+                          setCustomColors(paletteToCustomColors(PALETTES[prev]))
+                        }}
+                        onNext={() => {
+                          const idx = PALETTES.findIndex(p => p.id === selectedPaletteId)
+                          const next = (idx + 1) % PALETTES.length
+                          setPaletteIndex(next)
+                          setSelectedPaletteId(PALETTES[next].id)
+                          setCustomColors(paletteToCustomColors(PALETTES[next]))
+                        }}
+                      />
+                    </div>
+                    <div className="grid grid-cols-4 gap-1">
+                      {PALETTES.map((palette, idx) => {
+                        const isActive = selectedPaletteId === palette.id
+                        return (
+                          <button
+                            key={palette.id}
+                            type="button"
+                            onClick={() => {
+                              setPaletteIndex(idx)
+                              setSelectedPaletteId(palette.id)
+                              setCustomColors(paletteToCustomColors(palette))
+                            }}
+                            className={`px-0.5 py-0.5 rounded border transition-colors ${
+                              isActive
+                                ? 'border-primary bg-primary/10'
+                                : 'border-border hover:border-primary/50'
+                            }`}
+                            title={palette.name}
+                          >
+                            <div className="flex gap-0.5 justify-center mb-0.5">
+                              {[palette.brand, palette.background, palette.accent].map((c, i) => (
+                                <div
+                                  key={i}
+                                  className="w-2 h-2 rounded-full border border-foreground/10"
+                                  style={{ backgroundColor: c }}
+                                />
+                              ))}
+                            </div>
+                            <span className="text-[6px] font-medium leading-tight line-clamp-1 text-center block">{palette.name}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                    {selectedPaletteId && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedPaletteId(null)
+                          setCustomColors({})
+                        }}
+                        className="w-full text-[8px] text-muted-foreground hover:text-foreground transition-colors text-center"
+                      >
+                        Reset to style default
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="border-t border-border/50" />
+
+                  {/* Font Selection */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Font</span>
+                      <PillNav
+                        onPrev={() => {
+                          const idx = FONT_OPTIONS.findIndex(f => f.id === selectedFontId)
+                          const prev = (idx <= 0 ? FONT_OPTIONS.length : idx) - 1
+                          setSelectedFontId(FONT_OPTIONS[prev].id)
+                        }}
+                        onNext={() => {
+                          const idx = FONT_OPTIONS.findIndex(f => f.id === selectedFontId)
+                          const next = (idx + 1) % FONT_OPTIONS.length
+                          setSelectedFontId(FONT_OPTIONS[next].id)
+                        }}
+                      />
+                    </div>
+                    <div className="grid grid-cols-3 gap-1">
+                      {FONT_OPTIONS.map((font) => {
+                        const isActive = selectedFontId === font.id
+                        return (
+                          <button
+                            key={font.id}
+                            type="button"
+                            onClick={() => setSelectedFontId(isActive ? null : font.id)}
+                            className={`text-left px-1 py-0.5 rounded border transition-colors ${
+                              isActive
+                                ? 'border-primary bg-primary/10'
+                                : 'border-border hover:border-primary/50'
+                            }`}
+                          >
+                            <span
+                              className="text-[9px] font-medium leading-tight block truncate"
+                              style={{ fontFamily: font.family }}
+                            >
+                              {font.name}
+                            </span>
+                            <span className="text-[6px] text-muted-foreground">{font.category}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="border-t border-border/50" />
+
+                  {/* Color Customizer (individual tweaks) */}
+                  {(() => {
+                    const selected = styles?.find((s: StyleOption) => s.id === styleId)
+                    if (!selected?.style_guide) return null
+                    return (
+                      <ColorCustomizer
+                        styleGuide={selected.style_guide}
+                        customColors={customColors}
+                        onChange={setCustomColors}
+                        selectedPaletteId={selectedPaletteId}
+                        onPaletteSelect={setSelectedPaletteId}
+                      />
+                    )
+                  })()}
                 </div>
 
                 {/* COLUMN 3: AI Design Guide */}
@@ -1669,8 +1783,8 @@ export function NewProjectModal({
                                   left: page.left,
                                   width: '50%',
                                   height: '50%',
-                                  borderRight: page.left === '0' ? '1px solid var(--color-border)' : undefined,
-                                  borderBottom: page.top === '0' ? '1px solid var(--color-border)' : undefined,
+                                  borderRight: page.left === '0' ? '3px solid var(--color-border)' : undefined,
+                                  borderBottom: page.top === '0' ? '3px solid var(--color-border)' : undefined,
                                 }}
                                 onClick={() => {
                                   setPreviewPage(page.id)

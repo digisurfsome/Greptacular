@@ -11,7 +11,6 @@
 import { useState } from 'react'
 import { RotateCcw, ChevronDown, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { PaletteStrip } from './PaletteStrip'
 import { paletteToCustomColors } from '../lib/paletteUtils'
 import type { PaletteData } from '../data/palettes'
@@ -85,52 +84,47 @@ export function ColorCustomizer({ styleGuide, customColors, onChange, selectedPa
   }
 
   return (
-    <div className="space-y-2 border-t pt-3 mt-1">
+    <div className="space-y-1">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 w-full text-left"
+        className="flex items-center gap-1.5 w-full text-left"
       >
-        {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-        <span className="text-sm font-medium">Customize Colors</span>
-        <Badge variant="secondary" className="text-[10px]">Optional</Badge>
+        {isOpen ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Custom Colors</span>
         {hasChanges && (
-          <span className="text-[10px] text-primary ml-auto">Modified</span>
+          <span className="text-[8px] text-primary ml-auto">Modified</span>
         )}
       </button>
 
       {isOpen && (
-        <div className="space-y-3 pl-5">
-          <p className="text-xs text-muted-foreground">
-            Pick a palette preset or tweak individual colors.
-          </p>
-
+        <div className="space-y-2">
           {/* Palette preset strip */}
           <PaletteStrip
             selectedId={selectedPaletteId}
             onSelect={handlePaletteSelect}
           />
 
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-1.5">
             {COLOR_FIELDS.map(({ key, label, path }) => {
               const defaultValue = getDefaultColor(styleGuide, path)
               const currentValue = customColors[key] || defaultValue
               const isModified = key in customColors
 
               return (
-                <div key={key} className="flex items-center gap-2">
-                  <div className="relative">
+                <div key={key} className="flex items-center gap-1.5">
+                  <div className="relative shrink-0">
                     <input
                       type="color"
                       value={currentValue}
                       onChange={(e) => handleColorChange(key, e.target.value)}
-                      className="w-8 h-8 rounded border border-border cursor-pointer p-0 bg-transparent [&::-webkit-color-swatch-wrapper]:p-0.5 [&::-webkit-color-swatch]:rounded-sm [&::-webkit-color-swatch]:border-0"
+                      className="w-5 h-5 rounded border border-border cursor-pointer p-0 bg-transparent [&::-webkit-color-swatch-wrapper]:p-0.5 [&::-webkit-color-swatch]:rounded-sm [&::-webkit-color-swatch]:border-0"
                     />
                   </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1">
-                      <span className="text-xs font-medium">{label}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-0.5">
+                      <span className="text-[9px] font-medium truncate">{label}</span>
                       {isModified && (
-                        <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
+                        <span className="w-1 h-1 rounded-full bg-primary shrink-0" />
                       )}
                     </div>
                     <input
@@ -141,7 +135,7 @@ export function ColorCustomizer({ styleGuide, customColors, onChange, selectedPa
                         if (isValidHex(val)) handleColorChange(key, val)
                       }}
                       placeholder="#000000"
-                      className="text-[10px] text-muted-foreground font-mono w-[72px] bg-transparent border-none p-0 outline-none"
+                      className="text-[8px] text-muted-foreground font-mono w-[52px] bg-transparent border-none p-0 outline-none"
                     />
                   </div>
                 </div>
@@ -154,10 +148,10 @@ export function ColorCustomizer({ styleGuide, customColors, onChange, selectedPa
               variant="ghost"
               size="sm"
               onClick={handleReset}
-              className="text-xs h-7 gap-1"
+              className="text-[9px] h-5 gap-0.5 px-1.5"
             >
-              <RotateCcw size={12} />
-              Reset to Default
+              <RotateCcw size={9} />
+              Reset
             </Button>
           )}
         </div>

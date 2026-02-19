@@ -43,7 +43,7 @@ function PaletteThumbnail({
       onClick={onSelect}
       title={`${palette.name} – ${palette.vibe}`}
       className={`
-        shrink-0 flex flex-col items-center gap-1 px-2 py-1.5 rounded-md border transition-all
+        shrink-0 flex flex-col items-center gap-0.5 px-1.5 py-1 rounded border transition-all
         ${isSelected
           ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
           : 'border-transparent hover:border-border hover:bg-muted/30'
@@ -54,17 +54,17 @@ function PaletteThumbnail({
         {colors.map((c, i) => (
           <span
             key={i}
-            className="w-3 h-3 rounded-full border border-black/10 shrink-0"
+            className="w-2 h-2 rounded-full border border-black/10 shrink-0"
             style={{ backgroundColor: c }}
           />
         ))}
         {isPremium && (
           <span className="absolute -top-1 -right-1.5">
-            <Lock size={8} className="text-muted-foreground" />
+            <Lock size={7} className="text-muted-foreground" />
           </span>
         )}
       </div>
-      <span className="text-[9px] leading-tight text-muted-foreground whitespace-nowrap max-w-[72px] truncate">
+      <span className="text-[7px] leading-tight text-muted-foreground whitespace-nowrap max-w-[52px] truncate">
         {palette.name}
       </span>
     </button>

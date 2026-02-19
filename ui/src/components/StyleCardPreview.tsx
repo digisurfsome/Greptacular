@@ -192,7 +192,7 @@ export function StyleCardPreview({ guide, accentGuide, modifiers }: StyleCardPre
           ? { backgroundImage: tokens.canvasBg }
           : { backgroundColor: tokens.canvasBg }),
         fontFamily: tokens.fontFamily,
-        padding: '4px',
+        padding: '6px',
       }}
     >
       {/* Mini Card */}
@@ -202,13 +202,13 @@ export function StyleCardPreview({ guide, accentGuide, modifiers }: StyleCardPre
           border: tokens.cardBorder,
           borderRadius: tokens.cardRadius,
           boxShadow: tokens.cardShadow,
-          padding: '4px 5px',
-          marginBottom: '3px',
+          padding: '5px 6px',
+          marginBottom: '4px',
         }}
       >
         <div
           style={{
-            fontSize: '7px',
+            fontSize: '8px',
             fontWeight: 600,
             color: tokens.textPrimary,
             lineHeight: 1.2,
@@ -219,7 +219,7 @@ export function StyleCardPreview({ guide, accentGuide, modifiers }: StyleCardPre
         </div>
         <div
           style={{
-            fontSize: '5.5px',
+            fontSize: '6.5px',
             color: tokens.textSecondary,
             lineHeight: 1.2,
           }}
@@ -237,11 +237,11 @@ export function StyleCardPreview({ guide, accentGuide, modifiers }: StyleCardPre
           border: tokens.btnBorder,
           boxShadow: tokens.btnShadow,
           fontWeight: tokens.btnFontWeight,
-          fontSize: '6px',
-          padding: '2px 6px',
+          fontSize: '7px',
+          padding: '3px 8px',
           textAlign: 'center',
           lineHeight: 1.3,
-          marginBottom: '3px',
+          marginBottom: '4px',
         }}
       >
         Button
@@ -254,9 +254,9 @@ export function StyleCardPreview({ guide, accentGuide, modifiers }: StyleCardPre
           border: tokens.inputBorder,
           borderRadius: tokens.inputRadius,
           boxShadow: tokens.inputShadow,
-          fontSize: '5.5px',
+          fontSize: '6.5px',
           color: tokens.textSecondary,
-          padding: '2px 4px',
+          padding: '3px 5px',
           lineHeight: 1.3,
         }}
       >

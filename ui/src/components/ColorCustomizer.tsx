@@ -89,10 +89,10 @@ export function ColorCustomizer({ styleGuide, customColors, onChange, selectedPa
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-1.5 w-full text-left"
       >
-        {isOpen ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Custom Colors</span>
+        {isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Custom Colors</span>
         {hasChanges && (
-          <span className="text-[8px] text-primary ml-auto">Modified</span>
+          <span className="text-[9px] text-primary ml-auto">Modified</span>
         )}
       </button>
 
@@ -104,7 +104,7 @@ export function ColorCustomizer({ styleGuide, customColors, onChange, selectedPa
             onSelect={handlePaletteSelect}
           />
 
-          <div className="grid grid-cols-2 gap-1.5">
+          <div className="grid grid-cols-2 gap-2">
             {COLOR_FIELDS.map(({ key, label, path }) => {
               const defaultValue = getDefaultColor(styleGuide, path)
               const currentValue = customColors[key] || defaultValue
@@ -117,14 +117,14 @@ export function ColorCustomizer({ styleGuide, customColors, onChange, selectedPa
                       type="color"
                       value={currentValue}
                       onChange={(e) => handleColorChange(key, e.target.value)}
-                      className="w-5 h-5 rounded border border-border cursor-pointer p-0 bg-transparent [&::-webkit-color-swatch-wrapper]:p-0.5 [&::-webkit-color-swatch]:rounded-sm [&::-webkit-color-swatch]:border-0"
+                      className="w-6 h-6 rounded border border-border cursor-pointer p-0 bg-transparent [&::-webkit-color-swatch-wrapper]:p-0.5 [&::-webkit-color-swatch]:rounded-sm [&::-webkit-color-swatch]:border-0"
                     />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-0.5">
-                      <span className="text-[9px] font-medium truncate">{label}</span>
+                      <span className="text-[11px] font-medium truncate">{label}</span>
                       {isModified && (
-                        <span className="w-1 h-1 rounded-full bg-primary shrink-0" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
                       )}
                     </div>
                     <input
@@ -135,7 +135,7 @@ export function ColorCustomizer({ styleGuide, customColors, onChange, selectedPa
                         if (isValidHex(val)) handleColorChange(key, val)
                       }}
                       placeholder="#000000"
-                      className="text-[8px] text-muted-foreground font-mono w-[52px] bg-transparent border-none p-0 outline-none"
+                      className="text-[9px] text-muted-foreground font-mono w-[58px] bg-transparent border-none p-0 outline-none"
                     />
                   </div>
                 </div>
@@ -148,9 +148,9 @@ export function ColorCustomizer({ styleGuide, customColors, onChange, selectedPa
               variant="ghost"
               size="sm"
               onClick={handleReset}
-              className="text-[9px] h-5 gap-0.5 px-1.5"
+              className="text-[10px] h-6 gap-0.5 px-1.5"
             >
-              <RotateCcw size={9} />
+              <RotateCcw size={10} />
               Reset
             </Button>
           )}

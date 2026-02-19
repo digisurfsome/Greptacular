@@ -301,6 +301,25 @@ BUILTIN_TOOLS = [
 ]
 
 
+def _extract_feature_count_from_spec(project_dir: Path) -> int | None:
+    """
+    Extract the feature count from a project's app_spec.txt.
+
+    Looks for the <feature_count>N</feature_count> XML tag that is set during
+    spec creation. Returns None if the spec or tag cannot be found.
+    """
+    from prompts import get_app_spec
+    try:
+        spec_content = get_app_spec(project_dir)
+    except FileNotFoundError:
+        return None
+
+    match = re.search(r"<feature_count>\s*(\d+)\s*</feature_count>", spec_content)
+    if match:
+        return int(match.group(1))
+    return None
+
+
 def create_client(
     project_dir: Path,
     model: str,
@@ -493,11 +512,37 @@ def create_client(
     # ensuring UI-configured alternative providers (GLM, Ollama, Kimi, Custom) propagate
     # correctly to the Claude CLI subprocess.
     #
-    # Smart billing routing: only the initializer agent (which uses 1M context for
-    # PRD breakdown) needs API billing.  All other agents (coding, testing, reviewer,
-    # qa, etc.) strip the API key so the CLI falls back to subscription OAuth.
+    # Smart billing routing: The initializer agent may need 1M context for large PRD
+    # breakdowns, but small projects (<=80 features) fit comfortably within 200K context
+    # at under 50% usage (~96K tokens). This avoids unnecessary API billing for most
+    # projects. Non-initializer agents always use subscription (200K).
+    #
+    # Context budget math (200K window):
+    #   Fixed overhead: ~22K tokens (system prompt + initializer prompt + tool schemas)
+    #   Per feature: ~285 tokens (JSON payload + reasoning + dependency calls)
+    #   App spec (×2, prompt + cat): ~8-21K tokens
+    #   80 features + typical spec ≈ 85K tokens (43% of 200K) — safe under 50% rule
+    #   100 features + large spec ≈ 96K tokens (48% of 200K) — at the limit
+    #   Threshold: 80 features keeps us well under 50% with margin for variance
     from registry import get_effective_sdk_env
-    use_api_billing = agent_type == "initializer"
+
+    # Determine billing: initializer uses API billing only when feature count is high
+    INITIALIZER_200K_FEATURE_THRESHOLD = 80
+
+    if agent_type == "initializer":
+        feature_count = _extract_feature_count_from_spec(project_dir)
+        if feature_count is not None and feature_count <= INITIALIZER_200K_FEATURE_THRESHOLD:
+            use_api_billing = False
+            print(f"   - Initializer routing: {feature_count} features <= {INITIALIZER_200K_FEATURE_THRESHOLD} threshold")
+            print(f"   - Est. context: ~{22 + (feature_count * 285 + 15000) // 1000}K tokens ({(22000 + feature_count * 285 + 15000) * 100 // 200000}% of 200K)")
+        else:
+            use_api_billing = True
+            count_str = str(feature_count) if feature_count is not None else "unknown"
+            print(f"   - Initializer routing: {count_str} features > {INITIALIZER_200K_FEATURE_THRESHOLD} threshold (or unknown)")
+            print(f"   - Using 1M context for safe PRD breakdown")
+    else:
+        use_api_billing = False
+
     sdk_env = get_effective_sdk_env(force_subscription=not use_api_billing)
 
     # Log billing mode so the user can verify which path is active
@@ -645,11 +690,10 @@ def create_client(
             cwd=str(project_dir.resolve()),
             settings=str(settings_file.resolve()),  # Use absolute path
             env=sdk_env,  # Pass API configuration overrides to CLI subprocess
-            # 1M context beta: only enabled for the initializer agent (PRD breakdown)
-            # which needs the large context window and uses API billing.
-            # All other agents (coding, testing, reviewer, qa) use the standard 200K
-            # context window and run on subscription billing.
-            # Disabled entirely for alternative APIs (Ollama, GLM, Vertex AI).
+            # 1M context beta: enabled for initializer agents with >80 features
+            # that need the large context window (uses API billing).
+            # Small initializers (<=80 features) and all other agents use 200K
+            # subscription billing. Disabled for alternative APIs (Ollama, GLM, Vertex).
             betas=(
                 ["context-1m-2025-08-07"]
                 if use_api_billing and not is_alternative_api

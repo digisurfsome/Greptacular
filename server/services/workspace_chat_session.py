@@ -153,7 +153,22 @@ Your current working directory is: {working_directory}
 4. After making changes, verify them (run linters, type checkers, tests as appropriate).
 5. If a bash command might be destructive, explain what it does first.
 6. Use absolute file paths when possible.
-7. When searching, use Glob and Grep rather than bash find/grep."""
+7. When searching, use Glob and Grep rather than bash find/grep.
+
+## Auto-Commit Workflow
+
+After completing any edits or changes the user requested, you MUST follow this workflow:
+
+1. **Stage and commit** your changes to the current git branch before reporting back to the user.
+   - Use `git add` to stage only the files you changed (never `git add -A` or `git add .`).
+   - Write a clear, concise commit message summarizing what you did.
+   - Do NOT push to remote -- the user will push when ready.
+2. **Report a summary** of what you did after committing. Include:
+   - Which files were changed and why
+   - The commit hash (short form)
+   - The branch name the commit is on
+3. **Do not stop until the commit is done.** The user expects that when you finish talking, the changes are already committed to the branch.
+4. If the working directory is not a git repo, skip the commit step and just report the changes."""
 
 
 class WorkspaceChatSession:

@@ -724,6 +724,152 @@ async def rename_git_branch(body: BranchRenameRequest, working_directory: str):
         raise HTTPException(status_code=500, detail="Git not found on system")
 
 
+class GitRemoteInfoResponse(BaseModel):
+    """Response model for git remote info."""
+    remote_url: str
+    github_url: str
+    owner: str
+    repo: str
+
+
+@router.get("/git/remote-info")
+async def get_git_remote_info(working_directory: str):
+    """Get the GitHub remote URL and owner/repo for a working directory."""
+    import subprocess
+    from pathlib import Path
+
+    work_dir = Path(working_directory)
+    if not work_dir.is_dir():
+        raise HTTPException(status_code=400, detail="Invalid working directory")
+
+    try:
+        result = subprocess.run(
+            ["git", "config", "--get", "remote.origin.url"],
+            cwd=str(work_dir),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            raise HTTPException(status_code=400, detail="No remote origin found")
+
+        remote_url = result.stdout.strip()
+
+        # Parse owner/repo from various URL formats:
+        # https://github.com/owner/repo.git
+        # git@github.com:owner/repo.git
+        owner = ""
+        repo = ""
+        github_url = ""
+
+        if "github.com" in remote_url:
+            if remote_url.startswith("git@"):
+                # git@github.com:owner/repo.git
+                path_part = remote_url.split(":", 1)[1]
+            else:
+                # https://github.com/owner/repo.git
+                from urllib.parse import urlparse
+                parsed = urlparse(remote_url)
+                path_part = parsed.path.lstrip("/")
+
+            # Remove .git suffix
+            if path_part.endswith(".git"):
+                path_part = path_part[:-4]
+
+            parts = path_part.split("/")
+            if len(parts) >= 2:
+                owner = parts[0]
+                repo = parts[1]
+                github_url = f"https://github.com/{owner}/{repo}"
+
+        if not github_url:
+            raise HTTPException(status_code=400, detail="Not a GitHub repository")
+
+        return GitRemoteInfoResponse(
+            remote_url=remote_url,
+            github_url=github_url,
+            owner=owner,
+            repo=repo,
+        )
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=504, detail="Git command timed out")
+    except FileNotFoundError:
+        raise HTTPException(status_code=500, detail="Git not found on system")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get remote info: {str(e)}")
+
+
+class GitPrInfoResponse(BaseModel):
+    """Response model for pull request info."""
+    pr_url: str
+    pr_number: int
+    pr_title: str
+    pr_state: str
+
+
+@router.get("/git/pr-info")
+async def get_git_pr_info(working_directory: str, branch: Optional[str] = None):
+    """Get PR info for the current branch using gh CLI."""
+    import subprocess
+    from pathlib import Path
+
+    work_dir = Path(working_directory)
+    if not work_dir.is_dir():
+        raise HTTPException(status_code=400, detail="Invalid working directory")
+
+    try:
+        # If no branch specified, get the current one
+        if not branch:
+            result = subprocess.run(
+                ["git", "branch", "--show-current"],
+                cwd=str(work_dir),
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode != 0:
+                raise HTTPException(status_code=400, detail="Not a git repository")
+            branch = result.stdout.strip()
+
+        if not branch:
+            raise HTTPException(status_code=400, detail="Could not determine current branch")
+
+        # Use gh CLI to find PR for this branch
+        result = subprocess.run(
+            [
+                "gh", "pr", "view", branch,
+                "--json", "url,number,title,state",
+            ],
+            cwd=str(work_dir),
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        if result.returncode != 0:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No pull request found for branch '{branch}'"
+            )
+
+        pr_data = json.loads(result.stdout)
+        return GitPrInfoResponse(
+            pr_url=pr_data["url"],
+            pr_number=pr_data["number"],
+            pr_title=pr_data["title"],
+            pr_state=pr_data["state"],
+        )
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=504, detail="Command timed out")
+    except FileNotFoundError:
+        raise HTTPException(status_code=500, detail="gh CLI not found on system")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get PR info: {str(e)}")
+
+
 # ============================================================================
 # WebSocket Endpoint
 # ============================================================================

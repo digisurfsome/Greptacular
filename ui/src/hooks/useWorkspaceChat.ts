@@ -291,6 +291,12 @@ export function useWorkspaceChat({
             break;
           }
 
+          case "branch_created": {
+            // Branch auto-created for this conversation; the header's
+            // branch indicator will refresh automatically via its API call.
+            break;
+          }
+
           case "response_done": {
             currentAssistantMessageRef.current = null;
             sessionReadyRef.current = true;

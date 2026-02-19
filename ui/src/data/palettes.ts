@@ -1,7 +1,7 @@
 /**
  * Color Palette Presets
  *
- * 25 curated UI color palettes organized by category.
+ * 24 curated UI color palettes organized by category.
  * Each palette has 6 functional color slots:
  *   brand      – primary action color (buttons, links, CTAs)
  *   background – page/app background
@@ -10,7 +10,7 @@
  *   accent     – highlights, badges, secondary actions
  *   muted      – borders, dividers, subtle backgrounds
  *
- * Free tier: palettes 1-10.  Premium tier: palettes 11-25.
+ * Free tier: palettes 1-10.  Premium tier: palettes 11-24.
  */
 
 export interface PaletteData {
@@ -356,19 +356,6 @@ export const PALETTES: PaletteData[] = [
     muted: '#D6D3D1',
     tier: 'premium',
     vibe: 'Organic, wellness, journals, calm apps',
-  },
-  {
-    id: 'dusty-mauve',
-    name: 'Dusty Mauve',
-    category: 'Muted',
-    brand: '#9F1239',
-    background: '#FFF5F7',
-    surface: '#FFFFFF',
-    text: '#44403C',
-    accent: '#0D9488',
-    muted: '#E7E5E4',
-    tier: 'premium',
-    vibe: 'Soft, refined, interior design, boutique',
   },
 ]
 

@@ -331,8 +331,9 @@ export function NewProjectModal({
     const update = () => {
       const { clientWidth, clientHeight } = el
       if (clientWidth === 0 || clientHeight === 0) return
-      const cellW = clientWidth / 2
-      const cellH = clientHeight / 2
+      // Account for padding (8px * 2 = 16px) and gap (6px) in the CSS grid
+      const cellW = (clientWidth - 16 - 6) / 2
+      const cellH = (clientHeight - 16 - 6) / 2
       const scale = Math.min(cellW / QUAD_INTERNAL_W, cellH / QUAD_INTERNAL_H)
       setQuadScale(Math.max(0.1, Math.min(1, scale)))
     }
@@ -1281,7 +1282,7 @@ export function NewProjectModal({
             {/* ==================================================== */}
             {stylePickerTab !== 'screenshot' && (
               <div className="flex-1 min-h-0 flex overflow-hidden">
-                {/* COLUMN 1: Style Cards — 3-col grid with mini previews */}
+                {/* COLUMN 1: Style Cards — 2-col grid with large previews */}
                 <div className="w-[380px] shrink-0 border-r border-border/50 overflow-y-auto p-2">
                   {stylesLoading && (
                     <div className="flex items-center justify-center gap-2 py-8 text-muted-foreground">
@@ -1305,7 +1306,7 @@ export function NewProjectModal({
                         handleStyleSelect(filteredStyles[next].id)
                       }}
                     />
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-2 gap-3">
                       {filteredStyles.map((style: StyleOption) => {
                         const isSelected = styleId === style.id
                         const isFavorite = favoriteStyles.has(style.id)
@@ -1337,12 +1338,12 @@ export function NewProjectModal({
                                 isFavorite ? 'text-primary' : 'text-muted-foreground/30 hover:text-primary/80'
                               }`}
                             >
-                              <Star size={12} fill={isFavorite ? 'currentColor' : 'none'} />
+                              <Star size={14} fill={isFavorite ? 'currentColor' : 'none'} />
                             </button>
 
                             {/* Mini preview showing button, card, input */}
                             {style.style_guide && (
-                              <div className="w-full overflow-hidden rounded-t-lg" style={{ height: '110px' }}>
+                              <div className="w-full overflow-hidden rounded-t-lg" style={{ height: '180px' }}>
                                 <StyleCardPreview
                                   guide={style.style_guide}
                                   accentGuide={accentStyleId
@@ -1354,8 +1355,8 @@ export function NewProjectModal({
                             )}
 
                             {/* Style name */}
-                            <div className="px-2 py-1.5">
-                              <p className="text-[11px] font-semibold leading-tight truncate">{style.name}</p>
+                            <div className="px-2 py-2">
+                              <p className="text-xs font-semibold leading-tight truncate">{style.name}</p>
                             </div>
                           </div>
                         )
@@ -1540,7 +1541,7 @@ export function NewProjectModal({
                               }}
                             />
                           </div>
-                          <div className="grid grid-cols-5 gap-1.5">
+                          <div className="grid grid-cols-3 gap-1.5">
                             {PALETTES.map((palette, idx) => {
                               const isActive = selectedPaletteId === palette.id
                               return (
@@ -1552,23 +1553,23 @@ export function NewProjectModal({
                                     setSelectedPaletteId(palette.id)
                                     setCustomColors(paletteToCustomColors(palette))
                                   }}
-                                  className={`px-1 py-1 rounded border transition-colors ${
+                                  className={`px-1.5 py-1.5 rounded border transition-colors ${
                                     isActive
                                       ? 'border-primary bg-primary/10'
                                       : 'border-border hover:border-primary/50'
                                   }`}
                                   title={palette.name}
                                 >
-                                  <div className="flex gap-0.5 justify-center mb-0.5 flex-wrap">
+                                  <div className="flex gap-1 justify-center mb-1 flex-wrap">
                                     {[palette.brand, palette.background, palette.surface, palette.text, palette.accent, palette.muted].map((c, i) => (
                                       <div
                                         key={i}
-                                        className="w-2.5 h-2.5 rounded-full border border-foreground/10"
+                                        className="w-3.5 h-3.5 rounded-full border border-foreground/10"
                                         style={{ backgroundColor: c }}
                                       />
                                     ))}
                                   </div>
-                                  <span className="text-[8px] font-medium leading-tight line-clamp-1 text-center block">{palette.name}</span>
+                                  <span className="text-[10px] font-medium leading-tight line-clamp-1 text-center block">{palette.name}</span>
                                 </button>
                               )
                             })}
@@ -1784,29 +1785,22 @@ export function NewProjectModal({
                         : undefined
 
                       if (previewViewMode === 'quad') {
-                        const quadPages: { id: PreviewPage; label: string; top: string; left: string }[] = [
-                          { id: 'landing', label: 'Landing', top: '0', left: '0' },
-                          { id: 'dashboard', label: 'Dashboard', top: '0', left: '50%' },
-                          { id: 'settings', label: 'Settings', top: '50%', left: '0' },
-                          { id: 'feed', label: 'Feed', top: '50%', left: '50%' },
+                        const quadPages: { id: PreviewPage; label: string }[] = [
+                          { id: 'landing', label: 'Landing' },
+                          { id: 'dashboard', label: 'Dashboard' },
+                          { id: 'feed', label: 'Feed' },
+                          { id: 'settings', label: 'Settings' },
                         ]
                         return (
                           <div
                             ref={quadGridRef}
-                            className="relative w-full h-full"
+                            className="w-full h-full grid grid-cols-2 grid-rows-2 p-2"
+                            style={{ gap: '6px' }}
                           >
                             {quadPages.map((page) => (
                               <div
                                 key={page.id}
-                                className="absolute overflow-hidden cursor-pointer group"
-                                style={{
-                                  top: page.top,
-                                  left: page.left,
-                                  width: '50%',
-                                  height: '50%',
-                                  borderRight: page.left === '0' ? '3px solid var(--color-border)' : undefined,
-                                  borderBottom: page.top === '0' ? '3px solid var(--color-border)' : undefined,
-                                }}
+                                className="relative overflow-hidden cursor-pointer group rounded-md border-2 border-border"
                                 onClick={() => {
                                   setPreviewPage(page.id)
                                   setPreviewViewMode('single')

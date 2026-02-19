@@ -612,6 +612,11 @@ export interface AssistantChatConversationCreatedMessage {
   conversation_id: number
 }
 
+export interface WorkspaceBranchCreatedMessage {
+  type: 'branch_created'
+  branch: string
+}
+
 export interface AssistantChatQuestionMessage {
   type: 'question'
   questions: SpecQuestion[]
@@ -694,6 +699,7 @@ export type WorkspaceChatServerMessage =
   | AssistantChatResponseDoneMessage
   | AssistantChatErrorMessage
   | AssistantChatConversationCreatedMessage
+  | WorkspaceBranchCreatedMessage
   | AssistantChatPongMessage
 
 // ============================================================================

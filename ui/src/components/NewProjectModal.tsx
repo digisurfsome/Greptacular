@@ -53,7 +53,7 @@ import { FONT_OPTIONS } from '../data/fonts'
 import { REFINEMENT_GROUPS } from '../data/refinementOptions'
 import { paletteToCustomColors } from '../lib/paletteUtils'
 import { startAgent } from '../lib/api'
-import type { BoilerplateCategory, StyleOption, StyleExtractionResult, DesignRefinement, DesignGuideAction } from '../lib/types'
+import type { BoilerplateCategory, StyleOption, StyleGuide, StyleExtractionResult, DesignRefinement, DesignGuideAction } from '../lib/types'
 import { DEFAULT_REFINEMENT } from '../lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -1652,10 +1652,32 @@ export function NewProjectModal({
                   {/* Color Customizer (individual tweaks) */}
                   {(() => {
                     const selected = styles?.find((s: StyleOption) => s.id === styleId)
-                    if (!selected?.style_guide) return null
+                    if (!selected) return (
+                      <div className="text-[9px] text-muted-foreground italic px-1">
+                        Select a style to customize colors
+                      </div>
+                    )
+                    const guide: StyleGuide = selected.style_guide ?? {
+                      color_tokens: {
+                        brand: { light: '#93c5fd', DEFAULT: '#3b82f6', dark: '#1e40af' },
+                        surface: { canvas: '#ffffff', base: '#f8fafc', muted: '#f1f5f9' },
+                        text: { primary: '#0f172a', secondary: '#475569', tertiary: '#94a3b8' },
+                        border: { subtle: '#e2e8f0' },
+                        status: { success: '#22c55e', error: '#ef4444', warning: '#f59e0b', info: '#3b82f6' },
+                      },
+                      typography: { font_family: 'Inter, sans-serif', hierarchy: [] },
+                      components: {
+                        cards: { border_radius: '8px', shadow: 'sm', border_width: '1px' },
+                        buttons: { border_radius: '6px', shadow: 'none', border_width: '1px' },
+                        inputs: { border_radius: '6px', shadow: 'none', border_width: '1px' },
+                        icons: { style: 'outline', size: '20px' },
+                      },
+                      spacing: { base_unit: '4px', density: 'comfortable', card_gap: '16px', section_gap: '32px' },
+                      tailwind_config: {},
+                    }
                     return (
                       <ColorCustomizer
-                        styleGuide={selected.style_guide}
+                        styleGuide={guide}
                         customColors={customColors}
                         onChange={setCustomColors}
                         selectedPaletteId={selectedPaletteId}

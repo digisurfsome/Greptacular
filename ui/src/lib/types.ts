@@ -690,12 +690,18 @@ export interface WorkspaceChatRateLimitLoggedMessage {
   tokens_at_hit: number
 }
 
+export interface WorkspaceChatStatusMessage {
+  type: 'status'
+  content: string
+}
+
 export type WorkspaceChatServerMessage =
   | AssistantChatTextMessage
   | AssistantChatToolCallMessage
   | WorkspaceChatTokenUsageMessage
   | WorkspaceChatTokenUpdateMessage
   | WorkspaceChatRateLimitLoggedMessage
+  | WorkspaceChatStatusMessage
   | AssistantChatResponseDoneMessage
   | AssistantChatErrorMessage
   | AssistantChatConversationCreatedMessage

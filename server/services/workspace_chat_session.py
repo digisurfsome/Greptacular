@@ -17,6 +17,7 @@ Forked from assistant_chat_session.py with key differences:
 - Configurable context window: 1,000,000 tokens (beta ``context-1m-2025-08-07``) or 200,000 tokens
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -702,6 +703,12 @@ class WorkspaceChatSession:
         if not self.client:
             return
 
+        # Timeouts — Opus is significantly slower than Sonnet, especially
+        # with the 1M context beta.  Use generous limits but don't hang forever.
+        is_opus = "opus" in (self.model or "")
+        query_timeout = 180 if is_opus else 90   # seconds to accept the query
+        first_token_timeout = 300 if is_opus else 120  # seconds for first token
+
         # Build the message content -- multimodal if attachments are present
         if attachments and len(attachments) > 0:
             content_blocks: list[dict[str, Any]] = []
@@ -716,15 +723,52 @@ class WorkspaceChatSession:
                         "data": att.base64Data,
                     }
                 })
-            await self.client.query(make_multimodal_message(content_blocks))
+            try:
+                await asyncio.wait_for(
+                    self.client.query(make_multimodal_message(content_blocks)),
+                    timeout=query_timeout,
+                )
+            except asyncio.TimeoutError:
+                logger.error(f"Timeout ({query_timeout}s) waiting for query acceptance (multimodal, model={self.model})")
+                yield {"type": "error", "content": f"The model ({self.model}) did not accept the request within {query_timeout}s. It may be overloaded — try again or switch models."}
+                return
             logger.info(f"Sent multimodal message with {len(attachments)} image(s)")
         else:
-            await self.client.query(message)
+            try:
+                await asyncio.wait_for(
+                    self.client.query(message),
+                    timeout=query_timeout,
+                )
+            except asyncio.TimeoutError:
+                logger.error(f"Timeout ({query_timeout}s) waiting for query acceptance (model={self.model})")
+                yield {"type": "error", "content": f"The model ({self.model}) did not accept the request within {query_timeout}s. It may be overloaded — try again or switch models."}
+                return
+
+        # Notify UI that we're waiting — Opus can take 30-60+ seconds for
+        # the first token, so give the user feedback that the system is alive.
+        if is_opus:
+            yield {"type": "status", "content": "Waiting for Opus response (this model is slower than Sonnet — hang tight)..."}
 
         full_response = ""
+        first_token_received = False
 
-        # Stream the response
-        async for msg in self.client.receive_response():
+        # Stream the response with a first-token timeout
+        response_iter = self.client.receive_response().__aiter__()
+        while True:
+            try:
+                timeout = first_token_timeout if not first_token_received else 300
+                msg = await asyncio.wait_for(response_iter.__anext__(), timeout=timeout)
+            except StopAsyncIteration:
+                break
+            except asyncio.TimeoutError:
+                if not first_token_received:
+                    logger.error(f"Timeout ({first_token_timeout}s) waiting for first token from {self.model}")
+                    yield {"type": "error", "content": f"No response from {self.model} after {first_token_timeout}s. The 1M context beta may not be available for this model, or it may be overloaded. Try Sonnet or the 200K context mode."}
+                else:
+                    logger.error(f"Timeout (300s) waiting for next token from {self.model}")
+                    yield {"type": "error", "content": f"Response stream from {self.model} timed out after 5 minutes of silence."}
+                return
+            first_token_received = True
             msg_type = type(msg).__name__
 
             if msg_type == "AssistantMessage" and hasattr(msg, "content"):

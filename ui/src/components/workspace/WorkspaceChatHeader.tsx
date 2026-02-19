@@ -8,8 +8,8 @@
  */
 
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
-import { Wifi, WifiOff, Loader2, Tag, X, Plus, GitBranch, Pencil } from 'lucide-react'
-import { getGitBranches, renameGitBranch } from '@/lib/api'
+import { Wifi, WifiOff, Loader2, Tag, X, Plus, GitBranch, Pencil, ExternalLink, GitPullRequest } from 'lucide-react'
+import { getGitBranches, renameGitBranch, getGitRemoteInfo, getGitPrInfo } from '@/lib/api'
 import { useWorkspaceCategories } from '@/hooks/useWorkspaceCategories'
 
 interface WorkspaceChatHeaderProps {
@@ -107,6 +107,10 @@ export function WorkspaceChatHeader({
   const [branchLoading, setBranchLoading] = useState(false)
   const branchInputRef = useRef<HTMLInputElement>(null)
 
+  // --- Repo & PR state ---
+  const [githubUrl, setGithubUrl] = useState<string | null>(null)
+  const [prUrl, setPrUrl] = useState<string | null>(null)
+
   // Fetch custom categories and merge with defaults
   const { data: customCategories = [] } = useWorkspaceCategories()
   const allCategories = useMemo(() => {
@@ -170,6 +174,48 @@ export function WorkspaceChatHeader({
 
     return () => { cancelled = true }
   }, [workingDirectory])
+
+  // Fetch GitHub remote URL when workingDirectory changes
+  useEffect(() => {
+    if (!workingDirectory) {
+      setGithubUrl(null)
+      return
+    }
+
+    let cancelled = false
+    getGitRemoteInfo(workingDirectory)
+      .then((result) => {
+        if (!cancelled) {
+          setGithubUrl(result.github_url)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setGithubUrl(null)
+      })
+
+    return () => { cancelled = true }
+  }, [workingDirectory])
+
+  // Check for PR on the current branch (re-check when branch changes)
+  useEffect(() => {
+    if (!workingDirectory || !currentBranch) {
+      setPrUrl(null)
+      return
+    }
+
+    let cancelled = false
+    getGitPrInfo(workingDirectory, currentBranch)
+      .then((result) => {
+        if (!cancelled) {
+          setPrUrl(result.pr_url)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setPrUrl(null)
+      })
+
+    return () => { cancelled = true }
+  }, [workingDirectory, currentBranch])
 
   // --- Title handlers ---
   const handleStartEditing = useCallback(() => {
@@ -422,8 +468,34 @@ export function WorkspaceChatHeader({
         )}
       </div>
 
-      {/* Right: connection status */}
-      <ConnectionIndicator status={connectionStatus} />
+      {/* Right: repo link, PR link, connection status */}
+      <div className="flex items-center gap-2">
+        {githubUrl && (
+          <a
+            href={githubUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-muted text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+            title="View repository on GitHub"
+          >
+            <ExternalLink size={10} />
+            Repo
+          </a>
+        )}
+        {prUrl && (
+          <a
+            href={prUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+            title="View pull request on GitHub"
+          >
+            <GitPullRequest size={10} />
+            View PR
+          </a>
+        )}
+        <ConnectionIndicator status={connectionStatus} />
+      </div>
     </div>
   )
 }

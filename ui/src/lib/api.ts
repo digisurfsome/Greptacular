@@ -1045,6 +1045,29 @@ export async function renameGitBranch(
 }
 
 // ============================================================================
+// Git Remote & PR Info API
+// ============================================================================
+
+export async function getGitRemoteInfo(
+  workingDirectory: string
+): Promise<{ remote_url: string; github_url: string; owner: string; repo: string }> {
+  return fetchJSON(
+    `/workspace/git/remote-info?working_directory=${encodeURIComponent(workingDirectory)}`
+  )
+}
+
+export async function getGitPrInfo(
+  workingDirectory: string,
+  branch?: string
+): Promise<{ pr_url: string; pr_number: number; pr_title: string; pr_state: string }> {
+  let url = `/workspace/git/pr-info?working_directory=${encodeURIComponent(workingDirectory)}`
+  if (branch) {
+    url += `&branch=${encodeURIComponent(branch)}`
+  }
+  return fetchJSON(url)
+}
+
+// ============================================================================
 // Usage Tracking API
 // ============================================================================
 

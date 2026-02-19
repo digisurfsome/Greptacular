@@ -166,6 +166,23 @@ export function WorkspaceChat({
     fixedContextMode ?? pendingContextModeRef.current
   )
 
+  // Model selection: cycles through preset combos (Opus 1M, Opus 200K, Sonnet 1M).
+  // When fixedContextMode is set (split-view), the model is locked by the parent.
+  type ModelPreset = { model: 'opus' | 'sonnet'; context: '1m' | '200k'; label: string }
+  const MODEL_PRESETS: ModelPreset[] = [
+    { model: 'opus', context: '1m', label: 'Opus 4.6 · 1M' },
+    { model: 'opus', context: '200k', label: 'Opus 4.6 · 200K' },
+    { model: 'sonnet', context: '1m', label: 'Sonnet 4.6 · 1M' },
+  ]
+  const savedPresetIndex = Number(localStorage.getItem('workspace-model-preset') ?? '0')
+  const pendingPresetRef = useRef<number>(
+    fixedContextMode ? -1 : (savedPresetIndex >= 0 && savedPresetIndex < MODEL_PRESETS.length ? savedPresetIndex : 0)
+  )
+  const [activePresetIndex, setActivePresetIndex] = useState<number>(pendingPresetRef.current)
+  const selectedModelRef = useRef<'opus' | 'sonnet'>(
+    preferredModel ?? MODEL_PRESETS[Math.max(0, pendingPresetRef.current)]?.model ?? 'opus'
+  )
+
   // Keep pendingContextModeRef in sync when fixedContextMode changes
   useEffect(() => {
     if (fixedContextMode) {
@@ -267,7 +284,9 @@ export function WorkspaceChat({
     if (conversationId !== null) {
       const modeForSession = pendingContextModeRef.current
       setSessionContextMode(modeForSession)
-      start(conversationId, workingDirectory ?? undefined, modeForSession, costSettings as unknown as Record<string, unknown>, preferredModel)
+      // Use the model from the preset toggle (single panel) or the fixed preferredModel (split-view)
+      const modelForSession = preferredModel ?? selectedModelRef.current
+      start(conversationId, workingDirectory ?? undefined, modeForSession, costSettings as unknown as Record<string, unknown>, modelForSession)
     }
   }, [conversationId, isLoadingConversation, activeConversationId, start, disconnect, clearMessages, workingDirectory, costSettings, preferredModel])
 
@@ -649,7 +668,7 @@ export function WorkspaceChat({
         </div>
       )}
 
-      {/* Context mode toggle + budget bar */}
+      {/* Model preset toggle + budget bar */}
       <div className="flex items-center border-b border-border bg-card/80">
         <div className="flex-1 border-b-0 [&>div]:border-b-0">
           <EnhancedContextBudgetBar
@@ -659,36 +678,46 @@ export function WorkspaceChat({
             messageCount={contextBudget.messageCount}
             isStreaming={isLoading}
             preferredModel={
-              panelLabel?.includes('Sonnet') ? 'sonnet'
-                : panelLabel?.includes('Opus') ? 'opus'
-                  : undefined
+              preferredModel
+                ?? (fixedContextMode
+                  ? (panelLabel?.includes('Sonnet') ? 'sonnet'
+                    : panelLabel?.includes('Opus') ? 'opus'
+                      : undefined)
+                  : selectedModelRef.current)
             }
           />
         </div>
         {/* Hide toggle when mode is fixed (split-view panels) */}
         {!fixedContextMode && <button
           onClick={() => {
-            const newMode = pendingContextModeRef.current === '1m' ? '200k' : '1m'
-            pendingContextModeRef.current = newMode
-            localStorage.setItem('workspace-context-mode', newMode)
-            // Show toast — button and gauge stay on the ACTIVE mode
-            const label = newMode === '1m' ? '1M' : '200K'
-            setContextToast(`Next conversation will use ${label} context window`)
-            // Clear any existing timer and set new auto-dismiss
+            // Cycle to next preset
+            const next = (pendingPresetRef.current + 1) % MODEL_PRESETS.length
+            pendingPresetRef.current = next
+            const preset = MODEL_PRESETS[next]
+            pendingContextModeRef.current = preset.context
+            selectedModelRef.current = preset.model
+            localStorage.setItem('workspace-model-preset', String(next))
+            localStorage.setItem('workspace-context-mode', preset.context)
+            setActivePresetIndex(next)
+            // Show toast
+            setContextToast(`Next conversation: ${preset.label}`)
             if (contextToastTimerRef.current) clearTimeout(contextToastTimerRef.current)
             contextToastTimerRef.current = window.setTimeout(() => {
               setContextToast(null)
               contextToastTimerRef.current = null
             }, 8000)
           }}
-          className={`flex-shrink-0 mr-4 text-[10px] font-mono font-bold px-2 py-0.5 rounded border transition-colors ${
-            sessionContextMode === '1m'
-              ? 'bg-primary/10 text-primary border-primary/30'
-              : 'bg-muted text-muted-foreground border-border'
+          className={`flex-shrink-0 mr-4 text-sm font-mono font-bold px-3 py-1 rounded border transition-colors ${
+            (() => {
+              const preset = MODEL_PRESETS[activePresetIndex] ?? MODEL_PRESETS[0]
+              if (preset.model === 'sonnet') return 'bg-violet-500/10 text-violet-600 border-violet-500/30'
+              if (preset.context === '1m') return 'bg-primary/10 text-primary border-primary/30'
+              return 'bg-muted text-muted-foreground border-border'
+            })()
           }`}
-          title={`Context window: ${sessionContextMode === '1m' ? '1,000,000' : '200,000'} tokens. Click to switch. Takes effect on next session.`}
+          title={`Current: ${MODEL_PRESETS[activePresetIndex]?.label ?? 'Opus 4.6 · 1M'}. Click to cycle models. Takes effect on next session.`}
         >
-          {sessionContextMode === '1m' ? '1M ctx' : '200K ctx'}
+          {MODEL_PRESETS[activePresetIndex]?.label ?? 'Opus 4.6 · 1M'}
         </button>}
       </div>
 

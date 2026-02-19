@@ -462,6 +462,13 @@ export function NewProjectModal({
     }
   }, [])
 
+  // Auto-select first style when styles load and nothing is selected yet
+  useEffect(() => {
+    if (styleId || !filteredStyles.length) return
+    setCustomColors({})
+    setStyleId(filteredStyles[0].id)
+  }, [filteredStyles]) // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!isOpen) return null
 
   const handleNameSubmit = (e: React.FormEvent) => {
@@ -520,12 +527,6 @@ export function NewProjectModal({
     setStyleId(id)
     // Don't advance - show modifier section below the style grid
   }
-
-  // Auto-select first style when styles load and nothing is selected yet
-  useEffect(() => {
-    if (styleId || !filteredStyles.length) return
-    handleStyleSelect(filteredStyles[0].id)
-  }, [filteredStyles]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleStyleConfirm = () => {
     changeStep('method')

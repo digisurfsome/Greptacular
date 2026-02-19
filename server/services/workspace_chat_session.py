@@ -472,8 +472,9 @@ class WorkspaceChatSession:
                     allowed_tools=WORKSPACE_BUILTIN_TOOLS,
                     permission_mode="acceptEdits",
                     # Cost controls from user dashboard (see DEFAULT_COST_SETTINGS).
+                    # Note: effort is not a ClaudeAgentOptions param — it only applies
+                    # to direct API calls, not the Agent SDK.
                     max_turns=cs["max_turns"],
-                    effort=cs["effort"],
                     cwd=str(workspace_scratch),  # Scratch dir for CLAUDE.md
                     settings=str(settings_file.resolve()),
                     env=sdk_env,

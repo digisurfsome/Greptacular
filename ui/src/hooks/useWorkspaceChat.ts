@@ -343,6 +343,20 @@ export function useWorkspaceChat({
             break;
           }
 
+          case "status": {
+            // Informational status from backend (e.g. "Waiting for Opus...")
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: generateId(),
+                role: "system",
+                content: data.content || "Processing...",
+                timestamp: new Date(),
+              },
+            ]);
+            break;
+          }
+
           case "error": {
             setIsLoading(false);
             setLastError(data.content || "Unknown error");

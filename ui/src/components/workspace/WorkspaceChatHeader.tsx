@@ -308,20 +308,19 @@ export function WorkspaceChatHeader({
             aria-label="Conversation title"
           />
         ) : (
-          <span
-            role="button"
-            tabIndex={0}
+          <button
+            type="button"
             onClick={handleStartEditing}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') handleStartEditing()
-            }}
-            className={`text-sm font-medium truncate cursor-pointer hover:underline ${
+            className={`flex items-center gap-1.5 text-sm font-medium truncate cursor-pointer group ${
               title ? 'text-foreground' : 'text-muted-foreground italic'
             }`}
-            title={title ?? 'Click to set title'}
+            title={title ? 'Click to rename' : 'Click to set title'}
           >
-            {title ?? 'Untitled Conversation'}
-          </span>
+            <span className="truncate">{title ?? 'Untitled Conversation'}</span>
+            {conversationId !== null && (
+              <Pencil size={12} className="flex-shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+            )}
+          </button>
         )}
 
         {/* Category selector */}

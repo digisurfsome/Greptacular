@@ -6,7 +6,7 @@
  * a new-chat button, per-item pin/delete, and a category manager modal.
  */
 
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import {
   Plus,
   Trash2,
@@ -17,6 +17,7 @@ import {
   Star,
   Settings,
   ChevronDown,
+  X,
 } from 'lucide-react'
 import {
   useWorkspaceConversations,
@@ -91,6 +92,12 @@ export function WorkspaceSidebar({
   const [showCategoryManager, setShowCategoryManager] = useState(false)
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({})
 
+  // Naming form state: when a category is selected from the dropdown,
+  // show an inline form to name the new chat before creating it.
+  const [namingCategory, setNamingCategory] = useState<string | null>(null)
+  const [newChatName, setNewChatName] = useState('')
+  const namingInputRef = useRef<HTMLInputElement>(null)
+
   const { data: conversations, isLoading } = useWorkspaceConversations()
   const createConversationMut = useCreateWorkspaceConversation()
   const deleteMutation = useDeleteWorkspaceConversation()
@@ -101,17 +108,39 @@ export function WorkspaceSidebar({
   const togglePinMut = useTogglePin()
   const toggleContextModeMut = useToggleContextMode()
 
-  /** Create a new conversation in a specific category and select it. */
-  const handleNewChatInCategory = useCallback(
-    (categoryName: string) => {
-      createConversationMut.mutate({ category: categoryName }, {
-        onSuccess: (newConv) => {
-          onSelectConversation(newConv.id)
-        },
-      })
-    },
-    [createConversationMut, onSelectConversation],
-  )
+  // Focus the naming input when it appears
+  useEffect(() => {
+    if (namingCategory !== null) {
+      // Small delay to allow DOM render
+      const timer = setTimeout(() => namingInputRef.current?.focus(), 50)
+      return () => clearTimeout(timer)
+    }
+  }, [namingCategory])
+
+  /** Open the naming form for a specific category. */
+  const handleOpenNamingForm = useCallback((categoryName: string) => {
+    setNamingCategory(categoryName)
+    setNewChatName('')
+  }, [])
+
+  /** Create the named conversation and select it. */
+  const handleCreateNamedChat = useCallback(() => {
+    if (!namingCategory) return
+    const title = newChatName.trim() || undefined
+    createConversationMut.mutate({ title, category: namingCategory }, {
+      onSuccess: (newConv) => {
+        onSelectConversation(newConv.id)
+        setNamingCategory(null)
+        setNewChatName('')
+      },
+    })
+  }, [namingCategory, newChatName, createConversationMut, onSelectConversation])
+
+  /** Cancel the naming form. */
+  const handleCancelNaming = useCallback(() => {
+    setNamingCategory(null)
+    setNewChatName('')
+  }, [])
 
   /** Filter conversations by search term (case-insensitive substring). */
   const filtered = useMemo(() => {
@@ -233,7 +262,7 @@ export function WorkspaceSidebar({
               {categories.map((cat) => (
                 <DropdownMenuItem
                   key={cat.id}
-                  onClick={() => handleNewChatInCategory(cat.name)}
+                  onClick={() => handleOpenNamingForm(cat.name)}
                   className="gap-2 text-xs"
                 >
                   {cat.color && (
@@ -249,6 +278,50 @@ export function WorkspaceSidebar({
           </DropdownMenu>
         )}
       </div>
+
+      {/* Naming form: slides in when a category is selected from the dropdown */}
+      {namingCategory !== null && (
+        <div className="px-3 py-2 border-b border-border bg-muted/50 animate-in slide-in-from-top-2 duration-150">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              New chat in {namingCategory}
+            </span>
+            <button
+              type="button"
+              onClick={handleCancelNaming}
+              className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground"
+              title="Cancel"
+            >
+              <X size={12} />
+            </button>
+          </div>
+          <input
+            ref={namingInputRef}
+            type="text"
+            value={newChatName}
+            onChange={(e) => setNewChatName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                handleCreateNamedChat()
+              } else if (e.key === 'Escape') {
+                handleCancelNaming()
+              }
+            }}
+            placeholder="Name"
+            className="w-full text-xs bg-input border border-border rounded px-2 py-1.5 outline-none ring-ring focus:ring-1 text-foreground placeholder:text-muted-foreground mb-1.5"
+            aria-label="Chat name"
+          />
+          <Button
+            size="sm"
+            className="w-full h-7 text-xs"
+            onClick={handleCreateNamedChat}
+            disabled={createConversationMut.isPending}
+          >
+            {createConversationMut.isPending ? 'Creating...' : 'Start Chat'}
+          </Button>
+        </div>
+      )}
 
       {/* Search */}
       <div className="px-3 pb-2">

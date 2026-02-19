@@ -60,6 +60,7 @@ class WorkspaceConversationDetail(BaseModel):
 
 class ConversationCreateRequest(BaseModel):
     """Request body for creating a new workspace conversation."""
+    title: Optional[str] = None
     category: str = "general"
     working_directory: Optional[str] = None
     context_mode: str = "1m"
@@ -93,6 +94,7 @@ async def create_new_conversation(body: ConversationCreateRequest):
     from ..services.workspace_database import create_conversation
 
     conversation = create_conversation(
+        title=body.title,
         category=body.category,
         working_directory=body.working_directory,
         context_mode=body.context_mode,

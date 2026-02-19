@@ -103,6 +103,26 @@ const STYLE_SWATCHES: Record<string, string[]> = {
   'warmer-shades': ['#D97706', '#FFFBF5', '#FFF8F0', '#292524'],
 }
 
+/** Fallback style guide used when no style is selected or style_guide is missing */
+const DEFAULT_STYLE_GUIDE: StyleGuide = {
+  color_tokens: {
+    brand: { light: '#93c5fd', DEFAULT: '#3b82f6', dark: '#1e40af' },
+    surface: { canvas: '#ffffff', base: '#f8fafc', muted: '#f1f5f9' },
+    text: { primary: '#0f172a', secondary: '#475569', tertiary: '#94a3b8' },
+    border: { subtle: '#e2e8f0' },
+    status: { success: '#22c55e', error: '#ef4444', warning: '#f59e0b', info: '#3b82f6' },
+  },
+  typography: { font_family: 'Inter, sans-serif', hierarchy: [] },
+  components: {
+    cards: { radius: '8px', shadow: 'sm' },
+    buttons: { radius: '6px' },
+    inputs: { radius: '6px' },
+    icons: { style: 'outline', size: '20px' },
+  },
+  spacing: { base_unit: '4px', density: 'comfortable', card_gap: '16px', section_gap: '32px' },
+  tailwind_config: {},
+}
+
 // ---------------------------------------------------------------------------
 // Pill-shaped Prev/Next Navigator
 // ---------------------------------------------------------------------------
@@ -441,6 +461,13 @@ export function NewProjectModal({
         break
     }
   }, [])
+
+  // Auto-select first style when styles load and nothing is selected yet
+  useEffect(() => {
+    if (styleId || !filteredStyles.length) return
+    setCustomColors({})
+    setStyleId(filteredStyles[0].id)
+  }, [filteredStyles]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!isOpen) return null
 
@@ -1278,7 +1305,7 @@ export function NewProjectModal({
                         handleStyleSelect(filteredStyles[next].id)
                       }}
                     />
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-3 gap-3">
                       {filteredStyles.map((style: StyleOption) => {
                         const isSelected = styleId === style.id
                         const isFavorite = favoriteStyles.has(style.id)
@@ -1310,12 +1337,12 @@ export function NewProjectModal({
                                 isFavorite ? 'text-primary' : 'text-muted-foreground/30 hover:text-primary/80'
                               }`}
                             >
-                              <Star size={10} fill={isFavorite ? 'currentColor' : 'none'} />
+                              <Star size={12} fill={isFavorite ? 'currentColor' : 'none'} />
                             </button>
 
                             {/* Mini preview showing button, card, input */}
                             {style.style_guide && (
-                              <div className="w-full overflow-hidden rounded-t-lg" style={{ height: '80px' }}>
+                              <div className="w-full overflow-hidden rounded-t-lg" style={{ height: '110px' }}>
                                 <StyleCardPreview
                                   guide={style.style_guide}
                                   accentGuide={accentStyleId
@@ -1327,8 +1354,8 @@ export function NewProjectModal({
                             )}
 
                             {/* Style name */}
-                            <div className="px-1.5 py-1">
-                              <p className="text-[9px] font-semibold leading-tight truncate">{style.name}</p>
+                            <div className="px-2 py-1.5">
+                              <p className="text-[11px] font-semibold leading-tight truncate">{style.name}</p>
                             </div>
                           </div>
                         )
@@ -1339,12 +1366,12 @@ export function NewProjectModal({
                 </div>
 
                 {/* COLUMN 2a: Accent Style + Modifiers + Color Palette */}
-                <div className="w-[200px] shrink-0 border-r border-border/50 overflow-y-auto flex flex-col">
+                <div className="w-[240px] shrink-0 border-r border-border/50 overflow-y-auto flex flex-col">
                   {/* Tab switcher */}
                   <div className="shrink-0 flex border-b bg-muted/30">
                     <button
                       onClick={() => setDesignTab('base')}
-                      className={`flex-1 py-1.5 text-[10px] font-semibold text-center transition-colors ${
+                      className={`flex-1 py-2 text-[11px] font-semibold text-center transition-colors ${
                         designTab === 'base'
                           ? 'bg-background text-foreground border-b-2 border-primary'
                           : 'text-muted-foreground hover:text-foreground'
@@ -1354,7 +1381,7 @@ export function NewProjectModal({
                     </button>
                     <button
                       onClick={() => setDesignTab('refine')}
-                      className={`flex-1 py-1.5 text-[10px] font-semibold text-center transition-colors ${
+                      className={`flex-1 py-2 text-[11px] font-semibold text-center transition-colors ${
                         designTab === 'refine'
                           ? 'bg-background text-foreground border-b-2 border-primary'
                           : 'text-muted-foreground hover:text-foreground'
@@ -1364,14 +1391,14 @@ export function NewProjectModal({
                     </button>
                   </div>
 
-                  <div className="flex-1 overflow-y-auto p-2 space-y-3">
+                  <div className="flex-1 overflow-y-auto p-3 space-y-4">
                     {/* ===== BASE TAB ===== */}
                     {designTab === 'base' && (
                       <>
                         {/* Accent Styles -- compact pills */}
                         <div className="space-y-1">
                           <div className="flex items-center justify-between">
-                            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Accent Style</span>
+                            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Accent Style</span>
                             <PillNav
                               onPrev={() => {
                                 const opts = styles?.filter((s: StyleOption) => s.id !== styleId) || []
@@ -1389,18 +1416,18 @@ export function NewProjectModal({
                               }}
                             />
                           </div>
-                          <div className="grid grid-cols-3 gap-1">
+                          <div className="grid grid-cols-3 gap-1.5">
                             {/* None pill */}
                             <button
                               type="button"
                               onClick={() => setAccentStyleId(null)}
-                              className={`text-left px-1 py-0.5 rounded border transition-colors ${
+                              className={`text-left px-1.5 py-1 rounded border transition-colors ${
                                 !accentStyleId
                                   ? 'border-primary bg-primary/10'
                                   : 'border-border hover:border-primary/50'
                               }`}
                             >
-                              <span className="text-[9px] font-medium text-muted-foreground">None</span>
+                              <span className="text-[10px] font-medium text-muted-foreground">None</span>
                             </button>
                             {/* All styles as possible accents */}
                             {styles?.filter((s: StyleOption) => s.id !== styleId).map((style: StyleOption) => {
@@ -1411,22 +1438,22 @@ export function NewProjectModal({
                                   key={style.id}
                                   type="button"
                                   onClick={() => setAccentStyleId(isActive ? null : style.id)}
-                                  className={`text-left px-1 py-0.5 rounded border transition-colors ${
+                                  className={`text-left px-1.5 py-1 rounded border transition-colors ${
                                     isActive
                                       ? 'border-primary bg-primary/10'
                                       : 'border-border hover:border-primary/50'
                                   }`}
                                 >
-                                  <div className="flex gap-0.5 mb-0.5">
-                                    {swatches.slice(0, 3).map((color, i) => (
+                                  <div className="flex gap-0.5 mb-0.5 flex-wrap">
+                                    {swatches.map((color, i) => (
                                       <div
                                         key={i}
-                                        className="w-2 h-2 rounded-full border border-foreground/10"
+                                        className="w-2.5 h-2.5 rounded-full border border-foreground/10"
                                         style={{ backgroundColor: color }}
                                       />
                                     ))}
                                   </div>
-                                  <span className="text-[8px] font-medium leading-tight line-clamp-1">{style.name}</span>
+                                  <span className="text-[10px] font-medium leading-tight line-clamp-1">{style.name}</span>
                                 </button>
                               )
                             })}
@@ -1439,7 +1466,7 @@ export function NewProjectModal({
                         {modifiers && modifiers.length > 0 && (
                           <div className="space-y-1">
                             <div className="flex items-center justify-between">
-                              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Modifiers</span>
+                              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Modifiers</span>
                               <PillNav
                                 onPrev={() => {
                                   if (!modifiers?.length) return
@@ -1470,19 +1497,19 @@ export function NewProjectModal({
                                             : prev
                                       )
                                     }}
-                                    className={`w-full text-left px-1.5 py-1 rounded border transition-colors flex items-center gap-1.5 ${
+                                    className={`w-full text-left px-2 py-1.5 rounded border transition-colors flex items-center gap-1.5 ${
                                       isActive
                                         ? 'border-primary bg-primary/10'
                                         : 'border-border hover:border-primary/50'
                                     }`}
                                     title={mod.description}
                                   >
-                                    <div className={`w-3 h-3 rounded-sm border flex items-center justify-center shrink-0 ${
+                                    <div className={`w-3.5 h-3.5 rounded-sm border flex items-center justify-center shrink-0 ${
                                       isActive ? 'bg-primary border-primary' : 'border-muted-foreground/30'
                                     }`}>
                                       {isActive && <Check size={8} className="text-primary-foreground" />}
                                     </div>
-                                    <span className="text-[10px] font-medium truncate">{mod.name}</span>
+                                    <span className="text-[11px] font-medium truncate">{mod.name}</span>
                                   </button>
                                 )
                               })}
@@ -1495,7 +1522,7 @@ export function NewProjectModal({
                         {/* Color Palettes */}
                         <div className="space-y-1">
                           <div className="flex items-center justify-between">
-                            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Color Palette</span>
+                            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Color Palette</span>
                             <PillNav
                               onPrev={() => {
                                 const idx = PALETTES.findIndex(p => p.id === selectedPaletteId)
@@ -1513,7 +1540,7 @@ export function NewProjectModal({
                               }}
                             />
                           </div>
-                          <div className="grid grid-cols-4 gap-1">
+                          <div className="grid grid-cols-5 gap-1.5">
                             {PALETTES.map((palette, idx) => {
                               const isActive = selectedPaletteId === palette.id
                               return (
@@ -1525,23 +1552,23 @@ export function NewProjectModal({
                                     setSelectedPaletteId(palette.id)
                                     setCustomColors(paletteToCustomColors(palette))
                                   }}
-                                  className={`px-0.5 py-0.5 rounded border transition-colors ${
+                                  className={`px-1 py-1 rounded border transition-colors ${
                                     isActive
                                       ? 'border-primary bg-primary/10'
                                       : 'border-border hover:border-primary/50'
                                   }`}
                                   title={palette.name}
                                 >
-                                  <div className="flex gap-0.5 justify-center mb-0.5">
-                                    {[palette.brand, palette.background, palette.accent].map((c, i) => (
+                                  <div className="flex gap-0.5 justify-center mb-0.5 flex-wrap">
+                                    {[palette.brand, palette.background, palette.surface, palette.text, palette.accent, palette.muted].map((c, i) => (
                                       <div
                                         key={i}
-                                        className="w-2 h-2 rounded-full border border-foreground/10"
+                                        className="w-2.5 h-2.5 rounded-full border border-foreground/10"
                                         style={{ backgroundColor: c }}
                                       />
                                     ))}
                                   </div>
-                                  <span className="text-[6px] font-medium leading-tight line-clamp-1 text-center block">{palette.name}</span>
+                                  <span className="text-[8px] font-medium leading-tight line-clamp-1 text-center block">{palette.name}</span>
                                 </button>
                               )
                             })}
@@ -1553,7 +1580,7 @@ export function NewProjectModal({
                                 setSelectedPaletteId(null)
                                 setCustomColors({})
                               }}
-                              className="w-full text-[8px] text-muted-foreground hover:text-foreground transition-colors text-center"
+                              className="w-full text-[9px] text-muted-foreground hover:text-foreground transition-colors text-center"
                             >
                               Reset to style default
                             </button>
@@ -1568,10 +1595,10 @@ export function NewProjectModal({
                       <div className="space-y-3">
                         {REFINEMENT_GROUPS.map((group) => (
                           <div key={group.key} className="space-y-1">
-                            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                               {group.label}
                             </span>
-                            <p className="text-[8px] text-muted-foreground leading-tight mb-1">
+                            <p className="text-[9px] text-muted-foreground leading-tight mb-1">
                               {group.description}
                             </p>
                             <div className="flex flex-wrap gap-1">
@@ -1582,7 +1609,7 @@ export function NewProjectModal({
                                     key={option.value}
                                     type="button"
                                     onClick={() => setRefinement(prev => ({ ...prev, [group.key]: option.value }))}
-                                    className={`px-1.5 py-0.5 rounded border text-[9px] font-medium transition-colors ${
+                                    className={`px-1.5 py-0.5 rounded border text-[10px] font-medium transition-colors ${
                                       isActive
                                         ? 'border-primary bg-primary/10 text-foreground'
                                         : 'border-border text-muted-foreground hover:border-primary/50 hover:text-foreground'
@@ -1602,11 +1629,11 @@ export function NewProjectModal({
                 </div>
 
                 {/* COLUMN 2b: Fonts + Customize Colors */}
-                <div className="w-[200px] shrink-0 border-r border-border/50 overflow-y-auto p-2 space-y-2">
+                <div className="w-[240px] shrink-0 border-r border-border/50 overflow-y-auto p-3 space-y-3">
                   {/* Font Selection */}
                   <div className="space-y-1">
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Font</span>
+                      <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Font</span>
                       <PillNav
                         onPrev={() => {
                           const idx = FONT_OPTIONS.findIndex(f => f.id === selectedFontId)
@@ -1620,7 +1647,7 @@ export function NewProjectModal({
                         }}
                       />
                     </div>
-                    <div className="grid grid-cols-3 gap-1">
+                    <div className="grid grid-cols-3 gap-1.5">
                       {FONT_OPTIONS.map((font) => {
                         const isActive = selectedFontId === font.id
                         return (
@@ -1628,19 +1655,19 @@ export function NewProjectModal({
                             key={font.id}
                             type="button"
                             onClick={() => setSelectedFontId(isActive ? null : font.id)}
-                            className={`text-left px-1 py-0.5 rounded border transition-colors ${
+                            className={`text-left px-1.5 py-1 rounded border transition-colors ${
                               isActive
                                 ? 'border-primary bg-primary/10'
                                 : 'border-border hover:border-primary/50'
                             }`}
                           >
                             <span
-                              className="text-[9px] font-medium leading-tight block truncate"
+                              className="text-[11px] font-medium leading-tight block truncate"
                               style={{ fontFamily: font.family }}
                             >
                               {font.name}
                             </span>
-                            <span className="text-[6px] text-muted-foreground">{font.category}</span>
+                            <span className="text-[8px] text-muted-foreground">{font.category}</span>
                           </button>
                         )
                       })}
@@ -1649,42 +1676,14 @@ export function NewProjectModal({
 
                   <div className="border-t border-border/50" />
 
-                  {/* Color Customizer (individual tweaks) */}
-                  {(() => {
-                    const selected = styles?.find((s: StyleOption) => s.id === styleId)
-                    if (!selected) return (
-                      <div className="text-[9px] text-muted-foreground italic px-1">
-                        Select a style to customize colors
-                      </div>
-                    )
-                    const guide: StyleGuide = selected.style_guide ?? {
-                      color_tokens: {
-                        brand: { light: '#93c5fd', DEFAULT: '#3b82f6', dark: '#1e40af' },
-                        surface: { canvas: '#ffffff', base: '#f8fafc', muted: '#f1f5f9' },
-                        text: { primary: '#0f172a', secondary: '#475569', tertiary: '#94a3b8' },
-                        border: { subtle: '#e2e8f0' },
-                        status: { success: '#22c55e', error: '#ef4444', warning: '#f59e0b', info: '#3b82f6' },
-                      },
-                      typography: { font_family: 'Inter, sans-serif', hierarchy: [] },
-                      components: {
-                        cards: { border_radius: '8px', shadow: 'sm', border_width: '1px' },
-                        buttons: { border_radius: '6px', shadow: 'none', border_width: '1px' },
-                        inputs: { border_radius: '6px', shadow: 'none', border_width: '1px' },
-                        icons: { style: 'outline', size: '20px' },
-                      },
-                      spacing: { base_unit: '4px', density: 'comfortable', card_gap: '16px', section_gap: '32px' },
-                      tailwind_config: {},
-                    }
-                    return (
-                      <ColorCustomizer
-                        styleGuide={guide}
-                        customColors={customColors}
-                        onChange={setCustomColors}
-                        selectedPaletteId={selectedPaletteId}
-                        onPaletteSelect={setSelectedPaletteId}
-                      />
-                    )
-                  })()}
+                  {/* Color Customizer (individual tweaks) — always visible */}
+                  <ColorCustomizer
+                    styleGuide={(styles?.find((s: StyleOption) => s.id === styleId)?.style_guide) ?? DEFAULT_STYLE_GUIDE}
+                    customColors={customColors}
+                    onChange={setCustomColors}
+                    selectedPaletteId={selectedPaletteId}
+                    onPaletteSelect={setSelectedPaletteId}
+                  />
                 </div>
 
                 {/* COLUMN 3: AI Design Guide */}
@@ -1753,11 +1752,11 @@ export function NewProjectModal({
                                 isActive ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/50'
                               }`}
                             >
-                              <div className="flex gap-0.5">
-                                {swatches.slice(0, 3).map((color, i) => (
+                              <div className="flex gap-0.5 flex-wrap">
+                                {swatches.map((color, i) => (
                                   <div
                                     key={i}
-                                    className="w-2 h-2 rounded-sm border border-foreground/10"
+                                    className="w-2.5 h-2.5 rounded-sm border border-foreground/10"
                                     style={{ backgroundColor: color }}
                                   />
                                 ))}

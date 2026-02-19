@@ -54,7 +54,7 @@ function PaletteThumbnail({
         {colors.map((c, i) => (
           <span
             key={i}
-            className="w-2 h-2 rounded-full border border-black/10 shrink-0"
+            className="w-2.5 h-2.5 rounded-full border border-black/10 shrink-0"
             style={{ backgroundColor: c }}
           />
         ))}
@@ -64,7 +64,7 @@ function PaletteThumbnail({
           </span>
         )}
       </div>
-      <span className="text-[7px] leading-tight text-muted-foreground whitespace-nowrap max-w-[52px] truncate">
+      <span className="text-[8px] leading-tight text-muted-foreground whitespace-nowrap max-w-[60px] truncate">
         {palette.name}
       </span>
     </button>
@@ -85,7 +85,7 @@ export function PaletteStrip({ selectedId, onSelect }: PaletteStripProps) {
 
   return (
     <div className="space-y-1.5">
-      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+      <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
         Quick Palette Presets
       </span>
 

@@ -105,6 +105,19 @@ export function WorkspacePage(): React.JSX.Element {
 
   const chatInputRef = useRef<HTMLTextAreaElement | null>(null)
 
+  // Model preset state — shared between sidebar (new chat form) and WorkspaceChat (pill toggle)
+  const [modelPresetIndex, setModelPresetIndex] = useState(() => {
+    const saved = Number(localStorage.getItem('workspace-model-preset') ?? '0')
+    return saved >= 0 && saved < 3 ? saved : 0
+  })
+  const handleModelPresetChange = useCallback((idx: number) => {
+    setModelPresetIndex(idx)
+    localStorage.setItem('workspace-model-preset', String(idx))
+    // Also update context mode in localStorage so WorkspaceChat picks it up
+    const contexts = ['1m', '200k', '1m'] as const
+    localStorage.setItem('workspace-context-mode', contexts[idx])
+  }, [])
+
   const handleNewChat = useCallback(() => {
     setActiveConversationId(null)
   }, [])
@@ -331,6 +344,8 @@ export function WorkspacePage(): React.JSX.Element {
           onSelectConversation={handleSelectConversation}
           selectedWorkingDirectory={workingDirectory}
           onWorkingDirectoryChange={handleRepoSelect}
+          modelPresetIndex={modelPresetIndex}
+          onModelPresetChange={handleModelPresetChange}
         />
 
         {splitView ? (

@@ -730,24 +730,40 @@ export function WorkspaceChat({
         )}
       </div>
 
-      {/* Context mode toast notification */}
-      {contextToast && (
-        <div className="flex items-center justify-between px-4 py-2 bg-primary/10 border-b border-primary/20 text-sm text-primary animate-slide-in">
-          <span>{contextToast}</span>
-          <button
-            onClick={() => {
-              setContextToast(null)
-              if (contextToastTimerRef.current) {
-                clearTimeout(contextToastTimerRef.current)
-                contextToastTimerRef.current = null
-              }
-            }}
-            className="ml-3 text-primary/60 hover:text-primary text-xs"
-          >
-            dismiss
-          </button>
-        </div>
-      )}
+      {/* Persistent "on deck" indicator — always shows next chat's model when different from active session */}
+      {!fixedContextMode && (() => {
+        const pendingPreset = MODEL_PRESETS[pendingPresetRef.current] ?? MODEL_PRESETS[0]
+        const sessionPreset = MODEL_PRESETS.find(
+          p => p.model === (preferredModel ?? selectedModelRef.current) && p.context === sessionContextMode
+        )
+        const isDifferent = !sessionPreset || pendingPreset.label !== sessionPreset.label
+        if (!isDifferent && !contextToast) return null
+        return (
+          <div className={`flex items-center justify-between px-4 py-1.5 border-b text-xs ${
+            pendingPreset.model === 'sonnet'
+              ? 'bg-violet-500/10 border-violet-500/20 text-violet-600'
+              : pendingPreset.context === '1m'
+                ? 'bg-primary/10 border-primary/20 text-primary'
+                : 'bg-muted border-border text-muted-foreground'
+          }`}>
+            <span>Next chat: <strong>{pendingPreset.label}</strong></span>
+            {contextToast && (
+              <button
+                onClick={() => {
+                  setContextToast(null)
+                  if (contextToastTimerRef.current) {
+                    clearTimeout(contextToastTimerRef.current)
+                    contextToastTimerRef.current = null
+                  }
+                }}
+                className="ml-3 opacity-60 hover:opacity-100 text-[10px]"
+              >
+                dismiss
+              </button>
+            )}
+          </div>
+        )
+      })()}
 
       {/* Cost controls — user-adjustable "stick shift" for API spend */}
       <CostControls settings={costSettings} onChange={setCostSettings} />

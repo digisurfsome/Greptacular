@@ -673,7 +673,7 @@ export async function getWorkspaceConversation(
 }
 
 export async function createWorkspaceConversation(
-  options?: { category?: string; working_directory?: string }
+  options?: { title?: string; category?: string; working_directory?: string }
 ): Promise<WorkspaceConversation> {
   return fetchJSON('/workspace/conversations', {
     method: 'POST',

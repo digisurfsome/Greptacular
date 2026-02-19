@@ -130,6 +130,7 @@ interface MiniTokens {
   inputBg: string
   inputBorder: string
   inputRadius: string
+  inputShadow: string | undefined
 }
 
 function resolveTokens(guide: StyleGuide): MiniTokens {
@@ -169,6 +170,7 @@ function resolveTokens(guide: StyleGuide): MiniTokens {
     inputBg: resolveColor(components.inputs.background, ct) || ct.surface.base,
     inputBorder: resolveBorder(components.inputs.border, ct) || `1px solid ${borderFallback}`,
     inputRadius: components.inputs.radius || '6px',
+    inputShadow: components.inputs.shadow === 'none' ? undefined : components.inputs.shadow,
   }
 }
 
@@ -251,6 +253,7 @@ export function StyleCardPreview({ guide, accentGuide, modifiers }: StyleCardPre
           backgroundColor: tokens.inputBg,
           border: tokens.inputBorder,
           borderRadius: tokens.inputRadius,
+          boxShadow: tokens.inputShadow,
           fontSize: '5.5px',
           color: tokens.textSecondary,
           padding: '2px 4px',

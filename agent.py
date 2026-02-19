@@ -59,12 +59,21 @@ BUDGET_WARN_TURNS = 120         # Start wrap-up warning
 BUDGET_CHECKPOINT_INTERVAL = 30  # Print budget checkpoint every N turns
 MAX_CODING_TURNS = 150           # Hard ceiling (matches client.py max_turns for coding)
 
+# Token-based context monitoring thresholds (for real-time alerts)
+# These fire based on actual input_tokens from the SDK, not turn-count heuristics.
+CONTEXT_200K = 200_000
+CONTEXT_1M = 1_000_000
+CONTEXT_WARN_PCT = 0.40          # Warn at 40% of context window
+CONTEXT_DANGER_PCT = 0.48        # Danger at 48% of context window
+
 
 async def run_agent_session(
     client: ClaudeSDKClient,
     message: str,
     project_dir: Path,
-) -> tuple[str, str]:
+    agent_type: str = "coding",
+    context_window: int | None = None,
+) -> tuple[str, str, dict]:
     """
     Run a single agent session using Claude Agent SDK.
 
@@ -72,13 +81,25 @@ async def run_agent_session(
         client: Claude SDK client
         message: The prompt to send
         project_dir: Project directory path
+        agent_type: Agent type for logging
+        context_window: Actual context window size in tokens. If None, defaults to
+                        200K for all agents (most agents use subscription billing).
 
     Returns:
-        (status, response_text) where status is:
-        - "continue" if agent should continue working
-        - "error" if an error occurred
+        (status, response_text, usage_data) where:
+        - status: "continue", "error", or "rate_limit"
+        - response_text: the agent's text response
+        - usage_data: dict with token counts, cost, and duration from the SDK
     """
     print("Sending prompt to Claude Agent SDK...\n")
+
+    # Use provided context window or default to 200K
+    if context_window is None:
+        context_window = CONTEXT_200K
+    warn_tokens = int(context_window * CONTEXT_WARN_PCT)
+    danger_tokens = int(context_window * CONTEXT_DANGER_PCT)
+    context_warned = False
+    context_danger_warned = False
 
     try:
         # Send the query
@@ -88,17 +109,66 @@ async def run_agent_session(
         # Track turn count for context budget estimation
         response_text = ""
         turn_count = 0
+        last_msg_id = None  # For deduplicating per-step usage
+        latest_input_tokens = 0  # Most recent cumulative input token count
+        usage_data: dict = {}
         async for msg in client.receive_response():
             msg_type = type(msg).__name__
+
+            # Capture ResultMessage (final message with cumulative usage)
+            if msg_type == "ResultMessage":
+                usage_data = {
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "cache_creation_input_tokens": 0,
+                    "cache_read_input_tokens": 0,
+                    "total_cost_usd": getattr(msg, "total_cost_usd", None),
+                    "num_turns": getattr(msg, "num_turns", 0),
+                    "duration_ms": getattr(msg, "duration_ms", 0),
+                    "duration_api_ms": getattr(msg, "duration_api_ms", 0),
+                    "session_id": getattr(msg, "session_id", ""),
+                    "is_error": getattr(msg, "is_error", False),
+                    "context_window": context_window,
+                }
+                # Extract token counts from usage dict
+                raw_usage = getattr(msg, "usage", None) or {}
+                for key in ["input_tokens", "output_tokens",
+                            "cache_creation_input_tokens", "cache_read_input_tokens"]:
+                    if key in raw_usage:
+                        usage_data[key] = raw_usage[key]
+                continue
 
             # Handle AssistantMessage (text and tool use)
             if msg_type == "AssistantMessage" and hasattr(msg, "content"):
                 turn_count += 1
+
+                # Track per-step token usage from AssistantMessage.usage
+                msg_id = getattr(msg, "id", None)
+                step_usage = getattr(msg, "usage", None)
+                if step_usage and msg_id != last_msg_id:
+                    last_msg_id = msg_id
+                    current_input = step_usage.get("input_tokens", 0)
+                    if current_input > latest_input_tokens:
+                        latest_input_tokens = current_input
+
+                    # Real-time context alerts based on actual token counts
+                    if not context_danger_warned and latest_input_tokens >= danger_tokens:
+                        context_danger_warned = True
+                        pct = latest_input_tokens * 100 // context_window
+                        print(f"\n[CONTEXT ALERT] {latest_input_tokens:,} input tokens"
+                              f" ({pct}% of {context_window // 1000}K) - DANGER ZONE", flush=True)
+                    elif not context_warned and latest_input_tokens >= warn_tokens:
+                        context_warned = True
+                        pct = latest_input_tokens * 100 // context_window
+                        print(f"\n[CONTEXT WARNING] {latest_input_tokens:,} input tokens"
+                              f" ({pct}% of {context_window // 1000}K) - approaching limit", flush=True)
+
                 # Print budget checkpoints so the agent can track its context usage
                 if turn_count > 0 and turn_count % BUDGET_CHECKPOINT_INTERVAL == 0:
                     budget_pct = round((turn_count / MAX_CODING_TURNS) * 45, 1)
+                    token_info = f", {latest_input_tokens:,} tokens" if latest_input_tokens else ""
                     print(f"\n[Budget] Turn {turn_count}/{MAX_CODING_TURNS}"
-                          f" (~{budget_pct}% context used)")
+                          f" (~{budget_pct}% context used{token_info})")
                 if turn_count == BUDGET_WARN_TURNS:
                     print(f"\n[Budget] Turn {turn_count}/{MAX_CODING_TURNS}"
                           " - WRAP UP NOW (approaching 45% context budget)")
@@ -140,8 +210,11 @@ async def run_agent_session(
                             # Tool succeeded - just show brief confirmation
                             print("   [Done]", flush=True)
 
+        # Print session usage summary
+        _print_usage_summary(usage_data, agent_type)
+
         print("\n" + "-" * 70 + "\n")
-        return "continue", response_text
+        return "continue", response_text, usage_data
 
     except Exception as e:
         error_str = str(e)
@@ -152,11 +225,55 @@ async def run_agent_session(
             # Try to extract retry-after time from error
             retry_seconds = parse_retry_after(error_str)
             if retry_seconds is not None:
-                return "rate_limit", str(retry_seconds)
+                return "rate_limit", str(retry_seconds), {}
             else:
-                return "rate_limit", "unknown"
+                return "rate_limit", "unknown", {}
 
-        return "error", error_str
+        return "error", error_str, {}
+
+
+def _print_usage_summary(usage_data: dict, agent_type: str) -> None:
+    """Print a structured usage summary after each session."""
+    if not usage_data:
+        print("\n[Usage] No usage data available (SDK did not return ResultMessage)")
+        return
+
+    input_tokens = usage_data.get("input_tokens", 0)
+    output_tokens = usage_data.get("output_tokens", 0)
+    cache_read = usage_data.get("cache_read_input_tokens", 0)
+    cache_create = usage_data.get("cache_creation_input_tokens", 0)
+    cost = usage_data.get("total_cost_usd")
+    turns = usage_data.get("num_turns", 0)
+    duration_ms = usage_data.get("duration_ms", 0)
+    context_window = usage_data.get("context_window", CONTEXT_200K)
+
+    # Calculate context usage percentage
+    context_pct = (input_tokens * 100 // context_window) if context_window else 0
+    duration_min = duration_ms / 60_000
+
+    # Format cost
+    cost_str = f"${cost:.4f}" if cost is not None else "n/a"
+
+    # Status indicator based on context usage
+    if context_pct >= 48:
+        status = "OVER BUDGET"
+    elif context_pct >= 40:
+        status = "HIGH"
+    elif context_pct >= 30:
+        status = "MODERATE"
+    else:
+        status = "OK"
+
+    print(f"\n{'=' * 60}")
+    print(f"  SESSION USAGE REPORT ({agent_type})")
+    print(f"{'=' * 60}")
+    print(f"  Context:  {input_tokens:>9,} / {context_window:>9,} tokens ({context_pct}%) [{status}]")
+    print(f"  Output:   {output_tokens:>9,} tokens")
+    print(f"  Cache:    {cache_read:>9,} read  |  {cache_create:>9,} created")
+    print(f"  Turns:    {turns:>9}")
+    print(f"  Duration: {duration_min:>9.1f} min")
+    print(f"  Cost:     {cost_str:>9}")
+    print(f"{'=' * 60}")
 
 
 async def run_autonomous_agent(
@@ -218,6 +335,15 @@ async def run_autonomous_agent(
 
     is_initializer = agent_type == "initializer"
 
+    # Determine actual context window for this agent
+    # Must match the billing routing logic in client.py (INITIALIZER_200K_FEATURE_THRESHOLD = 80)
+    if is_initializer:
+        from client import _extract_feature_count_from_spec
+        _fc = _extract_feature_count_from_spec(project_dir)
+        session_context_window = CONTEXT_1M if (_fc is None or _fc > 80) else CONTEXT_200K
+    else:
+        session_context_window = CONTEXT_200K
+
     # Single-session agent types (no loop)
     if agent_type == "spec-analyzer":
         print("Running as SPEC ANALYZER agent (read-only analysis)")
@@ -225,7 +351,7 @@ async def run_autonomous_agent(
         client = create_client(project_dir, model, yolo_mode=True, agent_type="spec-analyzer")
         try:
             async with client:
-                status, response = await run_agent_session(client, prompt, project_dir)
+                status, response, _usage = await run_agent_session(client, prompt, project_dir, agent_type="spec-analyzer")
         except Exception as e:
             print(f"Spec analyzer error: {e}")
         return
@@ -236,7 +362,7 @@ async def run_autonomous_agent(
         client = create_client(project_dir, model, yolo_mode=True, agent_type="architect")
         try:
             async with client:
-                status, response = await run_agent_session(client, prompt, project_dir)
+                status, response, _usage = await run_agent_session(client, prompt, project_dir, agent_type="architect")
         except Exception as e:
             print(f"Architect error: {e}")
         return
@@ -331,7 +457,10 @@ async def run_autonomous_agent(
         # Wrap in try/except to handle MCP server startup failures gracefully
         try:
             async with client:
-                status, response = await run_agent_session(client, prompt, project_dir)
+                status, response, _usage = await run_agent_session(
+                    client, prompt, project_dir,
+                    agent_type=agent_type, context_window=session_context_window,
+                )
         except Exception as e:
             print(f"Client/MCP server error: {e}")
             # Don't crash - return error status so the loop can retry

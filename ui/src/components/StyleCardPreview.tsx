@@ -166,11 +166,11 @@ function resolveTokens(guide: StyleGuide): MiniTokens {
     btnShadow: components.buttons.shadow === 'none' ? undefined : components.buttons.shadow,
     btnFontWeight: components.buttons.font_weight ? Number(components.buttons.font_weight) : 600,
 
-    // Input tokens
+    // Input tokens -- ensure border is always visible so the input doesn't vanish
     inputBg: resolveColor(components.inputs.background, ct) || ct.surface.base,
     inputBorder: resolveBorder(components.inputs.border, ct) || `1px solid ${borderFallback}`,
     inputRadius: components.inputs.radius || '6px',
-    inputShadow: components.inputs.shadow === 'none' ? undefined : components.inputs.shadow,
+    inputShadow: components.inputs.shadow === 'none' ? undefined : (components.inputs.shadow || `inset 0 1px 2px ${borderFallback}40`),
   }
 }
 
@@ -186,13 +186,14 @@ export function StyleCardPreview({ guide, accentGuide, modifiers }: StyleCardPre
 
   return (
     <div
-      className="w-full h-full overflow-hidden"
+      className="w-full h-full overflow-hidden flex flex-col"
       style={{
         ...(tokens.isGradientBg
           ? { backgroundImage: tokens.canvasBg }
           : { backgroundColor: tokens.canvasBg }),
         fontFamily: tokens.fontFamily,
-        padding: '6px',
+        padding: '10px',
+        gap: '8px',
       }}
     >
       {/* Mini Card */}
@@ -202,26 +203,26 @@ export function StyleCardPreview({ guide, accentGuide, modifiers }: StyleCardPre
           border: tokens.cardBorder,
           borderRadius: tokens.cardRadius,
           boxShadow: tokens.cardShadow,
-          padding: '5px 6px',
-          marginBottom: '4px',
+          padding: '10px 12px',
+          flex: '1 1 auto',
         }}
       >
         <div
           style={{
-            fontSize: '8px',
+            fontSize: '11px',
             fontWeight: 600,
             color: tokens.textPrimary,
-            lineHeight: 1.2,
-            marginBottom: '2px',
+            lineHeight: 1.3,
+            marginBottom: '4px',
           }}
         >
           Card Title
         </div>
         <div
           style={{
-            fontSize: '6.5px',
+            fontSize: '9px',
             color: tokens.textSecondary,
-            lineHeight: 1.2,
+            lineHeight: 1.3,
           }}
         >
           Description text here
@@ -237,11 +238,10 @@ export function StyleCardPreview({ guide, accentGuide, modifiers }: StyleCardPre
           border: tokens.btnBorder,
           boxShadow: tokens.btnShadow,
           fontWeight: tokens.btnFontWeight,
-          fontSize: '7px',
-          padding: '3px 8px',
+          fontSize: '10px',
+          padding: '6px 12px',
           textAlign: 'center',
           lineHeight: 1.3,
-          marginBottom: '4px',
         }}
       >
         Button
@@ -254,9 +254,9 @@ export function StyleCardPreview({ guide, accentGuide, modifiers }: StyleCardPre
           border: tokens.inputBorder,
           borderRadius: tokens.inputRadius,
           boxShadow: tokens.inputShadow,
-          fontSize: '6.5px',
+          fontSize: '9px',
           color: tokens.textSecondary,
-          padding: '3px 5px',
+          padding: '6px 8px',
           lineHeight: 1.3,
         }}
       >

@@ -27,8 +27,8 @@ import type { StyleGuide, StyleModifier, StyleOption } from '../lib/types'
 const PAGES: { id: PreviewPage; label: string }[] = [
   { id: 'landing', label: 'Landing' },
   { id: 'dashboard', label: 'Dashboard' },
-  { id: 'settings', label: 'Settings' },
   { id: 'feed', label: 'Feed' },
+  { id: 'settings', label: 'Settings' },
 ]
 
 /** Color swatches for the style selector strip */
@@ -199,8 +199,9 @@ export function QuadViewPreview({
     const update = () => {
       const { clientWidth, clientHeight } = el
       if (clientWidth === 0 || clientHeight === 0) return
-      const cellW = clientWidth / 2
-      const cellH = clientHeight / 2
+      // Account for padding (8px * 2 = 16px) and gap (6px) in the CSS grid
+      const cellW = (clientWidth - 16 - 6) / 2
+      const cellH = (clientHeight - 16 - 6) / 2
       const scale = Math.min(cellW / INTERNAL_W, cellH / INTERNAL_H)
       setQuadScale(Math.max(0.15, Math.min(1, scale)))
     }
@@ -506,29 +507,22 @@ export function QuadViewPreview({
         {/* Preview area */}
         {viewMode === 'quad' ? (
           (() => {
-            const quadPages: { id: PreviewPage; label: string; top: string; left: string }[] = [
-              { id: 'landing', label: 'Landing', top: '0', left: '0' },
-              { id: 'dashboard', label: 'Dashboard', top: '0', left: '50%' },
-              { id: 'settings', label: 'Settings', top: '50%', left: '0' },
-              { id: 'feed', label: 'Feed', top: '50%', left: '50%' },
+            const quadPages: { id: PreviewPage; label: string }[] = [
+              { id: 'landing', label: 'Landing' },
+              { id: 'dashboard', label: 'Dashboard' },
+              { id: 'feed', label: 'Feed' },
+              { id: 'settings', label: 'Settings' },
             ]
             return (
               <div
                 ref={quadGridRef}
-                className="relative w-full flex-1"
+                className="w-full flex-1 grid grid-cols-2 grid-rows-2 p-2"
+                style={{ gap: '6px' }}
               >
                 {quadPages.map((page) => (
                   <div
                     key={page.id}
-                    className="absolute overflow-hidden cursor-pointer group"
-                    style={{
-                      top: page.top,
-                      left: page.left,
-                      width: '50%',
-                      height: '50%',
-                      borderRight: page.left === '0' ? '1px solid var(--color-border)' : undefined,
-                      borderBottom: page.top === '0' ? '1px solid var(--color-border)' : undefined,
-                    }}
+                    className="relative overflow-hidden cursor-pointer group rounded-md border-2 border-border"
                     onClick={() => handleQuadrantClick(page.id)}
                   >
                     {/* Page label overlay */}

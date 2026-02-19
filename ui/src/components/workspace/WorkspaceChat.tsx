@@ -687,58 +687,83 @@ export function WorkspaceChat({
             }
           />
         </div>
-        {/* Hide toggle when mode is fixed (split-view panels) */}
-        {!fixedContextMode && <button
-          onClick={() => {
-            // Cycle to next preset
-            const next = (pendingPresetRef.current + 1) % MODEL_PRESETS.length
-            pendingPresetRef.current = next
-            const preset = MODEL_PRESETS[next]
-            pendingContextModeRef.current = preset.context
-            selectedModelRef.current = preset.model
-            localStorage.setItem('workspace-model-preset', String(next))
-            localStorage.setItem('workspace-context-mode', preset.context)
-            setActivePresetIndex(next)
-            // Show toast
-            setContextToast(`Next conversation: ${preset.label}`)
-            if (contextToastTimerRef.current) clearTimeout(contextToastTimerRef.current)
-            contextToastTimerRef.current = window.setTimeout(() => {
-              setContextToast(null)
-              contextToastTimerRef.current = null
-            }, 8000)
-          }}
-          className={`flex-shrink-0 mr-4 text-sm font-mono font-bold px-3 py-1 rounded border transition-colors ${
-            (() => {
-              const preset = MODEL_PRESETS[activePresetIndex] ?? MODEL_PRESETS[0]
-              if (preset.model === 'sonnet') return 'bg-violet-500/10 text-violet-600 border-violet-500/30'
-              if (preset.context === '1m') return 'bg-primary/10 text-primary border-primary/30'
-              return 'bg-muted text-muted-foreground border-border'
-            })()
-          }`}
-          title={`Current: ${MODEL_PRESETS[activePresetIndex]?.label ?? 'Opus 4.6 · 1M'}. Click to cycle models. Takes effect on next session.`}
-        >
-          {MODEL_PRESETS[activePresetIndex]?.label ?? 'Opus 4.6 · 1M'}
-        </button>}
+        {/* 3-segment pill selector — hidden when mode is fixed (split-view) */}
+        {!fixedContextMode && (
+          <div className="flex-shrink-0 mr-4 flex rounded-full border border-border overflow-hidden shadow-sm" role="radiogroup" aria-label="Model selection">
+            {MODEL_PRESETS.map((preset, idx) => {
+              const isActive = activePresetIndex === idx
+              return (
+                <button
+                  key={preset.label}
+                  role="radio"
+                  aria-checked={isActive}
+                  onClick={() => {
+                    pendingPresetRef.current = idx
+                    pendingContextModeRef.current = preset.context
+                    selectedModelRef.current = preset.model
+                    localStorage.setItem('workspace-model-preset', String(idx))
+                    localStorage.setItem('workspace-context-mode', preset.context)
+                    setActivePresetIndex(idx)
+                    setContextToast(`Next conversation: ${preset.label}`)
+                    if (contextToastTimerRef.current) clearTimeout(contextToastTimerRef.current)
+                    contextToastTimerRef.current = window.setTimeout(() => {
+                      setContextToast(null)
+                      contextToastTimerRef.current = null
+                    }, 8000)
+                  }}
+                  className={`px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition-all duration-150 ${
+                    isActive
+                      ? preset.model === 'sonnet'
+                        ? 'bg-violet-500 text-white shadow-inner'
+                        : preset.context === '1m'
+                          ? 'bg-primary text-primary-foreground shadow-inner'
+                          : 'bg-zinc-600 text-white shadow-inner'
+                      : 'bg-card text-muted-foreground hover:bg-muted hover:text-foreground'
+                  } ${idx === 0 ? 'rounded-l-full' : ''} ${idx === MODEL_PRESETS.length - 1 ? 'rounded-r-full' : 'border-r border-border'}`}
+                  title={`${preset.label}${isActive ? ' (active)' : ' — takes effect on next session'}`}
+                >
+                  {preset.label}
+                </button>
+              )
+            })}
+          </div>
+        )}
       </div>
 
-      {/* Context mode toast notification */}
-      {contextToast && (
-        <div className="flex items-center justify-between px-4 py-2 bg-primary/10 border-b border-primary/20 text-sm text-primary animate-slide-in">
-          <span>{contextToast}</span>
-          <button
-            onClick={() => {
-              setContextToast(null)
-              if (contextToastTimerRef.current) {
-                clearTimeout(contextToastTimerRef.current)
-                contextToastTimerRef.current = null
-              }
-            }}
-            className="ml-3 text-primary/60 hover:text-primary text-xs"
-          >
-            dismiss
-          </button>
-        </div>
-      )}
+      {/* Persistent "on deck" indicator — always shows next chat's model when different from active session */}
+      {!fixedContextMode && (() => {
+        const pendingPreset = MODEL_PRESETS[pendingPresetRef.current] ?? MODEL_PRESETS[0]
+        const sessionPreset = MODEL_PRESETS.find(
+          p => p.model === (preferredModel ?? selectedModelRef.current) && p.context === sessionContextMode
+        )
+        const isDifferent = !sessionPreset || pendingPreset.label !== sessionPreset.label
+        if (!isDifferent && !contextToast) return null
+        return (
+          <div className={`flex items-center justify-between px-4 py-1.5 border-b text-xs ${
+            pendingPreset.model === 'sonnet'
+              ? 'bg-violet-500/10 border-violet-500/20 text-violet-600'
+              : pendingPreset.context === '1m'
+                ? 'bg-primary/10 border-primary/20 text-primary'
+                : 'bg-muted border-border text-muted-foreground'
+          }`}>
+            <span>Next chat: <strong>{pendingPreset.label}</strong></span>
+            {contextToast && (
+              <button
+                onClick={() => {
+                  setContextToast(null)
+                  if (contextToastTimerRef.current) {
+                    clearTimeout(contextToastTimerRef.current)
+                    contextToastTimerRef.current = null
+                  }
+                }}
+                className="ml-3 opacity-60 hover:opacity-100 text-[10px]"
+              >
+                dismiss
+              </button>
+            )}
+          </div>
+        )
+      })()}
 
       {/* Cost controls — user-adjustable "stick shift" for API spend */}
       <CostControls settings={costSettings} onChange={setCostSettings} />
@@ -980,12 +1005,18 @@ export function WorkspaceChat({
           <textarea
             ref={inputRef as React.RefObject<HTMLTextAreaElement>}
             value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
+            onChange={(e) => {
+              setInputValue(e.target.value)
+              // Auto-expand: reset height then set to scrollHeight (capped by max-h)
+              const el = e.target
+              el.style.height = 'auto'
+              el.style.height = `${Math.min(el.scrollHeight, 240)}px`
+            }}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             placeholder="Ask anything... (paste images with Ctrl+V)"
             disabled={isLoading || isLoadingConversation}
-            className="flex-1 resize-none min-h-[44px] max-h-[120px] rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none ring-ring focus:ring-1 disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex-1 resize-y min-h-[44px] max-h-[240px] rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none ring-ring focus:ring-1 disabled:cursor-not-allowed disabled:opacity-50"
             rows={1}
           />
           <Button

@@ -47,6 +47,19 @@ import {
 } from '@/components/ui/dropdown-menu'
 import type { WorkspaceConversation, WorkspaceCategory } from '@/lib/types'
 
+/** Model preset option for the sidebar pill selector. */
+interface ModelPreset {
+  model: 'opus' | 'sonnet'
+  context: '1m' | '200k'
+  label: string
+}
+
+const SIDEBAR_MODEL_PRESETS: ModelPreset[] = [
+  { model: 'opus', context: '1m', label: 'Opus 4.6 · 1M' },
+  { model: 'opus', context: '200k', label: 'Opus 4.6 · 200K' },
+  { model: 'sonnet', context: '1m', label: 'Sonnet 4.6 · 1M' },
+]
+
 interface WorkspaceSidebarProps {
   activeConversationId: number | null
   collapsed: boolean
@@ -57,6 +70,10 @@ interface WorkspaceSidebarProps {
   selectedWorkingDirectory?: string | null
   /** Callback when the user picks a repo in the naming form. */
   onWorkingDirectoryChange?: (path: string) => void
+  /** Current model preset index (synced with WorkspaceChat). */
+  modelPresetIndex?: number
+  /** Callback when user changes the model preset from the naming form. */
+  onModelPresetChange?: (index: number) => void
 }
 
 // ---------------------------------------------------------------------------
@@ -93,6 +110,8 @@ export function WorkspaceSidebar({
   onSelectConversation,
   selectedWorkingDirectory,
   onWorkingDirectoryChange,
+  modelPresetIndex = 0,
+  onModelPresetChange,
 }: WorkspaceSidebarProps): React.JSX.Element {
   const [search, setSearch] = useState('')
   const [hoveredId, setHoveredId] = useState<number | null>(null)
@@ -326,6 +345,35 @@ export function WorkspaceSidebar({
               onSelect={(path) => onWorkingDirectoryChange?.(path)}
               selectedPath={selectedWorkingDirectory ?? null}
             />
+          </div>
+          {/* Model preset pill — pick model + context before starting */}
+          <div className="mb-1.5">
+            <span className="text-[10px] text-muted-foreground mb-0.5 block">Model</span>
+            <div className="flex rounded-full border border-border overflow-hidden shadow-sm" role="radiogroup" aria-label="Model selection">
+              {SIDEBAR_MODEL_PRESETS.map((preset, idx) => {
+                const isActive = modelPresetIndex === idx
+                return (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    role="radio"
+                    aria-checked={isActive}
+                    onClick={() => onModelPresetChange?.(idx)}
+                    className={`flex-1 px-1.5 py-1 text-[10px] font-semibold whitespace-nowrap transition-all duration-150 ${
+                      isActive
+                        ? preset.model === 'sonnet'
+                          ? 'bg-violet-500 text-white shadow-inner'
+                          : preset.context === '1m'
+                            ? 'bg-primary text-primary-foreground shadow-inner'
+                            : 'bg-zinc-600 text-white shadow-inner'
+                        : 'bg-card text-muted-foreground hover:bg-muted hover:text-foreground'
+                    } ${idx === 0 ? 'rounded-l-full' : ''} ${idx === SIDEBAR_MODEL_PRESETS.length - 1 ? 'rounded-r-full' : 'border-r border-border'}`}
+                  >
+                    {preset.label}
+                  </button>
+                )
+              })}
+            </div>
           </div>
           <Button
             size="sm"

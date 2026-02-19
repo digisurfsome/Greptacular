@@ -103,6 +103,26 @@ const STYLE_SWATCHES: Record<string, string[]> = {
   'warmer-shades': ['#D97706', '#FFFBF5', '#FFF8F0', '#292524'],
 }
 
+/** Fallback style guide used when no style is selected or style_guide is missing */
+const DEFAULT_STYLE_GUIDE: StyleGuide = {
+  color_tokens: {
+    brand: { light: '#93c5fd', DEFAULT: '#3b82f6', dark: '#1e40af' },
+    surface: { canvas: '#ffffff', base: '#f8fafc', muted: '#f1f5f9' },
+    text: { primary: '#0f172a', secondary: '#475569', tertiary: '#94a3b8' },
+    border: { subtle: '#e2e8f0' },
+    status: { success: '#22c55e', error: '#ef4444', warning: '#f59e0b', info: '#3b82f6' },
+  },
+  typography: { font_family: 'Inter, sans-serif', hierarchy: [] },
+  components: {
+    cards: { radius: '8px', shadow: 'sm' },
+    buttons: { radius: '6px' },
+    inputs: { radius: '6px' },
+    icons: { style: 'outline', size: '20px' },
+  },
+  spacing: { base_unit: '4px', density: 'comfortable', card_gap: '16px', section_gap: '32px' },
+  tailwind_config: {},
+}
+
 // ---------------------------------------------------------------------------
 // Pill-shaped Prev/Next Navigator
 // ---------------------------------------------------------------------------
@@ -1649,42 +1669,14 @@ export function NewProjectModal({
 
                   <div className="border-t border-border/50" />
 
-                  {/* Color Customizer (individual tweaks) */}
-                  {(() => {
-                    const selected = styles?.find((s: StyleOption) => s.id === styleId)
-                    if (!selected) return (
-                      <div className="text-[9px] text-muted-foreground italic px-1">
-                        Select a style to customize colors
-                      </div>
-                    )
-                    const guide: StyleGuide = selected.style_guide ?? {
-                      color_tokens: {
-                        brand: { light: '#93c5fd', DEFAULT: '#3b82f6', dark: '#1e40af' },
-                        surface: { canvas: '#ffffff', base: '#f8fafc', muted: '#f1f5f9' },
-                        text: { primary: '#0f172a', secondary: '#475569', tertiary: '#94a3b8' },
-                        border: { subtle: '#e2e8f0' },
-                        status: { success: '#22c55e', error: '#ef4444', warning: '#f59e0b', info: '#3b82f6' },
-                      },
-                      typography: { font_family: 'Inter, sans-serif', hierarchy: [] },
-                      components: {
-                        cards: { border_radius: '8px', shadow: 'sm', border_width: '1px' },
-                        buttons: { border_radius: '6px', shadow: 'none', border_width: '1px' },
-                        inputs: { border_radius: '6px', shadow: 'none', border_width: '1px' },
-                        icons: { style: 'outline', size: '20px' },
-                      },
-                      spacing: { base_unit: '4px', density: 'comfortable', card_gap: '16px', section_gap: '32px' },
-                      tailwind_config: {},
-                    }
-                    return (
-                      <ColorCustomizer
-                        styleGuide={guide}
-                        customColors={customColors}
-                        onChange={setCustomColors}
-                        selectedPaletteId={selectedPaletteId}
-                        onPaletteSelect={setSelectedPaletteId}
-                      />
-                    )
-                  })()}
+                  {/* Color Customizer (individual tweaks) — always visible */}
+                  <ColorCustomizer
+                    styleGuide={(styles?.find((s: StyleOption) => s.id === styleId)?.style_guide) ?? DEFAULT_STYLE_GUIDE}
+                    customColors={customColors}
+                    onChange={setCustomColors}
+                    selectedPaletteId={selectedPaletteId}
+                    onPaletteSelect={setSelectedPaletteId}
+                  />
                 </div>
 
                 {/* COLUMN 3: AI Design Guide */}

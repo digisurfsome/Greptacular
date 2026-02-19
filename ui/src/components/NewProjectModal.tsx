@@ -1338,8 +1338,8 @@ export function NewProjectModal({
                   )}
                 </div>
 
-                {/* COLUMN 2a: Accent Style + Modifiers */}
-                <div className="w-[180px] shrink-0 border-r border-border/50 overflow-y-auto flex flex-col">
+                {/* COLUMN 2a: Accent Style + Modifiers + Color Palette */}
+                <div className="w-[200px] shrink-0 border-r border-border/50 overflow-y-auto flex flex-col">
                   {/* Tab switcher */}
                   <div className="shrink-0 flex border-b bg-muted/30">
                     <button
@@ -1368,63 +1368,6 @@ export function NewProjectModal({
                     {/* ===== BASE TAB ===== */}
                     {designTab === 'base' && (
                       <>
-                        {/* Modifiers -- compact checkboxes */}
-                        {modifiers && modifiers.length > 0 && (
-                          <div className="space-y-1">
-                            <div className="flex items-center justify-between">
-                              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Modifiers</span>
-                              <PillNav
-                                onPrev={() => {
-                                  if (!modifiers?.length) return
-                                  const currentIdx = modifiers.findIndex(m => selectedModifiers.includes(m.id))
-                                  const prev = (currentIdx <= 0 ? modifiers.length : currentIdx) - 1
-                                  setSelectedModifiers([modifiers[prev].id])
-                                }}
-                                onNext={() => {
-                                  if (!modifiers?.length) return
-                                  const currentIdx = modifiers.findIndex(m => selectedModifiers.includes(m.id))
-                                  const next = (currentIdx + 1) % modifiers.length
-                                  setSelectedModifiers([modifiers[next].id])
-                                }}
-                              />
-                            </div>
-                            <div className="space-y-0.5">
-                              {modifiers.map((mod) => {
-                                const isActive = selectedModifiers.includes(mod.id)
-                                return (
-                                  <button
-                                    key={mod.id}
-                                    onClick={() => {
-                                      setSelectedModifiers(prev =>
-                                        isActive
-                                          ? prev.filter(id => id !== mod.id)
-                                          : prev.length < 3
-                                            ? [...prev, mod.id]
-                                            : prev
-                                      )
-                                    }}
-                                    className={`w-full text-left px-1.5 py-1 rounded border transition-colors flex items-center gap-1.5 ${
-                                      isActive
-                                        ? 'border-primary bg-primary/10'
-                                        : 'border-border hover:border-primary/50'
-                                    }`}
-                                    title={mod.description}
-                                  >
-                                    <div className={`w-3 h-3 rounded-sm border flex items-center justify-center shrink-0 ${
-                                      isActive ? 'bg-primary border-primary' : 'border-muted-foreground/30'
-                                    }`}>
-                                      {isActive && <Check size={8} className="text-primary-foreground" />}
-                                    </div>
-                                    <span className="text-[10px] font-medium truncate">{mod.name}</span>
-                                  </button>
-                                )
-                              })}
-                            </div>
-                          </div>
-                        )}
-
-                        <div className="border-t" />
-
                         {/* Accent Styles -- compact pills */}
                         <div className="space-y-1">
                           <div className="flex items-center justify-between">
@@ -1490,6 +1433,133 @@ export function NewProjectModal({
                           </div>
                         </div>
 
+                        <div className="border-t" />
+
+                        {/* Modifiers -- compact checkboxes */}
+                        {modifiers && modifiers.length > 0 && (
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Modifiers</span>
+                              <PillNav
+                                onPrev={() => {
+                                  if (!modifiers?.length) return
+                                  const currentIdx = modifiers.findIndex(m => selectedModifiers.includes(m.id))
+                                  const prev = (currentIdx <= 0 ? modifiers.length : currentIdx) - 1
+                                  setSelectedModifiers([modifiers[prev].id])
+                                }}
+                                onNext={() => {
+                                  if (!modifiers?.length) return
+                                  const currentIdx = modifiers.findIndex(m => selectedModifiers.includes(m.id))
+                                  const next = (currentIdx + 1) % modifiers.length
+                                  setSelectedModifiers([modifiers[next].id])
+                                }}
+                              />
+                            </div>
+                            <div className="space-y-0.5">
+                              {modifiers.map((mod) => {
+                                const isActive = selectedModifiers.includes(mod.id)
+                                return (
+                                  <button
+                                    key={mod.id}
+                                    onClick={() => {
+                                      setSelectedModifiers(prev =>
+                                        isActive
+                                          ? prev.filter(id => id !== mod.id)
+                                          : prev.length < 3
+                                            ? [...prev, mod.id]
+                                            : prev
+                                      )
+                                    }}
+                                    className={`w-full text-left px-1.5 py-1 rounded border transition-colors flex items-center gap-1.5 ${
+                                      isActive
+                                        ? 'border-primary bg-primary/10'
+                                        : 'border-border hover:border-primary/50'
+                                    }`}
+                                    title={mod.description}
+                                  >
+                                    <div className={`w-3 h-3 rounded-sm border flex items-center justify-center shrink-0 ${
+                                      isActive ? 'bg-primary border-primary' : 'border-muted-foreground/30'
+                                    }`}>
+                                      {isActive && <Check size={8} className="text-primary-foreground" />}
+                                    </div>
+                                    <span className="text-[10px] font-medium truncate">{mod.name}</span>
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="border-t" />
+
+                        {/* Color Palettes */}
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Color Palette</span>
+                            <PillNav
+                              onPrev={() => {
+                                const idx = PALETTES.findIndex(p => p.id === selectedPaletteId)
+                                const prev = (idx <= 0 ? PALETTES.length : idx) - 1
+                                setPaletteIndex(prev)
+                                setSelectedPaletteId(PALETTES[prev].id)
+                                setCustomColors(paletteToCustomColors(PALETTES[prev]))
+                              }}
+                              onNext={() => {
+                                const idx = PALETTES.findIndex(p => p.id === selectedPaletteId)
+                                const next = (idx + 1) % PALETTES.length
+                                setPaletteIndex(next)
+                                setSelectedPaletteId(PALETTES[next].id)
+                                setCustomColors(paletteToCustomColors(PALETTES[next]))
+                              }}
+                            />
+                          </div>
+                          <div className="grid grid-cols-4 gap-1">
+                            {PALETTES.map((palette, idx) => {
+                              const isActive = selectedPaletteId === palette.id
+                              return (
+                                <button
+                                  key={palette.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setPaletteIndex(idx)
+                                    setSelectedPaletteId(palette.id)
+                                    setCustomColors(paletteToCustomColors(palette))
+                                  }}
+                                  className={`px-0.5 py-0.5 rounded border transition-colors ${
+                                    isActive
+                                      ? 'border-primary bg-primary/10'
+                                      : 'border-border hover:border-primary/50'
+                                  }`}
+                                  title={palette.name}
+                                >
+                                  <div className="flex gap-0.5 justify-center mb-0.5">
+                                    {[palette.brand, palette.background, palette.accent].map((c, i) => (
+                                      <div
+                                        key={i}
+                                        className="w-2 h-2 rounded-full border border-foreground/10"
+                                        style={{ backgroundColor: c }}
+                                      />
+                                    ))}
+                                  </div>
+                                  <span className="text-[6px] font-medium leading-tight line-clamp-1 text-center block">{palette.name}</span>
+                                </button>
+                              )
+                            })}
+                          </div>
+                          {selectedPaletteId && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedPaletteId(null)
+                                setCustomColors({})
+                              }}
+                              className="w-full text-[8px] text-muted-foreground hover:text-foreground transition-colors text-center"
+                            >
+                              Reset to style default
+                            </button>
+                          )}
+                        </div>
+
                       </>
                     )}
 
@@ -1531,78 +1601,8 @@ export function NewProjectModal({
                   </div>
                 </div>
 
-                {/* COLUMN 2b: Color Palette + Fonts + Customize Colors */}
+                {/* COLUMN 2b: Fonts + Customize Colors */}
                 <div className="w-[200px] shrink-0 border-r border-border/50 overflow-y-auto p-2 space-y-2">
-                  {/* Color Palettes */}
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Color Palette</span>
-                      <PillNav
-                        onPrev={() => {
-                          const idx = PALETTES.findIndex(p => p.id === selectedPaletteId)
-                          const prev = (idx <= 0 ? PALETTES.length : idx) - 1
-                          setPaletteIndex(prev)
-                          setSelectedPaletteId(PALETTES[prev].id)
-                          setCustomColors(paletteToCustomColors(PALETTES[prev]))
-                        }}
-                        onNext={() => {
-                          const idx = PALETTES.findIndex(p => p.id === selectedPaletteId)
-                          const next = (idx + 1) % PALETTES.length
-                          setPaletteIndex(next)
-                          setSelectedPaletteId(PALETTES[next].id)
-                          setCustomColors(paletteToCustomColors(PALETTES[next]))
-                        }}
-                      />
-                    </div>
-                    <div className="grid grid-cols-4 gap-1">
-                      {PALETTES.map((palette, idx) => {
-                        const isActive = selectedPaletteId === palette.id
-                        return (
-                          <button
-                            key={palette.id}
-                            type="button"
-                            onClick={() => {
-                              setPaletteIndex(idx)
-                              setSelectedPaletteId(palette.id)
-                              setCustomColors(paletteToCustomColors(palette))
-                            }}
-                            className={`px-0.5 py-0.5 rounded border transition-colors ${
-                              isActive
-                                ? 'border-primary bg-primary/10'
-                                : 'border-border hover:border-primary/50'
-                            }`}
-                            title={palette.name}
-                          >
-                            <div className="flex gap-0.5 justify-center mb-0.5">
-                              {[palette.brand, palette.background, palette.accent].map((c, i) => (
-                                <div
-                                  key={i}
-                                  className="w-2 h-2 rounded-full border border-foreground/10"
-                                  style={{ backgroundColor: c }}
-                                />
-                              ))}
-                            </div>
-                            <span className="text-[6px] font-medium leading-tight line-clamp-1 text-center block">{palette.name}</span>
-                          </button>
-                        )
-                      })}
-                    </div>
-                    {selectedPaletteId && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedPaletteId(null)
-                          setCustomColors({})
-                        }}
-                        className="w-full text-[8px] text-muted-foreground hover:text-foreground transition-colors text-center"
-                      >
-                        Reset to style default
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="border-t border-border/50" />
-
                   {/* Font Selection */}
                   <div className="space-y-1">
                     <div className="flex items-center justify-between">

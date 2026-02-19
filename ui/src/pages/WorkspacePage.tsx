@@ -329,6 +329,8 @@ export function WorkspacePage(): React.JSX.Element {
           onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
           onNewChat={handleNewChat}
           onSelectConversation={handleSelectConversation}
+          selectedWorkingDirectory={workingDirectory}
+          onWorkingDirectoryChange={handleRepoSelect}
         />
 
         {splitView ? (

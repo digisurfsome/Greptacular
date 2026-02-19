@@ -35,6 +35,7 @@ import {
 import { reorderWorkspaceCategories } from '@/lib/api'
 import { ConversationSearch } from './ConversationSearch'
 import { CategoryManager } from './CategoryManager'
+import { RepoSelector } from './RepoSelector'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -52,6 +53,10 @@ interface WorkspaceSidebarProps {
   onToggleCollapse: () => void
   onNewChat: () => void
   onSelectConversation: (id: number) => void
+  /** Currently selected working directory (repo path) from the page. */
+  selectedWorkingDirectory?: string | null
+  /** Callback when the user picks a repo in the naming form. */
+  onWorkingDirectoryChange?: (path: string) => void
 }
 
 // ---------------------------------------------------------------------------
@@ -86,6 +91,8 @@ export function WorkspaceSidebar({
   onToggleCollapse,
   onNewChat,
   onSelectConversation,
+  selectedWorkingDirectory,
+  onWorkingDirectoryChange,
 }: WorkspaceSidebarProps): React.JSX.Element {
   const [search, setSearch] = useState('')
   const [hoveredId, setHoveredId] = useState<number | null>(null)
@@ -312,6 +319,14 @@ export function WorkspaceSidebar({
             className="w-full text-xs bg-input border border-border rounded px-2 py-1.5 outline-none ring-ring focus:ring-1 text-foreground placeholder:text-muted-foreground mb-1.5"
             aria-label="Chat name"
           />
+          {/* Repo selector — pick a repo before starting the chat */}
+          <div className="mb-1.5">
+            <span className="text-[10px] text-muted-foreground mb-0.5 block">Repository</span>
+            <RepoSelector
+              onSelect={(path) => onWorkingDirectoryChange?.(path)}
+              selectedPath={selectedWorkingDirectory ?? null}
+            />
+          </div>
           <Button
             size="sm"
             className="w-full h-7 text-xs"

@@ -21,6 +21,7 @@ import json
 import logging
 import os
 import shutil
+import subprocess
 import sys
 import threading
 from datetime import datetime
@@ -211,6 +212,66 @@ class WorkspaceChatSession:
                 self._client_entered = False
                 self.client = None
 
+    def _create_workspace_branch(self) -> Optional[str]:
+        """Auto-create a git branch for this conversation if inside a git repo.
+
+        Creates a branch named ``workspace/chat-{conversation_id}`` and checks
+        it out. Returns the branch name on success, or ``None`` if the
+        working directory is not a git repo or branch creation fails.
+        """
+        wd = self.working_directory
+        if not wd or wd == str(Path.home()):
+            return None
+
+        # Check if the directory is a git repo
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "--is-inside-work-tree"],
+                cwd=wd,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode != 0:
+                return None
+        except Exception:
+            return None
+
+        branch_name = f"workspace/chat-{self.conversation_id}"
+        try:
+            # Create and checkout the new branch
+            result = subprocess.run(
+                ["git", "checkout", "-b", branch_name],
+                cwd=wd,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode == 0:
+                logger.info(
+                    "Auto-created branch '%s' for conversation %d in %s",
+                    branch_name, self.conversation_id, wd,
+                )
+                return branch_name
+
+            # Branch might already exist (e.g. resumed session) — try switching
+            result = subprocess.run(
+                ["git", "checkout", branch_name],
+                cwd=wd,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode == 0:
+                logger.info("Switched to existing branch '%s'", branch_name)
+                return branch_name
+
+            logger.warning("Failed to create/switch branch '%s': %s", branch_name, result.stderr.strip())
+            return None
+        except Exception as e:
+            logger.warning("Branch creation error: %s", e)
+            return None
+
     async def start(self) -> AsyncGenerator[dict, None]:
         """Initialize the session with the Claude client.
 
@@ -238,6 +299,12 @@ class WorkspaceChatSession:
             )
             self.conversation_id = int(conv.id)  # type coercion: Column[int] -> int
             yield {"type": "conversation_created", "conversation_id": self.conversation_id}
+
+            # Auto-create a git branch for this conversation if the working
+            # directory is a git repo, mimicking Claude Code's behavior.
+            branch_name = self._create_workspace_branch()
+            if branch_name:
+                yield {"type": "branch_created", "branch": branch_name}
 
         # -----------------------------------------------------------------
         # Security settings: full tools with acceptEdits permission mode.
@@ -391,7 +458,6 @@ class WorkspaceChatSession:
                     permission_mode="acceptEdits",
                     # Cost controls from user dashboard (see DEFAULT_COST_SETTINGS).
                     max_turns=cs["max_turns"],
-                    max_tokens=cs["max_tokens"],
                     effort=cs["effort"],
                     cwd=str(workspace_scratch),  # Scratch dir for CLAUDE.md
                     settings=str(settings_file.resolve()),
@@ -421,10 +487,13 @@ class WorkspaceChatSession:
         if is_new_conversation:
             self._history_loaded = True
             try:
+                branch_suffix = ""
+                if branch_name:
+                    branch_suffix = f" I've created and switched to branch **{branch_name}**."
                 greeting = (
                     "Hello! I'm your workspace assistant with full read/write access. "
                     "I can read, edit, and create files, run shell commands, and search the web. "
-                    f"My working directory is **{self.working_directory}**. How can I help?"
+                    f"My working directory is **{self.working_directory}**.{branch_suffix} How can I help?"
                 )
 
                 assert self.conversation_id is not None

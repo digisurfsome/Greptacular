@@ -21,6 +21,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -194,6 +195,24 @@ When appropriate, use these structured tags so the UI can render them as cards:
   [/PROGRESS]
   ```
 
+## Walkie-Talkie Communication
+
+You have a walkie-talkie communication channel with the user. While you're working:
+
+- **Receiving messages:** The user can send you messages at any time. If a tool call
+  is blocked with a "[WALKIE-TALKIE MESSAGE FROM USER]" notification, read the message,
+  acknowledge it briefly, and adjust your work if needed. Then continue with your task
+  (re-attempting any tool call that was intercepted).
+
+- **Requesting input:** When you need user input or want to present options, output:
+  [WAITING]Your question here[/WAITING]
+  Then pause and wait for the user's response via the walkie-talkie channel.
+  The user's response will arrive as a walkie-talkie message on your next tool call.
+
+- **Keep working:** Between walkie-talkie exchanges, continue working autonomously.
+  Don't pause unnecessarily. The walkie-talkie is for when you genuinely need input
+  or when the user wants to steer your direction.
+
 ## Pause Commands (Coder Panel Only)
 
 If the user says "pause", "pause 5m", "wait", or similar pause commands:
@@ -248,6 +267,12 @@ class WorkspaceChatSession:
         self.created_at = datetime.now()
         self._history_loaded: bool = False
 
+        # Walkie-talkie communication: in-memory message queue for injecting
+        # user messages into a running agent via PreToolUse hook interception.
+        self.walkie_talkie_queue: asyncio.Queue[str] = asyncio.Queue()
+        self.walkie_talkie_enabled: bool = True  # Controlled by comm_check_frequency setting
+        self.walkie_talkie_waiting: bool = False  # True when agent output [WAITING] tag
+
     async def close(self) -> None:
         """Clean up resources and close the Claude client."""
         if self.client and self._client_entered:
@@ -258,6 +283,15 @@ class WorkspaceChatSession:
             finally:
                 self._client_entered = False
                 self.client = None
+
+    async def queue_walkie_talkie_message(self, content: str) -> None:
+        """Queue a walkie-talkie message for the running agent to receive.
+
+        The message will be delivered on the agent's next tool call via the
+        PreToolUse hook. If multiple messages are queued before delivery,
+        they are concatenated into a single delivery.
+        """
+        await self.walkie_talkie_queue.put(content)
 
     def _create_workspace_branch(self) -> Optional[str]:
         """Auto-create a git branch for this conversation if inside a git repo.
@@ -477,9 +511,61 @@ class WorkspaceChatSession:
                 }
             )
 
+        # Walkie-talkie hook: checks the in-memory message queue before every
+        # tool call.  When a user message is waiting, the hook blocks the tool
+        # and injects the message so the agent can address it before proceeding.
+        async def walkie_talkie_hook(input_data, tool_use_id=None, context=None):
+            """Check for walkie-talkie messages before each tool call."""
+            if not self.walkie_talkie_enabled:
+                return None  # Disabled via settings, proceed normally
+
+            # Drain all queued messages into a single delivery
+            messages: list[str] = []
+            while True:
+                try:
+                    msg = self.walkie_talkie_queue.get_nowait()
+                    messages.append(msg)
+                except asyncio.QueueEmpty:
+                    break
+
+            if not messages:
+                return None  # No messages, proceed normally
+
+            # Reset waiting state -- user has responded
+            self.walkie_talkie_waiting = False
+
+            # Concatenate multiple messages with separators
+            if len(messages) == 1:
+                body = messages[0]
+            else:
+                parts = [f"Message {i + 1}: {m}" for i, m in enumerate(messages)]
+                body = "\n---\n".join(parts)
+
+            logger.info(
+                "Walkie-talkie: delivering %d message(s) to agent in session %s",
+                len(messages), self.session_id,
+            )
+
+            return SyncHookJSONOutput(
+                hookSpecificOutput={
+                    "hookEventName": "PreToolUse",
+                    "decision": "block",
+                    "reason": (
+                        f"[WALKIE-TALKIE MESSAGE FROM USER]\n\n"
+                        f"{body}\n\n"
+                        f"[END WALKIE-TALKIE MESSAGE]\n\n"
+                        f"Please acknowledge and address this message. "
+                        f"Then continue with your previous task. "
+                        f"Your planned tool call was not executed — "
+                        f"you may re-attempt it after addressing the message."
+                    ),
+                }
+            )
+
         hooks = {
             "PreToolUse": [
-                HookMatcher(matcher="Bash", hooks=[bash_security_hook])
+                HookMatcher(matcher="Bash", hooks=[bash_security_hook]),
+                HookMatcher(hooks=[walkie_talkie_hook]),  # Fires for ALL tools
             ],
             "PreCompact": [
                 HookMatcher(hooks=[workspace_pre_compact_hook])
@@ -811,6 +897,20 @@ class WorkspaceChatSession:
                         if text:
                             full_response += text
                             yield {"type": "text", "content": text}
+
+                            # Detect agent-initiated wait signal: [WAITING]...[/WAITING]
+                            if "[WAITING]" in full_response and "[/WAITING]" in full_response:
+                                wait_match = re.search(
+                                    r'\[WAITING\](.*?)\[/WAITING\]',
+                                    full_response,
+                                    re.DOTALL,
+                                )
+                                if wait_match and not self.walkie_talkie_waiting:
+                                    self.walkie_talkie_waiting = True
+                                    yield {
+                                        "type": "agent_waiting",
+                                        "question": wait_match.group(1).strip(),
+                                    }
 
                     elif block_type == "ToolUseBlock" and hasattr(block, "name"):
                         tool_name = block.name

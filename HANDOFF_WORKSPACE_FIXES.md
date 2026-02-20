@@ -206,6 +206,61 @@ In the frontend, use `new Date().toLocaleTimeString()` or a timezone-aware forma
 
 ---
 
+## Bug 6: Token Meter Shows ~170K but API Bills ~517K (Multi-Turn Blindspot)
+
+### Problem — THIS IS THE BIGGEST COST ISSUE
+The UI shows "170K tokens, $2.12" for a conversation, but the Anthropic API console shows **517K input tokens billed** for that same conversation. The UI is off by **3x**.
+
+### Root Cause
+The Claude Agent SDK works in **multi-turn loops**. Each turn is a separate API call that re-sends the **FULL conversation history** as input tokens. A single conversation with 2 main turns looks like:
+
+```
+Turn 1: 210,252 input tokens (user message + system prompt + full context)
+         → Claude responds with 2,013 output tokens + launches tool calls
+Sub-agent calls: 14K, 14K, 19K, 19K, 25K input tokens (Task agent doing file ops)
+Turn 2: 212,816 input tokens (everything from Turn 1 + tool results re-sent)
+         → Claude writes final response with 847 output tokens
+─────────────────────────────────────────────────────
+TOTAL BILLED: ~517K input tokens
+UI SHOWS:     ~170K tokens
+```
+
+The UI only counts the **conversation content** (user messages + assistant responses stored in the database). It does NOT account for:
+1. **Full history re-send on each turn** — every turn re-sends everything
+2. **System prompt tokens** — the system prompt is sent on every turn but never counted
+3. **Tool result tokens** — file contents, search results, git output sent back as input
+4. **Sub-agent API calls** — Task tool spawns separate Claude sessions with their own token usage
+
+### What Needs to Change
+
+#### Option A: Track Real API Token Usage (Ideal)
+If the Claude Agent SDK exposes per-turn token usage in its response metadata, capture it and sum it up. This gives exact numbers that match the API console.
+
+#### Option B: Estimate Multi-Turn Overhead (Fallback)
+If the SDK doesn't expose this, apply a multiplier based on the number of turns:
+- `real_cost ≈ displayed_tokens × number_of_turns × rate`
+- Show "~2-3 API turns" alongside the token count so users understand the multiplier
+
+#### Option C: Processing Log (User's Preferred Solution)
+Add a real-time processing log panel that shows:
+- Each API call as it happens (turn number, timestamp)
+- Input tokens and output tokens per turn
+- Running cost total that matches actual API billing
+- Tool calls and their token impact when results come back
+- Similar to Railway's log viewer — detailed, real-time, scrolling
+
+### Impact
+This is the root cause of ALL the cost confusion. The user ran 3 conversations totaling ~230K displayed tokens but was billed for ~517K+ input tokens. The 2-3x multiplier from multi-turn re-sending explains the gap between every cost estimate and the real Anthropic bill.
+
+### Key Files
+- `ui/src/components/workspace/EnhancedContextBudgetBar.tsx` — token display (only shows DB-stored estimate)
+- `ui/src/components/workspace/UsageDashboard.tsx` — cost zone display (same DB-stored estimate)
+- `server/services/workspace_chat_session.py` lines 749-779 — where response is received and stored (only stores assistant response tokens, not the full turn's input)
+- `server/services/workspace_database.py` — `estimate_tokens()` and `add_message()` functions
+- `ui/src/hooks/useWorkspaceChat.ts` — `token_usage` WebSocket handler
+
+---
+
 ## Files Modified This Session
 - `ui/src/components/workspace/WorkspaceChat.tsx` — on-deck indicator added
 - `ui/src/components/workspace/WorkspaceSidebar.tsx` — model picker in naming form added

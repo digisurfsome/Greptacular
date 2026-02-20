@@ -1,8 +1,8 @@
-# Handoff: Workspace Model Selection, Cost Display & Opus Hang Fixes
+# Handoff: Workspace Model Selection, Cost Display, Opus Hang & Related Fixes
 
 ## Context
 
-The workspace chat feature has three interconnected bugs discovered through real usage testing with the Anthropic API console as ground truth.
+The workspace chat feature has five bugs discovered through real usage testing with the Anthropic API console as ground truth.
 
 **Branch:** `claude/fix-workspace-features-X9VMA`
 
@@ -158,7 +158,55 @@ Backend get_conversation_cost_zones:
   SUM(token_estimate) from WorkspaceMessage → hardcoded $15/MTok → "API equiv" $
 ```
 
-### Files Modified This Session
+---
+
+## Bug 4: "Economy" Cost Preset Doesn't Change the Model
+
+### Problem
+The user selected the "Economy" cost control preset expecting a cheaper model, but the Anthropic API console shows **every request still used `claude-opus-4-6`**. The Economy preset only adjusts cost control parameters (effort level, max_tokens, max_turns) — it never switches to Sonnet or a cheaper model. This is misleading.
+
+### Evidence from API Console Logs
+All requests on the "Economy" preset used `claude-opus-4-6`:
+- 18:49:31 CST: 210,252 input / 2,013 output (over 200K threshold → extended pricing)
+- 18:51:44 CST: 212,816 input / 847 output (over 200K threshold)
+- 17:23:51 CST: 213,472 input / 599 output (over 200K threshold)
+
+Multiple requests crossed the 200K input token threshold, triggering 1.5-2x extended pricing ($10/MTok input instead of $5/MTok). This is why "Economy" ended up costing similar to the earlier full-price runs.
+
+### What Needs to Change
+The cost control presets should clearly indicate what model they use. Options:
+1. **Show the model name in the preset description** so users know Economy still uses Opus
+2. **Actually switch to Sonnet for cheaper presets** — e.g., Economy uses Sonnet 4.5 instead of Opus 4.6
+3. **Add a "model" field to cost presets** so each preset explicitly defines which model it uses
+
+### Key Files
+- `ui/src/components/workspace/CostControls.tsx` — preset definitions and cost control UI
+- The preset likely only sets `effort`, `max_tokens`, `max_turns` without touching the model
+
+---
+
+## Bug 5: UTC Timestamps in AutoForge Usage Graphs
+
+### Problem
+The AutoForge usage dashboard shows activity at "12 AM - 1 AM" when the user's local time is 7 PM CST. The graph is using UTC timestamps without converting to the user's local timezone. This makes it impossible to correlate AutoForge usage data with the Anthropic API console (which shows CST).
+
+### What Needs to Change
+Timestamps displayed in the AutoForge UI should be converted to the user's local timezone. This includes:
+1. **Usage dashboard graphs** — the x-axis time labels
+2. **Log entries** — any timestamps shown in the log viewer
+3. **Daily/Weekly/Monthly rollup boundaries** — "today" should mean the user's local day, not UTC day
+
+### Likely Fix
+In the frontend, use `new Date().toLocaleTimeString()` or a timezone-aware formatting library instead of displaying raw UTC strings. The backend may store UTC (which is correct), but the frontend should convert for display.
+
+### Key Files to Investigate
+- `ui/src/components/workspace/UsageDashboard.tsx` — usage display and graphs
+- Any chart/graph component that renders time-series data
+- Backend endpoints that return timestamp data (check if they return ISO strings with timezone info or bare UTC)
+
+---
+
+## Files Modified This Session
 - `ui/src/components/workspace/WorkspaceChat.tsx` — on-deck indicator added
 - `ui/src/components/workspace/WorkspaceSidebar.tsx` — model picker in naming form added
 - `ui/src/pages/WorkspacePage.tsx` — model preset state management added

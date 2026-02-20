@@ -451,6 +451,10 @@ class SettingsResponse(BaseModel):
     min_spec_score: int = 3
     run_architect: bool = True
     force_build: bool = False
+    # Walkie-Talkie communication settings
+    comm_check_frequency: str = "per_feature"  # per_feature, every_tool_call, never
+    comm_wait_timeout: int = 120  # seconds (30-300)
+    comm_auto_reply: bool = True  # auto-send "keep going" on timeout
 
 
 class ModelsResponse(BaseModel):
@@ -482,6 +486,10 @@ class SettingsUpdate(BaseModel):
     min_spec_score: int | None = None
     run_architect: bool | None = None
     force_build: bool | None = None
+    # Walkie-Talkie communication settings
+    comm_check_frequency: str | None = None
+    comm_wait_timeout: int | None = None
+    comm_auto_reply: bool | None = None
 
     @field_validator('api_base_url')
     @classmethod
@@ -551,6 +559,20 @@ class SettingsUpdate(BaseModel):
     def validate_min_spec_score(cls, v: int | None) -> int | None:
         if v is not None and (v < 1 or v > 5):
             raise ValueError("min_spec_score must be between 1 and 5")
+        return v
+
+    @field_validator('comm_check_frequency')
+    @classmethod
+    def validate_comm_check_frequency(cls, v: str | None) -> str | None:
+        if v is not None and v not in ("per_feature", "every_tool_call", "never"):
+            raise ValueError("comm_check_frequency must be 'per_feature', 'every_tool_call', or 'never'")
+        return v
+
+    @field_validator('comm_wait_timeout')
+    @classmethod
+    def validate_comm_wait_timeout(cls, v: int | None) -> int | None:
+        if v is not None and (v < 30 or v > 300):
+            raise ValueError("comm_wait_timeout must be between 30 and 300 seconds")
         return v
 
 

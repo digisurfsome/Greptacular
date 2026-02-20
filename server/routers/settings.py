@@ -139,6 +139,10 @@ async def get_settings():
         min_spec_score=_parse_int(all_settings.get("min_spec_score"), 3),
         run_architect=_parse_bool(all_settings.get("run_architect"), default=True),
         force_build=_parse_bool(all_settings.get("force_build"), default=False),
+        # Walkie-Talkie comm settings
+        comm_check_frequency=all_settings.get("comm_check_frequency", "per_feature"),
+        comm_wait_timeout=_parse_int(all_settings.get("comm_wait_timeout"), 120),
+        comm_auto_reply=_parse_bool(all_settings.get("comm_auto_reply"), default=True),
     )
 
 
@@ -217,6 +221,16 @@ async def update_settings(update: SettingsUpdate):
     if update.force_build is not None:
         set_setting("force_build", "true" if update.force_build else "false")
 
+    # Walkie-Talkie comm settings
+    if update.comm_check_frequency is not None:
+        set_setting("comm_check_frequency", update.comm_check_frequency)
+
+    if update.comm_wait_timeout is not None:
+        set_setting("comm_wait_timeout", str(update.comm_wait_timeout))
+
+    if update.comm_auto_reply is not None:
+        set_setting("comm_auto_reply", "true" if update.comm_auto_reply else "false")
+
     # Return updated settings
     all_settings = get_all_settings()
     api_provider = all_settings.get("api_provider", "claude")
@@ -247,4 +261,8 @@ async def update_settings(update: SettingsUpdate):
         min_spec_score=_parse_int(all_settings.get("min_spec_score"), 3),
         run_architect=_parse_bool(all_settings.get("run_architect"), default=True),
         force_build=_parse_bool(all_settings.get("force_build"), default=False),
+        # Walkie-Talkie comm settings
+        comm_check_frequency=all_settings.get("comm_check_frequency", "per_feature"),
+        comm_wait_timeout=_parse_int(all_settings.get("comm_wait_timeout"), 120),
+        comm_auto_reply=_parse_bool(all_settings.get("comm_auto_reply"), default=True),
     )

@@ -74,6 +74,8 @@ interface WorkspaceChatProps {
   onResponseComplete?: (content: string) => void
   /** Model to use for this panel ('opus' | 'sonnet'). Passed through to the backend. */
   preferredModel?: 'opus' | 'sonnet'
+  /** Callback when the user changes the model for this panel. Only used in split-view. */
+  onModelChange?: (model: 'opus' | 'sonnet') => void
 }
 
 /** Generate a unique ID for local messages. */
@@ -134,6 +136,7 @@ export function WorkspaceChat({
   onInjectConsumed,
   onResponseComplete,
   preferredModel,
+  onModelChange,
 }: WorkspaceChatProps): React.JSX.Element {
   const [inputValue, setInputValue] = useState('')
   const messagesContainerRef = useRef<HTMLDivElement>(null)
@@ -655,16 +658,37 @@ export function WorkspaceChat({
         </div>
       )}
 
-      {/* Panel label (split-view mode) */}
+      {/* Panel label (split-view mode) with per-panel model selector */}
       {panelLabel && (
-        <div className={`flex items-center justify-center px-3 py-1.5 text-xs font-bold tracking-wide border-b ${
+        <div className={`flex items-center justify-between px-3 py-1.5 text-xs font-bold tracking-wide border-b ${
           panelLabel.includes('RESEARCH')
             ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
             : panelLabel.includes('CODER')
               ? 'bg-cyan-500/10 text-cyan-600 border-cyan-500/20'
               : 'bg-violet-500/10 text-violet-600 border-violet-500/20'
         }`}>
-          {panelLabel}
+          <span>{panelLabel}</span>
+          {/* Per-panel model toggle (split-view only) */}
+          {fixedContextMode && onModelChange && (
+            <div className="flex rounded-full border border-current/20 overflow-hidden ml-2">
+              {(['opus', 'sonnet'] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => onModelChange(m)}
+                  className={`px-2 py-0.5 text-[10px] font-semibold transition-all ${
+                    preferredModel === m
+                      ? m === 'opus'
+                        ? 'bg-current/20 text-inherit'
+                        : 'bg-violet-500/20 text-violet-600'
+                      : 'text-current/40 hover:text-current/70'
+                  } ${m === 'opus' ? 'rounded-l-full' : 'rounded-r-full border-l border-current/20'}`}
+                  title={`Switch to ${m === 'opus' ? 'Opus 4.6' : 'Sonnet 4.6'} (takes effect on next session)`}
+                >
+                  {m === 'opus' ? 'Opus' : 'Sonnet'}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

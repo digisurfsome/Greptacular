@@ -2,6 +2,14 @@
  * TypeScript types for the Autonomous Coding UI
  */
 
+// Walkie-Talkie log entry (displayed in sidebar panel)
+export interface WalkieTalkieLogEntry {
+  id: string
+  sender: 'user' | 'agent' | 'system'
+  content: string
+  timestamp: Date
+}
+
 // Project types
 export interface ProjectStats {
   passing: number

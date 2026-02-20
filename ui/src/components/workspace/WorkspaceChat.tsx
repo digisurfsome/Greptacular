@@ -50,7 +50,7 @@ import { ChatForkModal } from './ChatForkModal'
 import { InjectFromChatModal } from './InjectFromChatModal'
 import CostControls, { loadCostSettings, type CostSettings } from './CostControls'
 import { AgentNotifications, stripStructuredBlocks, parseStructuredBlocks } from './AgentNotifications'
-import type { ChatMessage as ChatMessageType, WorkspaceMessage, PendingInjection, ImageAttachment } from '@/lib/types'
+import type { ChatMessage as ChatMessageType, WorkspaceMessage, PendingInjection, ImageAttachment, WalkieTalkieLogEntry } from '@/lib/types'
 
 const DRAFT_KEY_PREFIX = 'workspace-draft-'
 
@@ -81,6 +81,8 @@ interface WorkspaceChatProps {
   preferredModel?: 'opus' | 'sonnet'
   /** Callback when the user changes the model for this panel. Only used in split-view. */
   onModelChange?: (model: 'opus' | 'sonnet') => void
+  /** Callback with the walkie-talkie log, called on every update. */
+  onWalkieTalkieLog?: (log: WalkieTalkieLogEntry[]) => void
 }
 
 /** Generate a unique ID for local messages. */
@@ -142,6 +144,7 @@ export function WorkspaceChat({
   onResponseComplete,
   preferredModel,
   onModelChange,
+  onWalkieTalkieLog,
 }: WorkspaceChatProps): React.JSX.Element {
   const [inputValue, setInputValue] = useState('')
   const messagesContainerRef = useRef<HTMLDivElement>(null)
@@ -252,12 +255,19 @@ export function WorkspaceChat({
     setPendingInjection,
     agentWaiting,
     agentWaitingQuestion,
+    walkieTalkieLog,
+    addWalkieTalkieEntry,
     start,
     sendMessage,
     sendWalkieTalkie,
     disconnect,
     clearMessages,
   } = useWorkspaceChat({ onError: handleError })
+
+  // Propagate walkie-talkie log to parent for display in sidebar panel
+  useEffect(() => {
+    onWalkieTalkieLog?.(walkieTalkieLog)
+  }, [walkieTalkieLog, onWalkieTalkieLog])
 
   // Focus walkie-talkie input when agent enters waiting state
   useEffect(() => {
@@ -528,6 +538,7 @@ export function WorkspaceChat({
   const handleWalkieTalkieSend = useCallback(() => {
     const content = walkieTalkieInput.trim()
     if (!content) return
+    addWalkieTalkieEntry('user', content)
     sendWalkieTalkie(content)
     setWalkieTalkieInput('')
     // Show brief "Sent!" confirmation
@@ -537,7 +548,7 @@ export function WorkspaceChat({
       setWalkieTalkieSent(false)
       walkieTalkieSentTimerRef.current = null
     }, 1500)
-  }, [walkieTalkieInput, sendWalkieTalkie])
+  }, [walkieTalkieInput, sendWalkieTalkie, addWalkieTalkieEntry])
 
   // Walkie-talkie input keydown handler
   const handleWalkieTalkieKeyDown = useCallback(
@@ -553,13 +564,15 @@ export function WorkspaceChat({
   // CountdownTimerBar handlers
   const handleTimerTimeout = useCallback(() => {
     // Auto-reply: send "Continue with your best judgment" to the agent
+    addWalkieTalkieEntry('system', 'Auto-reply: Continue with your best judgment')
     sendWalkieTalkie('Continue with your best judgment')
-  }, [sendWalkieTalkie])
+  }, [sendWalkieTalkie, addWalkieTalkieEntry])
 
   const handleTimerKeepGoing = useCallback(() => {
     // "Keep Going" button: send immediate response
+    addWalkieTalkieEntry('user', 'Keep going, proceed with your best judgment')
     sendWalkieTalkie('Keep going, proceed with your best judgment')
-  }, [sendWalkieTalkie])
+  }, [sendWalkieTalkie, addWalkieTalkieEntry])
 
   // Save a walkie-talkie setting to the server and update local state
   const saveWalkieTalkieSetting = useCallback(async (patch: { comm_check_frequency?: string; comm_wait_timeout?: number; comm_auto_reply?: boolean }) => {

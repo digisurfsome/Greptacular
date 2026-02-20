@@ -6,7 +6,7 @@
  * Split into two tabs: Library (files) and Repos (GitHub connections).
  */
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import {
   FileText,
   GitBranch,
@@ -19,6 +19,10 @@ import {
   Trash2,
   Globe,
   MessageSquare,
+  Radio,
+  User,
+  Bot,
+  Info,
 } from 'lucide-react'
 import {
   useConversationFiles,
@@ -33,15 +37,16 @@ import { RepoConnector } from './RepoConnector'
 import { RepoBrowser } from './RepoBrowser'
 import { getRepoFile } from '@/lib/api'
 import { Button } from '@/components/ui/button'
-import type { LibraryFile } from '@/lib/types'
+import type { LibraryFile, WalkieTalkieLogEntry } from '@/lib/types'
 
 interface WorkspaceLibraryProps {
   conversationId: number | null
   collapsed: boolean
   onToggleCollapse: () => void
+  walkieTalkieLog?: WalkieTalkieLogEntry[]
 }
 
-type Tab = 'library' | 'repos'
+type Tab = 'library' | 'repos' | 'walkie-talkie'
 
 const TYPE_COLORS: Record<string, string> = {
   doc: 'bg-blue-500/10 text-blue-500',
@@ -61,8 +66,17 @@ export function WorkspaceLibrary({
   conversationId,
   collapsed,
   onToggleCollapse,
+  walkieTalkieLog = [],
 }: WorkspaceLibraryProps): React.JSX.Element {
   const [activeTab, setActiveTab] = useState<Tab>('library')
+  const wtLogEndRef = useRef<HTMLDivElement>(null)
+
+  // Auto-scroll walkie-talkie log to bottom when new entries arrive
+  useEffect(() => {
+    if (activeTab === 'walkie-talkie') {
+      wtLogEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [walkieTalkieLog.length, activeTab])
   const [uploadModal, setUploadModal] = useState<'file' | 'text' | null>(null)
   const [repoModal, setRepoModal] = useState(false)
   const [previewFile, setPreviewFile] = useState<LibraryFile | null>(null)
@@ -138,6 +152,22 @@ export function WorkspaceLibrary({
           Repos
           {repos.length > 0 && (
             <span className="bg-muted text-muted-foreground text-xs px-1.5 rounded-full">{repos.length}</span>
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab('walkie-talkie')}
+          className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors ${
+            activeTab === 'walkie-talkie'
+              ? 'text-amber-600 dark:text-amber-400 border-b-2 border-amber-500'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          <Radio size={14} />
+          WT
+          {walkieTalkieLog.length > 0 && (
+            <span className="bg-amber-500/20 text-amber-600 dark:text-amber-400 text-[10px] px-1.5 rounded-full font-bold">
+              {walkieTalkieLog.length}
+            </span>
           )}
         </button>
         <button
@@ -254,6 +284,60 @@ export function WorkspaceLibrary({
             )}
           </div>
         </>
+      )}
+
+      {/* Walkie-Talkie tab */}
+      {activeTab === 'walkie-talkie' && (
+        <div className="flex-1 overflow-y-auto">
+          {walkieTalkieLog.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 gap-2 text-muted-foreground text-xs">
+              <Radio size={20} strokeWidth={1.5} className="text-amber-500/50" />
+              <span>No walkie-talkie messages yet</span>
+              <span className="text-[10px] text-center px-4">
+                Messages you send via the amber bar while the agent is working will appear here.
+              </span>
+            </div>
+          ) : (
+            <div className="py-2 space-y-1">
+              {walkieTalkieLog.map((entry) => (
+                <div
+                  key={entry.id}
+                  className={`mx-2 px-2.5 py-1.5 rounded-lg text-xs ${
+                    entry.sender === 'user'
+                      ? 'bg-amber-500/10 border border-amber-500/20'
+                      : entry.sender === 'agent'
+                        ? 'bg-primary/5 border border-primary/10'
+                        : 'bg-muted/50'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    {entry.sender === 'user' ? (
+                      <User size={10} className="text-amber-600 dark:text-amber-400" />
+                    ) : entry.sender === 'agent' ? (
+                      <Bot size={10} className="text-primary" />
+                    ) : (
+                      <Info size={10} className="text-muted-foreground" />
+                    )}
+                    <span className={`text-[10px] font-semibold ${
+                      entry.sender === 'user'
+                        ? 'text-amber-600 dark:text-amber-400'
+                        : entry.sender === 'agent'
+                          ? 'text-primary'
+                          : 'text-muted-foreground'
+                    }`}>
+                      {entry.sender === 'user' ? 'You' : entry.sender === 'agent' ? 'Agent' : 'System'}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground ml-auto">
+                      {entry.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    </span>
+                  </div>
+                  <p className="text-foreground leading-snug break-words">{entry.content}</p>
+                </div>
+              ))}
+              <div ref={wtLogEndRef} />
+            </div>
+          )}
+        </div>
       )}
 
       {/* Modals */}

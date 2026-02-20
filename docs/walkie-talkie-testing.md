@@ -15,13 +15,16 @@ Covers every walkie-talkie feature in a single pass. ~5 minutes, minimal token c
 
 ### A. Verify Settings UI
 
-- [ ] **Open Settings** — Press `,` or click the gear icon
-- [ ] **Find "Walkie-Talkie" section** (near bottom of settings panel)
-  - **Expected:** Three controls: Check Frequency, Wait Timeout, Auto-Reply on Timeout
+- [ ] **Click the gear icon** in the chat header bar (top-right area, small gear icon next to the connection status dots)
+  - **Expected:** An amber-tinted settings panel drops down below the header with "Walkie-Talkie Settings" title
+- [ ] **Verify three controls are visible:**
+  - Check Frequency (3 buttons: Per Feature / Every Tool Call / Never)
+  - Wait Timeout (4 buttons: 30s / 1m / 2m / 5m)
+  - Auto-reply on timeout (toggle switch)
 - [ ] **Set Check Frequency to "Every Tool Call"** — Most responsive for testing
 - [ ] **Set Wait Timeout to "30s"** — Short timeout makes countdown easy to test
 - [ ] **Confirm Auto-Reply is ON** — Toggle should be active
-- [ ] **Close Settings**
+- [ ] **Close the panel** by clicking the X in the top-right of the settings panel, or click the gear icon again
 
 ---
 
@@ -97,10 +100,10 @@ Covers every walkie-talkie feature in a single pass. ~5 minutes, minimal token c
 
 ### G. Test Disabling Walkie-Talkie
 
-- [ ] **Open Settings** → Set Check Frequency to **"Never"** → Close Settings
+- [ ] **Click the gear icon** in the header → Set Check Frequency to **"Never"** → Close panel
 - [ ] **Start a new conversation** with any task (e.g., "Create test.txt with 'hello'")
   - **Expected:** No amber bar appears, no "Live" indicator in header
-- [ ] **Restore** Check Frequency to "Every Tool Call" or "Per Feature"
+- [ ] **Click the gear icon** again → Restore Check Frequency to "Every Tool Call" or "Per Feature"
 
 ---
 
@@ -155,7 +158,7 @@ For agent-to-user questions, the agent outputs `[WAITING]...[/WAITING]` in its r
 
 ### How to Enable or Disable
 
-Open **Settings** (press `,`) → scroll to **Walkie-Talkie**:
+Click the **gear icon** (⚙) in the chat header bar (top-right area, next to the connection status indicator). A settings panel drops down:
 
 | Setting | Options | Default | What it does |
 |---------|---------|---------|-------------|

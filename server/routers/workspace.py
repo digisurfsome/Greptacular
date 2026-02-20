@@ -7,6 +7,7 @@ Unlike the assistant (read-only, per-project), the workspace is a global
 read/write agent with a 1M-token context window.
 """
 
+import asyncio
 import json
 import logging
 from typing import Optional
@@ -896,6 +897,100 @@ async def get_walkie_talkie_status(session_id: str):
 # WebSocket Endpoint
 # ============================================================================
 
+_STREAM_SENTINEL = object()
+
+
+async def _stream_with_walkie_talkie(
+    websocket: WebSocket,
+    session,
+    response_gen,
+):
+    """Stream an agent response while concurrently handling walkie-talkie messages.
+
+    The core problem: Starlette WebSockets are single-reader — you can't call
+    ``receive_text()`` while you're in an ``async for chunk`` loop.  So during
+    response streaming, walkie-talkie messages from the client sit in the
+    transport buffer and never reach the session queue.
+
+    This helper decouples response generation from WebSocket I/O using an
+    ``asyncio.Queue``.  A background producer feeds chunks into the queue while
+    the main coroutine alternates between:
+
+    1. Sending queued response chunks to the client.
+    2. Polling for incoming walkie-talkie messages (short timeout).
+
+    Worst-case delivery latency for a walkie-talkie message is ~250 ms, which
+    is well within the seconds-long gap between agent tool calls where the
+    ``PreToolUse`` hook actually fires.
+    """
+    chunk_queue: asyncio.Queue = asyncio.Queue()
+
+    async def _produce():
+        try:
+            async for chunk in response_gen:
+                await chunk_queue.put(chunk)
+        finally:
+            await chunk_queue.put(_STREAM_SENTINEL)
+
+    producer = asyncio.create_task(_produce())
+
+    try:
+        while True:
+            # --- 1. Wait for the next response chunk (with timeout) ---
+            try:
+                chunk = await asyncio.wait_for(chunk_queue.get(), timeout=0.2)
+            except asyncio.TimeoutError:
+                chunk = None
+
+            if chunk is _STREAM_SENTINEL:
+                break
+
+            if chunk is not None:
+                await websocket.send_json(chunk)
+                if chunk.get("type") == "agent_waiting":
+                    logger.info(
+                        "Agent waiting in session %s: %s",
+                        session.session_id,
+                        chunk.get("question", "")[:80],
+                    )
+                # Drain any buffered chunks for throughput
+                while not chunk_queue.empty():
+                    c = chunk_queue.get_nowait()
+                    if c is _STREAM_SENTINEL:
+                        return
+                    await websocket.send_json(c)
+
+            # --- 2. Poll for incoming walkie-talkie / ping messages ---
+            try:
+                data = await asyncio.wait_for(websocket.receive_text(), timeout=0.05)
+                msg = json.loads(data)
+                msg_type = msg.get("type")
+                if msg_type == "walkie_talkie":
+                    content = msg.get("content", "")
+                    if content:
+                        await session.queue_walkie_talkie_message(content)
+                        await websocket.send_json({
+                            "type": "walkie_talkie_queued",
+                            "content": content[:100],
+                        })
+                        logger.info(
+                            "Walkie-talkie queued during stream in session %s",
+                            session.session_id,
+                        )
+                elif msg_type == "ping":
+                    await websocket.send_json({"type": "pong"})
+            except asyncio.TimeoutError:
+                pass
+            except json.JSONDecodeError:
+                pass
+    finally:
+        producer.cancel()
+        try:
+            await producer
+        except asyncio.CancelledError:
+            pass
+
+
 @router.websocket("/ws")
 async def workspace_chat_websocket(websocket: WebSocket):
     """
@@ -990,7 +1085,6 @@ async def workspace_chat_websocket(websocket: WebSocket):
                         # Wire walkie-talkie settings from the global settings store.
                         # The comm_check_frequency value of "never" disables the hook entirely.
                         try:
-                            from ..services.workspace_chat_session import get_session as _ws_get
                             from registry import get_global_settings
                             gs = get_global_settings()
                             comm_freq = getattr(gs, "comm_check_frequency", "per_feature")
@@ -1062,15 +1156,14 @@ async def workspace_chat_websocket(websocket: WebSocket):
                         except Exception as e:
                             logger.warning("Invalid attachment data: %s", e)
 
-                    # Stream Claude's response, forwarding walkie-talkie events to the client
-                    async for chunk in session.send_message(user_content, attachments=attachments):
-                        await websocket.send_json(chunk)
-                        # Forward agent_waiting events so the UI can show the countdown bar
-                        if chunk.get("type") == "agent_waiting":
-                            logger.info(
-                                "Agent waiting for input in session %s: %s",
-                                session_id, chunk.get("question", "")[:80],
-                            )
+                    # Stream Claude's response while listening for walkie-talkie
+                    # messages.  The helper multiplexes response chunks with
+                    # incoming WebSocket reads so the user can inject messages
+                    # into the running agent mid-stream.
+                    await _stream_with_walkie_talkie(
+                        websocket, session,
+                        session.send_message(user_content, attachments=attachments),
+                    )
 
                 elif msg_type == "answer":
                     # User answered a structured question
@@ -1096,9 +1189,11 @@ async def workspace_chat_websocket(websocket: WebSocket):
                     else:
                         user_response = str(answers)
 
-                    # Stream Claude's response
-                    async for chunk in session.send_message(user_response):
-                        await websocket.send_json(chunk)
+                    # Stream Claude's response (with walkie-talkie support)
+                    await _stream_with_walkie_talkie(
+                        websocket, session,
+                        session.send_message(user_response),
+                    )
 
                 else:
                     await websocket.send_json({

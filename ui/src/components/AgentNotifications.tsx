@@ -4,11 +4,17 @@
  * Displays agent messages (status, questions, discoveries, warnings, milestones)
  * and allows the user to send messages back to the agent via the inbox API.
  * Also shows the current agent phase when the agent is running.
+ *
+ * When the agent is in "waiting" phase (chat_with_user), shows:
+ * - Countdown timer showing remaining wait time
+ * - "Keep Going" quick-dismiss button
+ * - Auto-reply on timeout (when enabled in settings)
  */
 
-import { useState, useRef, useEffect } from 'react'
-import { Send, MessageCircle, ChevronDown, ChevronUp } from 'lucide-react'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { Send, MessageCircle, ChevronDown, ChevronUp, Play } from 'lucide-react'
 import { sendToAgentInbox } from '../lib/api'
+import { useSettings } from '../hooks/useProjects'
 
 // Category styling for agent messages
 const CATEGORY_STYLES: Record<string, { bg: string; border: string; icon: string }> = {
@@ -43,11 +49,47 @@ export function AgentNotifications({ projectName, agentMessages, agentPhase, age
   const [inputText, setInputText] = useState('')
   const [sending, setSending] = useState(false)
   const [sentMessages, setSentMessages] = useState<Array<{ id: string; text: string; timestamp: string }>>([])
+  const [countdown, setCountdown] = useState<number | null>(null)
+  const [autoReplied, setAutoReplied] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const autoReplyRef = useRef(false)
+
+  const { data: settings } = useSettings()
 
   const isAgentRunning = agentStatus === 'running' || agentStatus === 'paused'
   const isWaitingForReply = agentPhase?.phase === 'waiting'
+  const waitTimeout = settings?.comm_wait_timeout ?? 120
+  const autoReplyEnabled = settings?.comm_auto_reply ?? true
+
+  // Countdown timer when agent is waiting
+  useEffect(() => {
+    if (!isWaitingForReply || !agentPhase?.timestamp) {
+      setCountdown(null)
+      setAutoReplied(false)
+      autoReplyRef.current = false
+      return
+    }
+
+    const startTime = new Date(agentPhase.timestamp).getTime()
+
+    const tick = () => {
+      const elapsed = (Date.now() - startTime) / 1000
+      const remaining = Math.max(0, waitTimeout - elapsed)
+      setCountdown(Math.ceil(remaining))
+
+      // Auto-reply when countdown hits 0
+      if (remaining <= 0 && autoReplyEnabled && !autoReplyRef.current && projectName) {
+        autoReplyRef.current = true
+        setAutoReplied(true)
+        sendToAgentInbox(projectName, "Keep going, you're doing great!").catch(() => {})
+      }
+    }
+
+    tick()
+    const interval = setInterval(tick, 1000)
+    return () => clearInterval(interval)
+  }, [isWaitingForReply, agentPhase?.timestamp, waitTimeout, autoReplyEnabled, projectName])
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -91,6 +133,25 @@ export function AgentNotifications({ projectName, agentMessages, agentPhase, age
     }
   }
 
+  const handleKeepGoing = useCallback(async () => {
+    if (!projectName || sending) return
+    setSending(true)
+    try {
+      const result = await sendToAgentInbox(projectName, 'Keep going!')
+      if (result.sent) {
+        setSentMessages(prev => [...prev, {
+          id: result.id,
+          text: 'Keep going!',
+          timestamp: new Date().toISOString(),
+        }])
+      }
+    } catch (err) {
+      console.error('Failed to send keep going:', err)
+    } finally {
+      setSending(false)
+    }
+  }, [projectName, sending])
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -107,6 +168,13 @@ export function AgentNotifications({ projectName, agentMessages, agentPhase, age
     ...agentMessages.map(m => ({ ...m, source: 'agent' as const })),
     ...sentMessages.map(m => ({ ...m, category: 'user', source: 'user' as const })),
   ].sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+
+  // Format countdown for display
+  const formatCountdown = (secs: number) => {
+    const m = Math.floor(secs / 60)
+    const s = secs % 60
+    return m > 0 ? `${m}:${s.toString().padStart(2, '0')}` : `${s}s`
+  }
 
   return (
     <div className="border-2 border-black rounded-lg bg-white shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] overflow-hidden">
@@ -126,7 +194,13 @@ export function AgentNotifications({ projectName, agentMessages, agentPhase, age
           {agentPhase && isAgentRunning && (
             <span className={`text-xs font-medium ${PHASE_DISPLAY[agentPhase.phase]?.color || 'text-gray-600'}`}>
               {PHASE_DISPLAY[agentPhase.phase]?.icon} {PHASE_DISPLAY[agentPhase.phase]?.label || agentPhase.phase}
-              {agentPhase.detail && `: ${agentPhase.detail}`}
+              {agentPhase.phase !== 'waiting' && agentPhase.detail && `: ${agentPhase.detail}`}
+            </span>
+          )}
+          {/* Countdown badge in header when waiting */}
+          {isWaitingForReply && countdown !== null && countdown > 0 && (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-mono font-bold text-purple-700 bg-purple-100 border border-purple-300 rounded-full">
+              {formatCountdown(countdown)}
             </span>
           )}
         </div>
@@ -170,8 +244,45 @@ export function AgentNotifications({ projectName, agentMessages, agentPhase, age
                 )
               })
             )}
+
+            {/* Auto-reply notification */}
+            {autoReplied && (
+              <div className="flex justify-center">
+                <span className="text-[10px] text-gray-400 italic">Auto-replied: "Keep going!"</span>
+              </div>
+            )}
+
             <div ref={messagesEndRef} />
           </div>
+
+          {/* Waiting bar with countdown + Keep Going */}
+          {isWaitingForReply && countdown !== null && countdown > 0 && (
+            <div className="border-t border-purple-200 bg-purple-50 px-2 py-1.5 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-purple-700 font-medium">
+                  Waiting for your reply
+                </span>
+                <span className="font-mono text-xs font-bold text-purple-800 bg-purple-100 px-1.5 py-0.5 rounded">
+                  {formatCountdown(countdown)}
+                </span>
+                {/* Progress bar */}
+                <div className="w-20 h-1.5 bg-purple-200 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-purple-500 rounded-full transition-all duration-1000 ease-linear"
+                    style={{ width: `${(countdown / waitTimeout) * 100}%` }}
+                  />
+                </div>
+              </div>
+              <button
+                onClick={handleKeepGoing}
+                disabled={sending}
+                className="flex items-center gap-1 px-2 py-1 text-[11px] font-bold text-purple-700 bg-purple-100 border border-purple-300 rounded-md hover:bg-purple-200 transition-colors disabled:opacity-50"
+              >
+                <Play className="w-3 h-3" />
+                Keep Going
+              </button>
+            </div>
+          )}
 
           {/* Input area */}
           <div className="border-t border-gray-200 p-2 flex gap-1.5">

@@ -300,6 +300,39 @@ def _strip_browser_testing_sections(prompt: str) -> str:
     return prompt
 
 
+def _get_comm_context() -> str:
+    """Build walkie-talkie communication instructions from global settings."""
+    try:
+        from registry import get_all_settings
+        settings = get_all_settings()
+    except Exception:
+        return ""
+
+    freq = settings.get("comm_check_frequency", "per_feature")
+    timeout = settings.get("comm_wait_timeout", "120")
+    auto_reply = settings.get("comm_auto_reply", "true").lower() == "true"
+
+    if freq == "never":
+        return ""
+
+    freq_instruction = {
+        "per_feature": "Check for user messages (via `check_inbox`) before starting each new feature.",
+        "every_tool_call": "Check for user messages (via `check_inbox`) frequently — at minimum before each feature, and also between major steps within a feature.",
+    }.get(freq, "Check for user messages before starting each new feature.")
+
+    lines = [
+        "\n## WALKIE-TALKIE COMMUNICATION PARAMETERS\n",
+        f"- **Check frequency**: {freq_instruction}",
+        f"- **Wait timeout**: When you use `chat_with_user`, set timeout_seconds to {timeout}.",
+    ]
+    if auto_reply:
+        lines.append("- **Auto-continue**: If `chat_with_user` times out (user didn't reply), treat it as \"keep going\" and continue working normally.")
+    else:
+        lines.append("- **On timeout**: If `chat_with_user` times out, pause and use `send_message` to let the user know you're waiting, then continue with your best judgment.")
+
+    return "\n".join(lines) + "\n"
+
+
 def get_coding_prompt(project_dir: Path | None = None, yolo_mode: bool = False) -> str:
     """Load the coding agent prompt (project-specific if available).
 
@@ -326,6 +359,10 @@ def get_coding_prompt(project_dir: Path | None = None, yolo_mode: bool = False) 
     style_ctx = _get_style_context(project_dir)
     if style_ctx:
         prompt = style_ctx + prompt
+
+    comm_ctx = _get_comm_context()
+    if comm_ctx:
+        prompt = prompt + comm_ctx
 
     return prompt
 

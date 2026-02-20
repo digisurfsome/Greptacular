@@ -383,6 +383,9 @@ const DEFAULT_SETTINGS: Settings = {
   min_spec_score: 3,
   run_architect: true,
   force_build: false,
+  comm_check_frequency: 'per_feature',
+  comm_wait_timeout: 120,
+  comm_auto_reply: true,
 }
 
 const DEFAULT_PROVIDERS: ProvidersResponse = {

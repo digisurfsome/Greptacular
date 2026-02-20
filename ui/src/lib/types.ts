@@ -920,6 +920,10 @@ export interface Settings {
   min_spec_score: number
   run_architect: boolean
   force_build: boolean
+  // Walkie-Talkie communication settings
+  comm_check_frequency: string  // per_feature, every_tool_call, never
+  comm_wait_timeout: number     // seconds (30-300)
+  comm_auto_reply: boolean      // auto-send "keep going" on timeout
 }
 
 export interface SettingsUpdate {
@@ -942,6 +946,9 @@ export interface SettingsUpdate {
   min_spec_score?: number
   run_architect?: boolean
   force_build?: boolean
+  comm_check_frequency?: string
+  comm_wait_timeout?: number
+  comm_auto_reply?: boolean
 }
 
 export interface ProjectSettingsUpdate {

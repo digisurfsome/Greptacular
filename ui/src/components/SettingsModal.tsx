@@ -685,6 +685,82 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               </div>
             </div>
 
+            <hr className="border-border" />
+
+            {/* Walkie-Talkie Communication */}
+            <div className="space-y-4">
+              <Label className="font-medium text-base">Walkie-Talkie</Label>
+              <p className="text-sm text-muted-foreground">
+                How the agent checks for your messages during work
+              </p>
+
+              {/* Check Frequency */}
+              <div className="space-y-2">
+                <Label className="text-sm">Check Frequency</Label>
+                <p className="text-xs text-muted-foreground">
+                  How often the agent looks for your messages
+                </p>
+                <div className="flex gap-2">
+                  {[
+                    { value: 'per_feature', label: 'Per Feature' },
+                    { value: 'every_tool_call', label: 'Every Tool Call' },
+                    { value: 'never', label: 'Never' },
+                  ].map((opt) => (
+                    <Button
+                      key={opt.value}
+                      variant={(settings.comm_check_frequency ?? 'per_feature') === opt.value ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => updateSettings.mutate({ comm_check_frequency: opt.value })}
+                      disabled={isSaving}
+                      className="flex-1"
+                    >
+                      {opt.label}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Wait Timeout */}
+              <div className="space-y-2">
+                <Label className="text-sm">Wait Timeout</Label>
+                <p className="text-xs text-muted-foreground">
+                  How long the agent waits for your reply (seconds)
+                </p>
+                <div className="flex gap-2">
+                  {[30, 60, 120, 300].map((secs) => (
+                    <Button
+                      key={secs}
+                      variant={(settings.comm_wait_timeout ?? 120) === secs ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => updateSettings.mutate({ comm_wait_timeout: secs })}
+                      disabled={isSaving}
+                      className="flex-1"
+                    >
+                      {secs < 60 ? `${secs}s` : `${secs / 60}m`}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Auto-Reply on Timeout */}
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="comm-auto-reply" className="text-sm font-medium">
+                    Auto-Reply on Timeout
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Sends "keep going" if you don't reply in time
+                  </p>
+                </div>
+                <Switch
+                  id="comm-auto-reply"
+                  checked={settings.comm_auto_reply ?? true}
+                  onCheckedChange={() => updateSettings.mutate({ comm_auto_reply: !(settings.comm_auto_reply ?? true) })}
+                  disabled={isSaving}
+                />
+              </div>
+            </div>
+
             {/* Update Error */}
             {updateSettings.isError && (
               <Alert variant="destructive">

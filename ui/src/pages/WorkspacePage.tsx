@@ -23,7 +23,8 @@ import { WorkspaceUserGuide } from '../components/workspace/WorkspaceUserGuide'
 import { RepoSelector } from '../components/workspace/RepoSelector'
 import { PassoffEditor, type PassoffSection } from '../components/workspace/PassoffEditor'
 import { useWorkspaceKeyboardShortcuts } from '../hooks/useWorkspaceKeyboardShortcuts'
-import { exportConversationMarkdown } from '../lib/api'
+import { exportConversationMarkdown, getSettings } from '../lib/api'
+import { CountdownTimerBar } from '../components/workspace/CountdownTimerBar'
 import {
   ArrowLeft,
   ChevronRight,
@@ -115,6 +116,21 @@ export function WorkspacePage(): React.JSX.Element {
 
   // Auto-forward: when PRD panel finishes, auto-send to Coder panel
   const [autoForward, setAutoForward] = useState(false)
+
+  // Countdown timer state (shared across panels)
+  const [timerActive, setTimerActive] = useState(false)
+  const [commTimeout, setCommTimeout] = useState(120)
+  const [commAutoReply, setCommAutoReply] = useState(true)
+
+  // Load comm settings from server on mount
+  useEffect(() => {
+    getSettings()
+      .then((s) => {
+        if (s.comm_wait_timeout) setCommTimeout(s.comm_wait_timeout)
+        if (s.comm_auto_reply !== undefined) setCommAutoReply(s.comm_auto_reply)
+      })
+      .catch(() => { /* use defaults */ })
+  }, [])
 
   const chatInputRef = useRef<HTMLTextAreaElement | null>(null)
 
@@ -346,6 +362,15 @@ export function WorkspacePage(): React.JSX.Element {
           </Button>
         </div>
       </div>
+
+      {/* Countdown timer bar (session-level, shared across panels) */}
+      <CountdownTimerBar
+        active={timerActive}
+        totalSeconds={commTimeout}
+        autoReply={commAutoReply}
+        onKeepGoing={() => setTimerActive(false)}
+        onTimeout={() => setTimerActive(false)}
+      />
 
       {/* Main content area: sidebar | chat(s) | library */}
       <div className="flex flex-1 overflow-hidden">

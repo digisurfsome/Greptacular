@@ -45,6 +45,7 @@ import { AutoSummaryPin } from './AutoSummaryPin'
 import { ChatForkModal } from './ChatForkModal'
 import { InjectFromChatModal } from './InjectFromChatModal'
 import CostControls, { loadCostSettings, type CostSettings } from './CostControls'
+import { AgentNotifications, stripStructuredBlocks, parseStructuredBlocks } from './AgentNotifications'
 import type { ChatMessage as ChatMessageType, WorkspaceMessage, PendingInjection, ImageAttachment } from '@/lib/types'
 
 const DRAFT_KEY_PREFIX = 'workspace-draft-'
@@ -884,13 +885,31 @@ export function WorkspaceChat({
           </div>
         ) : (
           <div className="py-4">
-            {displayMessages.map((message) => (
-              <ChatMessage
-                key={message.id ?? generateId()}
-                message={message}
-                onCopyToPassoff={onCopyToPassoff}
-              />
-            ))}
+            {displayMessages.map((message) => {
+              // For assistant messages, extract structured blocks and strip
+              // them from the content so tags are not rendered twice.
+              const hasBlocks =
+                message.role === 'assistant' &&
+                parseStructuredBlocks(message.content).length > 0
+
+              const renderedMessage = hasBlocks
+                ? { ...message, content: stripStructuredBlocks(message.content) }
+                : message
+
+              return (
+                <div key={message.id ?? generateId()}>
+                  {hasBlocks && (
+                    <div className="px-4 py-1">
+                      <AgentNotifications content={message.content} />
+                    </div>
+                  )}
+                  <ChatMessage
+                    message={renderedMessage}
+                    onCopyToPassoff={onCopyToPassoff}
+                  />
+                </div>
+              )
+            })}
             <div ref={messagesEndRef} />
           </div>
         )}

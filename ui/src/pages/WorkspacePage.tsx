@@ -72,6 +72,16 @@ export function WorkspacePage(): React.JSX.Element {
   // Three-panel state (split view)
   const [prdConversationId, setPrdConversationId] = useState<number | null>(null)
   const [coderConversationId, setCoderConversationId] = useState<number | null>(null)
+  // Per-panel model selection (persisted to localStorage)
+  const [researchModel, setResearchModel] = useState<'opus' | 'sonnet'>(() => {
+    try { return (localStorage.getItem('workspace-panel-research-model') as 'opus' | 'sonnet') || 'opus' } catch { return 'opus' }
+  })
+  const [prdModel, setPrdModel] = useState<'opus' | 'sonnet'>(() => {
+    try { return (localStorage.getItem('workspace-panel-prd-model') as 'opus' | 'sonnet') || 'opus' } catch { return 'opus' }
+  })
+  const [coderModel, setCoderModel] = useState<'opus' | 'sonnet'>(() => {
+    try { return (localStorage.getItem('workspace-panel-coder-model') as 'opus' | 'sonnet') || 'sonnet' } catch { return 'sonnet' }
+  })
   const [researchCollapsed, setResearchCollapsed] = useState(() => {
     try { return localStorage.getItem('workspace-panel-research') === 'collapsed' } catch { return false }
   })
@@ -88,8 +98,11 @@ export function WorkspacePage(): React.JSX.Element {
       localStorage.setItem('workspace-panel-research', researchCollapsed ? 'collapsed' : 'expanded')
       localStorage.setItem('workspace-panel-prd', prdCollapsed ? 'collapsed' : 'expanded')
       localStorage.setItem('workspace-panel-coder', coderCollapsed ? 'collapsed' : 'expanded')
+      localStorage.setItem('workspace-panel-research-model', researchModel)
+      localStorage.setItem('workspace-panel-prd-model', prdModel)
+      localStorage.setItem('workspace-panel-coder-model', coderModel)
     } catch { /* ignore quota or security errors */ }
-  }, [researchCollapsed, prdCollapsed, coderCollapsed])
+  }, [researchCollapsed, prdCollapsed, coderCollapsed, researchModel, prdModel, coderModel])
 
   // Passoff editor state — tab alongside Chat in PRD panel
   const [passoffSections, setPassoffSections] = useState<PassoffSection[]>([])
@@ -378,6 +391,8 @@ export function WorkspacePage(): React.JSX.Element {
                   fixedContextMode="200k"
                   panelLabel="RESEARCH (200K)"
                   onCopyToPassoff={handleCopyToPassoff}
+                  preferredModel={researchModel}
+                  onModelChange={setResearchModel}
                 />
               </div>
             )}
@@ -455,7 +470,8 @@ export function WorkspacePage(): React.JSX.Element {
                     injectMessage={prdInjectMessage}
                     onInjectConsumed={handlePrdInjectConsumed}
                     onResponseComplete={handlePrdResponseComplete}
-                    preferredModel="opus"
+                    preferredModel={prdModel}
+                    onModelChange={setPrdModel}
                   />
                 )}
               </div>
@@ -487,7 +503,8 @@ export function WorkspacePage(): React.JSX.Element {
                   panelLabel="CODER (Sonnet 4.6)"
                   injectMessage={coderInjectMessage}
                   onInjectConsumed={handleCoderInjectConsumed}
-                  preferredModel="sonnet"
+                  preferredModel={coderModel}
+                  onModelChange={setCoderModel}
                 />
               </div>
             )}

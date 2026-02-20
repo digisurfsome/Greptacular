@@ -22,6 +22,10 @@ interface WorkspaceChatHeaderProps {
   onUpdateCategory: (category: string) => void
   onUpdateTags: (tags: string) => void
   workingDirectory?: string | null
+  /** Whether the walkie-talkie system is active (agent is working). */
+  walkieTalkieActive?: boolean
+  /** Whether the agent is currently waiting for user input. */
+  agentWaiting?: boolean
 }
 
 /** Default categories used as fallbacks when no custom categories exist. */
@@ -89,6 +93,8 @@ export function WorkspaceChatHeader({
   onUpdateCategory,
   onUpdateTags,
   workingDirectory,
+  walkieTalkieActive = false,
+  agentWaiting = false,
 }: WorkspaceChatHeaderProps): React.JSX.Element {
   // --- Title editing state ---
   const [isEditing, setIsEditing] = useState(false)
@@ -493,6 +499,16 @@ export function WorkspaceChatHeader({
             <GitPullRequest size={10} />
             View PR
           </a>
+        )}
+        {/* Walkie-talkie status indicator */}
+        {walkieTalkieActive && (
+          <div className="flex items-center gap-1.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full rounded-full bg-amber-500 opacity-75 animate-ping" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500" />
+            </span>
+            {agentWaiting ? 'Waiting' : 'Live'}
+          </div>
         )}
         <ConnectionIndicator status={connectionStatus} />
       </div>

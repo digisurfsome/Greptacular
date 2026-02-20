@@ -24,6 +24,8 @@ import {
   WifiOff,
   Paperclip,
   ImagePlus,
+  Radio,
+  Check,
 } from 'lucide-react'
 import { useWorkspaceChat } from '@/hooks/useWorkspaceChat'
 import { useWorkspaceConversation } from '@/hooks/useWorkspaceConversations'
@@ -37,7 +39,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getWorkspaceSummary, regenerateWorkspaceSummary, exportConversationMarkdown, updateWorkspaceConversation } from '@/lib/api'
+import { getWorkspaceSummary, regenerateWorkspaceSummary, exportConversationMarkdown, updateWorkspaceConversation, getSettings } from '@/lib/api'
+import { CountdownTimerBar } from './CountdownTimerBar'
 import { WorkspaceChatHeader } from './WorkspaceChatHeader'
 import { EnhancedContextBudgetBar, getContextWarningClass } from './EnhancedContextBudgetBar'
 import { UsageDashboard } from './UsageDashboard'
@@ -156,6 +159,16 @@ export function WorkspaceChat({
   const [contextToast, setContextToast] = useState<string | null>(null)
   const contextToastTimerRef = useRef<number | null>(null)
 
+  // Walkie-talkie state
+  const [walkieTalkieInput, setWalkieTalkieInput] = useState('')
+  const [walkieTalkieSent, setWalkieTalkieSent] = useState(false)
+  const walkieTalkieSentTimerRef = useRef<number | null>(null)
+  const walkieTalkieInputRef = useRef<HTMLInputElement>(null)
+  // Walkie-talkie settings (loaded from server)
+  const [commCheckFrequency, setCommCheckFrequency] = useState<string>('per_feature')
+  const [commWaitTimeout, setCommWaitTimeout] = useState(120)
+  const [commAutoReply, setCommAutoReply] = useState(true)
+
   // Context mode: "1m" (1,000,000 tokens with beta) or "200k" (200,000 tokens standard).
   // When fixedContextMode is set (split-view), the mode is locked and the toggle is hidden.
   // Otherwise, it's persisted to localStorage and takes effect on the NEXT session start.
@@ -198,6 +211,26 @@ export function WorkspaceChat({
   // Cost control settings -- persisted to localStorage, sent on session start.
   const [costSettings, setCostSettings] = useState<CostSettings>(loadCostSettings)
 
+  // Load walkie-talkie settings from the server on mount
+  useEffect(() => {
+    getSettings()
+      .then((s) => {
+        if (s.comm_check_frequency) setCommCheckFrequency(s.comm_check_frequency)
+        if (s.comm_wait_timeout) setCommWaitTimeout(s.comm_wait_timeout)
+        if (s.comm_auto_reply !== undefined) setCommAutoReply(s.comm_auto_reply)
+      })
+      .catch(() => { /* use defaults */ })
+  }, [])
+
+  // Clean up sent confirmation timer on unmount
+  useEffect(() => {
+    return () => {
+      if (walkieTalkieSentTimerRef.current) {
+        clearTimeout(walkieTalkieSentTimerRef.current)
+      }
+    }
+  }, [])
+
   // Memoize error handler to keep hook reference stable
   const handleError = useCallback((error: string) => {
     console.error('Workspace chat error:', error)
@@ -214,11 +247,21 @@ export function WorkspaceChat({
     contextBudget,
     pendingInjection,
     setPendingInjection,
+    agentWaiting,
+    agentWaitingQuestion,
     start,
     sendMessage,
+    sendWalkieTalkie,
     disconnect,
     clearMessages,
   } = useWorkspaceChat({ onError: handleError })
+
+  // Focus walkie-talkie input when agent enters waiting state
+  useEffect(() => {
+    if (agentWaiting) {
+      walkieTalkieInputRef.current?.focus()
+    }
+  }, [agentWaiting])
 
   // REST query for initial messages when resuming a conversation
   const { data: conversationDetail, isLoading: isLoadingConversation } =
@@ -478,6 +521,46 @@ export function WorkspaceChat({
     // For non-image paste, let the default textarea behavior handle it
   }, [processImageFiles])
 
+  // Walkie-talkie send handler
+  const handleWalkieTalkieSend = useCallback(() => {
+    const content = walkieTalkieInput.trim()
+    if (!content) return
+    sendWalkieTalkie(content)
+    setWalkieTalkieInput('')
+    // Show brief "Sent!" confirmation
+    setWalkieTalkieSent(true)
+    if (walkieTalkieSentTimerRef.current) clearTimeout(walkieTalkieSentTimerRef.current)
+    walkieTalkieSentTimerRef.current = window.setTimeout(() => {
+      setWalkieTalkieSent(false)
+      walkieTalkieSentTimerRef.current = null
+    }, 1500)
+  }, [walkieTalkieInput, sendWalkieTalkie])
+
+  // Walkie-talkie input keydown handler
+  const handleWalkieTalkieKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault()
+        handleWalkieTalkieSend()
+      }
+    },
+    [handleWalkieTalkieSend],
+  )
+
+  // CountdownTimerBar handlers
+  const handleTimerTimeout = useCallback(() => {
+    // Auto-reply: send "Continue with your best judgment" to the agent
+    sendWalkieTalkie('Continue with your best judgment')
+  }, [sendWalkieTalkie])
+
+  const handleTimerKeepGoing = useCallback(() => {
+    // "Keep Going" button: send immediate response
+    sendWalkieTalkie('Keep going, proceed with your best judgment')
+  }, [sendWalkieTalkie])
+
+  // Whether walkie-talkie UI should be visible
+  const walkieTalkieVisible = isLoading && commCheckFrequency !== 'never'
+
   // Send handler
   const handleSend = useCallback(async () => {
     let content = inputValue.trim()
@@ -608,6 +691,8 @@ export function WorkspaceChat({
             onUpdateCategory={handleUpdateCategory}
             onUpdateTags={handleUpdateTags}
             workingDirectory={workingDirectory}
+            walkieTalkieActive={walkieTalkieVisible}
+            agentWaiting={agentWaiting}
           />
         </div>
 
@@ -916,12 +1001,60 @@ export function WorkspaceChat({
       </div>
 
       {/* Loading indicator */}
-      {isLoading && displayMessages.length > 0 && (
+      {isLoading && displayMessages.length > 0 && !agentWaiting && (
         <div className="px-4 py-2 border-t border-border bg-background">
           <div className="flex items-center gap-2 text-muted-foreground text-sm">
             <Loader2 size={16} className="animate-spin" />
             <span>Thinking...</span>
           </div>
+        </div>
+      )}
+
+      {/* Countdown timer bar: shown when agent is waiting for user input */}
+      <CountdownTimerBar
+        active={agentWaiting}
+        totalSeconds={commWaitTimeout}
+        autoReply={commAutoReply}
+        onKeepGoing={handleTimerKeepGoing}
+        onTimeout={handleTimerTimeout}
+      />
+
+      {/* Agent waiting question display */}
+      {agentWaiting && agentWaitingQuestion && (
+        <div className="px-4 py-2 bg-amber-50 dark:bg-amber-950/30 border-t border-amber-300 dark:border-amber-700/50 text-sm text-amber-800 dark:text-amber-300">
+          <span className="font-medium">Agent asks: </span>
+          <span className="line-clamp-2">{agentWaitingQuestion}</span>
+        </div>
+      )}
+
+      {/* Walkie-talkie input bar: shown when agent is actively working */}
+      {walkieTalkieVisible && (
+        <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-950/20 border-t border-amber-300 dark:border-amber-700/40 border-l-[3px] border-l-amber-500">
+          <Radio size={16} className="flex-shrink-0 text-amber-600 dark:text-amber-400" />
+          <input
+            ref={walkieTalkieInputRef}
+            type="text"
+            value={walkieTalkieInput}
+            onChange={(e) => setWalkieTalkieInput(e.target.value)}
+            onKeyDown={handleWalkieTalkieKeyDown}
+            placeholder="Send message to working agent..."
+            className="flex-1 h-8 rounded-md border border-amber-300 dark:border-amber-700 bg-white dark:bg-amber-950/30 px-2.5 text-sm text-foreground placeholder:text-amber-400 dark:placeholder:text-amber-600 outline-none ring-amber-400 focus:ring-1"
+          />
+          {walkieTalkieSent ? (
+            <span className="flex items-center gap-1 text-xs font-medium text-amber-600 dark:text-amber-400 animate-pulse">
+              <Check size={14} />
+              Sent!
+            </span>
+          ) : (
+            <Button
+              size="sm"
+              onClick={handleWalkieTalkieSend}
+              disabled={!walkieTalkieInput.trim()}
+              className="h-8 px-3 bg-amber-500 hover:bg-amber-600 text-white text-xs font-medium"
+            >
+              <Send size={14} />
+            </Button>
+          )}
         </div>
       )}
 

@@ -871,6 +871,28 @@ async def get_git_pr_info(working_directory: str, branch: Optional[str] = None):
 
 
 # ============================================================================
+# Walkie-Talkie Status Endpoint
+# ============================================================================
+
+@router.get("/sessions/{session_id}/walkie-talkie/status")
+async def get_walkie_talkie_status(session_id: str):
+    """Get the walkie-talkie status for a workspace session.
+
+    Useful for debugging and for the UI to check if a session is waiting.
+    """
+    from ..services.workspace_chat_session import get_session as ws_get_session
+
+    session = ws_get_session(session_id)
+    if not session:
+        return {"active": False, "waiting": False, "queue_size": 0}
+    return {
+        "active": session.walkie_talkie_enabled,
+        "waiting": session.walkie_talkie_waiting,
+        "queue_size": session.walkie_talkie_queue.qsize(),
+    }
+
+
+# ============================================================================
 # WebSocket Endpoint
 # ============================================================================
 
@@ -884,6 +906,7 @@ async def workspace_chat_websocket(websocket: WebSocket):
     Client -> Server:
     - {"type": "start", "conversation_id": int | null, "working_directory": "...", "context_mode": "1m"|"200k"} - Start/resume session
     - {"type": "message", "content": "..."} - Send user message
+    - {"type": "walkie_talkie", "content": "..."} - Inject message into running agent
     - {"type": "answer", "answers": {...}} - Answer to structured questions
     - {"type": "ping"} - Keep-alive ping
 
@@ -892,6 +915,8 @@ async def workspace_chat_websocket(websocket: WebSocket):
     - {"type": "text", "content": "..."} - Text chunk from Claude
     - {"type": "tool_call", "tool": "...", "input": {...}} - Tool being called
     - {"type": "token_usage", "total_tokens": int, "context_window": int} - Token usage update
+    - {"type": "agent_waiting", "question": "..."} - Agent is waiting for user input
+    - {"type": "walkie_talkie_queued", "content": "..."} - Confirmation that message was queued
     - {"type": "response_done"} - Response complete
     - {"type": "error", "content": "..."} - Error message
     - {"type": "pong"} - Keep-alive pong
@@ -961,6 +986,22 @@ async def workspace_chat_websocket(websocket: WebSocket):
                             cost_settings=cost_settings,
                             model=model,
                         )
+
+                        # Wire walkie-talkie settings from the global settings store.
+                        # The comm_check_frequency value of "never" disables the hook entirely.
+                        try:
+                            from ..services.workspace_chat_session import get_session as _ws_get
+                            from registry import get_global_settings
+                            gs = get_global_settings()
+                            comm_freq = getattr(gs, "comm_check_frequency", "per_feature")
+                            session.walkie_talkie_enabled = comm_freq != "never"
+                            logger.debug(
+                                "Walkie-talkie: enabled=%s (comm_check_frequency=%s)",
+                                session.walkie_talkie_enabled, comm_freq,
+                            )
+                        except Exception as e:
+                            logger.warning("Failed to load walkie-talkie settings: %s", e)
+
                         logger.debug("Workspace session created, starting...")
 
                         # Stream the initial greeting or resume acknowledgement
@@ -974,6 +1015,23 @@ async def workspace_chat_websocket(websocket: WebSocket):
                         await websocket.send_json({
                             "type": "error",
                             "content": f"Failed to start session: {str(e)}"
+                        })
+
+                elif msg_type == "walkie_talkie":
+                    # Walkie-talkie: inject a message into the running agent's queue.
+                    # The message will be delivered on the agent's next tool call via
+                    # the PreToolUse hook.
+                    content = message.get("content", "")
+                    if content and session:
+                        await session.queue_walkie_talkie_message(content)
+                        await websocket.send_json({
+                            "type": "walkie_talkie_queued",
+                            "content": content[:100],  # Truncated echo for UI confirmation
+                        })
+                    elif not session:
+                        await websocket.send_json({
+                            "type": "error",
+                            "content": "No active session. Send 'start' first."
                         })
 
                 elif msg_type == "message":
@@ -1004,9 +1062,15 @@ async def workspace_chat_websocket(websocket: WebSocket):
                         except Exception as e:
                             logger.warning("Invalid attachment data: %s", e)
 
-                    # Stream Claude's response
+                    # Stream Claude's response, forwarding walkie-talkie events to the client
                     async for chunk in session.send_message(user_content, attachments=attachments):
                         await websocket.send_json(chunk)
+                        # Forward agent_waiting events so the UI can show the countdown bar
+                        if chunk.get("type") == "agent_waiting":
+                            logger.info(
+                                "Agent waiting for input in session %s: %s",
+                                session_id, chunk.get("question", "")[:80],
+                            )
 
                 elif msg_type == "answer":
                     # User answered a structured question

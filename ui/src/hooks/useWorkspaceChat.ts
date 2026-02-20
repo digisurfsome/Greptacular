@@ -33,8 +33,14 @@ interface UseWorkspaceChatReturn {
   };
   pendingInjection: PendingInjection | null;
   setPendingInjection: (injection: PendingInjection | null) => void;
+  /** Whether the agent is waiting for user input (output [WAITING] tag). */
+  agentWaiting: boolean;
+  /** The question the agent asked when entering waiting state. */
+  agentWaitingQuestion: string | null;
   start: (conversationId?: number | null, workingDirectory?: string, contextMode?: string, costSettings?: Record<string, unknown>, model?: string) => void;
   sendMessage: (content: string, attachments?: ImageAttachment[]) => void;
+  /** Send a walkie-talkie message to the running agent (injected via PreToolUse hook). */
+  sendWalkieTalkie: (content: string) => void;
   disconnect: () => void;
   clearMessages: () => void;
 }
@@ -70,6 +76,8 @@ export function useWorkspaceChat({
   });
   const [pendingInjection, setPendingInjection] = useState<PendingInjection | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
+  const [agentWaiting, setAgentWaiting] = useState(false);
+  const [agentWaitingQuestion, setAgentWaitingQuestion] = useState<string | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const currentAssistantMessageRef = useRef<string | null>(null);
@@ -301,6 +309,10 @@ export function useWorkspaceChat({
             currentAssistantMessageRef.current = null;
             sessionReadyRef.current = true;
 
+            // Clear walkie-talkie waiting state when response completes
+            setAgentWaiting(false);
+            setAgentWaitingQuestion(null);
+
             // Mark current streaming message as complete
             setMessages((prev) => {
               const lastMessage = prev[prev.length - 1];
@@ -354,6 +366,23 @@ export function useWorkspaceChat({
                 timestamp: new Date(),
               },
             ]);
+            break;
+          }
+
+          case "agent_waiting": {
+            // Agent output a [WAITING] tag and is waiting for user input.
+            // Activate the countdown timer bar and show the question.
+            const waitData = data as { question: string };
+            setAgentWaiting(true);
+            setAgentWaitingQuestion(waitData.question || "Agent is waiting for your input...");
+            break;
+          }
+
+          case "walkie_talkie_queued": {
+            // Confirmation that the walkie-talkie message was queued for the agent.
+            // Reset the waiting state since user has responded.
+            setAgentWaiting(false);
+            setAgentWaitingQuestion(null);
             break;
           }
 
@@ -554,6 +583,18 @@ export function useWorkspaceChat({
     [onError, pendingInjection],
   );
 
+  const sendWalkieTalkie = useCallback(
+    (content: string) => {
+      if (!content.trim()) return;
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(
+          JSON.stringify({ type: "walkie_talkie", content: content.trim() }),
+        );
+      }
+    },
+    [],
+  );
+
   const disconnect = useCallback(() => {
     reconnectAttempts.current = maxReconnectAttempts; // Prevent auto-reconnection
     lastStartParamsRef.current = null; // Clear so reconnect doesn't re-send stale start
@@ -580,6 +621,8 @@ export function useWorkspaceChat({
     setMessages([]);
     setTotalTokens(0);
     setContextBudget({ messageTokens: 0, summaryTokens: 0, messageCount: 0 });
+    setAgentWaiting(false);
+    setAgentWaitingQuestion(null);
     sessionReadyRef.current = false;
     queuedPayloadRef.current = null;
   }, []);
@@ -595,8 +638,11 @@ export function useWorkspaceChat({
     contextBudget,
     pendingInjection,
     setPendingInjection,
+    agentWaiting,
+    agentWaitingQuestion,
     start,
     sendMessage,
+    sendWalkieTalkie,
     disconnect,
     clearMessages,
   };

@@ -712,6 +712,16 @@ export interface WorkspaceChatStatusMessage {
   content: string
 }
 
+export interface WorkspaceAgentWaitingMessage {
+  type: 'agent_waiting'
+  question: string
+}
+
+export interface WorkspaceWalkieTalkieQueuedMessage {
+  type: 'walkie_talkie_queued'
+  content: string
+}
+
 export type WorkspaceChatServerMessage =
   | AssistantChatTextMessage
   | AssistantChatToolCallMessage
@@ -719,6 +729,8 @@ export type WorkspaceChatServerMessage =
   | WorkspaceChatTokenUpdateMessage
   | WorkspaceChatRateLimitLoggedMessage
   | WorkspaceChatStatusMessage
+  | WorkspaceAgentWaitingMessage
+  | WorkspaceWalkieTalkieQueuedMessage
   | AssistantChatResponseDoneMessage
   | AssistantChatErrorMessage
   | AssistantChatConversationCreatedMessage

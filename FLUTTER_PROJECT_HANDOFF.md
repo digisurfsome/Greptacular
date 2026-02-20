@@ -1,184 +1,221 @@
-# Flutter Project Handoff & Session Documentation
+# ApparenceKit Flutter Project — Complete Handoff
 
-> **Project Location:** `C:\WINDOWS\myproject` (Windows machine)
-> **Tech Stack:** Flutter/Dart + Firebase Authentication + Riverpod State Management
-> **Date:** February 19, 2026
-> **Purpose:** Complete record of fixes applied, fixes still pending, and knowledge for any future agent to pick up where we left off.
+> **Project:** ApparenceKit CLI Flutter boilerplate (v5.0.16)
+> **Project Location:** `C:\WINDOWS\myproject` (Windows machine — NEEDS TO MOVE, see below)
+> **Firebase Project:** `sugarless-252ae`
+> **User Account:** `dux8bevo@gmail.com`
+> **Tech Stack:** Flutter 3.29.3 / Dart 3.8.1 + Firebase Auth + Riverpod + Freezed/build_runner
+> **Last Updated:** February 20, 2026
+> **Branch:** `claude/setup-flutter-appearance-kit-uW97I`
 
 ---
 
 ## TABLE OF CONTENTS
 
-1. [Project Overview](#project-overview)
-2. [Problem #1: Firebase Auth Circular Loop (FIRST FIX — NOT YET APPLIED)](#problem-1-firebase-auth-circular-loop)
-3. [Problem #2: Dart Switch Statement Missing Default Cases (APPLIED via PowerShell)](#problem-2-dart-switch-statements)
-4. [Problem #3: Permanent Fix for State Management (BELIEVED APPLIED)](#problem-3-permanent-state-management-fix)
-5. [Files Modified / To Modify](#files-modified)
-6. [The PowerShell Fix Script (Reference)](#powershell-fix-script)
-7. [What To Look Out For In The Future](#future-warnings)
-8. [Remaining Steps / TODO](#remaining-steps)
-9. [How To Pick Up Where We Left Off](#agent-handoff)
+1. [Current Status — Where We Left Off](#current-status)
+2. [Complete Command History (Chronological)](#command-history)
+3. [The 3 Blockers Preventing Build](#blockers)
+4. [Step-by-Step Resume Plan (Copy-Paste Ready)](#resume-plan)
+5. [Known Code Issues & Fixes](#code-issues)
+6. [Key Files Reference](#key-files)
+7. [Agent Handoff Context](#agent-handoff)
 
 ---
 
-## Project Overview
+## Current Status — Where We Left Off
 
-This is a Flutter mobile application with:
-- **Firebase Authentication** (phone auth, email sign-in, sign-up, password recovery)
-- **Subscription/Premium** features
-- **Riverpod** state management (providers/notifiers pattern)
-- Modular architecture under `lib/modules/`
+### Progress: 3/4 Complete
 
-### Key Directory Structure
+| Phase | Status | What |
+|-------|--------|------|
+| 1. CLI Install | DONE | ApparenceKit CLI v5.0.16 installed |
+| 2. Firebase Login | DONE | Logged in as dux8bevo@gmail.com |
+| 3. FlutterFire Configure | DONE | Both prod and dev configs generated |
+| 4. Build & Run | **BLOCKED** | 3 issues preventing `flutter run` |
 
-```
-C:\WINDOWS\myproject\
-├── lib/
-│   ├── main.dart
-│   ├── modules/
-│   │   ├── authentication/
-│   │   │   ├── ui/
-│   │   │   │   ├── phone_auth_page.dart
-│   │   │   │   ├── recover_password_page.dart
-│   │   │   │   ├── signin_page.dart
-│   │   │   │   └── signup_page.dart
-│   │   │   └── providers/
-│   │   │       └── phone_auth_notifier.dart
-│   │   └── subscription/
-│   │       └── ui/
-│   │           └── premium_page.dart
-│   └── ...
-├── pubspec.yaml
-├── android/
-├── ios/
-└── ...
-```
+### What's Blocking the Build
+
+1. **Dart SDK version mismatch** — Project `pubspec.yaml` requires `sdk: ">=3.11.0"` but Flutter 3.29.3 ships with Dart 3.8.1. Since Dart 3.11.0 doesn't exist yet, this constraint is likely wrong and needs to be relaxed.
+2. **Missing generated files** — `.g.dart` and `.freezed.dart` files haven't been generated because `build_runner` can't run due to the SDK constraint.
+3. **Project location permissions** — `C:\WINDOWS\myproject` is OS-protected. The switch fix script got "Access Denied" errors. Project needs to move to a user-writable location.
 
 ---
 
-## Problem #1: Firebase Auth Circular Loop
+## Complete Command History (Chronological)
 
-### ⚠️ STATUS: FIRST FIX — **NOT YET APPLIED** ⚠️
-
-This was the **very first issue** we identified. After getting Firebase configured and running, the app would launch but get stuck in a **circular loop** — likely bouncing between auth states or redirecting back and forth between login/home screens endlessly.
-
-### Root Cause (Best Understanding)
-
-The Firebase auth state listener was not properly handling the initial auth check, causing the app to:
-- Detect "no user" → redirect to login
-- Login screen triggers auth state change → redirect to home
-- Home screen re-checks auth → detects something wrong → redirect back to login
-- Repeat forever
-
-### The Fix (TWO LINES OF CODE)
-
-> **⚠️ THIS IS THE FIX THAT WAS NEVER APPLIED ⚠️**
->
-> The user confirmed they "never put that one piece of code in on that first thing we figured out." This was described as a simple two-line fix that would "fix it forever."
-
-**[GAP — NEEDS USER INPUT]:** The exact two lines of code and the exact file they go in need to be confirmed. Based on the pattern, this is most likely one of:
-
-**Possibility A — Auth State Listener Fix (most likely):**
-In the main auth state listener/router (possibly `main.dart` or an auth router file), add a check that prevents circular redirects:
-
-```dart
-// Something like:
-if (authState == AuthState.loading) return const SplashScreen();  // Line 1
-if (authState == AuthState.authenticated && currentRoute == '/login') return;  // Line 2
-```
-
-**Possibility B — Firebase Initialization Guard:**
-In `main.dart` or the Firebase init code, ensure Firebase is fully initialized before the auth listener starts:
-
-```dart
-await Firebase.initializeApp();  // Line 1 (may already exist)
-await FirebaseAuth.instance.authStateChanges().first;  // Line 2 — wait for initial state
-```
-
-**ACTION REQUIRED:** User needs to confirm the exact fix. Look for:
-- A file related to auth routing or app initialization
-- The spot where `authStateChanges()` or similar Firebase auth stream is consumed
-- The two specific lines discussed in the early part of the session
-
----
-
-## Problem #2: Dart Switch Statement Missing Default Cases
-
-### ✅ STATUS: FIX APPLIED via PowerShell Script
-
-### What Happened
-
-Dart's newer versions (3.x+) with **exhaustive pattern matching** require `switch` expressions to be exhaustive. When the Dart analyzer encounters a `switch` on an enum or sealed class without a wildcard/default case, it throws:
-
-```
-Error: A non-exhaustive switch expression...
-```
-
-This was happening across **6 files** — all the authentication UI pages, the subscription premium page, and the phone auth notifier provider.
-
-### The Fix
-
-Add a **default wildcard case** (`_ =>`) to every `switch` expression that was missing one:
-
-- **For UI files** (pages that return widgets): `_ => const SizedBox(),`
-  - Returns an empty invisible widget as a safe default
-- **For provider/notifier files** (state management logic): `_ => throw StateError('Unknown state'),`
-  - Throws an error because hitting an unknown state in business logic is a real bug that should be caught
-
-### Files Fixed
-
-| File | Fix Applied | Type |
-|------|-------------|------|
-| `lib\modules\authentication\ui\phone_auth_page.dart` | `_ => const SizedBox(),` | UI (safe empty widget) |
-| `lib\modules\authentication\ui\recover_password_page.dart` | `_ => const SizedBox(),` | UI (safe empty widget) |
-| `lib\modules\authentication\ui\signin_page.dart` | `_ => const SizedBox(),` | UI (safe empty widget) |
-| `lib\modules\authentication\ui\signup_page.dart` | `_ => const SizedBox(),` | UI (safe empty widget) |
-| `lib\modules\subscription\ui\premium_page.dart` | `_ => const SizedBox(),` | UI (safe empty widget) |
-| `lib\modules\authentication\providers\phone_auth_notifier.dart` | `_ => throw StateError('Unknown state'),` | Logic (fail-fast) |
-
-### Why Two Different Fixes
-
-- **UI switch statements** map states to widgets. An unknown state should render nothing (`SizedBox()`), not crash the app.
-- **Provider/notifier switch statements** handle business logic. An unknown state means something is fundamentally wrong, so we throw immediately to catch bugs early.
-
-### Verification
-
-After running the PowerShell script, the output should show:
-```
-Fixed: lib\modules\authentication\ui\phone_auth_page.dart
-Fixed: lib\modules\authentication\ui\recover_password_page.dart
-Fixed: lib\modules\authentication\ui\signin_page.dart
-Fixed: lib\modules\authentication\ui\signup_page.dart
-Fixed: lib\modules\subscription\ui\premium_page.dart
-Fixed: lib\modules\authentication\providers\phone_auth_notifier.dart
-Done! All files fixed.
-```
-
-If any file says "Skipped" — it means the script detected the wildcard case already existed, which is fine.
-
----
-
-## Problem #3: Permanent Fix for State Management
-
-### STATUS: BELIEVED APPLIED (needs confirmation)
-
-In a **separate scenario** from Problem #1, there was another fix discussed that was intended to be a permanent solution. The user believes this one WAS applied.
-
-**[GAP — NEEDS USER INPUT]:** The exact nature of this fix needs confirmation. Based on context, this likely involved one of:
-
-- Adding proper error state handling in a provider/notifier
-- Adding a `dispose()` or `cancel()` call to prevent memory leaks in auth listeners
-- Adding a guard condition in the auth flow to prevent re-entry
-
-**ACTION REQUIRED:** User should confirm what this fix was and verify it's in the codebase.
-
----
-
-## The PowerShell Fix Script
-
-This script was used to fix Problem #2. Save it and run it in VS Code terminal from the project root (`C:\WINDOWS\myproject`):
+### Phase 1 — CLI Installation (DONE)
 
 ```powershell
+# Install ApparenceKit CLI v5.0.16
+irm https://tinyurl.com/kitwindows | iex
+```
+Result: Installed successfully.
+
+### Phase 2 — Firebase Login (DONE, with workarounds)
+
+```powershell
+# First attempt — FAILED (firebase not in PATH)
+firebase login
+
+# Temporary PATH fix for npm global binaries
+$env:PATH += ";C:\Users\lober\AppData\Roaming\npm"
+
+# Second attempt — SUCCESS
+firebase login
+# Output: "Already logged in as dux8bevo@gmail.com"
+```
+
+### Phase 3 — FlutterFire Configure (DONE)
+
+```powershell
+# Install FlutterFire CLI
+dart pub global activate flutterfire_cli
+# Activated flutterfire_cli v1.3.1
+
+# Temporary PATH fix for Pub Cache binaries
+$env:PATH += ";$env:LOCALAPPDATA\Pub\Cache\bin"
+
+# Navigate to project
+cd C:\WINDOWS\myproject
+
+# Configure Firebase — production config
+flutterfire configure --project=sugarless-252ae
+# Registered apps for web/android/ios
+
+# Configure Firebase — dev config
+flutterfire configure --project=sugarless-252ae --out lib/firebase_options_dev.dart
+# Generated dev config file
+```
+
+### Phase 4 — Build Attempts (BLOCKED)
+
+```powershell
+# Attempt 1 — FAILED: missing .g.dart and .freezed.dart files
+flutter run -d chrome
+
+# Attempt 2 — FAILED: same missing generated files
+flutter run -d chrome --release
+
+# Attempt 3 — FAILED: Dart SDK version mismatch
+# Dart SDK 3.8.1 but project pubspec.yaml requires >=3.11.0
+dart run build_runner build --delete-conflicting-outputs
+```
+
+### Phase 5 — Switch Fix Attempts (UNCERTAIN)
+
+```powershell
+# PowerShell Fix-Switch function defined (see code issues section below)
+# Applied to 6 files — all reported "Access Denied" (C:\WINDOWS is protected)
+# BUT also said "Fixed" — unclear if changes actually persisted
+```
+
+---
+
+## The 3 Blockers Preventing Build
+
+### Blocker 1: Dart SDK Version Constraint (THE MAIN BLOCKER)
+
+The `pubspec.yaml` has an SDK constraint requiring `>=3.11.0` but:
+- Flutter 3.29.3 bundles Dart 3.8.1
+- Dart version 3.11.0 **does not exist** — Dart versions go 3.0, 3.1, ..., 3.8
+- This constraint is almost certainly wrong in the ApparenceKit template
+
+**Fix:** Edit `pubspec.yaml` and change the SDK constraint:
+
+```yaml
+# BEFORE (broken):
+environment:
+  sdk: ">=3.11.0 <4.0.0"   # or whatever the exact constraint is
+
+# AFTER (fixed):
+environment:
+  sdk: ">=3.1.0 <4.0.0"    # Dart 3.1.0+ (your 3.8.1 satisfies this)
+```
+
+**Important:** Before changing, open `pubspec.yaml` and check the EXACT constraint. It might be `^3.11.0` or `>=3.11.0`. Either way, `3.11.0` doesn't exist and needs to be changed to something your Dart 3.8.1 satisfies.
+
+### Blocker 2: Missing Generated Files (.g.dart, .freezed.dart)
+
+ApparenceKit uses code generation (Freezed + json_serializable). The generated files are NOT checked into git — they must be created by running `build_runner`:
+
+```powershell
+dart run build_runner build --delete-conflicting-outputs
+```
+
+This command will ONLY work after fixing Blocker 1 (the SDK constraint). Once the constraint is fixed, this will generate all the `.g.dart` and `.freezed.dart` files the project needs.
+
+### Blocker 3: Project Location Permissions
+
+`C:\WINDOWS\myproject` is in a system-protected directory. This causes:
+- "Access Denied" when scripts try to modify files
+- Potential issues with `build_runner` writing generated files
+- General flakiness with file operations
+
+**Fix:** Move the entire project to your user directory:
+
+```powershell
+# Move project to user directory
+Move-Item C:\WINDOWS\myproject C:\Users\lober\myproject
+
+# Or copy if you want to keep the original
+Copy-Item -Recurse C:\WINDOWS\myproject C:\Users\lober\myproject
+```
+
+---
+
+## Step-by-Step Resume Plan (Copy-Paste Ready)
+
+Run these commands in PowerShell, in order. Each step depends on the previous one.
+
+### Step 0: Permanent PATH Fix (run ONCE, never again)
+
+```powershell
+[Environment]::SetEnvironmentVariable("PATH", [Environment]::GetEnvironmentVariable("PATH", "User") + ";C:\Users\lober\AppData\Roaming\npm;C:\Users\lober\AppData\Local\Pub\Cache\bin", "User")
+```
+
+**Close and reopen PowerShell** after running this. It permanently adds npm and Pub Cache to your PATH.
+
+### Step 1: Move Project Out of C:\WINDOWS
+
+```powershell
+Copy-Item -Recurse C:\WINDOWS\myproject C:\Users\lober\myproject
+cd C:\Users\lober\myproject
+```
+
+### Step 2: Fix the SDK Constraint
+
+```powershell
+# Open pubspec.yaml and find the 'environment > sdk' line
+# Change ">=3.11.0" (or "^3.11.0") to ">=3.1.0 <4.0.0"
+notepad pubspec.yaml
+```
+
+Or use PowerShell to fix it in-place:
+```powershell
+(Get-Content pubspec.yaml) -replace '>=3\.11\.0', '>=3.1.0' | Set-Content pubspec.yaml
+```
+
+### Step 3: Get Dependencies
+
+```powershell
+flutter pub get
+```
+
+### Step 4: Generate Code (build_runner)
+
+```powershell
+dart run build_runner build --delete-conflicting-outputs
+```
+
+This generates all the missing `.g.dart` and `.freezed.dart` files. May take a minute.
+
+### Step 5: Re-apply Switch Fixes (if needed)
+
+The previous attempt got "Access Denied" in `C:\WINDOWS`. Now that the project is in `C:\Users\lober\myproject`, re-run the fix:
+
+```powershell
+cd C:\Users\lober\myproject
+
 function Fix-Switch {
     param([string]$File, [string]$Fix)
     $path = Join-Path (Get-Location) $File
@@ -207,7 +244,7 @@ function Fix-Switch {
         [System.IO.File]::WriteAllLines($path, $lines)
         Write-Host "Fixed: $File"
     } else {
-        Write-Host "Skipped: $File"
+        Write-Host "Skipped: $File (already has wildcard case)"
     }
 }
 
@@ -217,147 +254,129 @@ Fix-Switch "lib\modules\authentication\ui\signin_page.dart" "_ => const SizedBox
 Fix-Switch "lib\modules\authentication\ui\signup_page.dart" "_ => const SizedBox(),"
 Fix-Switch "lib\modules\subscription\ui\premium_page.dart" "_ => const SizedBox(),"
 Fix-Switch "lib\modules\authentication\providers\phone_auth_notifier.dart" "_ => throw StateError('Unknown state'),"
-Write-Host "Done! All files fixed."
+Write-Host "Done! All files processed."
 ```
 
-### How the Script Works
+If all say "Skipped" — the previous fix DID work despite the "Access Denied" warnings.
 
-1. Takes a file path and the fix string as parameters
-2. Reads the entire file into memory
-3. Scans **bottom-to-top** (to avoid index shifting issues when inserting lines)
-4. Finds every `switch (` statement
-5. Tracks brace depth `{}` to find the closing brace of the switch
-6. Checks if the line before the closing brace is already a `_ =>` wildcard
-7. If NOT present, inserts the wildcard case with proper indentation
-8. If already present, skips the file (idempotent — safe to run multiple times)
+### Step 6: Analyze
 
----
+```powershell
+flutter analyze
+```
 
-## What To Look Out For In The Future
+Should show 0 errors. If there are errors, fix them before proceeding.
 
-### 1. Non-Exhaustive Switch Expressions
-**Trigger:** Adding new enum values or sealed class subtypes
-**Symptom:** `A non-exhaustive switch expression` error during `flutter analyze` or build
-**Fix:** Add `_ => const SizedBox(),` (UI) or `_ => throw StateError('...')` (logic) to the switch
-**Prevention:** Always add a wildcard `_ =>` case when writing new switch expressions
+### Step 7: Run the App
 
-### 2. Firebase Auth State Circular Redirects
-**Trigger:** Changes to auth routing, adding new auth providers, or modifying the auth state listener
-**Symptom:** App loads but loops between screens, never settling
-**Fix:** Ensure the auth state listener has a "loading" state that shows a splash screen, and guard against redirect loops
-**Prevention:** Always handle `loading`, `authenticated`, `unauthenticated`, and `error` states explicitly
+```powershell
+flutter run -d chrome
+```
 
-### 3. Riverpod Provider State Mismatches
-**Trigger:** Adding new states to a StateNotifier without updating all consumers
-**Symptom:** Widgets not updating, or `StateError` throws from the wildcard case
-**Fix:** Update all switch expressions that consume the provider's state
-**Prevention:** Search for all usages of a notifier's state type when adding new states
+### Step 8: Test Auth Flows
 
-### 4. Dart Version Compatibility
-**Trigger:** Upgrading Flutter/Dart SDK
-**Symptom:** New analyzer warnings or errors
-**Note:** Dart 3.x introduced sealed classes and exhaustive pattern matching. Older switch/case syntax may need migration to switch expressions.
+Once the app launches in Chrome, test:
+- Email sign-in
+- Email sign-up
+- Phone authentication
+- Password recovery
+- Premium/subscription flow
+- **Watch for circular redirect loop** (Problem #1 — see code issues below)
 
 ---
 
-## Remaining Steps / TODO
+## Known Code Issues & Fixes
 
-### 🔴 Critical (Must Do)
+### Issue 1: Firebase Auth Circular Redirect Loop
 
-1. **Apply the Firebase Auth circular loop fix (Problem #1)**
-   - This is the two-line fix from the very beginning of our session
-   - User never applied it
-   - Need to identify the exact file and lines
-   - Without this, the app may still have the circular redirect issue
+**Status:** FIX NEVER APPLIED — still needs to be done after the app builds
 
-2. **Run `flutter analyze`** after all fixes are applied
-   - Verify zero errors/warnings
-   - Command: `flutter analyze`
+The app gets stuck bouncing between login and home screens. A two-line fix was identified in a previous session but never applied.
 
-3. **Run `flutter build`** (or `flutter run`)
-   - Verify the app compiles and launches
-   - Test the auth flow end-to-end
+**Root Cause:** The Firebase auth state listener doesn't properly handle the initial auth check, causing:
+- Detect "no user" -> redirect to login
+- Login triggers auth state change -> redirect to home
+- Home re-checks auth -> redirect back to login
+- Repeat forever
 
-### 🟡 Should Do
+**Likely Fix (confirm by inspecting the auth router):**
+```dart
+// In the auth state listener/router (main.dart or auth_router.dart):
+if (authState == AuthState.loading) return const SplashScreen();
+if (authState == AuthState.authenticated && currentRoute == '/login') return;
+```
 
-4. **Verify Problem #3 fix is applied**
-   - User believes it was applied but should confirm
-   - Check the relevant provider/state management file
+**Action:** After the app builds and runs, if you see the circular loop, inspect the auth routing code and add the guard conditions.
 
-5. **Test all auth flows manually:**
-   - Phone authentication (phone_auth_page.dart)
-   - Email sign in (signin_page.dart)
-   - Email sign up (signup_page.dart)
-   - Password recovery (recover_password_page.dart)
-   - Premium/subscription flow (premium_page.dart)
+### Issue 2: Non-Exhaustive Switch Expressions
 
-### 🟢 Nice To Have
+**Status:** Fix script ran but "Access Denied" — needs re-verification after project move
 
-6. **Add unit tests** for auth state transitions
-7. **Add the wildcard `_ =>` pattern to a lint rule** or code review checklist
+6 files need wildcard `_ =>` cases in switch expressions. The Fix-Switch PowerShell script handles this (included in Step 5 above).
+
+### Issue 3: State Management Fix
+
+**Status:** Believed applied, needs confirmation
+
+A separate Riverpod state management fix was discussed and believed to have been applied. Verify by checking provider/notifier files for proper error state handling.
 
 ---
 
-## How To Pick Up Where We Left Off (Agent Handoff)
-
-### Context for a New Agent
-
-You are helping a user with a **Flutter mobile app** located at `C:\WINDOWS\myproject` on their Windows machine. The app uses:
-
-- **Flutter/Dart 3.x+** (with exhaustive pattern matching)
-- **Firebase Authentication** (phone, email, password recovery)
-- **Riverpod** for state management (StateNotifier pattern)
-- **Modular architecture** under `lib/modules/`
-
-### What Was Done
-
-1. **Firebase was configured and connected** — the app builds and connects to Firebase
-2. **A circular auth redirect loop was identified** (Problem #1) — a two-line fix was designed but **NEVER APPLIED by the user**
-3. **Non-exhaustive switch statements were identified** across 6 files (Problem #2) — these were **FIXED via a PowerShell script**
-4. **A separate state management fix** was discussed (Problem #3) — **BELIEVED APPLIED but not confirmed**
-
-### What Needs to Happen Next
-
-1. **Get the user to confirm/apply the Problem #1 fix** — this is the most critical outstanding item
-2. **Run `flutter analyze`** to verify all errors are resolved
-3. **Run the app and test** the auth flows
-4. **Confirm Problem #3** was actually applied
-
-### Key Files to Know
+## Key Files Reference
 
 | File | Role |
 |------|------|
-| `lib/modules/authentication/ui/phone_auth_page.dart` | Phone number authentication UI |
-| `lib/modules/authentication/ui/signin_page.dart` | Email sign-in UI |
-| `lib/modules/authentication/ui/signup_page.dart` | Email sign-up UI |
-| `lib/modules/authentication/ui/recover_password_page.dart` | Password recovery UI |
-| `lib/modules/authentication/providers/phone_auth_notifier.dart` | Phone auth state management |
-| `lib/modules/subscription/ui/premium_page.dart` | Premium subscription UI |
-| `lib/main.dart` | App entry point (likely where Problem #1 fix goes) |
-
-### Communication Style
-
-The user prefers:
-- Direct, honest communication
-- Practical solutions over theoretical explanations
-- Being told when something is uncertain rather than getting a confident wrong answer
-- Documentation and safety nets against context loss
-- PowerShell scripts for batch file modifications (they're on Windows)
+| `pubspec.yaml` | **CHECK THIS FIRST** — SDK constraint is the main blocker |
+| `lib/main.dart` | App entry point, likely where auth loop fix goes |
+| `lib/firebase_options.dart` | Production Firebase config (generated) |
+| `lib/firebase_options_dev.dart` | Dev Firebase config (generated) |
+| `lib/modules/authentication/ui/phone_auth_page.dart` | Phone auth UI (needs switch fix) |
+| `lib/modules/authentication/ui/signin_page.dart` | Email sign-in UI (needs switch fix) |
+| `lib/modules/authentication/ui/signup_page.dart` | Email sign-up UI (needs switch fix) |
+| `lib/modules/authentication/ui/recover_password_page.dart` | Password recovery UI (needs switch fix) |
+| `lib/modules/authentication/providers/phone_auth_notifier.dart` | Phone auth state (needs switch fix) |
+| `lib/modules/subscription/ui/premium_page.dart` | Premium/subscription UI (needs switch fix) |
 
 ---
 
-## Gaps in This Document (User Input Needed)
+## Agent Handoff Context
 
-> **These are things I could not determine from our conversation and need the user to fill in:**
+### What This Project Is
 
-1. **Problem #1 exact fix:** What were the two lines of code? What file do they go in?
-2. **Problem #3 details:** What exactly was the "separate scenario" permanent fix? Was it applied?
-3. **Firebase configuration details:** Which Firebase services are enabled? (Auth, Firestore, etc.)
-4. **Riverpod version:** Which version of Riverpod — `riverpod`, `flutter_riverpod`, `hooks_riverpod`?
-5. **Any other files** that had switch statement issues beyond the 6 listed?
-6. **The app's current state:** Does it build? Does it run? What screen does it show?
+This is the **Flutter companion app** for the AutoForge ecosystem. It's built using **ApparenceKit** (a commercial Flutter boilerplate/starter kit, v5.0.16) with Firebase Authentication. The app connects to the same Supabase backend as the web app (dual boilerplate pattern — see `self-deploy-vps-handoff.md`).
+
+### What the Flutter App Will Do
+
+1. **Idea Capture** — Jot down app ideas on the go (voice-to-text)
+2. **PRD Builder** — Expand ideas into full PRDs via conversational flow
+3. **Build Monitoring** — View active builds across VPS/local instances
+4. **Account Management** — View credits, subscription, build history
+5. **Instance Status** — Check if VPS instances are running
+
+### What Was Done (3/4 Complete)
+
+1. ApparenceKit CLI installed (v5.0.16)
+2. Firebase login authenticated (dux8bevo@gmail.com)
+3. FlutterFire configured for prod + dev (project: sugarless-252ae)
+4. **BLOCKED** at build step — SDK constraint + missing code generation + permissions
+
+### What Needs to Happen Next
+
+Follow the [Step-by-Step Resume Plan](#resume-plan) above. The TL;DR is:
+1. Move project out of `C:\WINDOWS`
+2. Fix the SDK constraint in `pubspec.yaml`
+3. Run `dart run build_runner build --delete-conflicting-outputs`
+4. Re-run switch fixes
+5. `flutter analyze` then `flutter run -d chrome`
+
+### User Preferences
+
+- Direct, practical communication
+- PowerShell scripts for batch operations (Windows user)
+- Documentation as safety net against context loss
+- Prefers being told when something is uncertain
 
 ---
 
-*Last updated: February 19, 2026*
+*Last updated: February 20, 2026*
 *Session: claude/setup-flutter-appearance-kit-uW97I*

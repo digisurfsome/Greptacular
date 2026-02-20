@@ -6,6 +6,7 @@ SQLAlchemy models and CRUD functions for persisting workspace conversations.
 Uses a global database at ``~/.autoforge/workspace.db`` (not per-project).
 """
 
+import json
 import logging
 import threading
 from datetime import datetime, timedelta, timezone
@@ -189,6 +190,26 @@ class WorkspaceConnectedRepo(Base):
     branch = Column(String(100), default="main")
     last_synced_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=_utc_now)
+
+
+class WorkspaceNotification(Base):
+    """A structured notification from an agent (summary, roadmap, progress, milestone)."""
+    __tablename__ = "workspace_notifications"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    conversation_id = Column(
+        Integer,
+        ForeignKey("workspace_conversations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    notification_type = Column(String(50), nullable=False)  # "summary", "roadmap", "progress", "milestone"
+    title = Column(String(500), nullable=False)
+    content = Column(Text, nullable=False)
+    metadata_json = Column(Text, nullable=True)  # JSON-encoded metadata
+    is_read = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=_utc_now)
+    updated_at = Column(DateTime, default=_utc_now, onupdate=_utc_now)
 
 
 class WorkspaceRateLimitEvent(Base):
@@ -1778,5 +1799,259 @@ def get_premium_usage_summary() -> dict:
             "conversations_in_premium": len(conversations),
             "conversations": conversations,
         }
+    finally:
+        session.close()
+
+
+# ============================================================================
+# Notification Operations
+# ============================================================================
+
+VALID_NOTIFICATION_TYPES = ("summary", "roadmap", "progress", "milestone")
+
+
+def _notification_to_dict(notification: WorkspaceNotification) -> dict:
+    """Convert a WorkspaceNotification ORM instance to a plain dict.
+
+    Deserializes the ``metadata_json`` column back to a Python dict (or None).
+
+    Args:
+        notification: The notification ORM object.
+
+    Returns:
+        A serializable dict with all notification fields.
+    """
+    metadata = None
+    if notification.metadata_json:
+        try:
+            metadata = json.loads(notification.metadata_json)
+        except (json.JSONDecodeError, TypeError):
+            metadata = None
+
+    return {
+        "id": notification.id,
+        "conversation_id": notification.conversation_id,
+        "notification_type": notification.notification_type,
+        "title": notification.title,
+        "content": notification.content,
+        "metadata": metadata,
+        "is_read": bool(notification.is_read),
+        "created_at": notification.created_at.isoformat() if notification.created_at else None,
+        "updated_at": notification.updated_at.isoformat() if notification.updated_at else None,
+    }
+
+
+def create_notification(
+    conversation_id: Optional[int],
+    notification_type: str,
+    title: str,
+    content: str,
+    metadata: Optional[dict] = None,
+) -> dict:
+    """Create a new workspace notification.
+
+    Args:
+        conversation_id: Optional conversation this notification belongs to.
+        notification_type: One of "summary", "roadmap", "progress", "milestone".
+        title: Short title for the notification.
+        content: Full notification content.
+        metadata: Optional JSON-serializable metadata dict.
+
+    Returns:
+        A dict representing the created notification.
+
+    Raises:
+        ValueError: If notification_type is not a valid type.
+    """
+    if notification_type not in VALID_NOTIFICATION_TYPES:
+        raise ValueError(
+            f"Invalid notification_type '{notification_type}'. "
+            f"Must be one of: {', '.join(VALID_NOTIFICATION_TYPES)}"
+        )
+
+    session = get_db_session()
+    try:
+        metadata_json = json.dumps(metadata) if metadata is not None else None
+
+        notification = WorkspaceNotification(
+            conversation_id=conversation_id,
+            notification_type=notification_type,
+            title=title,
+            content=content,
+            metadata_json=metadata_json,
+        )
+        session.add(notification)
+        session.commit()
+        session.refresh(notification)
+        logger.info(
+            "Created notification %d (type=%s, conversation=%s)",
+            notification.id, notification_type, conversation_id,
+        )
+        return _notification_to_dict(notification)
+    finally:
+        session.close()
+
+
+def get_notifications(
+    conversation_id: Optional[int] = None,
+    notification_type: Optional[str] = None,
+    limit: int = 50,
+) -> list[dict]:
+    """Get notifications with optional filters.
+
+    Args:
+        conversation_id: Filter by conversation ID. If None, returns all.
+        notification_type: Filter by notification type. If None, returns all types.
+        limit: Maximum number of notifications to return.
+
+    Returns:
+        List of notification dicts ordered by creation time descending (newest first).
+    """
+    session = get_db_session()
+    try:
+        query = session.query(WorkspaceNotification)
+
+        if conversation_id is not None:
+            query = query.filter(WorkspaceNotification.conversation_id == conversation_id)
+        if notification_type is not None:
+            query = query.filter(WorkspaceNotification.notification_type == notification_type)
+
+        notifications = (
+            query.order_by(WorkspaceNotification.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+        return [_notification_to_dict(n) for n in notifications]
+    finally:
+        session.close()
+
+
+def get_notification(notification_id: int) -> Optional[dict]:
+    """Get a single notification by ID.
+
+    Args:
+        notification_id: The notification ID to retrieve.
+
+    Returns:
+        A notification dict, or None if not found.
+    """
+    session = get_db_session()
+    try:
+        notification = (
+            session.query(WorkspaceNotification)
+            .filter(WorkspaceNotification.id == notification_id)
+            .first()
+        )
+        if not notification:
+            return None
+        return _notification_to_dict(notification)
+    finally:
+        session.close()
+
+
+def delete_notification(notification_id: int) -> bool:
+    """Delete a single notification.
+
+    Args:
+        notification_id: The notification ID to delete.
+
+    Returns:
+        True if the notification was deleted, False if not found.
+    """
+    session = get_db_session()
+    try:
+        notification = (
+            session.query(WorkspaceNotification)
+            .filter(WorkspaceNotification.id == notification_id)
+            .first()
+        )
+        if not notification:
+            return False
+        session.delete(notification)
+        session.commit()
+        logger.info("Deleted notification %d", notification_id)
+        return True
+    finally:
+        session.close()
+
+
+def clear_notifications(conversation_id: Optional[int] = None) -> int:
+    """Clear (delete) all notifications, optionally filtered by conversation.
+
+    Args:
+        conversation_id: If provided, only clear notifications for this conversation.
+            If None, clears all notifications.
+
+    Returns:
+        The number of notifications deleted.
+    """
+    session = get_db_session()
+    try:
+        query = session.query(WorkspaceNotification)
+        if conversation_id is not None:
+            query = query.filter(WorkspaceNotification.conversation_id == conversation_id)
+
+        count = query.delete(synchronize_session="fetch")
+        session.commit()
+        logger.info("Cleared %d notifications (conversation_id=%s)", count, conversation_id)
+        return count
+    finally:
+        session.close()
+
+
+def mark_notification_read(notification_id: int) -> Optional[dict]:
+    """Mark a single notification as read.
+
+    Args:
+        notification_id: The notification ID to mark as read.
+
+    Returns:
+        The updated notification dict, or None if not found.
+    """
+    session = get_db_session()
+    try:
+        notification = (
+            session.query(WorkspaceNotification)
+            .filter(WorkspaceNotification.id == notification_id)
+            .first()
+        )
+        if not notification:
+            return None
+        notification.is_read = True
+        notification.updated_at = _utc_now()
+        session.commit()
+        session.refresh(notification)
+        return _notification_to_dict(notification)
+    finally:
+        session.close()
+
+
+def mark_all_notifications_read(conversation_id: Optional[int] = None) -> int:
+    """Mark all notifications as read, optionally filtered by conversation.
+
+    Args:
+        conversation_id: If provided, only mark notifications for this conversation.
+            If None, marks all notifications as read.
+
+    Returns:
+        The number of notifications updated.
+    """
+    session = get_db_session()
+    try:
+        query = session.query(WorkspaceNotification).filter(
+            WorkspaceNotification.is_read == False  # noqa: E712
+        )
+        if conversation_id is not None:
+            query = query.filter(WorkspaceNotification.conversation_id == conversation_id)
+
+        count = query.update(
+            {"is_read": True, "updated_at": _utc_now()},
+            synchronize_session="fetch",
+        )
+        session.commit()
+        logger.info(
+            "Marked %d notifications as read (conversation_id=%s)", count, conversation_id
+        )
+        return count
     finally:
         session.close()

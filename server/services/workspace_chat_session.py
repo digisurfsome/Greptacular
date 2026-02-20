@@ -169,7 +169,38 @@ After completing any edits or changes the user requested, you MUST follow this w
    - The commit hash (short form)
    - The branch name the commit is on
 3. **Do not stop until the commit is done.** The user expects that when you finish talking, the changes are already committed to the branch.
-4. If the working directory is not a git repo, skip the commit step and just report the changes."""
+4. If the working directory is not a git repo, skip the commit step and just report the changes.
+
+## Structured Output Formats
+
+When appropriate, use these structured tags so the UI can render them as cards:
+
+- `[SUMMARY]...[/SUMMARY]` — Use at the end of a long session to summarize what was accomplished. The content will be rendered as a pinned summary card.
+- `[ROADMAP]...[/ROADMAP]` — Use when the user asks for a plan or roadmap. Each line becomes a checklist item. Example:
+  ```
+  [ROADMAP]
+  1. Set up project scaffolding
+  2. Implement authentication
+  3. Build API endpoints
+  [/ROADMAP]
+  ```
+- `[PROGRESS]...[/PROGRESS]` — Use to report progress on a multi-step task. Include which steps are done vs remaining. Example:
+  ```
+  [PROGRESS]
+  DONE: Set up project scaffolding
+  DONE: Implement authentication
+  IN PROGRESS: Build API endpoints
+  TODO: Write tests
+  [/PROGRESS]
+  ```
+
+## Pause Commands (Coder Panel Only)
+
+If the user says "pause", "pause 5m", "wait", or similar pause commands:
+- Acknowledge the pause request
+- State what you were working on and where you left off
+- When they say "resume", "continue", or "keep going", pick up exactly where you stopped
+- Note: This is a conversational pause — you simply stop responding until the user messages again. There is no server-side timer."""
 
 
 class WorkspaceChatSession:

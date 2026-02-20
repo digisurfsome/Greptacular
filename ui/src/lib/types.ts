@@ -1074,3 +1074,27 @@ export interface DesignGuideContext {
   refinement: DesignRefinement
   availableStyles: Array<{ id: string; name: string; category: string; description: string }>
 }
+
+// ============================================================================
+// Workspace Notifications
+// ============================================================================
+
+export interface WorkspaceNotification {
+  id: number
+  conversation_id: number | null
+  notification_type: 'summary' | 'roadmap' | 'progress' | 'milestone'
+  title: string
+  content: string
+  metadata: Record<string, unknown> | null
+  is_read: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface WorkspaceNotificationCreate {
+  conversation_id: number
+  notification_type: 'summary' | 'roadmap' | 'progress' | 'milestone'
+  title: string
+  content: string
+  metadata?: Record<string, unknown> | null
+}

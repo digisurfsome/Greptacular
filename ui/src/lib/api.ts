@@ -33,6 +33,8 @@ import type {
   WorkspaceCategory,
   WorkspaceSummary,
   WorkspaceSearchResult,
+  WorkspaceNotification,
+  WorkspaceNotificationCreate,
   ForkResponse,
   PaginatedMessages,
   InjectResponse,
@@ -1146,4 +1148,51 @@ export async function getCalibration(): Promise<CalibrationData> {
 
 export async function getRateLimitHistory(): Promise<RateLimitEvent[]> {
   return fetchJSON('/workspace/usage/rate-limits')
+}
+
+// ============================================================================
+// Workspace Notifications API
+// ============================================================================
+
+export async function listNotifications(
+  conversationId?: number,
+  type?: string,
+  limit: number = 50
+): Promise<WorkspaceNotification[]> {
+  const params = new URLSearchParams()
+  if (conversationId != null) params.set('conversation_id', String(conversationId))
+  if (type) params.set('type', type)
+  params.set('limit', String(limit))
+  return fetchJSON(`/workspace/notifications?${params.toString()}`)
+}
+
+export async function getNotification(notificationId: number): Promise<WorkspaceNotification> {
+  return fetchJSON(`/workspace/notifications/${notificationId}`)
+}
+
+export async function createNotification(
+  notification: WorkspaceNotificationCreate
+): Promise<WorkspaceNotification> {
+  return fetchJSON('/workspace/notifications', {
+    method: 'POST',
+    body: JSON.stringify(notification),
+  })
+}
+
+export async function deleteNotification(notificationId: number): Promise<void> {
+  await fetchJSON(`/workspace/notifications/${notificationId}`, { method: 'DELETE' })
+}
+
+export async function clearNotifications(conversationId?: number): Promise<void> {
+  const params = conversationId != null ? `?conversation_id=${conversationId}` : ''
+  await fetchJSON(`/workspace/notifications${params}`, { method: 'DELETE' })
+}
+
+export async function markNotificationRead(notificationId: number): Promise<WorkspaceNotification> {
+  return fetchJSON(`/workspace/notifications/${notificationId}/read`, { method: 'PATCH' })
+}
+
+export async function markAllNotificationsRead(conversationId?: number): Promise<void> {
+  const params = conversationId != null ? `?conversation_id=${conversationId}` : ''
+  await fetchJSON(`/workspace/notifications/mark-all-read${params}`, { method: 'POST' })
 }

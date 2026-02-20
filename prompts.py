@@ -330,6 +330,46 @@ def _get_comm_context() -> str:
     else:
         lines.append("- **On timeout**: If `chat_with_user` times out, pause and use `send_message` to let the user know you're waiting, then continue with your best judgment.")
 
+    # Roadmap instructions — agent sends its plan so user can track progress
+    lines.append("")
+    lines.append("### Roadmap Sharing")
+    lines.append(
+        "- When you start working on a feature, use `send_message` with category `status` "
+        "to share your implementation plan as a numbered list. Prefix the message with `[ROADMAP]` "
+        "so the UI can render it as a trackable checklist. Example: "
+        '`[ROADMAP] 1. Read auth module | 2. Add JWT validation | 3. Update tests | 4. Run lint`'
+    )
+    lines.append(
+        "- As you complete each step, send a `status` message prefixed with `[PROGRESS]` "
+        "and the step number. Example: `[PROGRESS] 2/4 Add JWT validation — done`"
+    )
+    lines.append(
+        "- When you are on the final 1-2 steps, send a `status` message prefixed with "
+        '`[FINISHING]` so the user knows to get any last questions in.'
+    )
+
+    # Pause command recognition
+    lines.append("")
+    lines.append("### Pause Commands")
+    lines.append(
+        '- If the user sends a message containing "pause" followed by a duration '
+        '(e.g., "pause 5m", "pause 2m", "pause 30s"), use `chat_with_user` with '
+        "that duration as timeout_seconds to pause and wait for further instructions."
+    )
+    lines.append(
+        '- If the user sends "pause" without a duration, use `chat_with_user` with '
+        f"timeout_seconds={timeout} (the configured wait timeout)."
+    )
+
+    # Attachment awareness
+    lines.append("")
+    lines.append("### Attachments")
+    lines.append(
+        "- When you read inbox messages, some may include an `attachments` field with file paths. "
+        "Use the Read tool to view those files (images, code, PDFs). The user is sharing reference "
+        "material for you to use in your work."
+    )
+
     return "\n".join(lines) + "\n"
 
 

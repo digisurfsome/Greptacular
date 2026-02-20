@@ -1152,10 +1152,14 @@ export async function getRateLimitHistory(): Promise<RateLimitEvent[]> {
 // Notifications API
 // ============================================================================
 
-export async function sendToAgentInbox(projectName: string, text: string): Promise<{ sent: boolean; id: string }> {
+export async function sendToAgentInbox(
+  projectName: string,
+  text: string,
+  attachments?: Array<{ filename: string; mime_type: string; base64_data: string }>
+): Promise<{ sent: boolean; id: string }> {
   return fetchJSON(`/projects/${encodeURIComponent(projectName)}/notifications/inbox`, {
     method: 'POST',
-    body: JSON.stringify({ text }),
+    body: JSON.stringify({ text, attachments: attachments || [] }),
   })
 }
 

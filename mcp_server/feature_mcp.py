@@ -755,6 +755,37 @@ def feature_create_bulk(
                     deps_count += 1
 
             # Commit happens automatically on context manager exit
+
+            # Auto-inject summary checkpoint as the final feature
+            # This creates a lightweight task at the very end that forces
+            # the agent to send a summary through the walkie-talkie before finishing.
+            try:
+                all_ids = [f.id for f in created_features]
+                checkpoint = Feature(
+                    priority=start_priority + len(created_features),
+                    category="Checkpoint",
+                    name="Build Summary Report",
+                    description=(
+                        "Send a comprehensive summary of everything you built through the walkie-talkie. "
+                        "Use send_message with category 'milestone' to deliver: (1) what was built, "
+                        "(2) key decisions made, (3) any issues encountered, (4) suggestions for next steps. "
+                        "Then use chat_with_user to ask if the user has any follow-up tasks before you finish. "
+                        "This is your final checkpoint — the user may want to give you additional work."
+                    ),
+                    steps=[
+                        "Use send_message (milestone) with a full build summary",
+                        "Use chat_with_user to ask if there are follow-up tasks",
+                        "If user replies with tasks, implement them. If timeout, you are done.",
+                    ],
+                    passes=False,
+                    in_progress=False,
+                    dependencies=sorted(all_ids),  # type: ignore[assignment]
+                )
+                session.add(checkpoint)
+                session.flush()
+            except Exception:
+                pass  # Best-effort; don't fail the whole batch if checkpoint injection fails
+
             return json.dumps({
                 "created": len(created_features),
                 "with_dependencies": deps_count

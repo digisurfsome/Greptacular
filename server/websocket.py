@@ -8,6 +8,7 @@ Real-time updates for project progress, agent output, and dev server output.
 import asyncio
 import json
 import logging
+import os
 import re
 from datetime import datetime
 from pathlib import Path
@@ -716,6 +717,86 @@ async def poll_progress(websocket: WebSocket, project_name: str, project_dir: Pa
             break
 
 
+async def poll_comm_files(websocket: WebSocket, project_name: str, project_dir: Path):
+    """Poll communication files (outbox.jsonl, phase.json) and send updates via WebSocket."""
+    import fcntl
+
+    outbox_path = project_dir / ".autoforge" / "outbox.jsonl"
+    phase_path = project_dir / ".autoforge" / "phase.json"
+    last_phase: dict | None = None
+
+    while True:
+        try:
+            # Check outbox for new agent messages
+            if outbox_path.exists() and outbox_path.stat().st_size > 0:
+                try:
+                    fd = os.open(str(outbox_path), os.O_RDWR, 0o644)
+                    try:
+                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        raw = b""
+                        while True:
+                            chunk = os.read(fd, 8192)
+                            if not chunk:
+                                break
+                            raw += chunk
+                        if raw:
+                            os.ftruncate(fd, 0)
+                            fcntl.flock(fd, fcntl.LOCK_UN)
+                            os.close(fd)
+                            fd = -1
+                            for line in raw.decode("utf-8").splitlines():
+                                stripped = line.strip()
+                                if stripped:
+                                    try:
+                                        msg = json.loads(stripped)
+                                        await websocket.send_json({
+                                            "type": "agent_message",
+                                            "id": msg.get("id", ""),
+                                            "text": msg.get("text", ""),
+                                            "category": msg.get("category", "status"),
+                                            "timestamp": msg.get("timestamp", ""),
+                                        })
+                                    except json.JSONDecodeError:
+                                        continue
+                        else:
+                            fcntl.flock(fd, fcntl.LOCK_UN)
+                            os.close(fd)
+                            fd = -1
+                    except BlockingIOError:
+                        # File is locked by MCP server, skip this cycle
+                        os.close(fd)
+                        fd = -1
+                    finally:
+                        if fd >= 0:
+                            os.close(fd)
+                except (OSError, FileNotFoundError):
+                    pass
+
+            # Check phase file for state changes
+            if phase_path.exists():
+                try:
+                    content = phase_path.read_text()
+                    if content.strip():
+                        phase_data = json.loads(content)
+                        if phase_data != last_phase:
+                            last_phase = phase_data
+                            await websocket.send_json({
+                                "type": "agent_phase",
+                                "phase": phase_data.get("phase", ""),
+                                "detail": phase_data.get("detail", ""),
+                                "timestamp": phase_data.get("timestamp", ""),
+                            })
+                except (json.JSONDecodeError, OSError):
+                    pass
+
+            await asyncio.sleep(1)  # Poll every 1 second
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.warning(f"Comm polling error: {e}")
+            break
+
+
 async def project_websocket(websocket: WebSocket, project_name: str):
     """
     WebSocket endpoint for project updates.
@@ -842,6 +923,9 @@ async def project_websocket(websocket: WebSocket, project_name: str):
     # Start progress polling task
     poll_task = asyncio.create_task(poll_progress(websocket, project_name, project_dir))
 
+    # Start communication file polling task (outbox messages, phase changes)
+    comm_task = asyncio.create_task(poll_comm_files(websocket, project_name, project_dir))
+
     try:
         # Send initial agent status
         await websocket.send_json({
@@ -889,8 +973,13 @@ async def project_websocket(websocket: WebSocket, project_name: str):
     finally:
         # Clean up
         poll_task.cancel()
+        comm_task.cancel()
         try:
             await poll_task
+        except asyncio.CancelledError:
+            pass
+        try:
+            await comm_task
         except asyncio.CancelledError:
             pass
 

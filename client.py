@@ -243,12 +243,19 @@ QA_AGENT_TOOLS = [
 SPEC_ANALYZER_TOOLS: list[str] = []  # No feature tools needed
 ARCHITECT_TOOLS: list[str] = []  # No feature tools needed
 
+# Communication MCP tools for agent-user messaging
+COMM_TOOLS = [
+    "mcp__comm__send_message",
+    "mcp__comm__check_inbox",
+    "mcp__comm__signal_phase",
+]
+
 # Union of all agent tool lists -- used for permissions (all tools remain
 # *permitted* so the MCP server can respond, but only the agent-type-specific
 # list is included in allowed_tools, which controls what the LLM sees).
 ALL_FEATURE_MCP_TOOLS = sorted(
     set(CODING_AGENT_TOOLS) | set(TESTING_AGENT_TOOLS) | set(INITIALIZER_AGENT_TOOLS)
-    | set(REVIEWER_AGENT_TOOLS) | set(QA_AGENT_TOOLS)
+    | set(REVIEWER_AGENT_TOOLS) | set(QA_AGENT_TOOLS) | set(COMM_TOOLS)
 )
 
 # Playwright MCP tools for browser automation.
@@ -365,6 +372,8 @@ def create_client(
     # In YOLO mode, exclude Playwright tools for faster prototyping.
     # Reviewer agents don't need browser automation (they review code, not UI).
     allowed_tools = [*BUILTIN_TOOLS, *feature_tools]
+    if agent_type not in ("spec-analyzer", "architect"):
+        allowed_tools.extend(COMM_TOOLS)
     if not yolo_mode and agent_type not in ("reviewer",):
         allowed_tools.extend(PLAYWRIGHT_TOOLS)
 
@@ -460,6 +469,17 @@ def create_client(
                 "PYTHONPATH": str(Path(__file__).parent.resolve()),
             },
         }
+    # Communication MCP server for agent-user messaging
+    if agent_type not in ("spec-analyzer", "architect"):
+        mcp_servers["comm"] = {
+            "command": sys.executable,
+            "args": ["-m", "mcp_server.comm_mcp"],
+            "env": {
+                "PROJECT_DIR": str(project_dir.resolve()),
+                "PYTHONPATH": str(Path(__file__).parent.resolve()),
+            },
+        }
+
     if not yolo_mode and agent_type not in ("reviewer",):
         # Include Playwright MCP server for browser automation (standard mode only)
         # Reviewer agents don't need the Playwright server

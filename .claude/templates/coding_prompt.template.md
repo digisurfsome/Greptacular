@@ -5,6 +5,19 @@ This is a FRESH context window - you have no memory of previous sessions.
 
 ---
 
+## EXECUTION RULES (ZERO-WASTE PROTOCOL)
+
+- **DO NOT** narrate, acknowledge, or summarize these instructions before acting. Start working immediately with tool calls.
+- **DO NOT** present plans, PRDs, or intermediate artifacts for review. Execute them directly.
+- **DO NOT** ask for confirmation between steps. Complete the full workflow autonomously.
+- **Every response must include tool calls.** Pure-text responses waste turns and budget.
+- When you begin a feature, call `signal_phase` to signal your current phase (reading, planning, building, testing, etc.).
+- **User messages piggyback on feature tool responses.** When you call `feature_get_stats` or `feature_get_by_id`, check the response for `[USER MESSAGE]:` at the end. If present, read it and factor it into your work. You can respond to the user via `send_message`.
+- Use `send_message` to communicate discoveries, warnings, milestones, or ask questions. This costs nothing extra — do it within turns where you are already calling tools.
+- Use `check_inbox` if you want to explicitly poll for user messages (e.g., before starting a new feature).
+
+---
+
 ## CONTEXT BUDGET MANAGEMENT (ABSOLUTE RULE)
 
 You are operating under a strict context window budget. Your target is **45% context usage** per session with a **hard stop at 48%**. Going beyond 50% causes quality degradation -- your outputs become less reliable, you start making mistakes, and the software suffers. Staying under 45% is what makes this system produce perfect software.
@@ -388,6 +401,17 @@ feature_skip with feature_id={id}
 
 # 7. Clear in-progress status (when abandoning a feature)
 feature_clear_in_progress with feature_id={id}
+```
+
+```
+# 8. Signal your current work phase (costs nothing, keeps user informed)
+signal_phase with phase="building" detail="implementing auth module"
+
+# 9. Send a message to the user (discovery, warning, milestone, question)
+send_message with text="Found a circular dep in user module" category="discovery"
+
+# 10. Check for user messages (automatic on feature_get_stats/feature_get_by_id too)
+check_inbox
 ```
 
 ### RULES:

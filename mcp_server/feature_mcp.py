@@ -53,6 +53,59 @@ from api.migration import migrate_json_to_sqlite
 # Configuration from environment
 PROJECT_DIR = Path(os.environ.get("PROJECT_DIR", ".")).resolve()
 
+# Inbox piggyback: append pending user messages to feature tool responses
+# so the agent sees them without needing to call check_inbox() explicitly.
+INBOX_PATH = PROJECT_DIR / ".autoforge" / "inbox.jsonl"
+
+
+def _check_inbox_piggyback() -> str:
+    """Check inbox and return a suffix to append to tool responses.
+
+    Returns empty string if no messages are waiting, keeping overhead near-zero.
+    On any error, returns empty string silently (never blocks feature tools).
+    """
+    try:
+        if not INBOX_PATH.exists() or INBOX_PATH.stat().st_size == 0:
+            return ""
+
+        import fcntl
+
+        fd = os.open(str(INBOX_PATH), os.O_RDWR, 0o644)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            raw = b""
+            while True:
+                chunk = os.read(fd, 8192)
+                if not chunk:
+                    break
+                raw += chunk
+            if not raw:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+                return ""
+            os.ftruncate(fd, 0)
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        except BlockingIOError:
+            # File locked by another process, skip
+            return ""
+        finally:
+            os.close(fd)
+
+        messages = []
+        for line in raw.decode("utf-8").splitlines():
+            stripped = line.strip()
+            if stripped:
+                try:
+                    messages.append(json.loads(stripped))
+                except json.JSONDecodeError:
+                    continue
+        if not messages:
+            return ""
+
+        texts = [m.get("text", "") for m in messages]
+        return "\n\n[USER MESSAGE]: " + " | ".join(texts)
+    except Exception:
+        return ""
+
 
 # Pydantic models for input validation
 class MarkPassingInput(BaseModel):
@@ -160,12 +213,13 @@ def feature_get_stats() -> str:
         in_progress = int(result.in_progress or 0)
         percentage = round((passing / total) * 100, 1) if total > 0 else 0.0
 
-        return json.dumps({
+        result_json = json.dumps({
             "passing": passing,
             "in_progress": in_progress,
             "total": total,
             "percentage": percentage
         })
+        return result_json + _check_inbox_piggyback()
     finally:
         session.close()
 
@@ -192,7 +246,7 @@ def feature_get_by_id(
         if feature is None:
             return json.dumps({"error": f"Feature with ID {feature_id} not found"})
 
-        return json.dumps(feature.to_dict())
+        return json.dumps(feature.to_dict()) + _check_inbox_piggyback()
     finally:
         session.close()
 

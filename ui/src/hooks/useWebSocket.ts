@@ -52,6 +52,9 @@ interface WebSocketState {
   celebration: CelebrationTrigger | null
   // Orchestrator state for Mission Control
   orchestratorStatus: OrchestratorStatus | null
+  // Agent communication
+  agentMessages: Array<{ id: string; text: string; category: string; timestamp: string }>
+  agentPhase: { phase: string; detail: string; timestamp: string } | null
 }
 
 const MAX_LOGS = 100 // Keep last 100 log lines
@@ -73,6 +76,8 @@ export function useProjectWebSocket(projectName: string | null) {
     celebrationQueue: [],
     celebration: null,
     orchestratorStatus: null,
+    agentMessages: [],
+    agentPhase: null,
   })
 
   const wsRef = useRef<WebSocket | null>(null)
@@ -122,6 +127,7 @@ export function useProjectWebSocket(projectName: string | null) {
                   activeAgents: [],
                   recentActivity: [],
                   orchestratorStatus: null,
+                  agentPhase: null,
                 }),
               }))
               break
@@ -326,6 +332,32 @@ export function useProjectWebSocket(projectName: string | null) {
               }))
               break
 
+            case 'agent_message':
+              setState(prev => ({
+                ...prev,
+                agentMessages: [
+                  ...prev.agentMessages.slice(-49),
+                  {
+                    id: message.id,
+                    text: message.text,
+                    category: message.category,
+                    timestamp: message.timestamp,
+                  },
+                ],
+              }))
+              break
+
+            case 'agent_phase':
+              setState(prev => ({
+                ...prev,
+                agentPhase: {
+                  phase: message.phase,
+                  detail: message.detail,
+                  timestamp: message.timestamp,
+                },
+              }))
+              break
+
             case 'pong':
               // Heartbeat response
               break
@@ -398,6 +430,8 @@ export function useProjectWebSocket(projectName: string | null) {
       celebrationQueue: [],
       celebration: null,
       orchestratorStatus: null,
+      agentMessages: [],
+      agentPhase: null,
     })
 
     if (!projectName) {

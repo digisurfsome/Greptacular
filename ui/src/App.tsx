@@ -14,6 +14,7 @@ import { AddFeatureForm } from './components/AddFeatureForm'
 import { FeatureModal } from './components/FeatureModal'
 import { DebugLogViewer, type TabType } from './components/DebugLogViewer'
 import { AgentMissionControl } from './components/AgentMissionControl'
+import { AgentNotifications } from './components/AgentNotifications'
 import { CelebrationOverlay } from './components/CelebrationOverlay'
 import { AssistantFAB } from './components/AssistantFAB'
 import { AssistantPanel } from './components/AssistantPanel'
@@ -430,6 +431,13 @@ function App() {
               getAgentLogs={wsState.getAgentLogs}
             />
 
+            {/* Agent Notifications - walkie-talkie style communication with the agent */}
+            <AgentNotifications
+              projectName={selectedProject}
+              agentMessages={wsState.agentMessages}
+              agentPhase={wsState.agentPhase}
+              agentStatus={wsState.agentStatus}
+            />
 
             {/* Initializing Features State - show when agent is running but no features yet */}
             {features &&

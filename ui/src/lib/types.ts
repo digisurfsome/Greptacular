@@ -387,7 +387,7 @@ export interface OrchestratorStatus {
 }
 
 // WebSocket message types
-export type WSMessageType = 'progress' | 'feature_update' | 'log' | 'agent_status' | 'pong' | 'dev_log' | 'dev_server_status' | 'agent_update' | 'orchestrator_update'
+export type WSMessageType = 'progress' | 'feature_update' | 'log' | 'agent_status' | 'pong' | 'dev_log' | 'dev_server_status' | 'agent_update' | 'orchestrator_update' | 'agent_message' | 'agent_phase'
 
 export interface WSProgressMessage {
   type: 'progress'
@@ -462,6 +462,21 @@ export interface WSOrchestratorUpdateMessage {
   featureName?: string
 }
 
+export interface WSAgentMessageMessage {
+  type: 'agent_message'
+  id: string
+  text: string
+  category: 'status' | 'question' | 'discovery' | 'warning' | 'milestone'
+  timestamp: string
+}
+
+export interface WSAgentPhaseMessage {
+  type: 'agent_phase'
+  phase: 'acknowledged' | 'reading' | 'planning' | 'building' | 'testing' | 'debugging' | 'complete' | 'waiting'
+  detail: string
+  timestamp: string
+}
+
 export type WSMessage =
   | WSProgressMessage
   | WSFeatureUpdateMessage
@@ -472,6 +487,8 @@ export type WSMessage =
   | WSDevLogMessage
   | WSDevServerStatusMessage
   | WSOrchestratorUpdateMessage
+  | WSAgentMessageMessage
+  | WSAgentPhaseMessage
 
 // ============================================================================
 // Spec Chat Types
@@ -903,6 +920,10 @@ export interface Settings {
   min_spec_score: number
   run_architect: boolean
   force_build: boolean
+  // Walkie-Talkie communication settings
+  comm_check_frequency: string  // per_feature, every_tool_call, never
+  comm_wait_timeout: number     // seconds (30-300)
+  comm_auto_reply: boolean      // auto-send "keep going" on timeout
 }
 
 export interface SettingsUpdate {
@@ -925,6 +946,9 @@ export interface SettingsUpdate {
   min_spec_score?: number
   run_architect?: boolean
   force_build?: boolean
+  comm_check_frequency?: string
+  comm_wait_timeout?: number
+  comm_auto_reply?: boolean
 }
 
 export interface ProjectSettingsUpdate {

@@ -24,6 +24,7 @@ import { RepoSelector } from '../components/workspace/RepoSelector'
 import { PassoffEditor, type PassoffSection } from '../components/workspace/PassoffEditor'
 import { useWorkspaceKeyboardShortcuts } from '../hooks/useWorkspaceKeyboardShortcuts'
 import { exportConversationMarkdown, getSettings } from '../lib/api'
+import type { WalkieTalkieLogEntry } from '../lib/types'
 import { CountdownTimerBar } from '../components/workspace/CountdownTimerBar'
 import {
   ArrowLeft,
@@ -121,6 +122,9 @@ export function WorkspacePage(): React.JSX.Element {
   const [timerActive, setTimerActive] = useState(false)
   const [commTimeout, setCommTimeout] = useState(120)
   const [commAutoReply, setCommAutoReply] = useState(true)
+
+  // Walkie-talkie log (bridged from WorkspaceChat to WorkspaceLibrary)
+  const [walkieTalkieLog, setWalkieTalkieLog] = useState<WalkieTalkieLogEntry[]>([])
 
   // Load comm settings from server on mount
   useEffect(() => {
@@ -544,6 +548,7 @@ export function WorkspacePage(): React.JSX.Element {
               onNewConversation={handleNewChat}
               chatInputRef={chatInputRef}
               workingDirectory={workingDirectory}
+              onWalkieTalkieLog={setWalkieTalkieLog}
             />
           </div>
         )}
@@ -552,6 +557,7 @@ export function WorkspacePage(): React.JSX.Element {
           conversationId={activeConversationId}
           collapsed={libraryCollapsed}
           onToggleCollapse={() => setLibraryCollapsed(!libraryCollapsed)}
+          walkieTalkieLog={walkieTalkieLog}
         />
       </div>
 

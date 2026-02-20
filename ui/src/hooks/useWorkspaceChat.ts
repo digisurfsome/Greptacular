@@ -10,7 +10,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import type { ChatMessage, WorkspaceChatServerMessage, PendingInjection, ImageAttachment } from "../lib/types";
+import type { ChatMessage, WorkspaceChatServerMessage, PendingInjection, ImageAttachment, WalkieTalkieLogEntry } from "../lib/types";
 
 type ConnectionStatus = "disconnected" | "connecting" | "connected" | "error";
 
@@ -41,6 +41,10 @@ interface UseWorkspaceChatReturn {
   sendMessage: (content: string, attachments?: ImageAttachment[]) => void;
   /** Send a walkie-talkie message to the running agent (injected via PreToolUse hook). */
   sendWalkieTalkie: (content: string) => void;
+  /** Walkie-talkie conversation log for display in the sidebar panel. */
+  walkieTalkieLog: WalkieTalkieLogEntry[];
+  /** Append an entry to the walkie-talkie log (used by WorkspaceChat for user-initiated events). */
+  addWalkieTalkieEntry: (sender: 'user' | 'agent' | 'system', content: string) => void;
   disconnect: () => void;
   clearMessages: () => void;
 }
@@ -78,6 +82,22 @@ export function useWorkspaceChat({
   const [lastError, setLastError] = useState<string | null>(null);
   const [agentWaiting, setAgentWaiting] = useState(false);
   const [agentWaitingQuestion, setAgentWaitingQuestion] = useState<string | null>(null);
+  const [walkieTalkieLog, setWalkieTalkieLog] = useState<WalkieTalkieLogEntry[]>([]);
+
+  const addWalkieTalkieEntry = useCallback(
+    (sender: 'user' | 'agent' | 'system', content: string) => {
+      setWalkieTalkieLog((prev) => [
+        ...prev,
+        {
+          id: `wt-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+          sender,
+          content,
+          timestamp: new Date(),
+        },
+      ]);
+    },
+    [],
+  );
 
   const wsRef = useRef<WebSocket | null>(null);
   const currentAssistantMessageRef = useRef<string | null>(null);
@@ -373,8 +393,10 @@ export function useWorkspaceChat({
             // Agent output a [WAITING] tag and is waiting for user input.
             // Activate the countdown timer bar and show the question.
             const waitData = data as { question: string };
+            const question = waitData.question || "Agent is waiting for your input...";
             setAgentWaiting(true);
-            setAgentWaitingQuestion(waitData.question || "Agent is waiting for your input...");
+            setAgentWaitingQuestion(question);
+            addWalkieTalkieEntry('agent', question);
             break;
           }
 
@@ -383,6 +405,7 @@ export function useWorkspaceChat({
             // Reset the waiting state since user has responded.
             setAgentWaiting(false);
             setAgentWaitingQuestion(null);
+            addWalkieTalkieEntry('system', 'Message delivered to agent');
             break;
           }
 
@@ -623,6 +646,7 @@ export function useWorkspaceChat({
     setContextBudget({ messageTokens: 0, summaryTokens: 0, messageCount: 0 });
     setAgentWaiting(false);
     setAgentWaitingQuestion(null);
+    setWalkieTalkieLog([]);
     sessionReadyRef.current = false;
     queuedPayloadRef.current = null;
   }, []);
@@ -640,6 +664,8 @@ export function useWorkspaceChat({
     setPendingInjection,
     agentWaiting,
     agentWaitingQuestion,
+    walkieTalkieLog,
+    addWalkieTalkieEntry,
     start,
     sendMessage,
     sendWalkieTalkie,

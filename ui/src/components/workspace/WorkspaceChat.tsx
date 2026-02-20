@@ -39,7 +39,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getWorkspaceSummary, regenerateWorkspaceSummary, exportConversationMarkdown, updateWorkspaceConversation, getSettings } from '@/lib/api'
+import { getWorkspaceSummary, regenerateWorkspaceSummary, exportConversationMarkdown, updateWorkspaceConversation, getSettings, updateSettings } from '@/lib/api'
+import { Switch } from '@/components/ui/switch'
 import { CountdownTimerBar } from './CountdownTimerBar'
 import { WorkspaceChatHeader } from './WorkspaceChatHeader'
 import { EnhancedContextBudgetBar, getContextWarningClass } from './EnhancedContextBudgetBar'
@@ -168,6 +169,8 @@ export function WorkspaceChat({
   const [commCheckFrequency, setCommCheckFrequency] = useState<string>('per_feature')
   const [commWaitTimeout, setCommWaitTimeout] = useState(120)
   const [commAutoReply, setCommAutoReply] = useState(true)
+  const [showWalkieTalkieSettings, setShowWalkieTalkieSettings] = useState(false)
+  const [isSavingSettings, setIsSavingSettings] = useState(false)
 
   // Context mode: "1m" (1,000,000 tokens with beta) or "200k" (200,000 tokens standard).
   // When fixedContextMode is set (split-view), the mode is locked and the toggle is hidden.
@@ -558,6 +561,21 @@ export function WorkspaceChat({
     sendWalkieTalkie('Keep going, proceed with your best judgment')
   }, [sendWalkieTalkie])
 
+  // Save a walkie-talkie setting to the server and update local state
+  const saveWalkieTalkieSetting = useCallback(async (patch: { comm_check_frequency?: string; comm_wait_timeout?: number; comm_auto_reply?: boolean }) => {
+    setIsSavingSettings(true)
+    try {
+      const updated = await updateSettings(patch)
+      if (updated.comm_check_frequency) setCommCheckFrequency(updated.comm_check_frequency)
+      if (updated.comm_wait_timeout) setCommWaitTimeout(updated.comm_wait_timeout)
+      if (updated.comm_auto_reply !== undefined) setCommAutoReply(updated.comm_auto_reply)
+    } catch {
+      // Silently fail — settings will use current local state
+    } finally {
+      setIsSavingSettings(false)
+    }
+  }, [])
+
   // Whether walkie-talkie UI should be visible
   const walkieTalkieVisible = isLoading && commCheckFrequency !== 'never'
 
@@ -693,6 +711,8 @@ export function WorkspaceChat({
             workingDirectory={workingDirectory}
             walkieTalkieActive={walkieTalkieVisible}
             agentWaiting={agentWaiting}
+            onToggleSettings={() => setShowWalkieTalkieSettings((v) => !v)}
+            settingsOpen={showWalkieTalkieSettings}
           />
         </div>
 
@@ -723,6 +743,85 @@ export function WorkspaceChat({
           </div>
         )}
       </div>
+
+      {/* Walkie-Talkie settings panel (collapsible) */}
+      {showWalkieTalkieSettings && (
+        <div className="border-b border-amber-300 dark:border-amber-700/40 bg-amber-50/50 dark:bg-amber-950/10 px-4 py-3">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide flex items-center gap-1.5">
+              <Radio size={12} />
+              Walkie-Talkie Settings
+            </span>
+            <button
+              onClick={() => setShowWalkieTalkieSettings(false)}
+              className="text-muted-foreground hover:text-foreground transition-colors"
+              aria-label="Close settings"
+            >
+              <X size={14} />
+            </button>
+          </div>
+
+          {/* Check Frequency */}
+          <div className="mb-3">
+            <label className="text-xs font-medium text-foreground block mb-1">Check Frequency</label>
+            <div className="flex gap-1.5">
+              {[
+                { value: 'per_feature', label: 'Per Feature' },
+                { value: 'every_tool_call', label: 'Every Tool Call' },
+                { value: 'never', label: 'Never' },
+              ].map((opt) => (
+                <Button
+                  key={opt.value}
+                  variant={commCheckFrequency === opt.value ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => saveWalkieTalkieSetting({ comm_check_frequency: opt.value })}
+                  disabled={isSavingSettings}
+                  className="flex-1 text-xs h-7"
+                >
+                  {opt.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          {/* Wait Timeout */}
+          <div className="mb-3">
+            <label className="text-xs font-medium text-foreground block mb-1">Wait Timeout</label>
+            <div className="flex gap-1.5">
+              {[30, 60, 120, 300].map((secs) => (
+                <Button
+                  key={secs}
+                  variant={commWaitTimeout === secs ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => saveWalkieTalkieSetting({ comm_wait_timeout: secs })}
+                  disabled={isSavingSettings}
+                  className="flex-1 text-xs h-7"
+                >
+                  {secs < 60 ? `${secs}s` : `${secs / 60}m`}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          {/* Auto-Reply */}
+          <div className="flex items-center justify-between">
+            <label htmlFor="wt-auto-reply" className="text-xs font-medium text-foreground">
+              Auto-reply on timeout
+            </label>
+            <Switch
+              id="wt-auto-reply"
+              size="sm"
+              checked={commAutoReply}
+              onCheckedChange={() => saveWalkieTalkieSetting({ comm_auto_reply: !commAutoReply })}
+              disabled={isSavingSettings}
+            />
+          </div>
+
+          <p className="text-[10px] text-muted-foreground mt-2">
+            Changes take effect on the next agent session.
+          </p>
+        </div>
+      )}
 
       {/* Disconnection banner with retry capability */}
       {connectionStatus === 'disconnected' && hasActiveChat && (

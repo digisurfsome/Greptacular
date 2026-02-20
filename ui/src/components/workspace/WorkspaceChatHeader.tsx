@@ -8,7 +8,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
-import { Wifi, WifiOff, Loader2, Tag, X, Plus, GitBranch, Pencil, ExternalLink, GitPullRequest } from 'lucide-react'
+import { Wifi, WifiOff, Loader2, Tag, X, Plus, GitBranch, Pencil, ExternalLink, GitPullRequest, Settings } from 'lucide-react'
 import { getGitBranches, renameGitBranch, getGitRemoteInfo, getGitPrInfo } from '@/lib/api'
 import { useWorkspaceCategories } from '@/hooks/useWorkspaceCategories'
 
@@ -26,6 +26,10 @@ interface WorkspaceChatHeaderProps {
   walkieTalkieActive?: boolean
   /** Whether the agent is currently waiting for user input. */
   agentWaiting?: boolean
+  /** Callback to toggle walkie-talkie settings panel. */
+  onToggleSettings?: () => void
+  /** Whether the settings panel is currently open. */
+  settingsOpen?: boolean
 }
 
 /** Default categories used as fallbacks when no custom categories exist. */
@@ -95,6 +99,8 @@ export function WorkspaceChatHeader({
   workingDirectory,
   walkieTalkieActive = false,
   agentWaiting = false,
+  onToggleSettings,
+  settingsOpen = false,
 }: WorkspaceChatHeaderProps): React.JSX.Element {
   // --- Title editing state ---
   const [isEditing, setIsEditing] = useState(false)
@@ -500,6 +506,20 @@ export function WorkspaceChatHeader({
             View PR
           </a>
         )}
+        {/* Walkie-talkie settings gear */}
+        <button
+          type="button"
+          onClick={onToggleSettings}
+          className={`p-1 rounded transition-colors ${
+            settingsOpen
+              ? 'text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30'
+              : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+          }`}
+          title="Walkie-talkie settings"
+          aria-label="Walkie-talkie settings"
+        >
+          <Settings size={14} />
+        </button>
         {/* Walkie-talkie status indicator */}
         {walkieTalkieActive && (
           <div className="flex items-center gap-1.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">

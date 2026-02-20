@@ -472,7 +472,7 @@ export interface WSAgentMessageMessage {
 
 export interface WSAgentPhaseMessage {
   type: 'agent_phase'
-  phase: 'acknowledged' | 'reading' | 'planning' | 'building' | 'testing' | 'debugging' | 'complete'
+  phase: 'acknowledged' | 'reading' | 'planning' | 'building' | 'testing' | 'debugging' | 'complete' | 'waiting'
   detail: string
   timestamp: string
 }

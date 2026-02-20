@@ -248,6 +248,7 @@ COMM_TOOLS = [
     "mcp__comm__send_message",
     "mcp__comm__check_inbox",
     "mcp__comm__signal_phase",
+    "mcp__comm__chat_with_user",
 ]
 
 # Union of all agent tool lists -- used for permissions (all tools remain

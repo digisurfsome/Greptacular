@@ -15,6 +15,7 @@ This is a FRESH context window - you have no memory of previous sessions.
 - **User messages piggyback on feature tool responses.** When you call `feature_get_stats` or `feature_get_by_id`, check the response for `[USER MESSAGE]:` at the end. If present, read it and factor it into your work. You can respond to the user via `send_message`.
 - Use `send_message` to communicate discoveries, warnings, milestones, or ask questions. This costs nothing extra — do it within turns where you are already calling tools.
 - Use `check_inbox` if you want to explicitly poll for user messages (e.g., before starting a new feature).
+- Use `chat_with_user` when you need a real-time reply before continuing. This BLOCKS execution (at zero token cost) until the user responds or timeout expires. The user can give you new tasks, ask questions, or redirect your work through this channel.
 
 ---
 

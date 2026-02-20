@@ -43,7 +43,7 @@ PHASE_PATH = AUTOFORGE_DIR / "phase.json"
 VALID_CATEGORIES = frozenset({"status", "question", "discovery", "warning", "milestone"})
 
 # Valid phases for signal_phase
-VALID_PHASES = frozenset({"acknowledged", "reading", "planning", "building", "testing", "debugging", "complete"})
+VALID_PHASES = frozenset({"acknowledged", "reading", "planning", "building", "testing", "debugging", "complete", "waiting"})
 
 
 def _ensure_autoforge_dir() -> None:
@@ -258,6 +258,85 @@ def signal_phase(
         return json.dumps({"signaled": True, "phase": phase})
     except Exception as e:
         return json.dumps({"error": f"Failed to signal phase: {str(e)}"})
+
+
+@mcp.tool()
+def chat_with_user(
+    prompt: Annotated[str, Field(min_length=1, max_length=2000, description="Message to show the user while waiting for their reply")],
+    timeout_seconds: Annotated[int, Field(default=120, ge=10, le=300, description="How long to wait for a reply (10-300 seconds, default 120)")] = 120,
+) -> str:
+    """Send a message and wait for the user to reply.
+
+    This tool BLOCKS until the user sends a message or the timeout expires.
+    Use this when you need input from the user before continuing work.
+    The wait period costs zero tokens -- the API call is paused while waiting.
+
+    The user sees your prompt in the UI and can type a reply. When they reply,
+    this tool returns their message and you can continue working.
+
+    Good for:
+    - Asking a question that affects implementation direction
+    - Confirming before making a destructive change
+    - Pausing to let the user review something before you continue
+
+    Args:
+        prompt: The message/question to show the user
+        timeout_seconds: Max wait time (default 120s). Returns timeout if no reply.
+
+    Returns:
+        JSON with: reply (user's message text), or timed_out (bool) if no reply
+    """
+    import time
+
+    # Send the prompt as an outbox message so the UI displays it
+    message_id = str(uuid.uuid4())
+    prompt_entry = {
+        "id": message_id,
+        "timestamp": _now_iso(),
+        "text": prompt,
+        "category": "question",
+        "awaiting_reply": True,
+    }
+    try:
+        _append_jsonl(OUTBOX_PATH, prompt_entry)
+    except Exception:
+        pass  # Best-effort; the user might still see it via other means
+
+    # Signal that we're waiting for user input
+    try:
+        _atomic_write_json(PHASE_PATH, {
+            "phase": "waiting",
+            "detail": "Waiting for your reply...",
+            "timestamp": _now_iso(),
+        })
+    except Exception:
+        pass
+
+    # Poll the inbox until a message arrives or timeout expires
+    start = time.monotonic()
+    poll_interval = 2  # Check every 2 seconds
+
+    while time.monotonic() - start < timeout_seconds:
+        try:
+            messages = _read_and_clear_jsonl(INBOX_PATH)
+            if messages:
+                # Return the first message (most common case: one reply)
+                reply_text = " | ".join(m.get("text", "") for m in messages)
+                return json.dumps({
+                    "timed_out": False,
+                    "reply": reply_text,
+                    "message_count": len(messages),
+                })
+        except Exception:
+            pass  # Retry on next poll cycle
+
+        time.sleep(poll_interval)
+
+    return json.dumps({
+        "timed_out": True,
+        "reply": None,
+        "waited_seconds": timeout_seconds,
+    })
 
 
 if __name__ == "__main__":

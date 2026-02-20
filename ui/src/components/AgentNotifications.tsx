@@ -28,6 +28,7 @@ const PHASE_DISPLAY: Record<string, { label: string; icon: string; color: string
   testing: { label: 'Testing', icon: '\u{1F9EA}', color: 'text-cyan-600' },
   debugging: { label: 'Debugging', icon: '\u{1F41B}', color: 'text-red-600' },
   complete: { label: 'Complete', icon: '\u{2705}', color: 'text-green-600' },
+  waiting: { label: 'Waiting for you...', icon: '\u{1F4AC}', color: 'text-purple-600' },
 }
 
 interface AgentNotificationsProps {
@@ -45,6 +46,9 @@ export function AgentNotifications({ projectName, agentMessages, agentPhase, age
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
+  const isAgentRunning = agentStatus === 'running' || agentStatus === 'paused'
+  const isWaitingForReply = agentPhase?.phase === 'waiting'
+
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     if (isExpanded && messagesEndRef.current) {
@@ -52,14 +56,18 @@ export function AgentNotifications({ projectName, agentMessages, agentPhase, age
     }
   }, [agentMessages, sentMessages, isExpanded])
 
-  // Auto-expand when first agent message arrives
+  // Auto-expand when first agent message arrives or when agent is waiting for reply
   useEffect(() => {
-    if (agentMessages.length > 0 && !isExpanded) {
+    if ((agentMessages.length > 0 || isWaitingForReply) && !isExpanded) {
       setIsExpanded(true)
     }
-  // Only trigger on message count changes, not on isExpanded changes
+    // Auto-focus input when agent starts waiting
+    if (isWaitingForReply && inputRef.current) {
+      inputRef.current.focus()
+    }
+  // Only trigger on message count changes or waiting state, not on isExpanded changes
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [agentMessages.length])
+  }, [agentMessages.length, isWaitingForReply])
 
   const handleSend = async () => {
     if (!inputText.trim() || !projectName || sending) return
@@ -89,8 +97,6 @@ export function AgentNotifications({ projectName, agentMessages, agentPhase, age
       handleSend()
     }
   }
-
-  const isAgentRunning = agentStatus === 'running' || agentStatus === 'paused'
   const unreadCount = agentMessages.length
 
   // Don't render if no project selected
@@ -175,9 +181,9 @@ export function AgentNotifications({ projectName, agentMessages, agentPhase, age
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={isAgentRunning ? "Message the agent..." : "Agent not running"}
+              placeholder={isWaitingForReply ? "Agent is waiting for your reply..." : isAgentRunning ? "Message the agent..." : "Agent not running"}
               disabled={!isAgentRunning || sending}
-              className="flex-1 text-xs px-2.5 py-1.5 border-2 border-black rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-300"
+              className={`flex-1 text-xs px-2.5 py-1.5 border-2 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-300 ${isWaitingForReply ? 'border-purple-500 bg-purple-50 animate-pulse' : 'border-black'}`}
             />
             <button
               onClick={handleSend}

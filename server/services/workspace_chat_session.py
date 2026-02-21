@@ -121,18 +121,20 @@ def validate_cost_settings(raw: dict) -> dict:
     return result
 
 
-def get_workspace_system_prompt(working_directory: str, model: str = "") -> str:
+def get_workspace_system_prompt(working_directory: str, model: str = "", context_mode: str = "1m") -> str:
     """Generate the system prompt for the workspace agent.
 
     Args:
         working_directory: Absolute path to the agent's working directory.
         model: The model ID being used (e.g. "claude-opus-4-6").
+        context_mode: Context window mode -- "1m" or "200k".
 
     Returns:
         A system prompt string describing the workspace agent's capabilities and guidelines.
     """
+    context_tokens = "1,000,000" if context_mode == "1m" else "200,000"
     return f"""You are an expert coding assistant in the IdeaForge Workspace.
-You are powered by {model or 'Claude'} with a 1,000,000 token context window.
+You are powered by {model or 'Claude'} with a {context_tokens} token context window.
 
 You have full access to the filesystem and can read, write, edit files, and run bash commands.
 Your current working directory is: {working_directory}
@@ -267,6 +269,9 @@ class WorkspaceChatSession:
         self._client_entered: bool = False
         self.created_at = datetime.now()
         self._history_loaded: bool = False
+
+        # Resolved model ID (populated during start(), exposed for UI display).
+        self._resolved_model_id: Optional[str] = None
 
         # Walkie-talkie communication: in-memory message queue for injecting
         # user messages into a running agent via PreToolUse hook interception.
@@ -460,6 +465,7 @@ class WorkspaceChatSession:
             ),
         }
         model = MODEL_MAP.get(self.model or "", MODEL_MAP["opus"])
+        self._resolved_model_id = model  # Store for UI display
         logger.info(f"Resolved model: {self.model} -> {model}")
 
         # -----------------------------------------------------------------
@@ -470,7 +476,7 @@ class WorkspaceChatSession:
         workspace_scratch = Path.home() / ".autoforge" / ".workspace_scratch"
         workspace_scratch.mkdir(parents=True, exist_ok=True)
         claude_md_path = workspace_scratch / "CLAUDE.md"
-        system_prompt = get_workspace_system_prompt(self.working_directory, model=model)
+        system_prompt = get_workspace_system_prompt(self.working_directory, model=model, context_mode=self.context_mode)
         with open(claude_md_path, "w", encoding="utf-8") as f:
             f.write(system_prompt)
         logger.info(f"Wrote workspace system prompt to {claude_md_path}")
@@ -650,6 +656,7 @@ class WorkspaceChatSession:
                     "total_tokens": total,
                     "context_window": self.context_window,
                     "message_count": msg_count,
+                    "model_id": self._resolved_model_id,
                 }
 
                 yield {"type": "response_done"}
@@ -667,6 +674,7 @@ class WorkspaceChatSession:
                 "total_tokens": total,
                 "context_window": self.context_window,
                 "message_count": msg_count,
+                "model_id": self._resolved_model_id,
             }
             yield {"type": "response_done"}
 
@@ -1075,6 +1083,7 @@ class WorkspaceChatSession:
                 "total_tokens": total,
                 "context_window": self.context_window,
                 "message_count": msg_count,
+                "model_id": self._resolved_model_id,
             }
 
             # Log premium-zone usage for cost tracking

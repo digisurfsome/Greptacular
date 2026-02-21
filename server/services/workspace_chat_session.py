@@ -408,7 +408,12 @@ class WorkspaceChatSession:
         system_prompt = get_workspace_system_prompt(self.working_directory, model=model, context_mode=self.context_mode)
         with open(claude_md_path, "w", encoding="utf-8") as f:
             f.write(system_prompt)
-        logger.info(f"Wrote workspace system prompt to {claude_md_path}")
+        # Log context_mode tracing to help debug 200K vs 1M issues
+        context_snippet = system_prompt[:120].replace('\n', ' ')
+        logger.info(
+            "Wrote workspace CLAUDE.md: context_mode=%s, model=%s, prompt_start='%s'",
+            self.context_mode, model, context_snippet,
+        )
 
         # Detect alternative API mode (Ollama, GLM, Vertex AI) -- these do not
         # support the 1M context beta, so we must disable it.
@@ -545,6 +550,17 @@ class WorkspaceChatSession:
                         else ["context-1m-2025-08-07"]
                     ),
                 )
+            )
+            # Log the resolved SDK parameters for debugging
+            resolved_betas = (
+                []
+                if is_alternative_api or self.context_mode != "1m" or self.model == "sonnet"
+                else ["context-1m-2025-08-07"]
+            )
+            has_api_key = bool(sdk_env.get("ANTHROPIC_API_KEY"))
+            logger.info(
+                "SDK client created: betas=%s, context_mode=%s, force_sub=%s, has_api_key=%s, is_alt=%s",
+                resolved_betas, self.context_mode, force_sub, has_api_key, is_alternative_api,
             )
             logger.info("Entering workspace Claude client context...")
             try:

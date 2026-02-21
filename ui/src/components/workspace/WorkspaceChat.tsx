@@ -417,6 +417,9 @@ export function WorkspaceChat({
       const modelForSession = conversationModel
       lastSessionModelRef.current = modelForSession
       lastSessionContextRef.current = modeForSession
+      console.info('[WorkspaceChat] session-switch effect: starting session', {
+        conversationId, modeForSession, modelForSession, previousId,
+      })
       start(conversationId, workingDirectory ?? undefined, modeForSession, costSettings as unknown as Record<string, unknown>, modelForSession)
     }
   }, [conversationId, isLoadingConversation, activeConversationId, start, disconnect, clearMessages, workingDirectory, costSettings, conversationModel, conversationContextMode])
@@ -432,13 +435,18 @@ export function WorkspaceChat({
     const contextChanged = lastSessionContextRef.current !== null && conversationContextMode !== lastSessionContextRef.current
     if (!modelChanged && !contextChanged) return
 
+    console.info('[WorkspaceChat] badge-cycle reconnect', {
+      conversationId, conversationModel, conversationContextMode,
+      prevModel: lastSessionModelRef.current, prevContext: lastSessionContextRef.current,
+    })
+
     lastSessionModelRef.current = conversationModel
     lastSessionContextRef.current = conversationContextMode
     setSessionContextMode(conversationContextMode)
     disconnect()
     clearMessages()
     start(conversationId, workingDirectory ?? undefined, conversationContextMode, costSettings as unknown as Record<string, unknown>, conversationModel)
-  }, [conversationModel, conversationContextMode]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [conversationModel, conversationContextMode, conversationId, isLoadingConversation, disconnect, clearMessages, start, workingDirectory, costSettings])
 
   // Smart auto-scroll: only scroll if user is near the bottom
   const handleScroll = useCallback(() => {
@@ -747,7 +755,14 @@ export function WorkspaceChat({
     // the message and dispatch it once the session is ready.
     // Pass workingDirectory so the new session uses the selected repo.
     if (conversationId === null && activeConversationId === null) {
+      console.info('[WorkspaceChat] handleSend: starting new session', {
+        conversationContextMode, conversationModel, conversationId, activeConversationId,
+      })
       start(undefined, workingDirectory ?? undefined, conversationContextMode, costSettings as unknown as Record<string, unknown>, conversationModel)
+    } else {
+      console.info('[WorkspaceChat] handleSend: existing session', {
+        conversationContextMode, conversationModel, conversationId, activeConversationId,
+      })
     }
     sendMessage(content, attachments)
 

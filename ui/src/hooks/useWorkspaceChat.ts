@@ -693,6 +693,9 @@ export function useWorkspaceChat({
     lastStartParamsRef.current = null; // Clear so reconnect doesn't re-send stale start
     sessionReadyRef.current = false;
     queuedPayloadRef.current = null;
+    // Reset the conversation identity so callers (handleSend) don't think
+    // a session is still active for the old conversation.
+    setConversationId(null);
     if (pingIntervalRef.current) {
       clearInterval(pingIntervalRef.current);
       pingIntervalRef.current = null;

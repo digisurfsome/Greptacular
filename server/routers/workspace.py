@@ -1125,6 +1125,10 @@ async def workspace_chat_websocket(websocket: WebSocket):
                         # Extract context mode from start message (default to "1m")
                         context_mode = message.get("context_mode", "1m")
                         if context_mode not in ("1m", "200k"):
+                            logger.warning(
+                                "Invalid context_mode '%s' in start message, defaulting to '1m'",
+                                context_mode,
+                            )
                             context_mode = "1m"
 
                         # Extract cost control settings from start message
@@ -1132,6 +1136,12 @@ async def workspace_chat_websocket(websocket: WebSocket):
 
                         # Extract model preference from start message (for per-panel model routing)
                         model = message.get("model")  # e.g. "opus", "sonnet", or None
+
+                        # Log full start params for debugging 200K vs 1M issues
+                        logger.info(
+                            "WS start: context_mode=%s, model=%s, conversation_id=%s, session_id=%s",
+                            context_mode, model, conversation_id, session_id,
+                        )
 
                         # Create a new workspace session
                         logger.debug(f"Creating workspace session {session_id}")

@@ -450,7 +450,7 @@ export function WorkspacePage(): React.JSX.Element {
                   chatInputRef={chatInputRef}
                   workingDirectory={workingDirectory}
                   fixedContextMode="200k"
-                  panelLabel="RESEARCH (200K)"
+                  panelLabel={`RESEARCH (${researchModel === 'opus' ? 'Opus' : 'Sonnet'} · 200K)`}
                   onCopyToPassoff={handleCopyToPassoff}
                   preferredModel={researchModel}
                   onModelChange={setResearchModel}
@@ -527,7 +527,7 @@ export function WorkspacePage(): React.JSX.Element {
                     onNewConversation={handlePrdNewChat}
                     workingDirectory={workingDirectory}
                     fixedContextMode="1m"
-                    panelLabel="PRD BUILDER (Opus 4.6)"
+                    panelLabel={`PRD BUILDER (${prdModel === 'opus' ? 'Opus' : 'Sonnet'} · 1M)`}
                     injectMessage={prdInjectMessage}
                     onInjectConsumed={handlePrdInjectConsumed}
                     onResponseComplete={handlePrdResponseComplete}
@@ -561,7 +561,7 @@ export function WorkspacePage(): React.JSX.Element {
                   onNewConversation={handleCoderNewChat}
                   workingDirectory={workingDirectory}
                   fixedContextMode="1m"
-                  panelLabel="CODER (Sonnet 4.6)"
+                  panelLabel={`CODER (${coderModel === 'opus' ? 'Opus' : 'Sonnet'} · 1M)`}
                   injectMessage={coderInjectMessage}
                   onInjectConsumed={handleCoderInjectConsumed}
                   preferredModel={coderModel}

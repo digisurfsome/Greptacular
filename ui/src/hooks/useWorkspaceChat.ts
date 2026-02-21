@@ -31,6 +31,8 @@ interface UseWorkspaceChatReturn {
     summaryTokens: number;
     messageCount: number;
   };
+  /** The resolved model ID reported by the backend (e.g. "claude-opus-4-6"). */
+  modelId: string | null;
   pendingInjection: PendingInjection | null;
   setPendingInjection: (injection: PendingInjection | null) => void;
   /** Whether the agent is waiting for user input (output [WAITING] tag). */
@@ -80,6 +82,7 @@ export function useWorkspaceChat({
     summaryTokens: 0,
     messageCount: 0,
   });
+  const [modelId, setModelId] = useState<string | null>(null);
   const [pendingInjection, setPendingInjection] = useState<PendingInjection | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
   const [agentWaiting, setAgentWaiting] = useState(false);
@@ -296,9 +299,10 @@ export function useWorkspaceChat({
           }
 
           case "token_usage": {
-            const tokenData = data as { total_tokens: number; context_window: number; message_count?: number };
+            const tokenData = data as { total_tokens: number; context_window: number; message_count?: number; model_id?: string };
             setTotalTokens(tokenData.total_tokens);
             setContextWindow(tokenData.context_window);
+            if (tokenData.model_id) setModelId(tokenData.model_id);
             setContextBudget(prev => ({
               ...prev,
               messageTokens: tokenData.total_tokens,
@@ -674,6 +678,7 @@ export function useWorkspaceChat({
     totalTokens,
     contextWindow,
     contextBudget,
+    modelId,
     pendingInjection,
     setPendingInjection,
     agentWaiting,

@@ -280,6 +280,7 @@ export function WorkspaceChat({
     walkieTalkieLog,
     addWalkieTalkieEntry,
     tokenLog,
+    modelId,
     start,
     sendMessage,
     sendWalkieTalkie,
@@ -1034,6 +1035,12 @@ export function WorkspaceChat({
 
       {/* Model preset toggle + budget bar */}
       <div className="flex items-center border-b border-border bg-card/80">
+        {/* Resolved model ID badge */}
+        {modelId && (
+          <span className="flex-shrink-0 ml-2 px-1.5 py-0.5 text-[9px] font-mono text-muted-foreground/60 bg-muted/40 rounded" title={`Backend model: ${modelId}`}>
+            {modelId}
+          </span>
+        )}
         <div className="flex-1 border-b-0 [&>div]:border-b-0">
           <EnhancedContextBudgetBar
             totalBudget={sessionContextMode === '1m' ? 1_000_000 : 200_000}

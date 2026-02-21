@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Cloud Prompt Injector
 // @namespace    https://github.com/digisurfsome/Greptacular
-// @version      1.0
+// @version      1.2
 // @description  Floating sidebar with prompt buttons that inject into Claude/ChatGPT/Gemini chat input
 // @author       AutoForge
 // @match        https://claude.ai/*
@@ -126,14 +126,29 @@ Based on the abstract analysis, write a tailwind.config.js theme object. Do not 
       id: 5,
       title: 'Prompt 5 (Edit Me)',
       prompt: `Replace this with your own prompt. Open the Tampermonkey script editor to change it.`
-    }
+    },
+    { id: 6, title: 'Prompt 6', prompt: 'Replace with your prompt.' },
+    { id: 7, title: 'Prompt 7', prompt: 'Replace with your prompt.' },
+    { id: 8, title: 'Prompt 8', prompt: 'Replace with your prompt.' },
+    { id: 9, title: 'Prompt 9', prompt: 'Replace with your prompt.' },
+    { id: 10, title: 'Prompt 10', prompt: 'Replace with your prompt.' },
+    { id: 11, title: 'Prompt 11', prompt: 'Replace with your prompt.' },
+    { id: 12, title: 'Prompt 12', prompt: 'Replace with your prompt.' },
+    { id: 13, title: 'Prompt 13', prompt: 'Replace with your prompt.' },
+    { id: 14, title: 'Prompt 14', prompt: 'Replace with your prompt.' },
+    { id: 15, title: 'Prompt 15', prompt: 'Replace with your prompt.' },
+    { id: 16, title: 'Prompt 16', prompt: 'Replace with your prompt.' },
+    { id: 17, title: 'Prompt 17', prompt: 'Replace with your prompt.' },
+    { id: 18, title: 'Prompt 18', prompt: 'Replace with your prompt.' },
+    { id: 19, title: 'Prompt 19', prompt: 'Replace with your prompt.' },
+    { id: 20, title: 'Prompt 20', prompt: 'Replace with your prompt.' }
   ];
 
   // ============================================================
   // STYLES
   // ============================================================
 
-  const PANEL_WIDTH = 220;
+  const PANEL_WIDTH = 180;
 
   const styles = document.createElement('style');
   styles.textContent = `
@@ -143,19 +158,23 @@ Based on the abstract analysis, write a tailwind.config.js theme object. Do not 
       right: 16px;
       transform: translateY(-50%);
       width: ${PANEL_WIDTH}px;
+      max-height: 85vh;
       z-index: 99999;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 4px;
       transition: opacity 0.2s;
     }
 
-    #cpi-panel.cpi-collapsed {
-      width: auto;
+    #cpi-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 3px;
+      overflow-y: auto;
     }
 
-    #cpi-panel.cpi-collapsed .cpi-btn {
+    #cpi-grid.cpi-hidden {
       display: none;
     }
 
@@ -163,11 +182,11 @@ Based on the abstract analysis, write a tailwind.config.js theme object. Do not 
       align-self: flex-end;
       background: #1a1a2e;
       color: #e0e0e0;
-      border: 2px solid #333;
-      border-radius: 8px;
-      padding: 6px 10px;
+      border: 1px solid #333;
+      border-radius: 6px;
+      padding: 4px 8px;
       cursor: pointer;
-      font-size: 13px;
+      font-size: 10px;
       font-weight: 600;
       transition: all 0.15s;
       white-space: nowrap;
@@ -179,15 +198,17 @@ Based on the abstract analysis, write a tailwind.config.js theme object. Do not 
     }
 
     .cpi-btn {
+      position: relative;
       display: flex;
       align-items: center;
-      gap: 10px;
       width: 100%;
-      padding: 10px 14px;
+      padding: 4px 5px;
+      padding-top: 6px;
+      min-height: 32px;
       background: #1a1a2e;
       color: #e0e0e0;
-      border: 2px solid #333;
-      border-radius: 10px;
+      border: 1px solid #333;
+      border-radius: 6px;
       cursor: pointer;
       font-size: 13px;
       font-weight: 500;
@@ -208,23 +229,29 @@ Based on the abstract analysis, write a tailwind.config.js theme object. Do not 
     }
 
     .cpi-btn-num {
+      position: absolute;
+      top: 2px;
+      left: 4px;
       display: flex;
       align-items: center;
       justify-content: center;
-      min-width: 24px;
-      height: 24px;
+      min-width: 14px;
+      height: 14px;
       background: #6c63ff;
       color: #fff;
-      border-radius: 6px;
-      font-size: 12px;
+      border-radius: 3px;
+      font-size: 7px;
       font-weight: 700;
-      flex-shrink: 0;
+      padding: 0 2px;
     }
 
     .cpi-btn-title {
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      font-size: 6px;
+      padding-left: 16px;
+      padding-right: 2px;
     }
 
     .cpi-flash {
@@ -324,16 +351,19 @@ Based on the abstract analysis, write a tailwind.config.js theme object. Do not 
     const panel = document.createElement('div');
     panel.id = 'cpi-panel';
 
-    // Toggle button
+    // Toggle button — panel starts expanded
     const toggle = document.createElement('button');
     toggle.id = 'cpi-toggle';
-    toggle.textContent = 'Prompts';
+    toggle.textContent = 'Prompt Injector';
     toggle.title = 'Show/Hide prompt buttons';
     toggle.addEventListener('click', () => {
-      panel.classList.toggle('cpi-collapsed');
-      toggle.textContent = panel.classList.contains('cpi-collapsed') ? 'Prompts' : 'Prompts';
+      grid.classList.toggle('cpi-hidden');
     });
     panel.appendChild(toggle);
+
+    // Grid container for 2-column button layout
+    const grid = document.createElement('div');
+    grid.id = 'cpi-grid';
 
     // Prompt buttons
     PROMPTS.forEach((p) => {
@@ -354,9 +384,10 @@ Based on the abstract analysis, write a tailwind.config.js theme object. Do not 
           setTimeout(() => { btn.style.borderColor = '#333'; }, 800);
         }
       });
-      panel.appendChild(btn);
+      grid.appendChild(btn);
     });
 
+    panel.appendChild(grid);
     document.body.appendChild(panel);
   }
 

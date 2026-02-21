@@ -21,6 +21,7 @@ import {
   X,
 } from 'lucide-react'
 import { getTokenLogSummary, clearTokenLog as clearTokenLogApi } from '@/lib/api'
+import { parseUtcTimestamp } from '@/lib/utils'
 import type { TokenLogEntry, TokenLogSummary, TokenLogToolBreakdown } from '@/lib/types'
 
 // -- Helpers ------------------------------------------------------------------
@@ -204,7 +205,7 @@ function TokenLogRow({
   entry: TokenLogEntry
   runningTotal: number
 }) {
-  const time = new Date(entry.timestamp).toLocaleTimeString([], {
+  const time = parseUtcTimestamp(entry.timestamp).toLocaleTimeString([], {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',

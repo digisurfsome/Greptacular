@@ -1216,3 +1216,88 @@ export async function clearTokenLog(conversationId: number): Promise<void> {
     method: 'DELETE',
   })
 }
+
+
+// ============================================================================
+// Swarm Pipeline API
+// ============================================================================
+
+export interface SwarmStageStatus {
+  name: string
+  label: string
+  model: string
+  context_mode: string
+  status: 'pending' | 'running' | 'waiting_trigger' | 'completed' | 'failed'
+  output_file: string
+  trigger_file: string | null
+  conversation_id: number | null
+  started_at: string | null
+  completed_at: string | null
+  error: string | null
+}
+
+export interface SwarmSharedFile {
+  name: string
+  size: number
+  modified: string
+}
+
+export interface SwarmPipelineStatus {
+  swarm_id: string
+  status: 'idle' | 'running' | 'completed' | 'failed' | 'stopped'
+  shared_dir: string
+  working_directory: string
+  stages: SwarmStageStatus[]
+  shared_files: SwarmSharedFile[]
+}
+
+export interface SwarmStartRequest {
+  working_directory: string
+  task_description?: string
+  research_model?: string
+  prd_model?: string
+  coder_model?: string
+}
+
+export interface SwarmStartResponse {
+  swarm_id: string
+  status: string
+  shared_dir: string
+  stages: string[]
+}
+
+export async function startSwarm(body: SwarmStartRequest): Promise<SwarmStartResponse> {
+  return fetchJSON('/swarm/start', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+export async function getSwarmStatus(swarmId: string): Promise<SwarmPipelineStatus> {
+  return fetchJSON(`/swarm/${swarmId}/status`)
+}
+
+export async function stopSwarm(swarmId: string): Promise<void> {
+  await fetchJSON(`/swarm/${swarmId}/stop`, { method: 'POST' })
+}
+
+export async function listSwarmPipelines(): Promise<SwarmPipelineStatus[]> {
+  return fetchJSON('/swarm/pipelines')
+}
+
+export async function getSwarmFiles(swarmId: string): Promise<SwarmSharedFile[]> {
+  return fetchJSON(`/swarm/${swarmId}/files`)
+}
+
+export async function readSwarmFile(swarmId: string, filename: string): Promise<{ filename: string; content: string }> {
+  return fetchJSON(`/swarm/${swarmId}/files/${filename}`)
+}
+
+export async function injectSwarmMessage(swarmId: string, stageName: string, content: string): Promise<void> {
+  await fetchJSON(`/swarm/${swarmId}/inject`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ stage_name: stageName, content }),
+  })
+}

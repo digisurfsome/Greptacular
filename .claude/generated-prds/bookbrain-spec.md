@@ -351,7 +351,7 @@ When you build the SaaS version, you just:
 | Engine Mode | `engine_mode` | string | "cli" | "cli" (subscription) or "api" (API key) |
 | API Key | `anthropic_api_key` | string | "" | Only needed in API mode |
 | Model | `analysis_model` | string | "claude-opus-4-6" | Model for book analysis |
-| Chat Model | `chat_model` | string | "claude-sonnet-4-5-20250929" | Model for chat queries (cheaper) |
+| Chat Model | `chat_model` | string | "claude-sonnet-4-6" | Model for chat queries (cheaper) |
 
 ### Context Budget Settings (Admin + User)
 

@@ -52,6 +52,7 @@ import { InjectFromChatModal } from './InjectFromChatModal'
 import CostControls, { loadCostSettings, type CostSettings } from './CostControls'
 import { TokenLogPanel } from './TokenLogPanel'
 import { AgentNotifications, stripStructuredBlocks, parseStructuredBlocks } from './AgentNotifications'
+import { parseUtcTimestamp } from '@/lib/utils'
 import type { ChatMessage as ChatMessageType, WorkspaceMessage, PendingInjection, ImageAttachment, WalkieTalkieLogEntry } from '@/lib/types'
 
 const DRAFT_KEY_PREFIX = 'workspace-draft-'
@@ -106,6 +107,11 @@ interface WorkspaceChatProps {
    * Only used when conversationId is null to determine context mode for the new session.
    */
   pendingContextMode?: '1m' | '200k'
+  /**
+   * Counter that increments on every "New Chat" click from the sidebar dropdown.
+   * Forces re-render and input focus even when the same model is selected twice.
+   */
+  newChatKey?: number
 }
 
 /** Generate a unique ID for local messages. */
@@ -170,6 +176,7 @@ export function WorkspaceChat({
   onWalkieTalkieLog,
   pendingModel,
   pendingContextMode: pendingContextModeProp,
+  newChatKey,
 }: WorkspaceChatProps): React.JSX.Element {
   const [inputValue, setInputValue] = useState('')
   const messagesContainerRef = useRef<HTMLDivElement>(null)
@@ -279,6 +286,23 @@ export function WorkspaceChat({
     disconnect,
     clearMessages,
   } = useWorkspaceChat({ onError: handleError })
+
+  // Compute running API token totals from the token log entries
+  const apiTokenTotals = useMemo(() => {
+    let apiInput = 0
+    let apiOutput = 0
+    let cacheRead = 0
+    let totalCost = 0
+    for (const e of tokenLog) {
+      if (e.event_type === 'result_summary') {
+        apiInput += e.api_input_tokens ?? 0
+        apiOutput += e.api_output_tokens ?? 0
+        cacheRead += e.api_cache_read_tokens ?? 0
+        totalCost += e.api_total_cost_usd ?? 0
+      }
+    }
+    return { apiInput, apiOutput, cacheRead, totalCost }
+  }, [tokenLog])
 
   // Propagate walkie-talkie log to parent for display in sidebar panel
   useEffect(() => {
@@ -459,6 +483,13 @@ export function WorkspaceChat({
     }
   }, [isLoading, inputRef])
 
+  // Focus input when user clicks a model from the New Chat dropdown
+  useEffect(() => {
+    if (newChatKey && newChatKey > 0) {
+      setTimeout(() => inputRef.current?.focus(), 100)
+    }
+  }, [newChatKey, inputRef])
+
   // Draft persistence: load draft when switching conversations
   useEffect(() => {
     if (conversationId !== null) {
@@ -501,7 +532,7 @@ export function WorkspaceChat({
       id: `rest-${m.id}`,
       role: m.role,
       content: m.content,
-      timestamp: m.timestamp ? new Date(m.timestamp) : new Date(),
+      timestamp: m.timestamp ? parseUtcTimestamp(m.timestamp) : new Date(),
     }))
   }, [conversationDetail])
 
@@ -1018,39 +1049,61 @@ export function WorkspaceChat({
                       : undefined)
                   : conversationModel)
             }
+            apiInputTokens={apiTokenTotals.apiInput}
+            apiOutputTokens={apiTokenTotals.apiOutput}
+            apiCacheReadTokens={apiTokenTotals.cacheRead}
+            apiTotalCost={apiTokenTotals.totalCost}
           />
         </div>
         {/* Read-only model indicator — hidden when mode is fixed (split-view) */}
         {!fixedContextMode && (
           <div className="flex-shrink-0 mr-4">
-            {conversationId === null && activeConversationId === null ? (
-              <span className="text-[10px] text-muted-foreground italic px-3 py-1.5">
-                Select model with + New Chat
-              </span>
-            ) : (
-              <div className="flex rounded-full border border-border overflow-hidden shadow-sm" role="status" aria-label="Active model">
-                {MODEL_PRESETS.map((preset, idx) => {
-                  const isActive = activePresetIndex === idx
-                  return (
-                    <span
-                      key={preset.label}
-                      className={`px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition-all duration-150 ${
-                        isActive
-                          ? preset.model === 'sonnet'
-                            ? 'bg-violet-500 text-white shadow-inner'
-                            : preset.context === '1m'
-                              ? 'bg-primary text-primary-foreground shadow-inner'
-                              : 'bg-zinc-600 text-white shadow-inner'
-                          : 'bg-card text-muted-foreground/40'
-                      } ${idx === 0 ? 'rounded-l-full' : ''} ${idx === MODEL_PRESETS.length - 1 ? 'rounded-r-full' : 'border-r border-border'}`}
-                      title={isActive ? `${preset.label} (active)` : preset.label}
-                    >
-                      {preset.label}
-                    </span>
-                  )
-                })}
-              </div>
-            )}
+            {(() => {
+              // Determine which preset to highlight:
+              // - If a conversation is active, use its stored model/context_mode
+              // - If pending selection exists (user picked from New Chat dropdown), show that
+              // - Otherwise show the "Select model" hint
+              const noActiveChat = conversationId === null && activeConversationId === null
+              const hasPendingSelection = noActiveChat && pendingModel != null
+              const showPresetIndex = noActiveChat
+                ? (hasPendingSelection
+                  ? MODEL_PRESETS.findIndex(p => p.model === pendingModel && p.context === (pendingContextModeProp ?? '1m'))
+                  : -1)
+                : activePresetIndex
+
+              if (noActiveChat && !hasPendingSelection) {
+                return (
+                  <span className="text-[10px] text-muted-foreground italic px-3 py-1.5">
+                    Select model with + New Chat
+                  </span>
+                )
+              }
+
+              return (
+                <div className="flex rounded-full border border-border overflow-hidden shadow-sm" role="status" aria-label="Active model">
+                  {MODEL_PRESETS.map((preset, idx) => {
+                    const isActive = showPresetIndex === idx
+                    return (
+                      <span
+                        key={preset.label}
+                        className={`px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition-all duration-150 ${
+                          isActive
+                            ? preset.model === 'sonnet'
+                              ? 'bg-violet-500 text-white shadow-inner'
+                              : preset.context === '1m'
+                                ? 'bg-primary text-primary-foreground shadow-inner'
+                                : 'bg-zinc-600 text-white shadow-inner'
+                            : 'bg-card text-muted-foreground/40'
+                        } ${idx === 0 ? 'rounded-l-full' : ''} ${idx === MODEL_PRESETS.length - 1 ? 'rounded-r-full' : 'border-r border-border'}`}
+                        title={isActive ? `${preset.label} (active)` : preset.label}
+                      >
+                        {preset.label}
+                      </span>
+                    )
+                  })}
+                </div>
+              )
+            })()}
           </div>
         )}
       </div>
@@ -1083,12 +1136,25 @@ export function WorkspaceChat({
           <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
             <MessageSquare size={48} className="text-muted-foreground/30" />
             <div className="text-center">
-              <h2 className="text-lg font-semibold text-foreground mb-2">
-                No conversations yet
-              </h2>
-              <p className="text-sm mb-6 max-w-sm">
-                Start your first conversation to brainstorm ideas, explore concepts, or get help with your projects.
-              </p>
+              {pendingModel && newChatKey && newChatKey > 0 ? (
+                <>
+                  <h2 className="text-lg font-semibold text-foreground mb-2">
+                    New Chat — {pendingModel === 'sonnet' ? 'Sonnet 4.6' : 'Opus 4.6'} ({pendingContextModeProp === '200k' ? '200K' : '1M'})
+                  </h2>
+                  <p className="text-sm mb-6 max-w-sm">
+                    Type your message below to start this conversation.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <h2 className="text-lg font-semibold text-foreground mb-2">
+                    No conversations yet
+                  </h2>
+                  <p className="text-sm mb-6 max-w-sm">
+                    Start your first conversation to brainstorm ideas, explore concepts, or get help with your projects.
+                  </p>
+                </>
+              )}
               <p className="text-xs text-muted-foreground mb-4">
                 Type a message below and press Enter to begin.
               </p>

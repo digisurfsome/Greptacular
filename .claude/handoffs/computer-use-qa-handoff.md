@@ -239,7 +239,7 @@ import anthropic
 client = anthropic.Anthropic()
 
 response = client.messages.create(
-    model="claude-sonnet-4-5-20250929",  # Computer Use works best with Sonnet
+    model="claude-sonnet-4-6",  # Computer Use works best with Sonnet
     max_tokens=4096,
     tools=[
         {

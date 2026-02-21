@@ -11,6 +11,7 @@ import { createPortal } from 'react-dom'
 import { X, Bot } from 'lucide-react'
 import { AssistantChat } from './AssistantChat'
 import { useConversation } from '../hooks/useConversations'
+import { parseUtcTimestamp } from '../lib/utils'
 import type { ChatMessage } from '../lib/types'
 
 interface AssistantPanelProps {
@@ -104,7 +105,7 @@ export function AssistantPanel({ projectName, isOpen, onClose }: AssistantPanelP
     id: `db-${msg.id}`,
     role: msg.role,
     content: msg.content,
-    timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(),
+    timestamp: msg.timestamp ? parseUtcTimestamp(msg.timestamp) : new Date(),
   }))
 
   // Persist conversation ID changes to localStorage

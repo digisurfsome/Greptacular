@@ -158,7 +158,7 @@ create table builds (
   style_id text,
   custom_colors jsonb,
   yolo_mode boolean default false,
-  model text default 'claude-sonnet-4-5-20250929',
+  model text default 'claude-sonnet-4-6',
   max_concurrency integer default 3,
   batch_size integer default 3,
 
@@ -679,7 +679,7 @@ Next.js WebSocket handler
     │
     │ Anthropic API (Messages API with streaming)
     │ System prompt: spec creation template from .claude/templates/
-    │ Model: claude-sonnet-4-5 (fast, cheap)
+    │ Model: claude-sonnet-4-6 (fast, cheap)
     │
     ▼
 Returns structured app_spec.txt
@@ -866,7 +866,7 @@ BUILD_JWT_SECRET=...                   # Signs per-build JWTs
 
 # Spec creation (lightweight, runs on web app)
 SPEC_ANTHROPIC_API_KEY=sk-ant-...      # Can be same as platform key
-SPEC_MODEL=claude-sonnet-4-5-20250929
+SPEC_MODEL=claude-sonnet-4-6
 ```
 
 ---

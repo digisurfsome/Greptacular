@@ -37,6 +37,14 @@ interface EnhancedContextBudgetBarProps {
   isStreaming?: boolean
   /** Model for cost estimation on API panels. Only shown on 1M panels. */
   preferredModel?: 'opus' | 'sonnet'
+  /** Actual cumulative API input tokens (from token log). */
+  apiInputTokens?: number
+  /** Actual cumulative API output tokens (from token log). */
+  apiOutputTokens?: number
+  /** Actual cumulative cache read tokens (from token log). */
+  apiCacheReadTokens?: number
+  /** Actual cumulative API cost in USD (from token log). */
+  apiTotalCost?: number
 }
 
 /** Format a token count as a human-readable string with K/M suffixes. */
@@ -124,6 +132,10 @@ export function EnhancedContextBudgetBar({
   messageCount,
   isStreaming = false,
   preferredModel,
+  apiInputTokens = 0,
+  apiOutputTokens = 0,
+  apiCacheReadTokens = 0,
+  apiTotalCost = 0,
 }: EnhancedContextBudgetBarProps): React.JSX.Element {
   const usedTokens = messageTokens + summaryTokens + libraryTokens + repoTokens
   const usagePercent = totalBudget > 0 ? (usedTokens / totalBudget) * 100 : 0
@@ -176,11 +188,11 @@ export function EnhancedContextBudgetBar({
 
   return (
     <div className="px-4 py-3 border-b border-border bg-card/80">
-      {/* Main row: tokens | cost | max */}
+      {/* Main row: percentage | actual tokens | cost | max */}
       <div className="flex items-center justify-between mb-2">
-        {/* Left: percentage + token count */}
+        {/* Left: percentage + context token count */}
         <div className="flex items-center gap-2">
-          <span className={`text-lg font-bold tabular-nums ${usageColor(usagePercent, totalBudget, usedTokens)}`}>
+          <span className={`text-xl font-bold tabular-nums ${usageColor(usagePercent, totalBudget, usedTokens)}`}>
             {usagePercent < 1 && usagePercent > 0 ? usagePercent.toFixed(2) : usagePercent.toFixed(1)}%
           </span>
           <span className="text-sm font-semibold text-foreground tabular-nums">
@@ -188,17 +200,50 @@ export function EnhancedContextBudgetBar({
           </span>
         </div>
 
-        {/* Center: live dollar cost with output estimate (only on 1M API panels) */}
+        {/* Center: actual API token totals (input/output/cache) — always shown when data exists */}
+        {(apiInputTokens > 0 || apiOutputTokens > 0) && (
+          <div className="flex items-center gap-3">
+            <div className="flex flex-col items-center">
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider leading-none mb-0.5">In</span>
+              <span className="text-base font-bold font-mono tabular-nums text-foreground leading-none">
+                {formatTokenCount(apiInputTokens)}
+              </span>
+            </div>
+            <div className="flex flex-col items-center">
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider leading-none mb-0.5">Out</span>
+              <span className="text-base font-bold font-mono tabular-nums text-foreground leading-none">
+                {formatTokenCount(apiOutputTokens)}
+              </span>
+            </div>
+            {apiCacheReadTokens > 0 && (
+              <div className="flex flex-col items-center">
+                <span className="text-[10px] text-muted-foreground uppercase tracking-wider leading-none mb-0.5">Cache</span>
+                <span className="text-sm font-bold font-mono tabular-nums text-blue-400 leading-none">
+                  {formatTokenCount(apiCacheReadTokens)}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Cost: show actual API cost if available, otherwise show estimate */}
         {showCost && (
           <div className="flex items-center gap-1.5">
             <div className="flex flex-col items-center">
-              <span className={`text-base font-bold tabular-nums leading-none ${
+              <span className={`text-lg font-bold tabular-nums leading-none ${
                 isExtendedPricing ? 'text-amber-400' : 'text-emerald-400'
               }`}>
-                {estimateTotalCost(usedTokens, preferredModel!)}
+                {apiTotalCost > 0
+                  ? (apiTotalCost < 0.01 ? '<$0.01' : `$${apiTotalCost.toFixed(2)}`)
+                  : estimateTotalCost(usedTokens, preferredModel!)}
               </span>
               <span className="text-[9px] text-muted-foreground tabular-nums leading-tight">
-                in: {estimateInputCost(usedTokens, preferredModel!)} + out: ~{estimateOutputCost(usedTokens, preferredModel!).cost}
+                {apiTotalCost > 0 ? 'actual' : 'est.'}
+                {' '}in: {apiInputTokens > 0
+                  ? formatTokenCount(apiInputTokens)
+                  : estimateInputCost(usedTokens, preferredModel!)} + out: {apiOutputTokens > 0
+                  ? formatTokenCount(apiOutputTokens)
+                  : `~${estimateOutputCost(usedTokens, preferredModel!).cost}`}
               </span>
             </div>
             <span

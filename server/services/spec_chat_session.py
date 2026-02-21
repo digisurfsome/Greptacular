@@ -217,12 +217,16 @@ class SpecChatSession:
                     )
                     system_prompt = system_prompt + style_ctx
 
-        # Write system prompt to CLAUDE.md file to avoid Windows command line length limit
-        # The SDK will read this via setting_sources=["project"]
-        claude_md_path = self.project_dir / "CLAUDE.md"
+        # Write system prompt to CLAUDE.md in a scratch directory so we don't
+        # overwrite the project's real CLAUDE.md. The SDK reads it via
+        # setting_sources=["project"] from cwd (set to the scratch dir below).
+        from autoforge_paths import get_autoforge_dir
+        spec_scratch = get_autoforge_dir(self.project_dir) / ".spec_scratch"
+        spec_scratch.mkdir(parents=True, exist_ok=True)
+        claude_md_path = spec_scratch / "CLAUDE.md"
         with open(claude_md_path, "w", encoding="utf-8") as f:
             f.write(system_prompt)
-        logger.info(f"Wrote system prompt to {claude_md_path}")
+        logger.info(f"Wrote spec system prompt to {claude_md_path}")
 
         # Create Claude SDK client with limited tools for spec creation
         # Use Opus for best quality spec generation
@@ -255,7 +259,7 @@ class SpecChatSession:
                     ],
                     permission_mode="acceptEdits",  # Auto-approve file writes for spec creation
                     max_turns=100,
-                    cwd=str(self.project_dir.resolve()),
+                    cwd=str(spec_scratch.resolve()),
                     settings=str(settings_file.resolve()),
                     env=sdk_env,
                 )

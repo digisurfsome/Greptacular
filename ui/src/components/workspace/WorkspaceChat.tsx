@@ -185,6 +185,7 @@ export function WorkspaceChat({
   const inputRef = externalInputRef ?? internalInputRef
   const lastConversationIdRef = useRef<number | null | undefined>(undefined)
   const lastSessionModelRef = useRef<string | null>(null)
+  const lastSessionContextRef = useRef<string | null>(null)
   const [isUserScrolledUp, setIsUserScrolledUp] = useState(false)
   const [showForkModal, setShowForkModal] = useState(false)
   const [showInjectModal, setShowInjectModal] = useState(false)
@@ -219,7 +220,7 @@ export function WorkspaceChat({
   // sessionContextMode = what the CURRENT session is actually running on (drives gauge display).
   // It is derived from the conversation's stored context_mode (or the pending prop for new chats).
   const [sessionContextMode, setSessionContextMode] = useState<'1m' | '200k'>(
-    fixedContextMode ?? pendingContextModeProp ?? '1m'
+    fixedContextMode ?? pendingContextModeProp ?? '200k'
   )
 
   // Model preset definitions (used for read-only display).
@@ -331,7 +332,7 @@ export function WorkspaceChat({
   const conversationContextMode: '1m' | '200k' = fixedContextMode
     ?? conversationDetail?.context_mode
     ?? pendingContextModeProp
-    ?? '1m'
+    ?? '200k'
 
   // Derive the active preset index from the conversation's actual model + context_mode (read-only).
   const activePresetIndex = useMemo(() => {
@@ -415,24 +416,29 @@ export function WorkspaceChat({
       setSessionContextMode(modeForSession)
       const modelForSession = conversationModel
       lastSessionModelRef.current = modelForSession
+      lastSessionContextRef.current = modeForSession
       start(conversationId, workingDirectory ?? undefined, modeForSession, costSettings as unknown as Record<string, unknown>, modelForSession)
     }
   }, [conversationId, isLoadingConversation, activeConversationId, start, disconnect, clearMessages, workingDirectory, costSettings, conversationModel, conversationContextMode])
 
-  // Reconnect with new model when badge cycling changes the conversation's model
-  // while a session is already active for this conversation.
+  // Reconnect when badge cycling or split-view toggle changes the conversation's
+  // model or context mode while a session is already active. We intentionally do
+  // NOT guard on isLoading: when the user explicitly switches models, the running
+  // session must be torn down and restarted even if a response is in flight.
   useEffect(() => {
     if (!conversationId || !lastSessionModelRef.current) return
-    if (isLoadingConversation || isLoading) return
-    if (conversationModel === lastSessionModelRef.current) return
+    if (isLoadingConversation) return
+    const modelChanged = conversationModel !== lastSessionModelRef.current
+    const contextChanged = lastSessionContextRef.current !== null && conversationContextMode !== lastSessionContextRef.current
+    if (!modelChanged && !contextChanged) return
 
     lastSessionModelRef.current = conversationModel
-    const modeForSession = conversationContextMode
-    setSessionContextMode(modeForSession)
+    lastSessionContextRef.current = conversationContextMode
+    setSessionContextMode(conversationContextMode)
     disconnect()
     clearMessages()
-    start(conversationId, workingDirectory ?? undefined, modeForSession, costSettings as unknown as Record<string, unknown>, conversationModel)
-  }, [conversationModel]) // eslint-disable-line react-hooks/exhaustive-deps
+    start(conversationId, workingDirectory ?? undefined, conversationContextMode, costSettings as unknown as Record<string, unknown>, conversationModel)
+  }, [conversationModel, conversationContextMode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Smart auto-scroll: only scroll if user is near the bottom
   const handleScroll = useCallback(() => {
@@ -1047,7 +1053,7 @@ export function WorkspaceChat({
                         : 'bg-violet-500/20 text-violet-600'
                       : 'text-current/40 hover:text-current/70'
                   } ${m === 'opus' ? 'rounded-l-full' : 'rounded-r-full border-l border-current/20'}`}
-                  title={`Switch to ${m === 'opus' ? 'Opus 4.6' : 'Sonnet 4.6'} (takes effect on next session)`}
+                  title={`Switch to ${m === 'opus' ? 'Opus 4.6' : 'Sonnet 4.6'}`}
                 >
                   {m === 'opus' ? 'Opus' : 'Sonnet'}
                 </button>

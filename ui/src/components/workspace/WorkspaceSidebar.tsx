@@ -476,10 +476,12 @@ export function WorkspaceSidebar({
                         const abbr = model === 'sonnet' ? 'S' : 'O'
                         const badgeLabel = `${abbr}\u00B7${ctx === '1m' ? '1M' : '200K'}`
 
-                        // Cycle: O-1M -> S-1M -> O-200K -> O-1M
+                        // Cycle: O-1M -> O-200K -> S-200K -> O-1M
+                        // Sonnet does not support the 1M context beta, so skip that combination.
                         const cycleNext = () => {
-                          if (model === 'opus' && ctx === '1m') return { model: 'sonnet' as const, context_mode: '1m' as const }
-                          if (model === 'sonnet' && ctx === '1m') return { model: 'opus' as const, context_mode: '200k' as const }
+                          if (model === 'opus' && ctx === '1m') return { model: 'opus' as const, context_mode: '200k' as const }
+                          if (model === 'opus' && ctx === '200k') return { model: 'sonnet' as const, context_mode: '200k' as const }
+                          if (model === 'sonnet') return { model: 'opus' as const, context_mode: '1m' as const }
                           return { model: 'opus' as const, context_mode: '1m' as const }
                         }
                         const next = cycleNext()

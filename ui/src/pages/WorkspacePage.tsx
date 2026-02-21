@@ -159,7 +159,7 @@ export function WorkspacePage(): React.JSX.Element {
   // newChatKey is a counter that increments on every "New Chat" click to ensure
   // state changes even when the same model is selected twice in a row.
   const [pendingModel, setPendingModel] = useState<'opus' | 'sonnet'>('opus')
-  const [pendingContextMode, setPendingContextMode] = useState<'1m' | '200k'>('1m')
+  const [pendingContextMode, setPendingContextMode] = useState<'1m' | '200k'>('200k')
   const [newChatKey, setNewChatKey] = useState(0)
 
   const handleNewChat = useCallback((model: 'opus' | 'sonnet', contextMode: '1m' | '200k') => {

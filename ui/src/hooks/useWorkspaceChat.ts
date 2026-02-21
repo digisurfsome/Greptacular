@@ -235,7 +235,7 @@ export function useWorkspaceChat({
         if (params.workingDirectory) {
           payload.working_directory = params.workingDirectory;
         }
-        payload.context_mode = params.contextMode ?? "1m";
+        payload.context_mode = params.contextMode ?? "200k";
         if (params.costSettings) {
           payload.cost_settings = params.costSettings;
         }
@@ -580,7 +580,7 @@ export function useWorkspaceChat({
           if (workingDirectory) {
             payload.working_directory = workingDirectory;
           }
-          payload.context_mode = contextMode ?? "1m";
+          payload.context_mode = contextMode ?? "200k";
           if (costSettings) {
             payload.cost_settings = costSettings;
           }

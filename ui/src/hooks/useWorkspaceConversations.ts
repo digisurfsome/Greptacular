@@ -113,3 +113,15 @@ export function useToggleContextMode() {
     },
   })
 }
+
+/** Hook to cycle a workspace conversation's model+context badge (O-1M -> S-1M -> O-200K -> O-1M). */
+export function useCycleModelBadge() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ conversationId, model, context_mode }: { conversationId: number; model: string; context_mode: string }) =>
+      updateWorkspaceConversation(conversationId, { model, context_mode }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [...CONVERSATIONS_KEY] })
+    },
+  })
+}

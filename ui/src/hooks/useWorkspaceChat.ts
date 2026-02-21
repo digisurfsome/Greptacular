@@ -10,7 +10,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import type { ChatMessage, WorkspaceChatServerMessage, PendingInjection, ImageAttachment, WalkieTalkieLogEntry } from "../lib/types";
+import type { ChatMessage, WorkspaceChatServerMessage, PendingInjection, ImageAttachment, WalkieTalkieLogEntry, TokenLogEntry } from "../lib/types";
 
 type ConnectionStatus = "disconnected" | "connecting" | "connected" | "error";
 
@@ -45,6 +45,8 @@ interface UseWorkspaceChatReturn {
   walkieTalkieLog: WalkieTalkieLogEntry[];
   /** Append an entry to the walkie-talkie log (used by WorkspaceChat for user-initiated events). */
   addWalkieTalkieEntry: (sender: 'user' | 'agent' | 'system', content: string) => void;
+  /** Real-time token processing log entries received via WebSocket. */
+  tokenLog: TokenLogEntry[];
   disconnect: () => void;
   clearMessages: () => void;
 }
@@ -83,6 +85,7 @@ export function useWorkspaceChat({
   const [agentWaiting, setAgentWaiting] = useState(false);
   const [agentWaitingQuestion, setAgentWaitingQuestion] = useState<string | null>(null);
   const [walkieTalkieLog, setWalkieTalkieLog] = useState<WalkieTalkieLogEntry[]>([]);
+  const [tokenLog, setTokenLog] = useState<TokenLogEntry[]>([]);
 
   const addWalkieTalkieEntry = useCallback(
     (sender: 'user' | 'agent' | 'system', content: string) => {
@@ -409,6 +412,16 @@ export function useWorkspaceChat({
             break;
           }
 
+          case "token_log": {
+            // Real-time token processing log entry from the backend.
+            // Append to the log for display in the TokenLogPanel.
+            const logData = data as { entry: TokenLogEntry };
+            if (logData.entry) {
+              setTokenLog((prev) => [...prev, logData.entry]);
+            }
+            break;
+          }
+
           case "error": {
             setIsLoading(false);
             setLastError(data.content || "Unknown error");
@@ -647,6 +660,7 @@ export function useWorkspaceChat({
     setAgentWaiting(false);
     setAgentWaitingQuestion(null);
     setWalkieTalkieLog([]);
+    setTokenLog([]);
     sessionReadyRef.current = false;
     queuedPayloadRef.current = null;
   }, []);
@@ -669,6 +683,7 @@ export function useWorkspaceChat({
     start,
     sendMessage,
     sendWalkieTalkie,
+    tokenLog,
     disconnect,
     clearMessages,
   };

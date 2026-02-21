@@ -151,7 +151,19 @@ export function WorkspacePage(): React.JSX.Element {
     localStorage.setItem('workspace-context-mode', contexts[idx])
   }, [])
 
-  const handleNewChat = useCallback(() => {
+  // Model + context chosen at new-chat creation time (from sidebar dropdown).
+  // Stored as pending state, passed to WorkspaceChat for the new session.
+  const [pendingModel, setPendingModel] = useState<'opus' | 'sonnet'>('opus')
+  const [pendingContextMode, setPendingContextMode] = useState<'1m' | '200k'>('1m')
+
+  const handleNewChat = useCallback((model: 'opus' | 'sonnet', contextMode: '1m' | '200k') => {
+    setPendingModel(model)
+    setPendingContextMode(contextMode)
+    setActiveConversationId(null)
+  }, [])
+
+  /** Navigate back to conversation list (no model selection needed). */
+  const handleBackToConversations = useCallback(() => {
     setActiveConversationId(null)
   }, [])
 
@@ -237,7 +249,7 @@ export function WorkspacePage(): React.JSX.Element {
 
   // Register workspace keyboard shortcuts
   useWorkspaceKeyboardShortcuts({
-    onNewConversation: handleNewChat,
+    onNewConversation: handleBackToConversations,
     onToggleLibrary: () => setLibraryCollapsed((v) => !v),
     onToggleSidebar: () => setSidebarCollapsed((v) => !v),
     onFocusSearch: handleFocusSearch,
@@ -414,7 +426,7 @@ export function WorkspacePage(): React.JSX.Element {
                 <WorkspaceChat
                   conversationId={activeConversationId}
                   onConversationCreated={handleConversationCreated}
-                  onNewConversation={handleNewChat}
+                  onNewConversation={handleBackToConversations}
                   chatInputRef={chatInputRef}
                   workingDirectory={workingDirectory}
                   fixedContextMode="200k"
@@ -545,10 +557,12 @@ export function WorkspacePage(): React.JSX.Element {
             <WorkspaceChat
               conversationId={activeConversationId}
               onConversationCreated={handleConversationCreated}
-              onNewConversation={handleNewChat}
+              onNewConversation={handleBackToConversations}
               chatInputRef={chatInputRef}
               workingDirectory={workingDirectory}
               onWalkieTalkieLog={setWalkieTalkieLog}
+              pendingModel={pendingModel}
+              pendingContextMode={pendingContextMode}
             />
           </div>
         )}

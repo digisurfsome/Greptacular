@@ -38,6 +38,7 @@ from ..schemas import ImageAttachment
 from .chat_constants import ROOT_DIR, make_multimodal_message  # noqa: F401
 from .workspace_database import (
     add_message,
+    add_token_log_entry,
     create_conversation,
     estimate_tokens,
     get_conversation_token_total,
@@ -377,6 +378,7 @@ class WorkspaceChatSession:
             conv = create_conversation(
                 working_directory=self.working_directory,
                 context_mode=self.context_mode,
+                model=self.model,
             )
             self.conversation_id = int(conv.id)  # type coercion: Column[int] -> int
             yield {"type": "conversation_created", "conversation_id": self.conversation_id}
@@ -546,21 +548,23 @@ class WorkspaceChatSession:
                 len(messages), self.session_id,
             )
 
-            return SyncHookJSONOutput(
-                hookSpecificOutput={
-                    "hookEventName": "PreToolUse",
-                    "decision": "block",
-                    "reason": (
-                        f"[WALKIE-TALKIE MESSAGE FROM USER]\n\n"
-                        f"{body}\n\n"
-                        f"[END WALKIE-TALKIE MESSAGE]\n\n"
-                        f"Please acknowledge and address this message. "
-                        f"Then continue with your previous task. "
-                        f"Your planned tool call was not executed — "
-                        f"you may re-attempt it after addressing the message."
-                    ),
-                }
-            )
+            # Return the same plain-dict format used by bash_security_hook.
+            # Previous code used SyncHookJSONOutput with hookSpecificOutput
+            # which placed "decision"/"reason" inside the wrong structure —
+            # the SDK silently ignored those fields so the tool proceeded
+            # normally and the consumed message was permanently lost.
+            return {
+                "decision": "block",
+                "reason": (
+                    f"[WALKIE-TALKIE MESSAGE FROM USER]\n\n"
+                    f"{body}\n\n"
+                    f"[END WALKIE-TALKIE MESSAGE]\n\n"
+                    f"Please acknowledge and address this message. "
+                    f"Then continue with your previous task. "
+                    f"Your planned tool call was not executed — "
+                    f"you may re-attempt it after addressing the message."
+                ),
+            }
 
         hooks = {
             "PreToolUse": [
@@ -597,11 +601,12 @@ class WorkspaceChatSession:
                     settings=str(settings_file.resolve()),
                     env=sdk_env,
                     hooks=hooks,
-                    # Enable 1M token context window only in 1M mode.
-                    # Disabled for alternative APIs and when user selects 200K mode.
+                    # Enable 1M token context window only for Opus in 1M mode.
+                    # The context-1m beta is only supported by Opus models.
+                    # Disabled for alternative APIs, 200K mode, and Sonnet.
                     betas=(
                         []
-                        if is_alternative_api or self.context_mode != "1m"
+                        if is_alternative_api or self.context_mode != "1m" or self.model == "sonnet"
                         else ["context-1m-2025-08-07"]
                     ),
                 )
@@ -822,7 +827,9 @@ class WorkspaceChatSession:
 
         # Timeouts — Opus is significantly slower than Sonnet, especially
         # with the 1M context beta.  Use generous limits but don't hang forever.
-        is_opus = "opus" in (self.model or "")
+        # When self.model is None or empty, the default is Opus, so use Opus timeouts.
+        is_sonnet = self.model == "sonnet"
+        is_opus = not is_sonnet  # Default to Opus timeouts (None/empty/opus all get Opus)
         query_timeout = 180 if is_opus else 90   # seconds to accept the query
         first_token_timeout = 300 if is_opus else 120  # seconds for first token
 
@@ -869,6 +876,12 @@ class WorkspaceChatSession:
         full_response = ""
         first_token_received = False
 
+        # ── Token processing log tracking ──
+        turn_number = 0
+        turn_text_length = 0
+        turn_tool_calls: list[str] = []  # tool names in current assistant turn
+        conv_id = self.conversation_id  # capture for logging
+
         # Stream the response with a first-token timeout
         response_iter = self.client.receive_response().__aiter__()
         while True:
@@ -889,6 +902,10 @@ class WorkspaceChatSession:
             msg_type = type(msg).__name__
 
             if msg_type == "AssistantMessage" and hasattr(msg, "content"):
+                turn_number += 1
+                turn_text_length = 0
+                turn_tool_calls = []
+
                 for block in msg.content:
                     block_type = type(block).__name__
 
@@ -896,6 +913,7 @@ class WorkspaceChatSession:
                         text = block.text
                         if text:
                             full_response += text
+                            turn_text_length += len(text)
                             yield {"type": "text", "content": text}
 
                             # Detect agent-initiated wait signal: [WAITING]...[/WAITING]
@@ -915,11 +933,118 @@ class WorkspaceChatSession:
                     elif block_type == "ToolUseBlock" and hasattr(block, "name"):
                         tool_name = block.name
                         tool_input = getattr(block, "input", {})
+                        turn_tool_calls.append(tool_name)
                         yield {
                             "type": "tool_call",
                             "tool": tool_name,
                             "input": tool_input,
                         }
+
+                        # Log the tool call
+                        if conv_id is not None:
+                            input_str = json.dumps(tool_input) if tool_input else ""
+                            input_len = len(input_str)
+                            try:
+                                entry = add_token_log_entry(
+                                    conversation_id=conv_id,
+                                    event_type="tool_call",
+                                    turn_number=turn_number,
+                                    tool_name=tool_name,
+                                    tool_input_length=input_len,
+                                    estimated_tokens=input_len // 4,
+                                    model=self.model,
+                                )
+                                yield {"type": "token_log", "entry": entry}
+                            except Exception as e:
+                                logger.warning("Failed to log tool_call: %s", e)
+
+                # Log the assistant turn summary
+                if conv_id is not None:
+                    try:
+                        entry = add_token_log_entry(
+                            conversation_id=conv_id,
+                            event_type="assistant_turn",
+                            turn_number=turn_number,
+                            text_length=turn_text_length,
+                            num_tool_calls=len(turn_tool_calls),
+                            estimated_tokens=turn_text_length // 4,
+                            model=self.model,
+                        )
+                        yield {"type": "token_log", "entry": entry}
+                    except Exception as e:
+                        logger.warning("Failed to log assistant_turn: %s", e)
+
+            # Handle UserMessage (tool results) — log each tool result
+            elif msg_type == "UserMessage" and hasattr(msg, "content"):
+                for block in msg.content:
+                    block_type = type(block).__name__
+                    if block_type == "ToolResultBlock":
+                        result_content = str(getattr(block, "content", ""))
+                        is_error = getattr(block, "is_error", False)
+                        result_len = len(result_content)
+                        # Try to get the tool name from the block
+                        result_tool_name = getattr(block, "tool_use_id", None)
+
+                        if conv_id is not None:
+                            try:
+                                entry = add_token_log_entry(
+                                    conversation_id=conv_id,
+                                    event_type="tool_result",
+                                    turn_number=turn_number,
+                                    tool_name=result_tool_name,
+                                    tool_result_length=result_len,
+                                    tool_is_error=is_error,
+                                    estimated_tokens=result_len // 4,
+                                    model=self.model,
+                                )
+                                yield {"type": "token_log", "entry": entry}
+                            except Exception as e:
+                                logger.warning("Failed to log tool_result: %s", e)
+
+            # Handle ResultMessage — the SDK's final summary with actual API usage
+            elif msg_type == "ResultMessage":
+                usage = getattr(msg, "usage", None) or {}
+                cost_usd = getattr(msg, "total_cost_usd", None)
+                num_turns_api = getattr(msg, "num_turns", None)
+                duration_ms = getattr(msg, "duration_ms", None)
+                duration_api_ms = getattr(msg, "duration_api_ms", None)
+                is_error = getattr(msg, "is_error", False)
+                result_model = getattr(msg, "model", self.model)
+
+                # Extract token counts from usage dict
+                api_input = usage.get("input_tokens") if isinstance(usage, dict) else None
+                api_output = usage.get("output_tokens") if isinstance(usage, dict) else None
+                api_cache_create = usage.get("cache_creation_input_tokens") if isinstance(usage, dict) else None
+                api_cache_read = usage.get("cache_read_input_tokens") if isinstance(usage, dict) else None
+
+                logger.info(
+                    "ResultMessage: model=%s cost=$%.4f input=%s output=%s "
+                    "cache_create=%s cache_read=%s turns=%s duration=%sms is_error=%s",
+                    result_model, cost_usd or 0.0, api_input, api_output,
+                    api_cache_create, api_cache_read, num_turns_api,
+                    duration_ms, is_error,
+                )
+
+                if conv_id is not None:
+                    try:
+                        entry = add_token_log_entry(
+                            conversation_id=conv_id,
+                            event_type="result_summary",
+                            turn_number=turn_number,
+                            api_input_tokens=api_input,
+                            api_output_tokens=api_output,
+                            api_cache_creation_tokens=api_cache_create,
+                            api_cache_read_tokens=api_cache_read,
+                            api_total_cost_usd=cost_usd,
+                            api_num_turns=num_turns_api,
+                            api_duration_ms=duration_ms,
+                            api_duration_api_ms=duration_api_ms,
+                            estimated_tokens=(api_input or 0) + (api_output or 0),
+                            model=result_model or self.model,
+                        )
+                        yield {"type": "token_log", "entry": entry}
+                    except Exception as e:
+                        logger.warning("Failed to log result_summary: %s", e)
 
         # Store the complete response with its token estimate
         if full_response and self.conversation_id is not None:

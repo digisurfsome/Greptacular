@@ -24,7 +24,7 @@ import {
   useCreateWorkspaceConversation,
   useDeleteWorkspaceConversation,
   useTogglePin,
-  useToggleContextMode,
+  useCycleModelBadge,
 } from '@/hooks/useWorkspaceConversations'
 import {
   useWorkspaceCategories,
@@ -64,7 +64,8 @@ interface WorkspaceSidebarProps {
   activeConversationId: number | null
   collapsed: boolean
   onToggleCollapse: () => void
-  onNewChat: () => void
+  /** Called when user starts a new chat with model selection from the dropdown. */
+  onNewChat: (model: 'opus' | 'sonnet', contextMode: '1m' | '200k') => void
   onSelectConversation: (id: number) => void
   /** Currently selected working directory (repo path) from the page. */
   selectedWorkingDirectory?: string | null
@@ -132,7 +133,7 @@ export function WorkspaceSidebar({
   const updateCategoryMut = useUpdateCategory()
   const deleteCategoryMut = useDeleteCategory()
   const togglePinMut = useTogglePin()
-  const toggleContextModeMut = useToggleContextMode()
+  const cycleModelBadgeMut = useCycleModelBadge()
 
   // Focus the naming input when it appears
   useEffect(() => {
@@ -266,15 +267,42 @@ export function WorkspaceSidebar({
         </Button>
       </div>
 
-      {/* New Chat button with category dropdown */}
+      {/* New Chat button with model selection dropdown + category dropdown */}
       <div className="px-3 py-2 flex gap-1">
-        <Button
-          className="flex-1"
-          onClick={onNewChat}
-        >
-          <Plus size={16} />
-          New Chat
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button className="flex-1">
+              <Plus size={16} />
+              New Chat
+              <ChevronDown size={12} className="ml-1 opacity-60" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-52">
+            <DropdownMenuLabel className="text-xs">Select model</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {SIDEBAR_MODEL_PRESETS.map((preset) => (
+              <DropdownMenuItem
+                key={preset.label}
+                onClick={() => onNewChat(preset.model, preset.context)}
+                className="gap-2 text-xs"
+              >
+                <span
+                  className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                    preset.model === 'sonnet'
+                      ? 'bg-violet-500'
+                      : preset.context === '1m'
+                        ? 'bg-blue-500'
+                        : 'bg-zinc-500'
+                  }`}
+                />
+                <span className="font-medium">{preset.label}</span>
+                <span className="ml-auto text-[10px] text-muted-foreground">
+                  {preset.context === '200k' ? 'Subscription' : 'API key'}
+                </span>
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
         {categories.length > 0 && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -440,25 +468,46 @@ export function WorkspaceSidebar({
                       onMouseEnter={() => handleMouseEnter(conv.id)}
                       onMouseLeave={handleMouseLeave}
                     >
-                      {/* Context mode badge — top-right corner, clickable to toggle */}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          toggleContextModeMut.mutate({
-                            conversationId: conv.id,
-                            context_mode: conv.context_mode === '1m' ? '200k' : '1m',
-                          })
-                        }}
-                        className={`absolute -top-1 -right-1 z-10 text-[9px] font-mono font-extrabold px-1.5 py-0.5 rounded-md border shadow-sm cursor-pointer transition-colors ${
-                          conv.context_mode === '1m'
+                      {/* Model+context badge — top-right corner, clickable to cycle O-1M -> S-1M -> O-200K -> O-1M */}
+                      {(() => {
+                        const model = conv.model ?? 'opus'
+                        const ctx = conv.context_mode ?? '1m'
+                        const abbr = model === 'sonnet' ? 'S' : 'O'
+                        const badgeLabel = `${abbr}\u00B7${ctx === '1m' ? '1M' : '200K'}`
+
+                        // Cycle: O-1M -> S-1M -> O-200K -> O-1M
+                        const cycleNext = () => {
+                          if (model === 'opus' && ctx === '1m') return { model: 'sonnet' as const, context_mode: '1m' as const }
+                          if (model === 'sonnet' && ctx === '1m') return { model: 'opus' as const, context_mode: '200k' as const }
+                          return { model: 'opus' as const, context_mode: '1m' as const }
+                        }
+                        const next = cycleNext()
+
+                        // Color-code: blue for opus+1M, violet for sonnet, zinc for 200K
+                        const badgeColor = model === 'sonnet'
+                          ? 'bg-violet-600 text-white border-violet-400 hover:bg-violet-500'
+                          : ctx === '1m'
                             ? 'bg-blue-600 text-white border-blue-400 hover:bg-blue-500'
                             : 'bg-zinc-700 text-zinc-200 border-zinc-500 hover:bg-zinc-600'
-                        }`}
-                        title={`Switch to ${conv.context_mode === '1m' ? '200K' : '1M'} context`}
-                      >
-                        {conv.context_mode === '1m' ? '1M' : '200K'}
-                      </button>
+
+                        return (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              cycleModelBadgeMut.mutate({
+                                conversationId: conv.id,
+                                model: next.model,
+                                context_mode: next.context_mode,
+                              })
+                            }}
+                            className={`absolute -top-1 -right-1 z-10 text-[9px] font-mono font-extrabold px-1.5 py-0.5 rounded-md border shadow-sm cursor-pointer transition-colors ${badgeColor}`}
+                            title={`${model === 'opus' ? 'Opus' : 'Sonnet'} · ${ctx === '1m' ? '1M' : '200K'} (click to cycle)`}
+                          >
+                            {badgeLabel}
+                          </button>
+                        )
+                      })()}
                       <button
                         type="button"
                         onClick={() => onSelectConversation(conv.id)}

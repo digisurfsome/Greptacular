@@ -33,6 +33,7 @@ class WorkspaceConversationSummary(BaseModel):
     pinned: bool = False
     tags: str = ""
     context_mode: str = "1m"
+    model: str = "opus"
     created_at: Optional[str]
     updated_at: Optional[str]
     message_count: int
@@ -65,6 +66,7 @@ class ConversationCreateRequest(BaseModel):
     category: str = "general"
     working_directory: Optional[str] = None
     context_mode: str = "1m"
+    model: str = "opus"
 
 
 class ConversationUpdateRequest(BaseModel):
@@ -74,6 +76,7 @@ class ConversationUpdateRequest(BaseModel):
     pinned: Optional[bool] = None
     tags: Optional[str] = None
     context_mode: Optional[str] = None
+    model: Optional[str] = None
 
 
 # ============================================================================
@@ -99,6 +102,7 @@ async def create_new_conversation(body: ConversationCreateRequest):
         category=body.category,
         working_directory=body.working_directory,
         context_mode=body.context_mode,
+        model=body.model,
     )
     return WorkspaceConversationSummary(
         id=int(conversation.id),
@@ -108,6 +112,7 @@ async def create_new_conversation(body: ConversationCreateRequest):
         pinned=bool(conversation.pinned) if hasattr(conversation, 'pinned') else False,
         tags="",
         context_mode=str(conversation.context_mode) if conversation.context_mode else "1m",
+        model=str(conversation.model) if conversation.model else "opus",
         created_at=conversation.created_at.isoformat() if conversation.created_at else None,
         updated_at=conversation.updated_at.isoformat() if conversation.updated_at else None,
         message_count=0,
@@ -147,6 +152,7 @@ async def update_conversation(conversation_id: int, body: ConversationUpdateRequ
         pinned=body.pinned,
         tags=body.tags,
         context_mode=body.context_mode,
+        model=body.model,
     )
     if not updated:
         raise HTTPException(status_code=404, detail="Conversation not found")
@@ -159,6 +165,7 @@ async def update_conversation(conversation_id: int, body: ConversationUpdateRequ
         pinned=updated.get("pinned", False),
         tags=updated.get("tags", ""),
         context_mode=updated.get("context_mode", "1m"),
+        model=updated.get("model", "opus"),
         created_at=updated["created_at"],
         updated_at=updated["updated_at"],
         message_count=updated.get("message_count", 0),
@@ -444,6 +451,41 @@ async def get_premium_summary():
     """Get premium-zone usage summary across all conversations."""
     from ..services import workspace_database as db
     return db.get_premium_usage_summary()
+
+
+# ============================================================================
+# Token Processing Log
+# ============================================================================
+
+@router.get("/conversations/{conversation_id}/token-log")
+async def get_token_log(conversation_id: int):
+    """Get the full token processing log for a conversation.
+
+    Returns every logged event: assistant turns, tool calls, tool results,
+    and SDK-reported result summaries with actual API token counts.
+    """
+    from ..services import workspace_database as db
+    entries = db.get_token_log(conversation_id)
+    return {"entries": entries, "count": len(entries)}
+
+
+@router.get("/conversations/{conversation_id}/token-log/summary")
+async def get_token_log_summary(conversation_id: int):
+    """Get a summary of token usage for a conversation.
+
+    Includes per-tool breakdowns, cumulative API usage, and estimated vs
+    actual token counts.
+    """
+    from ..services import workspace_database as db
+    return db.get_token_log_summary(conversation_id)
+
+
+@router.delete("/conversations/{conversation_id}/token-log")
+async def clear_token_log(conversation_id: int):
+    """Clear all token log entries for a conversation."""
+    from ..services import workspace_database as db
+    count = db.clear_token_log(conversation_id)
+    return {"deleted": count}
 
 
 # ============================================================================
@@ -1010,6 +1052,7 @@ async def workspace_chat_websocket(websocket: WebSocket):
     - {"type": "text", "content": "..."} - Text chunk from Claude
     - {"type": "tool_call", "tool": "...", "input": {...}} - Tool being called
     - {"type": "token_usage", "total_tokens": int, "context_window": int} - Token usage update
+    - {"type": "token_log", "entry": {...}} - Per-turn token processing log entry
     - {"type": "agent_waiting", "question": "..."} - Agent is waiting for user input
     - {"type": "walkie_talkie_queued", "content": "..."} - Confirmation that message was queued
     - {"type": "response_done"} - Response complete
@@ -1098,11 +1141,14 @@ async def workspace_chat_websocket(websocket: WebSocket):
 
                         logger.debug("Workspace session created, starting...")
 
-                        # Stream the initial greeting or resume acknowledgement
-                        async for chunk in session.start():
-                            if logger.isEnabledFor(logging.DEBUG):
-                                logger.debug(f"Sending chunk: {chunk.get('type')}")
-                            await websocket.send_json(chunk)
+                        # Stream the initial response with walkie-talkie support.
+                        # Previously this was a plain ``async for`` loop which blocked
+                        # the WebSocket reader, so walkie-talkie messages sent during
+                        # the initial session could never be received.
+                        await _stream_with_walkie_talkie(
+                            websocket, session,
+                            session.start(),
+                        )
                         logger.debug("Workspace session start complete")
                     except Exception as e:
                         logger.exception(f"Error starting workspace session {session_id}")

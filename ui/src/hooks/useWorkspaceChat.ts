@@ -235,7 +235,7 @@ export function useWorkspaceChat({
         if (params.workingDirectory) {
           payload.working_directory = params.workingDirectory;
         }
-        payload.context_mode = params.contextMode ?? "1m";
+        payload.context_mode = params.contextMode ?? "200k";
         if (params.costSettings) {
           payload.cost_settings = params.costSettings;
         }
@@ -580,7 +580,7 @@ export function useWorkspaceChat({
           if (workingDirectory) {
             payload.working_directory = workingDirectory;
           }
-          payload.context_mode = contextMode ?? "1m";
+          payload.context_mode = contextMode ?? "200k";
           if (costSettings) {
             payload.cost_settings = costSettings;
           }
@@ -693,6 +693,9 @@ export function useWorkspaceChat({
     lastStartParamsRef.current = null; // Clear so reconnect doesn't re-send stale start
     sessionReadyRef.current = false;
     queuedPayloadRef.current = null;
+    // Reset the conversation identity so callers (handleSend) don't think
+    // a session is still active for the old conversation.
+    setConversationId(null);
     if (pingIntervalRef.current) {
       clearInterval(pingIntervalRef.current);
       pingIntervalRef.current = null;

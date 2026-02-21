@@ -1122,16 +1122,52 @@ async def workspace_chat_websocket(websocket: WebSocket):
                     )
 
                     try:
-                        # Extract context mode from start message (default to "1m")
-                        context_mode = message.get("context_mode", "1m")
+                        # Extract context mode from start message.
+                        # Default to "200k" (safer/cheaper) rather than "1m" so that
+                        # any frontend bug that omits context_mode doesn't silently
+                        # activate 1M billing.
+                        context_mode = message.get("context_mode", "200k")
                         if context_mode not in ("1m", "200k"):
-                            context_mode = "1m"
+                            logger.warning(
+                                "Invalid context_mode '%s' in start message, defaulting to '200k'",
+                                context_mode,
+                            )
+                            context_mode = "200k"
 
                         # Extract cost control settings from start message
                         cost_settings = message.get("cost_settings")
 
                         # Extract model preference from start message (for per-panel model routing)
                         model = message.get("model")  # e.g. "opus", "sonnet", or None
+
+                        # Server-side safety net: when resuming an existing conversation,
+                        # cross-check context_mode against the stored DB value. The DB
+                        # record is authoritative — if the frontend sends a stale or
+                        # missing context_mode, use the DB value instead.
+                        if conversation_id is not None:
+                            from ..services.workspace_database import get_conversation as get_conv_for_mode
+                            conv_for_mode = get_conv_for_mode(conversation_id)
+                            if conv_for_mode:
+                                stored_mode = conv_for_mode.get("context_mode")
+                                stored_model = conv_for_mode.get("model")
+                                if stored_mode and stored_mode != context_mode:
+                                    logger.warning(
+                                        "context_mode mismatch: WS=%s, DB=%s for conversation %d. Using DB value.",
+                                        context_mode, stored_mode, conversation_id,
+                                    )
+                                    context_mode = stored_mode
+                                if stored_model and stored_model != model:
+                                    logger.warning(
+                                        "model mismatch: WS=%s, DB=%s for conversation %d. Using DB value.",
+                                        model, stored_model, conversation_id,
+                                    )
+                                    model = stored_model
+
+                        # Log full start params for debugging 200K vs 1M issues
+                        logger.info(
+                            "WS start: context_mode=%s, model=%s, conversation_id=%s, session_id=%s",
+                            context_mode, model, conversation_id, session_id,
+                        )
 
                         # Create a new workspace session
                         logger.debug(f"Creating workspace session {session_id}")

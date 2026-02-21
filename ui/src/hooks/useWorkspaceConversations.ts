@@ -22,7 +22,7 @@ export function useWorkspaceConversations() {
   return useQuery({
     queryKey: [...CONVERSATIONS_KEY],
     queryFn: listWorkspaceConversations,
-    refetchInterval: 10_000,
+    refetchInterval: 30_000,
   })
 }
 
@@ -114,14 +114,54 @@ export function useToggleContextMode() {
   })
 }
 
-/** Hook to cycle a workspace conversation's model+context badge (O-1M -> S-1M -> O-200K -> O-1M). */
+/** Hook to cycle a workspace conversation's model+context badge (O-1M -> S-1M -> O-200K -> O-1M).
+ *
+ * Uses optimistic updates to immediately reflect the change in the UI,
+ * preventing stale closure bugs and flickering on rapid clicks.
+ */
 export function useCycleModelBadge() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: ({ conversationId, model, context_mode }: { conversationId: number; model: string; context_mode: string }) =>
       updateWorkspaceConversation(conversationId, { model, context_mode }),
-    onSuccess: () => {
+    onMutate: async ({ conversationId, model, context_mode }) => {
+      // Cancel any in-flight refetches so they don't overwrite our optimistic update
+      await queryClient.cancelQueries({ queryKey: [...CONVERSATIONS_KEY] })
+
+      // Snapshot previous value for rollback on error
+      const previous = queryClient.getQueryData([...CONVERSATIONS_KEY])
+
+      // Optimistically update the conversation list cache
+      queryClient.setQueryData(
+        [...CONVERSATIONS_KEY],
+        (old: Array<{ id: number; model?: string; context_mode?: string; [key: string]: unknown }> | undefined) =>
+          old?.map(conv =>
+            conv.id === conversationId
+              ? { ...conv, model, context_mode }
+              : conv
+          )
+      )
+
+      // Also update the individual conversation detail cache if it exists
+      queryClient.setQueryData(
+        [...CONVERSATIONS_KEY, conversationId],
+        (old: { model?: string; context_mode?: string; [key: string]: unknown } | undefined) =>
+          old ? { ...old, model, context_mode } : old
+      )
+
+      return { previous }
+    },
+    onError: (_err, _vars, context) => {
+      // Roll back to snapshot on error
+      if (context?.previous) {
+        queryClient.setQueryData([...CONVERSATIONS_KEY], context.previous)
+      }
+    },
+    onSettled: (_data, _err, variables) => {
+      // Always refetch after mutation settles to ensure server state is authoritative
       queryClient.invalidateQueries({ queryKey: [...CONVERSATIONS_KEY] })
+      // Also invalidate the specific conversation detail
+      queryClient.invalidateQueries({ queryKey: [...CONVERSATIONS_KEY, variables.conversationId] })
     },
   })
 }

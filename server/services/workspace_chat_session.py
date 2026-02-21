@@ -133,96 +133,16 @@ def get_workspace_system_prompt(working_directory: str, model: str = "", context
         A system prompt string describing the workspace agent's capabilities and guidelines.
     """
     context_tokens = "1,000,000" if context_mode == "1m" else "200,000"
-    return f"""You are an expert coding assistant in the IdeaForge Workspace.
-You are powered by {model or 'Claude'} with a {context_tokens} token context window.
+    return f"""You are an expert coding assistant ({model or 'Claude'}, {context_tokens} token context).
+Working directory: {working_directory}
 
-You have full access to the filesystem and can read, write, edit files, and run bash commands.
-Your current working directory is: {working_directory}
+Read files before editing. Preserve existing code style. Use absolute paths. Prefer Glob/Grep over bash find/grep.
 
-## Capabilities
+After completing edits, commit changes: `git add` only changed files (never -A), write a clear commit message, do NOT push. Report which files changed, the commit hash, and branch name.
 
-- **Read**: Read file contents
-- **Write**: Create or overwrite files
-- **Edit**: Make targeted edits to existing files
-- **Bash**: Run shell commands (subject to security allowlist)
-- **Glob**: Find files by pattern
-- **Grep**: Search file contents with regex
-- **WebFetch**: Fetch and analyze web content
-- **WebSearch**: Search the web for information
+Use structured tags when appropriate: [SUMMARY]...[/SUMMARY], [ROADMAP]...[/ROADMAP], [PROGRESS]...[/PROGRESS] — the UI renders these as cards.
 
-## Guidelines
-
-1. Be thorough and precise. Read files before editing them.
-2. When modifying code, preserve existing style and conventions.
-3. Explain your reasoning and approach before making changes.
-4. After making changes, verify them (run linters, type checkers, tests as appropriate).
-5. If a bash command might be destructive, explain what it does first.
-6. Use absolute file paths when possible.
-7. When searching, use Glob and Grep rather than bash find/grep.
-
-## Auto-Commit Workflow
-
-After completing any edits or changes the user requested, you MUST follow this workflow:
-
-1. **Stage and commit** your changes to the current git branch before reporting back to the user.
-   - Use `git add` to stage only the files you changed (never `git add -A` or `git add .`).
-   - Write a clear, concise commit message summarizing what you did.
-   - Do NOT push to remote -- the user will push when ready.
-2. **Report a summary** of what you did after committing. Include:
-   - Which files were changed and why
-   - The commit hash (short form)
-   - The branch name the commit is on
-3. **Do not stop until the commit is done.** The user expects that when you finish talking, the changes are already committed to the branch.
-4. If the working directory is not a git repo, skip the commit step and just report the changes.
-
-## Structured Output Formats
-
-When appropriate, use these structured tags so the UI can render them as cards:
-
-- `[SUMMARY]...[/SUMMARY]` — Use at the end of a long session to summarize what was accomplished. The content will be rendered as a pinned summary card.
-- `[ROADMAP]...[/ROADMAP]` — Use when the user asks for a plan or roadmap. Each line becomes a checklist item. Example:
-  ```
-  [ROADMAP]
-  1. Set up project scaffolding
-  2. Implement authentication
-  3. Build API endpoints
-  [/ROADMAP]
-  ```
-- `[PROGRESS]...[/PROGRESS]` — Use to report progress on a multi-step task. Include which steps are done vs remaining. Example:
-  ```
-  [PROGRESS]
-  DONE: Set up project scaffolding
-  DONE: Implement authentication
-  IN PROGRESS: Build API endpoints
-  TODO: Write tests
-  [/PROGRESS]
-  ```
-
-## Walkie-Talkie Communication
-
-You have a walkie-talkie communication channel with the user. While you're working:
-
-- **Receiving messages:** The user can send you messages at any time. If a tool call
-  is blocked with a "[WALKIE-TALKIE MESSAGE FROM USER]" notification, read the message,
-  acknowledge it briefly, and adjust your work if needed. Then continue with your task
-  (re-attempting any tool call that was intercepted).
-
-- **Requesting input:** When you need user input or want to present options, output:
-  [WAITING]Your question here[/WAITING]
-  Then pause and wait for the user's response via the walkie-talkie channel.
-  The user's response will arrive as a walkie-talkie message on your next tool call.
-
-- **Keep working:** Between walkie-talkie exchanges, continue working autonomously.
-  Don't pause unnecessarily. The walkie-talkie is for when you genuinely need input
-  or when the user wants to steer your direction.
-
-## Pause Commands (Coder Panel Only)
-
-If the user says "pause", "pause 5m", "wait", or similar pause commands:
-- Acknowledge the pause request
-- State what you were working on and where you left off
-- When they say "resume", "continue", or "keep going", pick up exactly where you stopped
-- Note: This is a conversational pause — you simply stop responding until the user messages again. There is no server-side timer."""
+If a tool call is blocked with "[WALKIE-TALKIE MESSAGE FROM USER]", acknowledge it, adjust if needed, then continue your task. Use [WAITING]question[/WAITING] when you need user input."""
 
 
 class WorkspaceChatSession:
@@ -262,7 +182,11 @@ class WorkspaceChatSession:
         self.conversation_id = conversation_id
         self.working_directory = working_directory or str(Path.home())
         self.context_mode = context_mode
-        self.context_window = CONTEXT_WINDOW_TOKENS if context_mode == "1m" else CONTEXT_WINDOW_200K
+        # Sonnet does not support the 1M context beta -- force 200K even if 1m was requested.
+        if context_mode == "1m" and model != "sonnet":
+            self.context_window = CONTEXT_WINDOW_TOKENS
+        else:
+            self.context_window = CONTEXT_WINDOW_200K
         self.cost_settings = validate_cost_settings(cost_settings or {})
         self.model = model
         self.client: Optional[ClaudeSDKClient] = None
@@ -653,16 +577,15 @@ class WorkspaceChatSession:
             try:
                 branch_suffix = ""
                 if branch_name:
-                    branch_suffix = f" I've created and switched to branch **{branch_name}**."
+                    branch_suffix = f" Branch: **{branch_name}**."
                 greeting = (
-                    "Hello! I'm your workspace assistant with full read/write access. "
-                    "I can read, edit, and create files, run shell commands, and search the web. "
-                    f"My working directory is **{self.working_directory}**.{branch_suffix} How can I help?"
+                    f"Ready. Working directory: **{self.working_directory}**.{branch_suffix}"
                 )
 
                 assert self.conversation_id is not None
-                greeting_tokens = estimate_tokens(greeting)
-                add_message(self.conversation_id, "assistant", greeting, greeting_tokens)
+                # Don't persist the greeting to the database — it adds unnecessary
+                # tokens to the conversation history on resume without providing value.
+                # It's only displayed in the UI for the current session.
 
                 yield {"type": "text", "content": greeting}
 

@@ -54,6 +54,8 @@ class WorkspaceConversationDetail(BaseModel):
     title: Optional[str]
     category: str
     working_directory: Optional[str]
+    context_mode: str = "1m"
+    model: str = "opus"
     created_at: Optional[str]
     updated_at: Optional[str]
     message_count: int
@@ -133,6 +135,8 @@ async def get_conversation_detail(conversation_id: int):
         title=conversation["title"],
         category=conversation["category"],
         working_directory=conversation["working_directory"],
+        context_mode=conversation.get("context_mode", "1m"),
+        model=conversation.get("model", "opus"),
         created_at=conversation["created_at"],
         updated_at=conversation["updated_at"],
         message_count=len(conversation["messages"]),

@@ -618,7 +618,26 @@ class WorkspaceChatSession:
                 )
             )
             logger.info("Entering workspace Claude client context...")
-            await self.client.__aenter__()
+            try:
+                await asyncio.wait_for(self.client.__aenter__(), timeout=60)
+            except asyncio.TimeoutError:
+                logger.error(
+                    "Timeout (60s) waiting for Claude CLI to start (context_mode=%s, model=%s). "
+                    "This often means subscription OAuth credentials are missing or expired. "
+                    "Check ~/.claude/.credentials.json or switch to API key billing (1M mode).",
+                    self.context_mode, self.model,
+                )
+                yield {
+                    "type": "error",
+                    "content": (
+                        "The Claude CLI did not start within 60 seconds. "
+                        "If using subscription (200K) mode, ensure you're logged in "
+                        "(run `claude login` in a terminal). "
+                        "Or switch to 1M API mode which uses your API key."
+                    ),
+                }
+                yield {"type": "response_done"}
+                return
             self._client_entered = True
             logger.info("Workspace Claude client ready")
         except Exception as e:

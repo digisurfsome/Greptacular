@@ -704,7 +704,7 @@ export function WorkspaceChat({
     if (effectiveId) {
       localStorage.removeItem(`${DRAFT_KEY_PREFIX}${effectiveId}`)
     }
-  }, [inputValue, isLoading, conversationId, activeConversationId, start, sendMessage, workingDirectory, pendingImages, pendingFiles, sessionContextMode, costSettings])
+  }, [inputValue, isLoading, conversationId, activeConversationId, start, sendMessage, workingDirectory, pendingImages, pendingFiles, conversationContextMode, conversationModel, costSettings])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -1020,83 +1020,40 @@ export function WorkspaceChat({
             }
           />
         </div>
-        {/* 3-segment pill selector — hidden when mode is fixed (split-view) */}
+        {/* Read-only model indicator — hidden when mode is fixed (split-view) */}
         {!fixedContextMode && (
-          <div className="flex-shrink-0 mr-4 flex rounded-full border border-border overflow-hidden shadow-sm" role="radiogroup" aria-label="Model selection">
-            {MODEL_PRESETS.map((preset, idx) => {
-              const isActive = activePresetIndex === idx
-              return (
-                <button
-                  key={preset.label}
-                  role="radio"
-                  aria-checked={isActive}
-                  onClick={() => {
-                    pendingPresetRef.current = idx
-                    pendingContextModeRef.current = preset.context
-                    selectedModelRef.current = preset.model
-                    localStorage.setItem('workspace-model-preset', String(idx))
-                    localStorage.setItem('workspace-context-mode', preset.context)
-                    setActivePresetIndex(idx)
-                    setContextToast(`Next conversation: ${preset.label}`)
-                    if (contextToastTimerRef.current) clearTimeout(contextToastTimerRef.current)
-                    contextToastTimerRef.current = window.setTimeout(() => {
-                      setContextToast(null)
-                      contextToastTimerRef.current = null
-                    }, 8000)
-                  }}
-                  className={`px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition-all duration-150 ${
-                    isActive
-                      ? preset.model === 'sonnet'
-                        ? 'bg-violet-500 text-white shadow-inner'
-                        : preset.context === '1m'
-                          ? 'bg-primary text-primary-foreground shadow-inner'
-                          : 'bg-zinc-600 text-white shadow-inner'
-                      : 'bg-card text-muted-foreground hover:bg-muted hover:text-foreground'
-                  } ${idx === 0 ? 'rounded-l-full' : ''} ${idx === MODEL_PRESETS.length - 1 ? 'rounded-r-full' : 'border-r border-border'}`}
-                  title={`${preset.label}${isActive ? ' (active)' : ' — takes effect on next session'}`}
-                >
-                  {preset.label}
-                </button>
-              )
-            })}
+          <div className="flex-shrink-0 mr-4">
+            {conversationId === null && activeConversationId === null ? (
+              <span className="text-[10px] text-muted-foreground italic px-3 py-1.5">
+                Select model with + New Chat
+              </span>
+            ) : (
+              <div className="flex rounded-full border border-border overflow-hidden shadow-sm" role="status" aria-label="Active model">
+                {MODEL_PRESETS.map((preset, idx) => {
+                  const isActive = activePresetIndex === idx
+                  return (
+                    <span
+                      key={preset.label}
+                      className={`px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition-all duration-150 ${
+                        isActive
+                          ? preset.model === 'sonnet'
+                            ? 'bg-violet-500 text-white shadow-inner'
+                            : preset.context === '1m'
+                              ? 'bg-primary text-primary-foreground shadow-inner'
+                              : 'bg-zinc-600 text-white shadow-inner'
+                          : 'bg-card text-muted-foreground/40'
+                      } ${idx === 0 ? 'rounded-l-full' : ''} ${idx === MODEL_PRESETS.length - 1 ? 'rounded-r-full' : 'border-r border-border'}`}
+                      title={isActive ? `${preset.label} (active)` : preset.label}
+                    >
+                      {preset.label}
+                    </span>
+                  )
+                })}
+              </div>
+            )}
           </div>
         )}
       </div>
-
-      {/* Persistent "on deck" indicator — always shows next chat's model when different from active session */}
-      {!fixedContextMode && (() => {
-        const pendingPreset = MODEL_PRESETS[pendingPresetRef.current] ?? MODEL_PRESETS[0]
-        const sessionPreset = MODEL_PRESETS.find(
-          p => p.model === (preferredModel ?? selectedModelRef.current) && p.context === sessionContextMode
-        )
-        const isDifferent = !sessionPreset || pendingPreset.label !== sessionPreset.label
-        if (!isDifferent && !contextToast) return null
-        return (
-          <div className={`flex items-center justify-between px-4 py-1.5 border-b text-xs ${
-            pendingPreset.model === 'sonnet'
-              ? 'bg-violet-500/10 border-violet-500/20 text-violet-600'
-              : pendingPreset.context === '1m'
-                ? 'bg-primary/10 border-primary/20 text-primary'
-                : 'bg-muted border-border text-muted-foreground'
-          }`}>
-            <span>Next chat: <strong>{pendingPreset.label}</strong></span>
-            {contextToast && (
-              <button
-                onClick={() => {
-                  setContextToast(null)
-                  if (contextToastTimerRef.current) {
-                    clearTimeout(contextToastTimerRef.current)
-                    contextToastTimerRef.current = null
-                  }
-                }}
-                className="ml-3 opacity-60 hover:opacity-100 text-[10px]"
-              >
-                dismiss
-              </button>
-            )}
-          </div>
-        )
-      })()}
 
       {/* Cost controls — user-adjustable "stick shift" for API spend */}
       <CostControls settings={costSettings} onChange={setCostSettings} />

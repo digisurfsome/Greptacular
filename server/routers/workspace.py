@@ -447,6 +447,41 @@ async def get_premium_summary():
 
 
 # ============================================================================
+# Token Processing Log
+# ============================================================================
+
+@router.get("/conversations/{conversation_id}/token-log")
+async def get_token_log(conversation_id: int):
+    """Get the full token processing log for a conversation.
+
+    Returns every logged event: assistant turns, tool calls, tool results,
+    and SDK-reported result summaries with actual API token counts.
+    """
+    from ..services import workspace_database as db
+    entries = db.get_token_log(conversation_id)
+    return {"entries": entries, "count": len(entries)}
+
+
+@router.get("/conversations/{conversation_id}/token-log/summary")
+async def get_token_log_summary(conversation_id: int):
+    """Get a summary of token usage for a conversation.
+
+    Includes per-tool breakdowns, cumulative API usage, and estimated vs
+    actual token counts.
+    """
+    from ..services import workspace_database as db
+    return db.get_token_log_summary(conversation_id)
+
+
+@router.delete("/conversations/{conversation_id}/token-log")
+async def clear_token_log(conversation_id: int):
+    """Clear all token log entries for a conversation."""
+    from ..services import workspace_database as db
+    count = db.clear_token_log(conversation_id)
+    return {"deleted": count}
+
+
+# ============================================================================
 # Fork, Paginate, Export, Inject Endpoints (Phase 4)
 # ============================================================================
 
@@ -1010,6 +1045,7 @@ async def workspace_chat_websocket(websocket: WebSocket):
     - {"type": "text", "content": "..."} - Text chunk from Claude
     - {"type": "tool_call", "tool": "...", "input": {...}} - Tool being called
     - {"type": "token_usage", "total_tokens": int, "context_window": int} - Token usage update
+    - {"type": "token_log", "entry": {...}} - Per-turn token processing log entry
     - {"type": "agent_waiting", "question": "..."} - Agent is waiting for user input
     - {"type": "walkie_talkie_queued", "content": "..."} - Confirmation that message was queued
     - {"type": "response_done"} - Response complete

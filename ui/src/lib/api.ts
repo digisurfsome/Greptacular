@@ -53,6 +53,8 @@ import type {
   ScheduleUpdate,
   ScheduleListResponse,
   NextRunResponse,
+  TokenLogEntry,
+  TokenLogSummary,
 } from './types'
 
 const API_BASE = '/api'
@@ -1195,4 +1197,22 @@ export async function markNotificationRead(notificationId: number): Promise<Work
 export async function markAllNotificationsRead(conversationId?: number): Promise<void> {
   const params = conversationId != null ? `?conversation_id=${conversationId}` : ''
   await fetchJSON(`/workspace/notifications/mark-all-read${params}`, { method: 'POST' })
+}
+
+// ============================================================================
+// Token Processing Log API
+// ============================================================================
+
+export async function getTokenLog(conversationId: number): Promise<TokenLogEntry[]> {
+  return fetchJSON(`/workspace/conversations/${conversationId}/token-log`)
+}
+
+export async function getTokenLogSummary(conversationId: number): Promise<TokenLogSummary> {
+  return fetchJSON(`/workspace/conversations/${conversationId}/token-log/summary`)
+}
+
+export async function clearTokenLog(conversationId: number): Promise<void> {
+  await fetchJSON(`/workspace/conversations/${conversationId}/token-log`, {
+    method: 'DELETE',
+  })
 }

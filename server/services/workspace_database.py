@@ -239,6 +239,50 @@ class WorkspacePremiumLedger(Base):
     estimated_cost = Column(Float, nullable=False, default=0.0)  # API-equivalent cost at this point
 
 
+class WorkspaceTokenLog(Base):
+    """Per-turn token processing log for auditing API usage.
+
+    Each row records a single event in the conversation: an assistant turn,
+    a tool call, a tool result, or the final SDK ResultMessage summary.
+    """
+    __tablename__ = "workspace_token_log"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    conversation_id = Column(Integer, nullable=False, index=True)
+    # "assistant_turn" | "tool_call" | "tool_result" | "result_summary"
+    event_type = Column(String(30), nullable=False)
+    turn_number = Column(Integer, nullable=False, default=0)
+    timestamp = Column(DateTime, default=_utc_now)
+
+    # For tool_call events
+    tool_name = Column(String(100), nullable=True)
+    tool_input_length = Column(Integer, nullable=True)  # chars of tool input
+
+    # For tool_result events
+    tool_result_length = Column(Integer, nullable=True)  # chars of tool result
+    tool_is_error = Column(Integer, nullable=True)  # 0 or 1
+
+    # For assistant_turn events
+    text_length = Column(Integer, nullable=True)  # chars of assistant text
+    num_tool_calls = Column(Integer, nullable=True)  # tool calls in this turn
+
+    # Token estimates (heuristic: ~4 chars/token)
+    estimated_tokens = Column(Integer, nullable=False, default=0)
+
+    # SDK-reported actual usage (only on result_summary events)
+    api_input_tokens = Column(Integer, nullable=True)
+    api_output_tokens = Column(Integer, nullable=True)
+    api_cache_creation_tokens = Column(Integer, nullable=True)
+    api_cache_read_tokens = Column(Integer, nullable=True)
+    api_total_cost_usd = Column(Float, nullable=True)
+    api_num_turns = Column(Integer, nullable=True)
+    api_duration_ms = Column(Integer, nullable=True)
+    api_duration_api_ms = Column(Integer, nullable=True)
+
+    # Model used
+    model = Column(String(100), nullable=True)
+
+
 # ============================================================================
 # Engine and Session Management
 # ============================================================================
@@ -2055,3 +2099,195 @@ def mark_all_notifications_read(conversation_id: Optional[int] = None) -> int:
         return count
     finally:
         session.close()
+
+
+# ============================================================================
+# Token Processing Log
+# ============================================================================
+
+def add_token_log_entry(
+    conversation_id: int,
+    event_type: str,
+    turn_number: int = 0,
+    tool_name: str | None = None,
+    tool_input_length: int | None = None,
+    tool_result_length: int | None = None,
+    tool_is_error: bool | None = None,
+    text_length: int | None = None,
+    num_tool_calls: int | None = None,
+    estimated_tokens: int = 0,
+    api_input_tokens: int | None = None,
+    api_output_tokens: int | None = None,
+    api_cache_creation_tokens: int | None = None,
+    api_cache_read_tokens: int | None = None,
+    api_total_cost_usd: float | None = None,
+    api_num_turns: int | None = None,
+    api_duration_ms: int | None = None,
+    api_duration_api_ms: int | None = None,
+    model: str | None = None,
+) -> dict:
+    """Add a token log entry for a conversation turn or event."""
+    session = get_db_session()
+    try:
+        entry = WorkspaceTokenLog(
+            conversation_id=conversation_id,
+            event_type=event_type,
+            turn_number=turn_number,
+            tool_name=tool_name,
+            tool_input_length=tool_input_length,
+            tool_result_length=tool_result_length,
+            tool_is_error=1 if tool_is_error else (0 if tool_is_error is not None else None),
+            text_length=text_length,
+            num_tool_calls=num_tool_calls,
+            estimated_tokens=estimated_tokens,
+            api_input_tokens=api_input_tokens,
+            api_output_tokens=api_output_tokens,
+            api_cache_creation_tokens=api_cache_creation_tokens,
+            api_cache_read_tokens=api_cache_read_tokens,
+            api_total_cost_usd=api_total_cost_usd,
+            api_num_turns=api_num_turns,
+            api_duration_ms=api_duration_ms,
+            api_duration_api_ms=api_duration_api_ms,
+            model=model,
+        )
+        session.add(entry)
+        session.commit()
+        return _token_log_to_dict(entry)
+    finally:
+        session.close()
+
+
+def get_token_log(conversation_id: int) -> list[dict]:
+    """Get all token log entries for a conversation, ordered by timestamp."""
+    session = get_db_session()
+    try:
+        entries = (
+            session.query(WorkspaceTokenLog)
+            .filter(WorkspaceTokenLog.conversation_id == conversation_id)
+            .order_by(WorkspaceTokenLog.id.asc())
+            .all()
+        )
+        return [_token_log_to_dict(e) for e in entries]
+    finally:
+        session.close()
+
+
+def get_token_log_summary(conversation_id: int) -> dict:
+    """Get a summary of token usage for a conversation.
+
+    Returns totals for estimated tokens, API-reported tokens (from the
+    latest result_summary), and per-tool breakdowns.
+    """
+    session = get_db_session()
+    try:
+        entries = (
+            session.query(WorkspaceTokenLog)
+            .filter(WorkspaceTokenLog.conversation_id == conversation_id)
+            .order_by(WorkspaceTokenLog.id.asc())
+            .all()
+        )
+        if not entries:
+            return {"total_estimated_tokens": 0, "turns": 0, "tool_calls": [], "api_usage": None}
+
+        total_est = sum(e.estimated_tokens for e in entries)
+        turns = max((e.turn_number for e in entries), default=0)
+
+        # Per-tool breakdown
+        tool_usage: dict[str, dict] = {}
+        for e in entries:
+            if e.event_type == "tool_call" and e.tool_name:
+                if e.tool_name not in tool_usage:
+                    tool_usage[e.tool_name] = {"count": 0, "total_input_chars": 0, "total_result_chars": 0}
+                tool_usage[e.tool_name]["count"] += 1
+                tool_usage[e.tool_name]["total_input_chars"] += e.tool_input_length or 0
+            elif e.event_type == "tool_result" and e.tool_name:
+                if e.tool_name not in tool_usage:
+                    tool_usage[e.tool_name] = {"count": 0, "total_input_chars": 0, "total_result_chars": 0}
+                tool_usage[e.tool_name]["total_result_chars"] += e.tool_result_length or 0
+
+        tool_calls = [
+            {"tool": name, **stats, "estimated_tokens": (stats["total_input_chars"] + stats["total_result_chars"]) // 4}
+            for name, stats in sorted(tool_usage.items(), key=lambda x: x[1]["total_result_chars"], reverse=True)
+        ]
+
+        # Latest API-reported usage (from result_summary)
+        summaries = [e for e in entries if e.event_type == "result_summary"]
+        api_usage = None
+        if summaries:
+            latest = summaries[-1]
+            api_usage = {
+                "input_tokens": latest.api_input_tokens,
+                "output_tokens": latest.api_output_tokens,
+                "cache_creation_tokens": latest.api_cache_creation_tokens,
+                "cache_read_tokens": latest.api_cache_read_tokens,
+                "total_cost_usd": latest.api_total_cost_usd,
+                "num_turns": latest.api_num_turns,
+                "duration_ms": latest.api_duration_ms,
+                "duration_api_ms": latest.api_duration_api_ms,
+                "model": latest.model,
+            }
+
+        # Cumulative API totals across all result_summaries in this conversation
+        cumulative_api = None
+        if summaries:
+            cumulative_api = {
+                "total_input_tokens": sum(s.api_input_tokens or 0 for s in summaries),
+                "total_output_tokens": sum(s.api_output_tokens or 0 for s in summaries),
+                "total_cache_creation_tokens": sum(s.api_cache_creation_tokens or 0 for s in summaries),
+                "total_cache_read_tokens": sum(s.api_cache_read_tokens or 0 for s in summaries),
+                "total_cost_usd": sum(s.api_total_cost_usd or 0.0 for s in summaries),
+                "total_duration_ms": sum(s.api_duration_ms or 0 for s in summaries),
+                "message_count": len(summaries),
+            }
+
+        return {
+            "total_estimated_tokens": total_est,
+            "turns": turns,
+            "tool_calls": tool_calls,
+            "api_usage": api_usage,
+            "cumulative_api": cumulative_api,
+        }
+    finally:
+        session.close()
+
+
+def clear_token_log(conversation_id: int) -> int:
+    """Delete all token log entries for a conversation."""
+    session = get_db_session()
+    try:
+        count = (
+            session.query(WorkspaceTokenLog)
+            .filter(WorkspaceTokenLog.conversation_id == conversation_id)
+            .delete()
+        )
+        session.commit()
+        return count
+    finally:
+        session.close()
+
+
+def _token_log_to_dict(entry: WorkspaceTokenLog) -> dict:
+    """Convert a WorkspaceTokenLog to a dictionary."""
+    return {
+        "id": entry.id,
+        "conversation_id": entry.conversation_id,
+        "event_type": entry.event_type,
+        "turn_number": entry.turn_number,
+        "timestamp": entry.timestamp.isoformat() if entry.timestamp else None,
+        "tool_name": entry.tool_name,
+        "tool_input_length": entry.tool_input_length,
+        "tool_result_length": entry.tool_result_length,
+        "tool_is_error": bool(entry.tool_is_error) if entry.tool_is_error is not None else None,
+        "text_length": entry.text_length,
+        "num_tool_calls": entry.num_tool_calls,
+        "estimated_tokens": entry.estimated_tokens,
+        "api_input_tokens": entry.api_input_tokens,
+        "api_output_tokens": entry.api_output_tokens,
+        "api_cache_creation_tokens": entry.api_cache_creation_tokens,
+        "api_cache_read_tokens": entry.api_cache_read_tokens,
+        "api_total_cost_usd": entry.api_total_cost_usd,
+        "api_num_turns": entry.api_num_turns,
+        "api_duration_ms": entry.api_duration_ms,
+        "api_duration_api_ms": entry.api_duration_api_ms,
+        "model": entry.model,
+    }

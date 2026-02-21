@@ -730,6 +730,58 @@ export interface WorkspaceWalkieTalkieQueuedMessage {
   content: string
 }
 
+// Token processing log entry: tracks where every token goes in a conversation
+export interface TokenLogEntry {
+  id: number
+  conversation_id: number
+  event_type: 'assistant_turn' | 'tool_call' | 'tool_result' | 'result_summary'
+  turn_number: number
+  timestamp: string
+  tool_name?: string
+  tool_input_length?: number
+  tool_result_length?: number
+  tool_is_error?: boolean
+  text_length?: number
+  num_tool_calls?: number
+  estimated_tokens: number
+  api_input_tokens?: number
+  api_output_tokens?: number
+  api_cache_creation_tokens?: number
+  api_cache_read_tokens?: number
+  api_total_cost_usd?: number
+  api_num_turns?: number
+  api_duration_ms?: number
+  api_duration_api_ms?: number
+  model?: string
+}
+
+// Token log summary with per-tool breakdown
+export interface TokenLogSummary {
+  total_entries: number
+  total_estimated_tokens: number
+  total_api_input_tokens: number
+  total_api_output_tokens: number
+  total_api_cache_creation_tokens: number
+  total_api_cache_read_tokens: number
+  total_cost_usd: number
+  per_tool_breakdown: TokenLogToolBreakdown[]
+  entries: TokenLogEntry[]
+}
+
+export interface TokenLogToolBreakdown {
+  tool_name: string
+  call_count: number
+  total_input_tokens: number
+  total_result_tokens: number
+  total_estimated_tokens: number
+  error_count: number
+}
+
+export interface WorkspaceChatTokenLogMessage {
+  type: 'token_log'
+  entry: TokenLogEntry
+}
+
 export type WorkspaceChatServerMessage =
   | AssistantChatTextMessage
   | AssistantChatToolCallMessage
@@ -739,6 +791,7 @@ export type WorkspaceChatServerMessage =
   | WorkspaceChatStatusMessage
   | WorkspaceAgentWaitingMessage
   | WorkspaceWalkieTalkieQueuedMessage
+  | WorkspaceChatTokenLogMessage
   | AssistantChatResponseDoneMessage
   | AssistantChatErrorMessage
   | AssistantChatConversationCreatedMessage

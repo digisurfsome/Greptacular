@@ -601,11 +601,12 @@ class WorkspaceChatSession:
                     settings=str(settings_file.resolve()),
                     env=sdk_env,
                     hooks=hooks,
-                    # Enable 1M token context window only in 1M mode.
-                    # Disabled for alternative APIs and when user selects 200K mode.
+                    # Enable 1M token context window only for Opus in 1M mode.
+                    # The context-1m beta is only supported by Opus models.
+                    # Disabled for alternative APIs, 200K mode, and Sonnet.
                     betas=(
                         []
-                        if is_alternative_api or self.context_mode != "1m"
+                        if is_alternative_api or self.context_mode != "1m" or self.model == "sonnet"
                         else ["context-1m-2025-08-07"]
                     ),
                 )
@@ -826,7 +827,9 @@ class WorkspaceChatSession:
 
         # Timeouts — Opus is significantly slower than Sonnet, especially
         # with the 1M context beta.  Use generous limits but don't hang forever.
-        is_opus = "opus" in (self.model or "")
+        # When self.model is None or empty, the default is Opus, so use Opus timeouts.
+        is_sonnet = self.model == "sonnet"
+        is_opus = not is_sonnet  # Default to Opus timeouts (None/empty/opus all get Opus)
         query_timeout = 180 if is_opus else 90   # seconds to accept the query
         first_token_timeout = 300 if is_opus else 120  # seconds for first token
 

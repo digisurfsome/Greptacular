@@ -546,21 +546,23 @@ class WorkspaceChatSession:
                 len(messages), self.session_id,
             )
 
-            return SyncHookJSONOutput(
-                hookSpecificOutput={
-                    "hookEventName": "PreToolUse",
-                    "decision": "block",
-                    "reason": (
-                        f"[WALKIE-TALKIE MESSAGE FROM USER]\n\n"
-                        f"{body}\n\n"
-                        f"[END WALKIE-TALKIE MESSAGE]\n\n"
-                        f"Please acknowledge and address this message. "
-                        f"Then continue with your previous task. "
-                        f"Your planned tool call was not executed — "
-                        f"you may re-attempt it after addressing the message."
-                    ),
-                }
-            )
+            # Return the same plain-dict format used by bash_security_hook.
+            # Previous code used SyncHookJSONOutput with hookSpecificOutput
+            # which placed "decision"/"reason" inside the wrong structure —
+            # the SDK silently ignored those fields so the tool proceeded
+            # normally and the consumed message was permanently lost.
+            return {
+                "decision": "block",
+                "reason": (
+                    f"[WALKIE-TALKIE MESSAGE FROM USER]\n\n"
+                    f"{body}\n\n"
+                    f"[END WALKIE-TALKIE MESSAGE]\n\n"
+                    f"Please acknowledge and address this message. "
+                    f"Then continue with your previous task. "
+                    f"Your planned tool call was not executed — "
+                    f"you may re-attempt it after addressing the message."
+                ),
+            }
 
         hooks = {
             "PreToolUse": [

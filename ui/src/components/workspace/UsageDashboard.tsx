@@ -26,6 +26,7 @@ import type { UsageSummary, CostZone, CalibrationData } from '@/lib/api'
 interface UsageDashboardProps {
   conversationId: number | null
   contextMode: '1m' | '200k'
+  model?: 'opus' | 'sonnet'
 }
 
 function formatTokens(tokens: number): string {
@@ -135,7 +136,7 @@ function CalibratedMeter({
   )
 }
 
-export function UsageDashboard({ conversationId, contextMode }: UsageDashboardProps): React.JSX.Element {
+export function UsageDashboard({ conversationId, contextMode, model = 'opus' }: UsageDashboardProps): React.JSX.Element {
   const [expanded, setExpanded] = useState(false)
   const [usage, setUsage] = useState<UsageSummary | null>(null)
   const [costZone, setCostZone] = useState<CostZone | null>(null)
@@ -277,7 +278,7 @@ export function UsageDashboard({ conversationId, contextMode }: UsageDashboardPr
                         (costZone.standard_tokens / (contextMode === '1m' ? 1_000_000 : 200_000)) * 100,
                       )}%`,
                     }}
-                    title={`Standard: ${formatTokens(costZone.standard_tokens)} @ $15/MTok`}
+                    title={`Standard: ${formatTokens(costZone.standard_tokens)} @ $${model === 'sonnet' ? '3' : '5'}/MTok`}
                   />
                 )}
                 {costZone.premium_tokens > 0 && (
@@ -288,7 +289,7 @@ export function UsageDashboard({ conversationId, contextMode }: UsageDashboardPr
                         (costZone.premium_tokens / (contextMode === '1m' ? 1_000_000 : 200_000)) * 100,
                       )}%`,
                     }}
-                    title={`Premium: ${formatTokens(costZone.premium_tokens)} @ $22.50/MTok (1.5x)`}
+                    title={`Premium: ${formatTokens(costZone.premium_tokens)} @ $${model === 'sonnet' ? '4.50' : '7.50'}/MTok (1.5x)`}
                   />
                 )}
               </div>

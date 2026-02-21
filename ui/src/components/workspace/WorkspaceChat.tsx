@@ -184,6 +184,8 @@ export function WorkspaceChat({
   const internalInputRef = useRef<HTMLTextAreaElement>(null)
   const inputRef = externalInputRef ?? internalInputRef
   const lastConversationIdRef = useRef<number | null | undefined>(undefined)
+  const lastSessionModelRef = useRef<string | null>(null)
+  const lastSessionContextRef = useRef<string | null>(null)
   const [isUserScrolledUp, setIsUserScrolledUp] = useState(false)
   const [showForkModal, setShowForkModal] = useState(false)
   const [showInjectModal, setShowInjectModal] = useState(false)
@@ -218,7 +220,7 @@ export function WorkspaceChat({
   // sessionContextMode = what the CURRENT session is actually running on (drives gauge display).
   // It is derived from the conversation's stored context_mode (or the pending prop for new chats).
   const [sessionContextMode, setSessionContextMode] = useState<'1m' | '200k'>(
-    fixedContextMode ?? pendingContextModeProp ?? '1m'
+    fixedContextMode ?? pendingContextModeProp ?? '200k'
   )
 
   // Model preset definitions (used for read-only display).
@@ -226,7 +228,7 @@ export function WorkspaceChat({
   const MODEL_PRESETS: ModelPreset[] = [
     { model: 'opus', context: '1m', label: 'Opus 4.6 · 1M' },
     { model: 'opus', context: '200k', label: 'Opus 4.6 · 200K' },
-    { model: 'sonnet', context: '1m', label: 'Sonnet 4.6 · 1M' },
+    { model: 'sonnet', context: '200k', label: 'Sonnet 4.6 · 200K' },
   ]
 
   // Keep sessionContextMode in sync when fixedContextMode changes (split-view)
@@ -330,7 +332,7 @@ export function WorkspaceChat({
   const conversationContextMode: '1m' | '200k' = fixedContextMode
     ?? conversationDetail?.context_mode
     ?? pendingContextModeProp
-    ?? '1m'
+    ?? '200k'
 
   // Derive the active preset index from the conversation's actual model + context_mode (read-only).
   const activePresetIndex = useMemo(() => {
@@ -413,9 +415,30 @@ export function WorkspaceChat({
       const modeForSession = conversationContextMode
       setSessionContextMode(modeForSession)
       const modelForSession = conversationModel
+      lastSessionModelRef.current = modelForSession
+      lastSessionContextRef.current = modeForSession
       start(conversationId, workingDirectory ?? undefined, modeForSession, costSettings as unknown as Record<string, unknown>, modelForSession)
     }
   }, [conversationId, isLoadingConversation, activeConversationId, start, disconnect, clearMessages, workingDirectory, costSettings, conversationModel, conversationContextMode])
+
+  // Reconnect when badge cycling or split-view toggle changes the conversation's
+  // model or context mode while a session is already active. We intentionally do
+  // NOT guard on isLoading: when the user explicitly switches models, the running
+  // session must be torn down and restarted even if a response is in flight.
+  useEffect(() => {
+    if (!conversationId || !lastSessionModelRef.current) return
+    if (isLoadingConversation) return
+    const modelChanged = conversationModel !== lastSessionModelRef.current
+    const contextChanged = lastSessionContextRef.current !== null && conversationContextMode !== lastSessionContextRef.current
+    if (!modelChanged && !contextChanged) return
+
+    lastSessionModelRef.current = conversationModel
+    lastSessionContextRef.current = conversationContextMode
+    setSessionContextMode(conversationContextMode)
+    disconnect()
+    clearMessages()
+    start(conversationId, workingDirectory ?? undefined, conversationContextMode, costSettings as unknown as Record<string, unknown>, conversationModel)
+  }, [conversationModel, conversationContextMode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Smart auto-scroll: only scroll if user is near the bottom
   const handleScroll = useCallback(() => {
@@ -1015,7 +1038,14 @@ export function WorkspaceChat({
               {(['opus', 'sonnet'] as const).map((m) => (
                 <button
                   key={m}
-                  onClick={() => onModelChange(m)}
+                  onClick={() => {
+                    onModelChange(m)
+                    if (effectiveConversationId) {
+                      updateWorkspaceConversation(effectiveConversationId, { model: m })
+                        .then(() => queryClient.invalidateQueries({ queryKey: ['workspace'] }))
+                        .catch((err) => console.error('Failed to update panel model:', err))
+                    }
+                  }}
                   className={`px-2 py-0.5 text-[10px] font-semibold transition-all ${
                     preferredModel === m
                       ? m === 'opus'
@@ -1023,7 +1053,7 @@ export function WorkspaceChat({
                         : 'bg-violet-500/20 text-violet-600'
                       : 'text-current/40 hover:text-current/70'
                   } ${m === 'opus' ? 'rounded-l-full' : 'rounded-r-full border-l border-current/20'}`}
-                  title={`Switch to ${m === 'opus' ? 'Opus 4.6' : 'Sonnet 4.6'} (takes effect on next session)`}
+                  title={`Switch to ${m === 'opus' ? 'Opus 4.6' : 'Sonnet 4.6'}`}
                 >
                   {m === 'opus' ? 'Opus' : 'Sonnet'}
                 </button>
@@ -1116,12 +1146,13 @@ export function WorkspaceChat({
       </div>
 
       {/* Cost controls — user-adjustable "stick shift" for API spend */}
-      <CostControls settings={costSettings} onChange={setCostSettings} />
+      <CostControls settings={costSettings} onChange={setCostSettings} model={conversationModel} />
 
       {/* Usage dashboard */}
       <UsageDashboard
         conversationId={conversationId ?? activeConversationId}
         contextMode={sessionContextMode}
+        model={conversationModel}
       />
 
       {/* Auto-summary pin */}

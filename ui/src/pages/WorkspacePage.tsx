@@ -8,7 +8,7 @@
  * Split view provides three collapsible (accordion) panels:
  *   1. Research (200K subscription) — explore & figure things out
  *   2. PRD Builder (Opus 4.6, 1M API) — create the PRD with codebase context
- *   3. Coder (Sonnet 4.6, 1M API) — execute the PRD
+ *   3. Coder (Sonnet 4.6, 200K / Opus 4.6, 1M API) — execute the PRD
  *
  * The passoff editor is a tab alongside Chat in the PRD panel. Auto-forward
  * sends the PRD panel's completed response directly to the Coder panel.
@@ -526,8 +526,8 @@ export function WorkspacePage(): React.JSX.Element {
                     onConversationCreated={handlePrdConversationCreated}
                     onNewConversation={handlePrdNewChat}
                     workingDirectory={workingDirectory}
-                    fixedContextMode="1m"
-                    panelLabel={`PRD BUILDER (${prdModel === 'opus' ? 'Opus' : 'Sonnet'} · 1M)`}
+                    fixedContextMode={prdModel === 'sonnet' ? '200k' : '1m'}
+                    panelLabel={`PRD BUILDER (${prdModel === 'opus' ? 'Opus' : 'Sonnet'} · ${prdModel === 'sonnet' ? '200K' : '1M'})`}
                     injectMessage={prdInjectMessage}
                     onInjectConsumed={handlePrdInjectConsumed}
                     onResponseComplete={handlePrdResponseComplete}
@@ -538,7 +538,7 @@ export function WorkspacePage(): React.JSX.Element {
               </div>
             )}
 
-            {/* Panel 3: Coder (Sonnet 4.6, 1M API) */}
+            {/* Panel 3: Coder (model-dependent context) */}
             {coderCollapsed ? (
               <CollapsedPanelBar
                 label="CODER"
@@ -560,8 +560,8 @@ export function WorkspacePage(): React.JSX.Element {
                   onConversationCreated={handleCoderConversationCreated}
                   onNewConversation={handleCoderNewChat}
                   workingDirectory={workingDirectory}
-                  fixedContextMode="1m"
-                  panelLabel={`CODER (${coderModel === 'opus' ? 'Opus' : 'Sonnet'} · 1M)`}
+                  fixedContextMode={coderModel === 'sonnet' ? '200k' : '1m'}
+                  panelLabel={`CODER (${coderModel === 'opus' ? 'Opus' : 'Sonnet'} · ${coderModel === 'sonnet' ? '200K' : '1M'})`}
                   injectMessage={coderInjectMessage}
                   onInjectConsumed={handleCoderInjectConsumed}
                   preferredModel={coderModel}

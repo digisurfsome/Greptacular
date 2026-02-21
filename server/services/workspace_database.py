@@ -539,6 +539,7 @@ def get_conversation(conversation_id: int) -> Optional[dict]:
             "title": conversation.title,
             "category": conversation.category,
             "working_directory": conversation.working_directory,
+            "pinned": bool(conversation.pinned),
             "tags": conversation.tags or "",
             "context_mode": conversation.context_mode or "1m",
             "model": conversation.model or "opus",
@@ -1308,6 +1309,8 @@ def fork_conversation(
             pinned=0,
             tags=source.tags,
             context_mode=source.context_mode or "1m",
+            model=source.model or "opus",
+            working_directory=source.working_directory,
             token_count=0,
             forked_from_id=conversation_id,
         )
@@ -1356,6 +1359,8 @@ def fork_conversation(
             "pinned": bool(new_conv.pinned),
             "tags": new_conv.tags or "",
             "context_mode": new_conv.context_mode or "1m",
+            "model": new_conv.model or "opus",
+            "working_directory": new_conv.working_directory,
             "token_count": new_conv.token_count,
             "forked_from_id": new_conv.forked_from_id,
             "created_at": new_conv.created_at.isoformat() if new_conv.created_at else None,
@@ -1549,14 +1554,46 @@ def get_usage_by_period(period: str = "daily") -> dict:
         session.close()
 
 
-def get_conversation_cost_zones(conversation_id: int) -> dict:
+# ---------------------------------------------------------------------------
+# Model pricing (per million tokens, USD) -- Anthropic official rates
+# ---------------------------------------------------------------------------
+# Each model maps to (standard_input, extended_input, standard_output, extended_output).
+# Extended rates apply to tokens beyond 200K context.
+# Cache rates are derived: cache_read = 0.1x standard input, cache_creation = 1.25x standard input.
+
+_MODEL_PRICING: dict[str, dict[str, float]] = {
+    "opus": {
+        "standard_input": 5.0,
+        "extended_input": 10.0,
+        "standard_output": 25.0,
+        "extended_output": 37.50,
+    },
+    "sonnet": {
+        "standard_input": 3.0,
+        "extended_input": 6.0,
+        "standard_output": 15.0,
+        "extended_output": 22.50,
+    },
+}
+
+
+def _get_model_rates(model: str = "opus") -> dict[str, float]:
+    """Return the pricing rates for a given model shorthand.
+
+    Falls back to Opus pricing for unknown model names.
+    """
+    return _MODEL_PRICING.get(model, _MODEL_PRICING["opus"])
+
+
+def get_conversation_cost_zones(conversation_id: int, model: str = "opus") -> dict:
     """Calculate the cost zone breakdown for a conversation.
 
     Tokens in 0-200K are "standard tier", tokens beyond 200K are "premium tier"
-    (approximately 1.5x cost for extended context).
+    (extended context pricing applies beyond 200K).
 
     Args:
         conversation_id: The conversation to analyze.
+        model: Model shorthand ("opus" or "sonnet") for pricing lookup.
 
     Returns:
         Dict with standard_tokens, premium_tokens, and estimated costs.
@@ -1571,33 +1608,33 @@ def get_conversation_cost_zones(conversation_id: int) -> dict:
         total = int(total)
 
         STANDARD_LIMIT = 200_000
-        # API pricing for Claude Opus 4 (per million tokens)
-        STANDARD_INPUT_RATE = 15.0  # $/MTok
-        PREMIUM_MULTIPLIER = 1.5  # ~50% more for extended context
-        PREMIUM_INPUT_RATE = STANDARD_INPUT_RATE * PREMIUM_MULTIPLIER  # $22.50/MTok
+        rates = _get_model_rates(model)
+        standard_input_rate = rates["standard_input"]
+        extended_input_rate = rates["extended_input"]
 
         standard_tokens = min(total, STANDARD_LIMIT)
         premium_tokens = max(0, total - STANDARD_LIMIT)
 
-        standard_cost = (standard_tokens / 1_000_000) * STANDARD_INPUT_RATE
-        premium_cost = (premium_tokens / 1_000_000) * PREMIUM_INPUT_RATE
+        standard_cost = (standard_tokens / 1_000_000) * standard_input_rate
+        premium_cost = (premium_tokens / 1_000_000) * extended_input_rate
         total_cost = standard_cost + premium_cost
 
         # What it would cost if ALL tokens were standard rate
-        all_standard_cost = (total / 1_000_000) * STANDARD_INPUT_RATE
+        all_standard_cost = (total / 1_000_000) * standard_input_rate
 
         return {
             "total_tokens": total,
             "standard_tokens": standard_tokens,
             "premium_tokens": premium_tokens,
             "standard_limit": STANDARD_LIMIT,
+            "model": model,
             "estimated_cost": {
                 "standard_portion": round(standard_cost, 4),
                 "premium_portion": round(premium_cost, 4),
                 "total": round(total_cost, 4),
                 "all_standard_equivalent": round(all_standard_cost, 4),
                 "premium_surcharge": round(
-                    premium_cost - (premium_tokens / 1_000_000 * STANDARD_INPUT_RATE), 4
+                    premium_cost - (premium_tokens / 1_000_000 * standard_input_rate), 4
                 ),
             },
             "cost_zone": "standard" if premium_tokens == 0 else "premium",
@@ -1685,11 +1722,15 @@ def log_rate_limit_event(
         session.close()
 
 
-def log_premium_usage(conversation_id: int) -> dict | None:
+def log_premium_usage(conversation_id: int, model: str = "opus") -> dict | None:
     """Log premium-zone usage for a conversation if it's in the premium zone.
 
     Called after each message to track when conversations enter the premium zone.
     Only creates a ledger entry if the conversation exceeds 200,000 tokens.
+
+    Args:
+        conversation_id: The conversation to check.
+        model: Model shorthand ("opus" or "sonnet") for pricing lookup.
 
     Returns:
         Dict with the ledger entry data, or None if not in premium zone.
@@ -1710,9 +1751,11 @@ def log_premium_usage(conversation_id: int) -> dict | None:
         standard_tokens = STANDARD_LIMIT
         premium_tokens = total - STANDARD_LIMIT
 
-        STANDARD_RATE = 15.0  # $/MTok
-        PREMIUM_RATE = 22.5   # $/MTok (1.5x)
-        cost = (standard_tokens / 1_000_000 * STANDARD_RATE) + (premium_tokens / 1_000_000 * PREMIUM_RATE)
+        rates = _get_model_rates(model)
+        cost = (
+            (standard_tokens / 1_000_000 * rates["standard_input"])
+            + (premium_tokens / 1_000_000 * rates["extended_input"])
+        )
 
         entry = WorkspacePremiumLedger(
             conversation_id=conversation_id,
@@ -2190,8 +2233,9 @@ def get_token_log(conversation_id: int) -> list[dict]:
 def get_token_log_summary(conversation_id: int) -> dict:
     """Get a summary of token usage for a conversation.
 
-    Returns totals for estimated tokens, API-reported tokens (from the
-    latest result_summary), and per-tool breakdowns.
+    Returns a shape matching the frontend ``TokenLogSummary`` interface:
+    total counts, cumulative API token breakdowns, per-tool breakdowns,
+    and the full list of log entries.
     """
     session = get_db_session()
     try:
@@ -2202,65 +2246,83 @@ def get_token_log_summary(conversation_id: int) -> dict:
             .all()
         )
         if not entries:
-            return {"total_estimated_tokens": 0, "turns": 0, "tool_calls": [], "api_usage": None}
+            return {
+                "total_entries": 0,
+                "total_estimated_tokens": 0,
+                "total_api_input_tokens": 0,
+                "total_api_output_tokens": 0,
+                "total_api_cache_creation_tokens": 0,
+                "total_api_cache_read_tokens": 0,
+                "total_cost_usd": 0.0,
+                "per_tool_breakdown": [],
+                "entries": [],
+            }
 
         total_est = sum(e.estimated_tokens for e in entries)
-        turns = max((e.turn_number for e in entries), default=0)
 
-        # Per-tool breakdown
-        tool_usage: dict[str, dict] = {}
+        # Cumulative API totals from result_summary entries
+        summaries = [e for e in entries if e.event_type == "result_summary"]
+        total_api_input = sum(s.api_input_tokens or 0 for s in summaries)
+        total_api_output = sum(s.api_output_tokens or 0 for s in summaries)
+        total_api_cache_creation = sum(s.api_cache_creation_tokens or 0 for s in summaries)
+        total_api_cache_read = sum(s.api_cache_read_tokens or 0 for s in summaries)
+        total_cost = sum(s.api_total_cost_usd or 0.0 for s in summaries)
+
+        # Per-tool breakdown matching frontend TokenLogToolBreakdown
+        tool_usage: dict[str, dict[str, int]] = {}
         for e in entries:
             if e.event_type == "tool_call" and e.tool_name:
                 if e.tool_name not in tool_usage:
-                    tool_usage[e.tool_name] = {"count": 0, "total_input_chars": 0, "total_result_chars": 0}
-                tool_usage[e.tool_name]["count"] += 1
+                    tool_usage[e.tool_name] = {
+                        "call_count": 0,
+                        "total_input_chars": 0,
+                        "total_result_chars": 0,
+                        "error_count": 0,
+                    }
+                tool_usage[e.tool_name]["call_count"] += 1
                 tool_usage[e.tool_name]["total_input_chars"] += e.tool_input_length or 0
             elif e.event_type == "tool_result" and e.tool_name:
                 if e.tool_name not in tool_usage:
-                    tool_usage[e.tool_name] = {"count": 0, "total_input_chars": 0, "total_result_chars": 0}
+                    tool_usage[e.tool_name] = {
+                        "call_count": 0,
+                        "total_input_chars": 0,
+                        "total_result_chars": 0,
+                        "error_count": 0,
+                    }
                 tool_usage[e.tool_name]["total_result_chars"] += e.tool_result_length or 0
+                if e.tool_is_error:
+                    tool_usage[e.tool_name]["error_count"] += 1
 
-        tool_calls = [
-            {"tool": name, **stats, "estimated_tokens": (stats["total_input_chars"] + stats["total_result_chars"]) // 4}
-            for name, stats in sorted(tool_usage.items(), key=lambda x: x[1]["total_result_chars"], reverse=True)
+        per_tool_breakdown = [
+            {
+                "tool_name": name,
+                "call_count": stats["call_count"],
+                # Estimate tokens from character counts (roughly 1 token per 4 chars)
+                "total_input_tokens": stats["total_input_chars"] // 4,
+                "total_result_tokens": stats["total_result_chars"] // 4,
+                "total_estimated_tokens": (stats["total_input_chars"] + stats["total_result_chars"]) // 4,
+                "error_count": stats["error_count"],
+            }
+            for name, stats in sorted(
+                tool_usage.items(),
+                key=lambda x: x[1]["total_result_chars"],
+                reverse=True,
+            )
         ]
 
-        # Latest API-reported usage (from result_summary)
-        summaries = [e for e in entries if e.event_type == "result_summary"]
-        api_usage = None
-        if summaries:
-            latest = summaries[-1]
-            api_usage = {
-                "input_tokens": latest.api_input_tokens,
-                "output_tokens": latest.api_output_tokens,
-                "cache_creation_tokens": latest.api_cache_creation_tokens,
-                "cache_read_tokens": latest.api_cache_read_tokens,
-                "total_cost_usd": latest.api_total_cost_usd,
-                "num_turns": latest.api_num_turns,
-                "duration_ms": latest.api_duration_ms,
-                "duration_api_ms": latest.api_duration_api_ms,
-                "model": latest.model,
-            }
-
-        # Cumulative API totals across all result_summaries in this conversation
-        cumulative_api = None
-        if summaries:
-            cumulative_api = {
-                "total_input_tokens": sum(s.api_input_tokens or 0 for s in summaries),
-                "total_output_tokens": sum(s.api_output_tokens or 0 for s in summaries),
-                "total_cache_creation_tokens": sum(s.api_cache_creation_tokens or 0 for s in summaries),
-                "total_cache_read_tokens": sum(s.api_cache_read_tokens or 0 for s in summaries),
-                "total_cost_usd": sum(s.api_total_cost_usd or 0.0 for s in summaries),
-                "total_duration_ms": sum(s.api_duration_ms or 0 for s in summaries),
-                "message_count": len(summaries),
-            }
+        # Serialize all entries for the frontend
+        serialized_entries = [_token_log_to_dict(e) for e in entries]
 
         return {
+            "total_entries": len(entries),
             "total_estimated_tokens": total_est,
-            "turns": turns,
-            "tool_calls": tool_calls,
-            "api_usage": api_usage,
-            "cumulative_api": cumulative_api,
+            "total_api_input_tokens": total_api_input,
+            "total_api_output_tokens": total_api_output,
+            "total_api_cache_creation_tokens": total_api_cache_creation,
+            "total_api_cache_read_tokens": total_api_cache_read,
+            "total_cost_usd": round(total_cost, 6),
+            "per_tool_breakdown": per_tool_breakdown,
+            "entries": serialized_entries,
         }
     finally:
         session.close()

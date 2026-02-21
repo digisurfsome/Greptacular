@@ -58,7 +58,7 @@ interface ModelPreset {
 const SIDEBAR_MODEL_PRESETS: ModelPreset[] = [
   { model: 'opus', context: '1m', label: 'Opus 4.6 · 1M' },
   { model: 'opus', context: '200k', label: 'Opus 4.6 · 200K' },
-  { model: 'sonnet', context: '1m', label: 'Sonnet 4.6 · 1M' },
+  { model: 'sonnet', context: '200k', label: 'Sonnet 4.6 · 200K' },
 ]
 
 interface WorkspaceSidebarProps {
@@ -469,17 +469,19 @@ export function WorkspaceSidebar({
                       onMouseEnter={() => handleMouseEnter(conv.id)}
                       onMouseLeave={handleMouseLeave}
                     >
-                      {/* Model+context badge — top-right corner, clickable to cycle O-1M -> S-1M -> O-200K -> O-1M */}
+                      {/* Model+context badge — top-right corner, clickable to cycle O-1M -> O-200K -> S-200K -> O-1M */}
                       {(() => {
                         const model = conv.model ?? 'opus'
                         const ctx = conv.context_mode ?? '1m'
                         const abbr = model === 'sonnet' ? 'S' : 'O'
                         const badgeLabel = `${abbr}\u00B7${ctx === '1m' ? '1M' : '200K'}`
 
-                        // Cycle: O-1M -> S-1M -> O-200K -> O-1M
+                        // Cycle: O-1M -> O-200K -> S-200K -> O-1M
+                        // Sonnet does not support the 1M context beta, so skip that combination.
                         const cycleNext = () => {
-                          if (model === 'opus' && ctx === '1m') return { model: 'sonnet' as const, context_mode: '1m' as const }
-                          if (model === 'sonnet' && ctx === '1m') return { model: 'opus' as const, context_mode: '200k' as const }
+                          if (model === 'opus' && ctx === '1m') return { model: 'opus' as const, context_mode: '200k' as const }
+                          if (model === 'opus' && ctx === '200k') return { model: 'sonnet' as const, context_mode: '200k' as const }
+                          if (model === 'sonnet') return { model: 'opus' as const, context_mode: '1m' as const }
                           return { model: 'opus' as const, context_mode: '1m' as const }
                         }
                         const next = cycleNext()

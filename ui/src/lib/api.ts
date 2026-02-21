@@ -1204,7 +1204,8 @@ export async function markAllNotificationsRead(conversationId?: number): Promise
 // ============================================================================
 
 export async function getTokenLog(conversationId: number): Promise<TokenLogEntry[]> {
-  return fetchJSON(`/workspace/conversations/${conversationId}/token-log`)
+  const data = await fetchJSON<{ entries: TokenLogEntry[]; count: number }>(`/workspace/conversations/${conversationId}/token-log`)
+  return data.entries ?? []
 }
 
 export async function getTokenLogSummary(conversationId: number): Promise<TokenLogSummary> {

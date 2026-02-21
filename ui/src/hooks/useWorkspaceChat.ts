@@ -10,6 +10,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from "react";
+import { getTokenLog } from "../lib/api";
 import type { ChatMessage, WorkspaceChatServerMessage, PendingInjection, ImageAttachment, WalkieTalkieLogEntry, TokenLogEntry } from "../lib/types";
 
 type ConnectionStatus = "disconnected" | "connecting" | "connected" | "error";
@@ -149,6 +150,37 @@ export function useWorkspaceChat({
       queuedPayloadRef.current = null;
     };
   }, []);
+
+  // Hydrate token log from the database when conversationId changes.
+  // This ensures historical token logs persist across page reloads.
+  useEffect(() => {
+    if (conversationId == null) return;
+    let cancelled = false;
+    getTokenLog(conversationId)
+      .then((entries) => {
+        if (cancelled) return;
+        if (entries.length > 0) {
+          // Merge with any entries already received via WebSocket.
+          // Use entry IDs to deduplicate (WebSocket entries may overlap
+          // with database entries if the fetch races with streaming).
+          setTokenLog((prev) => {
+            const existingIds = new Set(prev.map((e) => e.id));
+            const newEntries = entries.filter((e) => !existingIds.has(e.id));
+            if (newEntries.length === 0) return prev;
+            // Combine and sort by id (chronological order)
+            return [...newEntries, ...prev].sort(
+              (a, b) => (a.id ?? 0) - (b.id ?? 0),
+            );
+          });
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          console.warn("Failed to load historical token log:", err);
+        }
+      });
+    return () => { cancelled = true; };
+  }, [conversationId]);
 
   const connect = useCallback(() => {
     // Prevent multiple connection attempts

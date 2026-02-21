@@ -92,7 +92,7 @@ function formatTokens(n: number): string {
 }
 
 /** Estimate $/session based on settings (very rough ballpark). */
-function estimateCostRange(s: CostSettings): string {
+function estimateCostRange(s: CostSettings, model: 'opus' | 'sonnet' = 'opus'): string {
   // Input cost estimate: history + library + avg tool results per turn
   const avgToolResultTokens = 3000  // avg tokens from tool calls per turn
   const inputPerTurn = s.history_budget + s.library_cap + avgToolResultTokens
@@ -103,9 +103,13 @@ function estimateCostRange(s: CostSettings): string {
   const avgOutputPerTurn = (s.max_tokens * 0.3) + (s.max_tokens * effortMultiplier * 0.5)
   const outputTotal = s.max_turns * avgOutputPerTurn * 0.4  // assume 40% of max turns used
 
-  // Opus 4.6 pricing: $5/MTok input, $25/MTok output (standard zone)
-  const inputCost = (inputTotal / 1_000_000) * 5
-  const outputCost = (outputTotal / 1_000_000) * 25
+  // Model-aware pricing (standard zone):
+  // Opus 4.6: $5/MTok input, $25/MTok output
+  // Sonnet:   $3/MTok input, $15/MTok output
+  const inputRate = model === 'sonnet' ? 3 : 5
+  const outputRate = model === 'sonnet' ? 15 : 25
+  const inputCost = (inputTotal / 1_000_000) * inputRate
+  const outputCost = (outputTotal / 1_000_000) * outputRate
 
   const low = Math.max(0.05, (inputCost + outputCost) * 0.3)
   const high = inputCost + outputCost
@@ -209,9 +213,10 @@ function SliderControl({
 interface CostControlsProps {
   settings: CostSettings
   onChange: (settings: CostSettings) => void
+  model?: 'opus' | 'sonnet'
 }
 
-export default function CostControls({ settings, onChange }: CostControlsProps) {
+export default function CostControls({ settings, onChange, model = 'opus' }: CostControlsProps) {
   const [expanded, setExpanded] = useState(false)
   const activePreset = getActivePreset(settings)
 
@@ -235,7 +240,7 @@ export default function CostControls({ settings, onChange }: CostControlsProps) 
     [onChange],
   )
 
-  const costEstimate = estimateCostRange(settings)
+  const costEstimate = estimateCostRange(settings, model)
 
   return (
     <div className="border-b border-border bg-card/50">

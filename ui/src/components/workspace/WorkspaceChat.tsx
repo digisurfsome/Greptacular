@@ -1146,12 +1146,13 @@ export function WorkspaceChat({
       </div>
 
       {/* Cost controls — user-adjustable "stick shift" for API spend */}
-      <CostControls settings={costSettings} onChange={setCostSettings} />
+      <CostControls settings={costSettings} onChange={setCostSettings} model={conversationModel} />
 
       {/* Usage dashboard */}
       <UsageDashboard
         conversationId={conversationId ?? activeConversationId}
         contextMode={sessionContextMode}
+        model={conversationModel}
       />
 
       {/* Auto-summary pin */}

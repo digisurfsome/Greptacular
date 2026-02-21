@@ -49,6 +49,7 @@ import { AutoSummaryPin } from './AutoSummaryPin'
 import { ChatForkModal } from './ChatForkModal'
 import { InjectFromChatModal } from './InjectFromChatModal'
 import CostControls, { loadCostSettings, type CostSettings } from './CostControls'
+import { TokenLogPanel } from './TokenLogPanel'
 import { AgentNotifications, stripStructuredBlocks, parseStructuredBlocks } from './AgentNotifications'
 import type { ChatMessage as ChatMessageType, WorkspaceMessage, PendingInjection, ImageAttachment, WalkieTalkieLogEntry } from '@/lib/types'
 
@@ -257,6 +258,7 @@ export function WorkspaceChat({
     agentWaitingQuestion,
     walkieTalkieLog,
     addWalkieTalkieEntry,
+    tokenLog,
     start,
     sendMessage,
     sendWalkieTalkie,
@@ -994,6 +996,12 @@ export function WorkspaceChat({
       <UsageDashboard
         conversationId={conversationId ?? activeConversationId}
         contextMode={sessionContextMode}
+      />
+
+      {/* Token processing log */}
+      <TokenLogPanel
+        entries={tokenLog}
+        conversationId={conversationId ?? activeConversationId}
       />
 
       {/* Auto-summary pin */}

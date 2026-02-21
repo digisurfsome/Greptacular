@@ -660,6 +660,7 @@ export function useWorkspaceChat({
     setAgentWaiting(false);
     setAgentWaitingQuestion(null);
     setWalkieTalkieLog([]);
+    setTokenLog([]);
     sessionReadyRef.current = false;
     queuedPayloadRef.current = null;
   }, []);
@@ -682,6 +683,7 @@ export function useWorkspaceChat({
     start,
     sendMessage,
     sendWalkieTalkie,
+    tokenLog,
     disconnect,
     clearMessages,
   };

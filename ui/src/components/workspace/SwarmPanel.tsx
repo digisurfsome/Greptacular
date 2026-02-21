@@ -14,7 +14,6 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import {
-  Play,
   Square,
   FileText,
   ArrowRight,
@@ -34,7 +33,6 @@ import type {
   SwarmPipelineStatus,
   SwarmStageStatus,
   SwarmSharedFile,
-  SwarmStartResponse,
 } from '@/lib/api'
 import {
   startSwarm,

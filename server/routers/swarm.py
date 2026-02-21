@@ -287,7 +287,7 @@ async def swarm_websocket(websocket: WebSocket, swarm_id: str):
 
     except WebSocketDisconnect:
         logger.info("Swarm WebSocket disconnected for %s", swarm_id)
-    except Exception as e:
+    except Exception:
         logger.exception("Swarm WebSocket error for %s", swarm_id)
     finally:
         if event_stream_task and not event_stream_task.done():

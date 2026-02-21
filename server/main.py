@@ -43,9 +43,9 @@ from .routers import (
     settings_router,
     spec_creation_router,
     styles_router,
+    swarm_router,
     terminal_router,
     workspace_router,
-    swarm_router,
 )
 from .schemas import SetupStatus
 from .services.assistant_chat_session import cleanup_all_sessions as cleanup_assistant_sessions
@@ -58,8 +58,8 @@ from .services.dev_server_manager import (
 from .services.expand_chat_session import cleanup_all_expand_sessions
 from .services.process_manager import cleanup_all_managers, cleanup_orphaned_locks
 from .services.scheduler_service import cleanup_scheduler, get_scheduler
-from .services.terminal_manager import cleanup_all_terminals
 from .services.swarm_orchestrator import cleanup_all_swarms
+from .services.terminal_manager import cleanup_all_terminals
 from .services.workspace_chat_session import cleanup_all_workspace_sessions
 from .websocket import project_websocket
 

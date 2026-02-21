@@ -22,6 +22,7 @@ import { WorkspaceKeyboardHelp } from '../components/workspace/WorkspaceKeyboard
 import { WorkspaceUserGuide } from '../components/workspace/WorkspaceUserGuide'
 import { RepoSelector } from '../components/workspace/RepoSelector'
 import { PassoffEditor, type PassoffSection } from '../components/workspace/PassoffEditor'
+import { SwarmPanel } from '../components/workspace/SwarmPanel'
 import { useWorkspaceKeyboardShortcuts } from '../hooks/useWorkspaceKeyboardShortcuts'
 import { exportConversationMarkdown, getSettings } from '../lib/api'
 import type { WalkieTalkieLogEntry } from '../lib/types'
@@ -35,6 +36,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
   Zap,
+  Network,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -70,6 +72,7 @@ export function WorkspacePage(): React.JSX.Element {
   const [showKeyboardHelp, setShowKeyboardHelp] = useState(false)
   const [showUserGuide, setShowUserGuide] = useState(false)
   const [splitView, setSplitView] = useState(false)
+  const [showSwarm, setShowSwarm] = useState(false)
 
   // Three-panel state (split view)
   const [prdConversationId, setPrdConversationId] = useState<number | null>(null)
@@ -304,6 +307,19 @@ export function WorkspacePage(): React.JSX.Element {
           >
             <Columns2 size={14} />
             <span className="text-[10px]">Split</span>
+          </Button>
+          <Button
+            variant={showSwarm ? 'default' : 'ghost'}
+            size="sm"
+            className={`h-7 px-2 gap-1.5 ${showSwarm
+              ? 'bg-violet-600 text-white hover:bg-violet-700'
+              : 'text-muted-foreground hover:text-foreground'
+            }`}
+            onClick={() => setShowSwarm(v => !v)}
+            title="Swarm: concurrent autonomous agents with shared workspace"
+          >
+            <Network size={14} />
+            <span className="text-[10px]">Swarm</span>
           </Button>
           {splitView && (
             <Button
@@ -568,6 +584,16 @@ export function WorkspacePage(): React.JSX.Element {
               pendingModel={pendingModel}
               pendingContextMode={pendingContextMode}
               newChatKey={newChatKey}
+            />
+          </div>
+        )}
+
+        {/* Swarm panel (slides in from right, before library) */}
+        {showSwarm && (
+          <div className="w-80 border-l border-border shrink-0">
+            <SwarmPanel
+              workingDirectory={workingDirectory}
+              onClose={() => setShowSwarm(false)}
             />
           </div>
         )}

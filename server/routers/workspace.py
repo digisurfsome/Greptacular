@@ -33,6 +33,7 @@ class WorkspaceConversationSummary(BaseModel):
     pinned: bool = False
     tags: str = ""
     context_mode: str = "1m"
+    model: str = "opus"
     created_at: Optional[str]
     updated_at: Optional[str]
     message_count: int
@@ -65,6 +66,7 @@ class ConversationCreateRequest(BaseModel):
     category: str = "general"
     working_directory: Optional[str] = None
     context_mode: str = "1m"
+    model: str = "opus"
 
 
 class ConversationUpdateRequest(BaseModel):
@@ -74,6 +76,7 @@ class ConversationUpdateRequest(BaseModel):
     pinned: Optional[bool] = None
     tags: Optional[str] = None
     context_mode: Optional[str] = None
+    model: Optional[str] = None
 
 
 # ============================================================================
@@ -99,6 +102,7 @@ async def create_new_conversation(body: ConversationCreateRequest):
         category=body.category,
         working_directory=body.working_directory,
         context_mode=body.context_mode,
+        model=body.model,
     )
     return WorkspaceConversationSummary(
         id=int(conversation.id),
@@ -108,6 +112,7 @@ async def create_new_conversation(body: ConversationCreateRequest):
         pinned=bool(conversation.pinned) if hasattr(conversation, 'pinned') else False,
         tags="",
         context_mode=str(conversation.context_mode) if conversation.context_mode else "1m",
+        model=str(conversation.model) if conversation.model else "opus",
         created_at=conversation.created_at.isoformat() if conversation.created_at else None,
         updated_at=conversation.updated_at.isoformat() if conversation.updated_at else None,
         message_count=0,
@@ -147,6 +152,7 @@ async def update_conversation(conversation_id: int, body: ConversationUpdateRequ
         pinned=body.pinned,
         tags=body.tags,
         context_mode=body.context_mode,
+        model=body.model,
     )
     if not updated:
         raise HTTPException(status_code=404, detail="Conversation not found")
@@ -159,6 +165,7 @@ async def update_conversation(conversation_id: int, body: ConversationUpdateRequ
         pinned=updated.get("pinned", False),
         tags=updated.get("tags", ""),
         context_mode=updated.get("context_mode", "1m"),
+        model=updated.get("model", "opus"),
         created_at=updated["created_at"],
         updated_at=updated["updated_at"],
         message_count=updated.get("message_count", 0),

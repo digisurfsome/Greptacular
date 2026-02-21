@@ -66,6 +66,7 @@ class WorkspaceConversation(Base):
     pinned = Column(Integer, nullable=False, default=0)  # Boolean as int for SQLite
     tags = Column(String(500), nullable=True)  # comma-separated tags
     context_mode = Column(String(10), nullable=True, default="1m")  # "1m" or "200k"
+    model = Column(String(20), nullable=True, default="opus")  # "opus" or "sonnet"
     token_count = Column(Integer, nullable=False, default=0)
     summary = Column(Text, nullable=True)
     summary_updated_at = Column(DateTime, nullable=True)
@@ -359,6 +360,10 @@ def get_engine() -> Engine:
                 cursor.execute(
                     "ALTER TABLE workspace_conversations ADD COLUMN context_mode TEXT DEFAULT '1m'"
                 )
+            if "model" not in existing_cols:
+                cursor.execute(
+                    "ALTER TABLE workspace_conversations ADD COLUMN model TEXT DEFAULT 'opus'"
+                )
 
             # One-time fix: early migration defaulted context_mode to '200k' but
             # the workspace actually uses '1m' by default.  All conversations
@@ -412,6 +417,7 @@ def create_conversation(
     category: str = "general",
     working_directory: Optional[str] = None,
     context_mode: Optional[str] = None,
+    model: Optional[str] = None,
 ) -> WorkspaceConversation:
     """Create a new workspace conversation.
 
@@ -421,6 +427,7 @@ def create_conversation(
         category: Conversation category (default: "general").
         working_directory: Optional working directory path for the conversation.
         context_mode: Context window mode ("1m" or "200k").
+        model: Model shorthand ("opus" or "sonnet").
 
     Returns:
         The newly created WorkspaceConversation instance.
@@ -432,6 +439,7 @@ def create_conversation(
             category=category,
             working_directory=working_directory,
             context_mode=context_mode or "1m",
+            model=model or "opus",
         )
         session.add(conversation)
         session.commit()
@@ -491,6 +499,7 @@ def get_conversations(category: Optional[str] = None) -> list[dict]:
                 "pinned": bool(row.WorkspaceConversation.pinned),
                 "tags": row.WorkspaceConversation.tags or "",
                 "context_mode": row.WorkspaceConversation.context_mode or "1m",
+                "model": row.WorkspaceConversation.model or "opus",
                 "created_at": (
                     row.WorkspaceConversation.created_at.isoformat()
                     if row.WorkspaceConversation.created_at else None
@@ -532,6 +541,7 @@ def get_conversation(conversation_id: int) -> Optional[dict]:
             "working_directory": conversation.working_directory,
             "tags": conversation.tags or "",
             "context_mode": conversation.context_mode or "1m",
+            "model": conversation.model or "opus",
             "created_at": conversation.created_at.isoformat() if conversation.created_at else None,
             "updated_at": conversation.updated_at.isoformat() if conversation.updated_at else None,
             "messages": [
@@ -583,6 +593,7 @@ def update_conversation(
     pinned: Optional[bool] = None,
     tags: Optional[str] = None,
     context_mode: Optional[str] = None,
+    model: Optional[str] = None,
 ) -> Optional[dict]:
     """Update a conversation's metadata.
 
@@ -596,6 +607,7 @@ def update_conversation(
         pinned: New pinned state, or None to leave unchanged.
         tags: New comma-separated tags, or None to leave unchanged.
         context_mode: New context mode (``"1m"`` or ``"200k"``), or None to leave unchanged.
+        model: New model shorthand (``"opus"`` or ``"sonnet"``), or None to leave unchanged.
 
     Returns:
         Updated conversation dict, or None if the conversation was not found.
@@ -622,6 +634,8 @@ def update_conversation(
             conversation.tags = tags
         if context_mode is not None:
             conversation.context_mode = context_mode
+        if model is not None:
+            conversation.model = model
 
         conversation.updated_at = _utc_now()
         session.commit()
@@ -642,6 +656,7 @@ def update_conversation(
             "pinned": bool(conversation.pinned),
             "tags": conversation.tags or "",
             "context_mode": conversation.context_mode or "1m",
+            "model": conversation.model or "opus",
             "created_at": conversation.created_at.isoformat() if conversation.created_at else None,
             "updated_at": conversation.updated_at.isoformat() if conversation.updated_at else None,
             "message_count": msg_count,

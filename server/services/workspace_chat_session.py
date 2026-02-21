@@ -378,6 +378,7 @@ class WorkspaceChatSession:
             conv = create_conversation(
                 working_directory=self.working_directory,
                 context_mode=self.context_mode,
+                model=self.model,
             )
             self.conversation_id = int(conv.id)  # type coercion: Column[int] -> int
             yield {"type": "conversation_created", "conversation_id": self.conversation_id}

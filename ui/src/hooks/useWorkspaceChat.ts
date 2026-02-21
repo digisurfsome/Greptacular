@@ -183,12 +183,20 @@ export function useWorkspaceChat({
   }, [conversationId]);
 
   const connect = useCallback(() => {
-    // Prevent multiple connection attempts
-    if (
-      wsRef.current?.readyState === WebSocket.OPEN ||
-      wsRef.current?.readyState === WebSocket.CONNECTING
-    ) {
-      return;
+    // If an existing WebSocket is still open or connecting, close it first.
+    // Previously this silently returned, which caused zombie connections when
+    // disconnect()'s async onclose handler scheduled a reconnect that raced
+    // with a new start() call.
+    if (wsRef.current) {
+      if (
+        wsRef.current.readyState === WebSocket.OPEN ||
+        wsRef.current.readyState === WebSocket.CONNECTING
+      ) {
+        // Prevent the closing socket's onclose from scheduling yet another reconnect
+        reconnectAttempts.current = maxReconnectAttempts;
+        wsRef.current.close();
+      }
+      wsRef.current = null;
     }
 
     setConnectionStatus("connecting");
@@ -227,7 +235,7 @@ export function useWorkspaceChat({
         if (params.workingDirectory) {
           payload.working_directory = params.workingDirectory;
         }
-        payload.context_mode = params.contextMode || "1m";
+        payload.context_mode = params.contextMode ?? "1m";
         if (params.costSettings) {
           payload.cost_settings = params.costSettings;
         }
@@ -520,6 +528,17 @@ export function useWorkspaceChat({
         checkAndSendTimeoutRef.current = null;
       }
 
+      // Clear any pending reconnect from a previous session's onclose handler.
+      // Without this, a zombie reconnect can race with this new connection.
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+      // Reset reconnect counter so this fresh start() gets full retry budget.
+      // (disconnect() deliberately leaves it at maxReconnectAttempts to prevent
+      //  the closing socket's onclose from scheduling zombie reconnects.)
+      reconnectAttempts.current = 0;
+
       // Save start params so auto-reconnect can re-send the "start" message
       lastStartParamsRef.current = {
         conversationId: existingConversationId ?? undefined,
@@ -561,7 +580,7 @@ export function useWorkspaceChat({
           if (workingDirectory) {
             payload.working_directory = workingDirectory;
           }
-          payload.context_mode = contextMode || "1m";
+          payload.context_mode = contextMode ?? "1m";
           if (costSettings) {
             payload.cost_settings = costSettings;
           }
@@ -668,7 +687,9 @@ export function useWorkspaceChat({
   );
 
   const disconnect = useCallback(() => {
-    reconnectAttempts.current = maxReconnectAttempts; // Prevent auto-reconnection
+    // Set to max to prevent the closing socket's async onclose from scheduling
+    // zombie reconnects. The next start() call resets this to 0.
+    reconnectAttempts.current = maxReconnectAttempts;
     lastStartParamsRef.current = null; // Clear so reconnect doesn't re-send stale start
     sessionReadyRef.current = false;
     queuedPayloadRef.current = null;
@@ -680,12 +701,17 @@ export function useWorkspaceChat({
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
     }
+    if (checkAndSendTimeoutRef.current) {
+      clearTimeout(checkAndSendTimeoutRef.current);
+      checkAndSendTimeoutRef.current = null;
+    }
     if (wsRef.current) {
       wsRef.current.close();
       wsRef.current = null;
     }
-    // Reset reconnect attempts so subsequent start() calls get fresh retries
-    reconnectAttempts.current = 0;
+    // NOTE: Do NOT reset reconnectAttempts here. Leaving it at maxReconnectAttempts
+    // ensures the async onclose handler (which fires after this function returns)
+    // will NOT schedule a zombie reconnect. The next start() call resets it to 0.
     setConnectionStatus("disconnected");
   }, []);
 

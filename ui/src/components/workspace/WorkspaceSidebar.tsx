@@ -155,14 +155,20 @@ export function WorkspaceSidebar({
   const handleCreateNamedChat = useCallback(() => {
     if (!namingCategory) return
     const title = newChatName.trim() || undefined
-    createConversationMut.mutate({ title, category: namingCategory }, {
+    const preset = SIDEBAR_MODEL_PRESETS[modelPresetIndex]
+    createConversationMut.mutate({
+      title,
+      category: namingCategory,
+      model: preset.model,
+      context_mode: preset.context,
+    }, {
       onSuccess: (newConv) => {
         onSelectConversation(newConv.id)
         setNamingCategory(null)
         setNewChatName('')
       },
     })
-  }, [namingCategory, newChatName, createConversationMut, onSelectConversation])
+  }, [namingCategory, newChatName, createConversationMut, onSelectConversation, modelPresetIndex])
 
   /** Cancel the naming form. */
   const handleCancelNaming = useCallback(() => {

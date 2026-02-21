@@ -488,7 +488,7 @@ export function WorkspaceChat({
     if (!injectMessage || isLoading) return
     // If no conversation yet, start a new one
     if (conversationId === null && activeConversationId === null) {
-      start(undefined, workingDirectory ?? undefined, pendingContextModeRef.current, costSettings as unknown as Record<string, unknown>, preferredModel)
+      start(undefined, workingDirectory ?? undefined, conversationContextMode, costSettings as unknown as Record<string, unknown>, conversationModel)
     }
     sendMessage(injectMessage)
     onInjectConsumed?.()
@@ -692,7 +692,7 @@ export function WorkspaceChat({
     // the message and dispatch it once the session is ready.
     // Pass workingDirectory so the new session uses the selected repo.
     if (conversationId === null && activeConversationId === null) {
-      start(undefined, workingDirectory ?? undefined, pendingContextModeRef.current, costSettings as unknown as Record<string, unknown>, preferredModel)
+      start(undefined, workingDirectory ?? undefined, conversationContextMode, costSettings as unknown as Record<string, unknown>, conversationModel)
     }
     sendMessage(content, attachments)
 
@@ -957,7 +957,7 @@ export function WorkspaceChat({
               disconnect()
               clearMessages()
               if (effectiveConversationId !== null) {
-                start(effectiveConversationId, workingDirectory ?? undefined, pendingContextModeRef.current, costSettings as unknown as Record<string, unknown>, preferredModel)
+                start(effectiveConversationId, workingDirectory ?? undefined, conversationContextMode, costSettings as unknown as Record<string, unknown>, conversationModel)
               }
             }}
             className="underline font-medium hover:text-destructive/80 flex-shrink-0"
@@ -1016,7 +1016,7 @@ export function WorkspaceChat({
                   ? (panelLabel?.includes('Sonnet') ? 'sonnet'
                     : panelLabel?.includes('Opus') ? 'opus'
                       : undefined)
-                  : selectedModelRef.current)
+                  : conversationModel)
             }
           />
         </div>
@@ -1163,7 +1163,7 @@ export function WorkspaceChat({
                     disconnect()
                     clearMessages()
                     if (effectiveConversationId !== null) {
-                      start(effectiveConversationId, workingDirectory ?? undefined, pendingContextModeRef.current, costSettings as unknown as Record<string, unknown>, preferredModel)
+                      start(effectiveConversationId, workingDirectory ?? undefined, conversationContextMode, costSettings as unknown as Record<string, unknown>, conversationModel)
                     }
                   }}
                 >

@@ -1098,11 +1098,14 @@ async def workspace_chat_websocket(websocket: WebSocket):
 
                         logger.debug("Workspace session created, starting...")
 
-                        # Stream the initial greeting or resume acknowledgement
-                        async for chunk in session.start():
-                            if logger.isEnabledFor(logging.DEBUG):
-                                logger.debug(f"Sending chunk: {chunk.get('type')}")
-                            await websocket.send_json(chunk)
+                        # Stream the initial response with walkie-talkie support.
+                        # Previously this was a plain ``async for`` loop which blocked
+                        # the WebSocket reader, so walkie-talkie messages sent during
+                        # the initial session could never be received.
+                        await _stream_with_walkie_talkie(
+                            websocket, session,
+                            session.start(),
+                        )
                         logger.debug("Workspace session start complete")
                     except Exception as e:
                         logger.exception(f"Error starting workspace session {session_id}")

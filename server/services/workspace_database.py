@@ -539,6 +539,7 @@ def get_conversation(conversation_id: int) -> Optional[dict]:
             "title": conversation.title,
             "category": conversation.category,
             "working_directory": conversation.working_directory,
+            "pinned": bool(conversation.pinned),
             "tags": conversation.tags or "",
             "context_mode": conversation.context_mode or "1m",
             "model": conversation.model or "opus",
@@ -2232,8 +2233,9 @@ def get_token_log(conversation_id: int) -> list[dict]:
 def get_token_log_summary(conversation_id: int) -> dict:
     """Get a summary of token usage for a conversation.
 
-    Returns totals for estimated tokens, API-reported tokens (from the
-    latest result_summary), and per-tool breakdowns.
+    Returns a shape matching the frontend ``TokenLogSummary`` interface:
+    total counts, cumulative API token breakdowns, per-tool breakdowns,
+    and the full list of log entries.
     """
     session = get_db_session()
     try:
@@ -2244,65 +2246,83 @@ def get_token_log_summary(conversation_id: int) -> dict:
             .all()
         )
         if not entries:
-            return {"total_estimated_tokens": 0, "turns": 0, "tool_calls": [], "api_usage": None}
+            return {
+                "total_entries": 0,
+                "total_estimated_tokens": 0,
+                "total_api_input_tokens": 0,
+                "total_api_output_tokens": 0,
+                "total_api_cache_creation_tokens": 0,
+                "total_api_cache_read_tokens": 0,
+                "total_cost_usd": 0.0,
+                "per_tool_breakdown": [],
+                "entries": [],
+            }
 
         total_est = sum(e.estimated_tokens for e in entries)
-        turns = max((e.turn_number for e in entries), default=0)
 
-        # Per-tool breakdown
-        tool_usage: dict[str, dict] = {}
+        # Cumulative API totals from result_summary entries
+        summaries = [e for e in entries if e.event_type == "result_summary"]
+        total_api_input = sum(s.api_input_tokens or 0 for s in summaries)
+        total_api_output = sum(s.api_output_tokens or 0 for s in summaries)
+        total_api_cache_creation = sum(s.api_cache_creation_tokens or 0 for s in summaries)
+        total_api_cache_read = sum(s.api_cache_read_tokens or 0 for s in summaries)
+        total_cost = sum(s.api_total_cost_usd or 0.0 for s in summaries)
+
+        # Per-tool breakdown matching frontend TokenLogToolBreakdown
+        tool_usage: dict[str, dict[str, int]] = {}
         for e in entries:
             if e.event_type == "tool_call" and e.tool_name:
                 if e.tool_name not in tool_usage:
-                    tool_usage[e.tool_name] = {"count": 0, "total_input_chars": 0, "total_result_chars": 0}
-                tool_usage[e.tool_name]["count"] += 1
+                    tool_usage[e.tool_name] = {
+                        "call_count": 0,
+                        "total_input_chars": 0,
+                        "total_result_chars": 0,
+                        "error_count": 0,
+                    }
+                tool_usage[e.tool_name]["call_count"] += 1
                 tool_usage[e.tool_name]["total_input_chars"] += e.tool_input_length or 0
             elif e.event_type == "tool_result" and e.tool_name:
                 if e.tool_name not in tool_usage:
-                    tool_usage[e.tool_name] = {"count": 0, "total_input_chars": 0, "total_result_chars": 0}
+                    tool_usage[e.tool_name] = {
+                        "call_count": 0,
+                        "total_input_chars": 0,
+                        "total_result_chars": 0,
+                        "error_count": 0,
+                    }
                 tool_usage[e.tool_name]["total_result_chars"] += e.tool_result_length or 0
+                if e.tool_is_error:
+                    tool_usage[e.tool_name]["error_count"] += 1
 
-        tool_calls = [
-            {"tool": name, **stats, "estimated_tokens": (stats["total_input_chars"] + stats["total_result_chars"]) // 4}
-            for name, stats in sorted(tool_usage.items(), key=lambda x: x[1]["total_result_chars"], reverse=True)
+        per_tool_breakdown = [
+            {
+                "tool_name": name,
+                "call_count": stats["call_count"],
+                # Estimate tokens from character counts (roughly 1 token per 4 chars)
+                "total_input_tokens": stats["total_input_chars"] // 4,
+                "total_result_tokens": stats["total_result_chars"] // 4,
+                "total_estimated_tokens": (stats["total_input_chars"] + stats["total_result_chars"]) // 4,
+                "error_count": stats["error_count"],
+            }
+            for name, stats in sorted(
+                tool_usage.items(),
+                key=lambda x: x[1]["total_result_chars"],
+                reverse=True,
+            )
         ]
 
-        # Latest API-reported usage (from result_summary)
-        summaries = [e for e in entries if e.event_type == "result_summary"]
-        api_usage = None
-        if summaries:
-            latest = summaries[-1]
-            api_usage = {
-                "input_tokens": latest.api_input_tokens,
-                "output_tokens": latest.api_output_tokens,
-                "cache_creation_tokens": latest.api_cache_creation_tokens,
-                "cache_read_tokens": latest.api_cache_read_tokens,
-                "total_cost_usd": latest.api_total_cost_usd,
-                "num_turns": latest.api_num_turns,
-                "duration_ms": latest.api_duration_ms,
-                "duration_api_ms": latest.api_duration_api_ms,
-                "model": latest.model,
-            }
-
-        # Cumulative API totals across all result_summaries in this conversation
-        cumulative_api = None
-        if summaries:
-            cumulative_api = {
-                "total_input_tokens": sum(s.api_input_tokens or 0 for s in summaries),
-                "total_output_tokens": sum(s.api_output_tokens or 0 for s in summaries),
-                "total_cache_creation_tokens": sum(s.api_cache_creation_tokens or 0 for s in summaries),
-                "total_cache_read_tokens": sum(s.api_cache_read_tokens or 0 for s in summaries),
-                "total_cost_usd": sum(s.api_total_cost_usd or 0.0 for s in summaries),
-                "total_duration_ms": sum(s.api_duration_ms or 0 for s in summaries),
-                "message_count": len(summaries),
-            }
+        # Serialize all entries for the frontend
+        serialized_entries = [_token_log_to_dict(e) for e in entries]
 
         return {
+            "total_entries": len(entries),
             "total_estimated_tokens": total_est,
-            "turns": turns,
-            "tool_calls": tool_calls,
-            "api_usage": api_usage,
-            "cumulative_api": cumulative_api,
+            "total_api_input_tokens": total_api_input,
+            "total_api_output_tokens": total_api_output,
+            "total_api_cache_creation_tokens": total_api_cache_creation,
+            "total_api_cache_read_tokens": total_api_cache_read,
+            "total_cost_usd": round(total_cost, 6),
+            "per_tool_breakdown": per_tool_breakdown,
+            "entries": serialized_entries,
         }
     finally:
         session.close()

@@ -137,6 +137,8 @@ async def get_conversation_detail(conversation_id: int):
         title=conversation["title"],
         category=conversation["category"],
         working_directory=conversation["working_directory"],
+        pinned=conversation.get("pinned", False),
+        tags=conversation.get("tags", ""),
         context_mode=conversation.get("context_mode", "1m"),
         model=conversation.get("model", "opus"),
         created_at=conversation["created_at"],
@@ -192,15 +194,25 @@ async def delete_conversation_endpoint(conversation_id: int):
 
 @router.get("/conversations/{conversation_id}/tokens")
 async def get_conversation_tokens(conversation_id: int):
-    """Get the estimated token usage for a conversation."""
-    from ..services.workspace_chat_session import CONTEXT_WINDOW_TOKENS
-    from ..services.workspace_database import get_conversation_token_total
+    """Get the estimated token usage for a conversation.
+
+    The context window size depends on the conversation's ``context_mode``:
+    ``"200k"`` uses a 200,000-token window; everything else (including the
+    default ``"1m"``) uses 1,000,000 tokens.
+    """
+    from ..services.workspace_database import get_conversation, get_conversation_token_total
 
     total = get_conversation_token_total(conversation_id)
+
+    # Determine the correct context window from the conversation's context_mode
+    conv = get_conversation(conversation_id)
+    context_mode = (conv.get("context_mode") if conv else None) or "1m"
+    context_window = 200_000 if context_mode == "200k" else 1_000_000
+
     return {
         "total_tokens": total,
-        "context_window": CONTEXT_WINDOW_TOKENS,
-        "usage_percent": round(total / CONTEXT_WINDOW_TOKENS * 100, 1) if CONTEXT_WINDOW_TOKENS > 0 else 0,
+        "context_window": context_window,
+        "usage_percent": round(total / context_window * 100, 1) if context_window > 0 else 0,
     }
 
 

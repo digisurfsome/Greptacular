@@ -197,6 +197,11 @@ class WorkspaceChatSession:
         # Resolved model ID (populated during start(), exposed for UI display).
         self._resolved_model_id: Optional[str] = None
 
+        # Mapping from tool_use_id (UUID) to tool name, populated during
+        # ToolUseBlock processing so that ToolResultBlock logs can reference
+        # the human-readable tool name instead of the opaque UUID.
+        self._tool_use_id_to_name: dict[str, str] = {}
+
         # Walkie-talkie communication: in-memory message queue for injecting
         # user messages into a running agent via PreToolUse hook interception.
         self.walkie_talkie_queue: asyncio.Queue[str] = asyncio.Queue()
@@ -883,6 +888,10 @@ class WorkspaceChatSession:
                     elif block_type == "ToolUseBlock" and hasattr(block, "name"):
                         tool_name = block.name
                         tool_input = getattr(block, "input", {})
+                        # Map tool_use_id -> tool_name so ToolResultBlock can look up the name
+                        tool_use_id = getattr(block, "id", None)
+                        if tool_use_id:
+                            self._tool_use_id_to_name[tool_use_id] = tool_name
                         turn_tool_calls.append(tool_name)
                         yield {
                             "type": "tool_call",
@@ -932,8 +941,10 @@ class WorkspaceChatSession:
                         result_content = str(getattr(block, "content", ""))
                         is_error = getattr(block, "is_error", False)
                         result_len = len(result_content)
-                        # Try to get the tool name from the block
-                        result_tool_name = getattr(block, "tool_use_id", None)
+                        # Resolve tool_use_id to the human-readable tool name
+                        # via the mapping built during ToolUseBlock processing.
+                        result_tool_use_id = getattr(block, "tool_use_id", None)
+                        result_tool_name = self._tool_use_id_to_name.get(result_tool_use_id, result_tool_use_id) if result_tool_use_id else None
 
                         if conv_id is not None:
                             try:

@@ -469,7 +469,7 @@ export function WorkspaceSidebar({
                       onMouseEnter={() => handleMouseEnter(conv.id)}
                       onMouseLeave={handleMouseLeave}
                     >
-                      {/* Model+context badge — top-right corner, clickable to cycle O-1M -> S-1M -> O-200K -> O-1M */}
+                      {/* Model+context badge — top-right corner, clickable to cycle O-1M -> O-200K -> S-200K -> O-1M */}
                       {(() => {
                         const model = conv.model ?? 'opus'
                         const ctx = conv.context_mode ?? '1m'

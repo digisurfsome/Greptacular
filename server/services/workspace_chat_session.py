@@ -1030,7 +1030,7 @@ class WorkspaceChatSession:
 
             # Log premium-zone usage for cost tracking
             try:
-                db.log_premium_usage(self.conversation_id)
+                db.log_premium_usage(self.conversation_id, model=self.model or "opus")
             except Exception as e:
                 logger.warning(f"Failed to log premium usage: {e}")
 

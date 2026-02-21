@@ -49,7 +49,6 @@ import { UsageDashboard } from './UsageDashboard'
 import { AutoSummaryPin } from './AutoSummaryPin'
 import { ChatForkModal } from './ChatForkModal'
 import { InjectFromChatModal } from './InjectFromChatModal'
-import CostControls, { loadCostSettings, type CostSettings } from './CostControls'
 import { TokenLogPanel } from './TokenLogPanel'
 import { AgentNotifications, stripStructuredBlocks, parseStructuredBlocks } from './AgentNotifications'
 import { parseUtcTimestamp } from '@/lib/utils'
@@ -238,9 +237,6 @@ export function WorkspaceChat({
     }
   }, [fixedContextMode])
 
-  // Cost control settings -- persisted to localStorage, sent on session start.
-  const [costSettings, setCostSettings] = useState<CostSettings>(loadCostSettings)
-
   // Load walkie-talkie settings from the server on mount
   useEffect(() => {
     getSettings()
@@ -420,9 +416,9 @@ export function WorkspaceChat({
       console.info('[WorkspaceChat] session-switch effect: starting session', {
         conversationId, modeForSession, modelForSession, previousId,
       })
-      start(conversationId, workingDirectory ?? undefined, modeForSession, costSettings as unknown as Record<string, unknown>, modelForSession)
+      start(conversationId, workingDirectory ?? undefined, modeForSession, undefined, modelForSession)
     }
-  }, [conversationId, isLoadingConversation, activeConversationId, start, disconnect, clearMessages, workingDirectory, costSettings, conversationModel, conversationContextMode])
+  }, [conversationId, isLoadingConversation, activeConversationId, start, disconnect, clearMessages, workingDirectory, conversationModel, conversationContextMode])
 
   // Reconnect when badge cycling or split-view toggle changes the conversation's
   // model or context mode while a session is already active. We intentionally do
@@ -445,8 +441,8 @@ export function WorkspaceChat({
     setSessionContextMode(conversationContextMode)
     disconnect()
     clearMessages()
-    start(conversationId, workingDirectory ?? undefined, conversationContextMode, costSettings as unknown as Record<string, unknown>, conversationModel)
-  }, [conversationModel, conversationContextMode, conversationId, isLoadingConversation, disconnect, clearMessages, start, workingDirectory, costSettings])
+    start(conversationId, workingDirectory ?? undefined, conversationContextMode, undefined, conversationModel)
+  }, [conversationModel, conversationContextMode, conversationId, isLoadingConversation, disconnect, clearMessages, start, workingDirectory])
 
   // Smart auto-scroll: only scroll if user is near the bottom
   const handleScroll = useCallback(() => {
@@ -551,7 +547,7 @@ export function WorkspaceChat({
     if (!injectMessage || isLoading) return
     // If no conversation yet, start a new one
     if (conversationId === null && activeConversationId === null) {
-      start(undefined, workingDirectory ?? undefined, conversationContextMode, costSettings as unknown as Record<string, unknown>, conversationModel)
+      start(undefined, workingDirectory ?? undefined, conversationContextMode, undefined, conversationModel)
     }
     sendMessage(injectMessage)
     onInjectConsumed?.()
@@ -758,7 +754,7 @@ export function WorkspaceChat({
       console.info('[WorkspaceChat] handleSend: starting new session', {
         conversationContextMode, conversationModel, conversationId, activeConversationId,
       })
-      start(undefined, workingDirectory ?? undefined, conversationContextMode, costSettings as unknown as Record<string, unknown>, conversationModel)
+      start(undefined, workingDirectory ?? undefined, conversationContextMode, undefined, conversationModel)
     } else {
       console.info('[WorkspaceChat] handleSend: existing session', {
         conversationContextMode, conversationModel, conversationId, activeConversationId,
@@ -774,7 +770,7 @@ export function WorkspaceChat({
     if (effectiveId) {
       localStorage.removeItem(`${DRAFT_KEY_PREFIX}${effectiveId}`)
     }
-  }, [inputValue, isLoading, conversationId, activeConversationId, start, sendMessage, workingDirectory, pendingImages, pendingFiles, conversationContextMode, conversationModel, costSettings])
+  }, [inputValue, isLoading, conversationId, activeConversationId, start, sendMessage, workingDirectory, pendingImages, pendingFiles, conversationContextMode, conversationModel])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -1027,7 +1023,7 @@ export function WorkspaceChat({
               disconnect()
               clearMessages()
               if (effectiveConversationId !== null) {
-                start(effectiveConversationId, workingDirectory ?? undefined, conversationContextMode, costSettings as unknown as Record<string, unknown>, conversationModel)
+                start(effectiveConversationId, workingDirectory ?? undefined, conversationContextMode, undefined, conversationModel)
               }
             }}
             className="underline font-medium hover:text-destructive/80 flex-shrink-0"
@@ -1160,9 +1156,6 @@ export function WorkspaceChat({
         )}
       </div>
 
-      {/* Cost controls — user-adjustable "stick shift" for API spend */}
-      <CostControls settings={costSettings} onChange={setCostSettings} model={conversationModel} />
-
       {/* Usage dashboard */}
       <UsageDashboard
         conversationId={conversationId ?? activeConversationId}
@@ -1239,7 +1232,7 @@ export function WorkspaceChat({
                     disconnect()
                     clearMessages()
                     if (effectiveConversationId !== null) {
-                      start(effectiveConversationId, workingDirectory ?? undefined, conversationContextMode, costSettings as unknown as Record<string, unknown>, conversationModel)
+                      start(effectiveConversationId, workingDirectory ?? undefined, conversationContextMode, undefined, conversationModel)
                     }
                   }}
                 >

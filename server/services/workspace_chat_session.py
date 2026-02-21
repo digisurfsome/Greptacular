@@ -182,7 +182,11 @@ class WorkspaceChatSession:
         self.conversation_id = conversation_id
         self.working_directory = working_directory or str(Path.home())
         self.context_mode = context_mode
-        self.context_window = CONTEXT_WINDOW_TOKENS if context_mode == "1m" else CONTEXT_WINDOW_200K
+        # Sonnet does not support the 1M context beta -- force 200K even if 1m was requested.
+        if context_mode == "1m" and model != "sonnet":
+            self.context_window = CONTEXT_WINDOW_TOKENS
+        else:
+            self.context_window = CONTEXT_WINDOW_200K
         self.cost_settings = validate_cost_settings(cost_settings or {})
         self.model = model
         self.client: Optional[ClaudeSDKClient] = None

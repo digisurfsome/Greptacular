@@ -153,12 +153,16 @@ export function WorkspacePage(): React.JSX.Element {
 
   // Model + context chosen at new-chat creation time (from sidebar dropdown).
   // Stored as pending state, passed to WorkspaceChat for the new session.
+  // newChatKey is a counter that increments on every "New Chat" click to ensure
+  // state changes even when the same model is selected twice in a row.
   const [pendingModel, setPendingModel] = useState<'opus' | 'sonnet'>('opus')
   const [pendingContextMode, setPendingContextMode] = useState<'1m' | '200k'>('1m')
+  const [newChatKey, setNewChatKey] = useState(0)
 
   const handleNewChat = useCallback((model: 'opus' | 'sonnet', contextMode: '1m' | '200k') => {
     setPendingModel(model)
     setPendingContextMode(contextMode)
+    setNewChatKey(k => k + 1)
     setActiveConversationId(null)
   }, [])
 
@@ -563,6 +567,7 @@ export function WorkspacePage(): React.JSX.Element {
               onWalkieTalkieLog={setWalkieTalkieLog}
               pendingModel={pendingModel}
               pendingContextMode={pendingContextMode}
+              newChatKey={newChatKey}
             />
           </div>
         )}

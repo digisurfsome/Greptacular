@@ -45,6 +45,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
+import { parseUtcTimestamp } from '@/lib/utils'
 import type { WorkspaceConversation, WorkspaceCategory } from '@/lib/types'
 
 /** Model preset option for the sidebar pill selector. */
@@ -85,7 +86,7 @@ interface WorkspaceSidebarProps {
 function relativeTime(dateString: string | null): string {
   if (!dateString) return ''
 
-  const date = new Date(dateString)
+  const date = parseUtcTimestamp(dateString)
   const now = new Date()
   const diffMs = now.getTime() - date.getTime()
   const diffMinutes = Math.floor(diffMs / 60_000)

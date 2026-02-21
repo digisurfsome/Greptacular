@@ -251,7 +251,7 @@ class DesignGuideChatSession:
         # and design advice does not require Opus-level reasoning.
         model = (
             sdk_env.get("ANTHROPIC_DEFAULT_SONNET_MODEL")
-            or os.getenv("ANTHROPIC_DEFAULT_SONNET_MODEL", "claude-sonnet-4-5-20250929")
+            or os.getenv("ANTHROPIC_DEFAULT_SONNET_MODEL", "claude-sonnet-4-6")
         )
 
         try:

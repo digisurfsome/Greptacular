@@ -456,7 +456,7 @@ class WorkspaceChatSession:
             ),
             "sonnet": (
                 sdk_env.get("ANTHROPIC_DEFAULT_SONNET_MODEL")
-                or os.getenv("ANTHROPIC_DEFAULT_SONNET_MODEL", "claude-sonnet-4-5-20250929")
+                or os.getenv("ANTHROPIC_DEFAULT_SONNET_MODEL", "claude-sonnet-4-6")
             ),
         }
         model = MODEL_MAP.get(self.model or "", MODEL_MAP["opus"])

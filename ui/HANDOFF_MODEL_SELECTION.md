@@ -54,7 +54,7 @@ The model preference must flow from UI → WebSocket → backend session → SDK
      ```python
      MODEL_MAP = {
          "opus": os.environ.get("ANTHROPIC_DEFAULT_OPUS_MODEL", "claude-opus-4-6"),
-         "sonnet": os.environ.get("ANTHROPIC_DEFAULT_SONNET_MODEL", "claude-sonnet-4-5-20250929"),
+         "sonnet": os.environ.get("ANTHROPIC_DEFAULT_SONNET_MODEL", "claude-sonnet-4-6"),
      }
      resolved_model = MODEL_MAP.get(self.model, MODEL_MAP["opus"])
      ```

@@ -527,7 +527,7 @@ This enables:
 class RantEngine:
     """Main entry point for the Rant-to-Spec pipeline."""
 
-    def __init__(self, api_key: str | None = None, model: str = "claude-sonnet-4-5-20250929"):
+    def __init__(self, api_key: str | None = None, model: str = "claude-sonnet-4-6"):
         """Initialize with Anthropic API key and model selection."""
 
     async def start_session(self, raw_rant: str, profile: PriorityProfile | str = "default") -> RantSession:

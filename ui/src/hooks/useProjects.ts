@@ -356,7 +356,7 @@ export function useValidatePath() {
 const DEFAULT_MODELS: ModelsResponse = {
   models: [
     { id: 'claude-opus-4-6', name: 'Claude Opus' },
-    { id: 'claude-sonnet-4-5-20250929', name: 'Claude Sonnet' },
+    { id: 'claude-sonnet-4-6', name: 'Claude Sonnet' },
   ],
   default: 'claude-opus-4-6',
 }

@@ -409,7 +409,7 @@ Run coding agents via Google Cloud Vertex AI:
    CLOUD_ML_REGION=us-east5
    ANTHROPIC_VERTEX_PROJECT_ID=your-gcp-project-id
    ANTHROPIC_DEFAULT_OPUS_MODEL=claude-opus-4-6
-   ANTHROPIC_DEFAULT_SONNET_MODEL=claude-sonnet-4-5@20250929
+   ANTHROPIC_DEFAULT_SONNET_MODEL=claude-sonnet-4-6
    ANTHROPIC_DEFAULT_HAIKU_MODEL=claude-3-5-haiku@20241022
    ```
 

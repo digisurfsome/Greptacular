@@ -131,7 +131,7 @@
     <spec_creation_chat>
       - user_specs table stores saved specifications with id, user_id, name, content (app_spec.txt), and chat_history (JSONB) with RLS policies enforcing user-scoped access
       - WebSocket endpoint at /api/specs/chat/ws accepts Supabase JWT and streams an AI-assisted spec creation conversation using the Anthropic Messages API with the spec creation system prompt template
-      - Spec creation uses claude-sonnet-4-5 model directly from the web app server (no build worker needed) and returns a structured app_spec.txt on completion
+      - Spec creation uses claude-sonnet-4-6 model directly from the web app server (no build worker needed) and returns a structured app_spec.txt on completion
       - /specs page displays list of saved specs with name, creation date, edit/delete/duplicate actions, and empty state with CTA
       - /specs/new page provides chat-based spec creation interface with streaming response display
       - /specs/{id}/edit page provides text editor for manual spec editing plus chat-based refinement option
@@ -169,7 +169,7 @@
         - style_id (TEXT)
         - custom_colors (JSONB)
         - yolo_mode (BOOLEAN DEFAULT false)
-        - model (TEXT DEFAULT 'claude-sonnet-4-5-20250929')
+        - model (TEXT DEFAULT 'claude-sonnet-4-6')
         - max_concurrency (INTEGER DEFAULT 3)
         - batch_size (INTEGER DEFAULT 3)
         - anthropic_api_key_encrypted (BYTEA, re-encrypted BYOK key for transit)

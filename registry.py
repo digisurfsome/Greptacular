@@ -47,13 +47,14 @@ def _migrate_registry_dir() -> None:
 # To add a new model: add an entry here with {"id": "model-id", "name": "Display Name"}
 AVAILABLE_MODELS = [
     {"id": "claude-opus-4-6", "name": "Claude Opus"},
-    {"id": "claude-sonnet-4-5-20250929", "name": "Claude Sonnet"},
+    {"id": "claude-sonnet-4-6", "name": "Claude Sonnet"},
 ]
 
 # Map legacy model IDs to their current replacements.
 # Used by get_all_settings() to auto-migrate stale values on first read after upgrade.
 LEGACY_MODEL_MAP = {
     "claude-opus-4-5-20251101": "claude-opus-4-6",
+    "claude-sonnet-4-5-20250929": "claude-sonnet-4-6",
 }
 
 # List of valid model IDs (derived from AVAILABLE_MODELS)
@@ -653,7 +654,7 @@ API_PROVIDERS: dict[str, dict[str, Any]] = {
         "requires_auth": False,
         "models": [
             {"id": "claude-opus-4-6", "name": "Claude Opus"},
-            {"id": "claude-sonnet-4-5-20250929", "name": "Claude Sonnet"},
+            {"id": "claude-sonnet-4-6", "name": "Claude Sonnet"},
         ],
         "default_model": "claude-opus-4-6",
     },

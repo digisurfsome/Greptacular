@@ -54,8 +54,8 @@ class TestConvertModelForVertex(unittest.TestCase):
     def test_returns_model_unchanged_when_vertex_set_to_empty(self):
         os.environ["CLAUDE_CODE_USE_VERTEX"] = ""
         self.assertEqual(
-            convert_model_for_vertex("claude-sonnet-4-5-20250929"),
-            "claude-sonnet-4-5-20250929",
+            convert_model_for_vertex("claude-sonnet-4-6"),
+            "claude-sonnet-4-6",
         )
 
     # --- Vertex AI enabled: standard conversions ---
@@ -74,11 +74,11 @@ class TestConvertModelForVertex(unittest.TestCase):
             "claude-opus-4-6",
         )
 
-    def test_converts_sonnet_model(self):
+    def test_sonnet_4_6_passthrough_on_vertex(self):
         os.environ["CLAUDE_CODE_USE_VERTEX"] = "1"
         self.assertEqual(
-            convert_model_for_vertex("claude-sonnet-4-5-20250929"),
-            "claude-sonnet-4-5@20250929",
+            convert_model_for_vertex("claude-sonnet-4-6"),
+            "claude-sonnet-4-6",
         )
 
     def test_converts_haiku_model(self):
@@ -93,8 +93,8 @@ class TestConvertModelForVertex(unittest.TestCase):
     def test_already_vertex_format_unchanged(self):
         os.environ["CLAUDE_CODE_USE_VERTEX"] = "1"
         self.assertEqual(
-            convert_model_for_vertex("claude-sonnet-4-5@20250929"),
-            "claude-sonnet-4-5@20250929",
+            convert_model_for_vertex("claude-3-5-haiku@20241022"),
+            "claude-3-5-haiku@20241022",
         )
 
     def test_non_claude_model_unchanged(self):

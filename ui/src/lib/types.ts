@@ -672,6 +672,7 @@ export interface WorkspaceConversation {
   pinned: boolean
   tags: string  // comma-separated tags
   context_mode: '1m' | '200k'  // context window mode used for this conversation
+  model: 'opus' | 'sonnet' | null  // model used for this conversation (null = legacy, default opus)
   created_at: string | null
   updated_at: string | null
   message_count: number
@@ -691,6 +692,8 @@ export interface WorkspaceConversationDetail {
   category: string
   working_directory: string | null
   tags: string  // comma-separated tags
+  context_mode: '1m' | '200k'  // context window mode used for this conversation
+  model: 'opus' | 'sonnet' | null  // model used for this conversation (null = legacy, default opus)
   created_at: string | null
   updated_at: string | null
   messages: WorkspaceMessage[]

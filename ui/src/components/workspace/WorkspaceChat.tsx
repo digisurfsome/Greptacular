@@ -26,6 +26,7 @@ import {
   ImagePlus,
   Radio,
   Check,
+  ScrollText,
 } from 'lucide-react'
 import { useWorkspaceChat } from '@/hooks/useWorkspaceChat'
 import { useWorkspaceConversation } from '@/hooks/useWorkspaceConversations'
@@ -54,6 +55,17 @@ import { AgentNotifications, stripStructuredBlocks, parseStructuredBlocks } from
 import type { ChatMessage as ChatMessageType, WorkspaceMessage, PendingInjection, ImageAttachment, WalkieTalkieLogEntry } from '@/lib/types'
 
 const DRAFT_KEY_PREFIX = 'workspace-draft-'
+const TOKEN_LOG_MODE_KEY = 'workspace-token-log-mode'
+
+/** Three-state toggle for the token log side panel. */
+type TokenLogMode = 'auto' | 'on' | 'off'
+
+/** Load saved token log mode from localStorage, defaulting to 'auto'. */
+function loadTokenLogMode(): TokenLogMode {
+  const saved = localStorage.getItem(TOKEN_LOG_MODE_KEY)
+  if (saved === 'auto' || saved === 'on' || saved === 'off') return saved
+  return 'auto'
+}
 
 interface WorkspaceChatProps {
   conversationId: number | null
@@ -84,6 +96,16 @@ interface WorkspaceChatProps {
   onModelChange?: (model: 'opus' | 'sonnet') => void
   /** Callback with the walkie-talkie log, called on every update. */
   onWalkieTalkieLog?: (log: WalkieTalkieLogEntry[]) => void
+  /**
+   * Model chosen at new-chat creation time (from sidebar dropdown).
+   * Only used when conversationId is null to determine model for the new session.
+   */
+  pendingModel?: 'opus' | 'sonnet'
+  /**
+   * Context mode chosen at new-chat creation time (from sidebar dropdown).
+   * Only used when conversationId is null to determine context mode for the new session.
+   */
+  pendingContextMode?: '1m' | '200k'
 }
 
 /** Generate a unique ID for local messages. */
@@ -146,6 +168,8 @@ export function WorkspaceChat({
   preferredModel,
   onModelChange,
   onWalkieTalkieLog,
+  pendingModel,
+  pendingContextMode: pendingContextModeProp,
 }: WorkspaceChatProps): React.JSX.Element {
   const [inputValue, setInputValue] = useState('')
   const messagesContainerRef = useRef<HTMLDivElement>(null)
@@ -161,8 +185,11 @@ export function WorkspaceChat({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
   const [isDragging, setIsDragging] = useState(false)
-  const [contextToast, setContextToast] = useState<string | null>(null)
-  const contextToastTimerRef = useRef<number | null>(null)
+
+  // Token log side panel: 3-state toggle (auto / on / off)
+  const [tokenLogMode, setTokenLogMode] = useState<TokenLogMode>(loadTokenLogMode)
+  // Whether the panel is currently visible (driven by mode + auto logic)
+  const [tokenLogAutoVisible, setTokenLogAutoVisible] = useState(false)
 
   // Walkie-talkie state
   const [walkieTalkieInput, setWalkieTalkieInput] = useState('')
@@ -178,39 +205,26 @@ export function WorkspaceChat({
 
   // Context mode: "1m" (1,000,000 tokens with beta) or "200k" (200,000 tokens standard).
   // When fixedContextMode is set (split-view), the mode is locked and the toggle is hidden.
-  // Otherwise, it's persisted to localStorage and takes effect on the NEXT session start.
+  // For normal (non-split) mode, the context mode is now determined at chat creation time
+  // via the New Chat dropdown, and stored per-conversation on the backend.
   //
-  // pendingContextMode = what the user WANTS for the next session (persisted to localStorage).
-  // sessionContextMode = what the CURRENT session is actually running on (drives gauge + button).
-  // These diverge when the user toggles mid-chat.  They re-sync when a new session starts.
-  const pendingContextModeRef = useRef<'1m' | '200k'>(
-    fixedContextMode ?? ((localStorage.getItem('workspace-context-mode') as '1m' | '200k') || '1m')
-  )
+  // sessionContextMode = what the CURRENT session is actually running on (drives gauge display).
+  // It is derived from the conversation's stored context_mode (or the pending prop for new chats).
   const [sessionContextMode, setSessionContextMode] = useState<'1m' | '200k'>(
-    fixedContextMode ?? pendingContextModeRef.current
+    fixedContextMode ?? pendingContextModeProp ?? '1m'
   )
 
-  // Model selection: cycles through preset combos (Opus 1M, Opus 200K, Sonnet 1M).
-  // When fixedContextMode is set (split-view), the model is locked by the parent.
+  // Model preset definitions (used for read-only display).
   type ModelPreset = { model: 'opus' | 'sonnet'; context: '1m' | '200k'; label: string }
   const MODEL_PRESETS: ModelPreset[] = [
     { model: 'opus', context: '1m', label: 'Opus 4.6 · 1M' },
     { model: 'opus', context: '200k', label: 'Opus 4.6 · 200K' },
     { model: 'sonnet', context: '1m', label: 'Sonnet 4.6 · 1M' },
   ]
-  const savedPresetIndex = Number(localStorage.getItem('workspace-model-preset') ?? '0')
-  const pendingPresetRef = useRef<number>(
-    fixedContextMode ? -1 : (savedPresetIndex >= 0 && savedPresetIndex < MODEL_PRESETS.length ? savedPresetIndex : 0)
-  )
-  const [activePresetIndex, setActivePresetIndex] = useState<number>(pendingPresetRef.current)
-  const selectedModelRef = useRef<'opus' | 'sonnet'>(
-    preferredModel ?? MODEL_PRESETS[Math.max(0, pendingPresetRef.current)]?.model ?? 'opus'
-  )
 
-  // Keep pendingContextModeRef in sync when fixedContextMode changes
+  // Keep sessionContextMode in sync when fixedContextMode changes (split-view)
   useEffect(() => {
     if (fixedContextMode) {
-      pendingContextModeRef.current = fixedContextMode
       setSessionContextMode(fixedContextMode)
     }
   }, [fixedContextMode])
@@ -282,6 +296,33 @@ export function WorkspaceChat({
   const { data: conversationDetail, isLoading: isLoadingConversation } =
     useWorkspaceConversation(conversationId)
 
+  // Derive the active model from the conversation data (read-only display).
+  // For split-view panels, use preferredModel. For normal mode, use the conversation's model field.
+  const conversationModel: 'opus' | 'sonnet' = preferredModel
+    ?? conversationDetail?.model
+    ?? pendingModel
+    ?? 'opus'
+  const conversationContextMode: '1m' | '200k' = fixedContextMode
+    ?? conversationDetail?.context_mode
+    ?? pendingContextModeProp
+    ?? '1m'
+
+  // Derive the active preset index from the conversation's actual model + context_mode (read-only).
+  const activePresetIndex = useMemo(() => {
+    return MODEL_PRESETS.findIndex(
+      p => p.model === conversationModel && p.context === conversationContextMode
+    )
+  }, [conversationModel, conversationContextMode]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sync sessionContextMode from conversation data when switching conversations
+  useEffect(() => {
+    if (!fixedContextMode && conversationDetail) {
+      if (conversationDetail.context_mode) {
+        setSessionContextMode(conversationDetail.context_mode)
+      }
+    }
+  }, [conversationDetail, fixedContextMode])
+
   // Summary query and mutation for auto-summary pin
   const queryClient = useQueryClient()
 
@@ -342,15 +383,14 @@ export function WorkspaceChat({
 
     // Start/resume the selected conversation, passing the working directory
     // so the agent session uses the repo clone as its cwd.
-    // Sync the session mode to the pending preference at session start.
+    // Use the conversation's stored context_mode and model (or pending props for new chats).
     if (conversationId !== null) {
-      const modeForSession = pendingContextModeRef.current
+      const modeForSession = conversationContextMode
       setSessionContextMode(modeForSession)
-      // Use the model from the preset toggle (single panel) or the fixed preferredModel (split-view)
-      const modelForSession = preferredModel ?? selectedModelRef.current
+      const modelForSession = conversationModel
       start(conversationId, workingDirectory ?? undefined, modeForSession, costSettings as unknown as Record<string, unknown>, modelForSession)
     }
-  }, [conversationId, isLoadingConversation, activeConversationId, start, disconnect, clearMessages, workingDirectory, costSettings, preferredModel])
+  }, [conversationId, isLoadingConversation, activeConversationId, start, disconnect, clearMessages, workingDirectory, costSettings, conversationModel, conversationContextMode])
 
   // Smart auto-scroll: only scroll if user is near the bottom
   const handleScroll = useCallback(() => {
@@ -380,6 +420,37 @@ export function WorkspaceChat({
     }
     prevLoadingRef.current = isLoading
   }, [isLoading, liveMessages, onResponseComplete])
+
+  // Token log auto-mode: show panel when streaming starts
+  useEffect(() => {
+    if (tokenLogMode !== 'auto') return
+    if (isLoading) {
+      setTokenLogAutoVisible(true)
+    }
+  }, [isLoading, tokenLogMode])
+
+  // Persist token log mode to localStorage
+  const handleTokenLogModeChange = useCallback((mode: TokenLogMode) => {
+    setTokenLogMode(mode)
+    localStorage.setItem(TOKEN_LOG_MODE_KEY, mode)
+    // When switching to 'off', immediately hide; 'on' immediately shows
+    if (mode === 'off') {
+      setTokenLogAutoVisible(false)
+    }
+  }, [])
+
+  // Compute whether the token log panel should be visible
+  const tokenLogVisible = tokenLogMode === 'on' || (tokenLogMode === 'auto' && tokenLogAutoVisible)
+
+  // Handler to dismiss the panel (used by X button and auto mode)
+  const handleTokenLogClose = useCallback(() => {
+    if (tokenLogMode === 'auto') {
+      setTokenLogAutoVisible(false)
+    } else if (tokenLogMode === 'on') {
+      // When "On" mode, X button switches to Off
+      handleTokenLogModeChange('off')
+    }
+  }, [tokenLogMode, handleTokenLogModeChange])
 
   // Focus input when not loading
   useEffect(() => {
@@ -710,7 +781,18 @@ export function WorkspaceChat({
   }, [setPendingInjection])
 
   return (
-    <div className={`flex flex-col h-full bg-background transition-colors duration-500 ${getContextWarningClass(usagePercent)}`}>
+    <div className="flex h-full">
+      {/* Left side panel: Token Log */}
+      {tokenLogVisible && (
+        <TokenLogPanel
+          entries={tokenLog}
+          conversationId={conversationId ?? activeConversationId}
+          onClose={handleTokenLogClose}
+        />
+      )}
+
+      {/* Main chat content */}
+      <div className={`flex flex-col flex-1 min-w-0 h-full bg-background transition-colors duration-500 ${getContextWarningClass(usagePercent)}`}>
       {/* Header with actions dropdown */}
       <div className="flex items-center border-b border-border bg-card">
         <div className="flex-1">
@@ -729,6 +811,33 @@ export function WorkspaceChat({
             onToggleSettings={() => setShowWalkieTalkieSettings((v) => !v)}
             settingsOpen={showWalkieTalkieSettings}
           />
+        </div>
+
+        {/* Token log 3-state toggle: Auto | On | Off */}
+        <div className="flex items-center gap-1 px-2">
+          <ScrollText size={14} className="text-muted-foreground flex-shrink-0" />
+          <div className="flex rounded-full border border-border overflow-hidden" role="radiogroup" aria-label="Token log visibility">
+            {(['auto', 'on', 'off'] as const).map((mode) => (
+              <button
+                key={mode}
+                role="radio"
+                aria-checked={tokenLogMode === mode}
+                onClick={() => handleTokenLogModeChange(mode)}
+                className={`px-2 py-0.5 text-[10px] font-semibold capitalize transition-all duration-150 ${
+                  tokenLogMode === mode
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-card text-muted-foreground hover:bg-muted hover:text-foreground'
+                } ${mode !== 'off' ? 'border-r border-border' : ''}`}
+                title={
+                  mode === 'auto' ? 'Show panel automatically when streaming'
+                    : mode === 'on' ? 'Always show token log panel'
+                      : 'Hide token log panel'
+                }
+              >
+                {mode}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Actions dropdown */}
@@ -996,12 +1105,6 @@ export function WorkspaceChat({
       <UsageDashboard
         conversationId={conversationId ?? activeConversationId}
         contextMode={sessionContextMode}
-      />
-
-      {/* Token processing log */}
-      <TokenLogPanel
-        entries={tokenLog}
-        conversationId={conversationId ?? activeConversationId}
       />
 
       {/* Auto-summary pin */}
@@ -1362,6 +1465,7 @@ export function WorkspaceChat({
           onInject={handleInject}
         />
       )}
+      </div>{/* end main chat content */}
     </div>
   )
 }

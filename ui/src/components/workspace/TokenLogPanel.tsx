@@ -1,24 +1,24 @@
 /**
- * Token Processing Log Panel
+ * Token Processing Log Panel (Left Side Panel)
  *
- * Collapsible panel that shows exactly where every token goes in a
- * workspace conversation. Receives real-time entries via WebSocket
- * and can load the full log + per-tool breakdown from the REST API.
+ * Full-height side panel that sits to the left of the chat area,
+ * squishing the chat content to make room. Shows a running
+ * cumulative cost total alongside every token log entry, with the
+ * cumulative total accumulating from result_summary events (which
+ * carry the real api_total_cost_usd).
  *
- * Designed for debugging and auditing token usage -- information-dense
- * layout following the existing neobrutalism/collapsible panel pattern
- * used by UsageDashboard and CostControls.
+ * Designed for debugging and auditing token usage -- dense, compact
+ * layout that packs maximum information into 320px of width.
  */
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import {
-  ChevronDown,
-  ChevronUp,
   ScrollText,
   Download,
   Trash2,
   BarChart3,
   Loader2,
+  X,
 } from 'lucide-react'
 import { getTokenLogSummary, clearTokenLog as clearTokenLogApi } from '@/lib/api'
 import type { TokenLogEntry, TokenLogSummary, TokenLogToolBreakdown } from '@/lib/types'
@@ -28,13 +28,6 @@ import type { TokenLogEntry, TokenLogSummary, TokenLogToolBreakdown } from '@/li
 /** Format a token count with commas for readability (e.g. 1,234,567). */
 function formatTokens(n: number): string {
   return n.toLocaleString()
-}
-
-/** Compact token format for the collapsed summary row. */
-function formatTokensCompact(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
-  return String(n)
 }
 
 /** Format cost with 4 decimal places (e.g. $0.0042). */
@@ -77,9 +70,17 @@ function eventTypeLabel(eventType: string): string {
   }
 }
 
+// -- Types for running total computation -------------------------------------
+
+interface EntryWithRunningTotal {
+  entry: TokenLogEntry
+  /** Cumulative API cost up to and including this entry. */
+  runningTotal: number
+}
+
 // -- Sub-components -----------------------------------------------------------
 
-/** Cumulative totals summary shown at the top of the expanded panel. */
+/** Compact cumulative totals shown at the top of the panel. */
 function TokenLogTotals({
   entries,
   summary,
@@ -87,7 +88,6 @@ function TokenLogTotals({
   entries: TokenLogEntry[]
   summary: TokenLogSummary | null
 }) {
-  // Compute running totals from live entries
   const totals = useMemo(() => {
     let estimatedTokens = 0
     let apiInput = 0
@@ -95,7 +95,6 @@ function TokenLogTotals({
     let cacheCreation = 0
     let cacheRead = 0
     let totalCost = 0
-    let turns = 0
 
     for (const e of entries) {
       estimatedTokens += e.estimated_tokens
@@ -105,14 +104,12 @@ function TokenLogTotals({
         cacheCreation += e.api_cache_creation_tokens ?? 0
         cacheRead += e.api_cache_read_tokens ?? 0
         totalCost += e.api_total_cost_usd ?? 0
-        turns += e.api_num_turns ?? 0
       }
     }
 
-    return { estimatedTokens, apiInput, apiOutput, cacheCreation, cacheRead, totalCost, turns }
+    return { estimatedTokens, apiInput, apiOutput, cacheCreation, cacheRead, totalCost }
   }, [entries])
 
-  // Prefer summary from API when available (more accurate), fall back to live totals
   const data = summary
     ? {
         estimatedTokens: summary.total_estimated_tokens,
@@ -121,44 +118,31 @@ function TokenLogTotals({
         cacheCreation: summary.total_api_cache_creation_tokens,
         cacheRead: summary.total_api_cache_read_tokens,
         totalCost: summary.total_cost_usd,
-        turns: entries.filter(e => e.event_type === 'assistant_turn').length,
       }
     : totals
 
   return (
-    <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[10px]">
+    <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[10px]">
       <div className="flex justify-between">
-        <span className="text-muted-foreground">Est. tokens:</span>
-        <span className="font-mono font-bold text-foreground tabular-nums">
-          {formatTokens(data.estimatedTokens)}
-        </span>
-      </div>
-      <div className="flex justify-between">
-        <span className="text-muted-foreground">API input:</span>
+        <span className="text-muted-foreground">Input:</span>
         <span className="font-mono font-bold text-foreground tabular-nums">
           {formatTokens(data.apiInput)}
         </span>
       </div>
       <div className="flex justify-between">
-        <span className="text-muted-foreground">API output:</span>
+        <span className="text-muted-foreground">Output:</span>
         <span className="font-mono font-bold text-foreground tabular-nums">
           {formatTokens(data.apiOutput)}
         </span>
       </div>
       <div className="flex justify-between">
-        <span className="text-muted-foreground">Cache create:</span>
-        <span className="font-mono font-bold text-foreground tabular-nums">
-          {formatTokens(data.cacheCreation)}
-        </span>
-      </div>
-      <div className="flex justify-between">
-        <span className="text-muted-foreground">Cache read:</span>
+        <span className="text-muted-foreground">Cache:</span>
         <span className="font-mono font-bold text-foreground tabular-nums">
           {formatTokens(data.cacheRead)}
         </span>
       </div>
       <div className="flex justify-between">
-        <span className="text-muted-foreground">Total cost:</span>
+        <span className="text-muted-foreground">Cost:</span>
         <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
           {formatCost(data.totalCost)}
         </span>
@@ -171,7 +155,6 @@ function TokenLogTotals({
 function ToolBreakdownTable({ breakdown }: { breakdown: TokenLogToolBreakdown[] }) {
   if (breakdown.length === 0) return null
 
-  // Sort by total estimated tokens descending to highlight the most expensive tools
   const sorted = [...breakdown].sort((a, b) => b.total_estimated_tokens - a.total_estimated_tokens)
 
   return (
@@ -185,31 +168,23 @@ function ToolBreakdownTable({ breakdown }: { breakdown: TokenLogToolBreakdown[] 
           <thead>
             <tr className="border-b border-border">
               <th className="text-left py-1 pr-2 text-muted-foreground font-medium">Tool</th>
-              <th className="text-right py-1 px-1.5 text-muted-foreground font-medium">Calls</th>
-              <th className="text-right py-1 px-1.5 text-muted-foreground font-medium">Input Tok</th>
-              <th className="text-right py-1 px-1.5 text-muted-foreground font-medium">Result Tok</th>
-              <th className="text-right py-1 pl-1.5 text-muted-foreground font-medium">Est. Total</th>
+              <th className="text-right py-1 px-1 text-muted-foreground font-medium">#</th>
+              <th className="text-right py-1 pl-1 text-muted-foreground font-medium">Est. Tot</th>
             </tr>
           </thead>
           <tbody>
             {sorted.map((row) => (
               <tr key={row.tool_name} className="border-b border-border/50 hover:bg-muted/30">
-                <td className="py-1 pr-2 font-mono text-foreground">
+                <td className="py-0.5 pr-2 font-mono text-foreground truncate max-w-[120px]">
                   {row.tool_name}
                   {row.error_count > 0 && (
-                    <span className="ml-1 text-destructive">({row.error_count} err)</span>
+                    <span className="ml-1 text-destructive">({row.error_count})</span>
                   )}
                 </td>
-                <td className="py-1 px-1.5 text-right font-mono tabular-nums text-foreground">
+                <td className="py-0.5 px-1 text-right font-mono tabular-nums text-foreground">
                   {row.call_count}
                 </td>
-                <td className="py-1 px-1.5 text-right font-mono tabular-nums text-muted-foreground">
-                  {formatTokens(row.total_input_tokens)}
-                </td>
-                <td className="py-1 px-1.5 text-right font-mono tabular-nums text-muted-foreground">
-                  {formatTokens(row.total_result_tokens)}
-                </td>
-                <td className="py-1 pl-1.5 text-right font-mono tabular-nums font-bold text-foreground">
+                <td className="py-0.5 pl-1 text-right font-mono tabular-nums font-bold text-foreground">
                   {formatTokens(row.total_estimated_tokens)}
                 </td>
               </tr>
@@ -221,8 +196,14 @@ function ToolBreakdownTable({ breakdown }: { breakdown: TokenLogToolBreakdown[] 
   )
 }
 
-/** Single log entry row. */
-function TokenLogRow({ entry }: { entry: TokenLogEntry }) {
+/** Single log entry row for the side panel. */
+function TokenLogRow({
+  entry,
+  runningTotal,
+}: {
+  entry: TokenLogEntry
+  runningTotal: number
+}) {
   const time = new Date(entry.timestamp).toLocaleTimeString([], {
     hour: '2-digit',
     minute: '2-digit',
@@ -232,24 +213,26 @@ function TokenLogRow({ entry }: { entry: TokenLogEntry }) {
   const isSummary = entry.event_type === 'result_summary'
 
   return (
-    <div className="flex items-start gap-2 py-1 border-b border-border/30 hover:bg-muted/20 transition-colors text-[10px]">
-      {/* Turn number */}
-      <span className="flex-shrink-0 w-5 text-right font-mono tabular-nums text-muted-foreground">
-        {entry.turn_number}
-      </span>
+    <div className={`py-1 px-2 border-b border-border/30 hover:bg-muted/20 transition-colors text-[10px] ${isSummary ? 'bg-emerald-500/5' : ''}`}>
+      {/* Top line: turn#, time, badge, running total */}
+      <div className="flex items-center gap-1.5">
+        <span className="flex-shrink-0 w-4 text-right font-mono tabular-nums text-muted-foreground">
+          {entry.turn_number}
+        </span>
+        <span className="flex-shrink-0 font-mono tabular-nums text-muted-foreground/70">
+          {time}
+        </span>
+        <span className={`flex-shrink-0 px-1 py-0.5 rounded text-[9px] font-semibold border ${eventTypeColor(entry.event_type)}`}>
+          {eventTypeLabel(entry.event_type)}
+        </span>
+        {/* Running cumulative cost (right-aligned) */}
+        <span className="ml-auto flex-shrink-0 font-mono tabular-nums text-muted-foreground">
+          {formatCost(runningTotal)}
+        </span>
+      </div>
 
-      {/* Timestamp */}
-      <span className="flex-shrink-0 w-16 font-mono tabular-nums text-muted-foreground/70">
-        {time}
-      </span>
-
-      {/* Event type badge */}
-      <span className={`flex-shrink-0 px-1.5 py-0.5 rounded text-[9px] font-semibold border ${eventTypeColor(entry.event_type)}`}>
-        {eventTypeLabel(entry.event_type)}
-      </span>
-
-      {/* Tool name or text info */}
-      <div className="flex-1 min-w-0 space-y-0.5">
+      {/* Second line: tool name or details */}
+      <div className="mt-0.5 pl-[22px]">
         {entry.tool_name && (
           <span className="font-mono text-foreground">
             {entry.tool_name}
@@ -259,55 +242,52 @@ function TokenLogRow({ entry }: { entry: TokenLogEntry }) {
           </span>
         )}
 
-        {/* Details for different event types */}
         {entry.event_type === 'tool_call' && entry.tool_input_length != null && (
           <span className="text-muted-foreground ml-1">
-            input: {formatTokens(entry.tool_input_length)} chars
+            in:{formatTokens(entry.tool_input_length)}c
           </span>
         )}
         {entry.event_type === 'tool_result' && entry.tool_result_length != null && (
           <span className="text-muted-foreground ml-1">
-            result: {formatTokens(entry.tool_result_length)} chars
+            out:{formatTokens(entry.tool_result_length)}c
           </span>
         )}
         {entry.event_type === 'assistant_turn' && (
           <span className="text-muted-foreground">
             {entry.text_length != null && `${formatTokens(entry.text_length)} chars`}
             {entry.num_tool_calls != null && entry.num_tool_calls > 0 && (
-              <span className="ml-1">+ {entry.num_tool_calls} tool call{entry.num_tool_calls !== 1 ? 's' : ''}</span>
+              <span className="ml-1">+ {entry.num_tool_calls} call{entry.num_tool_calls !== 1 ? 's' : ''}</span>
             )}
           </span>
         )}
 
-        {/* Summary line with API actuals */}
+        {/* Summary details: API cost prominently */}
         {isSummary && (
-          <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-muted-foreground mt-0.5">
+          <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-muted-foreground mt-0.5">
             {entry.api_input_tokens != null && (
-              <span>in: <span className="font-mono text-foreground">{formatTokens(entry.api_input_tokens)}</span></span>
+              <span>in:<span className="font-mono text-foreground">{formatTokens(entry.api_input_tokens)}</span></span>
             )}
             {entry.api_output_tokens != null && (
-              <span>out: <span className="font-mono text-foreground">{formatTokens(entry.api_output_tokens)}</span></span>
-            )}
-            {entry.api_cache_read_tokens != null && entry.api_cache_read_tokens > 0 && (
-              <span>cache: <span className="font-mono text-foreground">{formatTokens(entry.api_cache_read_tokens)}</span></span>
+              <span>out:<span className="font-mono text-foreground">{formatTokens(entry.api_output_tokens)}</span></span>
             )}
             {entry.api_total_cost_usd != null && (
-              <span>cost: <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold">{formatCost(entry.api_total_cost_usd)}</span></span>
+              <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold">
+                {formatCost(entry.api_total_cost_usd)}
+              </span>
             )}
             {entry.api_duration_ms != null && (
-              <span>time: <span className="font-mono text-foreground">{formatDuration(entry.api_duration_ms)}</span></span>
-            )}
-            {entry.model && (
-              <span className="text-muted-foreground/60">{entry.model}</span>
+              <span>{formatDuration(entry.api_duration_ms)}</span>
             )}
           </div>
         )}
-      </div>
 
-      {/* Estimated tokens (right-aligned) */}
-      <span className="flex-shrink-0 w-16 text-right font-mono tabular-nums font-bold text-foreground">
-        {formatTokens(entry.estimated_tokens)}
-      </span>
+        {/* Estimated tokens for non-summary */}
+        {!isSummary && entry.estimated_tokens > 0 && (
+          <span className="text-muted-foreground/60 ml-1">
+            ~{formatTokens(entry.estimated_tokens)}t
+          </span>
+        )}
+      </div>
     </div>
   )
 }
@@ -319,36 +299,37 @@ interface TokenLogPanelProps {
   entries: TokenLogEntry[]
   /** Active conversation ID (required for REST API calls). */
   conversationId: number | null
+  /** Callback to close/dismiss the panel. */
+  onClose?: () => void
 }
 
-export function TokenLogPanel({ entries, conversationId }: TokenLogPanelProps): React.JSX.Element {
-  const [expanded, setExpanded] = useState(false)
+export function TokenLogPanel({ entries, conversationId, onClose }: TokenLogPanelProps): React.JSX.Element {
   const [summary, setSummary] = useState<TokenLogSummary | null>(null)
   const [isLoadingSummary, setIsLoadingSummary] = useState(false)
   const [isClearing, setIsClearing] = useState(false)
+  const [showBreakdown, setShowBreakdown] = useState(false)
   const logContainerRef = useRef<HTMLDivElement>(null)
 
-  // Compute a quick cumulative estimated tokens total from live entries
-  const totalEstimated = useMemo(
-    () => entries.reduce((sum, e) => sum + e.estimated_tokens, 0),
-    [entries],
-  )
-
-  // Compute total cost from result_summary entries
-  const totalCost = useMemo(
-    () =>
-      entries
-        .filter((e) => e.event_type === 'result_summary')
-        .reduce((sum, e) => sum + (e.api_total_cost_usd ?? 0), 0),
-    [entries],
-  )
+  // Compute running cumulative cost for each entry.
+  // The running total only increments on result_summary events,
+  // which carry the real api_total_cost_usd from the API.
+  // Non-summary entries show the last known running total.
+  const entriesWithTotals: EntryWithRunningTotal[] = useMemo(() => {
+    let cumulative = 0
+    return entries.map((entry) => {
+      if (entry.event_type === 'result_summary') {
+        cumulative += entry.api_total_cost_usd ?? 0
+      }
+      return { entry, runningTotal: cumulative }
+    })
+  }, [entries])
 
   // Auto-scroll the log to the bottom when new entries arrive
   useEffect(() => {
-    if (expanded && logContainerRef.current) {
+    if (logContainerRef.current) {
       logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight
     }
-  }, [entries.length, expanded])
+  }, [entries.length])
 
   // Load the full summary (with per-tool breakdown) from the REST API
   const handleLoadSummary = useCallback(async () => {
@@ -357,6 +338,7 @@ export function TokenLogPanel({ entries, conversationId }: TokenLogPanelProps): 
     try {
       const data = await getTokenLogSummary(conversationId)
       setSummary(data)
+      setShowBreakdown(true)
     } catch {
       // Silently fail -- summary is a nice-to-have
     } finally {
@@ -371,6 +353,7 @@ export function TokenLogPanel({ entries, conversationId }: TokenLogPanelProps): 
     try {
       await clearTokenLogApi(conversationId)
       setSummary(null)
+      setShowBreakdown(false)
     } catch {
       // Silently fail
     } finally {
@@ -378,139 +361,114 @@ export function TokenLogPanel({ entries, conversationId }: TokenLogPanelProps): 
     }
   }, [conversationId])
 
-  // Don't render if there are no entries and no conversation
-  if (entries.length === 0 && !conversationId) {
-    return <></>
-  }
-
   return (
-    <div className="border-b border-border bg-card/40">
-      {/* Collapsed: compact summary row */}
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="flex items-center justify-between w-full px-4 py-1.5 text-left hover:bg-muted/30 transition-colors"
-      >
-        <div className="flex items-center gap-3">
-          <ScrollText size={12} className="text-muted-foreground" />
-          <span className="text-[10px] text-muted-foreground">
-            Token Log:{' '}
-            <span className="font-mono font-bold text-foreground tabular-nums">
-              {formatTokensCompact(totalEstimated)}
-            </span>
-            <span className="text-muted-foreground/70 ml-1">
-              ({entries.length} event{entries.length !== 1 ? 's' : ''})
-            </span>
+    <div className="w-[320px] flex-shrink-0 flex flex-col h-full border-r border-border bg-card/60 animate-slide-in">
+      {/* Panel header */}
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-card">
+        <div className="flex items-center gap-2">
+          <ScrollText size={14} className="text-muted-foreground" />
+          <span className="text-xs font-semibold text-foreground">Token Log</span>
+          <span className="text-[10px] text-muted-foreground tabular-nums">
+            ({entries.length})
           </span>
-          {totalCost > 0 && (
-            <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-bold tabular-nums">
-              {formatCost(totalCost)}
-            </span>
-          )}
         </div>
-        {expanded ? (
-          <ChevronUp size={12} className="text-muted-foreground" />
-        ) : (
-          <ChevronDown size={12} className="text-muted-foreground" />
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+            aria-label="Close token log"
+          >
+            <X size={14} />
+          </button>
         )}
-      </button>
+      </div>
 
-      {/* Expanded: full log panel */}
-      {expanded && (
-        <div className="px-4 pb-3 space-y-3 border-t border-border/50 pt-2">
-          {/* Cumulative totals */}
-          <div className="space-y-1.5">
-            <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-              Cumulative Totals
-            </div>
-            <TokenLogTotals entries={entries} summary={summary} />
-          </div>
+      {/* Compact cumulative totals */}
+      <div className="px-3 py-2 border-b border-border/50">
+        <TokenLogTotals entries={entries} summary={summary} />
+      </div>
 
-          {/* Per-tool breakdown (loaded from API) */}
-          {summary && summary.per_tool_breakdown.length > 0 && (
-            <ToolBreakdownTable breakdown={summary.per_tool_breakdown} />
+      {/* Action buttons */}
+      <div className="flex gap-1.5 px-3 py-1.5 border-b border-border/50">
+        <button
+          onClick={handleLoadSummary}
+          disabled={isLoadingSummary || !conversationId}
+          className="flex items-center gap-1 px-2 py-0.5 text-[10px] rounded border border-border bg-muted/50 hover:bg-muted text-foreground transition-colors disabled:opacity-50"
+        >
+          {isLoadingSummary ? (
+            <Loader2 size={9} className="animate-spin" />
+          ) : (
+            <Download size={9} />
           )}
+          {summary ? 'Refresh' : 'Summary'}
+        </button>
+        <button
+          onClick={handleClear}
+          disabled={isClearing || !conversationId}
+          className="flex items-center gap-1 px-2 py-0.5 text-[10px] rounded border border-border bg-muted/50 hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30 text-muted-foreground transition-colors disabled:opacity-50"
+        >
+          {isClearing ? (
+            <Loader2 size={9} className="animate-spin" />
+          ) : (
+            <Trash2 size={9} />
+          )}
+          Clear
+        </button>
+      </div>
 
-          {/* Action buttons */}
-          <div className="flex gap-2">
-            <button
-              onClick={handleLoadSummary}
-              disabled={isLoadingSummary || !conversationId}
-              className="flex items-center gap-1 px-2 py-1 text-[10px] rounded border border-border bg-muted/50 hover:bg-muted text-foreground transition-colors disabled:opacity-50"
-            >
-              {isLoadingSummary ? (
-                <Loader2 size={9} className="animate-spin" />
-              ) : (
-                <Download size={9} />
-              )}
-              {isLoadingSummary ? 'Loading...' : summary ? 'Refresh Summary' : 'Load Full Summary'}
-            </button>
-            <button
-              onClick={handleClear}
-              disabled={isClearing || !conversationId}
-              className="flex items-center gap-1 px-2 py-1 text-[10px] rounded border border-border bg-muted/50 hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30 text-muted-foreground transition-colors disabled:opacity-50"
-            >
-              {isClearing ? (
-                <Loader2 size={9} className="animate-spin" />
-              ) : (
-                <Trash2 size={9} />
-              )}
-              {isClearing ? 'Clearing...' : 'Clear Log'}
-            </button>
-          </div>
-
-          {/* Live event log */}
-          <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-                Event Log
-              </div>
-              <div className="flex items-center gap-3 text-[9px] text-muted-foreground/70">
-                <span className="flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-500" />
-                  Turn
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-yellow-500" />
-                  Call
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />
-                  Result
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                  Summary
-                </span>
-              </div>
-            </div>
-
-            {/* Column header row */}
-            <div className="flex items-center gap-2 py-0.5 text-[9px] text-muted-foreground/60 font-medium border-b border-border/50">
-              <span className="flex-shrink-0 w-5 text-right">#</span>
-              <span className="flex-shrink-0 w-16">Time</span>
-              <span className="flex-shrink-0 w-14">Type</span>
-              <span className="flex-1">Details</span>
-              <span className="flex-shrink-0 w-16 text-right">Est. Tok</span>
-            </div>
-
-            {/* Scrollable log entries */}
-            <div
-              ref={logContainerRef}
-              className="max-h-64 overflow-y-auto"
-            >
-              {entries.length === 0 ? (
-                <div className="py-4 text-center text-[10px] text-muted-foreground/60">
-                  No token log entries yet. Events will appear here as the agent processes your message.
-                </div>
-              ) : (
-                entries.map((entry) => (
-                  <TokenLogRow key={entry.id} entry={entry} />
-                ))
-              )}
-            </div>
-          </div>
+      {/* Per-tool breakdown (loaded from API) */}
+      {showBreakdown && summary && summary.per_tool_breakdown.length > 0 && (
+        <div className="px-3 py-2 border-b border-border/50 overflow-y-auto max-h-40">
+          <ToolBreakdownTable breakdown={summary.per_tool_breakdown} />
         </div>
       )}
+
+      {/* Column header */}
+      <div className="flex items-center gap-1.5 px-2 py-1 text-[9px] text-muted-foreground/60 font-medium border-b border-border/50 bg-muted/20">
+        <span className="w-4 text-right">#</span>
+        <span className="flex-1">Time / Type / Details</span>
+        <span className="flex-shrink-0 text-right">Running $</span>
+      </div>
+
+      {/* Scrollable log entries -- takes remaining vertical space */}
+      <div
+        ref={logContainerRef}
+        className="flex-1 overflow-y-auto min-h-0"
+      >
+        {entries.length === 0 ? (
+          <div className="py-8 px-4 text-center text-[10px] text-muted-foreground/60">
+            No token log entries yet. Events will appear here as the agent processes your message.
+          </div>
+        ) : (
+          entriesWithTotals.map(({ entry, runningTotal }) => (
+            <TokenLogRow
+              key={entry.id}
+              entry={entry}
+              runningTotal={runningTotal}
+            />
+          ))
+        )}
+      </div>
+
+      {/* Legend at bottom */}
+      <div className="flex items-center justify-center gap-3 px-3 py-1.5 border-t border-border/50 bg-card/80">
+        <span className="flex items-center gap-1 text-[9px] text-muted-foreground/70">
+          <span className="w-1.5 h-1.5 rounded-full bg-cyan-500" />
+          Turn
+        </span>
+        <span className="flex items-center gap-1 text-[9px] text-muted-foreground/70">
+          <span className="w-1.5 h-1.5 rounded-full bg-yellow-500" />
+          Call
+        </span>
+        <span className="flex items-center gap-1 text-[9px] text-muted-foreground/70">
+          <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />
+          Result
+        </span>
+        <span className="flex items-center gap-1 text-[9px] text-muted-foreground/70">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+          Summary
+        </span>
+      </div>
     </div>
   )
 }

@@ -214,11 +214,13 @@ class AssistantChatSession:
             self.conversation_id = int(conv.id)  # type coercion: Column[int] -> int
             yield {"type": "conversation_created", "conversation_id": self.conversation_id}
 
-        # Build permissions list for assistant access (read + feature management)
+        # Build permissions list for assistant access (read + feature management).
+        # Use absolute project path so cwd can be a scratch directory.
+        project_abs = str(self.project_dir.resolve())
         permissions_list = [
-            "Read(./**)",
-            "Glob(./**)",
-            "Grep(./**)",
+            f"Read({project_abs}/**)",
+            f"Glob({project_abs}/**)",
+            f"Grep({project_abs}/**)",
             "WebFetch",
             "WebSearch",
             *ASSISTANT_FEATURE_TOOLS,
@@ -255,9 +257,13 @@ class AssistantChatSession:
         # Get system prompt with project context
         system_prompt = get_system_prompt(self.project_name, self.project_dir)
 
-        # Write system prompt to CLAUDE.md file to avoid Windows command line length limit
-        # The SDK will read this via setting_sources=["project"]
-        claude_md_path = self.project_dir / "CLAUDE.md"
+        # Write system prompt to CLAUDE.md in a scratch directory so we don't
+        # overwrite the project's real CLAUDE.md. The SDK reads it via
+        # setting_sources=["project"] from cwd (set to the scratch dir below).
+        from autoforge_paths import get_autoforge_dir
+        assistant_scratch = get_autoforge_dir(self.project_dir) / ".assistant_scratch"
+        assistant_scratch.mkdir(parents=True, exist_ok=True)
+        claude_md_path = assistant_scratch / "CLAUDE.md"
         with open(claude_md_path, "w", encoding="utf-8") as f:
             f.write(system_prompt)
         logger.info(f"Wrote assistant system prompt to {claude_md_path}")
@@ -286,7 +292,7 @@ class AssistantChatSession:
                     mcp_servers=mcp_servers,  # type: ignore[arg-type]  # SDK accepts dict config at runtime
                     permission_mode="bypassPermissions",
                     max_turns=100,
-                    cwd=str(self.project_dir.resolve()),
+                    cwd=str(assistant_scratch.resolve()),
                     settings=str(settings_file.resolve()),
                     env=sdk_env,
                 )

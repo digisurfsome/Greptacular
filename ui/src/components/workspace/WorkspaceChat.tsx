@@ -184,6 +184,7 @@ export function WorkspaceChat({
   const internalInputRef = useRef<HTMLTextAreaElement>(null)
   const inputRef = externalInputRef ?? internalInputRef
   const lastConversationIdRef = useRef<number | null | undefined>(undefined)
+  const lastSessionModelRef = useRef<string | null>(null)
   const [isUserScrolledUp, setIsUserScrolledUp] = useState(false)
   const [showForkModal, setShowForkModal] = useState(false)
   const [showInjectModal, setShowInjectModal] = useState(false)
@@ -226,7 +227,7 @@ export function WorkspaceChat({
   const MODEL_PRESETS: ModelPreset[] = [
     { model: 'opus', context: '1m', label: 'Opus 4.6 · 1M' },
     { model: 'opus', context: '200k', label: 'Opus 4.6 · 200K' },
-    { model: 'sonnet', context: '1m', label: 'Sonnet 4.6 · 1M' },
+    { model: 'sonnet', context: '200k', label: 'Sonnet 4.6 · 200K' },
   ]
 
   // Keep sessionContextMode in sync when fixedContextMode changes (split-view)
@@ -413,9 +414,25 @@ export function WorkspaceChat({
       const modeForSession = conversationContextMode
       setSessionContextMode(modeForSession)
       const modelForSession = conversationModel
+      lastSessionModelRef.current = modelForSession
       start(conversationId, workingDirectory ?? undefined, modeForSession, costSettings as unknown as Record<string, unknown>, modelForSession)
     }
   }, [conversationId, isLoadingConversation, activeConversationId, start, disconnect, clearMessages, workingDirectory, costSettings, conversationModel, conversationContextMode])
+
+  // Reconnect with new model when badge cycling changes the conversation's model
+  // while a session is already active for this conversation.
+  useEffect(() => {
+    if (!conversationId || !lastSessionModelRef.current) return
+    if (isLoadingConversation || isLoading) return
+    if (conversationModel === lastSessionModelRef.current) return
+
+    lastSessionModelRef.current = conversationModel
+    const modeForSession = conversationContextMode
+    setSessionContextMode(modeForSession)
+    disconnect()
+    clearMessages()
+    start(conversationId, workingDirectory ?? undefined, modeForSession, costSettings as unknown as Record<string, unknown>, conversationModel)
+  }, [conversationModel]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Smart auto-scroll: only scroll if user is near the bottom
   const handleScroll = useCallback(() => {
@@ -1015,7 +1032,14 @@ export function WorkspaceChat({
               {(['opus', 'sonnet'] as const).map((m) => (
                 <button
                   key={m}
-                  onClick={() => onModelChange(m)}
+                  onClick={() => {
+                    onModelChange(m)
+                    if (effectiveConversationId) {
+                      updateWorkspaceConversation(effectiveConversationId, { model: m })
+                        .then(() => queryClient.invalidateQueries({ queryKey: ['workspace'] }))
+                        .catch((err) => console.error('Failed to update panel model:', err))
+                    }
+                  }}
                   className={`px-2 py-0.5 text-[10px] font-semibold transition-all ${
                     preferredModel === m
                       ? m === 'opus'

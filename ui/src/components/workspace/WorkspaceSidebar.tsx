@@ -58,7 +58,7 @@ interface ModelPreset {
 const SIDEBAR_MODEL_PRESETS: ModelPreset[] = [
   { model: 'opus', context: '1m', label: 'Opus 4.6 · 1M' },
   { model: 'opus', context: '200k', label: 'Opus 4.6 · 200K' },
-  { model: 'sonnet', context: '1m', label: 'Sonnet 4.6 · 1M' },
+  { model: 'sonnet', context: '200k', label: 'Sonnet 4.6 · 200K' },
 ]
 
 interface WorkspaceSidebarProps {

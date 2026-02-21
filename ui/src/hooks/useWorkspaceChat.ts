@@ -73,7 +73,7 @@ export function useWorkspaceChat({
     useState<ConnectionStatus>("disconnected");
   const [conversationId, setConversationId] = useState<number | null>(null);
   const [totalTokens, setTotalTokens] = useState(0);
-  const [contextWindow, setContextWindow] = useState(1_000_000);
+  const [contextWindow, setContextWindow] = useState(200_000);
   const [contextBudget, setContextBudget] = useState<{
     messageTokens: number;
     summaryTokens: number;

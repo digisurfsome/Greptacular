@@ -160,11 +160,13 @@ export function WorkspacePage(): React.JSX.Element {
   // state changes even when the same model is selected twice in a row.
   const [pendingModel, setPendingModel] = useState<'opus' | 'sonnet'>('opus')
   const [pendingContextMode, setPendingContextMode] = useState<'1m' | '200k'>('200k')
+  const [pendingEffort, setPendingEffort] = useState<'low' | 'medium' | 'high'>('high')
   const [newChatKey, setNewChatKey] = useState(0)
 
-  const handleNewChat = useCallback((model: 'opus' | 'sonnet', contextMode: '1m' | '200k') => {
+  const handleNewChat = useCallback((model: 'opus' | 'sonnet', contextMode: '1m' | '200k', effort: 'low' | 'medium' | 'high' = 'high') => {
     setPendingModel(model)
     setPendingContextMode(contextMode)
+    setPendingEffort(effort)
     setNewChatKey(k => k + 1)
     setActiveConversationId(null)
   }, [])
@@ -420,6 +422,8 @@ export function WorkspacePage(): React.JSX.Element {
           onWorkingDirectoryChange={handleRepoSelect}
           modelPresetIndex={modelPresetIndex}
           onModelPresetChange={handleModelPresetChange}
+          effortLevel={pendingEffort}
+          onEffortChange={setPendingEffort}
         />
 
         {splitView ? (
@@ -583,6 +587,7 @@ export function WorkspacePage(): React.JSX.Element {
               onWalkieTalkieLog={setWalkieTalkieLog}
               pendingModel={pendingModel}
               pendingContextMode={pendingContextMode}
+              pendingEffort={pendingEffort}
               newChatKey={newChatKey}
             />
           </div>

@@ -664,6 +664,8 @@ export type AssistantChatServerMessage =
 // Workspace Chat Types
 // ============================================================================
 
+export type EffortLevel = 'low' | 'medium' | 'high'
+
 export interface WorkspaceConversation {
   id: number
   title: string | null
@@ -673,6 +675,7 @@ export interface WorkspaceConversation {
   tags: string  // comma-separated tags
   context_mode: '1m' | '200k'  // context window mode used for this conversation
   model: 'opus' | 'sonnet' | null  // model used for this conversation (null = legacy, default opus)
+  effort: EffortLevel  // thinking effort level (only active for 1M context models)
   created_at: string | null
   updated_at: string | null
   message_count: number
@@ -694,6 +697,7 @@ export interface WorkspaceConversationDetail {
   tags: string  // comma-separated tags
   context_mode: '1m' | '200k'  // context window mode used for this conversation
   model: 'opus' | 'sonnet' | null  // model used for this conversation (null = legacy, default opus)
+  effort: EffortLevel  // thinking effort level (only active for 1M context models)
   created_at: string | null
   updated_at: string | null
   messages: WorkspaceMessage[]

@@ -67,6 +67,7 @@ class WorkspaceConversation(Base):
     tags = Column(String(500), nullable=True)  # comma-separated tags
     context_mode = Column(String(10), nullable=True, default="1m")  # "1m" or "200k"
     model = Column(String(20), nullable=True, default="opus")  # "opus" or "sonnet"
+    effort = Column(String(10), nullable=True, default="high")  # "low", "medium", "high"
     token_count = Column(Integer, nullable=False, default=0)
     summary = Column(Text, nullable=True)
     summary_updated_at = Column(DateTime, nullable=True)
@@ -364,6 +365,10 @@ def get_engine() -> Engine:
                 cursor.execute(
                     "ALTER TABLE workspace_conversations ADD COLUMN model TEXT DEFAULT 'opus'"
                 )
+            if "effort" not in existing_cols:
+                cursor.execute(
+                    "ALTER TABLE workspace_conversations ADD COLUMN effort TEXT DEFAULT 'high'"
+                )
 
             # One-time fix: early migration defaulted context_mode to '200k' but
             # the workspace actually uses '1m' by default.  All conversations
@@ -418,6 +423,7 @@ def create_conversation(
     working_directory: Optional[str] = None,
     context_mode: Optional[str] = None,
     model: Optional[str] = None,
+    effort: Optional[str] = None,
 ) -> WorkspaceConversation:
     """Create a new workspace conversation.
 
@@ -428,6 +434,7 @@ def create_conversation(
         working_directory: Optional working directory path for the conversation.
         context_mode: Context window mode ("1m" or "200k").
         model: Model shorthand ("opus" or "sonnet").
+        effort: Thinking effort level ("low", "medium", "high").
 
     Returns:
         The newly created WorkspaceConversation instance.
@@ -440,6 +447,7 @@ def create_conversation(
             working_directory=working_directory,
             context_mode=context_mode or "1m",
             model=model or "opus",
+            effort=effort or "high",
         )
         session.add(conversation)
         session.commit()
@@ -500,6 +508,7 @@ def get_conversations(category: Optional[str] = None) -> list[dict]:
                 "tags": row.WorkspaceConversation.tags or "",
                 "context_mode": row.WorkspaceConversation.context_mode or "1m",
                 "model": row.WorkspaceConversation.model or "opus",
+                "effort": row.WorkspaceConversation.effort or "high",
                 "created_at": (
                     row.WorkspaceConversation.created_at.isoformat()
                     if row.WorkspaceConversation.created_at else None
@@ -543,6 +552,7 @@ def get_conversation(conversation_id: int) -> Optional[dict]:
             "tags": conversation.tags or "",
             "context_mode": conversation.context_mode or "1m",
             "model": conversation.model or "opus",
+            "effort": conversation.effort or "high",
             "created_at": conversation.created_at.isoformat() if conversation.created_at else None,
             "updated_at": conversation.updated_at.isoformat() if conversation.updated_at else None,
             "messages": [
@@ -595,6 +605,7 @@ def update_conversation(
     tags: Optional[str] = None,
     context_mode: Optional[str] = None,
     model: Optional[str] = None,
+    effort: Optional[str] = None,
 ) -> Optional[dict]:
     """Update a conversation's metadata.
 
@@ -637,6 +648,8 @@ def update_conversation(
             conversation.context_mode = context_mode
         if model is not None:
             conversation.model = model
+        if effort is not None:
+            conversation.effort = effort
 
         conversation.updated_at = _utc_now()
         session.commit()
@@ -658,6 +671,7 @@ def update_conversation(
             "tags": conversation.tags or "",
             "context_mode": conversation.context_mode or "1m",
             "model": conversation.model or "opus",
+            "effort": conversation.effort or "high",
             "created_at": conversation.created_at.isoformat() if conversation.created_at else None,
             "updated_at": conversation.updated_at.isoformat() if conversation.updated_at else None,
             "message_count": msg_count,
@@ -1310,6 +1324,7 @@ def fork_conversation(
             tags=source.tags,
             context_mode=source.context_mode or "1m",
             model=source.model or "opus",
+            effort=source.effort or "high",
             working_directory=source.working_directory,
             token_count=0,
             forked_from_id=conversation_id,
@@ -1360,6 +1375,7 @@ def fork_conversation(
             "tags": new_conv.tags or "",
             "context_mode": new_conv.context_mode or "1m",
             "model": new_conv.model or "opus",
+            "effort": new_conv.effort or "high",
             "working_directory": new_conv.working_directory,
             "token_count": new_conv.token_count,
             "forked_from_id": new_conv.forked_from_id,

@@ -65,8 +65,16 @@ READONLY_BUILTIN_TOOLS = [
 ]
 
 
-def get_system_prompt(project_name: str, project_dir: Path) -> str:
-    """Generate the system prompt for the assistant with project context."""
+def get_system_prompt(project_name: str, project_dir: Path, model_id: str = "") -> str:
+    """Generate the system prompt for the assistant with project context.
+
+    Args:
+        project_name: Name of the project.
+        project_dir: Absolute path to the project directory.
+        model_id: The exact model ID string used in the API connection
+                   (e.g. "claude-opus-4-6"). Injected into the prompt so the
+                   assistant can truthfully report its own model when asked.
+    """
     # Try to load app_spec.txt for context
     app_spec_content = ""
     from autoforge_paths import get_prompts_dir
@@ -80,9 +88,21 @@ def get_system_prompt(project_name: str, project_dir: Path) -> str:
         except Exception as e:
             logger.warning(f"Failed to read app_spec.txt: {e}")
 
+    # Build model identity block so the assistant can truthfully report its own model
+    model_identity = ""
+    if model_id:
+        model_identity = f"""
+## Your Model Identity
+
+You are running as model **{model_id}**. This is the exact model ID used in the
+API connection that powers this conversation. If the user asks what model you are,
+answer truthfully with this ID. Do not guess or hallucinate a different model name.
+"""
+
     return f"""You are a helpful project assistant and backlog manager for the "{project_name}" project.
 
 Your role is to help users understand the codebase, answer questions about features, and manage the project backlog. You can READ files and CREATE/MANAGE features, but you cannot modify source code.
+{model_identity}
 
 You have MCP tools available for feature management. Use them directly by calling the tool -- do not suggest CLI commands, bash commands, or curl commands to the user. You can create features yourself using the feature_create and feature_create_bulk tools.
 
@@ -254,20 +274,6 @@ class AssistantChatSession:
             },
         }
 
-        # Get system prompt with project context
-        system_prompt = get_system_prompt(self.project_name, self.project_dir)
-
-        # Write system prompt to CLAUDE.md in a scratch directory so we don't
-        # overwrite the project's real CLAUDE.md. The SDK reads it via
-        # setting_sources=["project"] from cwd (set to the scratch dir below).
-        from autoforge_paths import get_autoforge_dir
-        assistant_scratch = get_autoforge_dir(self.project_dir) / ".assistant_scratch"
-        assistant_scratch.mkdir(parents=True, exist_ok=True)
-        claude_md_path = assistant_scratch / "CLAUDE.md"
-        with open(claude_md_path, "w", encoding="utf-8") as f:
-            f.write(system_prompt)
-        logger.info(f"Wrote assistant system prompt to {claude_md_path}")
-
         # Use system Claude CLI
         system_cli = shutil.which("claude")
 
@@ -278,6 +284,20 @@ class AssistantChatSession:
 
         # Determine model from SDK env (provider-aware) or fallback to env/default
         model = sdk_env.get("ANTHROPIC_DEFAULT_OPUS_MODEL") or os.getenv("ANTHROPIC_DEFAULT_OPUS_MODEL", DEFAULT_MODEL)
+
+        # Get system prompt with project context AND real model identity
+        system_prompt = get_system_prompt(self.project_name, self.project_dir, model_id=model)
+
+        # Write system prompt to CLAUDE.md in a scratch directory so we don't
+        # overwrite the project's real CLAUDE.md. The SDK reads it via
+        # setting_sources=["project"] from cwd (set to the scratch dir below).
+        from autoforge_paths import get_autoforge_dir
+        assistant_scratch = get_autoforge_dir(self.project_dir) / ".assistant_scratch"
+        assistant_scratch.mkdir(parents=True, exist_ok=True)
+        claude_md_path = assistant_scratch / "CLAUDE.md"
+        with open(claude_md_path, "w", encoding="utf-8") as f:
+            f.write(system_prompt)
+        logger.info(f"Wrote assistant system prompt to {claude_md_path} (model={model})")
 
         try:
             logger.info("Creating ClaudeSDKClient...")

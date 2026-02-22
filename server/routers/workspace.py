@@ -34,6 +34,7 @@ class WorkspaceConversationSummary(BaseModel):
     tags: str = ""
     context_mode: str = "1m"
     model: str = "opus"
+    effort: str = "high"
     created_at: Optional[str]
     updated_at: Optional[str]
     message_count: int
@@ -58,6 +59,7 @@ class WorkspaceConversationDetail(BaseModel):
     tags: str = ""
     context_mode: str = "1m"
     model: str = "opus"
+    effort: str = "high"
     created_at: Optional[str]
     updated_at: Optional[str]
     message_count: int
@@ -71,6 +73,7 @@ class ConversationCreateRequest(BaseModel):
     working_directory: Optional[str] = None
     context_mode: str = "1m"
     model: str = "opus"
+    effort: str = "high"
 
 
 class ConversationUpdateRequest(BaseModel):
@@ -81,6 +84,7 @@ class ConversationUpdateRequest(BaseModel):
     tags: Optional[str] = None
     context_mode: Optional[str] = None
     model: Optional[str] = None
+    effort: Optional[str] = None
 
 
 # ============================================================================
@@ -107,6 +111,7 @@ async def create_new_conversation(body: ConversationCreateRequest):
         working_directory=body.working_directory,
         context_mode=body.context_mode,
         model=body.model,
+        effort=body.effort,
     )
     return WorkspaceConversationSummary(
         id=int(conversation.id),
@@ -117,6 +122,7 @@ async def create_new_conversation(body: ConversationCreateRequest):
         tags="",
         context_mode=str(conversation.context_mode) if conversation.context_mode else "1m",
         model=str(conversation.model) if conversation.model else "opus",
+        effort=str(conversation.effort) if conversation.effort else "high",
         created_at=conversation.created_at.isoformat() if conversation.created_at else None,
         updated_at=conversation.updated_at.isoformat() if conversation.updated_at else None,
         message_count=0,
@@ -141,6 +147,7 @@ async def get_conversation_detail(conversation_id: int):
         tags=conversation.get("tags", ""),
         context_mode=conversation.get("context_mode", "1m"),
         model=conversation.get("model", "opus"),
+        effort=conversation.get("effort", "high"),
         created_at=conversation["created_at"],
         updated_at=conversation["updated_at"],
         message_count=len(conversation["messages"]),
@@ -161,6 +168,7 @@ async def update_conversation(conversation_id: int, body: ConversationUpdateRequ
         tags=body.tags,
         context_mode=body.context_mode,
         model=body.model,
+        effort=body.effort,
     )
     if not updated:
         raise HTTPException(status_code=404, detail="Conversation not found")

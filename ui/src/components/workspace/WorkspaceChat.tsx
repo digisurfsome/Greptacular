@@ -26,6 +26,7 @@ import {
   ImagePlus,
   Radio,
   Check,
+  ChevronDown,
   ScrollText,
 } from 'lucide-react'
 import { useWorkspaceChat } from '@/hooks/useWorkspaceChat'
@@ -37,6 +38,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -111,6 +114,12 @@ interface WorkspaceChatProps {
    * Forces re-render and input focus even when the same model is selected twice.
    */
   newChatKey?: number
+  /**
+   * Effort level chosen at new-chat creation time (from sidebar dropdown).
+   * Only used when conversationId is null. For existing conversations,
+   * effort is read from the conversation data.
+   */
+  pendingEffort?: 'low' | 'medium' | 'high'
 }
 
 /** Generate a unique ID for local messages. */
@@ -176,6 +185,7 @@ export function WorkspaceChat({
   pendingModel,
   pendingContextMode: pendingContextModeProp,
   newChatKey,
+  pendingEffort: pendingEffortProp,
 }: WorkspaceChatProps): React.JSX.Element {
   const [inputValue, setInputValue] = useState('')
   const messagesContainerRef = useRef<HTMLDivElement>(null)
@@ -236,21 +246,6 @@ export function WorkspaceChat({
       setSessionContextMode(fixedContextMode)
     }
   }, [fixedContextMode])
-
-  // Effort level — persisted to localStorage, sent on session start.
-  const EFFORT_STORAGE_KEY = 'workspace-effort-level'
-  type EffortLevel = 'low' | 'medium' | 'high'
-  const [effortLevel, setEffortLevel] = useState<EffortLevel>(() => {
-    try {
-      const stored = localStorage.getItem(EFFORT_STORAGE_KEY)
-      if (stored === 'low' || stored === 'medium' || stored === 'high') return stored
-    } catch { /* use default */ }
-    return 'high'  // default matches Anthropic's default
-  })
-  const handleEffortChange = useCallback((level: EffortLevel) => {
-    setEffortLevel(level)
-    localStorage.setItem(EFFORT_STORAGE_KEY, level)
-  }, [])
 
   // Load walkie-talkie settings from the server on mount
   useEffect(() => {
@@ -333,6 +328,16 @@ export function WorkspaceChat({
   // REST query for initial messages when resuming a conversation
   const { data: conversationDetail, isLoading: isLoadingConversation } =
     useWorkspaceConversation(conversationId)
+
+  // Effort level — read from conversation data (set at chat creation time).
+  // For new chats, uses pendingEffortProp from the sidebar.
+  // This is read-only in the chat area; effort is only chosen at chat start.
+  const conversationEffort: 'low' | 'medium' | 'high' =
+    conversationDetail?.effort
+    ?? pendingEffortProp
+    ?? 'high'
+  // Alias for backward-compat in cost_settings payloads
+  const effortLevel = conversationEffort
 
   // Derive the active model from the conversation data (read-only display).
   // For split-view panels, use preferredModel. For normal mode, use the conversation's model field.
@@ -1165,44 +1170,65 @@ export function WorkspaceChat({
           </div>
         )}
 
-        {/* Row 2: Effort level toggle -- prominent with label and description */}
-        <div className="flex items-center gap-3 flex-wrap">
-          <span className="text-sm font-bold text-foreground shrink-0 uppercase tracking-wide">Effort</span>
-          <div className="flex rounded-xl border-2 border-border overflow-hidden shadow-md" role="radiogroup" aria-label="Thinking effort level">
-            {([
-              { key: 'low' as const, label: 'Low', hint: 'Fast & cheap -- minimal thinking' },
-              { key: 'medium' as const, label: 'Med', hint: 'Balanced -- moderate thinking' },
-              { key: 'high' as const, label: 'High', hint: 'Deep thinking (default)' },
-            ]).map((level, idx) => {
-              const isActive = effortLevel === level.key
-              // Effort colors: Low = emerald, Med = blue, High = orange
-              const activeClass = level.key === 'low'
-                ? 'bg-emerald-500 text-white shadow-inner ring-2 ring-emerald-300 font-bold'
-                : level.key === 'medium'
-                  ? 'bg-blue-500 text-white shadow-inner ring-2 ring-blue-300 font-bold'
-                  : 'bg-orange-500 text-white shadow-inner ring-2 ring-orange-300 font-bold'
-              return (
-                <button
-                  key={level.key}
-                  role="radio"
-                  aria-checked={isActive}
-                  title={level.hint}
-                  onClick={() => handleEffortChange(level.key)}
-                  className={`px-4 py-2 text-sm font-semibold whitespace-nowrap transition-all duration-200 cursor-pointer ${
-                    isActive
-                      ? activeClass
-                      : 'bg-card text-muted-foreground hover:bg-muted hover:text-foreground'
-                  } ${idx === 0 ? 'rounded-l-xl' : ''} ${idx === 2 ? 'rounded-r-xl' : 'border-r-2 border-border'}`}
-                >
-                  {level.label}
-                </button>
-              )
-            })}
-          </div>
-          <span className="text-sm text-muted-foreground">
-            {effortLevel === 'low' ? 'Minimal thinking' : effortLevel === 'medium' ? 'Balanced thinking' : 'Deep thinking (default)'}
-          </span>
-        </div>
+        {/* Row 2: Effort level identifier (read-only, set at chat creation) */}
+        {(() => {
+          const is1M = conversationContextMode === '1m'
+          const effortLabels = { low: 'Low', medium: 'Med', high: 'High' } as const
+          const effortUseCases = {
+            low: 'Quick lookups, classification, routing, sub-agents',
+            medium: 'Agentic coding, tool use, code generation',
+            high: 'Complex analysis, nuanced reasoning, quality-critical',
+          } as const
+          const effortColors = {
+            low: 'bg-emerald-500/90 text-white border-emerald-400',
+            medium: 'bg-blue-500/90 text-white border-blue-400',
+            high: 'bg-orange-500/90 text-white border-orange-400',
+          } as const
+          return (
+            <div className={`flex items-center gap-3 flex-wrap transition-opacity duration-200 ${is1M ? '' : 'opacity-30'}`}>
+              <span className="text-sm font-bold text-foreground shrink-0 uppercase tracking-wide">Effort</span>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className={`px-3 py-1.5 text-xs font-bold rounded-lg border-2 shadow-sm cursor-default ${
+                      is1M ? effortColors[conversationEffort] : 'bg-muted text-muted-foreground border-border'
+                    }`}
+                    title={is1M ? effortUseCases[conversationEffort] : 'Effort levels require 1M context models'}
+                  >
+                    {effortLabels[conversationEffort]}
+                    {is1M && <ChevronDown size={10} className="inline ml-1 opacity-70" />}
+                  </button>
+                </DropdownMenuTrigger>
+                {is1M && (
+                  <DropdownMenuContent align="start" className="w-64">
+                    <DropdownMenuLabel className="text-xs">Anthropic Use Cases</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {(['low', 'medium', 'high'] as const).map((level) => (
+                      <DropdownMenuItem
+                        key={level}
+                        className={`gap-2 text-xs cursor-default ${conversationEffort === level ? 'bg-accent' : ''}`}
+                        onSelect={(e) => e.preventDefault()}
+                      >
+                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                          level === 'low' ? 'bg-emerald-500' : level === 'medium' ? 'bg-blue-500' : 'bg-orange-500'
+                        }`} />
+                        <div className="flex flex-col gap-0.5">
+                          <span className="font-semibold">{effortLabels[level]}</span>
+                          <span className="text-[10px] text-muted-foreground">{effortUseCases[level]}</span>
+                        </div>
+                        {conversationEffort === level && <Check size={12} className="ml-auto text-primary" />}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                )}
+              </DropdownMenu>
+              {!is1M && (
+                <span className="text-[10px] text-muted-foreground italic">1M context models only</span>
+              )}
+            </div>
+          )
+        })()}
 
         {/* Row 3: Context budget bar */}
         <div className="[&>div]:border-b-0">

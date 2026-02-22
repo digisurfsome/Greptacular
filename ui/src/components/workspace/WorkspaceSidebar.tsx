@@ -46,7 +46,7 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
 import { parseUtcTimestamp } from '@/lib/utils'
-import type { WorkspaceConversation, WorkspaceCategory } from '@/lib/types'
+import type { WorkspaceConversation, WorkspaceCategory, EffortLevel } from '@/lib/types'
 
 /** Model preset option for the sidebar pill selector. */
 interface ModelPreset {
@@ -61,12 +61,25 @@ const SIDEBAR_MODEL_PRESETS: ModelPreset[] = [
   { model: 'sonnet', context: '200k', label: 'Sonnet 4.6 · 200K' },
 ]
 
+/** Effort level presets with Anthropic's recommended use cases. */
+interface EffortPreset {
+  key: EffortLevel
+  label: string
+  useCases: string
+}
+
+const EFFORT_PRESETS: EffortPreset[] = [
+  { key: 'low', label: 'Low', useCases: 'Quick lookups, classification, routing, sub-agents' },
+  { key: 'medium', label: 'Medium', useCases: 'Agentic coding, tool use, code generation' },
+  { key: 'high', label: 'High', useCases: 'Complex analysis, nuanced reasoning, quality-critical' },
+]
+
 interface WorkspaceSidebarProps {
   activeConversationId: number | null
   collapsed: boolean
   onToggleCollapse: () => void
   /** Called when user starts a new chat with model selection from the dropdown. */
-  onNewChat: (model: 'opus' | 'sonnet', contextMode: '1m' | '200k') => void
+  onNewChat: (model: 'opus' | 'sonnet', contextMode: '1m' | '200k', effort: EffortLevel) => void
   onSelectConversation: (id: number) => void
   /** Currently selected working directory (repo path) from the page. */
   selectedWorkingDirectory?: string | null
@@ -76,6 +89,10 @@ interface WorkspaceSidebarProps {
   modelPresetIndex?: number
   /** Callback when user changes the model preset from the naming form. */
   onModelPresetChange?: (index: number) => void
+  /** Current effort level (synced with WorkspaceChat). */
+  effortLevel?: EffortLevel
+  /** Callback when user changes the effort level from the naming form. */
+  onEffortChange?: (effort: EffortLevel) => void
 }
 
 // ---------------------------------------------------------------------------
@@ -114,6 +131,8 @@ export function WorkspaceSidebar({
   onWorkingDirectoryChange,
   modelPresetIndex = 0,
   onModelPresetChange,
+  effortLevel = 'high',
+  onEffortChange,
 }: WorkspaceSidebarProps): React.JSX.Element {
   const [search, setSearch] = useState('')
   const [hoveredId, setHoveredId] = useState<number | null>(null)
@@ -156,11 +175,14 @@ export function WorkspaceSidebar({
     if (!namingCategory) return
     const title = newChatName.trim() || undefined
     const preset = SIDEBAR_MODEL_PRESETS[modelPresetIndex]
+    // Only pass effort for 1M context models; 200K models don't support it
+    const effort = preset.context === '1m' ? effortLevel : 'high'
     createConversationMut.mutate({
       title,
       category: namingCategory,
       model: preset.model,
       context_mode: preset.context,
+      effort,
     }, {
       onSuccess: (newConv) => {
         onSelectConversation(newConv.id)
@@ -168,7 +190,7 @@ export function WorkspaceSidebar({
         setNewChatName('')
       },
     })
-  }, [namingCategory, newChatName, createConversationMut, onSelectConversation, modelPresetIndex])
+  }, [namingCategory, newChatName, createConversationMut, onSelectConversation, modelPresetIndex, effortLevel])
 
   /** Cancel the naming form. */
   const handleCancelNaming = useCallback(() => {
@@ -290,7 +312,7 @@ export function WorkspaceSidebar({
             {SIDEBAR_MODEL_PRESETS.map((preset) => (
               <DropdownMenuItem
                 key={preset.label}
-                onClick={() => onNewChat(preset.model, preset.context)}
+                onClick={() => onNewChat(preset.model, preset.context, preset.context === '1m' ? effortLevel : 'high')}
                 className="gap-2 text-xs"
               >
                 <span
@@ -410,6 +432,49 @@ export function WorkspaceSidebar({
               })}
             </div>
           </div>
+          {/* Effort level selector — only active for 1M context models */}
+          {(() => {
+            const selectedPreset = SIDEBAR_MODEL_PRESETS[modelPresetIndex]
+            const is1M = selectedPreset?.context === '1m'
+            return (
+              <div className={`mb-1.5 transition-opacity duration-150 ${is1M ? '' : 'opacity-35 pointer-events-none'}`}>
+                <span className="text-[10px] text-muted-foreground mb-0.5 block">
+                  Thinking Effort {!is1M && <span className="italic">(1M models only)</span>}
+                </span>
+                <div className="flex rounded-full border border-border overflow-hidden shadow-sm" role="radiogroup" aria-label="Thinking effort level">
+                  {EFFORT_PRESETS.map((preset, idx) => {
+                    const isActive = effortLevel === preset.key
+                    const activeClass = preset.key === 'low'
+                      ? 'bg-emerald-500 text-white shadow-inner'
+                      : preset.key === 'medium'
+                        ? 'bg-blue-500 text-white shadow-inner'
+                        : 'bg-orange-500 text-white shadow-inner'
+                    return (
+                      <button
+                        key={preset.key}
+                        type="button"
+                        role="radio"
+                        aria-checked={isActive}
+                        disabled={!is1M}
+                        onClick={() => onEffortChange?.(preset.key)}
+                        title={preset.useCases}
+                        className={`flex-1 px-1.5 py-1 text-[10px] font-semibold whitespace-nowrap transition-all duration-150 ${
+                          isActive ? activeClass : 'bg-card text-muted-foreground hover:bg-muted hover:text-foreground'
+                        } ${idx === 0 ? 'rounded-l-full' : ''} ${idx === EFFORT_PRESETS.length - 1 ? 'rounded-r-full' : 'border-r border-border'}`}
+                      >
+                        {preset.label}
+                      </button>
+                    )
+                  })}
+                </div>
+                {is1M && (
+                  <span className="text-[9px] text-muted-foreground mt-0.5 block">
+                    {EFFORT_PRESETS.find(p => p.key === effortLevel)?.useCases}
+                  </span>
+                )}
+              </div>
+            )
+          })()}
           <Button
             size="sm"
             className="w-full h-7 text-xs"

@@ -677,7 +677,7 @@ export async function getWorkspaceConversation(
 }
 
 export async function createWorkspaceConversation(
-  options?: { title?: string; category?: string; working_directory?: string; model?: string; context_mode?: string }
+  options?: { title?: string; category?: string; working_directory?: string; model?: string; context_mode?: string; effort?: string }
 ): Promise<WorkspaceConversation> {
   return fetchJSON('/workspace/conversations', {
     method: 'POST',
@@ -687,7 +687,7 @@ export async function createWorkspaceConversation(
 
 export async function updateWorkspaceConversation(
   conversationId: number,
-  update: { title?: string; category?: string; pinned?: boolean; tags?: string; context_mode?: string; model?: string }
+  update: { title?: string; category?: string; pinned?: boolean; tags?: string; context_mode?: string; model?: string; effort?: string }
 ): Promise<WorkspaceConversation> {
   return fetchJSON(`/workspace/conversations/${conversationId}`, {
     method: 'PATCH',

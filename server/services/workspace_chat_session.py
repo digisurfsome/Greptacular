@@ -340,13 +340,22 @@ class WorkspaceChatSession:
                 "WebSearch",
             ]
 
-            security_settings = {
+            # Resolve effort level from cost settings for the settings file.
+            # The CLAUDE_CODE_EFFORT_LEVEL env var has a known bug where it's
+            # ignored by the CLI (GitHub #23604, #12376). Using the settings
+            # file's effortLevel field is the reliable alternative.
+            effort_for_settings = self.cost_settings.get("effort", "high")
+
+            security_settings: dict = {
                 "sandbox": {"enabled": False},
                 "permissions": {
                     "defaultMode": "acceptEdits",
                     "allow": permissions_list,
                 },
             }
+            # Inject effort level into the settings file so the CLI picks it up
+            if effort_for_settings in ("low", "medium", "high"):
+                security_settings["effortLevel"] = effort_for_settings
 
             settings_dir = Path.home() / ".autoforge"
             settings_dir.mkdir(parents=True, exist_ok=True)
@@ -532,8 +541,8 @@ class WorkspaceChatSession:
             if effort in ("low", "medium", "high"):
                 sdk_env["CLAUDE_CODE_EFFORT_LEVEL"] = effort
             logger.info(
-                "EFFORT WIRING: cost_settings.effort=%s, CLAUDE_CODE_EFFORT_LEVEL=%s, conversation_id=%s, model=%s",
-                cs.get("effort"), sdk_env.get("CLAUDE_CODE_EFFORT_LEVEL"), self.conversation_id, model,
+                "EFFORT WIRING: cost_settings.effort=%s, env_var=%s, settings_file_effortLevel=%s, conversation_id=%s, model=%s",
+                cs.get("effort"), sdk_env.get("CLAUDE_CODE_EFFORT_LEVEL"), effort_for_settings, self.conversation_id, model,
             )
 
             self.client = ClaudeSDKClient(
@@ -546,7 +555,7 @@ class WorkspaceChatSession:
                     allowed_tools=WORKSPACE_BUILTIN_TOOLS,
                     permission_mode="acceptEdits",
                     # Cost controls: max_turns from dashboard, effort via
-                    # CLAUDE_CODE_EFFORT_LEVEL env var (injected into sdk_env above).
+                    # effortLevel in settings file + CLAUDE_CODE_EFFORT_LEVEL env var.
                     max_turns=cs["max_turns"],
                     cwd=str(workspace_scratch),  # Scratch dir for CLAUDE.md
                     settings=str(settings_file.resolve()),

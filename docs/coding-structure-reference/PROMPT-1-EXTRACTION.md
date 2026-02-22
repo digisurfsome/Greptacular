@@ -30,10 +30,28 @@ Rules, patterns, workflows, and principles that apply to **any** AI coding agent
 - Testing philosophy and verification checklists
 - Git and version control practices
 - Security principles
-- UI/UX development standards
 - TypeScript/JavaScript best practices
-- CSS and styling approaches
 - State management patterns
+
+**UI, Design Systems & Styling — extract with extra depth here:**
+- How to maintain visual consistency across an application
+- Rules about using design tokens, CSS variables, or theme values vs hardcoding
+- Component styling approaches (utility classes, CSS modules, styled-components, etc.)
+- Instructions for how the AI should handle screenshots or visual references
+- How to build a style guide or design system from a reference image
+- Rules about color systems, spacing scales, typography hierarchies
+- Shadow, border-radius, and visual depth patterns
+- Button styling, form input styling, card patterns — any component-level design rules
+- Responsive design and breakpoint patterns
+- Animation and transition standards
+- Accessibility requirements (contrast, focus states, screen reader support)
+- How to make components look "native" to a design system (consistency enforcement)
+- Dark mode / theme switching patterns
+- Rules about when to create reusable components vs one-off styles
+- Layout systems (grid, flexbox patterns, spacing rhythm)
+- Any workflow for going from a design reference to actual styled code
+- How the AI should approach visual polish and attention to detail
+- Image handling, icon systems, asset management patterns
 - Performance optimization rules
 - Debugging and troubleshooting workflows
 - Prompt engineering patterns embedded in the instructions (meta-level: what makes these instructions effective)
@@ -115,7 +133,14 @@ Structure your output as a clean markdown document with these sections:
 ### 1.3 Verification & Testing
 ### 1.4 Error Handling & Defensive Coding
 ### 1.5 File Organization & Architecture
-### 1.6 UI/UX Standards
+### 1.6 UI/UX & Design System Standards
+#### 1.6.1 Visual Consistency & Design Tokens
+#### 1.6.2 Component Styling Patterns
+#### 1.6.3 Layout & Responsive Design
+#### 1.6.4 Accessibility & Interaction States
+#### 1.6.5 Working From Visual References (Screenshots/Images)
+#### 1.6.6 Animation, Transitions & Polish
+#### 1.6.7 Design System Workflow (How to Build/Maintain Consistency)
 ### 1.7 TypeScript & Language Standards
 ### 1.8 Context & Session Management
 ### 1.9 Git & Version Control
@@ -161,6 +186,10 @@ Structure your output as a clean markdown document with these sections:
 7. **Don't discard anything prematurely.** When in doubt between Category 3 (genericizable) and Category 4 (platform-locked), lean toward Category 3. We can always discard later, but we can't recover what we miss now.
 
 8. **Maintain context window awareness.** Your own output should be thorough but well-structured. Use clear headers and numbered items so the next agent can parse your output efficiently.
+
+9. **Go extra deep on UI/design system content.** The build prompt likely contains significant wisdom about how to make AI-built interfaces look consistent and professional. This includes instructions about working from screenshots or visual references, how to enforce a visual style across components, how to structure CSS/styling for maintainability, and how to approach design tokens and theme values. The instructor specifically created a "style prompt" alongside this build prompt, so design system thinking is core to his methodology. Extract EVERYTHING related to visual consistency, component styling, design workflows, and UI architecture. If a rule seems like it's about coding but has UI implications (e.g., "always create a shared constants file for colors"), capture it in the UI section too.
+
+10. **Distinguish between UI rules and UI opinions.** "Never use inline styles" is a rule. "I prefer rounded buttons" is an opinion. Extract the rules. For opinions, only include them if they serve a clear consistency or maintainability purpose (e.g., "always use consistent border-radius" is a rule even if it mentions a specific value).
 
 ---
 

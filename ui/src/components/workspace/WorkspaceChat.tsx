@@ -1090,12 +1090,12 @@ export function WorkspaceChat({
       )}
 
       {/* Consolidated model control bar: Model presets + Effort toggle + Budget bar */}
-      <div className="border-b border-border bg-muted/30 mx-2 my-1 rounded-lg p-2 space-y-2">
+      <div className="border-b border-border bg-muted/30 mx-2 my-1 rounded-lg p-3 space-y-3">
 
         {/* Row 1: Model selector + model ID badge */}
         {!fixedContextMode && (
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-muted-foreground shrink-0">Model</span>
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-sm font-bold text-foreground shrink-0 uppercase tracking-wide">Model</span>
             {(() => {
               const noActiveChat = conversationId === null && activeConversationId === null
               const hasPendingSelection = noActiveChat && pendingModel != null
@@ -1107,7 +1107,7 @@ export function WorkspaceChat({
 
               if (noActiveChat && !hasPendingSelection) {
                 return (
-                  <span className="text-sm text-muted-foreground italic px-3 py-1.5">
+                  <span className="text-sm text-muted-foreground italic px-4 py-2 bg-muted/50 rounded-lg border border-dashed border-border">
                     Select model with + New Chat
                   </span>
                 )
@@ -1126,16 +1126,16 @@ export function WorkspaceChat({
               }
 
               return (
-                <div className="flex rounded-lg border border-border overflow-hidden shadow-sm" role="radiogroup" aria-label="Model preset">
+                <div className="flex rounded-xl border-2 border-border overflow-hidden shadow-md" role="radiogroup" aria-label="Model preset">
                   {MODEL_PRESETS.map((preset, idx) => {
                     const isActive = showPresetIndex === idx
                     // Color coding: Opus 1M = blue/primary, Opus 200K = zinc/gray, Sonnet 200K = violet
                     const activeClass = preset.model === 'sonnet'
-                      ? 'bg-violet-500 text-white shadow-inner ring-1 ring-violet-400'
+                      ? 'bg-violet-500 text-white shadow-inner ring-2 ring-violet-300 font-bold'
                       : preset.context === '1m'
-                        ? 'bg-blue-600 text-white shadow-inner ring-1 ring-blue-400'
-                        : 'bg-zinc-600 text-white shadow-inner ring-1 ring-zinc-400'
-                    const inactiveClass = 'bg-card text-muted-foreground/60 hover:bg-muted hover:text-foreground'
+                        ? 'bg-blue-600 text-white shadow-inner ring-2 ring-blue-300 font-bold'
+                        : 'bg-zinc-600 text-white shadow-inner ring-2 ring-zinc-300 font-bold'
+                    const inactiveClass = 'bg-card text-muted-foreground hover:bg-muted hover:text-foreground'
 
                     return (
                       <button
@@ -1144,10 +1144,10 @@ export function WorkspaceChat({
                         aria-checked={isActive}
                         onClick={() => handlePresetChange(preset)}
                         disabled={noActiveChat}
-                        className={`px-3.5 py-1.5 text-sm font-semibold whitespace-nowrap transition-all duration-150 cursor-pointer disabled:cursor-default ${
+                        className={`px-5 py-2.5 text-sm font-semibold whitespace-nowrap transition-all duration-200 cursor-pointer disabled:cursor-default ${
                           isActive ? activeClass : inactiveClass
-                        } ${idx === 0 ? 'rounded-l-lg' : ''} ${idx === MODEL_PRESETS.length - 1 ? 'rounded-r-lg' : 'border-r border-border'}`}
-                        title={isActive ? `${preset.label} (active) — click to switch` : `Switch to ${preset.label}`}
+                        } ${idx === 0 ? 'rounded-l-xl' : ''} ${idx === MODEL_PRESETS.length - 1 ? 'rounded-r-xl' : 'border-r-2 border-border'}`}
+                        title={isActive ? `${preset.label} (active) -- click to switch` : `Switch to ${preset.label}`}
                       >
                         {preset.label}
                       </button>
@@ -1158,29 +1158,29 @@ export function WorkspaceChat({
             })()}
             {/* Resolved model ID badge */}
             {modelId && (
-              <span className="shrink-0 px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground/60 bg-muted/50 rounded" title={`Backend model: ${modelId}`}>
+              <span className="shrink-0 px-2 py-1 text-xs font-mono text-muted-foreground bg-muted/60 rounded-md border border-border" title={`Backend model: ${modelId}`}>
                 {modelId}
               </span>
             )}
           </div>
         )}
 
-        {/* Row 2: Effort level toggle — clearly visible */}
-        <div className="flex items-center gap-2.5">
-          <span className="text-xs font-semibold text-muted-foreground shrink-0">Effort</span>
-          <div className="flex rounded-lg border border-border overflow-hidden shadow-sm" role="radiogroup" aria-label="Thinking effort level">
+        {/* Row 2: Effort level toggle -- prominent with label and description */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="text-sm font-bold text-foreground shrink-0 uppercase tracking-wide">Effort</span>
+          <div className="flex rounded-xl border-2 border-border overflow-hidden shadow-md" role="radiogroup" aria-label="Thinking effort level">
             {([
-              { key: 'low' as const, label: 'Low', hint: 'Fast & cheap — minimal thinking' },
-              { key: 'medium' as const, label: 'Med', hint: 'Balanced — moderate thinking' },
+              { key: 'low' as const, label: 'Low', hint: 'Fast & cheap -- minimal thinking' },
+              { key: 'medium' as const, label: 'Med', hint: 'Balanced -- moderate thinking' },
               { key: 'high' as const, label: 'High', hint: 'Deep thinking (default)' },
             ]).map((level, idx) => {
               const isActive = effortLevel === level.key
               // Effort colors: Low = emerald, Med = blue, High = orange
               const activeClass = level.key === 'low'
-                ? 'bg-emerald-500 text-white shadow-inner ring-1 ring-emerald-400'
+                ? 'bg-emerald-500 text-white shadow-inner ring-2 ring-emerald-300 font-bold'
                 : level.key === 'medium'
-                  ? 'bg-blue-500 text-white shadow-inner ring-1 ring-blue-400'
-                  : 'bg-orange-500 text-white shadow-inner ring-1 ring-orange-400'
+                  ? 'bg-blue-500 text-white shadow-inner ring-2 ring-blue-300 font-bold'
+                  : 'bg-orange-500 text-white shadow-inner ring-2 ring-orange-300 font-bold'
               return (
                 <button
                   key={level.key}
@@ -1188,18 +1188,18 @@ export function WorkspaceChat({
                   aria-checked={isActive}
                   title={level.hint}
                   onClick={() => handleEffortChange(level.key)}
-                  className={`px-3 py-1.5 text-sm font-semibold whitespace-nowrap transition-all duration-150 cursor-pointer ${
+                  className={`px-4 py-2 text-sm font-semibold whitespace-nowrap transition-all duration-200 cursor-pointer ${
                     isActive
                       ? activeClass
-                      : 'bg-card text-muted-foreground/60 hover:bg-muted hover:text-foreground'
-                  } ${idx === 0 ? 'rounded-l-lg' : ''} ${idx === 2 ? 'rounded-r-lg' : 'border-r border-border'}`}
+                      : 'bg-card text-muted-foreground hover:bg-muted hover:text-foreground'
+                  } ${idx === 0 ? 'rounded-l-xl' : ''} ${idx === 2 ? 'rounded-r-xl' : 'border-r-2 border-border'}`}
                 >
                   {level.label}
                 </button>
               )
             })}
           </div>
-          <span className="text-xs text-muted-foreground/70">
+          <span className="text-sm text-muted-foreground">
             {effortLevel === 'low' ? 'Minimal thinking' : effortLevel === 'medium' ? 'Balanced thinking' : 'Deep thinking (default)'}
           </span>
         </div>

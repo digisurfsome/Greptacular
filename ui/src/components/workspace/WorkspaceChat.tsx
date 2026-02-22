@@ -49,7 +49,6 @@ import { UsageDashboard } from './UsageDashboard'
 import { AutoSummaryPin } from './AutoSummaryPin'
 import { ChatForkModal } from './ChatForkModal'
 import { InjectFromChatModal } from './InjectFromChatModal'
-import CostControls, { loadCostSettings, type CostSettings } from './CostControls'
 import { TokenLogPanel } from './TokenLogPanel'
 import { AgentNotifications, stripStructuredBlocks, parseStructuredBlocks } from './AgentNotifications'
 import { parseUtcTimestamp } from '@/lib/utils'
@@ -238,8 +237,20 @@ export function WorkspaceChat({
     }
   }, [fixedContextMode])
 
-  // Cost control settings -- persisted to localStorage, sent on session start.
-  const [costSettings, setCostSettings] = useState<CostSettings>(loadCostSettings)
+  // Effort level — persisted to localStorage, sent on session start.
+  const EFFORT_STORAGE_KEY = 'workspace-effort-level'
+  type EffortLevel = 'low' | 'medium' | 'high'
+  const [effortLevel, setEffortLevel] = useState<EffortLevel>(() => {
+    try {
+      const stored = localStorage.getItem(EFFORT_STORAGE_KEY)
+      if (stored === 'low' || stored === 'medium' || stored === 'high') return stored
+    } catch { /* use default */ }
+    return 'high'  // default matches Anthropic's default
+  })
+  const handleEffortChange = useCallback((level: EffortLevel) => {
+    setEffortLevel(level)
+    localStorage.setItem(EFFORT_STORAGE_KEY, level)
+  }, [])
 
   // Load walkie-talkie settings from the server on mount
   useEffect(() => {
@@ -420,9 +431,9 @@ export function WorkspaceChat({
       console.info('[WorkspaceChat] session-switch effect: starting session', {
         conversationId, modeForSession, modelForSession, previousId,
       })
-      start(conversationId, workingDirectory ?? undefined, modeForSession, costSettings as unknown as Record<string, unknown>, modelForSession)
+      start(conversationId, workingDirectory ?? undefined, modeForSession, { effort: effortLevel }, modelForSession)
     }
-  }, [conversationId, isLoadingConversation, activeConversationId, start, disconnect, clearMessages, workingDirectory, costSettings, conversationModel, conversationContextMode])
+  }, [conversationId, isLoadingConversation, activeConversationId, start, disconnect, clearMessages, workingDirectory, conversationModel, conversationContextMode, effortLevel])
 
   // Reconnect when badge cycling or split-view toggle changes the conversation's
   // model or context mode while a session is already active. We intentionally do
@@ -445,8 +456,8 @@ export function WorkspaceChat({
     setSessionContextMode(conversationContextMode)
     disconnect()
     clearMessages()
-    start(conversationId, workingDirectory ?? undefined, conversationContextMode, costSettings as unknown as Record<string, unknown>, conversationModel)
-  }, [conversationModel, conversationContextMode, conversationId, isLoadingConversation, disconnect, clearMessages, start, workingDirectory, costSettings])
+    start(conversationId, workingDirectory ?? undefined, conversationContextMode, { effort: effortLevel }, conversationModel)
+  }, [conversationModel, conversationContextMode, conversationId, isLoadingConversation, disconnect, clearMessages, start, workingDirectory, effortLevel])
 
   // Smart auto-scroll: only scroll if user is near the bottom
   const handleScroll = useCallback(() => {
@@ -551,7 +562,7 @@ export function WorkspaceChat({
     if (!injectMessage || isLoading) return
     // If no conversation yet, start a new one
     if (conversationId === null && activeConversationId === null) {
-      start(undefined, workingDirectory ?? undefined, conversationContextMode, costSettings as unknown as Record<string, unknown>, conversationModel)
+      start(undefined, workingDirectory ?? undefined, conversationContextMode, { effort: effortLevel }, conversationModel)
     }
     sendMessage(injectMessage)
     onInjectConsumed?.()
@@ -758,7 +769,7 @@ export function WorkspaceChat({
       console.info('[WorkspaceChat] handleSend: starting new session', {
         conversationContextMode, conversationModel, conversationId, activeConversationId,
       })
-      start(undefined, workingDirectory ?? undefined, conversationContextMode, costSettings as unknown as Record<string, unknown>, conversationModel)
+      start(undefined, workingDirectory ?? undefined, conversationContextMode, { effort: effortLevel }, conversationModel)
     } else {
       console.info('[WorkspaceChat] handleSend: existing session', {
         conversationContextMode, conversationModel, conversationId, activeConversationId,
@@ -774,7 +785,7 @@ export function WorkspaceChat({
     if (effectiveId) {
       localStorage.removeItem(`${DRAFT_KEY_PREFIX}${effectiveId}`)
     }
-  }, [inputValue, isLoading, conversationId, activeConversationId, start, sendMessage, workingDirectory, pendingImages, pendingFiles, conversationContextMode, conversationModel, costSettings])
+  }, [inputValue, isLoading, conversationId, activeConversationId, start, sendMessage, workingDirectory, pendingImages, pendingFiles, conversationContextMode, conversationModel, effortLevel])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -1027,7 +1038,7 @@ export function WorkspaceChat({
               disconnect()
               clearMessages()
               if (effectiveConversationId !== null) {
-                start(effectiveConversationId, workingDirectory ?? undefined, conversationContextMode, costSettings as unknown as Record<string, unknown>, conversationModel)
+                start(effectiveConversationId, workingDirectory ?? undefined, conversationContextMode, { effort: effortLevel }, conversationModel)
               }
             }}
             className="underline font-medium hover:text-destructive/80 flex-shrink-0"
@@ -1160,8 +1171,39 @@ export function WorkspaceChat({
         )}
       </div>
 
-      {/* Cost controls — user-adjustable "stick shift" for API spend */}
-      <CostControls settings={costSettings} onChange={setCostSettings} model={conversationModel} />
+      {/* Effort level selector — controls Anthropic's CLAUDE_CODE_EFFORT_LEVEL */}
+      <div className="flex items-center gap-2 px-3 py-1 border-b border-border bg-card/50">
+        <span className="text-[10px] font-medium text-muted-foreground">Effort</span>
+        <div className="flex rounded-full border border-border overflow-hidden" role="radiogroup" aria-label="Thinking effort level">
+          {([
+            { key: 'low' as const, label: 'Low', hint: 'Fast & cheap' },
+            { key: 'medium' as const, label: 'Med', hint: 'Balanced' },
+            { key: 'high' as const, label: 'High', hint: 'Deep thinking' },
+          ]).map((level, idx) => (
+            <button
+              key={level.key}
+              role="radio"
+              aria-checked={effortLevel === level.key}
+              title={level.hint}
+              onClick={() => handleEffortChange(level.key)}
+              className={`px-2.5 py-1 text-[10px] font-semibold whitespace-nowrap transition-all duration-150 ${
+                effortLevel === level.key
+                  ? level.key === 'low'
+                    ? 'bg-emerald-500 text-white shadow-inner'
+                    : level.key === 'medium'
+                      ? 'bg-blue-500 text-white shadow-inner'
+                      : 'bg-orange-500 text-white shadow-inner'
+                  : 'bg-card text-muted-foreground/50 hover:bg-muted hover:text-muted-foreground'
+              } ${idx === 0 ? 'rounded-l-full' : ''} ${idx === 2 ? 'rounded-r-full' : 'border-r border-border'}`}
+            >
+              {level.label}
+            </button>
+          ))}
+        </div>
+        <span className="text-[9px] text-muted-foreground/50 ml-1">
+          {effortLevel === 'low' ? 'Minimal thinking' : effortLevel === 'medium' ? 'Balanced thinking' : 'Deep thinking (default)'}
+        </span>
+      </div>
 
       {/* Usage dashboard */}
       <UsageDashboard
@@ -1239,7 +1281,7 @@ export function WorkspaceChat({
                     disconnect()
                     clearMessages()
                     if (effectiveConversationId !== null) {
-                      start(effectiveConversationId, workingDirectory ?? undefined, conversationContextMode, costSettings as unknown as Record<string, unknown>, conversationModel)
+                      start(effectiveConversationId, workingDirectory ?? undefined, conversationContextMode, { effort: effortLevel }, conversationModel)
                     }
                   }}
                 >

@@ -83,7 +83,7 @@ CONTEXT_WINDOW_200K = 200_000
 # Cost control defaults.  Overridable per-session via the WebSocket ``start`` message.
 # These values represent the "economy" baseline; higher values increase quality and cost.
 DEFAULT_COST_SETTINGS = {
-    "effort": "low",              # Thinking effort: "low", "medium", "high"
+    "effort": "high",             # Thinking effort: "low", "medium", "high"
     "max_tokens": 16384,          # Output token cap per response (4096-65536)
     "max_turns": 50,              # Max agent turns per message (10-100)
     "history_budget": 100_000,    # Token budget for history on resume (25000-400000)
@@ -524,6 +524,13 @@ class WorkspaceChatSession:
                 f"max_turns={cs['max_turns']}, history_budget={cs['history_budget']}, "
                 f"library_cap={cs['library_cap']}"
             )
+
+            # Wire up Anthropic's real effort control via Claude Code CLI env var.
+            # The Agent SDK passes env vars through to the underlying CLI process.
+            effort = cs.get("effort", "high")
+            if effort in ("low", "medium", "high"):
+                sdk_env["CLAUDE_CODE_EFFORT_LEVEL"] = effort
+
             self.client = ClaudeSDKClient(
                 options=ClaudeAgentOptions(
                     model=model,
@@ -533,9 +540,8 @@ class WorkspaceChatSession:
                     setting_sources=["project"],
                     allowed_tools=WORKSPACE_BUILTIN_TOOLS,
                     permission_mode="acceptEdits",
-                    # Cost controls from user dashboard (see DEFAULT_COST_SETTINGS).
-                    # Note: effort is not a ClaudeAgentOptions param — it only applies
-                    # to direct API calls, not the Agent SDK.
+                    # Cost controls: max_turns from dashboard, effort via
+                    # CLAUDE_CODE_EFFORT_LEVEL env var (injected into sdk_env above).
                     max_turns=cs["max_turns"],
                     cwd=str(workspace_scratch),  # Scratch dir for CLAUDE.md
                     settings=str(settings_file.resolve()),

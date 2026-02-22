@@ -236,8 +236,8 @@ export function WorkspaceChat({
   type ModelPreset = { model: 'opus' | 'sonnet'; context: '1m' | '200k'; label: string }
   const MODEL_PRESETS: ModelPreset[] = [
     { model: 'opus', context: '1m', label: 'Opus 4.6 · 1M' },
+    { model: 'sonnet', context: '1m', label: 'Sonnet 4.6 · 1M' },
     { model: 'opus', context: '200k', label: 'Opus 4.6 · 200K' },
-    { model: 'sonnet', context: '200k', label: 'Sonnet 4.6 · 200K' },
   ]
 
   // Keep sessionContextMode in sync when fixedContextMode changes (split-view)
@@ -1097,10 +1097,10 @@ export function WorkspaceChat({
       {/* Consolidated model control bar: Model presets + Effort toggle + Budget bar */}
       <div className="border-b border-border bg-muted/30 mx-2 my-1 rounded-lg p-3 space-y-3">
 
-        {/* Row 1: Model selector + model ID badge */}
+        {/* Row 1: Model notification bar (read-only identifier) */}
         {!fixedContextMode && (
           <div className="flex items-center gap-3 flex-wrap">
-            <span className="text-sm font-bold text-foreground shrink-0 uppercase tracking-wide">Model</span>
+            <span className="text-[10px] font-bold text-muted-foreground shrink-0 uppercase tracking-widest">Model</span>
             {(() => {
               const noActiveChat = conversationId === null && activeConversationId === null
               const hasPendingSelection = noActiveChat && pendingModel != null
@@ -1112,50 +1112,33 @@ export function WorkspaceChat({
 
               if (noActiveChat && !hasPendingSelection) {
                 return (
-                  <span className="text-sm text-muted-foreground italic px-4 py-2 bg-muted/50 rounded-lg border border-dashed border-border">
+                  <span className="text-xs text-muted-foreground italic px-3 py-1.5 bg-muted/40 rounded-md border border-dashed border-border">
                     Select model with + New Chat
                   </span>
                 )
               }
 
-              // Handler to switch model preset mid-chat
-              const handlePresetChange = (preset: { model: 'opus' | 'sonnet'; context: '1m' | '200k'; label: string }) => {
-                if (effectiveConversationId) {
-                  updateWorkspaceConversation(effectiveConversationId, {
-                    model: preset.model,
-                    context_mode: preset.context,
-                  })
-                    .then(() => queryClient.invalidateQueries({ queryKey: ['workspace'] }))
-                    .catch((err) => console.error('Failed to update model:', err))
-                }
-              }
-
               return (
-                <div className="flex rounded-xl border-2 border-border overflow-hidden shadow-md" role="radiogroup" aria-label="Model preset">
+                <div className="flex rounded-lg border border-border overflow-hidden" role="group" aria-label="Active model">
                   {MODEL_PRESETS.map((preset, idx) => {
                     const isActive = showPresetIndex === idx
-                    // Color coding: Opus 1M = blue/primary, Opus 200K = zinc/gray, Sonnet 200K = violet
+                    // Color coding: Opus 1M = blue, Sonnet 1M = violet, Opus 200K = zinc
                     const activeClass = preset.model === 'sonnet'
-                      ? 'bg-violet-500 text-white shadow-inner ring-2 ring-violet-300 font-bold'
+                      ? 'bg-violet-500 text-white font-bold'
                       : preset.context === '1m'
-                        ? 'bg-blue-600 text-white shadow-inner ring-2 ring-blue-300 font-bold'
-                        : 'bg-zinc-600 text-white shadow-inner ring-2 ring-zinc-300 font-bold'
-                    const inactiveClass = 'bg-card text-muted-foreground hover:bg-muted hover:text-foreground'
+                        ? 'bg-blue-600 text-white font-bold'
+                        : 'bg-zinc-600 text-white font-bold'
 
                     return (
-                      <button
+                      <span
                         key={preset.label}
-                        role="radio"
-                        aria-checked={isActive}
-                        onClick={() => handlePresetChange(preset)}
-                        disabled={noActiveChat}
-                        className={`px-5 py-2.5 text-sm font-semibold whitespace-nowrap transition-all duration-200 cursor-pointer disabled:cursor-default ${
-                          isActive ? activeClass : inactiveClass
-                        } ${idx === 0 ? 'rounded-l-xl' : ''} ${idx === MODEL_PRESETS.length - 1 ? 'rounded-r-xl' : 'border-r-2 border-border'}`}
-                        title={isActive ? `${preset.label} (active) -- click to switch` : `Switch to ${preset.label}`}
+                        className={`px-3 py-1 text-xs font-medium whitespace-nowrap ${
+                          isActive ? activeClass : 'bg-card text-muted-foreground/50'
+                        } ${idx < MODEL_PRESETS.length - 1 ? 'border-r border-border' : ''}`}
+                        title={isActive ? `${preset.label} (active)` : preset.label}
                       >
                         {preset.label}
-                      </button>
+                      </span>
                     )
                   })}
                 </div>
@@ -1163,7 +1146,7 @@ export function WorkspaceChat({
             })()}
             {/* Resolved model ID badge */}
             {modelId && (
-              <span className="shrink-0 px-2 py-1 text-xs font-mono text-muted-foreground bg-muted/60 rounded-md border border-border" title={`Backend model: ${modelId}`}>
+              <span className="shrink-0 px-2 py-0.5 text-[10px] font-mono text-muted-foreground bg-muted/60 rounded border border-border" title={`Backend model: ${modelId}`}>
                 {modelId}
               </span>
             )}

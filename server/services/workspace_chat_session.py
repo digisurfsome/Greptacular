@@ -182,8 +182,8 @@ class WorkspaceChatSession:
         self.conversation_id = conversation_id
         self.working_directory = working_directory or str(Path.home())
         self.context_mode = context_mode
-        # Sonnet does not support the 1M context beta -- force 200K even if 1m was requested.
-        if context_mode == "1m" and model != "sonnet":
+        # Both Opus 4.6 and Sonnet 4.6 support the 1M context beta (context-1m-2025-08-07).
+        if context_mode == "1m":
             self.context_window = CONTEXT_WINDOW_TOKENS
         else:
             self.context_window = CONTEXT_WINDOW_200K
@@ -547,12 +547,12 @@ class WorkspaceChatSession:
                     settings=str(settings_file.resolve()),
                     env=sdk_env,
                     hooks=hooks,
-                    # Enable 1M token context window only for Opus in 1M mode.
-                    # The context-1m beta is only supported by Opus models.
-                    # Disabled for alternative APIs, 200K mode, and Sonnet.
+                    # Enable 1M token context window for 1M mode.
+                    # The context-1m beta supports both Opus 4.6 and Sonnet 4.6.
+                    # Disabled for alternative APIs and 200K mode.
                     betas=(
                         []
-                        if is_alternative_api or self.context_mode != "1m" or self.model == "sonnet"
+                        if is_alternative_api or self.context_mode != "1m"
                         else ["context-1m-2025-08-07"]
                     ),
                 )
@@ -560,7 +560,7 @@ class WorkspaceChatSession:
             # Log the resolved SDK parameters for debugging
             resolved_betas = (
                 []
-                if is_alternative_api or self.context_mode != "1m" or self.model == "sonnet"
+                if is_alternative_api or self.context_mode != "1m"
                 else ["context-1m-2025-08-07"]
             )
             has_api_key = bool(sdk_env.get("ANTHROPIC_API_KEY"))
@@ -870,7 +870,7 @@ class WorkspaceChatSession:
             except asyncio.TimeoutError:
                 if not first_token_received:
                     logger.error(f"Timeout ({first_token_timeout}s) waiting for first token from {self.model}")
-                    yield {"type": "error", "content": f"No response from {self.model} after {first_token_timeout}s. The 1M context beta may not be available for this model, or it may be overloaded. Try Sonnet or the 200K context mode."}
+                    yield {"type": "error", "content": f"No response from {self.model} after {first_token_timeout}s. The 1M context beta may not be available, or the model may be overloaded. Try the 200K context mode."}
                 else:
                     logger.error(f"Timeout (300s) waiting for next token from {self.model}")
                     yield {"type": "error", "content": f"Response stream from {self.model} timed out after 5 minutes of silence."}

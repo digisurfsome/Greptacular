@@ -150,7 +150,8 @@ export function WorkspacePage(): React.JSX.Element {
     setModelPresetIndex(idx)
     localStorage.setItem('workspace-model-preset', String(idx))
     // Also update context mode in localStorage so WorkspaceChat picks it up
-    const contexts = ['1m', '200k', '1m'] as const
+    // Presets: 0=Opus 1M, 1=Sonnet 1M, 2=Opus 200K
+    const contexts = ['1m', '1m', '200k'] as const
     localStorage.setItem('workspace-context-mode', contexts[idx])
   }, [])
 

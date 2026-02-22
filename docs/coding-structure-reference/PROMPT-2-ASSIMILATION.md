@@ -78,8 +78,77 @@ instructor's verification patterns and VidAi's practical testing approach.]
 [Combined architecture patterns]
 
 ## UI/UX Development Standards
-[Merged UI standards — VidAi's shadcn/ui patterns generalized, combined
-with instructor's UI wisdom and AutoForge's neobrutalism principles generalized]
+
+### Design System Fundamentals (Theme & Style Sheet Agnostic)
+[These rules apply regardless of which theme or style sheet is loaded.
+They govern HOW agents interact with design systems, not what the design looks like.
+
+Key areas to synthesize from all sources:
+- Never hardcode colors, spacing, or typography — always reference design tokens/CSS variables
+- Every interactive element must have hover, focus, active, and disabled states
+- Spacing follows a consistent mathematical scale (e.g., 4/8/12/16/24/32/48px), never random values
+- Typography uses a defined hierarchy (headings, body, caption, label) — never ad-hoc font sizes
+- When a themed/pre-built component exists, USE IT — never create a parallel styled version
+- Components are atomic: small, reusable, composable (Button, Card, Input, not PageWithFormAndTable)
+- Layout and content are separate concerns (layout components vs content components)
+- Responsive breakpoints are defined once in the theme/config and referenced everywhere
+- Animation/transition values are consistent (same easing, similar durations)
+- Color usage follows semantic roles (primary, secondary, accent, destructive, muted) not raw values
+- Dark mode considerations: design with both modes in mind from the start, use semantic color tokens
+- Accessibility: contrast ratios, focus indicators, screen reader support are non-negotiable]
+
+### Working With Themes
+[Rules for when a full theme (code-level enforcement) is present:
+- Import and use themed components exclusively — do not style from scratch
+- Extend the theme system for new components, don't work around it
+- New components must use the theme's CSS variables/tokens, not introduce new ones
+- If a component doesn't exist in the theme, build it USING the theme's design tokens
+  so it looks native to the theme
+- Never override theme values with inline styles or component-level !important
+- Document any theme extensions so future agents maintain consistency]
+
+### Working With Style Sheets (Prompt-Level Guidance)
+[Rules for when only a style sheet (design token document) is present, no code-level theme:
+- Reference tokens by name in every styling decision
+- Create a CSS variables file as the FIRST styling task — convert the style sheet
+  tokens into actual code before building any components
+- When building components, check the style sheet for applicable tokens before choosing values
+- If the style sheet doesn't specify a value, derive it from the existing token scale
+  (e.g., if spacing is 8/16/24, a new spacing value should be 32, not 30)
+- Maintain a single source of truth — don't duplicate token values across files]
+
+### Progressive Formalization: Style Sheet → Theme
+[IMPORTANT: Many projects start simple (one-page tool with a style sheet) and grow into
+full applications that need a theme. The rules should address this lifecycle:
+
+**Stage 1 — Simple Tool (1 page):**
+Style sheet is sufficient. Define core tokens: colors, font, spacing scale, border-radius,
+shadow. Put them in CSS variables. No component library needed.
+
+**Stage 2 — Growing App (2-5 pages):**
+When you hit 2+ pages, extract repeated UI patterns into reusable components.
+Convert the CSS variables file into a proper Tailwind config or theme config.
+Start building a small component library (Button, Card, Input, Modal at minimum).
+
+**Stage 3 — Full Application (5+ pages):**
+Full theme with comprehensive component library. All design tokens formalized.
+Layout components defined. Every new page is composed from existing themed components.
+At this stage, an agent building a new page should be ASSEMBLING components,
+not designing new visual elements.
+
+Key rule: When transitioning between stages, the EXISTING styling must be preserved
+and promoted — not thrown away and rebuilt. Stage 2 wraps Stage 1's tokens.
+Stage 3 wraps Stage 2's components. It's additive, not destructive.]
+
+### What Goes in Project CLAUDE.md for UI
+[Every project's CLAUDE.md should include a UI section that tells agents:
+- Which design system stage the project is at (1, 2, or 3)
+- Where to find the design tokens / CSS variables / theme files
+- Which component library is in use (if any)
+- The project's style identity (e.g., "neobrutalism with high-contrast accessible buttons")
+- Any project-specific UI rules (e.g., "buttons must be minimum 48px tall for accessibility")
+- Reference to the style sheet document if one exists
+This section is the bridge between the universal UI rules here and the project-specific theme.]
 
 ## TypeScript & Language Standards
 [Unified TypeScript standards from all sources]
@@ -178,6 +247,10 @@ You will receive the following documents. Read ALL of them before producing outp
 7. **The output should be immediately usable.** Someone should be able to drop the Universal Rulebook into a CLAUDE.md or system prompt and have a well-governed AI coding agent. It's not a reference document — it's operational instructions.
 
 8. **Keep it under 1000 lines.** Dense and actionable beats comprehensive and sprawling. If you're over 1000 lines, you're probably being redundant.
+
+9. **The UI/UX section is critical — give it proper depth.** The user is building a complete system where coding rules (this Rulebook) and visual design (themes/style sheets created separately) work together. The Rulebook's UI section must cover the PRINCIPLES of working with design systems — not specific visual choices, but the rules about how agents interact with whatever theme or style sheet is loaded. Think of it as: the theme says "buttons are blue with 8px radius." The Rulebook says "never hardcode a color — use the token." Both are needed. Pay special attention to the Progressive Formalization pattern (style sheet → theme) as many projects start simple and grow.
+
+10. **Frame rules as applicable to projects at any scale.** Some users build one-page tools. Others build full SaaS platforms. The Rulebook should work for both. When a rule only applies at certain scales, note the threshold (e.g., "once your project exceeds 3 pages, extract a component library").
 
 ---
 

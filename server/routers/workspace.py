@@ -1145,6 +1145,10 @@ async def workspace_chat_websocket(websocket: WebSocket):
 
                         # Extract cost control settings from start message
                         cost_settings = message.get("cost_settings")
+                        logger.info(
+                            "WS EFFORT TRACE: cost_settings=%s, effort=%s",
+                            cost_settings, cost_settings.get("effort") if cost_settings else None,
+                        )
 
                         # Extract model preference from start message (for per-panel model routing)
                         model = message.get("model")  # e.g. "opus", "sonnet", or None

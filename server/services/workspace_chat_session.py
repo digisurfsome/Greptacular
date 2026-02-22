@@ -531,6 +531,10 @@ class WorkspaceChatSession:
             effort = cs.get("effort", "high")
             if effort in ("low", "medium", "high"):
                 sdk_env["CLAUDE_CODE_EFFORT_LEVEL"] = effort
+            logger.info(
+                "EFFORT WIRING: cost_settings.effort=%s, CLAUDE_CODE_EFFORT_LEVEL=%s, conversation_id=%s, model=%s",
+                cs.get("effort"), sdk_env.get("CLAUDE_CODE_EFFORT_LEVEL"), self.conversation_id, model,
+            )
 
             self.client = ClaudeSDKClient(
                 options=ClaudeAgentOptions(

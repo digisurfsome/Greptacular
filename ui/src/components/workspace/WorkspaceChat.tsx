@@ -1144,12 +1144,19 @@ export function WorkspaceChat({
                 </div>
               )
             })()}
-            {/* Resolved model ID badge */}
-            {modelId && (
-              <span className="shrink-0 px-2 py-0.5 text-[10px] font-mono text-muted-foreground bg-muted/60 rounded border border-border" title={`Backend model: ${modelId}`}>
-                {modelId}
-              </span>
-            )}
+            {/* Right side: model ID + API cost summary */}
+            <div className="ml-auto flex items-center gap-2 shrink-0">
+              {modelId && (
+                <span className="px-2 py-0.5 text-[10px] font-mono text-muted-foreground bg-muted/60 rounded border border-border" title={`Backend model: ${modelId}`}>
+                  {modelId}
+                </span>
+              )}
+              {apiTokenTotals.totalCost > 0 && (
+                <span className="px-2 py-0.5 text-[10px] font-mono text-muted-foreground bg-muted/60 rounded border border-border" title={`API: ${apiTokenTotals.apiInput.toLocaleString()} in / ${apiTokenTotals.apiOutput.toLocaleString()} out / ${apiTokenTotals.cacheRead.toLocaleString()} cache`}>
+                  ${apiTokenTotals.totalCost.toFixed(3)} · {(apiTokenTotals.apiInput + apiTokenTotals.apiOutput).toLocaleString()} tok
+                </span>
+              )}
+            </div>
           </div>
         )}
 

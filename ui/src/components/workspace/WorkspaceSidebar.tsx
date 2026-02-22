@@ -44,6 +44,9 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
 } from '@/components/ui/dropdown-menu'
 import { parseUtcTimestamp } from '@/lib/utils'
 import type { WorkspaceConversation, WorkspaceCategory, EffortLevel } from '@/lib/types'
@@ -57,8 +60,8 @@ interface ModelPreset {
 
 const SIDEBAR_MODEL_PRESETS: ModelPreset[] = [
   { model: 'opus', context: '1m', label: 'Opus 4.6 · 1M' },
+  { model: 'sonnet', context: '1m', label: 'Sonnet 4.6 · 1M' },
   { model: 'opus', context: '200k', label: 'Opus 4.6 · 200K' },
-  { model: 'sonnet', context: '200k', label: 'Sonnet 4.6 · 200K' },
 ]
 
 /** Effort level presets with Anthropic's recommended use cases. */
@@ -306,30 +309,61 @@ export function WorkspaceSidebar({
               <ChevronDown size={12} className="ml-1 opacity-60" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-52">
+          <DropdownMenuContent align="start" className="w-56">
             <DropdownMenuLabel className="text-xs">Select model</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            {SIDEBAR_MODEL_PRESETS.map((preset) => (
-              <DropdownMenuItem
-                key={preset.label}
-                onClick={() => onNewChat(preset.model, preset.context, preset.context === '1m' ? effortLevel : 'high')}
-                className="gap-2 text-xs"
-              >
-                <span
-                  className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                    preset.model === 'sonnet'
-                      ? 'bg-violet-500'
-                      : preset.context === '1m'
-                        ? 'bg-blue-500'
-                        : 'bg-zinc-500'
-                  }`}
-                />
-                <span className="font-medium">{preset.label}</span>
-                <span className="ml-auto text-[10px] text-muted-foreground">
-                  {preset.context === '200k' ? 'Subscription' : 'API key'}
-                </span>
-              </DropdownMenuItem>
-            ))}
+            {SIDEBAR_MODEL_PRESETS.map((preset) => {
+              const dotColor = preset.model === 'sonnet'
+                ? 'bg-violet-500'
+                : preset.context === '1m'
+                  ? 'bg-blue-500'
+                  : 'bg-zinc-500'
+
+              // 1M models: show effort sub-menu
+              if (preset.context === '1m') {
+                return (
+                  <DropdownMenuSub key={preset.label}>
+                    <DropdownMenuSubTrigger className="gap-2 text-xs">
+                      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dotColor}`} />
+                      <span className="font-medium">{preset.label}</span>
+                      <span className="ml-auto text-[10px] text-muted-foreground">API key</span>
+                    </DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent className="w-56">
+                      <DropdownMenuLabel className="text-[10px]">Thinking Effort</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      {EFFORT_PRESETS.map((ep) => (
+                        <DropdownMenuItem
+                          key={ep.key}
+                          onClick={() => onNewChat(preset.model, preset.context, ep.key)}
+                          className="gap-2 text-xs"
+                        >
+                          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                            ep.key === 'low' ? 'bg-emerald-500' : ep.key === 'medium' ? 'bg-blue-500' : 'bg-orange-500'
+                          }`} />
+                          <div className="flex flex-col gap-0">
+                            <span className="font-semibold">{ep.label}</span>
+                            <span className="text-[10px] text-muted-foreground leading-tight">{ep.useCases}</span>
+                          </div>
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
+                )
+              }
+
+              // 200K models: direct click, no effort choice
+              return (
+                <DropdownMenuItem
+                  key={preset.label}
+                  onClick={() => onNewChat(preset.model, preset.context, 'high')}
+                  className="gap-2 text-xs"
+                >
+                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dotColor}`} />
+                  <span className="font-medium">{preset.label}</span>
+                  <span className="ml-auto text-[10px] text-muted-foreground">Subscription</span>
+                </DropdownMenuItem>
+              )
+            })}
           </DropdownMenuContent>
         </DropdownMenu>
         {categories.length > 0 && (
@@ -547,17 +581,16 @@ export function WorkspaceSidebar({
                         const abbr = model === 'sonnet' ? 'S' : 'O'
                         const badgeLabel = `${abbr}\u00B7${ctx === '1m' ? '1M' : '200K'}`
 
-                        // Cycle: O-1M -> O-200K -> S-200K -> O-1M
-                        // Sonnet does not support the 1M context beta, so skip that combination.
+                        // Cycle: O-1M -> S-1M -> O-200K -> O-1M
                         const cycleNext = () => {
-                          if (model === 'opus' && ctx === '1m') return { model: 'opus' as const, context_mode: '200k' as const }
-                          if (model === 'opus' && ctx === '200k') return { model: 'sonnet' as const, context_mode: '200k' as const }
-                          if (model === 'sonnet') return { model: 'opus' as const, context_mode: '1m' as const }
+                          if (model === 'opus' && ctx === '1m') return { model: 'sonnet' as const, context_mode: '1m' as const }
+                          if (model === 'sonnet' && ctx === '1m') return { model: 'opus' as const, context_mode: '200k' as const }
+                          if (model === 'opus' && ctx === '200k') return { model: 'opus' as const, context_mode: '1m' as const }
                           return { model: 'opus' as const, context_mode: '1m' as const }
                         }
                         const next = cycleNext()
 
-                        // Color-code: blue for opus+1M, violet for sonnet, zinc for 200K
+                        // Color-code: blue for opus+1M, violet for sonnet+1M, zinc for 200K
                         const badgeColor = model === 'sonnet'
                           ? 'bg-violet-600 text-white border-violet-400 hover:bg-violet-500'
                           : ctx === '1m'

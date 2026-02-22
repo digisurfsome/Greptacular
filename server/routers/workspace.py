@@ -182,6 +182,7 @@ async def update_conversation(conversation_id: int, body: ConversationUpdateRequ
         tags=updated.get("tags", ""),
         context_mode=updated.get("context_mode", "1m"),
         model=updated.get("model", "opus"),
+        effort=updated.get("effort", "high"),
         created_at=updated["created_at"],
         updated_at=updated["updated_at"],
         message_count=updated.get("message_count", 0),

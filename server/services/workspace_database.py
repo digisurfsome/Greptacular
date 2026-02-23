@@ -68,6 +68,7 @@ class WorkspaceConversation(Base):
     context_mode = Column(String(10), nullable=True, default="1m")  # "1m" or "200k"
     model = Column(String(20), nullable=True, default="opus")  # "opus" or "sonnet"
     effort = Column(String(10), nullable=True, default="high")  # "low", "medium", "high"
+    branch_name = Column(String(200), nullable=True)  # git branch for this conversation
     token_count = Column(Integer, nullable=False, default=0)
     summary = Column(Text, nullable=True)
     summary_updated_at = Column(DateTime, nullable=True)
@@ -396,6 +397,10 @@ def get_engine() -> Engine:
                 cursor.execute(
                     "ALTER TABLE workspace_conversations ADD COLUMN effort TEXT DEFAULT 'high'"
                 )
+            if "branch_name" not in existing_cols:
+                cursor.execute(
+                    "ALTER TABLE workspace_conversations ADD COLUMN branch_name TEXT"
+                )
 
             # One-time fix: early migration defaulted context_mode to '200k' but
             # the workspace actually uses '1m' by default.  All conversations
@@ -451,6 +456,7 @@ def create_conversation(
     context_mode: Optional[str] = None,
     model: Optional[str] = None,
     effort: Optional[str] = None,
+    branch_name: Optional[str] = None,
 ) -> WorkspaceConversation:
     """Create a new workspace conversation.
 
@@ -462,6 +468,7 @@ def create_conversation(
         context_mode: Context window mode ("1m" or "200k").
         model: Model shorthand ("opus" or "sonnet").
         effort: Thinking effort level ("low", "medium", "high").
+        branch_name: Optional git branch name for this conversation.
 
     Returns:
         The newly created WorkspaceConversation instance.
@@ -475,6 +482,7 @@ def create_conversation(
             context_mode=context_mode or "1m",
             model=model or "opus",
             effort=effort or "high",
+            branch_name=branch_name,
         )
         session.add(conversation)
         session.commit()

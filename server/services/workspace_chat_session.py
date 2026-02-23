@@ -562,11 +562,9 @@ class WorkspaceChatSession:
                     setting_sources=["project"],
                     allowed_tools=WORKSPACE_BUILTIN_TOOLS,
                     permission_mode="acceptEdits",
-                    # Cost controls: max_turns and effort passed directly to SDK.
-                    # effort= is the canonical mechanism (SDK v0.1.36+).
-                    # Env var + settings file kept as belt-and-suspenders fallbacks.
+                    # Cost controls: max_turns from dashboard, effort via
+                    # effortLevel in settings file + CLAUDE_CODE_EFFORT_LEVEL env var.
                     max_turns=cs["max_turns"],
-                    effort=effort,
                     cwd=str(workspace_scratch),  # Scratch dir for CLAUDE.md
                     settings=str(settings_file.resolve()),
                     env=sdk_env,

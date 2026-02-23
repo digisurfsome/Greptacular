@@ -341,15 +341,16 @@ function App() {
                     </Badge>
                   )}
 
-                  {/* Build timestamp - proof the UI was rebuilt */}
-                  <span
-                    className="text-[10px] text-muted-foreground/60 font-mono select-all"
-                    title={`UI built: ${__BUILD_TIME__}`}
-                  >
-                    {__BUILD_TIME__}
-                  </span>
                 </>
               )}
+
+              {/* Build timestamp - always visible proof the UI was rebuilt */}
+              <span
+                className="text-xs text-amber-400 font-mono font-bold select-all border border-amber-400/50 px-2 py-0.5 rounded"
+                title={`UI built: ${__BUILD_TIME__}`}
+              >
+                Build: {__BUILD_TIME__}
+              </span>
 
               {/* Workspace link */}
               <Button

@@ -12,11 +12,10 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass, field, asdict
-from datetime import datetime, timedelta
+from dataclasses import asdict, dataclass, field
+from datetime import datetime
 from enum import Enum
 from typing import Optional
-
 
 # ─── Categories from Becker's Thesis ────────────────────────────────────────
 
@@ -772,7 +771,6 @@ def generate_game_plan(session: StrategySession) -> GamePlan:
 
     # Pivot recommendations
     for danger_cat in idea.danger_categories:
-        info = CATEGORY_INFO[danger_cat]
         if danger_cat == SaaSCategory.GENERIC_PLATFORM:
             plan.pivot_recommendations.append("PIVOT: Break your monolithic platform into mini-apps with open APIs. Let users build their own interface, keep the infrastructure.")
         elif danger_cat == SaaSCategory.SIMPLE_TOOL:

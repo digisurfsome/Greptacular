@@ -5,18 +5,16 @@ Serves the chat UI and handles strategy session state via REST API.
 
 from __future__ import annotations
 
-import os
 import json
 import uuid
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
+from engine import StrategyEngine, format_game_plan
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
-
-from engine import StrategyEngine, format_game_plan, StrategySession
 
 app = FastAPI(title="SaaS Strategy Engine", version="1.0.0")
 

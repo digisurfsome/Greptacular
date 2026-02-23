@@ -1,0 +1,196 @@
+name: Auto-fix CI Failures
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+jobs:
+  auto-fix:
+    runs-on: ubuntu-latest
+    if: >
+      github.event.workflow_run.conclusion == 'failure' &&
+      startsWith(github.event.workflow_run.head_branch, 'claude/')
+    permissions:
+      contents: write
+      actions: read
+      pull-requests: write
+    steps:
+      - name: Check if already an autofix attempt
+        id: check-loop
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const branch = '${{ github.event.workflow_run.head_branch }}';
+            const commits = await github.rest.repos.listCommits({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: branch,
+              per_page: 1
+            });
+            const lastMessage = commits.data[0]?.commit?.message || '';
+            if (lastMessage.includes('[autofix]')) {
+              core.setOutput('skip', 'true');
+              console.log('Last commit was an autofix attempt. Stopping to prevent loop.');
+            } else {
+              core.setOutput('skip', 'false');
+            }
+
+      - name: Checkout failing branch
+        if: steps.check-loop.outputs.skip == 'false'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_branch }}
+          fetch-depth: 0
+
+      - name: Get failure details
+        if: steps.check-loop.outputs.skip == 'false'
+        id: failures
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runId = ${{ github.event.workflow_run.id }};
+
+            // Get failed jobs and their logs
+            const jobs = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: runId,
+              filter: 'latest'
+            });
+
+            let errorDetails = [];
+            for (const job of jobs.data.jobs) {
+              if (job.conclusion === 'failure') {
+                // Get the log for this job
+                try {
+                  const log = await github.rest.actions.downloadJobLogsForWorkflowRun({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    job_id: job.id
+                  });
+                  // Trim to last 200 lines to stay within limits
+                  const lines = log.data.split('\n');
+                  const trimmed = lines.slice(-200).join('\n');
+                  errorDetails.push(`=== Job: ${job.name} ===\n${trimmed}`);
+                } catch (e) {
+                  const failedSteps = job.steps
+                    .filter(s => s.conclusion === 'failure')
+                    .map(s => s.name);
+                  errorDetails.push(`=== Job: ${job.name} ===\nFailed steps: ${failedSteps.join(', ')}`);
+                }
+              }
+            }
+
+            const fs = require('fs');
+            fs.writeFileSync('/tmp/ci-errors.txt', errorDetails.join('\n\n'));
+            console.log('Captured error details from ' + errorDetails.length + ' failed jobs');
+
+      - name: Setup Python
+        if: steps.check-loop.outputs.skip == 'false'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Setup Node
+        if: steps.check-loop.outputs.skip == 'false'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install project dependencies
+        if: steps.check-loop.outputs.skip == 'false'
+        run: |
+          pip install -r requirements.txt
+          cd ui && npm ci
+
+      - name: Install Claude Code
+        if: steps.check-loop.outputs.skip == 'false'
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Configure git
+        if: steps.check-loop.outputs.skip == 'false'
+        run: |
+          git config user.name "Claude Autofix"
+          git config user.email "autofix@claude.ai"
+
+      - name: Run Claude to fix failures
+        if: steps.check-loop.outputs.skip == 'false'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          ERRORS=$(cat /tmp/ci-errors.txt)
+
+          claude -p "CI checks failed on this branch. Here are the error logs:
+
+          $ERRORS
+
+          Please:
+          1. Read the failing files and understand what went wrong
+          2. Fix the code so the CI checks pass
+          3. Run the checks locally to verify:
+             - ruff check .
+             - python test_security.py
+             - cd ui && npm run lint && npm run build
+          4. Git add and commit your fixes with a message starting with '[autofix]'
+
+          Only fix what's broken. Don't refactor or change anything else." \
+            --allowedTools "Bash,Read,Write,Edit,Glob,Grep" \
+            --max-turns 25
+
+      - name: Push fixes
+        if: steps.check-loop.outputs.skip == 'false'
+        run: |
+          # Check if Claude made any commits
+          if git diff --name-only origin/${{ github.event.workflow_run.head_branch }} HEAD | grep -q .; then
+            git push origin HEAD:${{ github.event.workflow_run.head_branch }}
+            echo "Fixes pushed. CI will re-run automatically."
+          else
+            echo "No fixes were committed."
+          fi
+
+      - name: Comment on PR
+        if: steps.check-loop.outputs.skip == 'false'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const branch = '${{ github.event.workflow_run.head_branch }}';
+            const prs = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              head: `${context.repo.owner}:${branch}`,
+              state: 'open'
+            });
+
+            if (prs.data.length > 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prs.data[0].number,
+                body: '**Auto-fix applied.** CI failed, so a Claude agent was dispatched to fix it. CI is re-running now — check back shortly for results.'
+              });
+            }
+
+      - name: Comment on PR if autofix was skipped (loop prevention)
+        if: steps.check-loop.outputs.skip == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const branch = '${{ github.event.workflow_run.head_branch }}';
+            const runId = ${{ github.event.workflow_run.id }};
+            const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${runId}`;
+            const prs = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              head: `${context.repo.owner}:${branch}`,
+              state: 'open'
+            });
+
+            if (prs.data.length > 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prs.data[0].number,
+                body: `**Auto-fix failed.** The automatic fix attempt didn\'t resolve the CI failures. Manual intervention needed.\n\n[View CI logs](${runUrl})`
+              });
+            }

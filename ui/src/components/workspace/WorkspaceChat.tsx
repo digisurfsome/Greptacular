@@ -801,6 +801,14 @@ export function WorkspaceChat({
       console.info('[WorkspaceChat] handleSend: starting new session', {
         conversationContextMode, conversationModel, conversationId, activeConversationId,
       })
+      // Update session refs NOW so the badge-cycle reconnect effect (which
+      // watches conversationModel/conversationContextMode) doesn't see a
+      // stale value from a previous conversation and trigger a spurious
+      // disconnect+clearMessages when the new conversation's detail loads.
+      // Without this, switching from 200K → 1M causes the effect to detect
+      // a context-mode change and wipe the screen on the first message.
+      lastSessionModelRef.current = conversationModel
+      lastSessionContextRef.current = conversationContextMode
       start(undefined, workingDirectory ?? undefined, conversationContextMode, { effort: effortLevel }, conversationModel)
     } else {
       console.info('[WorkspaceChat] handleSend: existing session', {

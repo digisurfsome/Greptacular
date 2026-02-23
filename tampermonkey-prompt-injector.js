@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Cloud Prompt Injector
 // @namespace    https://github.com/digisurfsome/Greptacular
-// @version      1.0
+// @version      1.3
 // @description  Floating sidebar with prompt buttons that inject into Claude/ChatGPT/Gemini chat input
 // @author       AutoForge
 // @match        https://claude.ai/*
@@ -22,7 +22,7 @@
   const PROMPTS = [
     {
       id: 1,
-      title: 'Style Guide Generator',
+      title: 'Martin Style Prompt',
       prompt: `**Role:** You are an expert Design System Architect and Senior Frontend Engineer. You specialize in "Atomic Design" principles and creating abstract, reusable component libraries.
 
 **Objective:** I will provide an image. Your task is to ignore the specific content, text, and business context of the image. Instead, extract the underlying Visual Design Language (the "Visual DNA"). I need a generic, reusable style guide that I can apply to any type of application, not just the one shown in the image.
@@ -67,7 +67,7 @@ Based on the abstract analysis, write a tailwind.config.js theme object. Do not 
     },
     {
       id: 2,
-      title: 'App Idea Generator',
+      title: 'Martin App Idea Prompt',
       prompt: `**Role:** You are a product strategist and startup advisor who helps people turn vague app ideas into clear, buildable MVPs.
 
 **Objective:** I'm going to describe an app idea. It might be rough, incomplete, or just a general concept. Your job is to help me clarify it and output a structured specification I can use to build it.
@@ -114,26 +114,195 @@ Based on the abstract analysis, write a tailwind.config.js theme object. Do not 
     },
     {
       id: 3,
-      title: 'Prompt 3 (Edit Me)',
-      prompt: `Replace this with your own prompt. Open the Tampermonkey script editor to change it.`
+      title: 'Martin Build Prompt Rules',
+      prompt: `Critical Rules (25 Rules)
+Technical (1-7)
+NO database calls in components - use service layer only
+NO unprotected routes for authenticated features
+NO inline styles - Tailwind only
+NO any types - define TypeScript interfaces
+ALL database writes include createdAt/updatedAt timestamps
+ALL user data scoped to the authenticated user
+Wrap app in ErrorBoundary component
+UI/UX (8-25)
+NO alert(), confirm(), prompt() - use Modal/ConfirmModal/Toast
+ALL destructive actions require ConfirmModal
+ALL async operations show loading state (Skeleton for lists, Spinner in buttons)
+ALL empty lists use EmptyState component with icon and CTA
+ALL success/error actions show Toast feedback
+ALL saved items have Detail View (read-only) separate from Edit View
+ALL forms validate before submission
+ALL buttons show loading state during async actions
+ALL avatars have fallback for failed images
+ALL pages set document title via usePageTitle hook
+ALL forms autofocus first input
+ALL lists have search/filter when > 5 items expected
+ALL error states have retry action
+ALL dates formatted as relative time (not raw timestamps)
+ALL long text truncated with ellipsis
+ALL detail pages have back navigation
+Use Lucide React for all icons
+Zero console errors in production
+Design System
+Typography Scale
+Element	Size	Weight	Tailwind
+Page Title	24px	Semi-bold	text-2xl font-semibold text-text-primary
+Section Header	18px	Semi-bold	text-lg font-semibold text-text-primary
+Card Title	16px	Medium	text-base font-medium text-text-primary
+Body Text	14px	Regular	text-sm text-text-secondary
+Small/Meta	12px	Regular	text-xs text-text-tertiary
+Spacing
+Card padding: p-6 (24px)
+Section gaps: gap-6 (24px)
+Element gaps: gap-4 (16px)
+Component Patterns
+Cards: bg-surface-base rounded-card border border-border-subtle shadow-card p-6
+Primary Button: bg-brand hover:bg-brand-dark text-text-primary font-medium px-6 py-3 rounded-lg transition-colors
+Inputs: bg-surface-muted text-text-primary placeholder:text-text-tertiary px-4 py-3 rounded-lg w-full outline-none focus:ring-2 focus:ring-brand
+Layout Structure
+Sidebar: 240px wide, bg-surface-base, border-r
+Header: Full width, bg-surface-base, border-b, h-16
+Main: flex-1, overflow-y-auto, p-8
+Responsive Breakpoints
+Mobile: < 640px (default, no prefix)
+Tablet: sm:640px+
+Desktop: lg:1024px+
+Touch targets: minimum 44x44px
+Required File Structure
+src/
+\u251C\u2500\u2500 config/          # Backend configuration
+\u251C\u2500\u2500 contexts/        # Auth, Theme, Toast, feature contexts
+\u251C\u2500\u2500 hooks/           # useAuth, usePageTitle, custom hooks
+\u251C\u2500\u2500 components/
+\u2502   \u251C\u2500\u2500 ProtectedRoute.tsx
+\u2502   \u251C\u2500\u2500 AdminRoute.tsx
+\u2502   \u251C\u2500\u2500 ErrorBoundary.tsx
+\u2502   \u251C\u2500\u2500 Layout.tsx
+\u2502   \u251C\u2500\u2500 Sidebar.tsx
+\u2502   \u251C\u2500\u2500 MobileNav.tsx
+\u2502   \u2514\u2500\u2500 ui/          # Modal, ConfirmModal, Toast, Button, Avatar, ThemeToggle, Card, Skeleton, EmptyState, Spinner
+\u251C\u2500\u2500 pages/           # LandingPage, LoginPage, Dashboard, Profile, NotFoundPage, [Item]Detail/Create/Edit
+\u251C\u2500\u2500 services/        # api.ts (ALL backend operations)
+\u251C\u2500\u2500 utils/           # formatDate.ts, pluralize.ts
+\u2514\u2500\u2500 types/           # index.ts (ALL TypeScript interfaces)
+Navigation Flow Pattern
+LIST \u2192 click item \u2192 DETAIL \u2192 click edit \u2192 EDIT \u2192 save \u2192 DETAIL
+LIST \u2192 click new  \u2192 CREATE \u2192 save \u2192 DETAIL
+DETAIL \u2192 delete (with ConfirmModal) \u2192 LIST
+Key Patterns
+Dark-first styles use CSS variables for both modes
+Unsaved changes warning via beforeunload
+Network/offline detection with banner
+Pagination or Load More for all lists
+Search/filter when list > 5 items
+404 handling at route and data level`
     },
     {
       id: 4,
-      title: 'Prompt 4 (Edit Me)',
-      prompt: `Replace this with your own prompt. Open the Tampermonkey script editor to change it.`
+      title: 'Agent OS',
+      prompt: `# Agent OS Integration Guide for Claude Code (claude.ai/code)
+## What is Agent OS?
+ Agent OS is a **spec-driven development system** that provides structured context to AI coding agents through a 3-layer model:
+1. **Standards Layer** \u2014 Your team's coding conventions, patterns, and best practices
+2. **Product Layer** \u2014 The vision, roadmap, and use cases you're building
+3. **Specs Layer** \u2014 Detailed specifications for upcoming features
+**Core Philosophy**: Your coding standards become executable specifications that guide AI agents to build your way, every time\u2014eliminating repetitive prompting and reducing manual corrections.
+## How to Use Agent OS in Claude Code Web (claude.ai/code)
+Unlike VS Code where .claude directory files are automatically detected, Claude Code on the web requires you to **explicitly provide context** in your project. Here are the recommended approaches:
+### Option 1: Repository-Based Approach (Recommended)
+Store your Agent OS files in your repository:
+your-project/
+\u251C\u2500\u2500 .claude/
+\u2502   \u251C\u2500\u2500 standards/
+\u2502   \u2502   \u251C\u2500\u2500 coding-conventions.md
+\u2502   \u2502   \u251C\u2500\u2500 architecture-patterns.md
+\u2502   \u2502   \u2514\u2500\u2500 security-requirements.md
+\u2502   \u251C\u2500\u2500 product/
+\u2502   \u2502   \u251C\u2500\u2500 vision.md
+\u2502   \u2502   \u251C\u2500\u2500 roadmap.md
+\u2502   \u2502   \u2514\u2500\u2500 use-cases.md
+\u2502   \u2514\u2500\u2500 specs/
+\u2502       \u251C\u2500\u2500 feature-001-auth.md
+\u2502       \u251C\u2500\u2500 feature-002-dashboard.md
+\u2502       \u2514\u2500\u2500 [upcoming features]
+**When starting a session**, reference these files explicitly:
+"I'm using the Agent OS system. Please read the standards in .claude/standards/,
+the product context in .claude/product/, and the feature specs in .claude/specs/
+before implementing [specific feature]."
+### Option 2: Inline Context Approach
+For smaller projects or quick sessions, provide the Agent OS context directly in your initial prompt:
+# Agent OS Context
+## STANDARDS
+[Your coding conventions, patterns, and practices]
+## PRODUCT
+[Your vision, roadmap, and use cases]
+## SPEC
+[Detailed specification for the current feature]
+Task: [Your specific request]
+## Best Practices for Claude Code Web
+### 1. **Start Every Session with Context**
+Always provide or reference your Agent OS layers at the start. Claude's memory resets between sessions.
+### 2. **Use File References**
+If you have Agent OS files in your repo, ask me to read them.
+### 3. **Layer Your Prompts**
+- **First message**: Provide Standards + Product context
+- **Second message**: Provide Spec + Task
+### 4. **Maintain a Living Document**
+Keep an AGENT_OS_CONTEXT.md file in your project root.
+### 5. **Update Specs as You Build**
+After each feature, update your specs to reflect what was built, what changed, and what was learned.
+**Ready to use Agent OS?** Start by filling out the template above with your project's context, and I'll build exactly the way you want, every time.`
     },
     {
       id: 5,
       title: 'Prompt 5 (Edit Me)',
       prompt: `Replace this with your own prompt. Open the Tampermonkey script editor to change it.`
-    }
+    },
+    { id: 6, title: 'Prompt 6', prompt: 'Replace with your prompt.' },
+    { id: 7, title: 'Prompt 7', prompt: 'Replace with your prompt.' },
+    { id: 8, title: 'Prompt 8', prompt: 'Replace with your prompt.' },
+    { id: 9, title: 'Prompt 9', prompt: 'Replace with your prompt.' },
+    { id: 10, title: 'Prompt 10', prompt: 'Replace with your prompt.' },
+    { id: 11, title: 'Prompt 11', prompt: 'Replace with your prompt.' },
+    { id: 12, title: 'Prompt 12', prompt: 'Replace with your prompt.' },
+    { id: 13, title: 'Prompt 13', prompt: 'Replace with your prompt.' },
+    { id: 14, title: 'Prompt 14', prompt: 'Replace with your prompt.' },
+    { id: 15, title: 'Prompt 15', prompt: 'Replace with your prompt.' },
+    { id: 16, title: 'Prompt 16', prompt: 'Replace with your prompt.' },
+    { id: 17, title: 'Prompt 17', prompt: 'Replace with your prompt.' },
+    { id: 18, title: 'Prompt 18', prompt: 'Replace with your prompt.' },
+    { id: 19, title: 'Prompt 19', prompt: 'Replace with your prompt.' },
+    { id: 20, title: 'Prompt 20', prompt: 'Replace with your prompt.' }
   ];
+
+  // ============================================================
+  // ZOOM STATE
+  // ============================================================
+
+  const ZOOM_STORAGE_KEY = 'cpi-zoom-level';
+  const DEFAULT_ZOOM = 100;
+  const ZOOM_STEP = 10;
+  const ZOOM_MIN = 30;
+  const ZOOM_MAX = 300;
+
+  function loadZoom() {
+    const saved = localStorage.getItem(ZOOM_STORAGE_KEY);
+    if (saved !== null) {
+      const num = parseInt(saved, 10);
+      if (!isNaN(num) && num >= ZOOM_MIN && num <= ZOOM_MAX) {
+        return num;
+      }
+    }
+    return DEFAULT_ZOOM;
+  }
+
+  let currentZoom = loadZoom();
 
   // ============================================================
   // STYLES
   // ============================================================
 
-  const PANEL_WIDTH = 220;
+  const PANEL_WIDTH = 180;
 
   const styles = document.createElement('style');
   styles.textContent = `
@@ -141,53 +310,137 @@ Based on the abstract analysis, write a tailwind.config.js theme object. Do not 
       position: fixed;
       top: 50%;
       right: 16px;
-      transform: translateY(-50%);
+      transform: translateY(-50%) scale(${currentZoom / 100});
+      transform-origin: top right;
       width: ${PANEL_WIDTH}px;
+      max-height: 85vh;
       z-index: 99999;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 4px;
       transition: opacity 0.2s;
     }
 
-    #cpi-panel.cpi-collapsed {
-      width: auto;
+    #cpi-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #262624;
+      border: 1px solid #da7757;
+      border-radius: 6px;
+      padding: 3px 6px;
+      grid-column: 1 / -1;
+      gap: 4px;
     }
 
-    #cpi-panel.cpi-collapsed .cpi-btn {
+    #cpi-header-label {
+      color: #e0e0e0;
+      font-size: 9px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      user-select: none;
+      flex-shrink: 0;
+    }
+
+    #cpi-header-label:hover {
+      color: #da7757;
+    }
+
+    #cpi-zoom-controls {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      flex-shrink: 0;
+    }
+
+    .cpi-zoom-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      height: 16px;
+      background: #262624;
+      color: #e0e0e0;
+      border: 1px solid #555;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 0;
+      line-height: 1;
+      transition: all 0.15s;
+    }
+
+    .cpi-zoom-btn:hover {
+      background: #da7757;
+      border-color: #da7757;
+      color: #fff;
+    }
+
+    #cpi-zoom-input {
+      width: 30px;
+      height: 16px;
+      background: #1e1e1c;
+      color: #e0e0e0;
+      border: 1px solid #555;
+      border-radius: 3px;
+      font-size: 8px;
+      text-align: center;
+      padding: 0 1px;
+      outline: none;
+      font-family: inherit;
+    }
+
+    #cpi-zoom-input:focus {
+      border-color: #da7757;
+    }
+
+    #cpi-zoom-set {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 16px;
+      background: #da7757;
+      color: #fff;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 7px;
+      font-weight: 700;
+      padding: 0 4px;
+      line-height: 1;
+      transition: all 0.15s;
+    }
+
+    #cpi-zoom-set:hover {
+      background: #c4664a;
+    }
+
+    #cpi-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 3px;
+      overflow-y: auto;
+    }
+
+    #cpi-grid.cpi-hidden {
       display: none;
     }
 
-    #cpi-toggle {
-      align-self: flex-end;
-      background: #1a1a2e;
-      color: #e0e0e0;
-      border: 2px solid #333;
-      border-radius: 8px;
-      padding: 6px 10px;
-      cursor: pointer;
-      font-size: 13px;
-      font-weight: 600;
-      transition: all 0.15s;
-      white-space: nowrap;
-    }
-
-    #cpi-toggle:hover {
-      background: #2a2a4e;
-      border-color: #555;
-    }
-
     .cpi-btn {
+      position: relative;
       display: flex;
       align-items: center;
-      gap: 10px;
       width: 100%;
-      padding: 10px 14px;
-      background: #1a1a2e;
+      padding: 4px 5px;
+      padding-top: 6px;
+      min-height: 32px;
+      background: #262624;
       color: #e0e0e0;
-      border: 2px solid #333;
-      border-radius: 10px;
+      border: 1px solid #333;
+      border-radius: 6px;
       cursor: pointer;
       font-size: 13px;
       font-weight: 500;
@@ -197,34 +450,40 @@ Based on the abstract analysis, write a tailwind.config.js theme object. Do not 
     }
 
     .cpi-btn:hover {
-      background: #2a2a4e;
-      border-color: #6c63ff;
+      background: #30302e;
+      border-color: #da7757;
       transform: translateX(-3px);
     }
 
     .cpi-btn:active {
       transform: translateX(-1px);
-      background: #3a3a5e;
+      background: #3a3a38;
     }
 
     .cpi-btn-num {
+      position: absolute;
+      top: 2px;
+      left: 4px;
       display: flex;
       align-items: center;
       justify-content: center;
-      min-width: 24px;
-      height: 24px;
-      background: #6c63ff;
+      min-width: 14px;
+      height: 14px;
+      background: #da7757;
       color: #fff;
-      border-radius: 6px;
-      font-size: 12px;
+      border-radius: 3px;
+      font-size: 7px;
       font-weight: 700;
-      flex-shrink: 0;
+      padding: 0 2px;
     }
 
     .cpi-btn-title {
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      font-size: 6px;
+      padding-left: 16px;
+      padding-right: 2px;
     }
 
     .cpi-flash {
@@ -232,8 +491,8 @@ Based on the abstract analysis, write a tailwind.config.js theme object. Do not 
     }
 
     @keyframes cpi-flash-anim {
-      0% { background: #6c63ff; border-color: #6c63ff; }
-      100% { background: #1a1a2e; border-color: #333; }
+      0% { background: #da7757; border-color: #da7757; }
+      100% { background: #262624; border-color: #333; }
     }
   `;
   document.head.appendChild(styles);
@@ -317,6 +576,19 @@ Based on the abstract analysis, write a tailwind.config.js theme object. Do not 
   }
 
   // ============================================================
+  // ZOOM HELPERS
+  // ============================================================
+
+  function applyZoom(panel, zoom) {
+    const scale = zoom / 100;
+    panel.style.transform = `translateY(-50%) scale(${scale})`;
+  }
+
+  function clampZoom(value) {
+    return Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, value));
+  }
+
+  // ============================================================
   // BUILD THE UI
   // ============================================================
 
@@ -324,16 +596,91 @@ Based on the abstract analysis, write a tailwind.config.js theme object. Do not 
     const panel = document.createElement('div');
     panel.id = 'cpi-panel';
 
-    // Toggle button
-    const toggle = document.createElement('button');
-    toggle.id = 'cpi-toggle';
-    toggle.textContent = 'Prompts';
-    toggle.title = 'Show/Hide prompt buttons';
-    toggle.addEventListener('click', () => {
-      panel.classList.toggle('cpi-collapsed');
-      toggle.textContent = panel.classList.contains('cpi-collapsed') ? 'Prompts' : 'Prompts';
+    // Header bar — full-width, spans both columns
+    const header = document.createElement('div');
+    header.id = 'cpi-header';
+
+    // Left side: clickable label to toggle grid
+    const label = document.createElement('span');
+    label.id = 'cpi-header-label';
+    label.textContent = 'Prompt Injector';
+    label.title = 'Show/Hide prompt buttons';
+
+    // Right side: zoom controls
+    const zoomControls = document.createElement('div');
+    zoomControls.id = 'cpi-zoom-controls';
+
+    const btnMinus = document.createElement('button');
+    btnMinus.className = 'cpi-zoom-btn';
+    btnMinus.textContent = '\u2212';
+    btnMinus.title = 'Zoom out';
+
+    const zoomInput = document.createElement('input');
+    zoomInput.id = 'cpi-zoom-input';
+    zoomInput.type = 'text';
+    zoomInput.value = String(currentZoom);
+    zoomInput.title = 'Current zoom %';
+
+    const btnPlus = document.createElement('button');
+    btnPlus.className = 'cpi-zoom-btn';
+    btnPlus.textContent = '+';
+    btnPlus.title = 'Zoom in';
+
+    const btnSet = document.createElement('button');
+    btnSet.id = 'cpi-zoom-set';
+    btnSet.textContent = 'Set';
+    btnSet.title = 'Save zoom to localStorage';
+
+    zoomControls.appendChild(btnMinus);
+    zoomControls.appendChild(zoomInput);
+    zoomControls.appendChild(btnPlus);
+    zoomControls.appendChild(btnSet);
+
+    header.appendChild(label);
+    header.appendChild(zoomControls);
+    panel.appendChild(header);
+
+    // Grid container for 2-column button layout
+    const grid = document.createElement('div');
+    grid.id = 'cpi-grid';
+
+    // Toggle grid visibility when clicking the label
+    label.addEventListener('click', () => {
+      grid.classList.toggle('cpi-hidden');
     });
-    panel.appendChild(toggle);
+
+    // Zoom: decrease by ZOOM_STEP
+    btnMinus.addEventListener('click', () => {
+      currentZoom = clampZoom(currentZoom - ZOOM_STEP);
+      zoomInput.value = String(currentZoom);
+      applyZoom(panel, currentZoom);
+    });
+
+    // Zoom: increase by ZOOM_STEP
+    btnPlus.addEventListener('click', () => {
+      currentZoom = clampZoom(currentZoom + ZOOM_STEP);
+      zoomInput.value = String(currentZoom);
+      applyZoom(panel, currentZoom);
+    });
+
+    // Zoom: save to localStorage
+    btnSet.addEventListener('click', () => {
+      const parsed = parseInt(zoomInput.value, 10);
+      if (!isNaN(parsed)) {
+        currentZoom = clampZoom(parsed);
+        zoomInput.value = String(currentZoom);
+        applyZoom(panel, currentZoom);
+      }
+      localStorage.setItem(ZOOM_STORAGE_KEY, String(currentZoom));
+    });
+
+    // Allow pressing Enter in the zoom input to apply and save
+    zoomInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        btnSet.click();
+      }
+    });
 
     // Prompt buttons
     PROMPTS.forEach((p) => {
@@ -354,10 +701,14 @@ Based on the abstract analysis, write a tailwind.config.js theme object. Do not 
           setTimeout(() => { btn.style.borderColor = '#333'; }, 800);
         }
       });
-      panel.appendChild(btn);
+      grid.appendChild(btn);
     });
 
+    panel.appendChild(grid);
     document.body.appendChild(panel);
+
+    // Apply saved zoom on load
+    applyZoom(panel, currentZoom);
   }
 
   // ============================================================

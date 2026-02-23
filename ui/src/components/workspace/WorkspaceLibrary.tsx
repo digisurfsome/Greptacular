@@ -1,9 +1,13 @@
 /**
  * WorkspaceLibrary
  *
- * Right-hand panel that manages the file library and GitHub repo connections.
- * Files can be toggled into the active context for the current conversation.
- * Split into two tabs: Library (files) and Repos (GitHub connections).
+ * Right-hand panel that manages the file library (with nested folders),
+ * GitHub repo connections, and walkie-talkie log.
+ *
+ * The library tab now shows a folder-based filesystem browser instead of
+ * a flat file list. Files are no longer toggled into "active context" —
+ * they are explicitly attached to individual chat messages via the
+ * LibraryPickerModal.
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react'
@@ -13,24 +17,16 @@ import {
   Upload,
   ClipboardPaste,
   Plus,
-  ToggleLeft,
-  ToggleRight,
-  Eye,
-  Trash2,
-  Globe,
-  MessageSquare,
   Radio,
   User,
   Bot,
   Info,
 } from 'lucide-react'
 import {
-  useConversationFiles,
-  useGlobalFiles,
-  useToggleFile,
   useDeleteFile,
   useConnectedRepos,
 } from '@/hooks/useWorkspaceLibrary'
+import { LibraryFolderBrowser } from './LibraryFolderBrowser'
 import { FileUploadModal } from './FileUploadModal'
 import { FilePreview } from './FilePreview'
 import { RepoConnector } from './RepoConnector'
@@ -48,20 +44,6 @@ interface WorkspaceLibraryProps {
 
 type Tab = 'library' | 'repos' | 'walkie-talkie'
 
-const TYPE_COLORS: Record<string, string> = {
-  doc: 'bg-blue-500/10 text-blue-500',
-  code: 'bg-green-500/10 text-green-500',
-  spec: 'bg-purple-500/10 text-purple-500',
-  template: 'bg-orange-500/10 text-orange-500',
-  upload: 'bg-muted text-muted-foreground',
-}
-
-function formatSize(bytes: number): string {
-  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)}M`
-  if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)}K`
-  return `${bytes}B`
-}
-
 export function WorkspaceLibrary({
   conversationId,
   collapsed,
@@ -70,6 +52,9 @@ export function WorkspaceLibrary({
 }: WorkspaceLibraryProps): React.JSX.Element {
   const [activeTab, setActiveTab] = useState<Tab>('library')
   const wtLogEndRef = useRef<HTMLDivElement>(null)
+
+  // Current folder for the folder browser
+  const [currentFolderId, setCurrentFolderId] = useState<number | null>(null)
 
   // Auto-scroll walkie-talkie log to bottom when new entries arrive
   useEffect(() => {
@@ -83,21 +68,10 @@ export function WorkspaceLibrary({
   const [repoFilePreview, setRepoFilePreview] = useState<{ content: string; path: string } | null>(null)
 
   // Queries
-  const { data: globalFiles = [] } = useGlobalFiles()
-  const { data: conversationFiles } = useConversationFiles(conversationId)
   const { data: repos = [] } = useConnectedRepos(conversationId)
 
   // Mutations
-  const toggleFile = useToggleFile(conversationId ?? 0)
   const deleteFile = useDeleteFile()
-
-  // Use conversation-scoped files list when a conversation is active, otherwise global
-  const files: LibraryFile[] = conversationFiles ?? globalFiles
-
-  const handleToggle = useCallback((fileId: number) => {
-    if (!conversationId) return
-    toggleFile.mutate(fileId)
-  }, [conversationId, toggleFile])
 
   const handleDelete = useCallback((fileId: number) => {
     if (window.confirm('Delete this file from the library?')) {
@@ -179,7 +153,7 @@ export function WorkspaceLibrary({
         </button>
       </div>
 
-      {/* Library tab */}
+      {/* Library tab — folder browser */}
       {activeTab === 'library' && (
         <>
           {/* Upload actions */}
@@ -192,71 +166,13 @@ export function WorkspaceLibrary({
             </Button>
           </div>
 
-          {/* File list */}
-          <div className="flex-1 overflow-y-auto">
-            {files.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-8 gap-2 text-muted-foreground text-xs">
-                <FileText size={20} strokeWidth={1.5} />
-                <span>No files yet</span>
-              </div>
-            ) : (
-              <div className="py-1">
-                {files.map(file => (
-                  <div
-                    key={file.id}
-                    className="group flex items-center gap-2 px-2 py-1.5 hover:bg-muted/50"
-                  >
-                    {/* Toggle active */}
-                    <button
-                      onClick={() => handleToggle(file.id)}
-                      disabled={!conversationId}
-                      className={`flex-shrink-0 ${conversationId ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}
-                      title={file.active_in_context ? 'Remove from context' : 'Add to context'}
-                    >
-                      {file.active_in_context ? (
-                        <ToggleRight size={16} className="text-primary" />
-                      ) : (
-                        <ToggleLeft size={16} className="text-muted-foreground" />
-                      )}
-                    </button>
-
-                    {/* File info */}
-                    <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setPreviewFile(file)}>
-                      <div className="flex items-center gap-1.5">
-                        <span className={`px-1 py-0.5 rounded text-[10px] font-medium ${TYPE_COLORS[file.file_type] || TYPE_COLORS.upload}`}>
-                          {file.file_type}
-                        </span>
-                        <span className="text-xs text-foreground truncate">
-                          {file.display_name || file.filename}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        {file.conversation_id === null ? (
-                          <Globe size={10} className="text-muted-foreground" />
-                        ) : (
-                          <MessageSquare size={10} className="text-muted-foreground" />
-                        )}
-                        <span className="text-[10px] text-muted-foreground">{formatSize(file.file_size)}</span>
-                        {file.tags && (
-                          <span className="text-[10px] text-muted-foreground truncate">{file.tags}</span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100">
-                      <button onClick={() => setPreviewFile(file)} className="p-1 text-muted-foreground hover:text-foreground">
-                        <Eye size={12} />
-                      </button>
-                      <button onClick={() => handleDelete(file.id)} className="p-1 text-muted-foreground hover:text-destructive">
-                        <Trash2 size={12} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          {/* Folder browser replaces the old flat list */}
+          <LibraryFolderBrowser
+            currentFolderId={currentFolderId}
+            onNavigateToFolder={setCurrentFolderId}
+            onPreviewFile={setPreviewFile}
+            onDeleteFile={handleDelete}
+          />
         </>
       )}
 
@@ -347,6 +263,7 @@ export function WorkspaceLibrary({
           onClose={() => setUploadModal(null)}
           conversationId={conversationId}
           mode={uploadModal}
+          defaultFolderId={currentFolderId}
         />
       )}
       {repoModal && (
@@ -362,7 +279,6 @@ export function WorkspaceLibrary({
           fileName={previewFile.display_name || previewFile.filename}
           fileType={previewFile.file_type}
           onClose={() => setPreviewFile(null)}
-          onToggleContext={conversationId ? () => handleToggle(previewFile.id) : undefined}
           onDelete={() => handleDelete(previewFile.id)}
           isActive={previewFile.active_in_context}
         />

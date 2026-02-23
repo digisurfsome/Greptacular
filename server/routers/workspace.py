@@ -189,6 +189,25 @@ async def update_conversation(conversation_id: int, body: ConversationUpdateRequ
     )
 
 
+class BulkDeleteRequest(BaseModel):
+    """Request body for bulk deleting conversations."""
+    conversation_ids: list[int]
+
+
+@router.post("/conversations/bulk-delete")
+async def bulk_delete_conversations_endpoint(body: BulkDeleteRequest):
+    """Delete multiple workspace conversations at once."""
+    from ..services.workspace_database import delete_conversations_bulk
+
+    if not body.conversation_ids:
+        raise HTTPException(status_code=400, detail="No conversation IDs provided")
+    if len(body.conversation_ids) > 100:
+        raise HTTPException(status_code=400, detail="Maximum 100 conversations per bulk delete")
+
+    count = delete_conversations_bulk(body.conversation_ids)
+    return {"success": True, "deleted_count": count}
+
+
 @router.delete("/conversations/{conversation_id}")
 async def delete_conversation_endpoint(conversation_id: int):
     """Delete a workspace conversation and all its messages."""
@@ -471,7 +490,14 @@ async def get_rate_limits():
 async def get_calibration():
     """Get calibrated limits based on historical rate limit events."""
     from ..services import workspace_database as db
-    return db.get_calibrated_limits()
+
+    try:
+        return db.get_calibrated_limits()
+    except Exception as e:
+        logger.warning("Failed to get calibrated limits: %s", e)
+        # Return empty calibration data so the UI degrades gracefully
+        empty = {"estimated_limit": None, "safe_limit": None, "sample_count": 0, "last_hit": None, "confidence": "none"}
+        return {"daily": empty, "weekly": empty, "monthly": empty}
 
 
 @router.get("/usage/premium")
@@ -1269,13 +1295,22 @@ async def workspace_chat_websocket(websocket: WebSocket):
                         except Exception as e:
                             logger.warning("Invalid attachment data: %s", e)
 
+                    # Extract optional library file IDs for per-message attachment
+                    library_file_ids = message.get("library_file_ids")
+                    if library_file_ids and not isinstance(library_file_ids, list):
+                        library_file_ids = None
+
                     # Stream Claude's response while listening for walkie-talkie
                     # messages.  The helper multiplexes response chunks with
                     # incoming WebSocket reads so the user can inject messages
                     # into the running agent mid-stream.
                     await _stream_with_walkie_talkie(
                         websocket, session,
-                        session.send_message(user_content, attachments=attachments),
+                        session.send_message(
+                            user_content,
+                            attachments=attachments,
+                            library_file_ids=library_file_ids,
+                        ),
                     )
 
                 elif msg_type == "answer":
@@ -1370,6 +1405,7 @@ async def upload_library_file(
     conversation_id: Optional[int] = Form(None),
     display_name: Optional[str] = Form(None),
     tags: Optional[str] = Form(None),
+    folder_id: Optional[int] = Form(None),
 ):
     """Upload a file to the library via multipart form data."""
     from ..services.workspace_library import MAX_FILE_SIZE, upload_file, validate_file_extension
@@ -1391,6 +1427,7 @@ async def upload_library_file(
         conversation_id=conversation_id,
         display_name=display_name,
         tags=tags,
+        folder_id=folder_id,
     )
     return result
 
@@ -1411,6 +1448,7 @@ async def upload_text_content(body: dict):
         conversation_id=body.get("conversation_id"),
         display_name=body.get("display_name"),
         tags=body.get("tags"),
+        folder_id=body.get("folder_id"),
     )
     return result
 
@@ -1460,6 +1498,132 @@ async def toggle_library_file_context(file_id: int, conversation_id: int):
     result = toggle_file_in_context(file_id, conversation_id)
     if result is None:
         raise HTTPException(status_code=404, detail="File not found")
+    return result
+
+
+@router.post("/library/{file_id}/move")
+async def move_library_file(file_id: int, body: dict):
+    """Move a file to a different folder. folder_id=null means root."""
+    from ..services.workspace_library import move_file
+
+    try:
+        result = move_file(file_id, body.get("folder_id"))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if result is None:
+        raise HTTPException(status_code=404, detail="File not found")
+    return result
+
+
+# ============================================================================
+# Library Folder Endpoints
+# ============================================================================
+
+@router.get("/library/tree")
+async def get_library_folder_tree():
+    """Get the full folder tree as a nested structure."""
+    from ..services.workspace_library import get_folder_tree
+    return get_folder_tree()
+
+
+@router.get("/library/folders/{folder_id}/contents")
+async def get_folder_contents(folder_id: int):
+    """List files and subfolders in a folder."""
+    from ..services.workspace_library import list_folder_contents
+    return list_folder_contents(folder_id)
+
+
+@router.get("/library/folders/root/contents")
+async def get_root_contents():
+    """List files and subfolders at the root level."""
+    from ..services.workspace_library import list_folder_contents
+    return list_folder_contents(None)
+
+
+@router.get("/library/folders/{folder_id}/breadcrumb")
+async def get_folder_breadcrumb_endpoint(folder_id: int):
+    """Get the path from root to this folder."""
+    from ..services.workspace_library import get_folder_breadcrumb
+    return get_folder_breadcrumb(folder_id)
+
+
+@router.post("/library/folders")
+async def create_library_folder(body: dict):
+    """Create a new folder in the library."""
+    from ..services.workspace_library import create_folder
+
+    name = body.get("name", "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Folder name is required")
+
+    try:
+        result = create_folder(name=name, parent_id=body.get("parent_id"))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return result
+
+
+@router.patch("/library/folders/{folder_id}")
+async def rename_library_folder(folder_id: int, body: dict):
+    """Rename a folder."""
+    from ..services.workspace_library import rename_folder
+
+    name = body.get("name", "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Folder name is required")
+
+    result = rename_folder(folder_id, name)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Folder not found")
+    return result
+
+
+@router.post("/library/folders/{folder_id}/move")
+async def move_library_folder(folder_id: int, body: dict):
+    """Move a folder to a new parent. new_parent_id=null means root."""
+    from ..services.workspace_library import move_folder
+
+    try:
+        result = move_folder(folder_id, body.get("new_parent_id"))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if result is None:
+        raise HTTPException(status_code=404, detail="Folder not found")
+    return result
+
+
+@router.delete("/library/folders/{folder_id}")
+async def delete_library_folder(folder_id: int):
+    """Delete a folder. Files inside move to root."""
+    from ..services.workspace_library import delete_folder
+
+    success = delete_folder(folder_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Folder not found")
+    return {"success": True}
+
+
+# ============================================================================
+# Save from Chat
+# ============================================================================
+
+@router.post("/library/save-from-chat")
+async def save_from_chat_endpoint(body: dict):
+    """Save content from a chat message into the library."""
+    from ..services.workspace_library import save_from_chat
+
+    content = body.get("content", "")
+    if not content:
+        raise HTTPException(status_code=400, detail="Content is required")
+
+    filename = body.get("filename", "untitled.md")
+    result = save_from_chat(
+        content=content,
+        filename=filename,
+        folder_id=body.get("folder_id"),
+        display_name=body.get("display_name"),
+        tags=body.get("tags"),
+    )
     return result
 
 

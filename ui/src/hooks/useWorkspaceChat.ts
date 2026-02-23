@@ -41,7 +41,7 @@ interface UseWorkspaceChatReturn {
   /** The question the agent asked when entering waiting state. */
   agentWaitingQuestion: string | null;
   start: (conversationId?: number | null, workingDirectory?: string, contextMode?: string, costSettings?: Record<string, unknown>, model?: string) => void;
-  sendMessage: (content: string, attachments?: ImageAttachment[]) => void;
+  sendMessage: (content: string, attachments?: ImageAttachment[], libraryFileIds?: number[]) => void;
   /** Send a walkie-talkie message to the running agent (injected via PreToolUse hook). */
   sendWalkieTalkie: (content: string) => void;
   /** Walkie-talkie conversation log for display in the sidebar panel. */
@@ -623,7 +623,7 @@ export function useWorkspaceChat({
   );
 
   const sendMessage = useCallback(
-    (content: string, attachments?: ImageAttachment[]) => {
+    (content: string, attachments?: ImageAttachment[], libraryFileIds?: number[]) => {
       let fullMessage = content;
 
       // Prepend injection content if present
@@ -669,6 +669,10 @@ export function useWorkspaceChat({
           mimeType: att.mimeType,
           base64Data: att.base64Data,
         }));
+      }
+
+      if (libraryFileIds && libraryFileIds.length > 0) {
+        wsPayload.library_file_ids = libraryFileIds;
       }
 
       // If the WebSocket isn't open yet or the backend session isn't ready

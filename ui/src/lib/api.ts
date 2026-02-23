@@ -3,6 +3,7 @@
  */
 
 import type {
+  CIStatusResponse,
   ProjectSummary,
   ProjectDetail,
   ProjectPrompts,
@@ -39,6 +40,9 @@ import type {
   PaginatedMessages,
   InjectResponse,
   LibraryFile,
+  LibraryFolder,
+  FolderContents,
+  FolderBreadcrumb,
   ConnectedRepo,
   RepoTreeEntry,
   Settings,
@@ -713,6 +717,15 @@ export async function deleteWorkspaceConversation(
   })
 }
 
+export async function bulkDeleteWorkspaceConversations(
+  conversationIds: number[]
+): Promise<{ success: boolean; deleted_count: number }> {
+  return fetchJSON('/workspace/conversations/bulk-delete', {
+    method: 'POST',
+    body: JSON.stringify({ conversation_ids: conversationIds }),
+  })
+}
+
 export async function getWorkspaceTokenUsage(
   conversationId: number
 ): Promise<{ total_tokens: number; context_window: number; usage_percent: number }> {
@@ -812,12 +825,14 @@ export async function uploadLibraryFile(
   conversationId?: number,
   displayName?: string,
   tags?: string,
+  folderId?: number,
 ): Promise<LibraryFile> {
   const formData = new FormData()
   formData.append('file', file)
   if (conversationId != null) formData.append('conversation_id', String(conversationId))
   if (displayName) formData.append('display_name', displayName)
   if (tags) formData.append('tags', tags)
+  if (folderId != null) formData.append('folder_id', String(folderId))
 
   const response = await fetch(`${API_BASE}/workspace/library/upload`, {
     method: 'POST',
@@ -836,6 +851,7 @@ export async function uploadLibraryText(
   conversationId?: number,
   displayName?: string,
   tags?: string,
+  folderId?: number,
 ): Promise<LibraryFile> {
   return fetchJSON('/workspace/library/upload-text', {
     method: 'POST',
@@ -845,6 +861,7 @@ export async function uploadLibraryText(
       conversation_id: conversationId ?? null,
       display_name: displayName ?? null,
       tags: tags ?? null,
+      folder_id: folderId ?? null,
     }),
   })
 }
@@ -878,6 +895,74 @@ export async function toggleLibraryFile(
 
 export async function getActiveLibraryFiles(conversationId: number): Promise<LibraryFile[]> {
   return fetchJSON(`/workspace/library/active/${conversationId}`)
+}
+
+// Library folder operations
+
+export async function getLibraryFolderTree(): Promise<LibraryFolder[]> {
+  return fetchJSON('/workspace/library/tree')
+}
+
+export async function getFolderContents(folderId: number | null): Promise<FolderContents> {
+  const path = folderId === null
+    ? '/workspace/library/folders/root/contents'
+    : `/workspace/library/folders/${folderId}/contents`
+  return fetchJSON(path)
+}
+
+export async function getFolderBreadcrumb(folderId: number): Promise<FolderBreadcrumb[]> {
+  return fetchJSON(`/workspace/library/folders/${folderId}/breadcrumb`)
+}
+
+export async function createLibraryFolder(name: string, parentId?: number): Promise<LibraryFolder> {
+  return fetchJSON('/workspace/library/folders', {
+    method: 'POST',
+    body: JSON.stringify({ name, parent_id: parentId ?? null }),
+  })
+}
+
+export async function renameLibraryFolder(folderId: number, name: string): Promise<LibraryFolder> {
+  return fetchJSON(`/workspace/library/folders/${folderId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name }),
+  })
+}
+
+export async function moveLibraryFolder(folderId: number, newParentId: number | null): Promise<LibraryFolder> {
+  return fetchJSON(`/workspace/library/folders/${folderId}/move`, {
+    method: 'POST',
+    body: JSON.stringify({ new_parent_id: newParentId }),
+  })
+}
+
+export async function deleteLibraryFolder(folderId: number): Promise<void> {
+  await fetchJSON(`/workspace/library/folders/${folderId}`, { method: 'DELETE' })
+}
+
+export async function moveLibraryFile(fileId: number, folderId: number | null): Promise<LibraryFile> {
+  return fetchJSON(`/workspace/library/${fileId}/move`, {
+    method: 'POST',
+    body: JSON.stringify({ folder_id: folderId }),
+  })
+}
+
+export async function saveFromChat(
+  content: string,
+  filename: string,
+  folderId?: number,
+  displayName?: string,
+  tags?: string,
+): Promise<LibraryFile> {
+  return fetchJSON('/workspace/library/save-from-chat', {
+    method: 'POST',
+    body: JSON.stringify({
+      content,
+      filename,
+      folder_id: folderId ?? null,
+      display_name: displayName ?? null,
+      tags: tags ?? null,
+    }),
+  })
 }
 
 // ============================================================================
@@ -1218,6 +1303,38 @@ export async function clearTokenLog(conversationId: number): Promise<void> {
   })
 }
 
+
+// ============================================================================
+// CI Monitor API
+// ============================================================================
+
+export async function startCIMonitor(
+  workingDirectory: string,
+  vetoSeconds: number = 30,
+): Promise<CIStatusResponse> {
+  return fetchJSON('/ci/monitor/start', {
+    method: 'POST',
+    body: JSON.stringify({ working_directory: workingDirectory, veto_seconds: vetoSeconds }),
+  })
+}
+
+export async function stopCIMonitor(workingDirectory: string): Promise<void> {
+  await fetchJSON('/ci/monitor/stop', {
+    method: 'POST',
+    body: JSON.stringify({ working_directory: workingDirectory }),
+  })
+}
+
+export async function getCIStatus(workingDirectory: string): Promise<CIStatusResponse> {
+  return fetchJSON(`/ci/status?working_directory=${encodeURIComponent(workingDirectory)}`)
+}
+
+export async function vetoCIMerge(workingDirectory: string): Promise<{ success: boolean; message: string }> {
+  return fetchJSON('/ci/veto', {
+    method: 'POST',
+    body: JSON.stringify({ working_directory: workingDirectory }),
+  })
+}
 
 // ============================================================================
 // Swarm Pipeline API

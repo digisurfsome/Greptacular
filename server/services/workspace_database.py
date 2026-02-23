@@ -128,6 +128,22 @@ class WorkspaceCategory(Base):
     created_at = Column(DateTime, default=_utc_now)
 
 
+class WorkspaceLibraryFolder(Base):
+    """A folder in the workspace library filesystem."""
+    __tablename__ = "workspace_library_folders"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    parent_id = Column(
+        Integer,
+        ForeignKey("workspace_library_folders.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    created_at = Column(DateTime, default=_utc_now)
+    updated_at = Column(DateTime, default=_utc_now, onupdate=_utc_now)
+
+
 class WorkspaceLibraryFile(Base):
     """A file in the workspace library."""
     __tablename__ = "workspace_library_files"
@@ -136,6 +152,12 @@ class WorkspaceLibraryFile(Base):
     conversation_id = Column(
         Integer,
         ForeignKey("workspace_conversations.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    folder_id = Column(
+        Integer,
+        ForeignKey("workspace_library_folders.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
@@ -609,6 +631,46 @@ def delete_conversation(conversation_id: int) -> bool:
             conversation_id, token_log_count,
         )
         return True
+    except Exception:
+        session.rollback()
+        logger.exception("Failed to delete workspace conversation %d", conversation_id)
+        raise
+    finally:
+        session.close()
+
+
+def delete_conversations_bulk(conversation_ids: list[int]) -> int:
+    """Delete multiple conversations in a single transaction.
+
+    Args:
+        conversation_ids: List of conversation IDs to delete.
+
+    Returns:
+        Number of conversations actually deleted.
+    """
+    if not conversation_ids:
+        return 0
+
+    session = get_db_session()
+    try:
+        # Delete orphaned token log entries first
+        session.query(WorkspaceTokenLog).filter(
+            WorkspaceTokenLog.conversation_id.in_(conversation_ids)
+        ).delete(synchronize_session=False)
+
+        # Delete the conversations (messages cascade via relationship)
+        count = (
+            session.query(WorkspaceConversation)
+            .filter(WorkspaceConversation.id.in_(conversation_ids))
+            .delete(synchronize_session=False)
+        )
+        session.commit()
+        logger.info("Bulk deleted %d workspace conversations", count)
+        return count
+    except Exception:
+        session.rollback()
+        logger.exception("Failed to bulk delete workspace conversations")
+        raise
     finally:
         session.close()
 

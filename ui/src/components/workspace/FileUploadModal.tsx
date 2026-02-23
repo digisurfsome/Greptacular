@@ -7,14 +7,28 @@
 
 import { useState, useCallback, useRef } from 'react'
 import { X, Upload, Loader2 } from 'lucide-react'
-import { useUploadFile, useUploadText } from '@/hooks/useWorkspaceLibrary'
+import { useUploadFile, useUploadText, useFolderTree } from '@/hooks/useWorkspaceLibrary'
 import { Button } from '@/components/ui/button'
+import type { LibraryFolder } from '@/lib/types'
 
 interface FileUploadModalProps {
   open: boolean
   onClose: () => void
   conversationId: number | null
   mode: 'file' | 'text'
+  /** Pre-select a folder when opening from within a folder. */
+  defaultFolderId?: number | null
+}
+
+function flattenFolderTree(folders: LibraryFolder[], depth = 0): Array<{ id: number; name: string; depth: number }> {
+  const result: Array<{ id: number; name: string; depth: number }> = []
+  for (const f of folders) {
+    result.push({ id: f.id, name: f.name, depth })
+    if (f.children?.length) {
+      result.push(...flattenFolderTree(f.children, depth + 1))
+    }
+  }
+  return result
 }
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
@@ -32,11 +46,13 @@ export function FileUploadModal({
   onClose,
   conversationId,
   mode,
+  defaultFolderId = null,
 }: FileUploadModalProps): React.JSX.Element | null {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [displayName, setDisplayName] = useState('')
   const [tags, setTags] = useState('')
   const [scope, setScope] = useState<'global' | 'chat'>('global')
+  const [folderId, setFolderId] = useState<number | null>(defaultFolderId)
   const [error, setError] = useState('')
   const [isDragging, setIsDragging] = useState(false)
   // Text mode state
@@ -46,6 +62,8 @@ export function FileUploadModal({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const uploadFile = useUploadFile()
   const uploadText = useUploadText()
+  const { data: folderTree = [] } = useFolderTree()
+  const flatFolders = flattenFolderTree(folderTree)
 
   const isUploading = uploadFile.isPending || uploadText.isPending
 
@@ -95,6 +113,7 @@ export function FileUploadModal({
           conversationId: scopeConversationId,
           displayName: displayName || undefined,
           tags: tags || undefined,
+          folderId: folderId ?? undefined,
         })
       } else {
         if (!textContent.trim()) {
@@ -107,13 +126,14 @@ export function FileUploadModal({
           conversationId: scopeConversationId,
           displayName: displayName || textFilename || undefined,
           tags: tags || undefined,
+          folderId: folderId ?? undefined,
         })
       }
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed')
     }
-  }, [mode, selectedFile, textFilename, textContent, displayName, tags, scope, conversationId, uploadFile, uploadText, onClose])
+  }, [mode, selectedFile, textFilename, textContent, displayName, tags, scope, folderId, conversationId, uploadFile, uploadText, onClose])
 
   if (!open) return null
 
@@ -213,6 +233,21 @@ export function FileUploadModal({
               className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground"
               placeholder="comma-separated tags"
             />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">Folder</label>
+            <select
+              value={folderId ?? ''}
+              onChange={(e) => setFolderId(e.target.value ? Number(e.target.value) : null)}
+              className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground"
+            >
+              <option value="">Root</option>
+              {flatFolders.map((f) => (
+                <option key={f.id} value={f.id} style={{ paddingLeft: `${8 + f.depth * 16}px` }}>
+                  {'  '.repeat(f.depth)}{f.depth > 0 ? '└ ' : ''}{f.name}
+                </option>
+              ))}
+            </select>
           </div>
           <div>
             <label className="text-xs text-muted-foreground mb-1 block">Scope</label>

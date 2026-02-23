@@ -872,6 +872,7 @@ export interface WorkspaceContextBudget {
 export interface LibraryFile {
   id: number
   conversation_id: number | null
+  folder_id: number | null
   filename: string
   display_name: string | null
   file_type: string
@@ -879,6 +880,25 @@ export interface LibraryFile {
   tags: string | null
   active_in_context: boolean
   created_at: string
+}
+
+export interface LibraryFolder {
+  id: number
+  name: string
+  parent_id: number | null
+  created_at: string
+  updated_at: string
+  children?: LibraryFolder[]
+}
+
+export interface FolderContents {
+  folders: LibraryFolder[]
+  files: LibraryFile[]
+}
+
+export interface FolderBreadcrumb {
+  id: number
+  name: string
 }
 
 export interface ConnectedRepo {
@@ -1169,6 +1189,56 @@ export interface DesignGuideContext {
   designTab: 'base' | 'refine'
   refinement: DesignRefinement
   availableStyles: Array<{ id: string; name: string; category: string; description: string }>
+}
+
+// ============================================================================
+// CI Monitor Types
+// ============================================================================
+
+export type CIPipelineStatus =
+  | 'idle'       // No active CI runs
+  | 'running'    // CI is running checks
+  | 'passed'     // CI passed, veto countdown active
+  | 'failed'     // CI failed, auto-fix agent dispatched
+  | 'fixing'     // Auto-fix agent working
+  | 'merging'    // Auto-merge in progress
+  | 'merged'     // Merged + pulled + deployed
+  | 'veto'       // User cancelled auto-merge
+  | 'exhausted'  // Auto-fix retries used up, needs manual help
+  | 'error'      // Something went wrong
+
+export interface CIRunInfo {
+  run_id: number
+  status: string
+  conclusion: string | null
+  branch: string
+  commit_sha: string
+  commit_message: string
+  url: string
+  started_at: string | null
+  autofix_attempt: number
+}
+
+export interface CIEvent {
+  type: string
+  message: string
+  timestamp: string
+}
+
+export interface CIStatusResponse {
+  working_directory: string
+  owner: string
+  repo: string
+  branch: string
+  status: CIPipelineStatus
+  latest_run: CIRunInfo | null
+  veto_deadline: number | null
+  veto_remaining: number | null
+  pr_number: number | null
+  pr_url: string | null
+  autofix_attempt: number
+  error_message: string | null
+  history: CIEvent[]
 }
 
 // ============================================================================

@@ -220,8 +220,7 @@ class WorkspaceChatSession:
         # numbers instead of heuristic estimates.
         self._last_api_usage: Optional[dict] = None
 
-        # Track whether library context has been injected in this session
-        # so we can skip redundant injection on subsequent messages.
+        # Legacy flag (no longer used — library files are now attached per-message)
         self._library_injected: bool = False
 
         # Walkie-talkie communication: in-memory message queue for injecting
@@ -754,7 +753,10 @@ class WorkspaceChatSession:
             yield {"type": "response_done"}
 
     async def send_message(
-        self, user_message: str, attachments: list[ImageAttachment] | None = None
+        self,
+        user_message: str,
+        attachments: list[ImageAttachment] | None = None,
+        library_file_ids: list[int] | None = None,
     ) -> AsyncGenerator[dict, None]:
         """Send a user message and stream Claude's response.
 
@@ -835,26 +837,22 @@ class WorkspaceChatSession:
                     f"messages={len(history_messages)}, tokens={loaded_tokens + summary_tokens}"
                 )
 
-        # Inject active library file content into the message.
-        # Only inject on the FIRST message of a session (or when resuming) since
-        # the SDK accumulates history internally — subsequent messages already have
-        # the library content in the conversation context.  This prevents the same
-        # library content from being duplicated in every user message.
-        if self.conversation_id and not self._library_injected:
+        # Per-message library file attachment: if the caller provided file IDs,
+        # inline their content into THIS message only (not auto-injected).
+        if library_file_ids:
             try:
-                from .workspace_library import get_active_files_context
-                library_context, library_tokens = get_active_files_context(
-                    self.conversation_id, token_cap=self.cost_settings["library_cap"]
+                from .workspace_library import get_files_context_by_ids
+                library_context, library_tokens = get_files_context_by_ids(
+                    library_file_ids, token_cap=self.cost_settings.get("library_cap", 50_000)
                 )
                 if library_context:
                     message_to_send = f"{library_context}\n\n{message_to_send}"
-                    self._library_injected = True
                     logger.info(
-                        "Injected library context: %d tokens (first message only)",
-                        library_tokens,
+                        "Attached %d library files: ~%d tokens",
+                        len(library_file_ids), library_tokens,
                     )
             except Exception as e:
-                logger.warning("Failed to load library context: %s", e)
+                logger.warning("Failed to load attached library files: %s", e)
 
         try:
             async for chunk in self._query_claude(message_to_send, attachments=attachments):

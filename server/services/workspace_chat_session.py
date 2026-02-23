@@ -140,7 +140,8 @@ def get_workspace_system_prompt(working_directory: str, model: str = "", context
         "claude-haiku-4-5-20251001": "Claude Haiku 4.5",
     }
     display_name = MODEL_DISPLAY_NAMES.get(model or "", model or "Claude")
-    return f"""You are an expert coding assistant ({display_name}, {context_tokens} token context).
+    model_id_note = f" (model ID: {model})" if model else ""
+    return f"""You are an expert coding assistant ({display_name}{model_id_note}, {context_tokens} token context).
 Working directory: {working_directory}
 
 Read files before editing. Preserve existing code style. Use absolute paths. Prefer Glob/Grep over bash find/grep.

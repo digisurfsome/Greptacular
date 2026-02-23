@@ -1146,11 +1146,16 @@ export function WorkspaceChat({
             })()}
             {/* Right side: model ID + API cost summary */}
             <div className="ml-auto flex items-center gap-2 shrink-0">
-              {modelId && (
-                <span className="px-2 py-0.5 text-[10px] font-mono text-muted-foreground bg-muted/60 rounded border border-border" title={`Backend model: ${modelId}`}>
-                  {modelId}
-                </span>
-              )}
+              {(() => {
+                // Show the resolved model ID from the backend (arrives after first response),
+                // or fall back to the expected ID based on the selected preset.
+                const displayId = modelId || (conversationModel === 'sonnet' ? 'claude-sonnet-4-6' : 'claude-opus-4-6')
+                return (
+                  <span className="px-2 py-0.5 text-[10px] font-mono text-muted-foreground bg-muted/60 rounded border border-border" title={modelId ? `Confirmed model: ${modelId}` : `Expected model: ${displayId} (confirmed after first response)`}>
+                    {displayId}
+                  </span>
+                )
+              })()}
               {apiTokenTotals.totalCost > 0 && (
                 <span className="px-2 py-0.5 text-[10px] font-mono text-muted-foreground bg-muted/60 rounded border border-border" title={`API: ${apiTokenTotals.apiInput.toLocaleString()} in / ${apiTokenTotals.apiOutput.toLocaleString()} out / ${apiTokenTotals.cacheRead.toLocaleString()} cache`}>
                   ${apiTokenTotals.totalCost.toFixed(3)} · {(apiTokenTotals.apiInput + apiTokenTotals.apiOutput).toLocaleString()} tok

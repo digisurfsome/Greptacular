@@ -348,12 +348,6 @@ class WorkspaceChatSession:
                 "WebSearch",
             ]
 
-            # Resolve effort level from cost settings for the settings file.
-            # The CLAUDE_CODE_EFFORT_LEVEL env var has a known bug where it's
-            # ignored by the CLI (GitHub #23604, #12376). Using the settings
-            # file's effortLevel field is the reliable alternative.
-            effort_for_settings = self.cost_settings.get("effort", "high")
-
             security_settings: dict = {
                 "sandbox": {"enabled": False},
                 "permissions": {
@@ -361,9 +355,6 @@ class WorkspaceChatSession:
                     "allow": permissions_list,
                 },
             }
-            # Inject effort level into the settings file so the CLI picks it up
-            if effort_for_settings in ("low", "medium", "high"):
-                security_settings["effortLevel"] = effort_for_settings
 
             settings_dir = Path.home() / ".autoforge"
             settings_dir.mkdir(parents=True, exist_ok=True)
@@ -426,6 +417,25 @@ class WorkspaceChatSession:
         system_prompt = get_workspace_system_prompt(self.working_directory, model=model, context_mode=self.context_mode)
         with open(claude_md_path, "w", encoding="utf-8") as f:
             f.write(system_prompt)
+
+        # Write effortLevel to the project-level .claude/settings.json so the
+        # CLI picks it up via setting_sources=["project"].  This is the single
+        # authoritative mechanism for effort delivery.  The --settings JSON
+        # override (sandbox/permissions) does NOT propagate effortLevel, and
+        # the CLAUDE_CODE_EFFORT_LEVEL env var has a known bug (#23604).
+        effort_level = self.cost_settings.get("effort", "high")
+        project_settings_dir = workspace_scratch / ".claude"
+        project_settings_dir.mkdir(parents=True, exist_ok=True)
+        project_settings_path = project_settings_dir / "settings.json"
+        project_settings: dict = {}
+        if effort_level in ("low", "medium", "high"):
+            project_settings["effortLevel"] = effort_level
+        with open(project_settings_path, "w") as f:
+            json.dump(project_settings, f, indent=2)
+        logger.info(
+            "Wrote project .claude/settings.json: effortLevel=%s at %s",
+            effort_level, project_settings_path,
+        )
         # Log context_mode tracing to help debug 200K vs 1M issues
         context_snippet = system_prompt[:120].replace('\n', ' ')
         logger.info(
@@ -549,8 +559,8 @@ class WorkspaceChatSession:
             if effort in ("low", "medium", "high"):
                 sdk_env["CLAUDE_CODE_EFFORT_LEVEL"] = effort
             logger.info(
-                "EFFORT WIRING: cost_settings.effort=%s, env_var=%s, settings_file_effortLevel=%s, conversation_id=%s, model=%s",
-                cs.get("effort"), sdk_env.get("CLAUDE_CODE_EFFORT_LEVEL"), effort_for_settings, self.conversation_id, model,
+                "EFFORT WIRING: cost_settings.effort=%s, env_var=%s, project_settings_effortLevel=%s, conversation_id=%s, model=%s",
+                cs.get("effort"), sdk_env.get("CLAUDE_CODE_EFFORT_LEVEL"), effort_level, self.conversation_id, model,
             )
 
             self.client = ClaudeSDKClient(
@@ -563,7 +573,8 @@ class WorkspaceChatSession:
                     allowed_tools=WORKSPACE_BUILTIN_TOOLS,
                     permission_mode="acceptEdits",
                     # Cost controls: max_turns from dashboard, effort via
-                    # effortLevel in settings file + CLAUDE_CODE_EFFORT_LEVEL env var.
+                    # effortLevel in project .claude/settings.json (primary)
+                    # + CLAUDE_CODE_EFFORT_LEVEL env var (fallback).
                     max_turns=cs["max_turns"],
                     cwd=str(workspace_scratch),  # Scratch dir for CLAUDE.md
                     settings=str(settings_file.resolve()),

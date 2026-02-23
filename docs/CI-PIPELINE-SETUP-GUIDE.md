@@ -458,14 +458,107 @@ CI runs ──────────────── Widget shows: spinning 
 
 ---
 
+## Step 7: Git Activity Widget (Optional but Recommended)
+
+Alongside the CI widget, add a **Git Activity Widget** — a small square showing recent commits with a badge count for unseen activity.
+
+**Component:** `ui/src/components/workspace/GitActivityWidget.tsx`
+
+**What it does:**
+- Compact square button with a git commit icon
+- Polls `GET /api/workspace/git/commits?working_directory=...` every 10s
+- Badge in corner shows count of commits since last click
+- Blinks cyan when new commits arrive
+- Click opens dropdown showing last 10 commits: hash, message, author, relative time
+- Clicking marks all as "seen" (badge resets to 0)
+- NEVER steals focus, just a passive indicator
+
+**Backend endpoint** (add to your workspace router):
+```python
+@router.get("/git/commits")
+async def list_recent_git_commits(working_directory: str, limit: int = 10):
+    # Runs: git log -10 --format=%H|%an|%aI|%s
+    # Returns: { commits: [...], branch: "main" }
+```
+
+**Placement:** Same header row as the CI widget. Put it right before/after the CI indicator.
+
+```tsx
+<div className="flex items-center gap-1">
+  <GitActivityWidget workingDirectory={projectPath} />
+  <CIStatusWidget workingDirectory={projectPath} />
+</div>
+```
+
+**Where to place it:**
+- Front page header (near project controls)
+- Workspace page header (in the breadcrumb bar)
+- NOT in the AutoForge project views or any other pages
+
+---
+
+## Anthropic API Key + Auto-Fix Error Handling
+
+If the auto-fix workflow fails because the `ANTHROPIC_API_KEY` is invalid, expired, or rate-limited, Claude Code will error out. Handle this in the workflow:
+
+**Add to your workflow's "Run Claude to fix failures" step:**
+
+```yaml
+      - name: Run Claude to fix failures
+        if: steps.check-loop.outputs.skip == 'false'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        timeout-minutes: 10
+        continue-on-error: true
+        id: claude-fix
+        run: |
+          # ... claude command here ...
+
+      - name: Handle Claude failure
+        if: steps.claude-fix.outcome == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const branch = '${{ github.event.workflow_run.head_branch }}';
+            const prs = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              head: `${context.repo.owner}:${branch}`,
+              state: 'open'
+            });
+            if (prs.data.length > 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prs.data[0].number,
+                body: `**Auto-fix failed** (Claude Code error — possibly API key issue or rate limit). Check the [workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) and verify your \`ANTHROPIC_API_KEY\` secret is valid.`
+              });
+            }
+```
+
+**Setting up the API key:**
+1. Go to GitHub repo > Settings > Secrets and variables > Actions
+2. Create a new secret: `ANTHROPIC_API_KEY`
+3. Paste your key from https://console.anthropic.com/settings/keys
+4. If using Vertex AI, set `CLAUDE_CODE_USE_VERTEX=1` and configure gcloud auth instead
+
+**If the key gets rate-limited:**
+- The auto-fix workflow has `timeout-minutes: 10` — it won't hang
+- The `continue-on-error: true` ensures the workflow still posts a PR comment
+- The comment tells you exactly what happened so you can fix it manually
+
+---
+
 ## Prompt for Claude Code
 
 When you're ready to set this up in a new project, paste this:
 
-> Set up the CI pipeline notification system from my Greptacular project. Use the guide at `docs/CI-PIPELINE-SETUP-GUIDE.md` as reference. I need:
+> Set up the CI pipeline + git activity notification system from my Greptacular project. Use the guide at `docs/CI-PIPELINE-SETUP-GUIDE.md` as reference. I need:
 > 1. The GitHub Actions auto-fix workflow (customize CI commands for this project)
 > 2. The backend CI monitor service and router
-> 3. The frontend widget in my header bar
-> 4. Wire everything up so it polls and shows status
+> 3. The backend git commits endpoint
+> 4. The frontend CI widget and git activity widget in my header bar
+> 5. Wire everything up so it polls and shows status
+> 6. Handle ANTHROPIC_API_KEY errors gracefully in the workflow
 >
-> Key requirements: widget must NEVER steal focus, NEVER open new tabs, NEVER refresh my screen. Just a blinking indicator I check when I'm ready.
+> Key requirements: widgets must NEVER steal focus, NEVER open new tabs, NEVER refresh my screen. Just blinking indicators I check when I'm ready.

@@ -1230,6 +1230,19 @@ export async function clearTokenLog(conversationId: number): Promise<void> {
 
 
 // ============================================================================
+// Git Activity API
+// ============================================================================
+
+export async function getRecentCommits(
+  workingDirectory: string,
+  limit: number = 10,
+): Promise<import('./types').GitCommitsResponse> {
+  return fetchJSON(
+    `/workspace/git/commits?working_directory=${encodeURIComponent(workingDirectory)}&limit=${limit}`
+  )
+}
+
+// ============================================================================
 // CI Monitor API
 // ============================================================================
 

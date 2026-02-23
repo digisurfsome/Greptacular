@@ -1172,6 +1172,24 @@ export interface DesignGuideContext {
 }
 
 // ============================================================================
+// Git Activity Types
+// ============================================================================
+
+export interface GitCommitInfo {
+  sha: string
+  short_sha: string
+  message: string
+  author: string
+  timestamp: string
+  relative_time: string
+}
+
+export interface GitCommitsResponse {
+  commits: GitCommitInfo[]
+  branch: string
+}
+
+// ============================================================================
 // CI Monitor Types
 // ============================================================================
 

@@ -24,6 +24,7 @@ import { RepoSelector } from '../components/workspace/RepoSelector'
 import { PassoffEditor, type PassoffSection } from '../components/workspace/PassoffEditor'
 import { SwarmPanel } from '../components/workspace/SwarmPanel'
 import { CIStatusWidget } from '../components/workspace/CIStatusWidget'
+import { GitActivityWidget } from '../components/workspace/GitActivityWidget'
 import { useWorkspaceKeyboardShortcuts } from '../hooks/useWorkspaceKeyboardShortcuts'
 import { exportConversationMarkdown, getSettings } from '../lib/api'
 import type { WalkieTalkieLogEntry } from '../lib/types'
@@ -310,6 +311,8 @@ export function WorkspacePage(): React.JSX.Element {
         </nav>
 
         <div className="ml-auto flex items-center gap-1">
+          {/* Git Activity — recent commits indicator */}
+          <GitActivityWidget workingDirectory={workingDirectory} />
           {/* CI Pipeline Status — non-intrusive blinking indicator */}
           <CIStatusWidget workingDirectory={workingDirectory} />
           <div className="w-px h-5 bg-border mx-1" />

@@ -29,6 +29,7 @@ import { KeyboardShortcutsHelp } from './components/KeyboardShortcutsHelp'
 import { ThemeSelector } from './components/ThemeSelector'
 import { ResetProjectModal } from './components/ResetProjectModal'
 import { ProjectSetupRequired } from './components/ProjectSetupRequired'
+import { GitActivityWidget } from './components/workspace/GitActivityWidget'
 import { getDependencyGraph, startAgent } from './lib/api'
 import { Loader2, Settings, Moon, Sun, RotateCcw, BookOpen, MessageSquare } from 'lucide-react'
 import type { Feature } from './lib/types'
@@ -351,6 +352,9 @@ function App() {
               >
                 Build: {__BUILD_TIME__}
               </span>
+
+              {/* Git Activity Widget — recent commits indicator */}
+              <GitActivityWidget workingDirectory={selectedProjectData?.path ?? null} />
 
               {/* Workspace link */}
               <Button

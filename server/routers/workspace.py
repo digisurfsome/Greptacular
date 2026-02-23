@@ -898,6 +898,111 @@ async def get_git_remote_info(working_directory: str):
         raise HTTPException(status_code=500, detail=f"Failed to get remote info: {str(e)}")
 
 
+class GitCommitInfo(BaseModel):
+    """Response model for a single git commit."""
+    sha: str
+    short_sha: str
+    message: str
+    author: str
+    timestamp: str
+    relative_time: str
+
+
+class GitCommitsResponse(BaseModel):
+    """Response model for recent git commits."""
+    commits: list[GitCommitInfo]
+    branch: str
+
+
+@router.get("/git/commits")
+async def list_recent_git_commits(working_directory: str, limit: int = 10):
+    """Get recent git commits for a working directory."""
+    import subprocess
+    from datetime import datetime, timezone
+    from pathlib import Path
+
+    work_dir = Path(working_directory)
+    if not work_dir.is_dir():
+        raise HTTPException(status_code=400, detail="Invalid working directory")
+
+    if limit < 1 or limit > 50:
+        limit = 10
+
+    try:
+        # Get current branch
+        branch_result = subprocess.run(
+            ["git", "branch", "--show-current"],
+            cwd=str(work_dir),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        branch = branch_result.stdout.strip() if branch_result.returncode == 0 else "unknown"
+
+        # Get recent commits with format: sha|author|timestamp|message
+        result = subprocess.run(
+            [
+                "git", "log",
+                f"-{limit}",
+                "--format=%H|%an|%aI|%s",
+            ],
+            cwd=str(work_dir),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            raise HTTPException(status_code=400, detail="Not a git repository or no commits")
+
+        commits = []
+        now = datetime.now(timezone.utc)
+        for line in result.stdout.strip().splitlines():
+            if not line:
+                continue
+            parts = line.split("|", 3)
+            if len(parts) < 4:
+                continue
+            sha, author, timestamp_str, message = parts
+
+            # Calculate relative time
+            try:
+                commit_time = datetime.fromisoformat(timestamp_str)
+                delta = now - commit_time
+                total_seconds = int(delta.total_seconds())
+                if total_seconds < 60:
+                    relative = "just now"
+                elif total_seconds < 3600:
+                    mins = total_seconds // 60
+                    relative = f"{mins}m ago"
+                elif total_seconds < 86400:
+                    hours = total_seconds // 3600
+                    relative = f"{hours}h ago"
+                else:
+                    days = total_seconds // 86400
+                    relative = f"{days}d ago"
+            except (ValueError, TypeError):
+                relative = ""
+
+            commits.append(GitCommitInfo(
+                sha=sha,
+                short_sha=sha[:7],
+                message=message,
+                author=author,
+                timestamp=timestamp_str,
+                relative_time=relative,
+            ))
+
+        return GitCommitsResponse(commits=commits, branch=branch)
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=504, detail="Git command timed out")
+    except FileNotFoundError:
+        raise HTTPException(status_code=500, detail="Git not found on system")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get commits: {str(e)}")
+
+
 class GitPrInfoResponse(BaseModel):
     """Response model for pull request info."""
     pr_url: str

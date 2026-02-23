@@ -185,7 +185,7 @@ class SwarmPipeline:
         """
         self.status = SwarmStatus.RUNNING
         self._running = True
-        self._emit("status_change", data={"status": "running"})
+        self._emit("status_change", status="running")
 
         try:
             # Scan existing files in shared dir
@@ -212,7 +212,7 @@ class SwarmPipeline:
                     if self._all_stages_done():
                         self.status = SwarmStatus.COMPLETED
                         self._running = False
-                        self._emit("status_change", data={"status": "completed"})
+                        self._emit("status_change", status="completed")
                         # Yield the final status event
                         try:
                             final = await asyncio.wait_for(self._event_queue.get(), timeout=0.1)
@@ -225,12 +225,12 @@ class SwarmPipeline:
                     if self._all_stages_done():
                         self.status = SwarmStatus.COMPLETED
                         self._running = False
-                        self._emit("status_change", data={"status": "completed"})
+                        self._emit("status_change", status="completed")
                         yield await self._event_queue.get()
 
         except Exception as e:
             self.status = SwarmStatus.FAILED
-            self._emit("error", data={"error": str(e)})
+            self._emit("error", error=str(e))
             logger.exception("Swarm pipeline failed: %s", e)
         finally:
             self._running = False
@@ -265,7 +265,7 @@ class SwarmPipeline:
         if self._watcher_task and not self._watcher_task.done():
             self._watcher_task.cancel()
 
-        self._emit("status_change", data={"status": "stopped"})
+        self._emit("status_change", status="stopped")
 
     def _all_stages_done(self) -> bool:
         """Check if all stages have completed (or failed)."""
@@ -366,18 +366,7 @@ Based on this input, here is your task:
             # Send the initial prompt
             async for chunk in session.send_message(prompt):
                 chunk_type = chunk.get("type", "")
-                if chunk_type == "text":
-                    # Check if the agent wrote the output file
-                    output_path = self.shared_dir / stage.output_file
-                    if output_path.exists() and stage.output_file not in self._known_files:
-                        self._known_files.add(stage.output_file)
-                        self._emit(
-                            "file_created",
-                            stage.name,
-                            filename=stage.output_file,
-                            size=output_path.stat().st_size,
-                        )
-                elif chunk_type == "error":
+                if chunk_type == "error":
                     logger.warning("Stage '%s' error: %s", stage.name, chunk.get("content"))
 
             # After the agent finishes, check if output file exists
@@ -439,13 +428,7 @@ Based on this input, here is your task:
                 for filename in new_files:
                     self._known_files.add(filename)
                     file_path = self.shared_dir / filename
-                    self._emit(
-                        "file_created",
-                        data={
-                            "filename": filename,
-                            "size": file_path.stat().st_size,
-                        },
-                    )
+                    self._emit("file_created", filename=filename, size=file_path.stat().st_size)
                     logger.info("New file detected in swarm workspace: %s", filename)
 
                     # Check if any waiting stage is triggered by this file

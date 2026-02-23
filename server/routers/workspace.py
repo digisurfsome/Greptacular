@@ -1196,9 +1196,8 @@ async def workspace_chat_websocket(websocket: WebSocket):
                         # Wire walkie-talkie settings from the global settings store.
                         # The comm_check_frequency value of "never" disables the hook entirely.
                         try:
-                            from registry import get_global_settings
-                            gs = get_global_settings()
-                            comm_freq = getattr(gs, "comm_check_frequency", "per_feature")
+                            from registry import get_setting
+                            comm_freq = get_setting("comm_check_frequency", "per_feature")
                             session.walkie_talkie_enabled = comm_freq != "never"
                             logger.debug(
                                 "Walkie-talkie: enabled=%s (comm_check_frequency=%s)",

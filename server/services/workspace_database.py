@@ -331,9 +331,14 @@ def get_engine() -> Engine:
             )
             Base.metadata.create_all(engine)
 
-            # Schema migration: add Phase 2 columns if missing
+            # Enable WAL mode for concurrent reads during writes.
+            # Without WAL, all writes serialize with exclusive locks which
+            # causes delete timeouts when the agent is actively streaming.
             import sqlite3
             conn = sqlite3.connect(db_path.as_posix())
+            conn.execute("PRAGMA journal_mode=WAL")
+
+            # Schema migration: add Phase 2 columns if missing
             cursor = conn.cursor()
             cursor.execute("PRAGMA table_info(workspace_conversations)")
             existing_cols = {row[1] for row in cursor.fetchall()}
@@ -571,7 +576,10 @@ def get_conversation(conversation_id: int) -> Optional[dict]:
 
 
 def delete_conversation(conversation_id: int) -> bool:
-    """Delete a conversation and all its messages.
+    """Delete a conversation, its messages, and orphaned token log entries.
+
+    Messages cascade via the SQLAlchemy relationship on WorkspaceConversation.
+    Token log entries have no FK constraint, so we delete them explicitly.
 
     Args:
         conversation_id: The conversation ID to delete.
@@ -588,9 +596,18 @@ def delete_conversation(conversation_id: int) -> bool:
         )
         if not conversation:
             return False
+        # Delete orphaned token log entries (no FK cascade on this table)
+        token_log_count = (
+            session.query(WorkspaceTokenLog)
+            .filter(WorkspaceTokenLog.conversation_id == conversation_id)
+            .delete(synchronize_session=False)
+        )
         session.delete(conversation)
         session.commit()
-        logger.info("Deleted workspace conversation %d", conversation_id)
+        logger.info(
+            "Deleted workspace conversation %d (+ %d token log entries)",
+            conversation_id, token_log_count,
+        )
         return True
     finally:
         session.close()

@@ -79,11 +79,15 @@ const EFFORT_PRESETS: EffortPreset[] = [
 
 interface WorkspaceSidebarProps {
   activeConversationId: number | null
+  /** Conversation ID that is currently streaming (agent actively working). Null when idle. */
+  streamingConversationId?: number | null
   collapsed: boolean
   onToggleCollapse: () => void
   /** Called when user starts a new chat with model selection from the dropdown. */
   onNewChat: (model: 'opus' | 'sonnet', contextMode: '1m' | '200k', effort: EffortLevel) => void
   onSelectConversation: (id: number) => void
+  /** Called when a conversation is deleted. Parent should clear activeConversationId if it matches. */
+  onDeleteConversation?: (id: number) => void
   /** Currently selected working directory (repo path) from the page. */
   selectedWorkingDirectory?: string | null
   /** Callback when the user picks a repo in the naming form. */
@@ -126,10 +130,12 @@ function relativeTime(dateString: string | null): string {
 /** Conversation list sidebar with search, categories, pinning, and category management. */
 export function WorkspaceSidebar({
   activeConversationId,
+  streamingConversationId,
   collapsed,
   onToggleCollapse,
   onNewChat,
   onSelectConversation,
+  onDeleteConversation,
   selectedWorkingDirectory,
   onWorkingDirectoryChange,
   modelPresetIndex = 0,
@@ -261,9 +267,11 @@ export function WorkspaceSidebar({
       e.stopPropagation()
       if (window.confirm('Delete this conversation? This cannot be undone.')) {
         deleteMutation.mutate(id)
+        // Notify parent so it can clear activeConversationId + disconnect WebSocket
+        onDeleteConversation?.(id)
       }
     },
-    [deleteMutation],
+    [deleteMutation, onDeleteConversation],
   )
 
   const handleMouseEnter = useCallback((id: number) => {
@@ -566,6 +574,7 @@ export function WorkspaceSidebar({
                 {!collapsedGroups[groupKey] && items.map((conv) => {
                   const isActive = conv.id === activeConversationId
                   const isHovered = conv.id === hoveredId
+                  const isStreaming = conv.id === streamingConversationId
 
                   return (
                     <div
@@ -615,10 +624,14 @@ export function WorkspaceSidebar({
                           </button>
                         )
                       })()}
+                      {/* Streaming accent bar — glowing left edge when agent is active */}
+                      {isStreaming && (
+                        <div className="absolute left-0 top-1 bottom-1 w-0.5 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(0,180,216,0.6)] animate-pulse z-10" />
+                      )}
                       <button
                         type="button"
                         onClick={() => onSelectConversation(conv.id)}
-                        className={`w-full flex items-center gap-2 px-2 py-2 rounded-lg border text-left transition-colors ${
+                        className={`w-full flex items-center gap-2 px-2 py-2 rounded-lg border text-left transition-colors overflow-hidden ${
                           isActive
                             ? 'bg-accent text-accent-foreground border-primary/30'
                             : 'hover:bg-muted text-foreground border-border'
@@ -628,6 +641,13 @@ export function WorkspaceSidebar({
                         {conv.pinned && <Star size={10} className="text-primary flex-shrink-0" />}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1">
+                            {/* Pulsing dot when agent is streaming */}
+                            {isStreaming && (
+                              <span className="relative flex h-2 w-2 flex-shrink-0">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75" />
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500" />
+                              </span>
+                            )}
                             <span className={`text-xs font-medium truncate ${conv.title ? '' : 'italic text-muted-foreground'}`}>
                               {conv.title ?? 'Untitled'}
                             </span>
@@ -636,6 +656,13 @@ export function WorkspaceSidebar({
                             {relativeTime(conv.updated_at)}
                           </span>
                         </div>
+
+                        {/* Shimmer sweep when streaming */}
+                        {isStreaming && (
+                          <div className="absolute inset-0 pointer-events-none overflow-hidden rounded-lg">
+                            <div className="absolute top-0 right-0 h-full w-12 animate-shimmer bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                          </div>
+                        )}
 
                         {isHovered && (
                           <div className="flex items-center gap-0.5 flex-shrink-0">

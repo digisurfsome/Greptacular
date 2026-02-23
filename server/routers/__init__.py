@@ -7,6 +7,7 @@ FastAPI routers for different API endpoints.
 
 from .agent import router as agent_router
 from .assistant_chat import router as assistant_chat_router
+from .ci_status import router as ci_status_router
 from .design_guide import router as design_guide_router
 from .devserver import router as devserver_router
 from .expand_project import router as expand_project_router
@@ -23,6 +24,7 @@ from .terminal import router as terminal_router
 from .workspace import router as workspace_router
 
 __all__ = [
+    "ci_status_router",
     "projects_router",
     "features_router",
     "agent_router",

@@ -16,24 +16,41 @@ jobs:
       actions: read
       pull-requests: write
     steps:
-      - name: Check if already an autofix attempt
+      - name: Count previous autofix attempts
         id: check-loop
         uses: actions/github-script@v7
         with:
           script: |
             const branch = '${{ github.event.workflow_run.head_branch }}';
+            const MAX_RETRIES = 3;
+
+            // Count consecutive [autofix] commits from the tip
             const commits = await github.rest.repos.listCommits({
               owner: context.repo.owner,
               repo: context.repo.repo,
               sha: branch,
-              per_page: 1
+              per_page: MAX_RETRIES + 1
             });
-            const lastMessage = commits.data[0]?.commit?.message || '';
-            if (lastMessage.includes('[autofix]')) {
+
+            let autofixCount = 0;
+            for (const commit of commits.data) {
+              if (commit.commit.message.includes('[autofix]')) {
+                autofixCount++;
+              } else {
+                break;  // Stop counting at the first non-autofix commit
+              }
+            }
+
+            console.log(`Found ${autofixCount} consecutive autofix commits (max ${MAX_RETRIES})`);
+
+            if (autofixCount >= MAX_RETRIES) {
               core.setOutput('skip', 'true');
-              console.log('Last commit was an autofix attempt. Stopping to prevent loop.');
+              core.setOutput('attempt', String(autofixCount));
+              console.log(`Reached max retries (${MAX_RETRIES}). Stopping.`);
             } else {
               core.setOutput('skip', 'false');
+              core.setOutput('attempt', String(autofixCount + 1));
+              console.log(`Attempt ${autofixCount + 1} of ${MAX_RETRIES}`);
             }
 
       - name: Checkout failing branch
@@ -62,14 +79,12 @@ jobs:
             let errorDetails = [];
             for (const job of jobs.data.jobs) {
               if (job.conclusion === 'failure') {
-                // Get the log for this job
                 try {
                   const log = await github.rest.actions.downloadJobLogsForWorkflowRun({
                     owner: context.repo.owner,
                     repo: context.repo.repo,
                     job_id: job.id
                   });
-                  // Trim to last 200 lines to stay within limits
                   const lines = log.data.split('\n');
                   const trimmed = lines.slice(-200).join('\n');
                   errorDetails.push(`=== Job: ${job.name} ===\n${trimmed}`);
@@ -120,8 +135,9 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           ERRORS=$(cat /tmp/ci-errors.txt)
+          ATTEMPT="${{ steps.check-loop.outputs.attempt }}"
 
-          claude -p "CI checks failed on this branch. Here are the error logs:
+          claude -p "CI checks failed on this branch (auto-fix attempt ${ATTEMPT} of 3). Here are the error logs:
 
           $ERRORS
 
@@ -132,7 +148,7 @@ jobs:
              - ruff check .
              - python test_security.py
              - cd ui && npm run lint && npm run build
-          4. Git add and commit your fixes with a message starting with '[autofix]'
+          4. Git add and commit your fixes with a message starting with '[autofix] attempt ${ATTEMPT}:'
 
           Only fix what's broken. Don't refactor or change anything else." \
             --allowedTools "Bash,Read,Write,Edit,Glob,Grep" \
@@ -141,20 +157,20 @@ jobs:
       - name: Push fixes
         if: steps.check-loop.outputs.skip == 'false'
         run: |
-          # Check if Claude made any commits
           if git diff --name-only origin/${{ github.event.workflow_run.head_branch }} HEAD | grep -q .; then
             git push origin HEAD:${{ github.event.workflow_run.head_branch }}
-            echo "Fixes pushed. CI will re-run automatically."
+            echo "Fixes pushed (attempt ${{ steps.check-loop.outputs.attempt }}). CI will re-run automatically."
           else
             echo "No fixes were committed."
           fi
 
-      - name: Comment on PR
+      - name: Comment on PR (fix applied)
         if: steps.check-loop.outputs.skip == 'false'
         uses: actions/github-script@v7
         with:
           script: |
             const branch = '${{ github.event.workflow_run.head_branch }}';
+            const attempt = '${{ steps.check-loop.outputs.attempt }}';
             const prs = await github.rest.pulls.list({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -167,11 +183,11 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: prs.data[0].number,
-                body: '**Auto-fix applied.** CI failed, so a Claude agent was dispatched to fix it. CI is re-running now — check back shortly for results.'
+                body: `**Auto-fix attempt ${attempt}/3 applied.** CI failed, so a Claude agent was dispatched to fix it. CI is re-running now.`
               });
             }
 
-      - name: Comment on PR if autofix was skipped (loop prevention)
+      - name: Comment on PR (max retries reached)
         if: steps.check-loop.outputs.skip == 'true'
         uses: actions/github-script@v7
         with:
@@ -179,6 +195,7 @@ jobs:
             const branch = '${{ github.event.workflow_run.head_branch }}';
             const runId = ${{ github.event.workflow_run.id }};
             const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${runId}`;
+            const attempt = '${{ steps.check-loop.outputs.attempt }}';
             const prs = await github.rest.pulls.list({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -191,6 +208,6 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: prs.data[0].number,
-                body: `**Auto-fix failed.** The automatic fix attempt didn\'t resolve the CI failures. Manual intervention needed.\n\n[View CI logs](${runUrl})`
+                body: `**Auto-fix exhausted (${attempt} attempts).** Could not resolve CI failures automatically. Manual intervention needed.\n\n[View CI logs](${runUrl})`
               });
             }

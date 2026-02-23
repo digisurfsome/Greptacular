@@ -3,6 +3,7 @@
  */
 
 import type {
+  CIStatusResponse,
   ProjectSummary,
   ProjectDetail,
   ProjectPrompts,
@@ -1218,6 +1219,38 @@ export async function clearTokenLog(conversationId: number): Promise<void> {
   })
 }
 
+
+// ============================================================================
+// CI Monitor API
+// ============================================================================
+
+export async function startCIMonitor(
+  workingDirectory: string,
+  vetoSeconds: number = 30,
+): Promise<CIStatusResponse> {
+  return fetchJSON('/ci/monitor/start', {
+    method: 'POST',
+    body: JSON.stringify({ working_directory: workingDirectory, veto_seconds: vetoSeconds }),
+  })
+}
+
+export async function stopCIMonitor(workingDirectory: string): Promise<void> {
+  await fetchJSON('/ci/monitor/stop', {
+    method: 'POST',
+    body: JSON.stringify({ working_directory: workingDirectory }),
+  })
+}
+
+export async function getCIStatus(workingDirectory: string): Promise<CIStatusResponse> {
+  return fetchJSON(`/ci/status?working_directory=${encodeURIComponent(workingDirectory)}`)
+}
+
+export async function vetoCIMerge(workingDirectory: string): Promise<{ success: boolean; message: string }> {
+  return fetchJSON('/ci/veto', {
+    method: 'POST',
+    body: JSON.stringify({ working_directory: workingDirectory }),
+  })
+}
 
 // ============================================================================
 // Swarm Pipeline API

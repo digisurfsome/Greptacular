@@ -1172,6 +1172,56 @@ export interface DesignGuideContext {
 }
 
 // ============================================================================
+// CI Monitor Types
+// ============================================================================
+
+export type CIPipelineStatus =
+  | 'idle'       // No active CI runs
+  | 'running'    // CI is running checks
+  | 'passed'     // CI passed, veto countdown active
+  | 'failed'     // CI failed, auto-fix agent dispatched
+  | 'fixing'     // Auto-fix agent working
+  | 'merging'    // Auto-merge in progress
+  | 'merged'     // Merged + pulled + deployed
+  | 'veto'       // User cancelled auto-merge
+  | 'exhausted'  // Auto-fix retries used up, needs manual help
+  | 'error'      // Something went wrong
+
+export interface CIRunInfo {
+  run_id: number
+  status: string
+  conclusion: string | null
+  branch: string
+  commit_sha: string
+  commit_message: string
+  url: string
+  started_at: string | null
+  autofix_attempt: number
+}
+
+export interface CIEvent {
+  type: string
+  message: string
+  timestamp: string
+}
+
+export interface CIStatusResponse {
+  working_directory: string
+  owner: string
+  repo: string
+  branch: string
+  status: CIPipelineStatus
+  latest_run: CIRunInfo | null
+  veto_deadline: number | null
+  veto_remaining: number | null
+  pr_number: number | null
+  pr_url: string | null
+  autofix_attempt: number
+  error_message: string | null
+  history: CIEvent[]
+}
+
+// ============================================================================
 // Workspace Notifications
 // ============================================================================
 

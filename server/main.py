@@ -32,6 +32,7 @@ from .routers import (
     agent_router,
     assistant_chat_router,
     boilerplate_router,
+    ci_status_router,
     design_guide_router,
     devserver_router,
     expand_project_router,
@@ -50,6 +51,7 @@ from .routers import (
 from .schemas import SetupStatus
 from .services.assistant_chat_session import cleanup_all_sessions as cleanup_assistant_sessions
 from .services.chat_constants import ROOT_DIR
+from .services.ci_monitor import cleanup_all_monitors
 from .services.design_guide_session import cleanup_all_design_guide_sessions
 from .services.dev_server_manager import (
     cleanup_all_devservers,
@@ -91,6 +93,7 @@ async def lifespan(app: FastAPI):
     await cleanup_all_devservers()
     await cleanup_all_workspace_sessions()
     await cleanup_all_swarms()
+    await cleanup_all_monitors()
 
 
 # Create FastAPI app
@@ -159,6 +162,7 @@ if not ALLOW_REMOTE:
 # Include Routers
 # ============================================================================
 
+app.include_router(ci_status_router)
 app.include_router(projects_router)
 app.include_router(boilerplate_router)
 app.include_router(styles_router)

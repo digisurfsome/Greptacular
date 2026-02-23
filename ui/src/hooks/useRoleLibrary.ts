@@ -9,11 +9,13 @@ import {
 } from '@/lib/api'
 import type { RoleBlueprintCreate, RoleBlueprintUpdate } from '@/lib/types'
 
+const ALL_KEYS = ['workspace', 'roles'] as const
+
 const KEYS = {
-  all: ['workspace', 'roles'] as const,
-  list: (category?: string) => [...KEYS.all, 'list', category] as const,
-  categories: [...KEYS.all, 'categories'] as const,
-  detail: (id: number) => [...KEYS.all, 'detail', id] as const,
+  all: ALL_KEYS,
+  list: (category?: string) => [...ALL_KEYS, 'list', category] as const,
+  categories: [...ALL_KEYS, 'categories'] as const,
+  detail: (id: number) => [...ALL_KEYS, 'detail', id] as const,
 }
 
 export function useBlueprints(category?: string) {

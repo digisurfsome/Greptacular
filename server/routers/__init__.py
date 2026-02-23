@@ -16,12 +16,12 @@ from .filesystem import router as filesystem_router
 from .notifications import router as notifications_router
 from .projects import boilerplate_router, styles_router
 from .projects import router as projects_router
+from .role_library import router as role_library_router
 from .schedules import router as schedules_router
 from .settings import router as settings_router
 from .spec_creation import router as spec_creation_router
 from .swarm import router as swarm_router
 from .terminal import router as terminal_router
-from .role_library import router as role_library_router
 from .workspace import router as workspace_router
 
 __all__ = [

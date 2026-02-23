@@ -1178,7 +1178,8 @@ export function WorkspaceChat({
 
       {/* Compact control bar: Effort pill + thin context budget bar + message count */}
       {(() => {
-        const is1M = conversationContextMode === '1m'
+        // Effort levels only work on Opus 4.6 — Sonnet ignores them entirely.
+        const isOpus1M = conversationContextMode === '1m' && conversationModel === 'opus'
         const effortLabels = { low: 'Low', medium: 'Med', high: 'High' } as const
         const effortUseCases = {
           low: 'Quick lookups, classification, routing, sub-agents',
@@ -1208,15 +1209,15 @@ export function WorkspaceChat({
                 <button
                   type="button"
                   className={`px-2 py-0.5 text-[10px] font-bold rounded-full shrink-0 transition-opacity ${
-                    is1M ? effortColors[conversationEffort] : 'bg-muted text-muted-foreground opacity-40'
+                    isOpus1M ? effortColors[conversationEffort] : 'bg-muted text-muted-foreground opacity-40'
                   }`}
-                  title={is1M ? effortUseCases[conversationEffort] : 'Effort levels require 1M context models'}
+                  title={isOpus1M ? effortUseCases[conversationEffort] : 'Effort levels are Opus 4.6 only'}
                 >
                   {effortLabels[conversationEffort]}
-                  {is1M && <ChevronDown size={8} className="inline ml-0.5 opacity-70" />}
+                  {isOpus1M && <ChevronDown size={8} className="inline ml-0.5 opacity-70" />}
                 </button>
               </DropdownMenuTrigger>
-              {is1M && (
+              {isOpus1M && (
                 <DropdownMenuContent align="start" className="w-64">
                   <DropdownMenuLabel className="text-xs">Anthropic Use Cases</DropdownMenuLabel>
                   <DropdownMenuSeparator />

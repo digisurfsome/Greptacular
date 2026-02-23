@@ -490,7 +490,14 @@ async def get_rate_limits():
 async def get_calibration():
     """Get calibrated limits based on historical rate limit events."""
     from ..services import workspace_database as db
-    return db.get_calibrated_limits()
+
+    try:
+        return db.get_calibrated_limits()
+    except Exception as e:
+        logger.warning("Failed to get calibrated limits: %s", e)
+        # Return empty calibration data so the UI degrades gracefully
+        empty = {"estimated_limit": None, "safe_limit": None, "sample_count": 0, "last_hit": None, "confidence": "none"}
+        return {"daily": empty, "weekly": empty, "monthly": empty}
 
 
 @router.get("/usage/premium")

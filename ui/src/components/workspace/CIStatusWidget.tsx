@@ -60,7 +60,7 @@ export function CIStatusWidget({ workingDirectory }: CIStatusWidgetProps) {
   const [showSuccess, setShowSuccess] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const prevStatusRef = useRef<CIPipelineStatus>('idle')
-  const successTimerRef = useRef<ReturnType<typeof setTimeout>>()
+  const successTimerRef = useRef<ReturnType<typeof setTimeout>>(null)
 
   // Start monitoring when working directory changes
   useEffect(() => {

@@ -305,7 +305,6 @@ export function WorkspaceChat({
   const apiTokenTotals = useMemo(() => {
     let apiInput = 0
     let apiOutput = 0
-    let cacheRead = 0
     let totalCost = 0
     let latestCacheRead = 0
     let latestCacheCreate = 0
@@ -314,7 +313,6 @@ export function WorkspaceChat({
       if (e.event_type === 'result_summary') {
         apiInput += e.api_input_tokens ?? 0
         apiOutput += e.api_output_tokens ?? 0
-        cacheRead += e.api_cache_read_tokens ?? 0
         totalCost += e.api_total_cost_usd ?? 0
         // Track the latest turn's values for current context state
         latestCacheRead = e.api_cache_read_tokens ?? 0

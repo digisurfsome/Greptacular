@@ -1408,4 +1408,55 @@ server/services/system_state_service.py
 
 ---
 
+## Appendix G: Separation of Concerns — Workspace vs Software Factory
+
+### The Two Systems
+
+This project contains two completely independent systems that share infrastructure but never share runtime state:
+
+| | Autoforge (Software Factory) | Universal Dashboard (Workspace) |
+|--|--|--|
+| **Purpose** | Builds applications autonomously | Manages, edits, and monitors automation systems |
+| **Config directory** | `.autoforge/` | `.swarm/` |
+| **Database** | `features.db` (SQLite, per-project) | `manifest.yaml` (YAML, per-system) |
+| **Registry** | `~/.autoforge/registry.db` | `~/.swarm/registry.db` |
+| **UI route** | `/#/` | `/#/dashboard` |
+| **Backend router** | `server/routers/features.py`, `agent.py`, etc. | `server/routers/systems.py` (new) |
+| **WebSocket** | `/ws/projects/{name}` | `/ws/systems/{id}` |
+| **What it controls** | Agent execution, feature lifecycle, test results | Manifest reading, component editing, system monitoring |
+
+### The Iron Rules
+
+1. **The workspace NEVER writes to `.autoforge/`** — It can read Autoforge project data for display purposes (showing features on a kanban layout), but it never modifies `features.db`, never starts or stops Autoforge agents, never changes Autoforge configuration. Autoforge has its own UI for that.
+
+2. **The workspace NEVER calls Autoforge agent functions** — It does not import from `agent.py`, `client.py`, `progress.py`, or any module that controls Autoforge's agent lifecycle. If the workspace needs to run a pipeline, it executes shell commands (same as a user would), not internal function calls.
+
+3. **The workspace has its own state** — Tab state, AI conversations, manifest cache, system monitoring — all stored in `.swarm/` or in Zustand/TanStack client state. None of this touches Autoforge's data.
+
+4. **Shared infrastructure is read-only** — The workspace uses the same React framework, Tailwind design system, WebSocket protocol, and FastAPI server. But these are infrastructure — like two apps running on the same operating system. Sharing React doesn't create coupling any more than two programs sharing Linux creates coupling.
+
+5. **Component patterns are copied, not shared** — The workspace has its own `PipelineLayout.tsx`, inspired by but independent from Autoforge's `DependencyGraph.tsx`. The workspace has its own `StageCard.tsx`, not a re-export of Autoforge's feature cards. Same design language, separate code.
+
+6. **If either system crashes, the other is unaffected** — A bug in the workspace's manifest parser cannot corrupt an Autoforge build. A bug in Autoforge's agent loop cannot crash the workspace. This is the test: can you delete the entire `.swarm/` directory and Autoforge still works perfectly? Yes. Can you delete `.autoforge/` and the dashboard still loads? Yes (it just shows no Autoforge-linked systems).
+
+### Why This Matters
+
+AI coding agents are powerful but they're not perfect. When an agent modifies code, there's always a risk of unintended side effects. By keeping the workspace and factory completely separated:
+
+- An agent working on dashboard features cannot accidentally break the app-building pipeline
+- An agent working on Autoforge cannot accidentally corrupt workspace state
+- Testing one system doesn't require testing the other
+- You can deploy updates to one without touching the other
+- A third-party developer can work on the dashboard without needing to understand Autoforge internals
+
+### For Future Developers
+
+If you are an AI agent or human developer working on this codebase:
+
+- **Working on the dashboard?** Stay in `ui/src/components/dashboard/`, `server/routers/systems.py`, and `.swarm/`. Do not import from or modify anything in `server/routers/features.py`, `agent.py`, `client.py`, or `.autoforge/`.
+- **Working on Autoforge?** Stay in the existing Autoforge modules. Do not import from or modify anything in `server/routers/systems.py` or `.swarm/`.
+- **Working on shared infrastructure** (FastAPI server setup, WebSocket protocol, React framework)? Changes here affect both systems — test both after any modification.
+
+---
+
 *End of specification. The Universal Dashboard extends Autoforge's existing React UI with manifest-driven, contextual AI workspaces. Each automation system declares its shape, and the dashboard renders a purpose-built environment with type-aware editors, scoped AI, and instant lateral navigation between systems.*

@@ -426,6 +426,24 @@ class WorkspaceChatSession:
         system_prompt = get_workspace_system_prompt(self.working_directory, model=model, context_mode=self.context_mode)
         with open(claude_md_path, "w", encoding="utf-8") as f:
             f.write(system_prompt)
+
+        # Write effortLevel to the project-level .claude/settings.json so the
+        # CLI picks it up via setting_sources=["project"].  The --settings JSON
+        # override (used for sandbox/permissions) may not propagate effortLevel,
+        # and the CLAUDE_CODE_EFFORT_LEVEL env var has a known bug (#23604).
+        # Project-level settings.json is the standard, documented mechanism.
+        project_settings_dir = workspace_scratch / ".claude"
+        project_settings_dir.mkdir(parents=True, exist_ok=True)
+        project_settings_path = project_settings_dir / "settings.json"
+        project_settings: dict = {}
+        if effort_for_settings in ("low", "medium", "high"):
+            project_settings["effortLevel"] = effort_for_settings
+        with open(project_settings_path, "w") as f:
+            json.dump(project_settings, f, indent=2)
+        logger.info(
+            "Wrote project settings: %s with effortLevel=%s",
+            project_settings_path, effort_for_settings,
+        )
         # Log context_mode tracing to help debug 200K vs 1M issues
         context_snippet = system_prompt[:120].replace('\n', ' ')
         logger.info(

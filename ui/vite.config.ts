@@ -14,6 +14,14 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  define: {
+    '__BUILD_TIME__': JSON.stringify(
+      new Date().toLocaleString('en-US', {
+        month: 'short', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', hour12: false,
+      })
+    ),
+  },
   build: {
     rollupOptions: {
       output: {

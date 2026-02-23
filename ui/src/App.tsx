@@ -1,3 +1,5 @@
+declare const __BUILD_TIME__: string
+
 import { useState, useEffect, useCallback } from 'react'
 import { useQueryClient, useQuery } from '@tanstack/react-query'
 import { useProjects, useFeatures, useAgentStatus, useSettings } from './hooks/useProjects'
@@ -338,6 +340,14 @@ function App() {
                       GLM
                     </Badge>
                   )}
+
+                  {/* Build timestamp - proof the UI was rebuilt */}
+                  <span
+                    className="text-[10px] text-muted-foreground/60 font-mono select-all"
+                    title={`UI built: ${__BUILD_TIME__}`}
+                  >
+                    {__BUILD_TIME__}
+                  </span>
                 </>
               )}
 

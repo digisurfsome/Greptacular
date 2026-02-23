@@ -609,6 +609,46 @@ def delete_conversation(conversation_id: int) -> bool:
             conversation_id, token_log_count,
         )
         return True
+    except Exception:
+        session.rollback()
+        logger.exception("Failed to delete workspace conversation %d", conversation_id)
+        raise
+    finally:
+        session.close()
+
+
+def delete_conversations_bulk(conversation_ids: list[int]) -> int:
+    """Delete multiple conversations in a single transaction.
+
+    Args:
+        conversation_ids: List of conversation IDs to delete.
+
+    Returns:
+        Number of conversations actually deleted.
+    """
+    if not conversation_ids:
+        return 0
+
+    session = get_db_session()
+    try:
+        # Delete orphaned token log entries first
+        session.query(WorkspaceTokenLog).filter(
+            WorkspaceTokenLog.conversation_id.in_(conversation_ids)
+        ).delete(synchronize_session=False)
+
+        # Delete the conversations (messages cascade via relationship)
+        count = (
+            session.query(WorkspaceConversation)
+            .filter(WorkspaceConversation.id.in_(conversation_ids))
+            .delete(synchronize_session=False)
+        )
+        session.commit()
+        logger.info("Bulk deleted %d workspace conversations", count)
+        return count
+    except Exception:
+        session.rollback()
+        logger.exception("Failed to bulk delete workspace conversations")
+        raise
     finally:
         session.close()
 

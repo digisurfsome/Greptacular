@@ -713,6 +713,15 @@ export async function deleteWorkspaceConversation(
   })
 }
 
+export async function bulkDeleteWorkspaceConversations(
+  conversationIds: number[]
+): Promise<{ success: boolean; deleted_count: number }> {
+  return fetchJSON('/workspace/conversations/bulk-delete', {
+    method: 'POST',
+    body: JSON.stringify({ conversation_ids: conversationIds }),
+  })
+}
+
 export async function getWorkspaceTokenUsage(
   conversationId: number
 ): Promise<{ total_tokens: number; context_window: number; usage_percent: number }> {

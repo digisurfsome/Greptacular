@@ -133,7 +133,14 @@ def get_workspace_system_prompt(working_directory: str, model: str = "", context
         A system prompt string describing the workspace agent's capabilities and guidelines.
     """
     context_tokens = "1,000,000" if context_mode == "1m" else "200,000"
-    return f"""You are an expert coding assistant ({model or 'Claude'}, {context_tokens} token context).
+    # Map raw model IDs to human-friendly names so the model self-identifies correctly.
+    MODEL_DISPLAY_NAMES: dict[str, str] = {
+        "claude-opus-4-6": "Claude Opus 4.6",
+        "claude-sonnet-4-6": "Claude Sonnet 4.6",
+        "claude-haiku-4-5-20251001": "Claude Haiku 4.5",
+    }
+    display_name = MODEL_DISPLAY_NAMES.get(model or "", model or "Claude")
+    return f"""You are an expert coding assistant ({display_name}, {context_tokens} token context).
 Working directory: {working_directory}
 
 Read files before editing. Preserve existing code style. Use absolute paths. Prefer Glob/Grep over bash find/grep.

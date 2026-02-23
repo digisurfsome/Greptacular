@@ -2269,6 +2269,21 @@ def get_token_log_summary(conversation_id: int) -> dict:
     Returns a shape matching the frontend ``TokenLogSummary`` interface:
     total counts, cumulative API token breakdowns, per-tool breakdowns,
     and the full list of log entries.
+
+    **Important distinction for cache tokens:**
+
+    - ``total_api_input_tokens`` / ``total_api_output_tokens``: These are
+      summed across all turns and represent total billing-relevant counts
+      (each turn adds NEW input/output tokens that are billed).
+    - ``total_api_cache_read_tokens`` / ``total_api_cache_creation_tokens``:
+      These are summed across turns for billing-relevant totals.  However,
+      individual turn cache numbers overlap (turn 5's cache_read includes
+      content already counted in turn 4's cache_read) so the sum represents
+      "total cache-served token reads across all API calls", NOT the current
+      cache size.
+    - ``current_context_tokens``: The actual context window utilization from
+      the most recent API call (input + cache_read + cache_creation).  This
+      is what should drive the context-window meter in the UI.
     """
     session = get_db_session()
     try:
@@ -2286,6 +2301,7 @@ def get_token_log_summary(conversation_id: int) -> dict:
                 "total_api_output_tokens": 0,
                 "total_api_cache_creation_tokens": 0,
                 "total_api_cache_read_tokens": 0,
+                "current_context_tokens": 0,
                 "total_cost_usd": 0.0,
                 "per_tool_breakdown": [],
                 "entries": [],
@@ -2293,13 +2309,29 @@ def get_token_log_summary(conversation_id: int) -> dict:
 
         total_est = sum(e.estimated_tokens for e in entries)
 
-        # Cumulative API totals from result_summary entries
+        # Cumulative API totals from result_summary entries (billing-relevant sums)
         summaries = [e for e in entries if e.event_type == "result_summary"]
         total_api_input = sum(s.api_input_tokens or 0 for s in summaries)
         total_api_output = sum(s.api_output_tokens or 0 for s in summaries)
         total_api_cache_creation = sum(s.api_cache_creation_tokens or 0 for s in summaries)
         total_api_cache_read = sum(s.api_cache_read_tokens or 0 for s in summaries)
         total_cost = sum(s.api_total_cost_usd or 0.0 for s in summaries)
+
+        # Current context window utilization from the LATEST result_summary.
+        # This is the real number that tells you how much of the context
+        # window is occupied right now: input + cache_read + cache_creation.
+        current_context_tokens = 0
+        latest_cache_read = 0
+        latest_cache_create = 0
+        latest_input = 0
+        latest_output = 0
+        if summaries:
+            latest = summaries[-1]
+            latest_input = latest.api_input_tokens or 0
+            latest_output = latest.api_output_tokens or 0
+            latest_cache_read = latest.api_cache_read_tokens or 0
+            latest_cache_create = latest.api_cache_creation_tokens or 0
+            current_context_tokens = latest_input + latest_cache_read + latest_cache_create
 
         # Per-tool breakdown matching frontend TokenLogToolBreakdown
         tool_usage: dict[str, dict[str, int]] = {}
@@ -2349,11 +2381,18 @@ def get_token_log_summary(conversation_id: int) -> dict:
         return {
             "total_entries": len(entries),
             "total_estimated_tokens": total_est,
+            # Cumulative billing-relevant totals (sum across all turns)
             "total_api_input_tokens": total_api_input,
             "total_api_output_tokens": total_api_output,
             "total_api_cache_creation_tokens": total_api_cache_creation,
             "total_api_cache_read_tokens": total_api_cache_read,
             "total_cost_usd": round(total_cost, 6),
+            # Current context window utilization (from LATEST turn only)
+            "current_context_tokens": current_context_tokens,
+            "latest_input_tokens": latest_input,
+            "latest_output_tokens": latest_output,
+            "latest_cache_read_tokens": latest_cache_read,
+            "latest_cache_creation_tokens": latest_cache_create,
             "per_tool_breakdown": per_tool_breakdown,
             "entries": serialized_entries,
         }

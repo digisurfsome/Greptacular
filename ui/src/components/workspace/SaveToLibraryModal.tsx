@@ -26,7 +26,8 @@ function generateDefaultFilename(content: string): string {
   const firstLine = content.split('\n').find((line) => line.trim().length > 0) ?? 'untitled'
   // Strip leading markdown heading markers (e.g., "## Title" -> "Title")
   const cleaned = firstLine.replace(/^#+\s*/, '').trim()
-  // Remove characters that are invalid in filenames
+  // Remove characters that are invalid in filenames (including control chars 0x00-0x1f)
+  // eslint-disable-next-line no-control-regex
   const sanitized = cleaned.replace(/[<>:"/\\|?*\x00-\x1f]/g, '').replace(/\s+/g, '-')
   const truncated = sanitized.slice(0, 40).replace(/-+$/, '')
   return (truncated || 'untitled') + '.md'

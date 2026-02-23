@@ -395,7 +395,15 @@ class WorkspaceChatSession:
                 },
             }
             if effort_for_settings in ("low", "medium", "high"):
+                # Top-level effortLevel key (recognized by some CLI versions)
                 security_settings["effortLevel"] = effort_for_settings
+                # Also set via the "env" block — this is a documented settings
+                # key that injects env vars into the CLI process, ensuring
+                # CLAUDE_CODE_EFFORT_LEVEL reaches the model even if the
+                # top-level effortLevel key isn't recognized.
+                security_settings["env"] = {
+                    "CLAUDE_CODE_EFFORT_LEVEL": effort_for_settings,
+                }
 
             settings_dir = Path.home() / ".autoforge"
             settings_dir.mkdir(parents=True, exist_ok=True)
@@ -497,12 +505,16 @@ class WorkspaceChatSession:
                 project_settings = {}
         if effort_level in ("low", "medium", "high"):
             project_settings["effortLevel"] = effort_level
+            # Also inject via the "env" settings block (documented mechanism)
+            if "env" not in project_settings:
+                project_settings["env"] = {}
+            project_settings["env"]["CLAUDE_CODE_EFFORT_LEVEL"] = effort_level
         project_settings_dir.mkdir(parents=True, exist_ok=True)
         with open(project_settings_path, "w") as f:
             json.dump(project_settings, f, indent=2)
         logger.info(
-            "Wrote .claude/settings.json: effortLevel=%s at %s (backed_up=%s)",
-            effort_level, project_settings_path, self._original_project_settings is not None,
+            "Wrote .claude/settings.json: effortLevel=%s, env.CLAUDE_CODE_EFFORT_LEVEL=%s at %s (backed_up=%s)",
+            effort_level, effort_level, project_settings_path, self._original_project_settings is not None,
         )
 
         # Detect alternative API mode (Ollama, GLM, Vertex AI) -- these do not

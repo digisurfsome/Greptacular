@@ -296,21 +296,35 @@ export function WorkspaceChat({
     clearMessages,
   } = useWorkspaceChat({ onError: handleError })
 
-  // Compute running API token totals from the token log entries
+  // Compute API token totals from the token log entries.
+  // For input/output/cost: sum across all turns (billing-relevant totals).
+  // For cache: use the LATEST result_summary only (current context state).
+  // Each turn's cache_read includes all previously cached content, so summing
+  // them would massively over-count (e.g. 100K + 200K + 300K = 600K when
+  // the actual cache is 300K).
   const apiTokenTotals = useMemo(() => {
     let apiInput = 0
     let apiOutput = 0
     let cacheRead = 0
     let totalCost = 0
+    let latestCacheRead = 0
+    let latestCacheCreate = 0
+    let latestInput = 0
     for (const e of tokenLog) {
       if (e.event_type === 'result_summary') {
         apiInput += e.api_input_tokens ?? 0
         apiOutput += e.api_output_tokens ?? 0
         cacheRead += e.api_cache_read_tokens ?? 0
         totalCost += e.api_total_cost_usd ?? 0
+        // Track the latest turn's values for current context state
+        latestCacheRead = e.api_cache_read_tokens ?? 0
+        latestCacheCreate = e.api_cache_creation_tokens ?? 0
+        latestInput = e.api_input_tokens ?? 0
       }
     }
-    return { apiInput, apiOutput, cacheRead, totalCost }
+    // currentContext = actual context window utilization right now
+    const currentContext = latestInput + latestCacheRead + latestCacheCreate
+    return { apiInput, apiOutput, cacheRead: latestCacheRead, totalCost, currentContext }
   }, [tokenLog])
 
   // Propagate walkie-talkie log to parent for display in sidebar panel

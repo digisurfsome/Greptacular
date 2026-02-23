@@ -37,13 +37,13 @@ interface EnhancedContextBudgetBarProps {
   isStreaming?: boolean
   /** Model for cost estimation on API panels. Only shown on 1M panels. */
   preferredModel?: 'opus' | 'sonnet'
-  /** Actual cumulative API input tokens (from token log). */
+  /** Cumulative API input tokens across all turns (billing total). */
   apiInputTokens?: number
-  /** Actual cumulative API output tokens (from token log). */
+  /** Cumulative API output tokens across all turns (billing total). */
   apiOutputTokens?: number
-  /** Actual cumulative cache read tokens (from token log). */
+  /** Current cache size from the latest API call (NOT cumulative sum). */
   apiCacheReadTokens?: number
-  /** Actual cumulative API cost in USD (from token log). */
+  /** Cumulative API cost in USD (from token log). */
   apiTotalCost?: number
 }
 

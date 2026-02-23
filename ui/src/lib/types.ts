@@ -708,6 +708,14 @@ export interface WorkspaceChatTokenUsageMessage {
   type: 'token_usage'
   total_tokens: number
   context_window: number
+  message_count?: number
+  model_id?: string
+  // Actual API token breakdown (present when actual API usage is available)
+  api_input_tokens?: number
+  api_output_tokens?: number
+  api_cache_read_tokens?: number
+  api_cache_creation_tokens?: number
+  cost_usd?: number
 }
 
 export interface WorkspaceChatTokenUpdateMessage {
@@ -766,11 +774,19 @@ export interface TokenLogEntry {
 export interface TokenLogSummary {
   total_entries: number
   total_estimated_tokens: number
+  // Cumulative billing-relevant totals (summed across all turns)
   total_api_input_tokens: number
   total_api_output_tokens: number
   total_api_cache_creation_tokens: number
   total_api_cache_read_tokens: number
   total_cost_usd: number
+  // Current context window utilization (from LATEST turn only).
+  // This is the real number for the context meter — not the sum.
+  current_context_tokens?: number
+  latest_input_tokens?: number
+  latest_output_tokens?: number
+  latest_cache_read_tokens?: number
+  latest_cache_creation_tokens?: number
   per_tool_breakdown: TokenLogToolBreakdown[]
   entries: TokenLogEntry[]
 }

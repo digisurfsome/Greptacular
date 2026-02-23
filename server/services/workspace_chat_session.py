@@ -215,6 +215,15 @@ class WorkspaceChatSession:
         self._original_project_settings: Optional[str] = None  # None = file didn't exist
         self._project_settings_path: Optional[Path] = None
 
+        # Actual API usage from the latest ResultMessage.  Updated after each
+        # _query_claude() call so the ``token_usage`` event reflects real API
+        # numbers instead of heuristic estimates.
+        self._last_api_usage: Optional[dict] = None
+
+        # Track whether library context has been injected in this session
+        # so we can skip redundant injection on subsequent messages.
+        self._library_injected: bool = False
+
         # Walkie-talkie communication: in-memory message queue for injecting
         # user messages into a running agent via PreToolUse hook interception.
         self.walkie_talkie_queue: asyncio.Queue[str] = asyncio.Queue()
@@ -825,8 +834,12 @@ class WorkspaceChatSession:
                     f"messages={len(history_messages)}, tokens={loaded_tokens + summary_tokens}"
                 )
 
-        # Inject active library file content into the message
-        if self.conversation_id:
+        # Inject active library file content into the message.
+        # Only inject on the FIRST message of a session (or when resuming) since
+        # the SDK accumulates history internally — subsequent messages already have
+        # the library content in the conversation context.  This prevents the same
+        # library content from being duplicated in every user message.
+        if self.conversation_id and not self._library_injected:
             try:
                 from .workspace_library import get_active_files_context
                 library_context, library_tokens = get_active_files_context(
@@ -834,6 +847,11 @@ class WorkspaceChatSession:
                 )
                 if library_context:
                     message_to_send = f"{library_context}\n\n{message_to_send}"
+                    self._library_injected = True
+                    logger.info(
+                        "Injected library context: %d tokens (first message only)",
+                        library_tokens,
+                    )
             except Exception as e:
                 logger.warning("Failed to load library context: %s", e)
 
@@ -1102,11 +1120,25 @@ class WorkspaceChatSession:
                 api_cache_create = usage.get("cache_creation_input_tokens") if isinstance(usage, dict) else None
                 api_cache_read = usage.get("cache_read_input_tokens") if isinstance(usage, dict) else None
 
+                # Store actual API usage for the token_usage event.
+                # context_tokens = total input context sent to the API this turn
+                # (new input + cached reads + newly cached).
+                context_tokens = (api_input or 0) + (api_cache_read or 0) + (api_cache_create or 0)
+                self._last_api_usage = {
+                    "input_tokens": api_input or 0,
+                    "output_tokens": api_output or 0,
+                    "cache_read_tokens": api_cache_read or 0,
+                    "cache_creation_tokens": api_cache_create or 0,
+                    "context_tokens": context_tokens,
+                    "cost_usd": cost_usd or 0.0,
+                    "num_turns": num_turns_api,
+                }
+
                 logger.info(
                     "ResultMessage: model=%s cost=$%.4f input=%s output=%s "
-                    "cache_create=%s cache_read=%s turns=%s duration=%sms is_error=%s",
+                    "cache_create=%s cache_read=%s context=%s turns=%s duration=%sms is_error=%s",
                     result_model, cost_usd or 0.0, api_input, api_output,
-                    api_cache_create, api_cache_read, num_turns_api,
+                    api_cache_create, api_cache_read, context_tokens, num_turns_api,
                     duration_ms, is_error,
                 )
 
@@ -1151,17 +1183,38 @@ class WorkspaceChatSession:
             except Exception as e:
                 logger.warning(f"Failed to trigger summary generation: {e}")
 
-            # Yield token usage update so the client can render the context-window meter
-            total = get_conversation_token_total(self.conversation_id)
+            # Yield token usage update so the client can render the context-window meter.
+            # Prefer actual API numbers from the ResultMessage when available;
+            # fall back to heuristic estimates for backward compatibility.
             from . import workspace_database as db
             msg_count = db.get_message_count(self.conversation_id)
-            yield {
-                "type": "token_usage",
-                "total_tokens": total,
-                "context_window": self.context_window,
-                "message_count": msg_count,
-                "model_id": self._resolved_model_id,
-            }
+
+            if self._last_api_usage:
+                api = self._last_api_usage
+                yield {
+                    "type": "token_usage",
+                    # context_tokens = actual current context window utilization
+                    # (input + cache_read + cache_creation from latest API call)
+                    "total_tokens": api["context_tokens"],
+                    "context_window": self.context_window,
+                    "message_count": msg_count,
+                    "model_id": self._resolved_model_id,
+                    # Detailed breakdown for the UI
+                    "api_input_tokens": api["input_tokens"],
+                    "api_output_tokens": api["output_tokens"],
+                    "api_cache_read_tokens": api["cache_read_tokens"],
+                    "api_cache_creation_tokens": api["cache_creation_tokens"],
+                    "cost_usd": api["cost_usd"],
+                }
+            else:
+                total = get_conversation_token_total(self.conversation_id)
+                yield {
+                    "type": "token_usage",
+                    "total_tokens": total,
+                    "context_window": self.context_window,
+                    "message_count": msg_count,
+                    "model_id": self._resolved_model_id,
+                }
 
             # Log premium-zone usage for cost tracking
             try:

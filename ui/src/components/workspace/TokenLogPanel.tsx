@@ -93,22 +93,27 @@ function TokenLogTotals({
     let estimatedTokens = 0
     let apiInput = 0
     let apiOutput = 0
-    let cacheCreation = 0
-    let cacheRead = 0
     let totalCost = 0
+    // Use the LATEST result_summary for cache (not cumulative sum).
+    // Each turn's cache_read already includes all previously cached content.
+    let latestCacheRead = 0
+    let latestCacheCreate = 0
+    let latestInput = 0
 
     for (const e of entries) {
       estimatedTokens += e.estimated_tokens
       if (e.event_type === 'result_summary') {
         apiInput += e.api_input_tokens ?? 0
         apiOutput += e.api_output_tokens ?? 0
-        cacheCreation += e.api_cache_creation_tokens ?? 0
-        cacheRead += e.api_cache_read_tokens ?? 0
         totalCost += e.api_total_cost_usd ?? 0
+        latestCacheRead = e.api_cache_read_tokens ?? 0
+        latestCacheCreate = e.api_cache_creation_tokens ?? 0
+        latestInput = e.api_input_tokens ?? 0
       }
     }
 
-    return { estimatedTokens, apiInput, apiOutput, cacheCreation, cacheRead, totalCost }
+    const currentContext = latestInput + latestCacheRead + latestCacheCreate
+    return { estimatedTokens, apiInput, apiOutput, cacheRead: latestCacheRead, totalCost, currentContext }
   }, [entries])
 
   const data = summary
@@ -116,9 +121,9 @@ function TokenLogTotals({
         estimatedTokens: summary.total_estimated_tokens,
         apiInput: summary.total_api_input_tokens,
         apiOutput: summary.total_api_output_tokens,
-        cacheCreation: summary.total_api_cache_creation_tokens,
-        cacheRead: summary.total_api_cache_read_tokens,
+        cacheRead: summary.latest_cache_read_tokens ?? summary.total_api_cache_read_tokens,
         totalCost: summary.total_cost_usd,
+        currentContext: summary.current_context_tokens ?? 0,
       }
     : totals
 
@@ -142,6 +147,14 @@ function TokenLogTotals({
           {formatTokens(data.cacheRead)}
         </span>
       </div>
+      {data.currentContext > 0 && (
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">Context:</span>
+          <span className="font-mono font-bold text-blue-500 tabular-nums">
+            {formatTokens(data.currentContext)}
+          </span>
+        </div>
+      )}
       <div className="flex justify-between">
         <span className="text-muted-foreground">Cost:</span>
         <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">

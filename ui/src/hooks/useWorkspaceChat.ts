@@ -339,7 +339,17 @@ export function useWorkspaceChat({
           }
 
           case "token_usage": {
-            const tokenData = data as { total_tokens: number; context_window: number; message_count?: number; model_id?: string };
+            const tokenData = data as {
+              total_tokens: number;
+              context_window: number;
+              message_count?: number;
+              model_id?: string;
+              api_input_tokens?: number;
+              api_output_tokens?: number;
+              api_cache_read_tokens?: number;
+              api_cache_creation_tokens?: number;
+              cost_usd?: number;
+            };
             setTotalTokens(tokenData.total_tokens);
             setContextWindow(tokenData.context_window);
             if (tokenData.model_id) setModelId(tokenData.model_id);

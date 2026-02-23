@@ -1281,3 +1281,50 @@ export interface WorkspaceNotificationCreate {
   content: string
   metadata?: Record<string, unknown> | null
 }
+
+// ============================================================================
+// Role Library Types
+// ============================================================================
+
+export type BlueprintStatus = 'draft' | 'ready' | 'built'
+
+export interface RoleBlueprint {
+  id: number
+  name: string
+  role_tag: string
+  category: string
+  subcategory: string | null
+  one_liner: string
+  prd_content: string
+  target_files: string[]
+  status: BlueprintStatus
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface RoleBlueprintCreate {
+  name: string
+  role_tag: string
+  category: string
+  one_liner: string
+  prd_content?: string
+  subcategory?: string | null
+  target_files?: string[]
+  status?: BlueprintStatus
+}
+
+export interface RoleBlueprintUpdate {
+  name?: string
+  role_tag?: string
+  category?: string
+  subcategory?: string | null
+  one_liner?: string
+  prd_content?: string
+  target_files?: string[]
+  status?: BlueprintStatus
+}
+
+export interface BlueprintCategoryCount {
+  category: string
+  count: number
+}

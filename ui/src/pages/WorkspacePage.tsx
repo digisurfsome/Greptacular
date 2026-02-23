@@ -35,6 +35,7 @@ import {
   ChevronRight,
   Keyboard,
   BookOpen,
+  Bot,
   Columns2,
   ChevronsLeft,
   ChevronsRight,
@@ -406,6 +407,16 @@ export function WorkspacePage(): React.JSX.Element {
               </Button>
             </>
           )}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 gap-1.5 text-muted-foreground hover:text-foreground"
+            onClick={() => { window.location.hash = '#/roles' }}
+            title="Agent Role Library — blueprints for terminal agent roles"
+          >
+            <Bot size={14} />
+            <span className="text-[10px]">Roles</span>
+          </Button>
           <Button
             variant="ghost"
             size="sm"

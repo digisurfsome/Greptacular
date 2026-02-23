@@ -5,6 +5,7 @@ import App from './App'
 import { StylePreviewPage } from './components/StylePreviewPage'
 import { QuadPreviewPage } from './components/QuadPreviewPage'
 import { WorkspacePage } from './pages/WorkspacePage'
+import { RoleLibraryPage } from './pages/RoleLibraryPage'
 import './styles/globals.css'
 
 const queryClient = new QueryClient({
@@ -40,6 +41,9 @@ function Root() {
   }
   if (hash === '#/workspace' || hash.startsWith('#/workspace/')) {
     return <WorkspacePage />
+  }
+  if (hash === '#/roles' || hash.startsWith('#/roles/')) {
+    return <RoleLibraryPage />
   }
   return <App />
 }

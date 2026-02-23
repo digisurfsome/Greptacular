@@ -21,6 +21,7 @@ from .settings import router as settings_router
 from .spec_creation import router as spec_creation_router
 from .swarm import router as swarm_router
 from .terminal import router as terminal_router
+from .role_library import router as role_library_router
 from .workspace import router as workspace_router
 
 __all__ = [
@@ -41,5 +42,6 @@ __all__ = [
     "styles_router",
     "workspace_router",
     "notifications_router",
+    "role_library_router",
     "swarm_router",
 ]

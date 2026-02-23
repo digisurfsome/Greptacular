@@ -29,3 +29,12 @@ export function isWorkspaceRoute(): boolean {
   return window.location.hash === '#/workspace' ||
          window.location.hash.startsWith('#/workspace/')
 }
+
+/**
+ * Check if the current URL hash matches the role library route.
+ * Format: /#/roles
+ */
+export function isRoleLibraryRoute(): boolean {
+  return window.location.hash === '#/roles' ||
+         window.location.hash.startsWith('#/roles/')
+}

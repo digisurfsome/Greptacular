@@ -58,6 +58,10 @@ import type {
   ScheduleCreate,
   ScheduleUpdate,
   ScheduleListResponse,
+  RoleBlueprint,
+  RoleBlueprintCreate,
+  RoleBlueprintUpdate,
+  BlueprintCategoryCount,
   NextRunResponse,
   TokenLogEntry,
   TokenLogSummary,
@@ -1434,4 +1438,39 @@ export async function injectSwarmMessage(swarmId: string, stageName: string, con
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ stage_name: stageName, content }),
   })
+}
+
+// ============================================================================
+// Role Library API
+// ============================================================================
+
+export async function listBlueprints(category?: string): Promise<RoleBlueprint[]> {
+  const params = category ? `?category=${encodeURIComponent(category)}` : ''
+  return fetchJSON(`/workspace/roles${params}`)
+}
+
+export async function listBlueprintCategories(): Promise<BlueprintCategoryCount[]> {
+  return fetchJSON('/workspace/roles/categories')
+}
+
+export async function getBlueprint(id: number): Promise<RoleBlueprint> {
+  return fetchJSON(`/workspace/roles/${id}`)
+}
+
+export async function createBlueprint(data: RoleBlueprintCreate): Promise<RoleBlueprint> {
+  return fetchJSON('/workspace/roles', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function updateBlueprint(id: number, data: RoleBlueprintUpdate): Promise<RoleBlueprint> {
+  return fetchJSON(`/workspace/roles/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function deleteBlueprint(id: number): Promise<void> {
+  await fetchJSON(`/workspace/roles/${id}`, { method: 'DELETE' })
 }

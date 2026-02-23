@@ -67,12 +67,44 @@ export function useUpdateWorkspaceConversation() {
   })
 }
 
-/** Hook to delete a workspace conversation. */
+/** Hook to delete a workspace conversation.
+ *
+ * Uses optimistic removal to immediately hide the conversation from the
+ * sidebar, preventing the "delete then reappear" race condition caused by
+ * in-flight refetch intervals overwriting the cache before the server
+ * confirms the deletion.
+ */
 export function useDeleteWorkspaceConversation() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: deleteWorkspaceConversation,
-    onSuccess: () => {
+    onMutate: async (conversationId: number) => {
+      // Cancel any in-flight refetches so they don't overwrite our optimistic removal
+      await queryClient.cancelQueries({ queryKey: [...CONVERSATIONS_KEY] })
+
+      // Snapshot previous value for rollback on error
+      const previous = queryClient.getQueryData([...CONVERSATIONS_KEY])
+
+      // Optimistically remove the conversation from the list cache
+      queryClient.setQueryData(
+        [...CONVERSATIONS_KEY],
+        (old: Array<{ id: number; [key: string]: unknown }> | undefined) =>
+          old?.filter(conv => conv.id !== conversationId)
+      )
+
+      // Remove the individual conversation detail cache
+      queryClient.removeQueries({ queryKey: [...CONVERSATIONS_KEY, conversationId] })
+
+      return { previous }
+    },
+    onError: (_err, _vars, context) => {
+      // Roll back to snapshot on error
+      if (context?.previous) {
+        queryClient.setQueryData([...CONVERSATIONS_KEY], context.previous)
+      }
+    },
+    onSettled: () => {
+      // Always refetch after mutation settles to ensure server state is authoritative
       queryClient.invalidateQueries({ queryKey: [...CONVERSATIONS_KEY] })
     },
   })

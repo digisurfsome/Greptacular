@@ -120,6 +120,8 @@ interface WorkspaceChatProps {
    * effort is read from the conversation data.
    */
   pendingEffort?: 'low' | 'medium' | 'high'
+  /** Called when agent streaming starts or stops, so the sidebar can show an activity indicator. */
+  onStreamingChange?: (isStreaming: boolean) => void
 }
 
 /** Generate a unique ID for local messages. */
@@ -186,6 +188,7 @@ export function WorkspaceChat({
   pendingContextMode: pendingContextModeProp,
   newChatKey,
   pendingEffort: pendingEffortProp,
+  onStreamingChange,
 }: WorkspaceChatProps): React.JSX.Element {
   const [inputValue, setInputValue] = useState('')
   const messagesContainerRef = useRef<HTMLDivElement>(null)
@@ -295,6 +298,11 @@ export function WorkspaceChat({
     disconnect,
     clearMessages,
   } = useWorkspaceChat({ onError: handleError })
+
+  // Notify parent when streaming state changes (for sidebar activity indicator)
+  useEffect(() => {
+    onStreamingChange?.(isLoading)
+  }, [isLoading, onStreamingChange])
 
   // Compute running API token totals from the token log entries
   const apiTokenTotals = useMemo(() => {

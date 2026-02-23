@@ -458,106 +458,14 @@ CI runs ──────────────── Widget shows: spinning 
 
 ---
 
-## Step 7: Git Activity Widget
-
-A compact git commit tracker that sits alongside the CI Status Widget.
-
-**What it does:**
-- Small square button with a git icon
-- Polls every 10s for the last 10 commits via `GET /api/ci/commits`
-- Badge in the corner shows unseen commit count
-- Blinks cyan when new commits arrive
-- Click: dropdown shows commits with SHA, message, author, relative time
-- Clicking marks all as seen, badge resets to 0
-- "Processing Log" button in dropdown opens the slide-out panel
-
-**Backend endpoint** (in `ci_status.py` router):
-```python
-@router.get("/commits", response_model=list[GitCommitResponse])
-async def get_git_commits(working_directory: str, limit: int = 10):
-    # Runs: git log -{limit} --format=%H|%h|%s|%an|%aI
-```
-
-**Frontend component:** `GitActivityWidget.tsx`
-- Props: `workingDirectory: string | null`, `onOpenProcessingLog?: () => void`
-- Place in header bar of any page that needs commit visibility
-
----
-
-## Step 8: Processing Log (CI Event Timeline)
-
-A slide-out panel showing the full lifecycle of each commit through CI.
-
-**What it does:**
-- Shows last 10 commits, each expandable to reveal CI events
-- Events are persisted to SQLite (`ci_events.db`) — survives restarts
-- Timeline per commit: pushed → CI started → passed/failed → auto-fix → merged → deployed
-- "Stuck" detection: flags commits in progress for >1 hour with amber warning
-- Duration calculation for completed commits
-
-**Backend:**
-- SQLite table `ci_events` in `.autoforge/ci_events.db` per project
-- Every `_add_event()` call in the CI monitor persists to SQLite
-- `GET /api/ci/timeline?working_directory=...&commit_sha=...` — returns timeline events
-- Events include: `commit_sha`, `event_type`, `message`, `timestamp`, `metadata`
-
-**Frontend component:** `ProcessingLogPanel.tsx`
-- Props: `workingDirectory`, `open`, `onClose`
-- Slide-out from right, backdrop overlay, closes on Escape
-- Groups events by commit SHA with status badges (DEPLOYED / FAILED / IN PROGRESS / POSSIBLY STUCK)
-
----
-
-## Error Handling: Anthropic API Key Auto-Fix Retry
-
-The `ci-auto-fix.yml` workflow handles CI failures automatically:
-
-1. CI fails on a `claude/` branch
-2. GitHub Actions workflow triggers, checks retry count (max 3)
-3. Downloads failure logs from the failed run
-4. Invokes Claude Code with the error context and verification commands
-5. Claude fixes the code, commits with `[autofix] attempt N:` prefix
-6. Pushes the fix, CI re-runs
-7. If all 3 attempts fail, comments "exhausted" on the PR
-
-**Key configuration:**
-- `ANTHROPIC_API_KEY` must be set as a GitHub Actions secret
-- Only triggers on branches matching `claude/` prefix
-- Max 25 Claude turns per fix attempt
-- Verification commands must match your CI checks exactly
-
-**Handling API key errors:**
-- If the Anthropic API key is invalid/expired, the auto-fix workflow will fail at the Claude invocation step
-- The CI monitor will show "NEEDS HELP" (exhausted) status
-- Check GitHub Actions logs for "authentication" or "invalid API key" errors
-- Rotate the key in GitHub Settings → Secrets → `ANTHROPIC_API_KEY`
-
-**Handling terminal shutdown (computer goes to sleep):**
-- The CI monitor runs server-side — if your dev server stops, monitoring pauses
-- Events are persisted to SQLite, so no data is lost
-- When the server restarts, monitoring resumes automatically on the next page load
-- Commits pushed while offline will be picked up on the next poll cycle
-- If a merge was in the veto window when shutdown occurred, it will NOT auto-merge (safe behavior)
-
----
-
 ## Prompt for Claude Code
 
 When you're ready to set this up in a new project, paste this:
 
 > Set up the CI pipeline notification system from my Greptacular project. Use the guide at `docs/CI-PIPELINE-SETUP-GUIDE.md` as reference. I need:
 > 1. The GitHub Actions auto-fix workflow (customize CI commands for this project)
-> 2. The backend CI monitor service and router (including SQLite event persistence)
-> 3. The frontend CI Status Widget in my header bar (blinking indicator)
-> 4. The Git Activity Widget (commit badge + dropdown) in the same header
-> 5. The Processing Log slide-out panel (CI event timeline per commit)
-> 6. Wire everything up so it polls and shows status
+> 2. The backend CI monitor service and router
+> 3. The frontend widget in my header bar
+> 4. Wire everything up so it polls and shows status
 >
-> Key requirements:
-> - Widget must NEVER steal focus, NEVER open new tabs, NEVER refresh my screen
-> - Just a blinking indicator I check when I'm ready
-> - Git activity shows unseen commit count with badge
-> - Processing log shows full timeline: commit → CI → fix → merge → deploy
-> - Events persist to SQLite so I never lose history
-> - Auto-fix retries up to 3 times using Anthropic API key in GitHub secrets
-> - If my machine goes to sleep, no data loss — picks back up on restart
+> Key requirements: widget must NEVER steal focus, NEVER open new tabs, NEVER refresh my screen. Just a blinking indicator I check when I'm ready.

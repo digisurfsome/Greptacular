@@ -29,8 +29,6 @@ import { KeyboardShortcutsHelp } from './components/KeyboardShortcutsHelp'
 import { ThemeSelector } from './components/ThemeSelector'
 import { ResetProjectModal } from './components/ResetProjectModal'
 import { ProjectSetupRequired } from './components/ProjectSetupRequired'
-import { GitActivityWidget } from './components/GitActivityWidget'
-import { ProcessingLogPanel } from './components/ProcessingLogPanel'
 import { getDependencyGraph, startAgent } from './lib/api'
 import { Loader2, Settings, Moon, Sun, RotateCcw, BookOpen, MessageSquare } from 'lucide-react'
 import type { Feature } from './lib/types'
@@ -70,7 +68,6 @@ function App() {
   const [showSpecChat, setShowSpecChat] = useState(false)  // For "Create Spec" button in empty kanban
   const [specInitializerStatus, setSpecInitializerStatus] = useState<InitializerStatus>('idle')
   const [specInitializerError, setSpecInitializerError] = useState<string | null>(null)
-  const [showProcessingLog, setShowProcessingLog] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     try {
       const stored = localStorage.getItem(VIEW_MODE_KEY)
@@ -355,12 +352,6 @@ function App() {
                 Build: {__BUILD_TIME__}
               </span>
 
-              {/* Git Activity Widget */}
-              <GitActivityWidget
-                workingDirectory={selectedProjectData?.path ?? null}
-                onOpenProcessingLog={() => setShowProcessingLog(true)}
-              />
-
               {/* Workspace link */}
               <Button
                 variant="ghost"
@@ -622,13 +613,6 @@ function App() {
           }}
         />
       )}
-
-      {/* Processing Log Panel — slide-out from right */}
-      <ProcessingLogPanel
-        workingDirectory={selectedProjectData?.path ?? null}
-        open={showProcessingLog}
-        onClose={() => setShowProcessingLog(false)}
-      />
 
       {/* Celebration Overlay - shows when a feature is completed by an agent */}
       {wsState.celebration && (

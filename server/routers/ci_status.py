@@ -14,8 +14,6 @@ from pydantic import BaseModel
 from ..services.ci_monitor import (
     CIStatus,
     get_all_states,
-    get_ci_timeline,
-    get_recent_git_commits,
     get_state,
     start_monitoring,
     stop_monitoring,
@@ -73,23 +71,6 @@ class VetoResponse(BaseModel):
     message: str
 
 
-class GitCommitResponse(BaseModel):
-    sha: str
-    short_sha: str
-    message: str
-    author: str
-    timestamp: str
-
-
-class CITimelineEvent(BaseModel):
-    id: int
-    commit_sha: str | None
-    event_type: str
-    message: str
-    timestamp: str
-    metadata: dict | None
-
-
 # ============================================================================
 # Endpoints
 # ============================================================================
@@ -142,30 +123,6 @@ async def get_all_ci_statuses() -> list[CIStatusResponse]:
     """Get CI status for all monitored directories."""
     states = get_all_states()
     return [_state_to_response(s) for s in states.values()]
-
-
-@router.get("/commits", response_model=list[GitCommitResponse])
-async def get_git_commits(working_directory: str, limit: int = 10):
-    """Get recent git commits for a working directory."""
-    if not Path(working_directory).is_dir():
-        raise HTTPException(status_code=400, detail=f"Directory not found: {working_directory}")
-    if limit < 1 or limit > 50:
-        limit = 10
-    commits = get_recent_git_commits(working_directory, limit=limit)
-    return [GitCommitResponse(**c) for c in commits]
-
-
-@router.get("/timeline", response_model=list[CITimelineEvent])
-async def get_ci_timeline_endpoint(
-    working_directory: str,
-    commit_sha: str | None = None,
-    limit: int = 50,
-):
-    """Get CI event timeline for a working directory. Optionally filter by commit SHA."""
-    if not Path(working_directory).is_dir():
-        raise HTTPException(status_code=400, detail=f"Directory not found: {working_directory}")
-    events = get_ci_timeline(working_directory, commit_sha=commit_sha, limit=limit)
-    return [CITimelineEvent(**e) for e in events]
 
 
 # ============================================================================

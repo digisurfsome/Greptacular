@@ -1241,23 +1241,6 @@ export interface CIStatusResponse {
   history: CIEvent[]
 }
 
-export interface GitCommit {
-  sha: string
-  short_sha: string
-  message: string
-  author: string
-  timestamp: string
-}
-
-export interface CITimelineEvent {
-  id: number
-  commit_sha: string | null
-  event_type: string
-  message: string
-  timestamp: string
-  metadata: Record<string, unknown> | null
-}
-
 // ============================================================================
 // Workspace Notifications
 // ============================================================================

@@ -4,13 +4,11 @@ CI Monitor Service
 
 Polls GitHub Actions for CI status on branches associated with a working directory.
 Handles auto-merge after CI passes (with veto window), and auto-pull + dev server restart.
-Persists CI events to SQLite for processing log history.
 """
 
 import asyncio
 import json
 import logging
-import sqlite3
 import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -150,139 +148,16 @@ def _count_autofix_commits(cwd: str) -> int:
     return count
 
 
-def _get_events_db_path(working_directory: str) -> Path:
-    """Get path to the CI events SQLite database for a working directory."""
-    return Path(working_directory) / ".autoforge" / "ci_events.db"
-
-
-def _init_events_db(db_path: Path):
-    """Create the CI events table if it doesn't exist."""
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(db_path))
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS ci_events (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            commit_sha TEXT,
-            event_type TEXT NOT NULL,
-            message TEXT NOT NULL,
-            timestamp TEXT NOT NULL,
-            metadata TEXT
-        )
-    """)
-    conn.execute("""
-        CREATE INDEX IF NOT EXISTS idx_ci_events_sha ON ci_events(commit_sha)
-    """)
-    conn.execute("""
-        CREATE INDEX IF NOT EXISTS idx_ci_events_ts ON ci_events(timestamp)
-    """)
-    conn.commit()
-    conn.close()
-
-
-def _persist_event(working_directory: str, event_type: str, message: str,
-                   commit_sha: str | None = None, metadata: dict | None = None):
-    """Persist a CI event to SQLite."""
-    try:
-        db_path = _get_events_db_path(working_directory)
-        _init_events_db(db_path)
-        conn = sqlite3.connect(str(db_path))
-        conn.execute(
-            "INSERT INTO ci_events (commit_sha, event_type, message, timestamp, metadata) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (
-                commit_sha,
-                event_type,
-                message,
-                datetime.now(timezone.utc).isoformat(),
-                json.dumps(metadata) if metadata else None,
-            ),
-        )
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        logger.warning("Failed to persist CI event: %s", e)
-
-
-def get_ci_timeline(working_directory: str, commit_sha: str | None = None,
-                    limit: int = 50) -> list[dict]:
-    """Get CI event timeline from SQLite. Optionally filter by commit SHA."""
-    wd = str(Path(working_directory).resolve())
-    db_path = _get_events_db_path(wd)
-    if not db_path.exists():
-        return []
-    try:
-        conn = sqlite3.connect(str(db_path))
-        conn.row_factory = sqlite3.Row
-        if commit_sha:
-            rows = conn.execute(
-                "SELECT * FROM ci_events WHERE commit_sha = ? ORDER BY timestamp ASC LIMIT ?",
-                (commit_sha, limit),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT * FROM ci_events ORDER BY timestamp DESC LIMIT ?",
-                (limit,),
-            ).fetchall()
-        conn.close()
-        return [
-            {
-                "id": r["id"],
-                "commit_sha": r["commit_sha"],
-                "event_type": r["event_type"],
-                "message": r["message"],
-                "timestamp": r["timestamp"],
-                "metadata": json.loads(r["metadata"]) if r["metadata"] else None,
-            }
-            for r in rows
-        ]
-    except Exception as e:
-        logger.warning("Failed to read CI events: %s", e)
-        return []
-
-
-def get_recent_git_commits(working_directory: str, limit: int = 10) -> list[dict]:
-    """Get recent git commits for a working directory."""
-    wd = str(Path(working_directory).resolve())
-    ok, log_output = _run_git(
-        ["log", f"-{limit}", "--format=%H|%h|%s|%an|%aI"],
-        wd,
-    )
-    if not ok or not log_output.strip():
-        return []
-    commits = []
-    for line in log_output.strip().split("\n"):
-        parts = line.split("|", 4)
-        if len(parts) >= 5:
-            commits.append({
-                "sha": parts[0],
-                "short_sha": parts[1],
-                "message": parts[2],
-                "author": parts[3],
-                "timestamp": parts[4],
-            })
-    return commits
-
-
 def _add_event(state: CIMonitorState, event_type: str, message: str):
-    """Add an event to the monitor's history and persist to SQLite."""
-    timestamp = datetime.now(timezone.utc).isoformat()
+    """Add an event to the monitor's history."""
     state.history.append({
         "type": event_type,
         "message": message,
-        "timestamp": timestamp,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     })
-    # Keep only last 20 events in memory
+    # Keep only last 20 events
     if len(state.history) > 20:
         state.history = state.history[-20:]
-    # Persist to SQLite
-    commit_sha = state.latest_run.commit_sha if state.latest_run else None
-    _persist_event(
-        state.working_directory,
-        event_type,
-        message,
-        commit_sha=commit_sha,
-        metadata={"branch": state.branch, "autofix_attempt": state.autofix_attempt},
-    )
 
 
 async def _poll_ci(state: CIMonitorState):

@@ -366,8 +366,8 @@ export function WorkspaceSidebar({
                   ? 'bg-blue-500'
                   : 'bg-zinc-500'
 
-              // 1M models: show effort sub-menu
-              if (preset.context === '1m') {
+              // Opus 1M: show effort sub-menu (effort only works on Opus 4.6)
+              if (preset.context === '1m' && preset.model === 'opus') {
                 return (
                   <DropdownMenuSub key={preset.label}>
                     <DropdownMenuSubTrigger className="gap-2 text-xs">
@@ -516,11 +516,11 @@ export function WorkspaceSidebar({
           {/* Effort level selector — only active for 1M context models */}
           {(() => {
             const selectedPreset = SIDEBAR_MODEL_PRESETS[modelPresetIndex]
-            const is1M = selectedPreset?.context === '1m'
+            const isOpus1M = selectedPreset?.context === '1m' && selectedPreset?.model === 'opus'
             return (
-              <div className={`mb-1.5 transition-opacity duration-150 ${is1M ? '' : 'opacity-35 pointer-events-none'}`}>
+              <div className={`mb-1.5 transition-opacity duration-150 ${isOpus1M ? '' : 'opacity-35 pointer-events-none'}`}>
                 <span className="text-[10px] text-muted-foreground mb-0.5 block">
-                  Thinking Effort {!is1M && <span className="italic">(1M models only)</span>}
+                  Thinking Effort {!isOpus1M && <span className="italic">(Opus 1M only)</span>}
                 </span>
                 <div className="flex rounded-full border border-border overflow-hidden shadow-sm" role="radiogroup" aria-label="Thinking effort level">
                   {EFFORT_PRESETS.map((preset, idx) => {
@@ -536,7 +536,7 @@ export function WorkspaceSidebar({
                         type="button"
                         role="radio"
                         aria-checked={isActive}
-                        disabled={!is1M}
+                        disabled={!isOpus1M}
                         onClick={() => onEffortChange?.(preset.key)}
                         title={preset.useCases}
                         className={`flex-1 px-1.5 py-1 text-[10px] font-semibold whitespace-nowrap transition-all duration-150 ${
@@ -548,7 +548,7 @@ export function WorkspaceSidebar({
                     )
                   })}
                 </div>
-                {is1M && (
+                {isOpus1M && (
                   <span className="text-[9px] text-muted-foreground mt-0.5 block">
                     {EFFORT_PRESETS.find(p => p.key === effortLevel)?.useCases}
                   </span>

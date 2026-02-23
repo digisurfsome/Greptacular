@@ -381,6 +381,12 @@ class WorkspaceChatSession:
                 "WebSearch",
             ]
 
+            # Include effortLevel in the --settings override file.
+            # This file is passed directly to the CLI via the `settings`
+            # parameter and is ALWAYS loaded regardless of project detection
+            # or setting_sources. This is the most reliable delivery mechanism.
+            effort_for_settings = self.cost_settings.get("effort", "high")
+
             security_settings: dict = {
                 "sandbox": {"enabled": False},
                 "permissions": {
@@ -388,6 +394,16 @@ class WorkspaceChatSession:
                     "allow": permissions_list,
                 },
             }
+            if effort_for_settings in ("low", "medium", "high"):
+                # Top-level effortLevel key (recognized by some CLI versions)
+                security_settings["effortLevel"] = effort_for_settings
+                # Also set via the "env" block — this is a documented settings
+                # key that injects env vars into the CLI process, ensuring
+                # CLAUDE_CODE_EFFORT_LEVEL reaches the model even if the
+                # top-level effortLevel key isn't recognized.
+                security_settings["env"] = {
+                    "CLAUDE_CODE_EFFORT_LEVEL": effort_for_settings,
+                }
 
             settings_dir = Path.home() / ".autoforge"
             settings_dir.mkdir(parents=True, exist_ok=True)
@@ -458,11 +474,10 @@ class WorkspaceChatSession:
             self.context_mode, model, self.working_directory,
         )
 
-        # Write effortLevel to the working directory's .claude/settings.json
-        # so the CLI picks it up via setting_sources=["project"].  This is the
-        # single authoritative mechanism for effort delivery.  The --settings
-        # JSON override (sandbox/permissions) does NOT propagate effortLevel,
-        # and the CLAUDE_CODE_EFFORT_LEVEL env var has a known bug (#23604).
+        # Also write effortLevel to the working directory's .claude/settings.json
+        # as a secondary mechanism. The primary mechanism is the --settings file
+        # above. This serves as backup when the working directory is a git repo
+        # (the CLI detects it as a project and loads project settings).
         #
         # We back up the original file (if any) and restore it in close().
         effort_level = self.cost_settings.get("effort", "high")
@@ -490,12 +505,16 @@ class WorkspaceChatSession:
                 project_settings = {}
         if effort_level in ("low", "medium", "high"):
             project_settings["effortLevel"] = effort_level
+            # Also inject via the "env" settings block (documented mechanism)
+            if "env" not in project_settings:
+                project_settings["env"] = {}
+            project_settings["env"]["CLAUDE_CODE_EFFORT_LEVEL"] = effort_level
         project_settings_dir.mkdir(parents=True, exist_ok=True)
         with open(project_settings_path, "w") as f:
             json.dump(project_settings, f, indent=2)
         logger.info(
-            "Wrote .claude/settings.json: effortLevel=%s at %s (backed_up=%s)",
-            effort_level, project_settings_path, self._original_project_settings is not None,
+            "Wrote .claude/settings.json: effortLevel=%s, env.CLAUDE_CODE_EFFORT_LEVEL=%s at %s (backed_up=%s)",
+            effort_level, effort_level, project_settings_path, self._original_project_settings is not None,
         )
 
         # Detect alternative API mode (Ollama, GLM, Vertex AI) -- these do not
@@ -619,46 +638,62 @@ class WorkspaceChatSession:
                 f"library_cap={cs['library_cap']}"
             )
 
-            # Wire up Anthropic's real effort control via Claude Code CLI env var.
-            # The Agent SDK passes env vars through to the underlying CLI process.
+            # Env var fallback for effort (known buggy per #23604, but harmless).
             effort = cs.get("effort", "high")
             if effort in ("low", "medium", "high"):
                 sdk_env["CLAUDE_CODE_EFFORT_LEVEL"] = effort
             logger.info(
-                "EFFORT WIRING: cost_settings.effort=%s, env_var=%s, project_settings_effortLevel=%s, conversation_id=%s, model=%s",
-                cs.get("effort"), sdk_env.get("CLAUDE_CODE_EFFORT_LEVEL"), effort_level, self.conversation_id, model,
+                "EFFORT WIRING: effort=%s, settings_file_effortLevel=%s, "
+                "env_var=%s, project_settings=%s, conversation_id=%s, model=%s",
+                effort, effort_for_settings,
+                sdk_env.get("CLAUDE_CODE_EFFORT_LEVEL"),
+                effort_level, self.conversation_id, model,
             )
 
-            self.client = ClaudeSDKClient(
-                options=ClaudeAgentOptions(
-                    model=model,
-                    cli_path=system_cli,
-                    # System prompt passed directly (short, well under 8K limit).
-                    # setting_sources=["project"] also reads CLAUDE.md from cwd,
-                    # giving the agent both workspace instructions AND any
-                    # project-specific CLAUDE.md in the working directory.
-                    system_prompt=system_prompt,
-                    setting_sources=["project"],
-                    allowed_tools=WORKSPACE_BUILTIN_TOOLS,
-                    permission_mode="acceptEdits",
-                    # Cost controls: max_turns from dashboard, effort via
-                    # effortLevel in .claude/settings.json (primary)
-                    # + CLAUDE_CODE_EFFORT_LEVEL env var (fallback).
-                    max_turns=cs["max_turns"],
-                    cwd=self.working_directory,  # Actual working dir for correct Bash cwd
-                    settings=str(settings_file.resolve()),
-                    env=sdk_env,
-                    hooks=hooks,
-                    # Enable 1M token context window for 1M mode.
-                    # The context-1m beta supports both Opus 4.6 and Sonnet 4.6.
-                    # Disabled for alternative APIs and 200K mode.
-                    betas=(
-                        []
-                        if is_alternative_api or self.context_mode != "1m"
-                        else ["context-1m-2025-08-07"]
-                    ),
-                )
+            # Shared SDK options (used by both the effort= path and the fallback).
+            shared_opts: dict[str, Any] = dict(
+                model=model,
+                cli_path=system_cli,
+                system_prompt=system_prompt,
+                # "project" loads CLAUDE.md + .claude/settings.json from cwd.
+                # "user" loads ~/.claude/settings.json (includes effortLevel
+                # when cwd is the home directory and no git repo is detected).
+                setting_sources=["project", "user"],
+                allowed_tools=WORKSPACE_BUILTIN_TOOLS,
+                permission_mode="acceptEdits",
+                max_turns=cs["max_turns"],
+                cwd=self.working_directory,
+                settings=str(settings_file.resolve()),
+                env=sdk_env,
+                hooks=hooks,
+                betas=(
+                    []
+                    if is_alternative_api or self.context_mode != "1m"
+                    else ["context-1m-2025-08-07"]
+                ),
             )
+
+            # Primary: pass effort= directly to ClaudeAgentOptions (SDK ≥0.1.36).
+            # Falls back to the settings-file-only approach for older SDK versions.
+            try:
+                self.client = ClaudeSDKClient(
+                    options=ClaudeAgentOptions(effort=effort, **shared_opts)
+                )
+                logger.info("SDK client created with effort=%s (direct param)", effort)
+            except TypeError:
+                # Older SDK version without effort= parameter.
+                # Effort is still delivered via:
+                #   1. effortLevel in the --settings override file
+                #   2. effortLevel in .claude/settings.json (project settings)
+                #   3. CLAUDE_CODE_EFFORT_LEVEL env var (buggy fallback)
+                logger.warning(
+                    "SDK does not support effort= param (old version). "
+                    "Falling back to settings file delivery. "
+                    "Upgrade: pip install --upgrade claude-agent-sdk"
+                )
+                self.client = ClaudeSDKClient(
+                    options=ClaudeAgentOptions(**shared_opts)
+                )
             # Log the resolved SDK parameters for debugging
             resolved_betas = (
                 []

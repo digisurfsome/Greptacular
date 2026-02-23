@@ -210,6 +210,11 @@ class WorkspaceChatSession:
         # the human-readable tool name instead of the opaque UUID.
         self._tool_use_id_to_name: dict[str, str] = {}
 
+        # Backup of original .claude/settings.json in the working directory,
+        # restored on close() to avoid clobbering user's project settings.
+        self._original_project_settings: Optional[str] = None  # None = file didn't exist
+        self._project_settings_path: Optional[Path] = None
+
         # Walkie-talkie communication: in-memory message queue for injecting
         # user messages into a running agent via PreToolUse hook interception.
         self.walkie_talkie_queue: asyncio.Queue[str] = asyncio.Queue()
@@ -226,6 +231,26 @@ class WorkspaceChatSession:
             finally:
                 self._client_entered = False
                 self.client = None
+
+        # Restore the original .claude/settings.json in the working directory
+        # so we don't leave our effortLevel setting behind in the user's project.
+        if self._project_settings_path:
+            try:
+                if self._original_project_settings is not None:
+                    # Restore the original file content
+                    with open(self._project_settings_path, "w", encoding="utf-8") as f:
+                        f.write(self._original_project_settings)
+                    logger.debug("Restored original .claude/settings.json at %s", self._project_settings_path)
+                elif self._project_settings_path.exists():
+                    # File didn't exist before we created it -- remove it
+                    self._project_settings_path.unlink()
+                    # Also remove .claude/ dir if it's now empty and we created it
+                    parent = self._project_settings_path.parent
+                    if parent.name == ".claude" and not any(parent.iterdir()):
+                        parent.rmdir()
+                    logger.debug("Removed temporary .claude/settings.json at %s", self._project_settings_path)
+            except Exception as e:
+                logger.warning("Failed to restore .claude/settings.json: %s", e)
 
     async def queue_walkie_talkie_message(self, content: str) -> None:
         """Queue a walkie-talkie message for the running agent to receive.
@@ -407,40 +432,62 @@ class WorkspaceChatSession:
         logger.info(f"Resolved model: {self.model} -> {model}")
 
         # -----------------------------------------------------------------
-        # System prompt: written as CLAUDE.md in a scratch directory so the
-        # SDK reads it via setting_sources=["project"] without clobbering
-        # any existing CLAUDE.md in the user's actual working directory.
+        # System prompt: passed directly via the ``system_prompt`` parameter
+        # (same pattern as the coding agent in client.py).  This avoids
+        # writing CLAUDE.md to a scratch directory and lets us set ``cwd``
+        # to the user's actual working directory so Bash commands run from
+        # the correct location.
+        #
+        # The workspace prompt is short (~500 chars), well under the
+        # Windows 8191-char command-line limit.  If the working directory
+        # has its own CLAUDE.md, ``setting_sources=["project"]`` will
+        # also load it -- giving the agent both workspace instructions
+        # AND the project's own CLAUDE.md context.
         # -----------------------------------------------------------------
-        workspace_scratch = Path.home() / ".autoforge" / ".workspace_scratch"
-        workspace_scratch.mkdir(parents=True, exist_ok=True)
-        claude_md_path = workspace_scratch / "CLAUDE.md"
         system_prompt = get_workspace_system_prompt(self.working_directory, model=model, context_mode=self.context_mode)
-        with open(claude_md_path, "w", encoding="utf-8") as f:
-            f.write(system_prompt)
+        logger.info(
+            "Workspace system_prompt: context_mode=%s, model=%s, cwd=%s",
+            self.context_mode, model, self.working_directory,
+        )
 
-        # Write effortLevel to the project-level .claude/settings.json so the
-        # CLI picks it up via setting_sources=["project"].  This is the single
-        # authoritative mechanism for effort delivery.  The --settings JSON
-        # override (sandbox/permissions) does NOT propagate effortLevel, and
-        # the CLAUDE_CODE_EFFORT_LEVEL env var has a known bug (#23604).
+        # Write effortLevel to the working directory's .claude/settings.json
+        # so the CLI picks it up via setting_sources=["project"].  This is the
+        # single authoritative mechanism for effort delivery.  The --settings
+        # JSON override (sandbox/permissions) does NOT propagate effortLevel,
+        # and the CLAUDE_CODE_EFFORT_LEVEL env var has a known bug (#23604).
+        #
+        # We back up the original file (if any) and restore it in close().
         effort_level = self.cost_settings.get("effort", "high")
-        project_settings_dir = workspace_scratch / ".claude"
-        project_settings_dir.mkdir(parents=True, exist_ok=True)
+        working_dir_path = Path(self.working_directory)
+        project_settings_dir = working_dir_path / ".claude"
         project_settings_path = project_settings_dir / "settings.json"
+        self._project_settings_path = project_settings_path
+
+        # Back up existing .claude/settings.json before modifying
+        if project_settings_path.exists():
+            try:
+                self._original_project_settings = project_settings_path.read_text(encoding="utf-8")
+            except Exception as e:
+                logger.warning("Could not back up .claude/settings.json: %s", e)
+                self._original_project_settings = None
+        else:
+            self._original_project_settings = None  # File didn't exist
+
+        # Merge effortLevel into existing settings (preserve other keys)
         project_settings: dict = {}
+        if self._original_project_settings:
+            try:
+                project_settings = json.loads(self._original_project_settings)
+            except (json.JSONDecodeError, ValueError):
+                project_settings = {}
         if effort_level in ("low", "medium", "high"):
             project_settings["effortLevel"] = effort_level
+        project_settings_dir.mkdir(parents=True, exist_ok=True)
         with open(project_settings_path, "w") as f:
             json.dump(project_settings, f, indent=2)
         logger.info(
-            "Wrote project .claude/settings.json: effortLevel=%s at %s",
-            effort_level, project_settings_path,
-        )
-        # Log context_mode tracing to help debug 200K vs 1M issues
-        context_snippet = system_prompt[:120].replace('\n', ' ')
-        logger.info(
-            "Wrote workspace CLAUDE.md: context_mode=%s, model=%s, prompt_start='%s'",
-            self.context_mode, model, context_snippet,
+            "Wrote .claude/settings.json: effortLevel=%s at %s (backed_up=%s)",
+            effort_level, project_settings_path, self._original_project_settings is not None,
         )
 
         # Detect alternative API mode (Ollama, GLM, Vertex AI) -- these do not
@@ -449,7 +496,18 @@ class WorkspaceChatSession:
         is_vertex = sdk_env.get("CLAUDE_CODE_USE_VERTEX") == "1"
         is_alternative_api = bool(base_url) or is_vertex
 
-        # Bash security hook -- same allowlist-based hook the coding agent uses
+        # Bash security hook -- wrapper that injects the working directory as
+        # project_dir into context, so the security hook can load project-specific
+        # allowed_commands.yaml.  Same pattern as client.py's bash_hook_with_context.
+        working_dir_str = self.working_directory
+
+        async def bash_hook_with_context(input_data, tool_use_id=None, context=None):
+            """Wrapper that injects working_directory into context for security hook."""
+            if context is None:
+                context = {}
+            context["project_dir"] = working_dir_str
+            return await bash_security_hook(input_data, tool_use_id, context)
+
         # PreCompact hook -- guides summarization to keep context lean and cheap
         async def workspace_pre_compact_hook(input_data, tool_use_id=None, context=None):
             """Guide compaction to discard verbose tool results and keep costs low."""
@@ -536,7 +594,7 @@ class WorkspaceChatSession:
 
         hooks = {
             "PreToolUse": [
-                HookMatcher(matcher="Bash", hooks=[bash_security_hook]),
+                HookMatcher(matcher="Bash", hooks=[bash_hook_with_context]),
                 HookMatcher(hooks=[walkie_talkie_hook]),  # Fires for ALL tools
             ],
             "PreCompact": [
@@ -567,16 +625,19 @@ class WorkspaceChatSession:
                 options=ClaudeAgentOptions(
                     model=model,
                     cli_path=system_cli,
-                    # System prompt loaded from CLAUDE.md via setting_sources.
-                    # This avoids Windows command line length limits (~8191 chars).
+                    # System prompt passed directly (short, well under 8K limit).
+                    # setting_sources=["project"] also reads CLAUDE.md from cwd,
+                    # giving the agent both workspace instructions AND any
+                    # project-specific CLAUDE.md in the working directory.
+                    system_prompt=system_prompt,
                     setting_sources=["project"],
                     allowed_tools=WORKSPACE_BUILTIN_TOOLS,
                     permission_mode="acceptEdits",
                     # Cost controls: max_turns from dashboard, effort via
-                    # effortLevel in project .claude/settings.json (primary)
+                    # effortLevel in .claude/settings.json (primary)
                     # + CLAUDE_CODE_EFFORT_LEVEL env var (fallback).
                     max_turns=cs["max_turns"],
-                    cwd=str(workspace_scratch),  # Scratch dir for CLAUDE.md
+                    cwd=self.working_directory,  # Actual working dir for correct Bash cwd
                     settings=str(settings_file.resolve()),
                     env=sdk_env,
                     hooks=hooks,
@@ -598,8 +659,10 @@ class WorkspaceChatSession:
             )
             has_api_key = bool(sdk_env.get("ANTHROPIC_API_KEY"))
             logger.info(
-                "SDK client created: betas=%s, context_mode=%s, force_sub=%s, has_api_key=%s, is_alt=%s",
-                resolved_betas, self.context_mode, force_sub, has_api_key, is_alternative_api,
+                "SDK client created: betas=%s, context_mode=%s, force_sub=%s, "
+                "has_api_key=%s, is_alt=%s, cwd=%s",
+                resolved_betas, self.context_mode, force_sub, has_api_key,
+                is_alternative_api, self.working_directory,
             )
             logger.info("Entering workspace Claude client context...")
             try:
@@ -998,8 +1061,14 @@ class WorkspaceChatSession:
                         result_len = len(result_content)
                         # Resolve tool_use_id to the human-readable tool name
                         # via the mapping built during ToolUseBlock processing.
+                        # Falls back to "unknown" instead of the raw UUID so the
+                        # debug panel shows a readable name, not an opaque ID.
                         result_tool_use_id = getattr(block, "tool_use_id", None)
-                        result_tool_name = self._tool_use_id_to_name.get(result_tool_use_id, result_tool_use_id) if result_tool_use_id else None
+                        result_tool_name = (
+                            self._tool_use_id_to_name.get(result_tool_use_id, "unknown")
+                            if result_tool_use_id
+                            else None
+                        )
 
                         if conv_id is not None:
                             try:

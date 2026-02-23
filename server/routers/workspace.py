@@ -189,6 +189,25 @@ async def update_conversation(conversation_id: int, body: ConversationUpdateRequ
     )
 
 
+class BulkDeleteRequest(BaseModel):
+    """Request body for bulk deleting conversations."""
+    conversation_ids: list[int]
+
+
+@router.post("/conversations/bulk-delete")
+async def bulk_delete_conversations_endpoint(body: BulkDeleteRequest):
+    """Delete multiple workspace conversations at once."""
+    from ..services.workspace_database import delete_conversations_bulk
+
+    if not body.conversation_ids:
+        raise HTTPException(status_code=400, detail="No conversation IDs provided")
+    if len(body.conversation_ids) > 100:
+        raise HTTPException(status_code=400, detail="Maximum 100 conversations per bulk delete")
+
+    count = delete_conversations_bulk(body.conversation_ids)
+    return {"success": True, "deleted_count": count}
+
+
 @router.delete("/conversations/{conversation_id}")
 async def delete_conversation_endpoint(conversation_id: int):
     """Delete a workspace conversation and all its messages."""
@@ -471,7 +490,14 @@ async def get_rate_limits():
 async def get_calibration():
     """Get calibrated limits based on historical rate limit events."""
     from ..services import workspace_database as db
-    return db.get_calibrated_limits()
+
+    try:
+        return db.get_calibrated_limits()
+    except Exception as e:
+        logger.warning("Failed to get calibrated limits: %s", e)
+        # Return empty calibration data so the UI degrades gracefully
+        empty = {"estimated_limit": None, "safe_limit": None, "sample_count": 0, "last_hit": None, "confidence": "none"}
+        return {"daily": empty, "weekly": empty, "monthly": empty}
 
 
 @router.get("/usage/premium")

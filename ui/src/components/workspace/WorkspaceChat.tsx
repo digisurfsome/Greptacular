@@ -47,7 +47,7 @@ import { getWorkspaceSummary, regenerateWorkspaceSummary, exportConversationMark
 import { Switch } from '@/components/ui/switch'
 import { CountdownTimerBar } from './CountdownTimerBar'
 import { WorkspaceChatHeader } from './WorkspaceChatHeader'
-import { EnhancedContextBudgetBar, getContextWarningClass } from './EnhancedContextBudgetBar'
+import { getContextWarningClass, formatTokenCount } from './EnhancedContextBudgetBar'
 import { UsageDashboard } from './UsageDashboard'
 import { AutoSummaryPin } from './AutoSummaryPin'
 import { ChatForkModal } from './ChatForkModal'
@@ -120,6 +120,8 @@ interface WorkspaceChatProps {
    * effort is read from the conversation data.
    */
   pendingEffort?: 'low' | 'medium' | 'high'
+  /** Called when agent streaming starts or stops, so the sidebar can show an activity indicator. */
+  onStreamingChange?: (isStreaming: boolean) => void
 }
 
 /** Generate a unique ID for local messages. */
@@ -186,6 +188,7 @@ export function WorkspaceChat({
   pendingContextMode: pendingContextModeProp,
   newChatKey,
   pendingEffort: pendingEffortProp,
+  onStreamingChange,
 }: WorkspaceChatProps): React.JSX.Element {
   const [inputValue, setInputValue] = useState('')
   const messagesContainerRef = useRef<HTMLDivElement>(null)
@@ -296,6 +299,11 @@ export function WorkspaceChat({
     clearMessages,
   } = useWorkspaceChat({ onError: handleError })
 
+  // Notify parent when streaming state changes (for sidebar activity indicator)
+  useEffect(() => {
+    onStreamingChange?.(isLoading)
+  }, [isLoading, onStreamingChange])
+
   // Compute API token totals from the token log entries.
   // For input/output/cost: sum across all turns (billing-relevant totals).
   // For cache: use the LATEST result_summary only (current context state).
@@ -305,7 +313,6 @@ export function WorkspaceChat({
   const apiTokenTotals = useMemo(() => {
     let apiInput = 0
     let apiOutput = 0
-    let cacheReadTotal = 0
     let totalCost = 0
     let latestCacheRead = 0
     let latestCacheCreate = 0
@@ -314,7 +321,6 @@ export function WorkspaceChat({
       if (e.event_type === 'result_summary') {
         apiInput += e.api_input_tokens ?? 0
         apiOutput += e.api_output_tokens ?? 0
-        cacheReadTotal += e.api_cache_read_tokens ?? 0
         totalCost += e.api_total_cost_usd ?? 0
         // Track the latest turn's values for current context state
         latestCacheRead = e.api_cache_read_tokens ?? 0
@@ -324,7 +330,7 @@ export function WorkspaceChat({
     }
     // currentContext = actual context window utilization right now
     const currentContext = latestInput + latestCacheRead + latestCacheCreate
-    return { apiInput, apiOutput, cacheRead: latestCacheRead, cacheReadTotal, totalCost, currentContext }
+    return { apiInput, apiOutput, cacheRead: latestCacheRead, totalCost, currentContext }
   }, [tokenLog])
 
   // Propagate walkie-talkie log to parent for display in sidebar panel
@@ -872,7 +878,7 @@ export function WorkspaceChat({
   const handleForkCreated = useCallback((newId: number) => {
     setShowForkModal(false)
     onConversationCreated(newId)
-    queryClient.invalidateQueries({ queryKey: ['workspace-conversations'] })
+    queryClient.invalidateQueries({ queryKey: ['workspace', 'conversations'] })
   }, [onConversationCreated, queryClient])
 
   const handleInject = useCallback((injection: PendingInjection) => {
@@ -912,6 +918,60 @@ export function WorkspaceChat({
             settingsOpen={showWalkieTalkieSettings}
           />
         </div>
+
+        {/* Inline model info: active model badge + model ID + cost */}
+        {!fixedContextMode && (
+          <div className="flex items-center gap-1.5 px-2 shrink-0">
+            {(() => {
+              const noActiveChat = conversationId === null && activeConversationId === null
+              const hasPendingSelection = noActiveChat && pendingModel != null
+              const showPresetIndex = noActiveChat
+                ? (hasPendingSelection
+                  ? MODEL_PRESETS.findIndex(p => p.model === pendingModel && p.context === (pendingContextModeProp ?? '1m'))
+                  : -1)
+                : activePresetIndex
+
+              if (noActiveChat && !hasPendingSelection) return null
+
+              const activePreset = MODEL_PRESETS[showPresetIndex]
+              if (!activePreset) return null
+
+              // Color coding: Opus 1M = blue, Sonnet 1M = violet, Opus 200K = zinc
+              const pillClass = activePreset.model === 'sonnet'
+                ? 'bg-violet-500 text-white'
+                : activePreset.context === '1m'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-zinc-600 text-white'
+
+              const displayId = modelId || (conversationModel === 'sonnet' ? 'claude-sonnet-4-6' : 'claude-opus-4-6')
+
+              return (
+                <>
+                  <span
+                    className={`px-2 py-0.5 text-[10px] font-bold rounded-full whitespace-nowrap ${pillClass}`}
+                    title={`${activePreset.label} (active)`}
+                  >
+                    {activePreset.label}
+                  </span>
+                  <span
+                    className="text-[10px] font-mono text-muted-foreground truncate max-w-[140px]"
+                    title={modelId ? `Confirmed: ${modelId}` : `Expected: ${displayId}`}
+                  >
+                    {displayId}
+                  </span>
+                  {apiTokenTotals.totalCost > 0 && (
+                    <span
+                      className="text-[10px] font-mono text-muted-foreground whitespace-nowrap"
+                      title={`API: ${apiTokenTotals.apiInput.toLocaleString()} in / ${apiTokenTotals.apiOutput.toLocaleString()} out / ${apiTokenTotals.cacheRead.toLocaleString()} cache`}
+                    >
+                      ${apiTokenTotals.totalCost.toFixed(3)} · {formatTokenCount(apiTokenTotals.apiInput + apiTokenTotals.apiOutput)} tok
+                    </span>
+                  )}
+                </>
+              )
+            })()}
+          </div>
+        )}
 
         {/* Token log 3-state toggle: Auto | On | Off */}
         <div className="flex items-center gap-1 px-2">
@@ -1108,160 +1168,106 @@ export function WorkspaceChat({
         </div>
       )}
 
-      {/* Consolidated model control bar: Model presets + Effort toggle + Budget bar */}
-      <div className="border-b border-border bg-muted/30 mx-2 my-1 rounded-lg p-3 space-y-3">
+      {/* Compact control bar: Effort pill + thin context budget bar + message count */}
+      {(() => {
+        const is1M = conversationContextMode === '1m'
+        const effortLabels = { low: 'Low', medium: 'Med', high: 'High' } as const
+        const effortUseCases = {
+          low: 'Quick lookups, classification, routing, sub-agents',
+          medium: 'Agentic coding, tool use, code generation',
+          high: 'Complex analysis, nuanced reasoning, quality-critical',
+        } as const
+        const effortColors = {
+          low: 'bg-emerald-500 text-white',
+          medium: 'bg-blue-500 text-white',
+          high: 'bg-orange-500 text-white',
+        } as const
+        const usedTokens = (contextBudget.messageTokens || totalTokens) + contextBudget.summaryTokens
+        const barBudget = sessionContextMode === '1m' ? 1_000_000 : 200_000
+        const barPercent = barBudget > 0 ? Math.min((usedTokens / barBudget) * 100, 100) : 0
+        const isExtendedPricing = barBudget === 1_000_000 && usedTokens > 200_000
+        // Color for the bar fill based on usage level
+        const barFillColor = barPercent > 90 ? 'bg-destructive'
+          : barPercent > 75 ? 'bg-orange-500'
+          : isExtendedPricing ? 'bg-amber-500'
+          : 'bg-primary/50'
 
-        {/* Row 1: Model notification bar (read-only identifier) */}
-        {!fixedContextMode && (
-          <div className="flex items-center gap-3 flex-wrap">
-            <span className="text-[10px] font-bold text-muted-foreground shrink-0 uppercase tracking-widest">Model</span>
-            {(() => {
-              const noActiveChat = conversationId === null && activeConversationId === null
-              const hasPendingSelection = noActiveChat && pendingModel != null
-              const showPresetIndex = noActiveChat
-                ? (hasPendingSelection
-                  ? MODEL_PRESETS.findIndex(p => p.model === pendingModel && p.context === (pendingContextModeProp ?? '1m'))
-                  : -1)
-                : activePresetIndex
-
-              if (noActiveChat && !hasPendingSelection) {
-                return (
-                  <span className="text-xs text-muted-foreground italic px-3 py-1.5 bg-muted/40 rounded-md border border-dashed border-border">
-                    Select model with + New Chat
-                  </span>
-                )
-              }
-
-              return (
-                <div className="flex rounded-lg border border-border overflow-hidden" role="group" aria-label="Active model">
-                  {MODEL_PRESETS.map((preset, idx) => {
-                    const isActive = showPresetIndex === idx
-                    // Color coding: Opus 1M = blue, Sonnet 1M = violet, Opus 200K = zinc
-                    const activeClass = preset.model === 'sonnet'
-                      ? 'bg-violet-500 text-white font-bold'
-                      : preset.context === '1m'
-                        ? 'bg-blue-600 text-white font-bold'
-                        : 'bg-zinc-600 text-white font-bold'
-
-                    return (
-                      <span
-                        key={preset.label}
-                        className={`px-3 py-1 text-xs font-medium whitespace-nowrap ${
-                          isActive ? activeClass : 'bg-card text-muted-foreground/50'
-                        } ${idx < MODEL_PRESETS.length - 1 ? 'border-r border-border' : ''}`}
-                        title={isActive ? `${preset.label} (active)` : preset.label}
-                      >
-                        {preset.label}
-                      </span>
-                    )
-                  })}
-                </div>
-              )
-            })()}
-            {/* Right side: model ID + API cost summary */}
-            <div className="ml-auto flex items-center gap-2 shrink-0">
-              {(() => {
-                // Show the resolved model ID from the backend (arrives after first response),
-                // or fall back to the expected ID based on the selected preset.
-                const displayId = modelId || (conversationModel === 'sonnet' ? 'claude-sonnet-4-6' : 'claude-opus-4-6')
-                return (
-                  <span className="px-2 py-0.5 text-[10px] font-mono text-muted-foreground bg-muted/60 rounded border border-border" title={modelId ? `Confirmed model: ${modelId}` : `Expected model: ${displayId} (confirmed after first response)`}>
-                    {displayId}
-                  </span>
-                )
-              })()}
-              {apiTokenTotals.totalCost > 0 && (
-                <span className="px-2 py-0.5 text-[10px] font-mono text-muted-foreground bg-muted/60 rounded border border-border" title={`API: ${apiTokenTotals.apiInput.toLocaleString()} in / ${apiTokenTotals.apiOutput.toLocaleString()} out / ${apiTokenTotals.cacheRead.toLocaleString()} cache`}>
-                  ${apiTokenTotals.totalCost.toFixed(3)} · {(apiTokenTotals.apiInput + apiTokenTotals.apiOutput).toLocaleString()} tok
-                </span>
+        return (
+          <div className="flex items-center gap-2 px-3 py-1 border-b border-border">
+            {/* Effort pill with dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className={`px-2 py-0.5 text-[10px] font-bold rounded-full shrink-0 transition-opacity ${
+                    is1M ? effortColors[conversationEffort] : 'bg-muted text-muted-foreground opacity-40'
+                  }`}
+                  title={is1M ? effortUseCases[conversationEffort] : 'Effort levels require 1M context models'}
+                >
+                  {effortLabels[conversationEffort]}
+                  {is1M && <ChevronDown size={8} className="inline ml-0.5 opacity-70" />}
+                </button>
+              </DropdownMenuTrigger>
+              {is1M && (
+                <DropdownMenuContent align="start" className="w-64">
+                  <DropdownMenuLabel className="text-xs">Anthropic Use Cases</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {(['low', 'medium', 'high'] as const).map((level) => (
+                    <DropdownMenuItem
+                      key={level}
+                      className={`gap-2 text-xs cursor-default ${conversationEffort === level ? 'bg-accent' : ''}`}
+                      onSelect={(e) => e.preventDefault()}
+                    >
+                      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                        level === 'low' ? 'bg-emerald-500' : level === 'medium' ? 'bg-blue-500' : 'bg-orange-500'
+                      }`} />
+                      <div className="flex flex-col gap-0.5">
+                        <span className="font-semibold">{effortLabels[level]}</span>
+                        <span className="text-[10px] text-muted-foreground">{effortUseCases[level]}</span>
+                      </div>
+                      {conversationEffort === level && <Check size={12} className="ml-auto text-primary" />}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
               )}
-            </div>
-          </div>
-        )}
+            </DropdownMenu>
 
-        {/* Row 2: Effort level identifier (read-only, set at chat creation) */}
-        {(() => {
-          const is1M = conversationContextMode === '1m'
-          const effortLabels = { low: 'Low', medium: 'Med', high: 'High' } as const
-          const effortUseCases = {
-            low: 'Quick lookups, classification, routing, sub-agents',
-            medium: 'Agentic coding, tool use, code generation',
-            high: 'Complex analysis, nuanced reasoning, quality-critical',
-          } as const
-          const effortColors = {
-            low: 'bg-emerald-500/90 text-white border-emerald-400',
-            medium: 'bg-blue-500/90 text-white border-blue-400',
-            high: 'bg-orange-500/90 text-white border-orange-400',
-          } as const
-          return (
-            <div className={`flex items-center gap-3 flex-wrap transition-opacity duration-200 ${is1M ? '' : 'opacity-30'}`}>
-              <span className="text-sm font-bold text-foreground shrink-0 uppercase tracking-wide">Effort</span>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    className={`px-3 py-1.5 text-xs font-bold rounded-lg border-2 shadow-sm cursor-default ${
-                      is1M ? effortColors[conversationEffort] : 'bg-muted text-muted-foreground border-border'
+            {/* Thin inline context budget bar */}
+            <div className="flex-1 flex items-center gap-2 min-w-0">
+              <div className="flex-1 relative h-2 rounded-full bg-muted overflow-hidden">
+                {/* Fill */}
+                <div
+                  className={`absolute top-0 left-0 h-full rounded-full transition-all duration-500 ease-out ${barFillColor}`}
+                  style={{ width: `${barPercent}%` }}
+                />
+                {/* 200K pricing cliff marker on 1M panels */}
+                {barBudget === 1_000_000 && (
+                  <div
+                    className={`absolute top-0 h-full w-0.5 z-10 ${
+                      isExtendedPricing ? 'bg-amber-500' : 'bg-amber-500/40'
                     }`}
-                    title={is1M ? effortUseCases[conversationEffort] : 'Effort levels require 1M context models'}
-                  >
-                    {effortLabels[conversationEffort]}
-                    {is1M && <ChevronDown size={10} className="inline ml-1 opacity-70" />}
-                  </button>
-                </DropdownMenuTrigger>
-                {is1M && (
-                  <DropdownMenuContent align="start" className="w-64">
-                    <DropdownMenuLabel className="text-xs">Anthropic Use Cases</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    {(['low', 'medium', 'high'] as const).map((level) => (
-                      <DropdownMenuItem
-                        key={level}
-                        className={`gap-2 text-xs cursor-default ${conversationEffort === level ? 'bg-accent' : ''}`}
-                        onSelect={(e) => e.preventDefault()}
-                      >
-                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                          level === 'low' ? 'bg-emerald-500' : level === 'medium' ? 'bg-blue-500' : 'bg-orange-500'
-                        }`} />
-                        <div className="flex flex-col gap-0.5">
-                          <span className="font-semibold">{effortLabels[level]}</span>
-                          <span className="text-[10px] text-muted-foreground">{effortUseCases[level]}</span>
-                        </div>
-                        {conversationEffort === level && <Check size={12} className="ml-auto text-primary" />}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
+                    style={{ left: '20%' }}
+                    title="200K pricing threshold"
+                  />
                 )}
-              </DropdownMenu>
-              {!is1M && (
-                <span className="text-[10px] text-muted-foreground italic">1M context models only</span>
-              )}
+                {/* Streaming shimmer */}
+                {isLoading && (
+                  <div className="absolute top-0 right-0 h-full w-8 animate-shimmer bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+                )}
+              </div>
+              {/* Usage text beside the bar */}
+              <span className="text-[10px] font-mono text-muted-foreground whitespace-nowrap tabular-nums shrink-0">
+                {barPercent < 1 && barPercent > 0 ? barPercent.toFixed(1) : Math.round(barPercent)}% · {formatTokenCount(usedTokens)}/{formatTokenCount(barBudget)}
+              </span>
             </div>
-          )
-        })()}
 
-        {/* Row 3: Context budget bar */}
-        <div className="[&>div]:border-b-0">
-          <EnhancedContextBudgetBar
-            totalBudget={sessionContextMode === '1m' ? 1_000_000 : 200_000}
-            messageTokens={contextBudget.messageTokens || totalTokens}
-            summaryTokens={contextBudget.summaryTokens}
-            messageCount={contextBudget.messageCount}
-            isStreaming={isLoading}
-            preferredModel={
-              preferredModel
-                ?? (fixedContextMode
-                  ? (panelLabel?.includes('Sonnet') ? 'sonnet'
-                    : panelLabel?.includes('Opus') ? 'opus'
-                      : undefined)
-                  : conversationModel)
-            }
-            apiInputTokens={apiTokenTotals.apiInput}
-            apiOutputTokens={apiTokenTotals.apiOutput}
-            apiCacheReadTokens={apiTokenTotals.cacheRead}
-            apiTotalCost={apiTokenTotals.totalCost}
-          />
-        </div>
-      </div>
+            {/* Message count */}
+            <span className="text-[10px] text-muted-foreground/60 tabular-nums whitespace-nowrap shrink-0">
+              {contextBudget.messageCount} msg{contextBudget.messageCount !== 1 ? 's' : ''}
+            </span>
+          </div>
+        )
+      })()}
 
       {/* Usage dashboard */}
       <UsageDashboard

@@ -18,11 +18,13 @@ import {
   Settings,
   ChevronDown,
   X,
+  CheckSquare,
 } from 'lucide-react'
 import {
   useWorkspaceConversations,
   useCreateWorkspaceConversation,
   useDeleteWorkspaceConversation,
+  useBulkDeleteWorkspaceConversations,
   useTogglePin,
   useCycleModelBadge,
 } from '@/hooks/useWorkspaceConversations'
@@ -79,11 +81,15 @@ const EFFORT_PRESETS: EffortPreset[] = [
 
 interface WorkspaceSidebarProps {
   activeConversationId: number | null
+  /** Conversation ID that is currently streaming (agent actively working). Null when idle. */
+  streamingConversationId?: number | null
   collapsed: boolean
   onToggleCollapse: () => void
   /** Called when user starts a new chat with model selection from the dropdown. */
   onNewChat: (model: 'opus' | 'sonnet', contextMode: '1m' | '200k', effort: EffortLevel) => void
   onSelectConversation: (id: number) => void
+  /** Called when a conversation is deleted. Parent should clear activeConversationId if it matches. */
+  onDeleteConversation?: (id: number) => void
   /** Currently selected working directory (repo path) from the page. */
   selectedWorkingDirectory?: string | null
   /** Callback when the user picks a repo in the naming form. */
@@ -126,10 +132,12 @@ function relativeTime(dateString: string | null): string {
 /** Conversation list sidebar with search, categories, pinning, and category management. */
 export function WorkspaceSidebar({
   activeConversationId,
+  streamingConversationId,
   collapsed,
   onToggleCollapse,
   onNewChat,
   onSelectConversation,
+  onDeleteConversation,
   selectedWorkingDirectory,
   onWorkingDirectoryChange,
   modelPresetIndex = 0,
@@ -141,6 +149,8 @@ export function WorkspaceSidebar({
   const [hoveredId, setHoveredId] = useState<number | null>(null)
   const [showCategoryManager, setShowCategoryManager] = useState(false)
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({})
+  const [selectMode, setSelectMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
 
   // Naming form state: when a category is selected from the dropdown,
   // show an inline form to name the new chat before creating it.
@@ -157,6 +167,7 @@ export function WorkspaceSidebar({
   const deleteCategoryMut = useDeleteCategory()
   const togglePinMut = useTogglePin()
   const cycleModelBadgeMut = useCycleModelBadge()
+  const bulkDeleteMutation = useBulkDeleteWorkspaceConversations()
 
   // Focus the naming input when it appears
   useEffect(() => {
@@ -259,12 +270,38 @@ export function WorkspaceSidebar({
   const handleDelete = useCallback(
     (e: React.MouseEvent, id: number) => {
       e.stopPropagation()
-      if (window.confirm('Delete this conversation? This cannot be undone.')) {
-        deleteMutation.mutate(id)
-      }
+      deleteMutation.mutate(id)
+      // Notify parent so it can clear activeConversationId + disconnect WebSocket
+      onDeleteConversation?.(id)
     },
-    [deleteMutation],
+    [deleteMutation, onDeleteConversation],
   )
+
+  const handleToggleSelect = useCallback((id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
+  const handleBulkDelete = useCallback(() => {
+    if (selectedIds.size === 0) return
+    const ids = Array.from(selectedIds)
+    bulkDeleteMutation.mutate(ids)
+    // Notify parent for each deleted id in case active conversation was selected
+    for (const id of ids) {
+      onDeleteConversation?.(id)
+    }
+    setSelectedIds(new Set())
+    setSelectMode(false)
+  }, [selectedIds, bulkDeleteMutation, onDeleteConversation])
+
+  const handleExitSelectMode = useCallback(() => {
+    setSelectMode(false)
+    setSelectedIds(new Set())
+  }, [])
 
   const handleMouseEnter = useCallback((id: number) => {
     setHoveredId(id)
@@ -285,18 +322,28 @@ export function WorkspaceSidebar({
         <span className="text-sm font-medium text-foreground truncate">
           Conversations
         </span>
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          onClick={onToggleCollapse}
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        >
-          {collapsed ? (
-            <PanelLeftOpen size={16} />
-          ) : (
-            <PanelLeftClose size={16} />
-          )}
-        </Button>
+        <div className="flex items-center gap-0.5">
+          <Button
+            variant={selectMode ? 'default' : 'ghost'}
+            size="icon-xs"
+            onClick={selectMode ? handleExitSelectMode : () => setSelectMode(true)}
+            title={selectMode ? 'Exit select mode' : 'Select conversations'}
+          >
+            {selectMode ? <X size={16} /> : <CheckSquare size={16} />}
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            onClick={onToggleCollapse}
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {collapsed ? (
+              <PanelLeftOpen size={16} />
+            ) : (
+              <PanelLeftClose size={16} />
+            )}
+          </Button>
+        </div>
       </div>
 
       {/* New Chat button with model selection dropdown + category dropdown */}
@@ -528,6 +575,39 @@ export function WorkspaceSidebar({
         />
       </div>
 
+      {/* Bulk action bar */}
+      {selectMode && (
+        <div className="px-3 py-1.5 border-b border-border bg-muted/50 flex items-center justify-between gap-2">
+          <span className="text-xs text-muted-foreground">
+            {selectedIds.size} selected
+          </span>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 text-xs px-2"
+              onClick={() => {
+                if (!conversations) return
+                const allIds = new Set(conversations.map(c => c.id))
+                setSelectedIds(prev => prev.size === allIds.size ? new Set() : allIds)
+              }}
+            >
+              {conversations && selectedIds.size === conversations.length ? 'None' : 'All'}
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              className="h-6 text-xs px-2"
+              onClick={handleBulkDelete}
+              disabled={selectedIds.size === 0 || bulkDeleteMutation.isPending}
+            >
+              <Trash2 size={12} className="mr-1" />
+              Delete{selectedIds.size > 0 ? ` (${selectedIds.size})` : ''}
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Conversation list */}
       <div className="flex-1 overflow-y-auto px-1">
         {isLoading ? (
@@ -566,6 +646,7 @@ export function WorkspaceSidebar({
                 {!collapsedGroups[groupKey] && items.map((conv) => {
                   const isActive = conv.id === activeConversationId
                   const isHovered = conv.id === hoveredId
+                  const isStreaming = conv.id === streamingConversationId
 
                   return (
                     <div
@@ -615,19 +696,42 @@ export function WorkspaceSidebar({
                           </button>
                         )
                       })()}
+                      {/* Streaming accent bar — glowing left edge when agent is active */}
+                      {isStreaming && (
+                        <div className="absolute left-0 top-1 bottom-1 w-0.5 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(0,180,216,0.6)] animate-pulse z-10" />
+                      )}
                       <button
                         type="button"
-                        onClick={() => onSelectConversation(conv.id)}
-                        className={`w-full flex items-center gap-2 px-2 py-2 rounded-lg border text-left transition-colors ${
-                          isActive
-                            ? 'bg-accent text-accent-foreground border-primary/30'
-                            : 'hover:bg-muted text-foreground border-border'
+                        onClick={() => selectMode ? handleToggleSelect(conv.id) : onSelectConversation(conv.id)}
+                        className={`w-full flex items-center gap-2 px-2 py-2 rounded-lg border text-left transition-colors overflow-hidden ${
+                          selectMode && selectedIds.has(conv.id)
+                            ? 'bg-destructive/10 text-foreground border-destructive/30'
+                            : isActive
+                              ? 'bg-accent text-accent-foreground border-primary/30'
+                              : 'hover:bg-muted text-foreground border-border'
                         }`}
                         aria-current={isActive ? 'page' : undefined}
                       >
-                        {conv.pinned && <Star size={10} className="text-primary flex-shrink-0" />}
+                        {/* Checkbox in select mode */}
+                        {selectMode && (
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(conv.id)}
+                            onChange={() => handleToggleSelect(conv.id)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="h-3.5 w-3.5 rounded border-border text-primary flex-shrink-0 cursor-pointer"
+                          />
+                        )}
+                        {!selectMode && conv.pinned && <Star size={10} className="text-primary flex-shrink-0" />}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1">
+                            {/* Pulsing dot when agent is streaming */}
+                            {isStreaming && (
+                              <span className="relative flex h-2 w-2 flex-shrink-0">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75" />
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500" />
+                              </span>
+                            )}
                             <span className={`text-xs font-medium truncate ${conv.title ? '' : 'italic text-muted-foreground'}`}>
                               {conv.title ?? 'Untitled'}
                             </span>
@@ -637,7 +741,14 @@ export function WorkspaceSidebar({
                           </span>
                         </div>
 
-                        {isHovered && (
+                        {/* Shimmer sweep when streaming */}
+                        {isStreaming && (
+                          <div className="absolute inset-0 pointer-events-none overflow-hidden rounded-lg">
+                            <div className="absolute top-0 right-0 h-full w-12 animate-shimmer bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                          </div>
+                        )}
+
+                        {!selectMode && isHovered && (
                           <div className="flex items-center gap-0.5 flex-shrink-0">
                             <button
                               type="button"

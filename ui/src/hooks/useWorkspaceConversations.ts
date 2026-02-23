@@ -13,6 +13,7 @@ import {
   createWorkspaceConversation,
   updateWorkspaceConversation,
   deleteWorkspaceConversation,
+  bulkDeleteWorkspaceConversations,
 } from '../lib/api'
 
 const CONVERSATIONS_KEY = ['workspace', 'conversations'] as const
@@ -67,12 +68,80 @@ export function useUpdateWorkspaceConversation() {
   })
 }
 
-/** Hook to delete a workspace conversation. */
+/** Hook to delete a workspace conversation.
+ *
+ * Uses optimistic removal to immediately hide the conversation from the
+ * sidebar, preventing the "delete then reappear" race condition caused by
+ * in-flight refetch intervals overwriting the cache before the server
+ * confirms the deletion.
+ */
 export function useDeleteWorkspaceConversation() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: deleteWorkspaceConversation,
-    onSuccess: () => {
+    onMutate: async (conversationId: number) => {
+      // Cancel any in-flight refetches so they don't overwrite our optimistic removal
+      await queryClient.cancelQueries({ queryKey: [...CONVERSATIONS_KEY] })
+
+      // Snapshot previous value for rollback on error
+      const previous = queryClient.getQueryData([...CONVERSATIONS_KEY])
+
+      // Optimistically remove the conversation from the list cache
+      queryClient.setQueryData(
+        [...CONVERSATIONS_KEY],
+        (old: Array<{ id: number; [key: string]: unknown }> | undefined) =>
+          old?.filter(conv => conv.id !== conversationId)
+      )
+
+      // Remove the individual conversation detail cache
+      queryClient.removeQueries({ queryKey: [...CONVERSATIONS_KEY, conversationId] })
+
+      return { previous }
+    },
+    onError: (err, _vars, context) => {
+      // Roll back to snapshot on error
+      if (context?.previous) {
+        queryClient.setQueryData([...CONVERSATIONS_KEY], context.previous)
+      }
+      console.error('Failed to delete conversation:', err)
+    },
+    onSettled: () => {
+      // Always refetch after mutation settles to ensure server state is authoritative
+      queryClient.invalidateQueries({ queryKey: [...CONVERSATIONS_KEY] })
+    },
+  })
+}
+
+/** Hook to bulk delete multiple workspace conversations.
+ *
+ * Uses optimistic removal identical to single delete but for multiple IDs.
+ */
+export function useBulkDeleteWorkspaceConversations() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: bulkDeleteWorkspaceConversations,
+    onMutate: async (conversationIds: number[]) => {
+      await queryClient.cancelQueries({ queryKey: [...CONVERSATIONS_KEY] })
+      const previous = queryClient.getQueryData([...CONVERSATIONS_KEY])
+
+      queryClient.setQueryData(
+        [...CONVERSATIONS_KEY],
+        (old: Array<{ id: number; [key: string]: unknown }> | undefined) =>
+          old?.filter(conv => !conversationIds.includes(conv.id))
+      )
+
+      for (const id of conversationIds) {
+        queryClient.removeQueries({ queryKey: [...CONVERSATIONS_KEY, id] })
+      }
+
+      return { previous }
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData([...CONVERSATIONS_KEY], context.previous)
+      }
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: [...CONVERSATIONS_KEY] })
     },
   })

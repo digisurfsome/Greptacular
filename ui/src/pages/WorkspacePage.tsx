@@ -127,6 +127,9 @@ export function WorkspacePage(): React.JSX.Element {
   const [commTimeout, setCommTimeout] = useState(120)
   const [commAutoReply, setCommAutoReply] = useState(true)
 
+  // Track which conversation is currently streaming (for sidebar activity indicator)
+  const [streamingConversationId, setStreamingConversationId] = useState<number | null>(null)
+
   // Walkie-talkie log (bridged from WorkspaceChat to WorkspaceLibrary)
   const [walkieTalkieLog, setWalkieTalkieLog] = useState<WalkieTalkieLogEntry[]>([])
 
@@ -172,6 +175,14 @@ export function WorkspacePage(): React.JSX.Element {
     setNewChatKey(k => k + 1)
     setActiveConversationId(null)
   }, [])
+
+  /** Clear active conversation when it's deleted so the chat panel disconnects. */
+  const handleDeleteConversation = useCallback((deletedId: number) => {
+    if (activeConversationId === deletedId) {
+      setActiveConversationId(null)
+      setStreamingConversationId(null)
+    }
+  }, [activeConversationId])
 
   /** Navigate back to conversation list (no model selection needed). */
   const handleBackToConversations = useCallback(() => {
@@ -419,10 +430,12 @@ export function WorkspacePage(): React.JSX.Element {
       <div className="flex flex-1 overflow-hidden">
         <WorkspaceSidebar
           activeConversationId={activeConversationId}
+          streamingConversationId={streamingConversationId}
           collapsed={sidebarCollapsed}
           onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
           onNewChat={handleNewChat}
           onSelectConversation={handleSelectConversation}
+          onDeleteConversation={handleDeleteConversation}
           selectedWorkingDirectory={workingDirectory}
           onWorkingDirectoryChange={handleRepoSelect}
           modelPresetIndex={modelPresetIndex}
@@ -594,6 +607,9 @@ export function WorkspacePage(): React.JSX.Element {
               pendingContextMode={pendingContextMode}
               pendingEffort={pendingEffort}
               newChatKey={newChatKey}
+              onStreamingChange={(streaming) =>
+                setStreamingConversationId(streaming ? activeConversationId : null)
+              }
             />
           </div>
         )}

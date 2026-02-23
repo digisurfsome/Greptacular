@@ -128,6 +128,22 @@ class WorkspaceCategory(Base):
     created_at = Column(DateTime, default=_utc_now)
 
 
+class WorkspaceLibraryFolder(Base):
+    """A folder in the workspace library filesystem."""
+    __tablename__ = "workspace_library_folders"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    parent_id = Column(
+        Integer,
+        ForeignKey("workspace_library_folders.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    created_at = Column(DateTime, default=_utc_now)
+    updated_at = Column(DateTime, default=_utc_now, onupdate=_utc_now)
+
+
 class WorkspaceLibraryFile(Base):
     """A file in the workspace library."""
     __tablename__ = "workspace_library_files"
@@ -136,6 +152,12 @@ class WorkspaceLibraryFile(Base):
     conversation_id = Column(
         Integer,
         ForeignKey("workspace_conversations.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    folder_id = Column(
+        Integer,
+        ForeignKey("workspace_library_folders.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )

@@ -6,7 +6,7 @@
  */
 
 import { memo } from 'react'
-import { Bot, User, Info, ClipboardCopy } from 'lucide-react'
+import { Bot, User, Info, ClipboardCopy, BookmarkPlus } from 'lucide-react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { ChatMessage as ChatMessageType } from '../lib/types'
@@ -16,6 +16,8 @@ interface ChatMessageProps {
   message: ChatMessageType
   /** When provided, shows a "Passoff" button on assistant messages that sends content to the passoff editor. */
   onCopyToPassoff?: (content: string) => void
+  /** When provided, shows a "Save to Library" button on assistant messages. */
+  onSaveToLibrary?: (content: string) => void
 }
 
 // Stable references for memo — avoids re-renders
@@ -29,7 +31,7 @@ const markdownComponents: Components = {
   ),
 }
 
-export const ChatMessage = memo(function ChatMessage({ message, onCopyToPassoff }: ChatMessageProps) {
+export const ChatMessage = memo(function ChatMessage({ message, onCopyToPassoff, onSaveToLibrary }: ChatMessageProps) {
   const { role, content, attachments, timestamp, isStreaming } = message
 
   // Format timestamp
@@ -131,17 +133,29 @@ export const ChatMessage = memo(function ChatMessage({ message, onCopyToPassoff 
               <span className="inline-block w-2 h-4 bg-primary ml-1 animate-pulse rounded" />
             )}
 
-            {/* Passoff button — only on assistant messages when handler is provided */}
-            {role === 'assistant' && onCopyToPassoff && !isStreaming && content && (
-              <div className="mt-2 pt-1.5 border-t border-border/30">
-                <button
-                  onClick={() => onCopyToPassoff(content)}
-                  className="flex items-center gap-1.5 text-[10px] text-amber-600/70 hover:text-amber-600 transition-colors"
-                  title="Send this message to the Passoff editor"
-                >
-                  <ClipboardCopy size={11} />
-                  Passoff
-                </button>
+            {/* Action buttons — only on assistant messages when not streaming */}
+            {role === 'assistant' && !isStreaming && content && (onCopyToPassoff || onSaveToLibrary) && (
+              <div className="mt-2 pt-1.5 border-t border-border/30 flex items-center gap-3">
+                {onCopyToPassoff && (
+                  <button
+                    onClick={() => onCopyToPassoff(content)}
+                    className="flex items-center gap-1.5 text-[10px] text-amber-600/70 hover:text-amber-600 transition-colors"
+                    title="Send this message to the Passoff editor"
+                  >
+                    <ClipboardCopy size={11} />
+                    Passoff
+                  </button>
+                )}
+                {onSaveToLibrary && (
+                  <button
+                    onClick={() => onSaveToLibrary(content)}
+                    className="flex items-center gap-1.5 text-[10px] text-muted-foreground/70 hover:text-primary transition-colors"
+                    title="Save this message to the library"
+                  >
+                    <BookmarkPlus size={11} />
+                    Save to Library
+                  </button>
+                )}
               </div>
             )}
           </Card>

@@ -17,8 +17,17 @@ import {
   disconnectRepository,
   syncRepository,
   getRepoTree,
+  // Folder operations
+  getLibraryFolderTree,
+  getFolderContents,
+  getFolderBreadcrumb,
+  createLibraryFolder,
+  renameLibraryFolder,
+  moveLibraryFolder,
+  deleteLibraryFolder,
+  moveLibraryFile,
+  saveFromChat,
 } from '../lib/api'
-// Types (LibraryFile, ConnectedRepo, RepoTreeEntry) are inferred from API return types
 
 // Query keys
 const LIBRARY_KEYS = {
@@ -26,6 +35,9 @@ const LIBRARY_KEYS = {
   conversation: (id: number) => ['workspace', 'library', 'conversation', id] as const,
   active: (id: number) => ['workspace', 'library', 'active', id] as const,
   content: (fileId: number) => ['workspace', 'library', 'content', fileId] as const,
+  folderTree: ['workspace', 'library', 'folderTree'] as const,
+  folderContents: (folderId: number | null) => ['workspace', 'library', 'folderContents', folderId] as const,
+  breadcrumb: (folderId: number) => ['workspace', 'library', 'breadcrumb', folderId] as const,
 }
 
 export function useGlobalFiles() {
@@ -74,8 +86,8 @@ export function useToggleFile(conversationId: number) {
 export function useUploadFile() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (data: { file: File; conversationId?: number; displayName?: string; tags?: string }) => {
-      return uploadLibraryFile(data.file, data.conversationId, data.displayName, data.tags)
+    mutationFn: async (data: { file: File; conversationId?: number; displayName?: string; tags?: string; folderId?: number }) => {
+      return uploadLibraryFile(data.file, data.conversationId, data.displayName, data.tags, data.folderId)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workspace', 'library'] })
@@ -86,8 +98,8 @@ export function useUploadFile() {
 export function useUploadText() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (data: { filename: string; content: string; conversationId?: number; displayName?: string; tags?: string }) => {
-      return uploadLibraryText(data.filename, data.content, data.conversationId, data.displayName, data.tags)
+    mutationFn: async (data: { filename: string; content: string; conversationId?: number; displayName?: string; tags?: string; folderId?: number }) => {
+      return uploadLibraryText(data.filename, data.content, data.conversationId, data.displayName, data.tags, data.folderId)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workspace', 'library'] })
@@ -99,6 +111,95 @@ export function useDeleteFile() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (fileId: number) => deleteLibraryFile(fileId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workspace', 'library'] })
+    },
+  })
+}
+
+// Folder hooks
+
+export function useFolderTree() {
+  return useQuery({
+    queryKey: LIBRARY_KEYS.folderTree,
+    queryFn: getLibraryFolderTree,
+  })
+}
+
+export function useFolderContents(folderId: number | null) {
+  return useQuery({
+    queryKey: LIBRARY_KEYS.folderContents(folderId),
+    queryFn: () => getFolderContents(folderId),
+  })
+}
+
+export function useFolderBreadcrumb(folderId: number | null) {
+  return useQuery({
+    queryKey: folderId !== null ? LIBRARY_KEYS.breadcrumb(folderId) : [],
+    queryFn: () => getFolderBreadcrumb(folderId!),
+    enabled: folderId !== null,
+  })
+}
+
+export function useCreateFolder() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { name: string; parentId?: number }) =>
+      createLibraryFolder(data.name, data.parentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workspace', 'library'] })
+    },
+  })
+}
+
+export function useRenameFolder() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { folderId: number; name: string }) =>
+      renameLibraryFolder(data.folderId, data.name),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workspace', 'library'] })
+    },
+  })
+}
+
+export function useMoveFolder() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { folderId: number; newParentId: number | null }) =>
+      moveLibraryFolder(data.folderId, data.newParentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workspace', 'library'] })
+    },
+  })
+}
+
+export function useDeleteFolder() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (folderId: number) => deleteLibraryFolder(folderId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workspace', 'library'] })
+    },
+  })
+}
+
+export function useMoveFile() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { fileId: number; folderId: number | null }) =>
+      moveLibraryFile(data.fileId, data.folderId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workspace', 'library'] })
+    },
+  })
+}
+
+export function useSaveFromChat() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { content: string; filename: string; folderId?: number; displayName?: string; tags?: string }) =>
+      saveFromChat(data.content, data.filename, data.folderId, data.displayName, data.tags),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workspace', 'library'] })
     },

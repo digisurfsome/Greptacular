@@ -872,6 +872,7 @@ export interface WorkspaceContextBudget {
 export interface LibraryFile {
   id: number
   conversation_id: number | null
+  folder_id: number | null
   filename: string
   display_name: string | null
   file_type: string
@@ -879,6 +880,25 @@ export interface LibraryFile {
   tags: string | null
   active_in_context: boolean
   created_at: string
+}
+
+export interface LibraryFolder {
+  id: number
+  name: string
+  parent_id: number | null
+  created_at: string
+  updated_at: string
+  children?: LibraryFolder[]
+}
+
+export interface FolderContents {
+  folders: LibraryFolder[]
+  files: LibraryFile[]
+}
+
+export interface FolderBreadcrumb {
+  id: number
+  name: string
 }
 
 export interface ConnectedRepo {

@@ -28,6 +28,7 @@ import {
   Check,
   ChevronDown,
   ScrollText,
+  BookOpen,
 } from 'lucide-react'
 import { useWorkspaceChat } from '@/hooks/useWorkspaceChat'
 import { useWorkspaceConversation } from '@/hooks/useWorkspaceConversations'
@@ -54,8 +55,10 @@ import { ChatForkModal } from './ChatForkModal'
 import { InjectFromChatModal } from './InjectFromChatModal'
 import { TokenLogPanel } from './TokenLogPanel'
 import { AgentNotifications, stripStructuredBlocks, parseStructuredBlocks } from './AgentNotifications'
+import { SaveToLibraryModal } from './SaveToLibraryModal'
+import { LibraryPickerModal } from './LibraryPickerModal'
 import { parseUtcTimestamp } from '@/lib/utils'
-import type { ChatMessage as ChatMessageType, WorkspaceMessage, PendingInjection, ImageAttachment, WalkieTalkieLogEntry } from '@/lib/types'
+import type { ChatMessage as ChatMessageType, WorkspaceMessage, PendingInjection, ImageAttachment, WalkieTalkieLogEntry, LibraryFile } from '@/lib/types'
 
 const DRAFT_KEY_PREFIX = 'workspace-draft-'
 const TOKEN_LOG_MODE_KEY = 'workspace-token-log-mode'
@@ -200,6 +203,9 @@ export function WorkspaceChat({
   const [showInjectModal, setShowInjectModal] = useState(false)
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
   const [pendingImages, setPendingImages] = useState<ImageAttachment[]>([])
+  const [attachedLibraryFiles, setAttachedLibraryFiles] = useState<LibraryFile[]>([])
+  const [showLibraryPicker, setShowLibraryPicker] = useState(false)
+  const [saveToLibraryContent, setSaveToLibraryContent] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
   const [isDragging, setIsDragging] = useState(false)
@@ -778,6 +784,7 @@ export function WorkspaceChat({
     }
 
     const attachments = pendingImages.length > 0 ? [...pendingImages] : undefined
+    const libraryIds = attachedLibraryFiles.length > 0 ? attachedLibraryFiles.map(f => f.id) : undefined
 
     // If no conversation yet, start a new one first. The hook will queue
     // the message and dispatch it once the session is ready.
@@ -792,17 +799,18 @@ export function WorkspaceChat({
         conversationContextMode, conversationModel, conversationId, activeConversationId,
       })
     }
-    sendMessage(content, attachments)
+    sendMessage(content, attachments, libraryIds)
 
     setInputValue('')
     setPendingImages([])
     setPendingFiles([])
+    setAttachedLibraryFiles([])
     // Clear draft after sending
     const effectiveId = conversationId ?? activeConversationId
     if (effectiveId) {
       localStorage.removeItem(`${DRAFT_KEY_PREFIX}${effectiveId}`)
     }
-  }, [inputValue, isLoading, conversationId, activeConversationId, start, sendMessage, workingDirectory, pendingImages, pendingFiles, conversationContextMode, conversationModel, effortLevel])
+  }, [inputValue, isLoading, conversationId, activeConversationId, start, sendMessage, workingDirectory, pendingImages, pendingFiles, attachedLibraryFiles, conversationContextMode, conversationModel, effortLevel])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -1388,6 +1396,7 @@ export function WorkspaceChat({
                   <ChatMessage
                     message={renderedMessage}
                     onCopyToPassoff={onCopyToPassoff}
+                    onSaveToLibrary={(content) => setSaveToLibraryContent(content)}
                   />
                 </div>
               )
@@ -1525,6 +1534,24 @@ export function WorkspaceChat({
           </div>
         )}
 
+        {/* Attached library files preview */}
+        {attachedLibraryFiles.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-3">
+            {attachedLibraryFiles.map((file) => (
+              <div key={file.id} className="flex items-center gap-1.5 px-2 py-1 bg-primary/10 border border-primary/20 rounded text-xs text-foreground group">
+                <BookOpen size={12} className="text-primary" />
+                <span className="truncate max-w-[120px]">{file.display_name || file.filename}</span>
+                <button
+                  onClick={() => setAttachedLibraryFiles(prev => prev.filter(f => f.id !== file.id))}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className="flex gap-2">
           {/* File upload button */}
           <Button
@@ -1548,6 +1575,23 @@ export function WorkspaceChat({
             title="Attach image"
           >
             <ImagePlus size={18} />
+          </Button>
+
+          {/* Attach from Library button */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className={`h-[44px] px-2 ${attachedLibraryFiles.length > 0 ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+            onClick={() => setShowLibraryPicker(true)}
+            disabled={isLoading || isLoadingConversation}
+            title={attachedLibraryFiles.length > 0 ? `${attachedLibraryFiles.length} library file(s) attached` : 'Attach from Library'}
+          >
+            <BookOpen size={18} />
+            {attachedLibraryFiles.length > 0 && (
+              <span className="absolute -top-1 -right-1 bg-primary text-primary-foreground text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
+                {attachedLibraryFiles.length}
+              </span>
+            )}
           </Button>
 
           {/* Hidden file inputs */}
@@ -1637,6 +1681,28 @@ export function WorkspaceChat({
           onClose={() => setShowInjectModal(false)}
           currentConversationId={effectiveConversationId}
           onInject={handleInject}
+        />
+      )}
+
+      {/* Save to Library modal */}
+      {saveToLibraryContent !== null && (
+        <SaveToLibraryModal
+          open
+          onClose={() => setSaveToLibraryContent(null)}
+          content={saveToLibraryContent}
+        />
+      )}
+
+      {/* Library Picker modal */}
+      {showLibraryPicker && (
+        <LibraryPickerModal
+          open
+          onClose={() => setShowLibraryPicker(false)}
+          onAttach={(files) => {
+            setAttachedLibraryFiles(files)
+            setShowLibraryPicker(false)
+          }}
+          selectedFileIds={attachedLibraryFiles.map(f => f.id)}
         />
       )}
       </div>{/* end main chat content */}

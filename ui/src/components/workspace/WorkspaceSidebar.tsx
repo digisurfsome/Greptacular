@@ -86,6 +86,8 @@ interface WorkspaceSidebarProps {
   /** Called when user starts a new chat with model selection from the dropdown. */
   onNewChat: (model: 'opus' | 'sonnet', contextMode: '1m' | '200k', effort: EffortLevel) => void
   onSelectConversation: (id: number) => void
+  /** Called when a conversation is deleted. Parent should clear activeConversationId if it matches. */
+  onDeleteConversation?: (id: number) => void
   /** Currently selected working directory (repo path) from the page. */
   selectedWorkingDirectory?: string | null
   /** Callback when the user picks a repo in the naming form. */
@@ -133,6 +135,7 @@ export function WorkspaceSidebar({
   onToggleCollapse,
   onNewChat,
   onSelectConversation,
+  onDeleteConversation,
   selectedWorkingDirectory,
   onWorkingDirectoryChange,
   modelPresetIndex = 0,
@@ -264,9 +267,11 @@ export function WorkspaceSidebar({
       e.stopPropagation()
       if (window.confirm('Delete this conversation? This cannot be undone.')) {
         deleteMutation.mutate(id)
+        // Notify parent so it can clear activeConversationId + disconnect WebSocket
+        onDeleteConversation?.(id)
       }
     },
-    [deleteMutation],
+    [deleteMutation, onDeleteConversation],
   )
 
   const handleMouseEnter = useCallback((id: number) => {

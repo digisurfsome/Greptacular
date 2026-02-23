@@ -175,6 +175,14 @@ export function WorkspacePage(): React.JSX.Element {
     setActiveConversationId(null)
   }, [])
 
+  /** Clear active conversation when it's deleted so the chat panel disconnects. */
+  const handleDeleteConversation = useCallback((deletedId: number) => {
+    if (activeConversationId === deletedId) {
+      setActiveConversationId(null)
+      setStreamingConversationId(null)
+    }
+  }, [activeConversationId])
+
   /** Navigate back to conversation list (no model selection needed). */
   const handleBackToConversations = useCallback(() => {
     setActiveConversationId(null)
@@ -423,6 +431,7 @@ export function WorkspacePage(): React.JSX.Element {
           onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
           onNewChat={handleNewChat}
           onSelectConversation={handleSelectConversation}
+          onDeleteConversation={handleDeleteConversation}
           selectedWorkingDirectory={workingDirectory}
           onWorkingDirectoryChange={handleRepoSelect}
           modelPresetIndex={modelPresetIndex}

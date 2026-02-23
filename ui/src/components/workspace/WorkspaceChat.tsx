@@ -866,7 +866,7 @@ export function WorkspaceChat({
   const handleForkCreated = useCallback((newId: number) => {
     setShowForkModal(false)
     onConversationCreated(newId)
-    queryClient.invalidateQueries({ queryKey: ['workspace-conversations'] })
+    queryClient.invalidateQueries({ queryKey: ['workspace', 'conversations'] })
   }, [onConversationCreated, queryClient])
 
   const handleInject = useCallback((injection: PendingInjection) => {

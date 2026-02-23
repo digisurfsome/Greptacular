@@ -331,9 +331,14 @@ def get_engine() -> Engine:
             )
             Base.metadata.create_all(engine)
 
-            # Schema migration: add Phase 2 columns if missing
+            # Enable WAL mode for concurrent reads during writes.
+            # Without WAL, all writes serialize with exclusive locks which
+            # causes delete timeouts when the agent is actively streaming.
             import sqlite3
             conn = sqlite3.connect(db_path.as_posix())
+            conn.execute("PRAGMA journal_mode=WAL")
+
+            # Schema migration: add Phase 2 columns if missing
             cursor = conn.cursor()
             cursor.execute("PRAGMA table_info(workspace_conversations)")
             existing_cols = {row[1] for row in cursor.fetchall()}

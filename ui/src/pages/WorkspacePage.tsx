@@ -25,7 +25,7 @@ import { PassoffEditor, type PassoffSection } from '../components/workspace/Pass
 import { SwarmPanel } from '../components/workspace/SwarmPanel'
 import { CIStatusWidget } from '../components/workspace/CIStatusWidget'
 import { GitActivityWidget } from '../components/GitActivityWidget'
-// import { ProcessingLogPanel } from '../components/ProcessingLogPanel'
+import { ProcessingLogPanel } from '../components/ProcessingLogPanel'
 import { useWorkspaceKeyboardShortcuts } from '../hooks/useWorkspaceKeyboardShortcuts'
 import { exportConversationMarkdown, getSettings } from '../lib/api'
 import type { WalkieTalkieLogEntry } from '../lib/types'
@@ -126,7 +126,7 @@ export function WorkspacePage(): React.JSX.Element {
   const [autoForward, setAutoForward] = useState(false)
 
   // Processing log slide-out panel
-  // const [showProcessingLog, setShowProcessingLog] = useState(false)
+  const [showProcessingLog, setShowProcessingLog] = useState(false)
 
   // Countdown timer state (shared across panels)
   const [timerActive, setTimerActive] = useState(false)
@@ -319,7 +319,7 @@ export function WorkspacePage(): React.JSX.Element {
           {/* Git Activity Widget — compact commit tracker */}
           <GitActivityWidget
             workingDirectory={workingDirectory}
-            // onOpenProcessingLog={() => setShowProcessingLog(true)}
+            onOpenProcessingLog={() => setShowProcessingLog(true)}
           />
           <div className="w-px h-5 bg-border mx-1" />
           {/* CI Pipeline Status — non-intrusive blinking indicator */}
@@ -666,12 +666,11 @@ export function WorkspacePage(): React.JSX.Element {
         onClose={() => setShowUserGuide(false)}
       />
 
-      {/* Processing Log Panel — disabled, will re-enable after fix */}
-      {/* <ProcessingLogPanel
+      <ProcessingLogPanel
         workingDirectory={workingDirectory}
         open={showProcessingLog}
         onClose={() => setShowProcessingLog(false)}
-      /> */}
+      />
     </div>
   )
 }

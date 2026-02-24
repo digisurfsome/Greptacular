@@ -2,6 +2,28 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## EMERGENCY: UI Broken? Run This
+
+If the UI is showing weird panels, stuck spinners, or anything that shouldn't be there:
+
+```cmd
+cd C:\Users\lober\Greptacular
+git stash
+git checkout main
+git pull origin main
+rmdir /s /q ui\dist
+start_ui.bat
+```
+
+Then **Ctrl+Shift+R** in browser. Once `reset.bat` is merged, just double-click that instead.
+
+## AGENTS: Read This Before Pushing
+
+- **ALWAYS merge fixes to `main`** — the user pulls from main, not feature branches
+- `ui/dist/` is gitignored — source changes alone don't fix the UI
+- `start_ui.bat` auto-rebuilds dist when source is newer, so merging to main is enough
+- **Never** re-enable a component you disabled to fix a bug without testing the full build
+
 ## Prerequisites
 
 - Python 3.11+

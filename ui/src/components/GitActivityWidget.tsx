@@ -8,7 +8,6 @@
  *   - No blink: idle / running (nothing noteworthy)
  *
  * Click to expand a dropdown of the last 10 commits with timestamps.
- * Includes a "Processing Log" button that opens the slide-out panel.
  * Badge count and blink reset when the dropdown is opened.
  *
  * Placed on: AutoForge front page header + Workspace breadcrumb bar.
@@ -18,11 +17,8 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getGitCommits, getCIStatus } from '../lib/api'
 import type { GitCommit, CIPipelineStatus } from '../lib/types'
-import { FileText } from 'lucide-react'
-
 interface GitActivityWidgetProps {
   workingDirectory: string | null
-  onOpenProcessingLog?: () => void
 }
 
 function timeAgo(isoDate: string): string {
@@ -84,7 +80,7 @@ const BLINK_STYLES: Record<string, { border: string; text: string; badge: string
   },
 }
 
-export function GitActivityWidget({ workingDirectory, onOpenProcessingLog }: GitActivityWidgetProps) {
+export function GitActivityWidget({ workingDirectory }: GitActivityWidgetProps) {
   const [expanded, setExpanded] = useState(false)
   const [seenCount, setSeenCount] = useState(0)
   const [hasNewSinceClick, setHasNewSinceClick] = useState(false)
@@ -200,20 +196,6 @@ export function GitActivityWidget({ workingDirectory, onOpenProcessingLog }: Git
           {/* Header */}
           <div className="flex items-center justify-between px-3 py-2 border-b border-border">
             <span className="text-xs font-bold text-foreground">Recent Commits</span>
-            {onOpenProcessingLog && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setExpanded(false)
-                  onOpenProcessingLog()
-                }}
-                className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold text-violet-400 hover:bg-violet-500/15 transition-colors"
-                title="Open CI Processing Log"
-              >
-                <FileText size={12} />
-                Processing Log
-              </button>
-            )}
           </div>
 
           {/* Commit list */}

@@ -4,7 +4,6 @@
 
 import type {
   CIStatusResponse,
-  CITimelineEvent,
   GitCommit,
   ProjectSummary,
   ProjectDetail,
@@ -1344,16 +1343,6 @@ export async function vetoCIMerge(workingDirectory: string): Promise<{ success: 
 
 export async function getGitCommits(workingDirectory: string, limit: number = 10): Promise<GitCommit[]> {
   return fetchJSON(`/ci/commits?working_directory=${encodeURIComponent(workingDirectory)}&limit=${limit}`)
-}
-
-export async function getCITimeline(
-  workingDirectory: string,
-  commitSha?: string,
-  limit: number = 50,
-): Promise<CITimelineEvent[]> {
-  let url = `/ci/timeline?working_directory=${encodeURIComponent(workingDirectory)}&limit=${limit}`
-  if (commitSha) url += `&commit_sha=${encodeURIComponent(commitSha)}`
-  return fetchJSON(url)
 }
 
 // ============================================================================

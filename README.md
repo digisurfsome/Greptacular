@@ -1,10 +1,8 @@
 # AutoForge
 
-> **UI broken?** Run this from `C:\Users\lober\Greptacular`:
-> ```
-> git stash && git checkout main && git pull origin main && rmdir /s /q ui\dist && start_ui.bat
-> ```
-> Then **Ctrl+Shift+R** in browser. (Or double-click `reset.bat` if it's been merged.)
+> **UI broken or showing weird stuff?** Just double-click **`start_ui.bat`** — it auto-syncs from main and rebuilds fresh every time. Then **Ctrl+Shift+R** in browser.
+>
+> If `start_ui.bat` itself is broken, run manually: `git stash && git checkout main && git pull origin main && rmdir /s /q ui\dist && start_ui.bat`
 
 ---
 

@@ -1,19 +1,24 @@
 /**
- * GitActivityWidget - Compact git commit activity indicator with dropdown.
+ * GitActivityWidget - Compact "G" notification button with CI-aware blink colors.
  *
- * Shows a small square with a git icon and an unseen-commit badge.
+ * Shows a bold "G" letter that blinks with different colors based on CI status:
+ *   - Yellow blink: new (unseen) commits detected
+ *   - Green blink: successful merge happened
+ *   - Red blink: CI error or failure
+ *   - No blink: idle / running (nothing noteworthy)
+ *
  * Click to expand a dropdown of the last 10 commits with timestamps.
- * Blinks cyan when new commits arrive. Badge resets on click.
  * Includes a "Processing Log" button that opens the slide-out panel.
+ * Badge count and blink reset when the dropdown is opened.
  *
  * Placed on: AutoForge front page header + Workspace breadcrumb bar.
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { getGitCommits } from '../lib/api'
-import type { GitCommit } from '../lib/types'
-import { GitCommit as GitCommitIcon, FileText } from 'lucide-react'
+import { getGitCommits, getCIStatus } from '../lib/api'
+import type { GitCommit, CIPipelineStatus } from '../lib/types'
+import { FileText } from 'lucide-react'
 
 interface GitActivityWidgetProps {
   workingDirectory: string | null
@@ -34,6 +39,51 @@ function timeAgo(isoDate: string): string {
   return `${days}d ago`
 }
 
+/** Statuses that indicate a failure or error condition. */
+const ERROR_STATUSES: ReadonlySet<CIPipelineStatus> = new Set([
+  'failed',
+  'exhausted',
+  'error',
+])
+
+/**
+ * Determine the notification blink color based on unseen commits and CI status.
+ *
+ * Priority order:
+ *   1. Red   - CI failure / error / exhausted
+ *   2. Green - successful merge
+ *   3. Yellow - new unseen commits
+ *   4. null  - no notification (idle / running)
+ */
+function resolveBlinkColor(
+  unseenCount: number,
+  ciStatus: CIPipelineStatus | null,
+): 'yellow' | 'green' | 'red' | null {
+  if (ciStatus && ERROR_STATUSES.has(ciStatus)) return 'red'
+  if (ciStatus === 'merged') return 'green'
+  if (unseenCount > 0) return 'yellow'
+  return null
+}
+
+/** Map blink color to Tailwind border + text classes for the G icon. */
+const BLINK_STYLES: Record<string, { border: string; text: string; badge: string }> = {
+  yellow: {
+    border: 'border-yellow-400/80',
+    text: 'text-yellow-400',
+    badge: 'bg-yellow-500',
+  },
+  green: {
+    border: 'border-emerald-400/80',
+    text: 'text-emerald-400',
+    badge: 'bg-emerald-500',
+  },
+  red: {
+    border: 'border-red-400/80',
+    text: 'text-red-400',
+    badge: 'bg-red-500',
+  },
+}
+
 export function GitActivityWidget({ workingDirectory, onOpenProcessingLog }: GitActivityWidgetProps) {
   const [expanded, setExpanded] = useState(false)
   const [seenCount, setSeenCount] = useState(0)
@@ -41,12 +91,23 @@ export function GitActivityWidget({ workingDirectory, onOpenProcessingLog }: Git
   const prevCommitsRef = useRef<string[]>([])
   const dropdownRef = useRef<HTMLDivElement>(null)
 
+  // Fetch last 10 commits, polling every 10 seconds
   const { data: commits } = useQuery<GitCommit[]>({
     queryKey: ['git-commits', workingDirectory],
     queryFn: () => getGitCommits(workingDirectory!, 10),
     enabled: !!workingDirectory,
     refetchInterval: 10000,
   })
+
+  // Fetch CI status, polling every 15 seconds
+  const { data: ciStatusData } = useQuery({
+    queryKey: ['ci-status-widget', workingDirectory],
+    queryFn: () => getCIStatus(workingDirectory!),
+    enabled: !!workingDirectory,
+    refetchInterval: 15000,
+  })
+
+  const ciStatus: CIPipelineStatus | null = ciStatusData?.status ?? null
 
   // Track new commits arriving
   useEffect(() => {
@@ -80,7 +141,7 @@ export function GitActivityWidget({ workingDirectory, onOpenProcessingLog }: Git
   const handleClick = useCallback(() => {
     setExpanded(v => !v)
     if (!expanded) {
-      // Opening — mark all as seen
+      // Opening the dropdown resets the notification state
       setSeenCount(0)
       setHasNewSinceClick(false)
     }
@@ -91,23 +152,43 @@ export function GitActivityWidget({ workingDirectory, onOpenProcessingLog }: Git
   const totalCommits = commits?.length ?? 0
   const unseenBadge = seenCount > 0 ? seenCount : null
 
+  // Derive blink color from unseen commits + CI status.
+  // When dropdown is open (user has seen everything), suppress the blink.
+  const blinkColor = expanded ? null : resolveBlinkColor(seenCount, ciStatus)
+  const hasNotification = blinkColor !== null || hasNewSinceClick
+  const style = blinkColor ? BLINK_STYLES[blinkColor] : null
+
   return (
     <div className="relative" ref={dropdownRef}>
-      {/* Compact square button */}
+      {/* Compact square button with bold "G" */}
       <button
         onClick={handleClick}
         className={`
-          relative flex items-center justify-center w-8 h-8 rounded-md border border-border
+          relative flex items-center justify-center w-8 h-8 rounded-md border
           transition-all duration-200 hover:opacity-80 bg-card
-          ${hasNewSinceClick ? 'animate-pulse border-cyan-400/60' : ''}
+          ${hasNotification && style ? `${style.border} animate-pulse` : 'border-border'}
         `}
         title={`Git Activity (${totalCommits} recent commits)`}
       >
-        <GitCommitIcon size={16} className={hasNewSinceClick ? 'text-cyan-400' : 'text-muted-foreground'} />
+        <span
+          className={`
+            text-sm font-black leading-none select-none
+            ${hasNotification && style ? style.text : 'text-muted-foreground'}
+          `}
+        >
+          G
+        </span>
 
         {/* Badge for unseen commits */}
         {unseenBadge != null && (
-          <span className="absolute -top-1.5 -right-1.5 flex items-center justify-center min-w-[16px] h-4 px-1 text-[9px] font-bold text-white bg-cyan-500 rounded-full border border-background">
+          <span
+            className={`
+              absolute -top-1.5 -right-1.5 flex items-center justify-center
+              min-w-[16px] h-4 px-1 text-[9px] font-bold text-white rounded-full
+              border border-background
+              ${style ? style.badge : 'bg-cyan-500'}
+            `}
+          >
             {unseenBadge > 9 ? '9+' : unseenBadge}
           </span>
         )}

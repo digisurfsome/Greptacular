@@ -16,7 +16,6 @@ import {
   X,
   Check,
   AlertTriangle,
-  Loader2,
   Wrench,
   GitMerge,
   Clock,
@@ -204,24 +203,20 @@ export function ProcessingLogPanel({ workingDirectory, open, onClose }: Processi
     return `${seconds}s`
   }
 
+  // Do not render any markup when the panel is closed.
+  // This prevents z-index overlap issues with other UI elements.
+  if (!open) return null
+
   return (
     <>
-      {/* Backdrop */}
-      {open && (
-        <div
-          className="fixed inset-0 bg-black/30 z-[90] transition-opacity"
-          onClick={onClose}
-        />
-      )}
+      {/* Backdrop — click anywhere outside the panel to close */}
+      <div
+        className="fixed inset-0 bg-black/30 z-[90]"
+        onClick={onClose}
+      />
 
       {/* Slide-out panel */}
-      <div
-        className={`
-          fixed top-0 right-0 h-full w-96 bg-card border-l-2 border-border shadow-2xl z-[95]
-          transform transition-transform duration-300 ease-out
-          ${open ? 'translate-x-0' : 'translate-x-full'}
-        `}
-      >
+      <div className="fixed top-0 right-0 h-full w-96 bg-card border-l-2 border-border shadow-2xl z-[95]">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <div className="flex items-center gap-2">
@@ -230,7 +225,7 @@ export function ProcessingLogPanel({ workingDirectory, open, onClose }: Processi
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded hover:bg-muted transition-colors"
+            className="p-1.5 rounded hover:bg-muted transition-colors relative z-10"
             title="Close (Esc)"
           >
             <X size={16} className="text-muted-foreground" />
@@ -241,8 +236,8 @@ export function ProcessingLogPanel({ workingDirectory, open, onClose }: Processi
         <div className="overflow-y-auto h-[calc(100%-52px)]">
           {groups.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
-              <Loader2 size={24} className="animate-spin mb-2" />
-              <span className="text-xs">Waiting for commit data...</span>
+              <Clock size={24} className="mb-2 opacity-40" />
+              <span className="text-xs">No CI events recorded yet</span>
             </div>
           ) : (
             groups.map((group) => {

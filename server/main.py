@@ -25,7 +25,7 @@ load_dotenv()
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from .routers import (
@@ -243,8 +243,11 @@ if UI_DIST_DIR.exists():
 
     @app.get("/")
     async def serve_index():
-        """Serve the React app index.html."""
-        return FileResponse(UI_DIST_DIR / "index.html")
+        """Serve the React app index.html with no-cache to prevent stale builds."""
+        return FileResponse(
+            UI_DIST_DIR / "index.html",
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+        )
 
     @app.get("/{path:path}")
     async def serve_spa(path: str):
@@ -267,8 +270,11 @@ if UI_DIST_DIR.exists():
         if file_path.exists() and file_path.is_file():
             return FileResponse(file_path)
 
-        # Fall back to index.html for SPA routing
-        return FileResponse(UI_DIST_DIR / "index.html")
+        # Fall back to index.html for SPA routing (no-cache to prevent stale builds)
+        return FileResponse(
+            UI_DIST_DIR / "index.html",
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+        )
 
 
 # ============================================================================

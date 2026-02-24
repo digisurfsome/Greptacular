@@ -40,6 +40,7 @@ from .routers import (
     filesystem_router,
     notifications_router,
     projects_router,
+    role_library_router,
     schedules_router,
     settings_router,
     spec_creation_router,
@@ -179,6 +180,7 @@ app.include_router(settings_router)
 app.include_router(terminal_router)
 app.include_router(workspace_router)
 app.include_router(notifications_router)
+app.include_router(role_library_router)
 app.include_router(swarm_router)
 
 

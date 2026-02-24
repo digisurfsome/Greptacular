@@ -309,6 +309,43 @@ class WorkspaceTokenLog(Base):
 
 
 # ============================================================================
+# Role Library Models
+# ============================================================================
+
+
+class RoleBlueprint(Base):
+    """A pre-PRD role blueprint in the role library.
+
+    Each blueprint describes an agent role that can be built for the terminal —
+    e.g. an "SDK Update Agent" or a "Lint Fix Agent".  Blueprints are organized
+    by category and store the full PRD/documentation as markdown content.
+    Multiple files/artifacts that belong to a role are linked via ``role_tag``.
+    """
+
+    __tablename__ = "role_blueprints"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # Identity
+    name = Column(String(200), nullable=False)
+    role_tag = Column(String(100), nullable=False, unique=True, index=True)
+
+    # Classification
+    category = Column(String(50), nullable=False, index=True)  # e.g. "updating", "building", "testing"
+    subcategory = Column(String(100), nullable=True)  # e.g. "sdk", "dependencies", "security"
+
+    # Content
+    one_liner = Column(String(300), nullable=False)  # Short description
+    prd_content = Column(Text, nullable=False, default="")  # Full PRD markdown
+    target_files = Column(Text, nullable=True)  # JSON list of file paths this role touches
+
+    # Metadata
+    status = Column(String(20), nullable=False, default="draft")  # draft | ready | built
+    created_at = Column(DateTime, default=_utc_now)
+    updated_at = Column(DateTime, default=_utc_now, onupdate=_utc_now)
+
+
+# ============================================================================
 # Engine and Session Management
 # ============================================================================
 
@@ -2515,3 +2552,144 @@ def _token_log_to_dict(entry: WorkspaceTokenLog) -> dict:
         "api_duration_api_ms": entry.api_duration_api_ms,
         "model": entry.model,
     }
+
+
+# ============================================================================
+# Role Library Operations
+# ============================================================================
+
+
+def _blueprint_to_dict(bp: RoleBlueprint) -> dict:
+    """Convert a RoleBlueprint to a JSON-serializable dictionary."""
+    target_files = []
+    if bp.target_files:
+        try:
+            target_files = json.loads(bp.target_files)
+        except (json.JSONDecodeError, TypeError):
+            target_files = []
+    return {
+        "id": bp.id,
+        "name": bp.name,
+        "role_tag": bp.role_tag,
+        "category": bp.category,
+        "subcategory": bp.subcategory,
+        "one_liner": bp.one_liner,
+        "prd_content": bp.prd_content,
+        "target_files": target_files,
+        "status": bp.status,
+        "created_at": bp.created_at.isoformat() if bp.created_at else None,
+        "updated_at": bp.updated_at.isoformat() if bp.updated_at else None,
+    }
+
+
+def list_blueprints(category: Optional[str] = None) -> list[dict]:
+    """List all role blueprints, optionally filtered by category."""
+    session = get_db_session()
+    try:
+        query = session.query(RoleBlueprint)
+        if category:
+            query = query.filter(RoleBlueprint.category == category)
+        entries = query.order_by(RoleBlueprint.category, RoleBlueprint.name).all()
+        return [_blueprint_to_dict(e) for e in entries]
+    finally:
+        session.close()
+
+
+def get_blueprint(blueprint_id: int) -> Optional[dict]:
+    """Get a single blueprint by ID."""
+    session = get_db_session()
+    try:
+        bp = session.query(RoleBlueprint).filter(RoleBlueprint.id == blueprint_id).first()
+        return _blueprint_to_dict(bp) if bp else None
+    finally:
+        session.close()
+
+
+def get_blueprint_by_tag(role_tag: str) -> Optional[dict]:
+    """Get a single blueprint by its unique role_tag."""
+    session = get_db_session()
+    try:
+        bp = session.query(RoleBlueprint).filter(RoleBlueprint.role_tag == role_tag).first()
+        return _blueprint_to_dict(bp) if bp else None
+    finally:
+        session.close()
+
+
+def create_blueprint(
+    name: str,
+    role_tag: str,
+    category: str,
+    one_liner: str,
+    prd_content: str = "",
+    subcategory: Optional[str] = None,
+    target_files: Optional[list[str]] = None,
+    status: str = "draft",
+) -> dict:
+    """Create a new role blueprint."""
+    session = get_db_session()
+    try:
+        bp = RoleBlueprint(
+            name=name,
+            role_tag=role_tag,
+            category=category,
+            subcategory=subcategory,
+            one_liner=one_liner,
+            prd_content=prd_content,
+            target_files=json.dumps(target_files) if target_files else None,
+            status=status,
+        )
+        session.add(bp)
+        session.commit()
+        session.refresh(bp)
+        return _blueprint_to_dict(bp)
+    finally:
+        session.close()
+
+
+def update_blueprint(blueprint_id: int, **kwargs) -> Optional[dict]:  # type: ignore[no-untyped-def]
+    """Update a blueprint. Only provided kwargs are updated."""
+    session = get_db_session()
+    try:
+        bp = session.query(RoleBlueprint).filter(RoleBlueprint.id == blueprint_id).first()
+        if not bp:
+            return None
+        for key, value in kwargs.items():
+            if key == "target_files" and isinstance(value, list):
+                setattr(bp, key, json.dumps(value))
+            elif hasattr(bp, key):
+                setattr(bp, key, value)
+        bp.updated_at = _utc_now()
+        session.commit()
+        session.refresh(bp)
+        return _blueprint_to_dict(bp)
+    finally:
+        session.close()
+
+
+def delete_blueprint(blueprint_id: int) -> bool:
+    """Delete a role blueprint by ID."""
+    session = get_db_session()
+    try:
+        bp = session.query(RoleBlueprint).filter(RoleBlueprint.id == blueprint_id).first()
+        if not bp:
+            return False
+        session.delete(bp)
+        session.commit()
+        return True
+    finally:
+        session.close()
+
+
+def list_blueprint_categories() -> list[dict]:
+    """Return distinct categories with counts."""
+    session = get_db_session()
+    try:
+        rows = (
+            session.query(RoleBlueprint.category, func.count(RoleBlueprint.id))
+            .group_by(RoleBlueprint.category)
+            .order_by(RoleBlueprint.category)
+            .all()
+        )
+        return [{"category": cat, "count": cnt} for cat, cnt in rows]
+    finally:
+        session.close()

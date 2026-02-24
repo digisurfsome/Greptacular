@@ -144,6 +144,16 @@ Configuration in `pyproject.toml`:
 - ruff: Line length 120, Python 3.11 target
 - mypy: Strict return type checking, ignores missing imports
 
+### Workspace UI Build Standards
+
+All new workspace pages and components **must** follow `ui/WORKSPACE_STANDARDS.md`. This covers:
+- Page layout patterns (breadcrumb bar, responsive grid)
+- CRUD view flow (List → Detail → Create/Edit)
+- Loading/empty/error state patterns
+- Design tokens and typography
+- Backend patterns (database models, API routers, React Query hooks)
+- Anti-patterns to avoid
+
 ## Architecture
 
 ### npm CLI (bin/, lib/)

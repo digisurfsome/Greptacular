@@ -16,6 +16,7 @@ from .filesystem import router as filesystem_router
 from .notifications import router as notifications_router
 from .projects import boilerplate_router, styles_router
 from .projects import router as projects_router
+from .role_library import router as role_library_router
 from .schedules import router as schedules_router
 from .settings import router as settings_router
 from .spec_creation import router as spec_creation_router
@@ -41,5 +42,6 @@ __all__ = [
     "styles_router",
     "workspace_router",
     "notifications_router",
+    "role_library_router",
     "swarm_router",
 ]

@@ -2,11 +2,24 @@
 cd /d "%~dp0"
 REM AutoForge UI Launcher for Windows
 REM This script launches the web UI for the autonomous coding agent.
+REM Now auto-syncs from main before starting to prevent stale UI bugs.
 
 echo.
 echo ====================================
 echo   AutoForge UI
 echo ====================================
+echo.
+
+REM Auto-sync: pull latest main so you never run stale/broken code
+echo Syncing latest code from main...
+git stash >nul 2>&1
+git checkout main >nul 2>&1
+git pull origin main >nul 2>&1
+if %ERRORLEVEL% neq 0 (
+    echo [WARNING] Could not pull latest code - starting with local files
+) else (
+    echo [OK] Code is up to date
+)
 echo.
 
 REM Kill any existing processes on port 8888

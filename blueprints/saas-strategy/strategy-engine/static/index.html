@@ -1,0 +1,1524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SaaS Strategy Engine</title>
+<style>
+/* ─── Reset & Foundation ─────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg-primary: #0a0a0f;
+  --bg-secondary: #111118;
+  --bg-tertiary: #1a1a24;
+  --bg-card: #13131d;
+  --bg-card-hover: #1a1a28;
+  --bg-input: #0e0e16;
+
+  --border-subtle: #1e1e2e;
+  --border-medium: #2a2a3e;
+  --border-bright: #3a3a52;
+
+  --text-primary: #e8e8f0;
+  --text-secondary: #9898b0;
+  --text-tertiary: #6a6a82;
+  --text-muted: #4a4a60;
+
+  --accent-cyan: #00d4ff;
+  --accent-cyan-dim: #0099bb;
+  --accent-cyan-glow: rgba(0, 212, 255, 0.15);
+  --accent-cyan-glow-strong: rgba(0, 212, 255, 0.3);
+
+  --accent-amber: #f0a500;
+  --accent-amber-dim: #b87d00;
+  --accent-amber-glow: rgba(240, 165, 0, 0.12);
+
+  --accent-green: #00e676;
+  --accent-red: #ff4060;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", "Consolas", monospace;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  --shadow-card: 0 2px 12px rgba(0, 0, 0, 0.4);
+  --shadow-glow-cyan: 0 0 20px rgba(0, 212, 255, 0.1);
+  --shadow-glow-amber: 0 0 20px rgba(240, 165, 0, 0.08);
+
+  --transition-fast: 150ms ease;
+  --transition-normal: 250ms ease;
+  --transition-slow: 400ms ease;
+
+  --container-max: 740px;
+  --header-height: 56px;
+  --input-area-min: 72px;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Scrollbar ──────────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-medium);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-bright);
+}
+
+/* ─── App Shell ──────────────────────────────────────────────────────── */
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  max-width: var(--container-max);
+  margin: 0 auto;
+  position: relative;
+}
+
+/* ─── Header ─────────────────────────────────────────────────────────── */
+.header {
+  flex-shrink: 0;
+  height: var(--header-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-primary);
+  position: relative;
+  z-index: 10;
+}
+
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.header-logo {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--accent-cyan), var(--accent-cyan-dim));
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--bg-primary);
+  letter-spacing: -0.5px;
+}
+
+.header-title {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  color: var(--text-primary);
+  text-transform: uppercase;
+}
+
+.header-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.header-step-label {
+  white-space: nowrap;
+}
+
+/* ─── Progress Bar ───────────────────────────────────────────────────── */
+.progress-bar-track {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--border-subtle);
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-cyan-dim), var(--accent-cyan));
+  transition: width 600ms cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 0 1px 1px 0;
+  box-shadow: 0 0 8px rgba(0, 212, 255, 0.4);
+}
+
+/* ─── Chat Area ──────────────────────────────────────────────────────── */
+.chat-area {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 20px 20px 24px;
+  scroll-behavior: smooth;
+}
+
+/* ─── Start Screen ───────────────────────────────────────────────────── */
+.start-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+  padding: 40px 20px;
+  text-align: center;
+  animation: fadeIn 600ms ease;
+}
+
+.start-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, var(--accent-cyan), #0088aa);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  color: var(--bg-primary);
+  font-weight: 800;
+  margin-bottom: 28px;
+  box-shadow: 0 4px 24px rgba(0, 212, 255, 0.25);
+}
+
+.start-title {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  margin-bottom: 12px;
+  background: linear-gradient(135deg, var(--text-primary), var(--accent-cyan));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.start-subtitle {
+  font-size: 15px;
+  color: var(--text-secondary);
+  max-width: 460px;
+  line-height: 1.7;
+  margin-bottom: 8px;
+}
+
+.start-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 36px;
+}
+
+.start-features {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  max-width: 440px;
+  margin-bottom: 36px;
+  text-align: left;
+}
+
+.start-feature {
+  padding: 14px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.start-feature-label {
+  display: block;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.start-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 32px;
+  background: linear-gradient(135deg, var(--accent-cyan), var(--accent-cyan-dim));
+  color: var(--bg-primary);
+  font-size: 15px;
+  font-weight: 700;
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-normal);
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+.start-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 20px rgba(0, 212, 255, 0.4);
+}
+
+.start-btn:active {
+  transform: translateY(0);
+}
+
+.start-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.start-sessions {
+  margin-top: 24px;
+}
+
+.start-sessions-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.start-session-item {
+  display: inline-block;
+  padding: 6px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin: 3px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.start-session-item:hover {
+  border-color: var(--border-medium);
+  color: var(--text-secondary);
+}
+
+/* ─── Messages ───────────────────────────────────────────────────────── */
+.message {
+  margin-bottom: 16px;
+  animation: messageIn 400ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.message-engine {
+  max-width: 100%;
+}
+
+.message-user {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.message-bubble {
+  padding: 16px 20px;
+  border-radius: var(--radius-lg);
+  position: relative;
+}
+
+.message-engine .message-bubble {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--accent-cyan-dim);
+  box-shadow: var(--shadow-card);
+}
+
+.message-user .message-bubble {
+  background: linear-gradient(135deg, rgba(240, 165, 0, 0.08), rgba(240, 165, 0, 0.04));
+  border: 1px solid rgba(240, 165, 0, 0.15);
+  max-width: 85%;
+  color: var(--text-primary);
+}
+
+/* ─── Thinking Indicator ─────────────────────────────────────────────── */
+.thinking {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 20px;
+  animation: messageIn 300ms ease;
+}
+
+.thinking-dots {
+  display: flex;
+  gap: 4px;
+}
+
+.thinking-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-cyan-dim);
+  animation: thinkPulse 1.4s ease-in-out infinite;
+}
+
+.thinking-dot:nth-child(2) { animation-delay: 0.2s; }
+.thinking-dot:nth-child(3) { animation-delay: 0.4s; }
+
+.thinking-label {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* ─── Options ────────────────────────────────────────────────────────── */
+.options-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+  animation: messageIn 400ms cubic-bezier(0.16, 1, 0.3, 1);
+  animation-delay: 100ms;
+  animation-fill-mode: both;
+}
+
+.option-btn {
+  padding: 10px 18px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--accent-cyan-dim);
+  border-radius: 24px;
+  color: var(--accent-cyan);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-normal);
+  font-family: var(--font-sans);
+  line-height: 1.4;
+  text-align: left;
+}
+
+.option-btn:hover {
+  background: var(--accent-cyan-glow);
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 16px rgba(0, 212, 255, 0.15);
+  transform: translateY(-1px);
+}
+
+.option-btn:active {
+  transform: translateY(0);
+}
+
+.option-btn.selected {
+  background: var(--accent-cyan-glow-strong);
+  border-color: var(--accent-cyan);
+  color: var(--text-primary);
+  box-shadow: 0 0 16px rgba(0, 212, 255, 0.2), inset 0 0 12px rgba(0, 212, 255, 0.08);
+}
+
+.option-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* ─── Input Area ─────────────────────────────────────────────────────── */
+.input-area {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-primary);
+  padding: 12px 20px 16px;
+}
+
+.input-area.hidden {
+  display: none;
+}
+
+.input-comment-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.input-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.input-textarea {
+  flex: 1;
+  resize: none;
+  background: var(--bg-input);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  min-height: 42px;
+  max-height: 160px;
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+
+.input-textarea:focus {
+  border-color: var(--accent-cyan-dim);
+}
+
+.input-textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.send-btn {
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-cyan);
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  color: var(--bg-primary);
+}
+
+.send-btn:hover {
+  background: #00e0ff;
+  box-shadow: 0 0 12px rgba(0, 212, 255, 0.3);
+}
+
+.send-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.send-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.input-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 6px;
+  text-align: right;
+}
+
+/* ─── Game Plan Card ─────────────────────────────────────────────────── */
+.game-plan-card {
+  margin-top: 20px;
+  background: var(--bg-card);
+  border: 1px solid var(--accent-cyan-dim);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  animation: messageIn 500ms cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 24px rgba(0, 212, 255, 0.08);
+}
+
+.game-plan-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  background: linear-gradient(135deg, rgba(0, 212, 255, 0.08), rgba(0, 212, 255, 0.02));
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.game-plan-title {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--accent-cyan);
+}
+
+.game-plan-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.game-plan-btn {
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-medium);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  font-family: var(--font-sans);
+}
+
+.game-plan-btn:hover {
+  border-color: var(--accent-cyan-dim);
+  color: var(--text-primary);
+  background: var(--bg-card-hover);
+}
+
+.game-plan-btn.copied {
+  border-color: var(--accent-green);
+  color: var(--accent-green);
+}
+
+.game-plan-body {
+  padding: 20px;
+}
+
+/* ─── Markdown Rendering ─────────────────────────────────────────────── */
+.md h1 {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 24px 0 12px;
+  letter-spacing: -0.3px;
+  line-height: 1.3;
+}
+
+.md h1:first-child { margin-top: 0; }
+
+.md h2 {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--accent-cyan);
+  margin: 20px 0 10px;
+  letter-spacing: -0.2px;
+  line-height: 1.3;
+}
+
+.md h3 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 16px 0 8px;
+  line-height: 1.3;
+}
+
+.md p {
+  margin: 8px 0;
+  color: var(--text-secondary);
+}
+
+.md strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.md em {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.md ul, .md ol {
+  margin: 8px 0;
+  padding-left: 24px;
+  color: var(--text-secondary);
+}
+
+.md li {
+  margin: 4px 0;
+  line-height: 1.6;
+}
+
+.md li::marker {
+  color: var(--text-muted);
+}
+
+.md code {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 3px;
+  padding: 1px 5px;
+  color: var(--accent-cyan);
+}
+
+.md pre {
+  margin: 12px 0;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  overflow-x: auto;
+  line-height: 1.5;
+}
+
+.md pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.md blockquote {
+  margin: 12px 0;
+  padding: 10px 16px;
+  border-left: 3px solid var(--accent-amber-dim);
+  background: var(--accent-amber-glow);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  color: var(--text-secondary);
+}
+
+.md blockquote p {
+  margin: 4px 0;
+}
+
+.md hr {
+  border: none;
+  height: 1px;
+  background: var(--border-subtle);
+  margin: 20px 0;
+}
+
+.md table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0;
+  font-size: 13px;
+}
+
+.md table th {
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 2px solid var(--border-medium);
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.md table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+.md table tr:last-child td {
+  border-bottom: none;
+}
+
+.md a {
+  color: var(--accent-cyan);
+  text-decoration: none;
+}
+
+.md a:hover {
+  text-decoration: underline;
+}
+
+/* Checkbox-style list items (for game plan) */
+.md li.task-item {
+  list-style: none;
+  position: relative;
+  padding-left: 4px;
+}
+
+.md li.task-item::before {
+  content: "";
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--border-bright);
+  border-radius: 3px;
+  margin-right: 8px;
+  vertical-align: -2px;
+}
+
+/* ─── Animations ─────────────────────────────────────────────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes messageIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes thinkPulse {
+  0%, 100% {
+    opacity: 0.3;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* ─── Responsive ─────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  :root {
+    --container-max: 100%;
+  }
+
+  .header {
+    padding: 0 14px;
+  }
+
+  .header-title {
+    font-size: 12px;
+  }
+
+  .chat-area {
+    padding: 14px 14px 20px;
+  }
+
+  .input-area {
+    padding: 10px 14px 14px;
+  }
+
+  .message-bubble {
+    padding: 12px 16px;
+  }
+
+  .start-features {
+    grid-template-columns: 1fr;
+  }
+
+  .start-title {
+    font-size: 22px;
+  }
+
+  .md h1 { font-size: 19px; }
+  .md h2 { font-size: 16px; }
+
+  .game-plan-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .option-btn {
+    width: 100%;
+  }
+}
+</style>
+</head>
+<body>
+
+<div id="app">
+  <!-- Header -->
+  <div class="header">
+    <div class="header-brand">
+      <div class="header-logo">S</div>
+      <div class="header-title">SaaS Strategy Engine</div>
+    </div>
+    <div class="header-step" id="stepIndicator" style="display:none">
+      <span class="header-step-label" id="stepLabel">Step 0 of 10</span>
+    </div>
+    <div class="progress-bar-track">
+      <div class="progress-bar-fill" id="progressBar" style="width:0%"></div>
+    </div>
+  </div>
+
+  <!-- Chat Area -->
+  <div class="chat-area" id="chatArea">
+    <!-- Start screen rendered by JS -->
+  </div>
+
+  <!-- Input Area -->
+  <div class="input-area hidden" id="inputArea">
+    <div id="commentLabel" class="input-comment-label" style="display:none">Add details (optional)</div>
+    <div class="input-row">
+      <textarea
+        class="input-textarea"
+        id="inputTextarea"
+        placeholder="Type your response..."
+        rows="1"
+      ></textarea>
+      <button class="send-btn" id="sendBtn" disabled aria-label="Send">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="22" y1="2" x2="11" y2="13"></line>
+          <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+        </svg>
+      </button>
+    </div>
+    <div class="input-hint" id="inputHint">Press Enter to send, Shift+Enter for new line</div>
+  </div>
+</div>
+
+<script>
+/* ─── State ──────────────────────────────────────────────────────────── */
+const state = {
+  sessionId: null,
+  step: null,
+  stepIndex: 0,
+  totalSteps: 10,
+  inputType: 'none',
+  options: [],
+  selectedOption: null,
+  loading: false,
+  started: false,
+  complete: false,
+};
+
+/* ─── DOM References ─────────────────────────────────────────────────── */
+const chatArea = document.getElementById('chatArea');
+const inputArea = document.getElementById('inputArea');
+const inputTextarea = document.getElementById('inputTextarea');
+const sendBtn = document.getElementById('sendBtn');
+const stepIndicator = document.getElementById('stepIndicator');
+const stepLabel = document.getElementById('stepLabel');
+const progressBar = document.getElementById('progressBar');
+const commentLabel = document.getElementById('commentLabel');
+const inputHint = document.getElementById('inputHint');
+
+/* ─── Markdown Renderer ──────────────────────────────────────────────── */
+function renderMarkdown(src) {
+  if (!src) return '';
+
+  // Normalize line endings
+  let text = src.replace(/\r\n/g, '\n');
+
+  // Escape HTML to prevent injection, but preserve structure
+  function esc(s) {
+    return s
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  // Process inline formatting on already-escaped text
+  function inline(s) {
+    // Inline code (must come first to protect contents)
+    s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+    // Bold+italic
+    s = s.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+    // Bold
+    s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    // Italic (single * not preceded/followed by space)
+    s = s.replace(/(?<!\*)\*(?!\s)(.+?)(?<!\s)\*(?!\*)/g, '<em>$1</em>');
+    // Links [text](url)
+    s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    return s;
+  }
+
+  const lines = text.split('\n');
+  const out = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // Fenced code block
+    if (line.trimStart().startsWith('```')) {
+      const codeLines = [];
+      i++;
+      while (i < lines.length && !lines[i].trimStart().startsWith('```')) {
+        codeLines.push(esc(lines[i]));
+        i++;
+      }
+      i++; // skip closing ```
+      out.push('<pre><code>' + codeLines.join('\n') + '</code></pre>');
+      continue;
+    }
+
+    // Horizontal rule
+    if (/^-{3,}$/.test(line.trim()) || /^\*{3,}$/.test(line.trim()) || /^_{3,}$/.test(line.trim())) {
+      out.push('<hr>');
+      i++;
+      continue;
+    }
+
+    // Headers
+    const hMatch = line.match(/^(#{1,3})\s+(.*)$/);
+    if (hMatch) {
+      const level = hMatch[1].length;
+      out.push('<h' + level + '>' + inline(esc(hMatch[2])) + '</h' + level + '>');
+      i++;
+      continue;
+    }
+
+    // Table: detect a row of | ... | ... |
+    if (line.trim().startsWith('|') && line.trim().endsWith('|')) {
+      const tableRows = [];
+      while (i < lines.length && lines[i].trim().startsWith('|') && lines[i].trim().endsWith('|')) {
+        tableRows.push(lines[i]);
+        i++;
+      }
+      if (tableRows.length >= 2) {
+        // First row is header, second is separator, rest are data
+        const headerCells = parseTableRow(tableRows[0]);
+        let startRow = 1;
+        // Check if second row is separator
+        if (tableRows.length > 1 && /^[\s|:-]+$/.test(tableRows[1])) {
+          startRow = 2;
+        }
+        let tableHtml = '<table><thead><tr>';
+        for (const cell of headerCells) {
+          tableHtml += '<th>' + inline(esc(cell)) + '</th>';
+        }
+        tableHtml += '</tr></thead><tbody>';
+        for (let r = startRow; r < tableRows.length; r++) {
+          const cells = parseTableRow(tableRows[r]);
+          tableHtml += '<tr>';
+          for (const cell of cells) {
+            tableHtml += '<td>' + inline(esc(cell)) + '</td>';
+          }
+          tableHtml += '</tr>';
+        }
+        tableHtml += '</tbody></table>';
+        out.push(tableHtml);
+        continue;
+      }
+      // If not a valid table, fall through (re-process)
+      i -= tableRows.length;
+    }
+
+    // Blockquote
+    if (line.trimStart().startsWith('&gt;') || line.trimStart().startsWith('>')) {
+      const bqLines = [];
+      while (i < lines.length && (lines[i].trimStart().startsWith('>') || lines[i].trimStart().startsWith('&gt;'))) {
+        let bqLine = lines[i].trimStart();
+        // Strip the > prefix
+        bqLine = bqLine.replace(/^>\s?/, '');
+        bqLines.push(bqLine);
+        i++;
+      }
+      out.push('<blockquote>' + bqLines.map(l => '<p>' + inline(esc(l)) + '</p>').join('') + '</blockquote>');
+      continue;
+    }
+
+    // Unordered list
+    if (/^(\s*)([-*+])\s+/.test(line)) {
+      const listItems = [];
+      while (i < lines.length && /^(\s*)([-*+])\s+/.test(lines[i])) {
+        const content = lines[i].replace(/^(\s*)([-*+])\s+/, '');
+        // Check for task list items (- [ ] or - [x])
+        const taskMatch = content.match(/^\[([ xX])\]\s*(.*)/);
+        if (taskMatch) {
+          listItems.push('<li class="task-item">' + inline(esc(taskMatch[2])) + '</li>');
+        } else {
+          listItems.push('<li>' + inline(esc(content)) + '</li>');
+        }
+        i++;
+      }
+      out.push('<ul>' + listItems.join('') + '</ul>');
+      continue;
+    }
+
+    // Ordered list
+    if (/^\s*\d+[.)]\s+/.test(line)) {
+      const listItems = [];
+      while (i < lines.length && /^\s*\d+[.)]\s+/.test(lines[i])) {
+        const content = lines[i].replace(/^\s*\d+[.)]\s+/, '');
+        listItems.push('<li>' + inline(esc(content)) + '</li>');
+        i++;
+      }
+      out.push('<ol>' + listItems.join('') + '</ol>');
+      continue;
+    }
+
+    // Blank line
+    if (line.trim() === '') {
+      i++;
+      continue;
+    }
+
+    // Paragraph: collect consecutive non-blank, non-special lines
+    const pLines = [];
+    while (
+      i < lines.length &&
+      lines[i].trim() !== '' &&
+      !lines[i].trimStart().startsWith('#') &&
+      !lines[i].trimStart().startsWith('```') &&
+      !lines[i].trimStart().startsWith('>') &&
+      !lines[i].trimStart().startsWith('|') &&
+      !/^(\s*)([-*+])\s+/.test(lines[i]) &&
+      !/^\s*\d+[.)]\s+/.test(lines[i]) &&
+      !/^-{3,}$/.test(lines[i].trim())
+    ) {
+      pLines.push(lines[i]);
+      i++;
+    }
+    if (pLines.length > 0) {
+      out.push('<p>' + inline(esc(pLines.join('\n'))) + '</p>');
+    }
+  }
+
+  return out.join('');
+}
+
+function parseTableRow(row) {
+  // Split by | and trim, removing empty first/last from leading/trailing |
+  const cells = row.split('|').map(c => c.trim());
+  // Remove empty first and last entries from leading/trailing pipes
+  if (cells.length > 0 && cells[0] === '') cells.shift();
+  if (cells.length > 0 && cells[cells.length - 1] === '') cells.pop();
+  return cells;
+}
+
+/* ─── API ────────────────────────────────────────────────────────────── */
+async function apiStart() {
+  const resp = await fetch('/api/start', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: null }),
+  });
+  if (!resp.ok) throw new Error('Failed to start session');
+  return resp.json();
+}
+
+async function apiInput(sessionId, userInput) {
+  const resp = await fetch('/api/input', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: sessionId, user_input: userInput }),
+  });
+  if (!resp.ok) throw new Error('Failed to send input');
+  return resp.json();
+}
+
+async function apiListSessions() {
+  try {
+    const resp = await fetch('/api/sessions');
+    if (!resp.ok) return [];
+    const data = await resp.json();
+    return data.sessions || [];
+  } catch {
+    return [];
+  }
+}
+
+/* ─── UI Updates ─────────────────────────────────────────────────────── */
+function updateProgress(stepIndex, totalSteps) {
+  const pct = totalSteps > 0 ? Math.min((stepIndex / totalSteps) * 100, 100) : 0;
+  progressBar.style.width = pct + '%';
+  stepLabel.textContent = 'Step ' + stepIndex + ' of ' + totalSteps;
+
+  if (state.started) {
+    stepIndicator.style.display = 'flex';
+  }
+}
+
+function scrollToBottom() {
+  requestAnimationFrame(() => {
+    chatArea.scrollTo({
+      top: chatArea.scrollHeight,
+      behavior: 'smooth',
+    });
+  });
+}
+
+function addEngineMessage(markdown) {
+  const div = document.createElement('div');
+  div.className = 'message message-engine';
+  div.innerHTML = '<div class="message-bubble md">' + renderMarkdown(markdown) + '</div>';
+  chatArea.appendChild(div);
+  scrollToBottom();
+}
+
+function addUserMessage(text) {
+  const div = document.createElement('div');
+  div.className = 'message message-user';
+  // Render user text simply with basic escaping and line breaks
+  const escaped = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\n/g, '<br>');
+  div.innerHTML = '<div class="message-bubble">' + escaped + '</div>';
+  chatArea.appendChild(div);
+  scrollToBottom();
+}
+
+function showThinking() {
+  const div = document.createElement('div');
+  div.className = 'message message-engine';
+  div.id = 'thinkingMsg';
+  div.innerHTML =
+    '<div class="thinking">' +
+      '<div class="thinking-dots">' +
+        '<div class="thinking-dot"></div>' +
+        '<div class="thinking-dot"></div>' +
+        '<div class="thinking-dot"></div>' +
+      '</div>' +
+      '<span class="thinking-label">Analyzing...</span>' +
+    '</div>';
+  chatArea.appendChild(div);
+  scrollToBottom();
+}
+
+function hideThinking() {
+  const el = document.getElementById('thinkingMsg');
+  if (el) el.remove();
+}
+
+function showOptions(options) {
+  // Remove any existing options container
+  removeOptions();
+
+  if (!options || options.length === 0) return;
+
+  const container = document.createElement('div');
+  container.className = 'options-container';
+  container.id = 'optionsContainer';
+
+  options.forEach((opt) => {
+    const btn = document.createElement('button');
+    btn.className = 'option-btn';
+    btn.textContent = opt;
+    btn.addEventListener('click', () => handleOptionClick(opt, btn));
+    container.appendChild(btn);
+  });
+
+  chatArea.appendChild(container);
+  scrollToBottom();
+}
+
+function removeOptions() {
+  const existing = document.getElementById('optionsContainer');
+  if (existing) existing.remove();
+}
+
+function disableOptions() {
+  const container = document.getElementById('optionsContainer');
+  if (!container) return;
+  container.querySelectorAll('.option-btn').forEach(btn => {
+    btn.disabled = true;
+  });
+}
+
+function handleOptionClick(optionText, btnEl) {
+  if (state.loading) return;
+
+  if (state.inputType === 'choice') {
+    // Direct send for pure choice
+    disableOptions();
+    sendMessage(optionText);
+  } else if (state.inputType === 'choice_with_comment') {
+    // Toggle selection
+    const container = document.getElementById('optionsContainer');
+    if (container) {
+      container.querySelectorAll('.option-btn').forEach(b => b.classList.remove('selected'));
+    }
+    btnEl.classList.add('selected');
+    state.selectedOption = optionText;
+    // Focus the textarea for optional comment
+    inputTextarea.focus();
+    updateSendButton();
+  }
+}
+
+function configureInput(inputType, options) {
+  state.inputType = inputType;
+  state.options = options || [];
+  state.selectedOption = null;
+
+  // Reset textarea
+  inputTextarea.value = '';
+  autoResize();
+
+  if (inputType === 'none') {
+    inputArea.classList.add('hidden');
+    removeOptions();
+    return;
+  }
+
+  if (inputType === 'choice') {
+    inputArea.classList.add('hidden');
+    showOptions(options);
+    return;
+  }
+
+  if (inputType === 'freeform') {
+    inputArea.classList.remove('hidden');
+    commentLabel.style.display = 'none';
+    inputHint.style.display = 'block';
+    inputTextarea.placeholder = 'Type your response...';
+    removeOptions();
+    inputTextarea.focus();
+    updateSendButton();
+    return;
+  }
+
+  if (inputType === 'choice_with_comment') {
+    inputArea.classList.remove('hidden');
+    commentLabel.style.display = 'block';
+    inputHint.style.display = 'block';
+    inputTextarea.placeholder = 'Add additional context (optional)...';
+    showOptions(options);
+    updateSendButton();
+    return;
+  }
+}
+
+function updateSendButton() {
+  if (state.inputType === 'freeform') {
+    sendBtn.disabled = inputTextarea.value.trim() === '' || state.loading;
+  } else if (state.inputType === 'choice_with_comment') {
+    // Enable if option is selected OR there is text
+    sendBtn.disabled = (!state.selectedOption && inputTextarea.value.trim() === '') || state.loading;
+  } else {
+    sendBtn.disabled = true;
+  }
+}
+
+/* ─── Core Flow ──────────────────────────────────────────────────────── */
+async function startSession() {
+  state.loading = true;
+  chatArea.innerHTML = '';
+  showThinking();
+
+  try {
+    const data = await apiStart();
+    hideThinking();
+    handleResponse(data);
+    state.started = true;
+  } catch (err) {
+    hideThinking();
+    addEngineMessage('**Error:** Failed to start session. Please ensure the server is running and try again.');
+    console.error(err);
+  } finally {
+    state.loading = false;
+  }
+}
+
+function handleResponse(data) {
+  state.sessionId = data.session_id;
+  state.step = data.step;
+  state.stepIndex = data.step_index;
+  state.totalSteps = data.total_steps;
+  state.complete = data.complete || false;
+
+  updateProgress(data.step_index, data.total_steps);
+
+  addEngineMessage(data.message);
+
+  if (data.complete && data.game_plan_md) {
+    showGamePlan(data.game_plan_md);
+    configureInput('none', []);
+    return;
+  }
+
+  configureInput(data.input_type, data.options);
+
+  // Auto-advance for 'none' input type
+  if (data.input_type === 'none' && !data.complete) {
+    setTimeout(() => {
+      sendMessage('');
+    }, 1500);
+  }
+}
+
+async function sendMessage(text) {
+  if (state.loading || !state.sessionId) return;
+
+  // Build the actual message to send
+  let finalText = text;
+
+  // For choice_with_comment: combine option + comment
+  if (state.inputType === 'choice_with_comment' && !text) {
+    const comment = inputTextarea.value.trim();
+    if (state.selectedOption && comment) {
+      finalText = state.selectedOption + ': ' + comment;
+    } else if (state.selectedOption) {
+      finalText = state.selectedOption;
+    } else if (comment) {
+      finalText = comment;
+    } else {
+      return;
+    }
+  }
+
+  if (finalText && finalText.trim()) {
+    addUserMessage(finalText);
+  }
+
+  // Clear input state
+  state.loading = true;
+  state.selectedOption = null;
+  inputTextarea.value = '';
+  autoResize();
+  updateSendButton();
+  disableOptions();
+  removeOptions();
+  inputArea.classList.add('hidden');
+
+  showThinking();
+
+  try {
+    const data = await apiInput(state.sessionId, finalText);
+    hideThinking();
+    handleResponse(data);
+  } catch (err) {
+    hideThinking();
+    addEngineMessage('**Error:** Failed to process your response. Please try again.');
+    // Re-show input
+    configureInput(state.inputType, state.options);
+    console.error(err);
+  } finally {
+    state.loading = false;
+    updateSendButton();
+  }
+}
+
+function showGamePlan(gamePlanMd) {
+  const card = document.createElement('div');
+  card.className = 'game-plan-card';
+  card.innerHTML =
+    '<div class="game-plan-header">' +
+      '<div class="game-plan-title">Your Strategy Game Plan</div>' +
+      '<div class="game-plan-actions">' +
+        '<button class="game-plan-btn" id="gpCopy">Copy to Clipboard</button>' +
+        '<button class="game-plan-btn" id="gpDownload">Download .md</button>' +
+      '</div>' +
+    '</div>' +
+    '<div class="game-plan-body md">' + renderMarkdown(gamePlanMd) + '</div>';
+
+  chatArea.appendChild(card);
+
+  // Bind actions
+  document.getElementById('gpCopy').addEventListener('click', () => {
+    navigator.clipboard.writeText(gamePlanMd).then(() => {
+      const btn = document.getElementById('gpCopy');
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.textContent = 'Copy to Clipboard';
+        btn.classList.remove('copied');
+      }, 2000);
+    });
+  });
+
+  document.getElementById('gpDownload').addEventListener('click', () => {
+    const blob = new Blob([gamePlanMd], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'saas_strategy_game_plan.md';
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  // Complete progress
+  updateProgress(state.totalSteps, state.totalSteps);
+
+  scrollToBottom();
+}
+
+/* ─── Start Screen ───────────────────────────────────────────────────── */
+async function renderStartScreen() {
+  const sessions = await apiListSessions();
+
+  let sessionsHtml = '';
+  if (sessions.length > 0) {
+    sessionsHtml =
+      '<div class="start-sessions">' +
+        '<div class="start-sessions-label">Previous Sessions</div>' +
+        sessions.map(s =>
+          '<span class="start-session-item">' +
+            (s.id || 'Unknown') +
+            (s.completed ? ' (complete)' : '') +
+          '</span>'
+        ).join('') +
+      '</div>';
+  }
+
+  chatArea.innerHTML =
+    '<div class="start-screen">' +
+      '<div class="start-icon">S</div>' +
+      '<div class="start-title">SaaS Strategy Engine</div>' +
+      '<div class="start-subtitle">' +
+        'An interactive strategy builder based on Alex Becker\'s SaaS Transition Thesis. ' +
+        'Evaluate your software idea, classify it against surviving SaaS categories, and generate a concrete game plan.' +
+      '</div>' +
+      '<div class="start-meta">10 steps &middot; ~15 minutes &middot; Personalized strategy document</div>' +
+      '<div class="start-features">' +
+        '<div class="start-feature"><span class="start-feature-label">Classify</span>Map your idea to surviving SaaS categories</div>' +
+        '<div class="start-feature"><span class="start-feature-label">Analyze</span>Evaluate your moat and defensibility</div>' +
+        '<div class="start-feature"><span class="start-feature-label">Architect</span>Design revenue model and audience strategy</div>' +
+        '<div class="start-feature"><span class="start-feature-label">Plan</span>Generate a phased Week 1 to Month 12 roadmap</div>' +
+      '</div>' +
+      '<button class="start-btn" id="startBtn">Begin Strategy Session</button>' +
+      sessionsHtml +
+    '</div>';
+
+  document.getElementById('startBtn').addEventListener('click', startSession);
+}
+
+/* ─── Textarea Auto-resize ───────────────────────────────────────────── */
+function autoResize() {
+  inputTextarea.style.height = 'auto';
+  const scrollH = inputTextarea.scrollHeight;
+  inputTextarea.style.height = Math.min(scrollH, 160) + 'px';
+}
+
+/* ─── Event Listeners ────────────────────────────────────────────────── */
+inputTextarea.addEventListener('input', () => {
+  autoResize();
+  updateSendButton();
+});
+
+inputTextarea.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    if (state.inputType === 'freeform') {
+      const text = inputTextarea.value.trim();
+      if (text && !state.loading) {
+        sendMessage(text);
+      }
+    } else if (state.inputType === 'choice_with_comment') {
+      // Send if we have something to send
+      if ((state.selectedOption || inputTextarea.value.trim()) && !state.loading) {
+        sendMessage('');
+      }
+    }
+  }
+});
+
+sendBtn.addEventListener('click', () => {
+  if (state.loading) return;
+  if (state.inputType === 'freeform') {
+    const text = inputTextarea.value.trim();
+    if (text) sendMessage(text);
+  } else if (state.inputType === 'choice_with_comment') {
+    if (state.selectedOption || inputTextarea.value.trim()) {
+      sendMessage('');
+    }
+  }
+});
+
+/* ─── Init ───────────────────────────────────────────────────────────── */
+renderStartScreen();
+</script>
+</body>
+</html>

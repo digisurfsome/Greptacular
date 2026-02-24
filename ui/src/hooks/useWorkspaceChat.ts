@@ -113,6 +113,7 @@ export function useWorkspaceChat({
   const pingIntervalRef = useRef<number | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
   const checkAndSendTimeoutRef = useRef<number | null>(null);
+  const loadingSafetyTimeoutRef = useRef<number | null>(null);
 
   // Store the last "start" params so we can re-send on reconnect.
   // Without this, auto-reconnect creates a bare WebSocket with no server session.
@@ -478,6 +479,9 @@ export function useWorkspaceChat({
 
           case "error": {
             setIsLoading(false);
+            // Mark session as ready so subsequent messages aren't queued
+            // into a black hole waiting for a response_done that never comes.
+            sessionReadyRef.current = true;
             setLastError(data.content || "Unknown error");
             onError?.(data.content);
 
@@ -743,6 +747,35 @@ export function useWorkspaceChat({
     sessionReadyRef.current = false;
     queuedPayloadRef.current = null;
   }, []);
+
+  // Safety timeout: if isLoading is stuck true for 10 minutes without any
+  // response_done or error, force-reset it. Prevents permanent spinner lock.
+  useEffect(() => {
+    if (isLoading) {
+      loadingSafetyTimeoutRef.current = window.setTimeout(() => {
+        setIsLoading(false);
+        sessionReadyRef.current = true;
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `safety-${Date.now()}`,
+            role: "system" as const,
+            content: "Request timed out (10 min). The connection may have dropped. Try sending your message again.",
+            timestamp: new Date(),
+          },
+        ]);
+      }, 10 * 60 * 1000);
+    } else if (loadingSafetyTimeoutRef.current) {
+      window.clearTimeout(loadingSafetyTimeoutRef.current);
+      loadingSafetyTimeoutRef.current = null;
+    }
+    return () => {
+      if (loadingSafetyTimeoutRef.current) {
+        window.clearTimeout(loadingSafetyTimeoutRef.current);
+        loadingSafetyTimeoutRef.current = null;
+      }
+    };
+  }, [isLoading]);
 
   return {
     messages,

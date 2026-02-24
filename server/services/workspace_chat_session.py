@@ -771,6 +771,7 @@ class WorkspaceChatSession:
             except Exception as e:
                 logger.exception("Failed to send workspace greeting")
                 yield {"type": "error", "content": f"Failed to start conversation: {str(e)}"}
+                yield {"type": "response_done"}
         else:
             # Resumed conversation -- yield current token totals so the meter
             # shows existing usage immediately, then signal response_done.
@@ -926,6 +927,10 @@ class WorkspaceChatSession:
                     }
                 except Exception as log_err:
                     logger.warning("Failed to auto-log rate limit: %s", log_err)
+
+            # Always signal response_done so the frontend resets isLoading.
+            # Without this, the "Thinking..." spinner gets permanently stuck.
+            yield {"type": "response_done"}
 
     async def _query_claude(
         self, message: str, attachments: list[ImageAttachment] | None = None

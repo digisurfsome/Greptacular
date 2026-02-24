@@ -68,6 +68,7 @@ class WorkspaceConversation(Base):
     context_mode = Column(String(10), nullable=True, default="1m")  # "1m" or "200k"
     model = Column(String(20), nullable=True, default="opus")  # "opus" or "sonnet"
     effort = Column(String(10), nullable=True, default="high")  # "low", "medium", "high"
+    branch_name = Column(String(200), nullable=True)  # Git branch for this conversation
     token_count = Column(Integer, nullable=False, default=0)
     summary = Column(Text, nullable=True)
     summary_updated_at = Column(DateTime, nullable=True)
@@ -395,6 +396,18 @@ def get_engine() -> Engine:
             if "effort" not in existing_cols:
                 cursor.execute(
                     "ALTER TABLE workspace_conversations ADD COLUMN effort TEXT DEFAULT 'high'"
+                )
+            if "branch_name" not in existing_cols:
+                cursor.execute(
+                    "ALTER TABLE workspace_conversations ADD COLUMN branch_name TEXT"
+                )
+
+            # Migrate workspace_library_files: add folder_id if missing
+            cursor.execute("PRAGMA table_info(workspace_library_files)")
+            lib_cols = {row[1] for row in cursor.fetchall()}
+            if lib_cols and "folder_id" not in lib_cols:
+                cursor.execute(
+                    "ALTER TABLE workspace_library_files ADD COLUMN folder_id INTEGER"
                 )
 
             # One-time fix: early migration defaulted context_mode to '200k' but

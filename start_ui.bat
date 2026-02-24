@@ -10,16 +10,19 @@ echo   AutoForge UI
 echo ====================================
 echo.
 
-REM Auto-sync: pull latest main so you never run stale/broken code
-echo Syncing latest code from main...
+REM Auto-align: stash, switch to main, pull latest, nuke stale build
+echo Aligning to latest clean code...
 git stash >nul 2>&1
 git checkout main >nul 2>&1
 git pull origin main >nul 2>&1
 if %ERRORLEVEL% neq 0 (
-    echo [WARNING] Could not pull latest code - starting with local files
+    echo [WARNING] Could not pull - starting with local files
 ) else (
-    echo [OK] Code is up to date
+    echo [OK] Code synced
 )
+REM Nuke old UI build so start_ui.py always rebuilds fresh
+if exist "ui\dist" rmdir /s /q "ui\dist" >nul 2>&1
+echo [OK] Stale build cleared - will rebuild fresh
 echo.
 
 REM Kill any existing processes on port 8888

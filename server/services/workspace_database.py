@@ -402,6 +402,14 @@ def get_engine() -> Engine:
                     "ALTER TABLE workspace_conversations ADD COLUMN branch_name TEXT"
                 )
 
+            # Migrate workspace_library_files: add folder_id if missing
+            cursor.execute("PRAGMA table_info(workspace_library_files)")
+            lib_cols = {row[1] for row in cursor.fetchall()}
+            if lib_cols and "folder_id" not in lib_cols:
+                cursor.execute(
+                    "ALTER TABLE workspace_library_files ADD COLUMN folder_id INTEGER"
+                )
+
             # One-time fix: early migration defaulted context_mode to '200k' but
             # the workspace actually uses '1m' by default.  All conversations
             # created before split-view existed were 1M context sessions.

@@ -1526,18 +1526,22 @@ async def get_library_folder_tree():
     return get_folder_tree()
 
 
+@router.get("/library/folders/root/contents")
+async def get_root_contents():
+    """List files and subfolders at the root level.
+
+    IMPORTANT: This route MUST be defined BEFORE the {folder_id} route,
+    otherwise FastAPI tries to parse "root" as an int and returns 422.
+    """
+    from ..services.workspace_library import list_folder_contents
+    return list_folder_contents(None)
+
+
 @router.get("/library/folders/{folder_id}/contents")
 async def get_folder_contents(folder_id: int):
     """List files and subfolders in a folder."""
     from ..services.workspace_library import list_folder_contents
     return list_folder_contents(folder_id)
-
-
-@router.get("/library/folders/root/contents")
-async def get_root_contents():
-    """List files and subfolders at the root level."""
-    from ..services.workspace_library import list_folder_contents
-    return list_folder_contents(None)
 
 
 @router.get("/library/folders/{folder_id}/breadcrumb")

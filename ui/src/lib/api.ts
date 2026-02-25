@@ -1463,3 +1463,137 @@ export async function updateBlueprint(id: number, data: RoleBlueprintUpdate): Pr
 export async function deleteBlueprint(id: number): Promise<void> {
   await fetchJSON(`/workspace/roles/${id}`, { method: 'DELETE' })
 }
+
+
+// ============================================================================
+// DunkStack API
+// ============================================================================
+
+export interface DunkStackCommsResponse {
+  content: string
+  exists: boolean
+}
+
+export interface DunkStackControlResponse {
+  mode: string
+  message: string
+}
+
+export interface DunkStackConfigResponse {
+  config: Record<string, unknown>
+  exists: boolean
+}
+
+export interface DunkStackSafetyStatus {
+  tier: number
+  label: string
+  color: string
+  message: string
+}
+
+export interface DunkStackTokenState {
+  cumulative: {
+    input_tokens: number
+    output_tokens: number
+    cache_read_tokens: number
+    cache_creation_tokens: number
+    total_cost_usd: number
+    api_calls: number
+  }
+  model_limit: number
+  mode: string
+  usage_percent: number
+  entries_count: number
+  safety: DunkStackSafetyStatus
+}
+
+export async function dunkstackReadToHuman(): Promise<DunkStackCommsResponse> {
+  return fetchJSON('/dunkstack/comms/to-human')
+}
+
+export async function dunkstackReadFromHuman(): Promise<DunkStackCommsResponse> {
+  return fetchJSON('/dunkstack/comms/from-human')
+}
+
+export async function dunkstackWriteFromHuman(content: string, title?: string, category?: string): Promise<{ status: string; timestamp: string }> {
+  return fetchJSON('/dunkstack/comms/from-human', {
+    method: 'POST',
+    body: JSON.stringify({ content, title, category }),
+  })
+}
+
+export async function dunkstackReadControl(): Promise<DunkStackControlResponse> {
+  return fetchJSON('/dunkstack/control')
+}
+
+export async function dunkstackUpdateControl(mode: string, message?: string): Promise<{ status: string; mode: string }> {
+  return fetchJSON('/dunkstack/control', {
+    method: 'POST',
+    body: JSON.stringify({ mode, message }),
+  })
+}
+
+export async function dunkstackReadWorkingMemory(): Promise<DunkStackCommsResponse> {
+  return fetchJSON('/dunkstack/working-memory')
+}
+
+export async function dunkstackReadIndex(): Promise<DunkStackCommsResponse> {
+  return fetchJSON('/dunkstack/index')
+}
+
+export async function dunkstackReadBridge(): Promise<DunkStackCommsResponse> {
+  return fetchJSON('/dunkstack/bridge')
+}
+
+export async function dunkstackSaveBridge(data: {
+  reason?: string
+  current_task?: string
+  progress?: string
+  next_steps?: string
+  open_questions?: string
+}): Promise<{ status: string; timestamp: string }> {
+  return fetchJSON('/dunkstack/bridge/save', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function dunkstackReadConfig(): Promise<DunkStackConfigResponse> {
+  return fetchJSON('/dunkstack/config')
+}
+
+export async function dunkstackUpdateConfig(update: Record<string, unknown>): Promise<{ status: string; config: Record<string, unknown> }> {
+  return fetchJSON('/dunkstack/config', {
+    method: 'PATCH',
+    body: JSON.stringify(update),
+  })
+}
+
+export async function dunkstackGetTokenState(): Promise<DunkStackTokenState> {
+  return fetchJSON('/dunkstack/tokens')
+}
+
+export async function dunkstackRecordTokens(data: {
+  input_tokens: number
+  output_tokens: number
+  cache_read_tokens?: number
+  cache_creation_tokens?: number
+  total_cost_usd?: number
+}): Promise<{ status: string; usage_percent: number; safety: DunkStackSafetyStatus }> {
+  return fetchJSON('/dunkstack/tokens/record', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function dunkstackResetTokens(): Promise<{ status: string }> {
+  return fetchJSON('/dunkstack/tokens/reset', { method: 'POST' })
+}
+
+export async function dunkstackGetTokenLog(): Promise<{ entries: Array<Record<string, unknown>> }> {
+  return fetchJSON('/dunkstack/tokens/log')
+}
+
+export async function dunkstackReadBuildLog(): Promise<DunkStackCommsResponse> {
+  return fetchJSON('/dunkstack/build-log')
+}

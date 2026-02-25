@@ -48,6 +48,7 @@ from .routers import (
     swarm_router,
     terminal_router,
     workspace_router,
+    dunkstack_router,
 )
 from .schemas import SetupStatus
 from .services.assistant_chat_session import cleanup_all_sessions as cleanup_assistant_sessions
@@ -182,6 +183,7 @@ app.include_router(workspace_router)
 app.include_router(notifications_router)
 app.include_router(role_library_router)
 app.include_router(swarm_router)
+app.include_router(dunkstack_router)
 
 
 # ============================================================================

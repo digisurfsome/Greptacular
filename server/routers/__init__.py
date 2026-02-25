@@ -23,6 +23,7 @@ from .spec_creation import router as spec_creation_router
 from .swarm import router as swarm_router
 from .terminal import router as terminal_router
 from .workspace import router as workspace_router
+from .dunkstack import router as dunkstack_router
 
 __all__ = [
     "ci_status_router",
@@ -44,4 +45,5 @@ __all__ = [
     "notifications_router",
     "role_library_router",
     "swarm_router",
+    "dunkstack_router",
 ]

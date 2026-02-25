@@ -1152,9 +1152,13 @@ Create `tests/test_dunkstack_session.py` (~150 lines):
 | `ui/src/components/appbuilder/BuildLogPanel.tsx` | 4 | 60-80 | Build log viewer |
 | `ui/src/components/appbuilder/AgentStatusBar.tsx` | 4 | 50-70 | Status bar with quick actions |
 | `ui/src/pages/AppBuilderPage.tsx` | 4 | 150-200 | Main page assembly |
+| `server/services/dunkstack_analytics.py` | 1 | 300-400 | Analytics data capture, session JSON writer, aggregate updater |
+| `server/services/dunkstack_optimizer.py` | 1 | 200-300 | Lever registry, recommendation engine, config updater |
+| `ui/src/components/appbuilder/AnalyticsDashboard.tsx` | 4 | 200-250 | Analytics reports viewer, lever adjustments UI |
 | `tests/test_dunkstack_features.py` | 2 | 200 | Feature + dependency unit tests |
 | `tests/test_dunkstack_file_utils.py` | 1 | 100 | File utility unit tests |
 | `tests/test_dunkstack_session.py` | 1 | 150 | Session integration tests |
+| `tests/test_dunkstack_analytics.py` | 1 | 150 | Analytics capture + report generation tests |
 
 ### Existing Files (to enhance)
 
@@ -1185,12 +1189,12 @@ Create `tests/test_dunkstack_session.py` (~150 lines):
 
 | Phase | Lines |
 |-------|-------|
-| Phase 1 (Session + Utils) | 600-750 |
+| Phase 1 (Session + Utils + Analytics + Optimizer) | 1,100-1,450 |
 | Phase 2 (Features + Deps) | 450-550 |
 | Phase 3 (Router Enhancements) | 300-400 |
-| Phase 4 (UI Components) | 1,150-1,430 |
-| Tests | 450 |
-| **Total** | **2,950-3,580** |
+| Phase 4 (UI Components + Analytics Dashboard) | 1,350-1,680 |
+| Tests | 600 |
+| **Total** | **3,800-4,680** |
 
 ---
 
@@ -1200,22 +1204,26 @@ Create `tests/test_dunkstack_session.py` (~150 lines):
 Phase 1 ──────────────────────────────────────────
   1a. dunkstack_file_utils.py (no dependencies)
   1b. dunkstack_session.py (depends on 1a)
+  1c. dunkstack_analytics.py (depends on 1a — captures data from session)
+  1d. dunkstack_optimizer.py (depends on 1c — reads analytics data)
 
 Phase 2 ──────────────────────────────────────────
   2a. dunkstack_features.py (no dependencies)
   2b. Integrate features with session (depends on 1b, 2a)
+  2c. Wire analytics hooks into session (depends on 1b, 1c)
 
 Phase 3 ──────────────────────────────────────────
-  3a. Router enhancements (depends on 1b, 2a)
+  3a. Router enhancements (depends on 1b, 2a, 1c, 1d)
 
 Phase 4 ──────────────────────────────────────────
   4a. useDunkStack.ts hooks (depends on 3a)
   4b. useDunkStackWebSocket.ts (depends on 3a)
   4c. UI components (depends on 4a, 4b)
-  4d. AppBuilderPage.tsx (depends on 4c)
+  4d. AnalyticsDashboard.tsx (depends on 4a — reports + lever controls)
+  4e. AppBuilderPage.tsx (depends on 4c, 4d)
 ```
 
-Phases 1a and 2a can be built in parallel since they have no dependencies on each other. Phase 1b depends on 1a. Phase 2b depends on both 1b and 2a. Phase 3 depends on both Phase 1 and Phase 2. Phase 4 depends entirely on Phase 3.
+Phases 1a, 2a can be built in parallel (no dependencies on each other). Phase 1b depends on 1a. Phase 1c depends on 1a. Phase 1d depends on 1c. Phase 2b depends on 1b and 2a. Phase 2c depends on 1b and 1c. Phase 3 depends on all of Phase 1 and Phase 2. Phase 4 depends entirely on Phase 3.
 
 ---
 

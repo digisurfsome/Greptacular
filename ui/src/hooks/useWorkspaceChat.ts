@@ -123,6 +123,7 @@ export function useWorkspaceChat({
     contextMode?: string;
     costSettings?: Record<string, unknown>;
     model?: string;
+    provider?: string;
   } | null>(null);
 
   // Session readiness tracking: prevents sending messages before the backend
@@ -242,6 +243,9 @@ export function useWorkspaceChat({
         }
         if (params.model) {
           payload.model = params.model;
+        }
+        if (params.provider) {
+          payload.provider = params.provider;
         }
 
         if (import.meta.env.DEV) {
@@ -535,7 +539,7 @@ export function useWorkspaceChat({
   }, [onError]);
 
   const start = useCallback(
-    (existingConversationId?: number | null, workingDirectory?: string, contextMode?: string, costSettings?: Record<string, unknown>, model?: string) => {
+    (existingConversationId?: number | null, workingDirectory?: string, contextMode?: string, costSettings?: Record<string, unknown>, model?: string, provider?: string) => {
       // Clear any pending check timeout from a previous call
       if (checkAndSendTimeoutRef.current) {
         clearTimeout(checkAndSendTimeoutRef.current);
@@ -560,6 +564,7 @@ export function useWorkspaceChat({
         contextMode,
         costSettings,
         model,
+        provider,
       };
 
       // Reset session readiness — the session is not ready until we receive
@@ -585,6 +590,7 @@ export function useWorkspaceChat({
             context_mode?: string;
             cost_settings?: Record<string, unknown>;
             model?: string;
+            provider?: string;
           } = { type: "start" };
 
           if (existingConversationId) {
@@ -600,6 +606,9 @@ export function useWorkspaceChat({
           }
           if (model) {
             payload.model = model;
+          }
+          if (provider) {
+            payload.provider = provider;
           }
 
           if (import.meta.env.DEV) {

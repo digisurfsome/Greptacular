@@ -35,6 +35,7 @@ from .routers import (
     ci_status_router,
     design_guide_router,
     devserver_router,
+    dunkstack_router,
     expand_project_router,
     features_router,
     filesystem_router,
@@ -182,6 +183,7 @@ app.include_router(workspace_router)
 app.include_router(notifications_router)
 app.include_router(role_library_router)
 app.include_router(swarm_router)
+app.include_router(dunkstack_router)
 
 
 # ============================================================================

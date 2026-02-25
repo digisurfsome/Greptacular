@@ -6,6 +6,7 @@ import { StylePreviewPage } from './components/StylePreviewPage'
 import { QuadPreviewPage } from './components/QuadPreviewPage'
 import { WorkspacePage } from './pages/WorkspacePage'
 import { RoleLibraryPage } from './pages/RoleLibraryPage'
+import { DunkStackPage } from './pages/DunkStackPage'
 import './styles/globals.css'
 
 const queryClient = new QueryClient({
@@ -22,6 +23,7 @@ const queryClient = new QueryClient({
  * - /#/style-preview/:styleId/:page → Standalone single-page preview (for screenshots)
  * - /#/quad-preview/:styleId → Quad view (all 4 pages at once)
  * - /#/workspace → IdeaForge Workspace
+ * - /#/dunkstack → DunkStack Context Mechanism
  * - Everything else → Main App
  */
 function Root() {
@@ -38,6 +40,9 @@ function Root() {
   }
   if (hash.startsWith('#/quad-preview/')) {
     return <QuadPreviewPage />
+  }
+  if (hash === '#/dunkstack' || hash.startsWith('#/dunkstack/')) {
+    return <DunkStackPage />
   }
   if (hash === '#/workspace' || hash.startsWith('#/workspace/')) {
     return <WorkspacePage />

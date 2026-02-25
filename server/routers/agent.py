@@ -29,11 +29,11 @@ def _get_settings_defaults() -> tuple[bool, str, int, bool, int, bool, int, bool
     if str(root) not in sys.path:
         sys.path.insert(0, str(root))
 
-    from registry import DEFAULT_MODEL, get_all_settings
+    from registry import get_all_settings, get_effective_model
 
     settings = get_all_settings()
     yolo_mode = (settings.get("yolo_mode") or "false").lower() == "true"
-    model = settings.get("api_model") or settings.get("model", DEFAULT_MODEL)
+    model = get_effective_model()
 
     # Parse testing agent settings with defaults
     try:

@@ -60,6 +60,12 @@ LEGACY_MODEL_MAP = {
 # List of valid model IDs (derived from AVAILABLE_MODELS)
 VALID_MODELS = [m["id"] for m in AVAILABLE_MODELS]
 
+# Environment variable for locking the model (set in ~/.autoforge/.env).
+# When set, this ALWAYS overrides the database setting.  Because agents are
+# sandboxed to the project directory they cannot modify ~/.autoforge/.env,
+# making this an effective "lock" against accidental model changes.
+MODEL_LOCK_ENV_VAR = "AUTOFORGE_MODEL_LOCK"
+
 # Default model and settings
 # Respect ANTHROPIC_DEFAULT_OPUS_MODEL env var for Foundry/custom deployments
 # Guard against empty/whitespace values by trimming and falling back when blank
@@ -644,6 +650,38 @@ def get_all_settings() -> dict[str, str]:
 
 
 # =============================================================================
+# Model Lock Helper
+# =============================================================================
+
+
+def get_effective_model() -> str:
+    """Return the model that should be used for agent execution.
+
+    Priority:
+      1. ``AUTOFORGE_MODEL_LOCK`` env var (lives in ``~/.autoforge/.env``,
+         outside the agent sandbox — agents **cannot** change it).
+      2. ``api_model`` database setting.
+      3. ``model`` database setting.
+      4. ``DEFAULT_MODEL`` hard-coded constant.
+
+    Returns:
+        Model ID string, e.g. ``"claude-opus-4-6"``.
+    """
+    locked = os.getenv(MODEL_LOCK_ENV_VAR)
+    if locked and locked.strip():
+        return locked.strip()
+
+    settings = get_all_settings()
+    return settings.get("api_model") or settings.get("model", DEFAULT_MODEL)
+
+
+def is_model_locked() -> bool:
+    """Check whether a model lock is active via environment variable."""
+    locked = os.getenv(MODEL_LOCK_ENV_VAR)
+    return bool(locked and locked.strip())
+
+
+# =============================================================================
 # API Provider Definitions
 # =============================================================================
 
@@ -775,7 +813,9 @@ def get_effective_sdk_env(*, force_subscription: bool = False) -> dict[str, str]
         sdk_env[auth_env_var] = auth_token
 
     # Model - set all three tier overrides to the same model
-    model = all_settings.get("api_model") or provider.get("default_model")
+    # Honour the model lock env var first (agents can't change it)
+    locked = os.getenv(MODEL_LOCK_ENV_VAR)
+    model = (locked.strip() if locked and locked.strip() else None) or all_settings.get("api_model") or provider.get("default_model")
     if model:
         sdk_env["ANTHROPIC_DEFAULT_OPUS_MODEL"] = model
         sdk_env["ANTHROPIC_DEFAULT_SONNET_MODEL"] = model

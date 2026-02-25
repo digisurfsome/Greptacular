@@ -439,6 +439,8 @@ class SettingsResponse(BaseModel):
     api_base_url: str | None = None
     api_has_auth_token: bool = False  # Never expose actual token
     api_model: str | None = None
+    model_locked: bool = False  # True when AUTOFORGE_MODEL_LOCK env var is set
+    model_locked_value: str | None = None  # The locked model ID (for UI display)
     # QA pipeline settings
     review_agent_ratio: int = 1
     review_batch_size: int = 5

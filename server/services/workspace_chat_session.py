@@ -1206,20 +1206,22 @@ class WorkspaceChatSession:
             response_tokens = estimate_tokens(full_response)
             add_message(self.conversation_id, "assistant", full_response, response_tokens)
 
-            # Trigger auto-summary check in background
-            try:
-                from . import workspace_database as db
-                from .workspace_summary import trigger_summary_generation
-                messages_list = db.get_messages(self.conversation_id)
-                message_count = len(messages_list)
-                await trigger_summary_generation(
-                    conversation_id=self.conversation_id,
-                    get_messages_fn=db.get_messages,
-                    save_summary_fn=db.save_summary,
-                    message_count=message_count,
-                )
-            except Exception as e:
-                logger.warning(f"Failed to trigger summary generation: {e}")
+            # Auto-summary DISABLED: was making direct Anthropic API calls
+            # (Haiku) using the API key instead of routing through subscription.
+            # Re-enable once summary service is rewired to use subscription billing.
+            # try:
+            #     from . import workspace_database as db
+            #     from .workspace_summary import trigger_summary_generation
+            #     messages_list = db.get_messages(self.conversation_id)
+            #     message_count = len(messages_list)
+            #     await trigger_summary_generation(
+            #         conversation_id=self.conversation_id,
+            #         get_messages_fn=db.get_messages,
+            #         save_summary_fn=db.save_summary,
+            #         message_count=message_count,
+            #     )
+            # except Exception as e:
+            #     logger.warning(f"Failed to trigger summary generation: {e}")
 
             # Yield token usage update so the client can render the context-window meter.
             # Prefer actual API numbers from the ResultMessage when available;

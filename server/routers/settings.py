@@ -25,8 +25,10 @@ from registry import (
     API_PROVIDERS,
     AVAILABLE_MODELS,
     DEFAULT_MODEL,
+    MODEL_LOCK_ENV_VAR,
     get_all_settings,
     get_setting,
+    is_model_locked,
     set_setting,
 )
 
@@ -115,6 +117,11 @@ async def get_settings():
     glm_mode = api_provider == "glm"
     ollama_mode = api_provider == "ollama"
 
+    # Check model lock
+    import os
+    locked = is_model_locked()
+    locked_value = os.getenv(MODEL_LOCK_ENV_VAR, "").strip() or None if locked else None
+
     return SettingsResponse(
         yolo_mode=_parse_yolo_mode(all_settings.get("yolo_mode")),
         model=all_settings.get("model", DEFAULT_MODEL),
@@ -127,6 +134,8 @@ async def get_settings():
         api_base_url=all_settings.get("api_base_url"),
         api_has_auth_token=bool(all_settings.get("api_auth_token")),
         api_model=all_settings.get("api_model"),
+        model_locked=locked,
+        model_locked_value=locked_value,
         # QA pipeline settings
         review_agent_ratio=_parse_int(all_settings.get("review_agent_ratio"), 1),
         review_batch_size=_parse_int(all_settings.get("review_batch_size"), 5),
@@ -237,6 +246,11 @@ async def update_settings(update: SettingsUpdate):
     glm_mode = api_provider == "glm"
     ollama_mode = api_provider == "ollama"
 
+    # Check model lock
+    import os
+    locked = is_model_locked()
+    locked_value = os.getenv(MODEL_LOCK_ENV_VAR, "").strip() or None if locked else None
+
     return SettingsResponse(
         yolo_mode=_parse_yolo_mode(all_settings.get("yolo_mode")),
         model=all_settings.get("model", DEFAULT_MODEL),
@@ -249,6 +263,8 @@ async def update_settings(update: SettingsUpdate):
         api_base_url=all_settings.get("api_base_url"),
         api_has_auth_token=bool(all_settings.get("api_auth_token")),
         api_model=all_settings.get("api_model"),
+        model_locked=locked,
+        model_locked_value=locked_value,
         # QA pipeline settings
         review_agent_ratio=_parse_int(all_settings.get("review_agent_ratio"), 1),
         review_batch_size=_parse_int(all_settings.get("review_batch_size"), 5),

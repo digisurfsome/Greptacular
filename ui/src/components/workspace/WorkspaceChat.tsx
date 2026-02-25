@@ -125,6 +125,8 @@ interface WorkspaceChatProps {
   pendingEffort?: 'low' | 'medium' | 'high'
   /** Called when agent streaming starts or stops, so the sidebar can show an activity indicator. */
   onStreamingChange?: (isStreaming: boolean) => void
+  /** CLI provider for this pane ('claude' | 'codex' | 'gemini'). Passed to backend on conversation create. */
+  provider?: 'claude' | 'codex' | 'gemini'
 }
 
 /** Generate a unique ID for local messages. */
@@ -192,6 +194,7 @@ export function WorkspaceChat({
   newChatKey,
   pendingEffort: pendingEffortProp,
   onStreamingChange,
+  provider: providerProp,
 }: WorkspaceChatProps): React.JSX.Element {
   const [inputValue, setInputValue] = useState('')
   const messagesContainerRef = useRef<HTMLDivElement>(null)
@@ -462,7 +465,7 @@ export function WorkspaceChat({
       console.info('[WorkspaceChat] session-switch effect: starting session', {
         conversationId, modeForSession, modelForSession, previousId,
       })
-      start(conversationId, workingDirectory ?? undefined, modeForSession, { effort: effortLevel }, modelForSession)
+      start(conversationId, workingDirectory ?? undefined, modeForSession, { effort: effortLevel }, modelForSession, providerProp)
     }
   }, [conversationId, isLoadingConversation, activeConversationId, start, disconnect, clearMessages, workingDirectory, conversationModel, conversationContextMode, effortLevel])
 

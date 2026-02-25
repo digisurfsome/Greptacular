@@ -436,6 +436,7 @@ export function DashboardPage(): React.JSX.Element {
                   onNewConversation={() => updatePane(pane.id, { conversationId: null })}
                   workingDirectory={workingDirectory}
                   panelLabel={`${pane.provider.toUpperCase()} SESSION`}
+                  provider={pane.provider}
                   pendingModel={idx === 0 ? pendingModel : undefined}
                   pendingContextMode={idx === 0 ? pendingContextMode : undefined}
                   pendingEffort={idx === 0 ? pendingEffort : undefined}

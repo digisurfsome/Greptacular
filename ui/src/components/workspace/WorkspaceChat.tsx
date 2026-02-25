@@ -490,8 +490,8 @@ export function WorkspaceChat({
     setSessionContextMode(conversationContextMode)
     disconnect()
     clearMessages()
-    start(conversationId, workingDirectory ?? undefined, conversationContextMode, { effort: effortLevel }, conversationModel)
-  }, [conversationModel, conversationContextMode, conversationId, isLoadingConversation, disconnect, clearMessages, start, workingDirectory, effortLevel])
+    start(conversationId, workingDirectory ?? undefined, conversationContextMode, { effort: effortLevel }, conversationModel, providerProp)
+  }, [conversationModel, conversationContextMode, conversationId, isLoadingConversation, disconnect, clearMessages, start, workingDirectory, effortLevel, providerProp])
 
   // Smart auto-scroll: only scroll if user is near the bottom
   const handleScroll = useCallback(() => {
@@ -596,7 +596,7 @@ export function WorkspaceChat({
     if (!injectMessage || isLoading) return
     // If no conversation yet, start a new one
     if (conversationId === null && activeConversationId === null) {
-      start(undefined, workingDirectory ?? undefined, conversationContextMode, { effort: effortLevel }, conversationModel)
+      start(undefined, workingDirectory ?? undefined, conversationContextMode, { effort: effortLevel }, conversationModel, providerProp)
     }
     sendMessage(injectMessage)
     onInjectConsumed?.()
@@ -804,7 +804,7 @@ export function WorkspaceChat({
       console.info('[WorkspaceChat] handleSend: starting new session', {
         conversationContextMode, conversationModel, conversationId, activeConversationId,
       })
-      start(undefined, workingDirectory ?? undefined, conversationContextMode, { effort: effortLevel }, conversationModel)
+      start(undefined, workingDirectory ?? undefined, conversationContextMode, { effort: effortLevel }, conversationModel, providerProp)
     } else {
       console.info('[WorkspaceChat] handleSend: existing session', {
         conversationContextMode, conversationModel, conversationId, activeConversationId,
@@ -1128,7 +1128,7 @@ export function WorkspaceChat({
               disconnect()
               clearMessages()
               if (effectiveConversationId !== null) {
-                start(effectiveConversationId, workingDirectory ?? undefined, conversationContextMode, { effort: effortLevel }, conversationModel)
+                start(effectiveConversationId, workingDirectory ?? undefined, conversationContextMode, { effort: effortLevel }, conversationModel, providerProp)
               }
             }}
             className="underline font-medium hover:text-destructive/80 flex-shrink-0"
@@ -1357,7 +1357,7 @@ export function WorkspaceChat({
                     disconnect()
                     clearMessages()
                     if (effectiveConversationId !== null) {
-                      start(effectiveConversationId, workingDirectory ?? undefined, conversationContextMode, { effort: effortLevel }, conversationModel)
+                      start(effectiveConversationId, workingDirectory ?? undefined, conversationContextMode, { effort: effortLevel }, conversationModel, providerProp)
                     }
                   }}
                 >

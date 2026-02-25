@@ -467,7 +467,7 @@ export function WorkspaceChat({
       })
       start(conversationId, workingDirectory ?? undefined, modeForSession, { effort: effortLevel }, modelForSession, providerProp)
     }
-  }, [conversationId, isLoadingConversation, activeConversationId, start, disconnect, clearMessages, workingDirectory, conversationModel, conversationContextMode, effortLevel])
+  }, [conversationId, isLoadingConversation, activeConversationId, start, disconnect, clearMessages, workingDirectory, conversationModel, conversationContextMode, effortLevel, providerProp])
 
   // Reconnect when badge cycling or split-view toggle changes the conversation's
   // model or context mode while a session is already active. We intentionally do
@@ -821,7 +821,7 @@ export function WorkspaceChat({
     if (effectiveId) {
       localStorage.removeItem(`${DRAFT_KEY_PREFIX}${effectiveId}`)
     }
-  }, [inputValue, isLoading, conversationId, activeConversationId, start, sendMessage, workingDirectory, pendingImages, pendingFiles, attachedLibraryFiles, conversationContextMode, conversationModel, effortLevel])
+  }, [inputValue, isLoading, conversationId, activeConversationId, start, sendMessage, workingDirectory, pendingImages, pendingFiles, attachedLibraryFiles, conversationContextMode, conversationModel, effortLevel, providerProp])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {

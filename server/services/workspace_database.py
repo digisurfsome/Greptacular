@@ -599,7 +599,7 @@ def get_conversations(category: Optional[str] = None) -> list[dict]:
                 "context_mode": row.WorkspaceConversation.context_mode or "1m",
                 "model": row.WorkspaceConversation.model or "opus",
                 "effort": row.WorkspaceConversation.effort or "high",
-                "provider": getattr(row.WorkspaceConversation, "provider", None) or "claude",
+                "provider": row.WorkspaceConversation.provider or "claude",
                 "created_at": (
                     row.WorkspaceConversation.created_at.isoformat()
                     if row.WorkspaceConversation.created_at else None
@@ -644,8 +644,8 @@ def get_conversation(conversation_id: int) -> Optional[dict]:
             "context_mode": conversation.context_mode or "1m",
             "model": conversation.model or "opus",
             "effort": conversation.effort or "high",
-            "provider": getattr(conversation, "provider", None) or "claude",
-            "provider_thread_id": getattr(conversation, "provider_thread_id", None),
+            "provider": conversation.provider or "claude",
+            "provider_thread_id": conversation.provider_thread_id,
             "created_at": conversation.created_at.isoformat() if conversation.created_at else None,
             "updated_at": conversation.updated_at.isoformat() if conversation.updated_at else None,
             "messages": [
@@ -825,8 +825,8 @@ def update_conversation(
             "context_mode": conversation.context_mode or "1m",
             "model": conversation.model or "opus",
             "effort": conversation.effort or "high",
-            "provider": getattr(conversation, "provider", None) or "claude",
-            "provider_thread_id": getattr(conversation, "provider_thread_id", None),
+            "provider": conversation.provider or "claude",
+            "provider_thread_id": conversation.provider_thread_id,
             "created_at": conversation.created_at.isoformat() if conversation.created_at else None,
             "updated_at": conversation.updated_at.isoformat() if conversation.updated_at else None,
             "message_count": msg_count,

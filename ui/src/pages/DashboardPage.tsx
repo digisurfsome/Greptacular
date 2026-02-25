@@ -15,7 +15,7 @@
  * WebSocket connection managed by the WorkspaceChat component.
  */
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { WorkspaceSidebar } from '../components/workspace/WorkspaceSidebar'
 import { WorkspaceChat } from '../components/workspace/WorkspaceChat'
 import { RepoSelector } from '../components/workspace/RepoSelector'
@@ -170,6 +170,10 @@ export function DashboardPage(): React.JSX.Element {
   // Track which conversations are streaming
   const [streamingIds, setStreamingIds] = useState<Set<number>>(new Set())
 
+  // Keep a ref to current panes for callbacks that need to read without nesting setState
+  const panesRef = useRef(panes)
+  panesRef.current = panes
+
   // Model/effort for new chats from sidebar
   const [pendingModel, setPendingModel] = useState<'opus' | 'sonnet'>('opus')
   const [pendingContextMode, setPendingContextMode] = useState<'1m' | '200k'>('200k')
@@ -225,16 +229,13 @@ export function DashboardPage(): React.JSX.Element {
   }, [updatePane])
 
   const handlePaneStreamingChange = useCallback((paneId: string, isStreaming: boolean) => {
-    setPanes(prev => {
-      const pane = prev.find(p => p.id === paneId)
-      if (!pane?.conversationId) return prev
-      setStreamingIds(ids => {
-        const next = new Set(ids)
-        if (isStreaming) next.add(pane.conversationId!)
-        else next.delete(pane.conversationId!)
-        return next
-      })
-      return prev
+    const pane = panesRef.current.find(p => p.id === paneId)
+    if (!pane?.conversationId) return
+    setStreamingIds(ids => {
+      const next = new Set(ids)
+      if (isStreaming) next.add(pane.conversationId!)
+      else next.delete(pane.conversationId!)
+      return next
     })
   }, [])
 

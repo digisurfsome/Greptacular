@@ -7,6 +7,7 @@ import { QuadPreviewPage } from './components/QuadPreviewPage'
 import { WorkspacePage } from './pages/WorkspacePage'
 import { RoleLibraryPage } from './pages/RoleLibraryPage'
 import { DunkStackPage } from './pages/DunkStackPage'
+import { DashboardPage } from './pages/DashboardPage'
 import './styles/globals.css'
 
 const queryClient = new QueryClient({
@@ -49,6 +50,9 @@ function Root() {
   }
   if (hash === '#/roles' || hash.startsWith('#/roles/')) {
     return <RoleLibraryPage />
+  }
+  if (hash === '#/dashboard' || hash.startsWith('#/dashboard/')) {
+    return <DashboardPage />
   }
   return <App />
 }

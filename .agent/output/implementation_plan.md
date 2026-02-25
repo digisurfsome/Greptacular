@@ -84,6 +84,9 @@ The system is **completely self-contained** -- it does not modify any existing A
 | Idle behavior | Waiting for user message | Active idle loop (check files, check control.md) |
 | Token tracking | Database per-conversation | In-memory + DunkStack router /tokens/ endpoints |
 | Feature management | AutoForge features.db (project-level) | Own features.db in .agent/ directory |
+| Decision memory | None (lost on compaction) | decisions.log (persistent, append-only) |
+| Scope control | Implicit in conversation | scope_boundary.md (explicit, human-defined) |
+| Change tracking | Git diff only | changes.md (semantic diffs with WHY) |
 
 ---
 
@@ -165,7 +168,8 @@ class DunkStackSession:
    - Set up file-based walkie-talkie hook (NEW -- reads from_human.md instead of asyncio.Queue)
    - Set up PreCompact hook (same pattern as workspace)
    - Load bridge on start (read bridge.md, incorporate context, delete bridge.md)
-   - Read initial state from index.md, working_memory.md, control.md
+   - Read initial state from index.md, working_memory.md, scope_boundary.md, control.md
+   - Read changes.md and decisions.log for recent context on resume
    - Start the idle engine loop
    - Yield session-started event
 
@@ -339,6 +343,18 @@ def read_config(agent_dir: Path) -> dict:
 
 def update_index(agent_dir: Path, new_files: list[str]) -> None:
     """Add new file entries to the index.md."""
+
+def append_decision(agent_dir: Path, category: str, title: str, choice: str,
+                    alternatives: str, reasoning: str, confidence: str,
+                    revisit_if: str) -> None:
+    """Append a decision entry to progress/decisions.log."""
+
+def append_change(agent_dir: Path, file_path: str, what_changed: str,
+                  why: str, impact: str, decision_ref: str = "") -> None:
+    """Append a semantic change entry to progress/changes.md."""
+
+def read_scope_boundary(agent_dir: Path) -> dict:
+    """Parse scope_boundary.md and return {in_scope, out_of_scope, defer, quality, stop_signals}."""
 ```
 
 **Implementation Notes:**
@@ -1123,7 +1139,7 @@ Create `tests/test_dunkstack_session.py` (~150 lines):
 | File | Phase | Est. Lines | Purpose |
 |------|-------|-----------|---------|
 | `server/services/dunkstack_session.py` | 1 | 500-600 | Core agent session with idle engine |
-| `server/services/dunkstack_file_utils.py` | 1 | 100-150 | File I/O utilities for .agent/ protocol |
+| `server/services/dunkstack_file_utils.py` | 1 | 120-180 | File I/O utilities for .agent/ protocol (incl. decisions, changes, scope) |
 | `server/services/dunkstack_features.py` | 2 | 450-550 | Feature management + dependency resolver |
 | `ui/src/hooks/useDunkStack.ts` | 4 | 200-250 | React Query hooks for all endpoints |
 | `ui/src/hooks/useDunkStackWebSocket.ts` | 4 | 100-150 | WebSocket hook for real-time updates |

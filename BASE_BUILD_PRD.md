@@ -727,6 +727,302 @@ Based on test results, adjust the system prompt language, file formats, settings
 
 ---
 
+## Mechanism 8: Decisions Log (decisions.log)
+
+### What It Does
+An append-only file where the agent logs every non-obvious decision with reasoning. Unlike working_memory.md (which tracks current state) or build_log.md (which tracks what was built), decisions.log tracks WHY choices were made.
+
+### Why It's Critical
+The single most wasteful behavior in long agent sessions is revisiting settled questions. The agent picks library X in turn 5, then by turn 40 has forgotten why it picked X over Y and either re-evaluates (wasting tokens) or picks Y instead (creating inconsistency). Decisions.log prevents this by being a quick-reference file the agent checks before making any architectural or tooling choice.
+
+For swarm architecture (future): this file becomes the shared brain. When Agent B needs to make a decision that Agent A already made, it reads decisions.log instead of re-analyzing from scratch. One agent's learning becomes every agent's learning.
+
+### Technical Specification
+
+**File: `.agent/progress/decisions.log`**
+
+```markdown
+# Decisions Log
+> Append-only. One entry per decision. Agent checks this before making architectural choices.
+> Format: ## [timestamp] CATEGORY: Brief Decision Title
+
+## [2026-02-24 14:15] DATABASE: SQLite over PostgreSQL for MVP
+**Choice:** SQLite
+**Alternatives considered:** PostgreSQL, MongoDB
+**Reasoning:** MVP doesn't need concurrent multi-user access. SQLite is zero-config, embedded, and sufficient for single-agent builds. Migrate to PostgreSQL when/if multi-user support is added.
+**Confidence:** High
+**Revisit if:** Requirements change to multi-user or concurrent agent writes to same DB
+
+## [2026-02-24 15:30] ARCHITECTURE: Server-side rendering over SPA
+**Choice:** Next.js SSR
+**Alternatives considered:** Vite SPA, Remix
+**Reasoning:** SEO requirements from spec section 3.2. SPA would require separate SSR layer later.
+**Confidence:** Medium - depends on whether SEO requirement is hard or soft
+**Revisit if:** SEO requirement is dropped or changed to optional
+```
+
+**System prompt addition:**
+
+```markdown
+## Decision Logging
+
+Before making any non-trivial choice (library selection, architecture pattern,
+data model design, API structure), FIRST check .agent/progress/decisions.log
+to see if this decision was already made.
+
+If it was: follow the existing decision unless the circumstances have explicitly changed.
+If it wasn't: make the decision, then immediately append an entry to decisions.log.
+
+A "non-trivial choice" is anything where a reasonable developer might pick
+a different option. If there's only one obvious answer, don't log it.
+```
+
+**Integration:** Add `decisions.log` to the file structure in Mechanism 2 and to the index.md template.
+
+---
+
+## Mechanism 9: Scope Boundary File (scope_boundary.md)
+
+### What It Does
+A file that explicitly defines what IS and IS NOT in scope for the current build phase. The agent reads this to prevent scope creep, gold-plating, and feature drift.
+
+### Why It's Critical
+By feature 15 of a 30-feature build, agents reliably start drifting. They gold-plate feature 3 instead of moving forward. They add error handling for scenarios that can't happen. They refactor working code that isn't part of the current task. They add "nice to have" features that weren't in the spec. This costs tokens, introduces bugs, and slows the build.
+
+The working_memory.md tracks WHAT the agent is doing. The scope_boundary.md tracks what it SHOULD and SHOULDN'T be doing. These are different concerns.
+
+### Technical Specification
+
+**File: `.agent/scope_boundary.md`**
+
+```markdown
+# Scope Boundary
+Last updated: [timestamp]
+Phase: Base Build MVP
+
+## IN SCOPE - Build These
+- [Feature list from the current build phase]
+- [Specific deliverables expected]
+- [Quality standards that apply]
+
+## OUT OF SCOPE - Do NOT Build These
+- Full PRD machine pipeline (future phase)
+- Swarm multi-agent coordination (future phase)
+- Marketing/GIF automation (future phase)
+- SaaS authentication/billing (future phase)
+- Performance optimization beyond "it works" (future phase)
+
+## DEFER - Note But Don't Act
+- If you discover a needed improvement, log it to decisions.log but don't implement it
+- If you see code that could be refactored, note it in progress/build_log.md but leave it
+- If a feature would be "nice to have," add it to .agent/output/backlog.md
+
+## QUALITY BOUNDARY
+- Code must work and pass lint. That's the bar for MVP.
+- Don't add tests unless the spec requires them for this phase
+- Don't add documentation beyond code comments
+- Don't optimize for edge cases that the spec doesn't mention
+
+## STOP SIGNALS
+If you find yourself doing any of these, STOP and return to the current task:
+- Adding error handling for impossible scenarios
+- Refactoring code that already works
+- Building a utility/helper for something used once
+- Adding configuration for something that has one value
+- Writing more than 3 sentences in a chat response
+```
+
+**System prompt addition:**
+
+```markdown
+## Scope Awareness
+
+Read .agent/scope_boundary.md at the start of every session and after every
+bridge resume. Before starting any new sub-task, verify it's listed in the
+IN SCOPE section. If it's not, check if it's in OUT OF SCOPE or DEFER.
+
+If you catch yourself working on something not in scope, STOP immediately.
+Log what you noticed in progress/build_log.md and return to the current
+in-scope task.
+```
+
+**Integration:** Add `scope_boundary.md` to the file structure in Mechanism 2 and to the index.md template. The human populates this file when defining a build phase. The agent reads it but only modifies the DEFER section (to log deferred items).
+
+---
+
+## Mechanism 10: Structured Change Tracking (changes.md)
+
+### What It Does
+A per-session log that records not just WHAT files changed, but WHY and HOW. Goes beyond git diff by capturing the semantic intent behind each change. This is the structured diff system that makes bridge resumes and multi-agent handoffs dramatically more efficient.
+
+### Why It's Critical
+When an agent resumes from a bridge or another agent picks up work, the first thing it needs to understand is "what changed since I last looked?" Git diff tells you the WHAT — lines added, lines removed. But it doesn't tell you the WHY — "I added JWT validation because feature 7 requires persistent sessions" or "I changed the User model to add a refresh_token field so the auth middleware can validate tokens without a database round-trip."
+
+Without semantic change tracking, the resuming agent has to READ the changed files and INFER the reasoning. That's expensive (tokens) and error-prone (might misinterpret the intent). With structured changes, the agent reads a 10-line summary and knows exactly what happened and why.
+
+### Technical Specification
+
+**File: `.agent/progress/changes.md`**
+
+```markdown
+# Change Log
+> Append-only. One entry per significant change. Written immediately after each change.
+
+## [2026-02-24 14:30] Modified: src/models/user.py
+**What changed:** Added `refresh_token` field to User model
+**Why:** Feature #7 (persistent sessions) requires token refresh without re-auth
+**Impact:** Migration needed. Auth middleware (src/middleware/auth.py) will need updating next.
+**Decision ref:** See decisions.log [2026-02-24 14:15] AUTH pattern
+
+## [2026-02-24 14:45] Created: src/middleware/auth.py
+**What changed:** New JWT validation middleware with refresh token support
+**Why:** Feature #7 - validates both access and refresh tokens
+**Impact:** Must be registered in app.py route configuration
+**Depends on:** User model refresh_token field (done), JWT_SECRET env var (configured in .env.example)
+
+## [2026-02-24 15:10] Modified: src/app.py
+**What changed:** Registered auth middleware, added /api/auth/* routes
+**Why:** Wiring up feature #7 components
+**Impact:** All /api/* routes now require authentication except /api/auth/login and /api/auth/register
+**Testing note:** Existing tests will fail until test fixtures include auth tokens
+```
+
+**System prompt addition:**
+
+```markdown
+## Change Tracking
+
+After EVERY file creation or significant modification, append an entry
+to .agent/progress/changes.md with:
+- What file changed and what was modified
+- Why the change was made (link to feature or decision)
+- What other files are impacted by this change
+- Any testing implications
+
+Skip logging for trivial changes (fixing a typo, updating a comment).
+Log everything else. When in doubt, log it.
+
+On bridge resume, read changes.md BEFORE reading any source files.
+The change log tells you what to focus on without re-reading everything.
+```
+
+**Integration:** Add `changes.md` to the file structure in Mechanism 2 and to the index.md template. The bridge resume sequence (Mechanism 5) should read changes.md as step 2 (after index.md, before working_memory.md) so the agent knows what's different before re-reading state.
+
+---
+
+## Updated File Structure (Mechanisms 2 + 8 + 9 + 10)
+
+With the three new mechanisms, the complete `.agent/` directory structure becomes:
+
+```
+.agent/
+├── index.md
+├── working_memory.md
+├── scope_boundary.md          ← NEW: What's in/out of scope
+├── bridge.md                  (temporary, created by bridge mechanism)
+├── system_prompt.md
+├── comms/
+│   ├── to_human.md
+│   ├── from_human.md
+│   └── control.md
+├── knowledge/
+│   └── .gitkeep
+├── output/
+│   └── .gitkeep
+├── progress/
+│   ├── build_log.md
+│   ├── decisions.log          ← NEW: Why choices were made
+│   └── changes.md             ← NEW: Semantic change tracking
+├── settings/
+│   └── config.yml
+└── features.db                (created by dependency system)
+```
+
+---
+
+## Future Version: Ultimate System Additions
+
+> These additions are NOT part of the base build. They are documented here for reference
+> when building the full version of the system after the base mechanism is proven.
+
+### Addition 1: Semantic Compression on Working Memory
+
+**Problem:** As projects grow, working_memory.md and changes.md get long. Reading them consumes more tokens each session.
+
+**Solution:** Implement time-based compression. Recent entries (last 2-3 sessions) stay in full detail. Older entries auto-compress to one-line summaries. Entries older than N sessions compress to category-level summaries.
+
+**Example:**
+```markdown
+## Recent (full detail)
+- [2026-02-25 14:30] Added refresh_token to User model for feature #7...
+
+## Earlier (compressed)
+- Session 4: Completed features #5-#7 (auth system). Key files: auth.py, user.py, middleware.
+- Session 3: Completed features #3-#4 (database layer). Chose SQLite (see decisions.log).
+
+## History (category summary)
+- Sessions 1-2: Project setup, dependency installation, base configuration.
+```
+
+**Implementation:** A compression function runs at session start, before bridge load. It reads the full files, applies time-based rules, and writes compressed versions. Original content preserved in a `.agent/archive/` directory if needed for deep review.
+
+### Addition 2: Agent Self-Verification Loops
+
+**Problem:** Agents drift from actual state over time. They THINK the code is structured one way, but it's actually different. This causes bugs that compound.
+
+**Solution:** Before each major action (starting a new feature, making an architectural change), the agent writes a "state assertion" file: "I believe the current state is X." Then it reads the actual files to verify. If there's a mismatch, it stops and reconciles before proceeding.
+
+**Example flow:**
+```
+Agent thinks: "The User model has fields: id, name, email"
+Agent writes assertion to .agent/progress/state_check.md
+Agent reads src/models/user.py
+Actual: "User model has fields: id, name, email, refresh_token, created_at"
+Mismatch detected → Agent updates its understanding before modifying the model
+```
+
+**Cost:** ~200-400 tokens per verification. Worth it for preventing compound errors.
+
+### Addition 3: Swarm Role Specialization with Shared Context
+
+**Problem:** Multiple agents doing the same general task duplicate context loading. Each agent reads the full project state, does some work, writes results. Context efficiency is no better than a single agent.
+
+**Solution:** Specialize agents by role, each with optimized context loading:
+
+| Role | Reads | Writes | Context Budget |
+|------|-------|--------|---------------|
+| **Librarian** | All files, full index | index.md, knowledge/ | 60K focused on file organization |
+| **Builder** | Current feature + deps only | Source code, changes.md | 60K focused on implementation |
+| **Critic** | Changed files + test results | progress/review.md | 40K focused on quality |
+
+The Librarian answers "where is X?" questions so the Builder never wastes context on file discovery. The Critic never holds build context — it only sees diffs and test output. Each agent's context window is optimized for their role.
+
+**Communication:** Via the shared `.agent/` file structure. Builder writes changes.md → Critic reads changes.md. Critic writes review.md → Builder reads review feedback. Librarian updates index.md → everyone benefits.
+
+### Addition 4: Confidence Scoring on File Reads
+
+**Problem:** The agent reads a file summary and makes a decision based on it. Later, the full file reveals the summary missed something critical. The decision was wrong, and now there's cascading damage.
+
+**Solution:** Track read depth for every file access. Tag downstream decisions with the confidence level they were made at.
+
+**Levels:**
+- `FULL` — Read the entire file, line by line
+- `SECTION` — Read specific sections (used heading structure)
+- `SUMMARY` — Read a compressed/summarized version
+- `INDEX` — Only saw the file name and description in index.md
+
+**Example in decisions.log:**
+```markdown
+## [2026-02-25 10:00] API: REST over GraphQL
+**Read depth:** FULL on requirements.md, SECTION on existing_api.py (lines 1-50 only)
+**Confidence adjustment:** Medium — didn't read full existing API, may miss compatibility issues
+**Revisit trigger:** If integration tests fail on existing API endpoints
+```
+
+**Benefit:** When something goes wrong, the system can trace back to decisions made on partial reads and flag them for re-evaluation with full reads. Prevents the expensive "re-read everything and start over" pattern.
+
+---
+
 ## What This Enables
 
 Once the base mechanism is proven:

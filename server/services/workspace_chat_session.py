@@ -172,6 +172,7 @@ class WorkspaceChatSession:
         context_mode: str = "1m",
         cost_settings: Optional[dict] = None,
         model: Optional[str] = None,
+        provider: Optional[str] = None,
     ):
         """Initialize the workspace chat session.
 
@@ -185,11 +186,14 @@ class WorkspaceChatSession:
                 max_turns, history_budget, library_cap). Missing keys use defaults.
             model: Optional model shorthand for per-panel routing (``"opus"`` or ``"sonnet"``).
                 When ``None``, defaults to the Opus model.
+            provider: CLI provider -- ``"claude"`` (default), ``"codex"`` (OpenAI),
+                or ``"gemini"`` (Google). Determines which CLI backend handles messages.
         """
         self.session_id = session_id
         self.conversation_id = conversation_id
         self.working_directory = working_directory or str(Path.home())
         self.context_mode = context_mode
+        self.provider = provider or "claude"
         # Both Opus 4.6 and Sonnet 4.6 support the 1M context beta (context-1m-2025-08-07).
         if context_mode == "1m":
             self.context_window = CONTEXT_WINDOW_TOKENS
@@ -223,6 +227,12 @@ class WorkspaceChatSession:
         # Legacy flag (no longer used — library files are now attached per-message)
         self._library_injected: bool = False
 
+        # Multi-provider bridges (Codex / Gemini).  Initialized during start()
+        # only when self.provider != "claude".
+        self._codex_bridge: Optional[Any] = None  # CodexBridge instance
+        self._gemini_bridge: Optional[Any] = None  # GeminiBridge instance
+        self._provider_thread_id: Optional[str] = None  # Codex threadId / Gemini session_id
+
         # Walkie-talkie communication: in-memory message queue for injecting
         # user messages into a running agent via PreToolUse hook interception.
         self.walkie_talkie_queue: asyncio.Queue[str] = asyncio.Queue()
@@ -230,7 +240,7 @@ class WorkspaceChatSession:
         self.walkie_talkie_waiting: bool = False  # True when agent output [WAITING] tag
 
     async def close(self) -> None:
-        """Clean up resources and close the Claude client."""
+        """Clean up resources and close the Claude client (or Codex/Gemini bridge)."""
         if self.client and self._client_entered:
             try:
                 await self.client.__aexit__(None, None, None)
@@ -239,6 +249,23 @@ class WorkspaceChatSession:
             finally:
                 self._client_entered = False
                 self.client = None
+
+        # Close Codex/Gemini bridges
+        if self._codex_bridge:
+            try:
+                await self._codex_bridge.close()
+            except Exception as e:
+                logger.warning(f"Error closing Codex bridge for session {self.session_id}: {e}")
+            finally:
+                self._codex_bridge = None
+
+        if self._gemini_bridge:
+            try:
+                await self._gemini_bridge.close()
+            except Exception as e:
+                logger.warning(f"Error closing Gemini bridge for session {self.session_id}: {e}")
+            finally:
+                self._gemini_bridge = None
 
         # Restore the original .claude/settings.json in the working directory
         # so we don't leave our effortLevel setting behind in the user's project.
@@ -355,6 +382,7 @@ class WorkspaceChatSession:
                 context_mode=self.context_mode,
                 model=self.model,
                 effort=self.cost_settings.get("effort"),
+                provider=self.provider,
             )
             self.conversation_id = int(conv.id)  # type coercion: Column[int] -> int
             yield {"type": "conversation_created", "conversation_id": self.conversation_id}
@@ -364,6 +392,15 @@ class WorkspaceChatSession:
             branch_name = self._create_workspace_branch()
             if branch_name:
                 yield {"type": "branch_created", "branch": branch_name}
+
+        # -----------------------------------------------------------------
+        # Non-Claude providers: Codex or Gemini — initialize bridge and return.
+        # The rest of start() is Claude-specific (SDK client, security settings).
+        # -----------------------------------------------------------------
+        if self.provider in ("codex", "gemini"):
+            async for event in self._start_alt_provider(is_new_conversation):
+                yield event
+            return
 
         # -----------------------------------------------------------------
         # Security settings: full tools with acceptEdits permission mode.
@@ -787,13 +824,153 @@ class WorkspaceChatSession:
             }
             yield {"type": "response_done"}
 
+    async def _start_alt_provider(self, is_new_conversation: bool) -> AsyncGenerator[dict, None]:
+        """Initialize a Codex or Gemini session (called from start() for non-Claude providers).
+
+        Creates the appropriate bridge, restores provider_thread_id from DB if
+        resuming, and yields the initial greeting / token_usage events.
+        """
+        from . import workspace_database as db
+
+        provider_display = {"codex": "OpenAI Codex", "gemini": "Google Gemini"}.get(
+            self.provider, self.provider
+        )
+
+        try:
+            if self.provider == "codex":
+                from .codex_bridge import CodexBridge
+
+                self._codex_bridge = CodexBridge(
+                    cwd=self.working_directory,
+                    model=self.model,
+                )
+                # Restore threadId for resumed conversations
+                if self.conversation_id and not is_new_conversation:
+                    conv = db.get_conversation(self.conversation_id)
+                    if conv and conv.get("provider_thread_id"):
+                        self._codex_bridge.thread_id = conv["provider_thread_id"]
+                        self._provider_thread_id = conv["provider_thread_id"]
+
+                await self._codex_bridge.start()
+                self._resolved_model_id = self.model or "codex-default"
+                logger.info("Codex bridge started for session %s", self.session_id)
+
+            elif self.provider == "gemini":
+                from .gemini_bridge import GeminiBridge
+
+                self._gemini_bridge = GeminiBridge(
+                    cwd=self.working_directory,
+                    model=self.model,
+                )
+                # Restore session_id for resumed conversations
+                if self.conversation_id and not is_new_conversation:
+                    conv = db.get_conversation(self.conversation_id)
+                    if conv and conv.get("provider_thread_id"):
+                        self._gemini_bridge.session_id = conv["provider_thread_id"]
+                        self._provider_thread_id = conv["provider_thread_id"]
+
+                self._resolved_model_id = self.model or "gemini-default"
+                logger.info("Gemini bridge started for session %s", self.session_id)
+
+        except Exception as e:
+            logger.exception("Failed to start %s bridge", self.provider)
+            yield {"type": "error", "content": f"Failed to initialize {provider_display}: {str(e)}"}
+            yield {"type": "response_done"}
+            return
+
+        # Emit greeting for new conversations
+        if is_new_conversation:
+            self._history_loaded = True
+            greeting = f"Ready ({provider_display}). Working directory: **{self.working_directory}**."
+            yield {"type": "text", "content": greeting}
+
+        # Yield token usage
+        assert self.conversation_id is not None
+        total = get_conversation_token_total(self.conversation_id)
+        msg_count = db.get_message_count(self.conversation_id)
+        yield {
+            "type": "token_usage",
+            "total_tokens": total,
+            "context_window": self.context_window,
+            "message_count": msg_count,
+            "model_id": self._resolved_model_id,
+        }
+        yield {"type": "response_done"}
+
+    async def _query_alt_provider(self, message: str) -> AsyncGenerator[dict, None]:
+        """Route a message through the Codex or Gemini bridge.
+
+        Yields the same event shapes as ``_query_claude()`` so the WebSocket
+        protocol stays identical regardless of provider.
+        """
+        from . import workspace_database as db
+
+        bridge = self._codex_bridge if self.provider == "codex" else self._gemini_bridge
+        if not bridge:
+            yield {"type": "error", "content": f"{self.provider} bridge not initialized"}
+            return
+
+        full_text: list[str] = []
+        try:
+            async for event in bridge.send_streaming(message):
+                event_type = event.get("type", "")
+                if event_type == "text":
+                    full_text.append(event.get("content", ""))
+                    yield event
+                elif event_type == "tool_call":
+                    yield event
+                elif event_type == "error":
+                    yield event
+                # Other events (init, result, tool_result) are internal — log only
+                else:
+                    logger.debug("Alt provider event: %s", event_type)
+        except Exception as e:
+            logger.exception("Error querying %s", self.provider)
+            yield {"type": "error", "content": f"{self.provider} error: {str(e)}"}
+            return
+
+        # Persist assistant message in DB
+        response_text = "".join(full_text)
+        if response_text and self.conversation_id:
+            tokens = estimate_tokens(response_text)
+            add_message(self.conversation_id, "assistant", response_text, tokens)
+
+        # Persist provider thread/session ID for resume
+        thread_id = None
+        if self.provider == "codex" and self._codex_bridge:
+            thread_id = self._codex_bridge.thread_id
+        elif self.provider == "gemini" and self._gemini_bridge:
+            thread_id = self._gemini_bridge.session_id
+
+        if thread_id and self.conversation_id:
+            self._provider_thread_id = thread_id
+            try:
+                db.update_conversation(
+                    self.conversation_id,
+                    provider_thread_id=thread_id,
+                )
+            except Exception as e:
+                logger.warning("Failed to persist provider_thread_id: %s", e)
+
+        # Yield token usage
+        if self.conversation_id:
+            total = get_conversation_token_total(self.conversation_id)
+            msg_count = db.get_message_count(self.conversation_id)
+            yield {
+                "type": "token_usage",
+                "total_tokens": total,
+                "context_window": self.context_window,
+                "message_count": msg_count,
+                "model_id": self._resolved_model_id,
+            }
+
     async def send_message(
         self,
         user_message: str,
         attachments: list[ImageAttachment] | None = None,
         library_file_ids: list[int] | None = None,
     ) -> AsyncGenerator[dict, None]:
-        """Send a user message and stream Claude's response.
+        """Send a user message and stream the provider's response.
 
         For resumed conversations, the first call automatically loads messages
         from the database using a dynamic token budget strategy with optional summary context.
@@ -810,7 +987,14 @@ class WorkspaceChatSession:
             - ``{"type": "response_done"}``
             - ``{"type": "error", "content": str}``
         """
-        if not self.client:
+        # Check that the appropriate backend is ready
+        if self.provider == "codex" and not self._codex_bridge:
+            yield {"type": "error", "content": "Codex session not initialized. Call start() first."}
+            return
+        elif self.provider == "gemini" and not self._gemini_bridge:
+            yield {"type": "error", "content": "Gemini session not initialized. Call start() first."}
+            return
+        elif self.provider == "claude" and not self.client:
             yield {"type": "error", "content": "Session not initialized. Call start() first."}
             return
 
@@ -890,11 +1074,15 @@ class WorkspaceChatSession:
                 logger.warning("Failed to load attached library files: %s", e)
 
         try:
-            async for chunk in self._query_claude(message_to_send, attachments=attachments):
-                yield chunk
+            if self.provider in ("codex", "gemini"):
+                async for chunk in self._query_alt_provider(message_to_send):
+                    yield chunk
+            else:
+                async for chunk in self._query_claude(message_to_send, attachments=attachments):
+                    yield chunk
             yield {"type": "response_done"}
         except Exception as e:
-            logger.exception("Error during workspace Claude query")
+            logger.exception("Error during workspace %s query", self.provider)
             error_str = str(e).lower()
             yield {"type": "error", "content": f"Error: {str(e)}"}
 
@@ -1295,6 +1483,7 @@ async def create_session(
     context_mode: str = "1m",
     cost_settings: Optional[dict] = None,
     model: Optional[str] = None,
+    provider: Optional[str] = None,
 ) -> WorkspaceChatSession:
     """Create a new workspace session, closing any existing one with the same ID.
 
@@ -1305,6 +1494,7 @@ async def create_session(
         context_mode: Context window size -- ``"1m"`` or ``"200k"``. Defaults to ``"1m"``.
         cost_settings: Optional dict of cost control overrides.
         model: Optional model shorthand for per-panel routing (``"opus"`` or ``"sonnet"``).
+        provider: CLI provider -- ``"claude"``, ``"codex"``, or ``"gemini"``.
 
     Returns:
         The newly created session instance.
@@ -1320,6 +1510,7 @@ async def create_session(
             context_mode=context_mode,
             cost_settings=cost_settings,
             model=model,
+            provider=provider,
         )
         _sessions[session_id] = session
 

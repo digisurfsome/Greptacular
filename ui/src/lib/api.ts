@@ -686,7 +686,7 @@ export async function getWorkspaceConversation(
 }
 
 export async function createWorkspaceConversation(
-  options?: { title?: string; category?: string; working_directory?: string; model?: string; context_mode?: string; effort?: string }
+  options?: { title?: string; category?: string; working_directory?: string; model?: string; context_mode?: string; effort?: string; provider?: string }
 ): Promise<WorkspaceConversation> {
   return fetchJSON('/workspace/conversations', {
     method: 'POST',

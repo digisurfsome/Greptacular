@@ -35,6 +35,7 @@ class WorkspaceConversationSummary(BaseModel):
     context_mode: str = "1m"
     model: str = "opus"
     effort: str = "high"
+    provider: str = "claude"
     created_at: Optional[str]
     updated_at: Optional[str]
     message_count: int
@@ -60,6 +61,7 @@ class WorkspaceConversationDetail(BaseModel):
     context_mode: str = "1m"
     model: str = "opus"
     effort: str = "high"
+    provider: str = "claude"
     created_at: Optional[str]
     updated_at: Optional[str]
     message_count: int
@@ -74,6 +76,7 @@ class ConversationCreateRequest(BaseModel):
     context_mode: str = "1m"
     model: str = "opus"
     effort: str = "high"
+    provider: str = "claude"
 
 
 class ConversationUpdateRequest(BaseModel):
@@ -84,6 +87,7 @@ class ConversationUpdateRequest(BaseModel):
     tags: Optional[str] = None
     context_mode: Optional[str] = None
     model: Optional[str] = None
+    provider: Optional[str] = None
     effort: Optional[str] = None
 
 
@@ -1095,7 +1099,7 @@ async def workspace_chat_websocket(websocket: WebSocket):
     Message protocol:
 
     Client -> Server:
-    - {"type": "start", "conversation_id": int | null, "working_directory": "...", "context_mode": "1m"|"200k"} - Start/resume session
+    - {"type": "start", "conversation_id": int | null, "working_directory": "...", "context_mode": "1m"|"200k", "provider": "claude"|"codex"|"gemini"} - Start/resume session
     - {"type": "message", "content": "..."} - Send user message
     - {"type": "walkie_talkie", "content": "..."} - Inject message into running agent
     - {"type": "answer", "answers": {...}} - Answer to structured questions
@@ -1179,6 +1183,9 @@ async def workspace_chat_websocket(websocket: WebSocket):
                         # Extract model preference from start message (for per-panel model routing)
                         model = message.get("model")  # e.g. "opus", "sonnet", or None
 
+                        # Extract provider from start message (multi-provider support)
+                        provider = message.get("provider")  # "claude", "codex", "gemini", or None
+
                         # Server-side safety net: when resuming an existing conversation,
                         # cross-check context_mode against the stored DB value. The DB
                         # record is authoritative — if the frontend sends a stale or
@@ -1189,6 +1196,7 @@ async def workspace_chat_websocket(websocket: WebSocket):
                             if conv_for_mode:
                                 stored_mode = conv_for_mode.get("context_mode")
                                 stored_model = conv_for_mode.get("model")
+                                stored_provider = conv_for_mode.get("provider")
                                 if stored_mode and stored_mode != context_mode:
                                     logger.warning(
                                         "context_mode mismatch: WS=%s, DB=%s for conversation %d. Using DB value.",
@@ -1201,11 +1209,17 @@ async def workspace_chat_websocket(websocket: WebSocket):
                                         model, stored_model, conversation_id,
                                     )
                                     model = stored_model
+                                if stored_provider and stored_provider != provider:
+                                    logger.warning(
+                                        "provider mismatch: WS=%s, DB=%s for conversation %d. Using DB value.",
+                                        provider, stored_provider, conversation_id,
+                                    )
+                                    provider = stored_provider
 
-                        # Log full start params for debugging 200K vs 1M issues
+                        # Log full start params for debugging
                         logger.info(
-                            "WS start: context_mode=%s, model=%s, conversation_id=%s, session_id=%s",
-                            context_mode, model, conversation_id, session_id,
+                            "WS start: context_mode=%s, model=%s, provider=%s, conversation_id=%s, session_id=%s",
+                            context_mode, model, provider, conversation_id, session_id,
                         )
 
                         # Create a new workspace session
@@ -1217,6 +1231,7 @@ async def workspace_chat_websocket(websocket: WebSocket):
                             context_mode=context_mode,
                             cost_settings=cost_settings,
                             model=model,
+                            provider=provider,
                         )
 
                         # Wire walkie-talkie settings from the global settings store.

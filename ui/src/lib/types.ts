@@ -666,6 +666,9 @@ export type AssistantChatServerMessage =
 
 export type EffortLevel = 'low' | 'medium' | 'high'
 
+/** CLI provider for workspace conversations. */
+export type WorkspaceProvider = 'claude' | 'codex' | 'gemini'
+
 export interface WorkspaceConversation {
   id: number
   title: string | null
@@ -676,6 +679,7 @@ export interface WorkspaceConversation {
   context_mode: '1m' | '200k'  // context window mode used for this conversation
   model: 'opus' | 'sonnet' | null  // model used for this conversation (null = legacy, default opus)
   effort: EffortLevel  // thinking effort level (only active for 1M context models)
+  provider: WorkspaceProvider  // CLI provider: claude, codex, or gemini
   created_at: string | null
   updated_at: string | null
   message_count: number
@@ -698,6 +702,7 @@ export interface WorkspaceConversationDetail {
   context_mode: '1m' | '200k'  // context window mode used for this conversation
   model: 'opus' | 'sonnet' | null  // model used for this conversation (null = legacy, default opus)
   effort: EffortLevel  // thinking effort level (only active for 1M context models)
+  provider: WorkspaceProvider  // CLI provider: claude, codex, or gemini
   created_at: string | null
   updated_at: string | null
   messages: WorkspaceMessage[]

@@ -40,7 +40,7 @@ interface UseWorkspaceChatReturn {
   agentWaiting: boolean;
   /** The question the agent asked when entering waiting state. */
   agentWaitingQuestion: string | null;
-  start: (conversationId?: number | null, workingDirectory?: string, contextMode?: string, costSettings?: Record<string, unknown>, model?: string) => void;
+  start: (conversationId?: number | null, workingDirectory?: string, contextMode?: string, costSettings?: Record<string, unknown>, model?: string, provider?: string) => void;
   sendMessage: (content: string, attachments?: ImageAttachment[], libraryFileIds?: number[]) => void;
   /** Send a walkie-talkie message to the running agent (injected via PreToolUse hook). */
   sendWalkieTalkie: (content: string) => void;

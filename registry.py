@@ -736,6 +736,59 @@ API_PROVIDERS: dict[str, dict[str, Any]] = {
 }
 
 
+# =============================================================================
+# Workspace CLI Provider Definitions
+# =============================================================================
+# These define the CLI agent providers available in the workspace dashboard.
+# Unlike API_PROVIDERS (which configure how the Claude CLI connects to different
+# API backends), these represent entirely separate CLIs that the workspace can
+# drive: Claude Code, OpenAI Codex, and Google Gemini CLI.
+
+WORKSPACE_PROVIDERS: dict[str, dict[str, Any]] = {
+    "claude": {
+        "name": "Claude Code",
+        "description": "Anthropic Claude Code CLI — full tools, 1M context, subscription or API key",
+        "cli_command": "claude",
+        "install_command": "npm install -g @anthropic-ai/claude-code",
+        "auth_env_var": "ANTHROPIC_API_KEY",
+        "supports_subscription": True,
+        "models": [
+            {"id": "opus", "name": "Claude Opus"},
+            {"id": "sonnet", "name": "Claude Sonnet"},
+        ],
+        "default_model": "opus",
+    },
+    "codex": {
+        "name": "OpenAI Codex",
+        "description": "OpenAI Codex CLI — MCP server mode, threadId sessions, ChatGPT plan or API key",
+        "cli_command": "codex",
+        "install_command": "npm install -g @openai/codex",
+        "auth_env_var": "OPENAI_API_KEY",
+        "supports_subscription": True,
+        "models": [
+            {"id": "o3", "name": "o3"},
+            {"id": "o4-mini", "name": "o4-mini"},
+            {"id": "gpt-5-codex", "name": "GPT-5 Codex"},
+        ],
+        "default_model": "o3",
+    },
+    "gemini": {
+        "name": "Google Gemini",
+        "description": "Google Gemini CLI — headless stream-json, session resume, Google login or API key",
+        "cli_command": "gemini",
+        "install_command": "npm install -g @google/gemini-cli",
+        "auth_env_var": "GEMINI_API_KEY",
+        "supports_subscription": True,
+        "models": [
+            {"id": "pro", "name": "Gemini Pro"},
+            {"id": "flash", "name": "Gemini Flash"},
+            {"id": "flash-lite", "name": "Gemini Flash Lite"},
+        ],
+        "default_model": "pro",
+    },
+}
+
+
 def get_effective_sdk_env(*, force_subscription: bool = False) -> dict[str, str]:
     """Build environment variable dict for Claude SDK based on current API provider settings.
 

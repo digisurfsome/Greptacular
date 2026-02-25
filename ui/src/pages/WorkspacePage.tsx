@@ -40,6 +40,7 @@ import {
   ChevronsRight,
   Zap,
   Network,
+  LayoutDashboard,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -411,6 +412,16 @@ export function WorkspacePage(): React.JSX.Element {
           >
             <Bot size={14} />
             <span className="text-[10px]">Roles</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 gap-1.5 text-muted-foreground hover:text-foreground"
+            onClick={() => { window.location.hash = '#/dashboard' }}
+            title="Multi-session Dashboard — run Claude, Codex, and Gemini side by side"
+          >
+            <LayoutDashboard size={14} />
+            <span className="text-[10px]">Dashboard</span>
           </Button>
           <Button
             variant="ghost"

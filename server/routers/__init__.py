@@ -10,6 +10,7 @@ from .assistant_chat import router as assistant_chat_router
 from .ci_status import router as ci_status_router
 from .design_guide import router as design_guide_router
 from .devserver import router as devserver_router
+from .dunkstack import router as dunkstack_router
 from .expand_project import router as expand_project_router
 from .features import router as features_router
 from .filesystem import router as filesystem_router
@@ -23,7 +24,6 @@ from .spec_creation import router as spec_creation_router
 from .swarm import router as swarm_router
 from .terminal import router as terminal_router
 from .workspace import router as workspace_router
-from .dunkstack import router as dunkstack_router
 
 __all__ = [
     "ci_status_router",

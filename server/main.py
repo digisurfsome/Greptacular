@@ -35,6 +35,7 @@ from .routers import (
     ci_status_router,
     design_guide_router,
     devserver_router,
+    dunkstack_router,
     expand_project_router,
     features_router,
     filesystem_router,
@@ -48,7 +49,6 @@ from .routers import (
     swarm_router,
     terminal_router,
     workspace_router,
-    dunkstack_router,
 )
 from .schemas import SetupStatus
 from .services.assistant_chat_session import cleanup_all_sessions as cleanup_assistant_sessions

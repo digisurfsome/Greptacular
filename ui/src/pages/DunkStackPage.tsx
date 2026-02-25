@@ -299,8 +299,14 @@ function FileViewer(): React.JSX.Element {
 
 function GuideOverlay({ onClose }: { onClose: () => void }): React.JSX.Element {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="bg-card border-2 border-border rounded-xl shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="bg-card border-2 border-border rounded-xl shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto"
+        onClick={e => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <div className="flex items-center gap-2">
             <BookOpen size={20} className="text-primary" />
@@ -308,7 +314,8 @@ function GuideOverlay({ onClose }: { onClose: () => void }): React.JSX.Element {
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+            className="p-2 rounded hover:bg-muted text-foreground font-bold text-xl leading-none"
+            title="Close guide"
           >
             &times;
           </button>

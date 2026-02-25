@@ -307,6 +307,19 @@ message: none
 # Agent Settings - Adjustable Levers
 version: 1
 
+mode:
+  type: subscription              # subscription | api
+  model_family: claude-sonnet     # claude-sonnet | claude-opus
+  # Subscription mode: system prompt via CLAUDE.md, token tracking estimates,
+  #   compaction will occur, no API key needed
+  # API mode: system prompt via API system message, exact token tracking
+  #   from response headers, no compaction, API key required
+
+api:
+  key_env_var: ANTHROPIC_API_KEY  # Environment variable name for API key
+  model_id: claude-sonnet-4-6     # Model ID for API calls
+  max_tokens_output: 16000        # Max output tokens per call
+
 context_management:
   utilization_target: 85          # % of context window to use
   working_memory_frequency: 3     # Update every N turns

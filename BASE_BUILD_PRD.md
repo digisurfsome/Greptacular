@@ -138,6 +138,45 @@ If a file is under 50 lines, read the whole thing.
 If a file is over 50 lines, use targeted line-range reads.
 ```
 
+**Section E: Compaction Recovery**
+
+```markdown
+## Compaction Recovery
+
+If your conversation history seems shorter than expected, or you feel
+you have lost context about what you were doing, a compaction event
+has occurred. This is normal and NOT a problem.
+
+DO NOT attempt to reconstruct from memory. Trust the files.
+Immediately re-read:
+1. .agent/index.md
+2. .agent/working_memory.md
+3. .agent/comms/from_human.md (for any recent human input)
+
+These files contain everything you need. Resume work from the state
+described in working_memory.md. The files are your source of truth,
+not your conversation history.
+```
+
+**Section F: Compliance Reinforcement**
+
+```markdown
+## Protocol Compliance
+
+These rules are non-negotiable. If you notice yourself writing longer
+chat responses, STOP and redirect to a file. Common drift patterns
+to catch yourself on:
+
+- "Let me explain..." → Write to a file instead, respond with file reference
+- "Here's what I found..." → Write to a file instead
+- "The code looks like..." → Write to a file instead
+- Providing code snippets in chat → Write to output/ file instead
+- Answering a question with more than 3 sentences → Write to comms/to_human.md
+
+If the human tells you "file mode" or "back to protocol" or "too long",
+immediately return to strict file-based operation.
+```
+
 ### Files to Create
 
 1. **The system prompt file itself** - stored as `.agent/system_prompt.md` so it can be versioned, iterated, and loaded programmatically

@@ -836,13 +836,23 @@ class WorkspaceChatSession:
             self.provider, self.provider
         )
 
+        # Map Claude model names to provider-specific defaults.
+        # The session model is always a Claude name like "opus"/"sonnet",
+        # which is meaningless to Codex/Gemini CLIs.
+        from registry import WORKSPACE_PROVIDERS
+        provider_config = WORKSPACE_PROVIDERS.get(self.provider, {})
+        provider_model: str | None = None
+        if self.provider != "claude":
+            # Use the provider's default model — Claude model names don't apply
+            provider_model = provider_config.get("default_model")
+
         try:
             if self.provider == "codex":
                 from .codex_bridge import CodexBridge
 
                 self._codex_bridge = CodexBridge(
                     cwd=self.working_directory,
-                    model=self.model,
+                    model=provider_model,
                 )
                 # Restore threadId for resumed conversations
                 if self.conversation_id and not is_new_conversation:
@@ -852,15 +862,15 @@ class WorkspaceChatSession:
                         self._provider_thread_id = conv["provider_thread_id"]
 
                 await self._codex_bridge.start()
-                self._resolved_model_id = self.model or "codex-default"
-                logger.info("Codex bridge started for session %s", self.session_id)
+                self._resolved_model_id = provider_model or "codex-default"
+                logger.info("Codex bridge started for session %s (model=%s)", self.session_id, provider_model)
 
             elif self.provider == "gemini":
                 from .gemini_bridge import GeminiBridge
 
                 self._gemini_bridge = GeminiBridge(
                     cwd=self.working_directory,
-                    model=self.model,
+                    model=provider_model,
                 )
                 # Restore session_id for resumed conversations
                 if self.conversation_id and not is_new_conversation:
@@ -869,8 +879,8 @@ class WorkspaceChatSession:
                         self._gemini_bridge.session_id = conv["provider_thread_id"]
                         self._provider_thread_id = conv["provider_thread_id"]
 
-                self._resolved_model_id = self.model or "gemini-default"
-                logger.info("Gemini bridge started for session %s", self.session_id)
+                self._resolved_model_id = provider_model or "gemini-default"
+                logger.info("Gemini bridge started for session %s (model=%s)", self.session_id, provider_model)
 
         except Exception as e:
             logger.exception("Failed to start %s bridge", self.provider)

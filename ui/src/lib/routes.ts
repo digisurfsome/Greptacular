@@ -39,11 +39,3 @@ export function isRoleLibraryRoute(): boolean {
          window.location.hash.startsWith('#/roles/')
 }
 
-/**
- * Check if the current URL hash matches the multi-session dashboard route.
- * Format: /#/dashboard
- */
-export function isDashboardRoute(): boolean {
-  return window.location.hash === '#/dashboard' ||
-         window.location.hash.startsWith('#/dashboard/')
-}

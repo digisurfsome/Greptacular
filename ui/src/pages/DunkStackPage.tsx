@@ -13,7 +13,7 @@
  * context management mechanism described in the BASE_BUILD_PRD.
  */
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import {
   ArrowLeft,
   BookOpen,
@@ -22,16 +22,48 @@ import {
   Shield,
   FileText,
   Layers,
+  ChevronLeft,
+  ChevronRight,
+  FolderOpen,
+  Cpu,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ThemeSelector } from '@/components/ThemeSelector'
 import { useTheme } from '@/hooks/useTheme'
+import { useProjects } from '@/hooks/useProjects'
 import { useDunkStack } from '@/hooks/useDunkStack'
+import { dunkstackUpdateConfig } from '@/lib/api'
 import { DunkStackContextGauge } from '@/components/dunkstack/DunkStackContextGauge'
 import { DunkStackCommsChat } from '@/components/dunkstack/DunkStackCommsChat'
 import { DunkStackSafetyPanel } from '@/components/dunkstack/DunkStackSafetyPanel'
 
 type RightPanel = 'safety' | 'files' | null
+
+type ModelPreset = { model: string; context: string; label: string; limit: number; color: string }
+
+const MODEL_PRESETS: ModelPreset[] = [
+  { model: 'opus', context: '200k', label: 'Opus 4.6 \u00b7 200K', limit: 200000, color: 'bg-zinc-700' },
+  { model: 'opus', context: '1m', label: 'Opus 4.6 \u00b7 1M', limit: 1000000, color: 'bg-blue-600' },
+  { model: 'sonnet', context: '1m', label: 'Sonnet 4.6 \u00b7 1M', limit: 1000000, color: 'bg-violet-600' },
+]
+
+function getStoredModelPreset(): number {
+  try {
+    const stored = localStorage.getItem('dunkstack-model-preset')
+    if (stored !== null) {
+      const idx = parseInt(stored, 10)
+      if (idx >= 0 && idx < MODEL_PRESETS.length) return idx
+    }
+  } catch { /* ignore localStorage errors */ }
+  return 0
+}
+
+function getStoredProject(): string | null {
+  try {
+    return localStorage.getItem('dunkstack-selected-project')
+  } catch { /* ignore localStorage errors */ }
+  return null
+}
 
 export function DunkStackPage(): React.JSX.Element {
   const { theme, setTheme, darkMode, toggleDarkMode, themes } = useTheme()
@@ -48,9 +80,34 @@ export function DunkStackPage(): React.JSX.Element {
     connected,
     loading,
   } = useDunkStack()
+  const { data: projects } = useProjects()
 
   const [rightPanel, setRightPanel] = useState<RightPanel>('safety')
   const [showGuide, setShowGuide] = useState(false)
+  const [modelPresetIndex, setModelPresetIndex] = useState(getStoredModelPreset)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [selectedProject, setSelectedProject] = useState<string | null>(getStoredProject)
+
+  /** Switch model preset: persist to localStorage and push config to backend. */
+  const handleModelPresetChange = useCallback(async (index: number) => {
+    setModelPresetIndex(index)
+    localStorage.setItem('dunkstack-model-preset', String(index))
+    const preset = MODEL_PRESETS[index]
+    try {
+      await dunkstackUpdateConfig({
+        api: { model_id: preset.model === 'opus' ? 'claude-opus-4-6' : 'claude-sonnet-4-6' },
+        safety: { model_limit: preset.limit },
+      })
+    } catch {
+      // Config update is best-effort; the UI still reflects the choice
+    }
+  }, [])
+
+  /** Select a project and persist choice. */
+  const handleSelectProject = useCallback((name: string) => {
+    setSelectedProject(name)
+    localStorage.setItem('dunkstack-selected-project', name)
+  }, [])
 
   const handleToggleRightPanel = useCallback((panel: RightPanel) => {
     setRightPanel(prev => prev === panel ? null : panel)
@@ -86,6 +143,25 @@ export function DunkStackPage(): React.JSX.Element {
             <Layers size={14} className="text-primary" />
             <span className="text-sm font-bold text-foreground tracking-tight">DunkStack</span>
           </div>
+        </div>
+
+        {/* Model preset pills */}
+        <div className="flex items-center gap-1 ml-4">
+          <Cpu size={13} className="text-muted-foreground mr-1" />
+          {MODEL_PRESETS.map((preset, idx) => (
+            <button
+              key={`${preset.model}-${preset.context}`}
+              onClick={() => handleModelPresetChange(idx)}
+              className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold transition-colors ${
+                idx === modelPresetIndex
+                  ? `${preset.color} text-white shadow-sm`
+                  : 'bg-muted/50 text-muted-foreground hover:bg-muted'
+              }`}
+              title={`Switch to ${preset.label}`}
+            >
+              {preset.label}
+            </button>
+          ))}
         </div>
 
         {/* Center spacer */}
@@ -166,6 +242,60 @@ export function DunkStackPage(): React.JSX.Element {
 
       {/* Main content area */}
       <div className="flex flex-1 overflow-hidden">
+        {/* Left sidebar: project list */}
+        {sidebarCollapsed ? (
+          <button
+            onClick={() => setSidebarCollapsed(false)}
+            className="shrink-0 w-8 flex items-center justify-center border-r border-border bg-card/40 hover:bg-card transition-colors"
+            title="Expand project sidebar"
+          >
+            <ChevronRight size={14} className="text-muted-foreground" />
+          </button>
+        ) : (
+          <div className="w-64 shrink-0 border-r border-border bg-card/60 flex flex-col overflow-hidden">
+            {/* Sidebar header */}
+            <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">
+              <div className="flex items-center gap-1.5">
+                <FolderOpen size={14} className="text-primary" />
+                <span className="text-xs font-bold text-foreground">Projects</span>
+              </div>
+              <button
+                onClick={() => setSidebarCollapsed(true)}
+                className="p-1 rounded hover:bg-muted text-muted-foreground"
+                title="Collapse sidebar"
+              >
+                <ChevronLeft size={14} />
+              </button>
+            </div>
+
+            {/* Project list */}
+            <div className="flex-1 overflow-y-auto py-1">
+              {!projects || projects.length === 0 ? (
+                <div className="px-3 py-4 text-center text-xs text-muted-foreground">
+                  No projects registered
+                </div>
+              ) : (
+                projects.map(proj => (
+                  <button
+                    key={proj.name}
+                    onClick={() => handleSelectProject(proj.name)}
+                    className={`w-full text-left px-3 py-2 transition-colors ${
+                      selectedProject === proj.name
+                        ? 'bg-primary/10 border-l-2 border-primary'
+                        : 'hover:bg-muted/50 border-l-2 border-transparent'
+                    }`}
+                  >
+                    <div className="text-xs font-semibold text-foreground truncate">{proj.name}</div>
+                    <div className="text-[10px] text-muted-foreground mt-0.5">
+                      {proj.stats.passing}/{proj.stats.total} features
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Chat panel (main area) */}
         <div className="flex-1 flex flex-col overflow-hidden">
           {loading ? (
@@ -298,6 +428,15 @@ function FileViewer(): React.JSX.Element {
 // ============================================================================
 
 function GuideOverlay({ onClose }: { onClose: () => void }): React.JSX.Element {
+  // Close on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [onClose])
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
@@ -322,59 +461,53 @@ function GuideOverlay({ onClose }: { onClose: () => void }): React.JSX.Element {
         </div>
         <div className="px-6 py-4 space-y-4 text-sm text-foreground">
           <section>
-            <h3 className="font-bold text-base mb-2">What is DunkStack?</h3>
-            <p className="text-muted-foreground">
-              DunkStack is a file-based context management mechanism for AI coding agents.
-              Instead of dumping all output through the API response (consuming context window),
-              agents write substantive output to files and use the API response only for brief status signals.
-            </p>
-          </section>
-
-          <section>
-            <h3 className="font-bold text-base mb-2">The 7 Core Mechanisms</h3>
+            <h3 className="font-bold text-base mb-2">Quick Start</h3>
             <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
-              <li><strong className="text-foreground">System Prompt</strong> - Redirects output to files</li>
-              <li><strong className="text-foreground">File Structure</strong> - .agent/ directory with index, memory, comms</li>
-              <li><strong className="text-foreground">Walkie-Talkie</strong> - Bidirectional communication through files</li>
-              <li><strong className="text-foreground">Idle/Pause</strong> - Back-and-forth session management</li>
-              <li><strong className="text-foreground">Bridge Save</strong> - Session continuity across restarts</li>
-              <li><strong className="text-foreground">Context Gauge</strong> - Real-time token tracking</li>
-              <li><strong className="text-foreground">Safety System</strong> - Warning / Handoff / Hard Stop</li>
+              <li>Select a project from the sidebar on the left</li>
+              <li>Choose your model (Opus 4.6 200K for speed, Opus 4.6 1M for complex projects)</li>
+              <li>Set session mode: <strong className="text-foreground">Idle</strong> (manual), <strong className="text-foreground">Continue</strong> (one-task-at-a-time), or <strong className="text-foreground">Autopilot</strong> (continuous)</li>
+              <li>Type messages in the chat &mdash; they write to <code className="text-xs bg-muted px-1 rounded">.agent/comms/from_human.md</code></li>
+              <li>Watch the context gauge fill as the agent works</li>
+              <li>When approaching limits, use <strong className="text-foreground">Bridge Save</strong> to preserve state for the next session</li>
             </ol>
           </section>
 
           <section>
-            <h3 className="font-bold text-base mb-2">File Comms</h3>
-            <p className="text-muted-foreground">
-              Messages in the chat panel read/write to <code className="text-xs bg-muted px-1 rounded">.agent/comms/</code> files:
-            </p>
-            <ul className="list-disc list-inside space-y-1 text-muted-foreground mt-1">
-              <li><code className="text-xs bg-muted px-1 rounded">from_human.md</code> - Your messages to the agent</li>
-              <li><code className="text-xs bg-muted px-1 rounded">to_human.md</code> - Agent's messages to you</li>
-              <li><code className="text-xs bg-muted px-1 rounded">control.md</code> - Session mode (idle/continue/autopilot)</li>
+            <h3 className="font-bold text-base mb-2">Page Layout</h3>
+            <ul className="list-disc list-inside space-y-1 text-muted-foreground">
+              <li><strong className="text-foreground">Top bar</strong> &mdash; Back to AutoForge, model selector, panel toggles, theme</li>
+              <li><strong className="text-foreground">Context Gauge</strong> &mdash; Color-coded bar showing token usage vs model limit</li>
+              <li><strong className="text-foreground">Left sidebar</strong> &mdash; Project list &mdash; click to load a project's DunkStack context</li>
+              <li><strong className="text-foreground">Center</strong> &mdash; Walkie-talkie chat &mdash; your messages go to agent, agent replies appear here</li>
+              <li><strong className="text-foreground">Right panel</strong> &mdash; Safety thresholds + Session control (Idle/Continue/Autopilot) + Bridge Save</li>
+            </ul>
+          </section>
+
+          <section>
+            <h3 className="font-bold text-base mb-2">Session Modes</h3>
+            <ul className="list-disc list-inside space-y-1 text-muted-foreground">
+              <li><strong className="text-foreground">Idle</strong> &mdash; Agent waits after each response. You review and decide next step.</li>
+              <li><strong className="text-foreground">Continue</strong> &mdash; Agent completes one task then pauses for your input.</li>
+              <li><strong className="text-foreground">Autopilot</strong> &mdash; Agent runs continuously until context limit or completion.</li>
             </ul>
           </section>
 
           <section>
             <h3 className="font-bold text-base mb-2">Context Safety</h3>
-            <p className="text-muted-foreground">
-              The gauge tracks token usage. When thresholds are crossed:
-            </p>
-            <ul className="list-disc list-inside space-y-1 text-muted-foreground mt-1">
-              <li><strong className="text-orange-400">WARNING (45%)</strong> - Agent notified to prepare</li>
-              <li><strong className="text-red-500">HANDOFF (47.5%)</strong> - Stop coding, write handoff file</li>
-              <li><strong className="text-red-600">HARD STOP (50%)</strong> - Session terminates</li>
+            <ul className="list-disc list-inside space-y-1 text-muted-foreground">
+              <li><strong className="text-emerald-400">Green (OK)</strong> &mdash; Under 45% &mdash; normal operation</li>
+              <li><strong className="text-orange-400">Orange (WARNING at 45%)</strong> &mdash; Agent starts wrapping up current work</li>
+              <li><strong className="text-red-500">Red (HANDOFF at 47.5%)</strong> &mdash; Agent stops coding, writes handoff notes</li>
+              <li><strong className="text-red-700">Dark Red (HARD STOP at 50%)</strong> &mdash; Session terminates to prevent data loss</li>
             </ul>
+            <p className="text-muted-foreground mt-2">
+              Use <strong className="text-foreground">Bridge Save</strong> before hitting limits to transfer state to a new session.
+            </p>
           </section>
 
-          <section>
-            <h3 className="font-bold text-base mb-2">Mode</h3>
-            <p className="text-muted-foreground">
-              <strong className="text-emerald-400">Subscription</strong>: Uses CLAUDE.md, estimated tokens, compaction occurs.
-              <br />
-              <strong className="text-blue-400">API</strong>: Direct API calls, exact token tracking, no compaction.
-            </p>
-          </section>
+          <p className="text-xs text-muted-foreground/60 pt-2 border-t border-border/50">
+            Press <kbd className="px-1.5 py-0.5 bg-muted rounded text-[10px] font-mono">Esc</kbd> to close this guide
+          </p>
         </div>
       </div>
     </div>

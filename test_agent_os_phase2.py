@@ -147,6 +147,16 @@ class TestIntake:
         assert "project managers" in combined
         assert combined.count("\n") == 2  # Three lines, two newlines
 
+    def test_prompts_handle_braces_in_input(self) -> None:
+        """Prompts don't crash when user input contains { or } characters."""
+        intake = AgentOSIntake()
+        tricky_input = 'I want to build a tool that formats {name: "value"} JSON objects'
+        # Should not raise KeyError
+        prompt = intake.get_classification_prompt(tricky_input)
+        assert tricky_input in prompt
+        prompt = intake.get_extraction_prompt(tricky_input)
+        assert tricky_input in prompt
+
 
 # ── AgentOSProduct ───────────────────────────────────────────────────
 

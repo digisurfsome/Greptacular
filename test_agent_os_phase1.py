@@ -162,6 +162,39 @@ class TestFileUtils:
         assert utils.read_product_file("nope.md") is None
         assert utils.read_spec_file("nope.md") is None
 
+    def test_path_traversal_absolute_stripped(self, tmp_path: Path) -> None:
+        """Absolute paths in filenames are sanitized to just the filename."""
+        utils = AgentOSFileUtils(tmp_path, global_standards_dir=tmp_path / "global_std")
+        # /etc/passwd should be sanitized to just "passwd" in the safe directory
+        path = utils.write_product_file("/etc/passwd", "safe content")
+        assert path.name == "passwd"
+        assert ".agent/product" in str(path)
+        assert "/etc/" not in str(path)
+
+    def test_path_traversal_dotdot_stripped(self, tmp_path: Path) -> None:
+        """../ components are stripped from filenames."""
+        utils = AgentOSFileUtils(tmp_path, global_standards_dir=tmp_path / "global_std")
+        # ../../etc/passwd should be sanitized to just "passwd"
+        path = utils.write_product_file("../../etc/passwd", "safe content")
+        assert path.name == "passwd"
+        assert ".agent/product" in str(path)
+        assert "/etc/" not in str(path)
+
+    def test_path_traversal_backslash_blocked(self, tmp_path: Path) -> None:
+        """Backslash path traversal is also handled."""
+        utils = AgentOSFileUtils(tmp_path, global_standards_dir=tmp_path / "global_std")
+        path = utils.write_spec_file("..\\..\\etc\\passwd", "safe")
+        assert path.name == "passwd"
+        assert ".agent/specs" in str(path)
+
+    def test_empty_filename_rejected(self, tmp_path: Path) -> None:
+        """Empty filenames are rejected."""
+        utils = AgentOSFileUtils(tmp_path, global_standards_dir=tmp_path / "global_std")
+        with pytest.raises(ValueError, match="Invalid filename"):
+            utils.write_product_file("", "content")
+        with pytest.raises(ValueError, match="Invalid filename"):
+            utils.write_product_file(".", "content")
+
 
 # ── AgentOSStandards ─────────────────────────────────────────────────
 

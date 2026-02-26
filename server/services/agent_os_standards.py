@@ -362,7 +362,7 @@ class AgentOSStandards:
                 elif "django" in reqs:
                     inferred["tech_backend"] = "Django"
                 elif "flask" in reqs:
-                    inferred["tech_backend"] = "Express"  # closest match from options
+                    inferred["tech_backend"] = "Flask"
                 if "sqlalchemy" in reqs:
                     inferred["tech_database"] = "SQLite"
                 elif "psycopg" in reqs:

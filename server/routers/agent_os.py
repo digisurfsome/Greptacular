@@ -24,6 +24,8 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
+from ..services.agent_os_codebase import AgentOSCodebaseAnalyzer
+from ..services.agent_os_expand import AgentOSExpand
 from ..services.agent_os_features import AgentOSFeatures
 from ..services.agent_os_file_utils import AgentOSFileUtils
 from ..services.agent_os_handoff import AgentOSHandoff
@@ -102,6 +104,14 @@ class PasteFileRequest(BaseModel):
 
 class TagFileRequest(BaseModel):
     tag: str  # "standards" | "product" | "spec" | "reference" | "intake"
+
+
+class ExpandRequest(BaseModel):
+    description: str  # Natural language feature description
+
+
+class ExpandAddRequest(BaseModel):
+    features: list[dict]  # Validated features to add
 
 
 # ============================================================================
@@ -532,6 +542,143 @@ async def process_intake(project_name: str):
     dock = _get_intake_dock(project_name, project_dir)
     result = dock.process_files()
     return result
+
+
+# ============================================================================
+# Expand Endpoints (Phase 7)
+# ============================================================================
+
+
+def _get_expand_service(project_name: str, project_dir: Path) -> AgentOSExpand:
+    """Create an expand service instance with all dependencies."""
+    fu = _get_file_utils(project_dir)
+    features = _get_features_service(project_name, project_dir)
+    specs_service = AgentOSSpecs(project_dir, fu, features, mechanism=None)
+    handoff = AgentOSHandoff(project_dir, fu, features, specs_service)
+    return AgentOSExpand(project_dir, fu, features, specs_service, handoff, config={})
+
+
+@router.post("/expand/{project_name}/analyze")
+async def analyze_expansion(project_name: str, body: ExpandRequest):
+    """Analyze user input to extract and validate new features."""
+    project_dir = _resolve_project(project_name)
+    expand = _get_expand_service(project_name, project_dir)
+    prompt = expand.get_expansion_prompt(body.description)
+    return {"prompt": prompt, "description": body.description}
+
+
+@router.post("/expand/{project_name}/add")
+async def add_expanded_features(project_name: str, body: ExpandAddRequest):
+    """Add validated features, update deps, return summary."""
+    project_dir = _resolve_project(project_name)
+    expand = _get_expand_service(project_name, project_dir)
+
+    # Validate
+    validation = expand.process_expansion(body.features)
+    if not validation["added"]:
+        return {
+            "status": "no_features_added",
+            "conflicts": validation["conflicts"],
+            "warnings": validation["warnings"],
+        }
+
+    # Add
+    added = expand.add_features(validation["added"])
+
+    # Update dependency graph
+    try:
+        graph = expand.update_dependency_graph()
+    except Exception as e:
+        graph = {"error": str(e)}
+
+    # Recalculate build order
+    try:
+        build_order = expand.recalculate_build_order()
+    except Exception as e:
+        build_order = []
+        logger.warning("Could not recalculate build order: %s", e)
+
+    return {
+        "status": "ok",
+        "added": added,
+        "conflicts": validation["conflicts"],
+        "warnings": validation["warnings"],
+        "graph": graph,
+        "new_build_order": build_order,
+    }
+
+
+@router.get("/expand/{project_name}/summary")
+async def get_expansion_summary(project_name: str):
+    """Get summary of last expansion."""
+    project_dir = _resolve_project(project_name)
+    expand = _get_expand_service(project_name, project_dir)
+    return {"summary": expand.get_expansion_summary()}
+
+
+# ============================================================================
+# Codebase Reality Engine Endpoints (Phase 7)
+# ============================================================================
+
+
+@router.post("/cre/{project_name}/scan")
+async def scan_codebase(project_name: str):
+    """Trigger a full codebase scan."""
+    project_dir = _resolve_project(project_name)
+    fu = _get_file_utils(project_dir)
+    analyzer = AgentOSCodebaseAnalyzer(project_dir, fu)
+    analysis = analyzer.scan_codebase()
+    return {"analysis": analysis}
+
+
+@router.get("/cre/{project_name}/analysis")
+async def get_cre_analysis(project_name: str):
+    """Get scan results (runs scan if not cached)."""
+    project_dir = _resolve_project(project_name)
+    fu = _get_file_utils(project_dir)
+    analyzer = AgentOSCodebaseAnalyzer(project_dir, fu)
+    analysis = analyzer.scan_codebase()
+    return {"analysis": analysis}
+
+
+@router.post("/cre/{project_name}/apply-standards")
+async def apply_inferred_standards(project_name: str):
+    """Generate and write inferred standards from codebase scan."""
+    project_dir = _resolve_project(project_name)
+    fu = _get_file_utils(project_dir)
+    analyzer = AgentOSCodebaseAnalyzer(project_dir, fu)
+    prompt = analyzer.get_standards_inference_prompt()
+    return {"prompt": prompt, "message": "Send this prompt to Claude, then POST the result back."}
+
+
+@router.post("/cre/{project_name}/apply-product")
+async def apply_inferred_product(project_name: str):
+    """Generate and write inferred product layer from codebase scan."""
+    project_dir = _resolve_project(project_name)
+    fu = _get_file_utils(project_dir)
+    analyzer = AgentOSCodebaseAnalyzer(project_dir, fu)
+    prompt = analyzer.get_product_inference_prompt()
+    return {"prompt": prompt, "message": "Send this prompt to Claude, then POST the result back."}
+
+
+@router.post("/cre/{project_name}/apply-features")
+async def apply_inferred_features(project_name: str):
+    """Generate and write inferred features from codebase scan."""
+    project_dir = _resolve_project(project_name)
+    fu = _get_file_utils(project_dir)
+    analyzer = AgentOSCodebaseAnalyzer(project_dir, fu)
+    prompt = analyzer.get_feature_inference_prompt()
+    return {"prompt": prompt, "message": "Send this prompt to Claude, then POST the result back."}
+
+
+@router.get("/cre/{project_name}/summary")
+async def get_cre_summary(project_name: str):
+    """Get human-readable scan summary."""
+    project_dir = _resolve_project(project_name)
+    fu = _get_file_utils(project_dir)
+    analyzer = AgentOSCodebaseAnalyzer(project_dir, fu)
+    analyzer.scan_codebase()
+    return {"summary": analyzer.get_analysis_summary()}
 
 
 # ============================================================================

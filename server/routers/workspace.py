@@ -1190,7 +1190,15 @@ async def workspace_chat_websocket(websocket: WebSocket):
 
                             # The session's _run() loop starts automatically via
                             # manager.create_session() and broadcasts events to
-                            # all attached viewers.
+                            # all attached viewers.  Replay any events that were
+                            # emitted between task start and viewer attachment.
+                            early_events = await bg_session.get_events_since(0)
+                            if early_events:
+                                replay_events = [{**ev, "seq": seq} for seq, ev in early_events]
+                                await websocket.send_json({
+                                    "type": "replay",
+                                    "events": replay_events,
+                                })
 
                     except Exception as e:
                         logger.exception("Error starting/attaching workspace session")
@@ -1429,7 +1437,7 @@ async def get_background_session_events(session_id: str, since_seq: int = 0, lim
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     events = await session.get_events_since(since_seq)
-    if limit:
+    if limit > 0:
         events = events[:limit]
     return {
         "events": [{**ev, "seq": seq} for seq, ev in events],

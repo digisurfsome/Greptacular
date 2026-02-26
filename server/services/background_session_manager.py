@@ -216,6 +216,17 @@ class OutputBuffer:
 
     def _persist_batch_sync(self, batch: list[tuple[int, dict[str, Any]]]) -> None:
         """Synchronous batch insert into SQLite (runs in a thread)."""
+        # Skip persistence if conversation_id is not yet known (new conversations
+        # set it when the conversation_created event fires).  The events remain
+        # in the in-memory ring buffer for replay and will be persisted once the
+        # conversation_id is available on the next flush cycle.
+        if self._conversation_id is None:
+            logger.debug(
+                "Skipping persistence of %d events for session %s (conversation_id not yet set)",
+                len(batch), self._session_id,
+            )
+            return
+
         db_session = get_db_session()
         try:
             for seq, event in batch:
@@ -808,7 +819,7 @@ class BackgroundSessionManager:
         await session.start()
 
         logger.info(
-            "Created background session %s for conversation %d (provider=%s, model=%s)",
+            "Created background session %s for conversation %s (provider=%s, model=%s)",
             session_id, conversation_id, provider, model,
         )
         return session

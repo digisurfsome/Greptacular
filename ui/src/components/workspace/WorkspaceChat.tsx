@@ -317,10 +317,13 @@ export function WorkspaceChat({
     onStreamingChange?.(isLoading)
   }, [isLoading, onStreamingChange])
 
-  // Notify parent when background session ID changes (for pane persistence)
+  // Notify parent when background session ID changes (for pane persistence).
+  // Intentionally omit onSessionAttached from deps to avoid re-render loops
+  // when the parent passes an unstable callback reference (inline arrow).
   useEffect(() => {
     onSessionAttached?.(attachedSessionId)
-  }, [attachedSessionId, onSessionAttached])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attachedSessionId])
 
   // Compute API token totals from the token log entries.
   // For input/output/cost: sum across all turns (billing-relevant totals).

@@ -1324,7 +1324,7 @@ async def workspace_chat_websocket(websocket: WebSocket):
 
                         # Create a new background session
                         bg_session = await manager.create_session(
-                            conversation_id=conversation_id if conversation_id else 0,
+                            conversation_id=conversation_id,
                             provider=provider or "claude",
                             model=model or "opus",
                             working_directory=working_directory,

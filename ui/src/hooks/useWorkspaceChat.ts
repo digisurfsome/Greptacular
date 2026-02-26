@@ -585,6 +585,17 @@ export function useWorkspaceChat({
                       timestamp: new Date(),
                     },
                   ]);
+                } else if (eventType === "error" || eventType === "session_failed") {
+                  const errorContent = (event.content as string) || (event.error as string) || "Unknown error";
+                  setMessages((prev) => [
+                    ...prev,
+                    {
+                      id: generateId(),
+                      role: "system",
+                      content: eventType === "session_failed" ? `Session failed: ${errorContent}` : errorContent,
+                      timestamp: new Date(),
+                    },
+                  ]);
                 }
               }
             }

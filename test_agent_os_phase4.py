@@ -376,20 +376,28 @@ class TestHandoff:
         assert "features.db" in result["missing"]
 
     def test_assemble_handoff_complete(self, handoff_service: AgentOSHandoff, tmp_project: Path) -> None:
-        """With all pieces present, handoff reports ready."""
+        """With all pieces present, handoff reports ready. Primer is auto-generated."""
         # Populate DB
         db_path = tmp_project / ".autoforge" / "features.db"
         handoff_service.populate_features_db(db_path=db_path)
         # Generate scope boundary
         handoff_service.generate_scope_boundary()
-        # Generate context primer
-        handoff_service.generate_context_primer()
+        # NOTE: context primer is NOT manually generated — assemble does it
 
         result = handoff_service.assemble_handoff_package()
         assert result["ready"] is True
         assert result["missing"] == []
         assert result["feature_count"] == 4
         assert result["estimated_sessions"] == 2  # ceil(4/3) = 2
+
+        # Verify context primer was auto-generated
+        primer_path = tmp_project / ".agent" / "knowledge" / "context-primer.md"
+        assert primer_path.exists()
+        primer_content = primer_path.read_text(encoding="utf-8")
+        assert "## Standards Summary" in primer_content
+        assert "## Product Vision" in primer_content
+        assert "## Feature Overview" in primer_content
+        assert "User Auth" in primer_content
 
     def test_build_plan_summary_readable(self, handoff_service: AgentOSHandoff) -> None:
         """Build plan summary is non-empty human-readable text."""
@@ -494,15 +502,19 @@ class TestHandoff:
         content = path.read_text(encoding="utf-8")
         assert "No mechanism decisions recorded" in content
 
-    def test_assemble_handoff_reports_missing_primer(self, handoff_service: AgentOSHandoff, tmp_project: Path) -> None:
-        """Handoff reports missing context primer when not generated."""
-        db_path = tmp_project / ".autoforge" / "features.db"
-        handoff_service.populate_features_db(db_path=db_path)
-        handoff_service.generate_scope_boundary()
-        # Don't generate context primer
-        result = handoff_service.assemble_handoff_package()
+    def test_assemble_handoff_skips_primer_when_specs_missing(self, tmp_project: Path, file_utils: AgentOSFileUtils, features_service: AgentOSFeatures) -> None:
+        """When specs are missing, assemble can't generate the primer."""
+        mech = AgentOSMechanism({})
+        # No specs generated — specs_exist() will return False
+        specs = AgentOSSpecs(tmp_project, file_utils, features_service, mech)
+        handoff = AgentOSHandoff(tmp_project, file_utils, features_service, specs, mechanism=mech)
+        result = handoff.assemble_handoff_package()
         assert result["ready"] is False
+        assert "spec files" in result["missing"]
         assert "context-primer.md" in result["missing"]
+        # Primer file should NOT exist
+        primer_path = tmp_project / ".agent" / "knowledge" / "context-primer.md"
+        assert not primer_path.exists()
 
     def test_handoff_status(self, handoff_service: AgentOSHandoff, tmp_project: Path) -> None:
         """Handoff status tracks all steps."""

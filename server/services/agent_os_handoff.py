@@ -401,10 +401,30 @@ class AgentOSHandoff:
         logger.info("Generated context primer at %s", path)
         return path
 
+    def _generate_context_primer_if_ready(self, current_missing: list[str]) -> Optional[Path]:
+        """Generate the context primer if upstream layers are available.
+
+        Called by assemble_handoff_package(). Only generates if standards,
+        product, and specs exist — the primer can't be assembled without them.
+        Returns the path if generated, None if upstream layers are missing.
+        """
+        # The primer needs content from all 3 layers to be meaningful.
+        # If any upstream layer is missing, we can't generate a useful primer.
+        upstream_missing = {"standards files", "product documents", "spec files"}
+        if upstream_missing & set(current_missing):
+            return None
+
+        return self.generate_context_primer()
+
     # ── Handoff assembly ─────────────────────────────────────────────
 
     def assemble_handoff_package(self) -> dict[str, Any]:
-        """Verify all pieces exist and return handoff status."""
+        """Assemble all handoff artifacts and verify readiness.
+
+        This is the final stage that bridges Agent OS → build agent.
+        It actively generates the context primer (the build agent's
+        first-read briefing doc) from all 3 layers + decisions log.
+        """
         missing: list[str] = []
 
         # Check standards
@@ -428,9 +448,10 @@ class AgentOSHandoff:
         if not scope_path.is_file():
             missing.append("scope_boundary.md")
 
-        # Check context primer
-        primer_path = self.project_dir / ".agent" / "knowledge" / "context-primer.md"
-        if not primer_path.is_file():
+        # Generate context primer — the build agent's briefing doc
+        # Pulls summaries from all 3 layers + decisions log
+        primer_path = self._generate_context_primer_if_ready(missing)
+        if primer_path is None:
             missing.append("context-primer.md")
 
         feature_count = len(self.features.get_feature_list())

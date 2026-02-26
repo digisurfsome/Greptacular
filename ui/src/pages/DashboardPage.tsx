@@ -15,7 +15,7 @@
  * WebSocket connection managed by the WorkspaceChat component.
  */
 
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef, Fragment } from 'react'
 import { WorkspaceSidebar } from '../components/workspace/WorkspaceSidebar'
 import { WorkspaceChat } from '../components/workspace/WorkspaceChat'
 import { RepoSelector } from '../components/workspace/RepoSelector'
@@ -384,78 +384,75 @@ export function DashboardPage(): React.JSX.Element {
           onEffortChange={setPendingEffort}
         />
 
-        {/* Panes */}
+        {/* Panes — always mounted, toggled via CSS hidden to preserve session state */}
         <div className="flex-1 flex overflow-hidden">
           {panes.map((pane, idx) => {
-            if (pane.collapsed) {
-              return (
-                <CollapsedPaneBar
-                  key={pane.id}
-                  label={pane.label}
-                  provider={pane.provider}
-                  onClick={() => updatePane(pane.id, { collapsed: false })}
-                />
-              )
-            }
-
             const isLast = idx === panes.length - 1
 
             return (
-              <div
-                key={pane.id}
-                className={`flex-1 min-w-0 flex flex-col overflow-hidden relative ${!isLast ? 'border-r border-border' : ''}`}
-              >
-                {/* Pane header with provider selector + collapse */}
-                <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-card shrink-0">
-                  <ProviderSelector
-                    current={pane.provider}
-                    onChange={(p) => handlePaneProviderChange(pane.id, p)}
+              <Fragment key={pane.id}>
+                {pane.collapsed && (
+                  <CollapsedPaneBar
+                    label={pane.label}
+                    provider={pane.provider}
+                    onClick={() => updatePane(pane.id, { collapsed: false })}
                   />
-                  <span className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider flex-1 truncate">
-                    {pane.label}
+                )}
+                <div
+                  className={`flex-1 min-w-0 flex flex-col overflow-hidden relative ${!isLast ? 'border-r border-border' : ''}${pane.collapsed ? ' hidden' : ''}`}
+                >
+                  {/* Pane header with provider selector + collapse */}
+                  <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-card shrink-0">
+                    <ProviderSelector
+                      current={pane.provider}
+                      onChange={(p) => handlePaneProviderChange(pane.id, p)}
+                    />
+                    <span className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider flex-1 truncate">
+                      {pane.label}
+                      {pane.conversationId && (
+                        <span className="ml-1 text-muted-foreground/50">#{pane.conversationId}</span>
+                      )}
+                    </span>
+
+                    {/* Clear pane button */}
                     {pane.conversationId && (
-                      <span className="ml-1 text-muted-foreground/50">#{pane.conversationId}</span>
+                      <button
+                        onClick={() => updatePane(pane.id, { conversationId: null })}
+                        className="p-0.5 text-muted-foreground/40 hover:text-muted-foreground transition-colors"
+                        title="Clear this pane"
+                      >
+                        <X size={12} />
+                      </button>
                     )}
-                  </span>
 
-                  {/* Clear pane button */}
-                  {pane.conversationId && (
-                    <button
-                      onClick={() => updatePane(pane.id, { conversationId: null })}
-                      className="p-0.5 text-muted-foreground/40 hover:text-muted-foreground transition-colors"
-                      title="Clear this pane"
-                    >
-                      <X size={12} />
-                    </button>
-                  )}
+                    {/* Collapse button */}
+                    {panes.length > 1 && (
+                      <button
+                        onClick={() => updatePane(pane.id, { collapsed: true })}
+                        className="p-0.5 text-muted-foreground/40 hover:text-muted-foreground transition-colors"
+                        title={`Collapse ${pane.label}`}
+                      >
+                        {idx === panes.length - 1 ? <ChevronsRight size={14} /> : <ChevronsLeft size={14} />}
+                      </button>
+                    )}
+                  </div>
 
-                  {/* Collapse button */}
-                  {panes.length > 1 && (
-                    <button
-                      onClick={() => updatePane(pane.id, { collapsed: true })}
-                      className="p-0.5 text-muted-foreground/40 hover:text-muted-foreground transition-colors"
-                      title={`Collapse ${pane.label}`}
-                    >
-                      {idx === panes.length - 1 ? <ChevronsRight size={14} /> : <ChevronsLeft size={14} />}
-                    </button>
-                  )}
+                  {/* Chat area */}
+                  <WorkspaceChat
+                    conversationId={pane.conversationId}
+                    onConversationCreated={(id) => handlePaneConversationCreated(pane.id, id)}
+                    onNewConversation={() => updatePane(pane.id, { conversationId: null })}
+                    workingDirectory={workingDirectory}
+                    panelLabel={`${pane.provider.toUpperCase()} SESSION`}
+                    provider={pane.provider}
+                    pendingModel={idx === 0 ? pendingModel : undefined}
+                    pendingContextMode={idx === 0 ? pendingContextMode : undefined}
+                    pendingEffort={idx === 0 ? pendingEffort : undefined}
+                    newChatKey={idx === 0 ? newChatKey : undefined}
+                    onStreamingChange={(streaming) => handlePaneStreamingChange(pane.id, streaming)}
+                  />
                 </div>
-
-                {/* Chat area */}
-                <WorkspaceChat
-                  conversationId={pane.conversationId}
-                  onConversationCreated={(id) => handlePaneConversationCreated(pane.id, id)}
-                  onNewConversation={() => updatePane(pane.id, { conversationId: null })}
-                  workingDirectory={workingDirectory}
-                  panelLabel={`${pane.provider.toUpperCase()} SESSION`}
-                  provider={pane.provider}
-                  pendingModel={idx === 0 ? pendingModel : undefined}
-                  pendingContextMode={idx === 0 ? pendingContextMode : undefined}
-                  pendingEffort={idx === 0 ? pendingEffort : undefined}
-                  newChatKey={idx === 0 ? newChatKey : undefined}
-                  onStreamingChange={(streaming) => handlePaneStreamingChange(pane.id, streaming)}
-                />
-              </div>
+              </Fragment>
             )
           })}
         </div>

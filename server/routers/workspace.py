@@ -7,7 +7,6 @@ Unlike the assistant (read-only, per-project), the workspace is a global
 read/write agent with a 1M-token context window.
 """
 
-import asyncio
 import json
 import logging
 from typing import Optional
@@ -1193,7 +1192,7 @@ async def workspace_chat_websocket(websocket: WebSocket):
                                 await manager.detach_viewer(attached_session_id, websocket)
 
                             attached_session_id = bg_session.session_id
-                            await manager.attach_viewer(bg_session.session_id, websocket)
+                            current_seq = await manager.attach_viewer(bg_session.session_id, websocket)
 
                             await websocket.send_json({
                                 "type": "session_created",
@@ -1201,17 +1200,21 @@ async def workspace_chat_websocket(websocket: WebSocket):
                                 "conversation_id": bg_session.conversation_id,
                             })
 
-                            # The session's _run() loop starts automatically via
-                            # manager.create_session() and broadcasts events to
-                            # all attached viewers.  Replay any events that were
-                            # emitted between task start and viewer attachment.
+                            # Replay events emitted between task start and viewer
+                            # attachment.  Only include events up to current_seq to
+                            # avoid duplicating events already being broadcast live.
                             early_events = await bg_session.get_events_since(0)
                             if early_events:
-                                replay_events = [{**ev, "seq": seq} for seq, ev in early_events]
-                                await websocket.send_json({
-                                    "type": "replay",
-                                    "events": replay_events,
-                                })
+                                replay_events = [
+                                    {**ev, "seq": seq}
+                                    for seq, ev in early_events
+                                    if seq <= current_seq
+                                ]
+                                if replay_events:
+                                    await websocket.send_json({
+                                        "type": "replay",
+                                        "events": replay_events,
+                                    })
 
                     except Exception as e:
                         logger.exception("Error starting/attaching workspace session")

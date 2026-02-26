@@ -180,8 +180,16 @@ class OutputBuffer:
         """Force-flush all pending events to SQLite.
 
         Called at session completion to ensure no events are lost.
+        Skips flushing if conversation_id is not yet set (events remain
+        in _pending_persist for a future flush once the ID is available).
         """
         async with self._lock:
+            if self._conversation_id is None:
+                logger.debug(
+                    "Skipping flush for session %s (conversation_id not yet set, %d events pending)",
+                    self._session_id, len(self._pending_persist),
+                )
+                return
             batch = list(self._pending_persist)
             self._pending_persist.clear()
             self._last_flush_time = time.monotonic()
@@ -192,6 +200,11 @@ class OutputBuffer:
     async def _maybe_flush(self) -> None:
         """Flush pending events if batch size or time threshold is met."""
         async with self._lock:
+            # Don't flush if conversation_id is not yet set — events stay in
+            # _pending_persist until the conversation is created, preventing
+            # permanent data loss.
+            if self._conversation_id is None:
+                return
             should_flush = (
                 len(self._pending_persist) >= PERSIST_BATCH_SIZE
                 or (time.monotonic() - self._last_flush_time) >= PERSIST_INTERVAL_SECONDS
@@ -442,23 +455,24 @@ class BackgroundSession:
         self.state = SessionState.CANCELLED
         self.completed_at = datetime.now(timezone.utc)
 
-        # Cancel the background task.
         if self._task and not self._task.done():
+            # Cancel the background task — its finally block will close the
+            # chat session and flush the output buffer, so we must NOT close
+            # the chat session again here (double-close bug).
             self._task.cancel()
             try:
                 await self._task
             except asyncio.CancelledError:
                 pass
-
-        # Close the underlying chat session.
-        if self._chat_session:
-            try:
-                await self._chat_session.close()
-            except Exception as e:
-                logger.warning("Error closing chat session during cancel: %s", e)
-
-        # Flush remaining events.
-        await self._output_buffer.flush()
+        else:
+            # Task was never started or already finished — close directly
+            # since _run()'s finally block won't run.
+            if self._chat_session:
+                try:
+                    await self._chat_session.close()
+                except Exception as e:
+                    logger.warning("Error closing chat session during cancel: %s", e)
+            await self._output_buffer.flush()
 
         # Notify viewers of cancellation.
         cancel_event: dict[str, Any] = {"type": "session_cancelled", "session_id": self.session_id}

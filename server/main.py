@@ -54,6 +54,7 @@ from .routers import (
 from .schemas import SetupStatus
 from .services.agent_os_session import cleanup_all_agent_os_sessions
 from .services.assistant_chat_session import cleanup_all_sessions as cleanup_assistant_sessions
+from .services.background_session_manager import cleanup_background_sessions
 from .services.chat_constants import ROOT_DIR
 from .services.ci_monitor import cleanup_all_monitors
 from .services.design_guide_session import cleanup_all_design_guide_sessions
@@ -66,7 +67,6 @@ from .services.process_manager import cleanup_all_managers, cleanup_orphaned_loc
 from .services.scheduler_service import cleanup_scheduler, get_scheduler
 from .services.swarm_orchestrator import cleanup_all_swarms
 from .services.terminal_manager import cleanup_all_terminals
-from .services.background_session_manager import cleanup_background_sessions
 from .services.workspace_chat_session import cleanup_all_workspace_sessions
 from .websocket import project_websocket
 
@@ -96,8 +96,8 @@ async def lifespan(app: FastAPI):
     await cleanup_all_expand_sessions()
     await cleanup_all_terminals()
     await cleanup_all_devservers()
-    await cleanup_all_workspace_sessions()
     await cleanup_background_sessions()
+    await cleanup_all_workspace_sessions()
     await cleanup_all_swarms()
     await cleanup_all_monitors()
     cleanup_all_agent_os_sessions()

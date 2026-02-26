@@ -675,6 +675,23 @@ export async function getQAScreenshots(projectName: string): Promise<{ screensho
 // Workspace Chat API
 // ============================================================================
 
+/** Workspace provider definition from the backend WORKSPACE_PROVIDERS dict. */
+export interface WorkspaceProviderDef {
+  name: string
+  description: string
+  cli_command: string
+  install_command: string
+  auth_env_var: string
+  supports_subscription: boolean
+  models: { id: string; name: string }[]
+  default_model: string
+}
+
+/** Fetch the workspace providers dict (keyed by provider id). */
+export async function fetchWorkspaceProviders(): Promise<Record<string, WorkspaceProviderDef>> {
+  return fetchJSON('/workspace/providers')
+}
+
 export async function listWorkspaceConversations(): Promise<WorkspaceConversation[]> {
   return fetchJSON('/workspace/conversations')
 }

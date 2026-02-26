@@ -26,7 +26,7 @@ import type { UsageSummary, CostZone, CalibrationData } from '@/lib/api'
 interface UsageDashboardProps {
   conversationId: number | null
   contextMode: '1m' | '200k'
-  model?: 'opus' | 'sonnet'
+  model?: string
 }
 
 function formatTokens(tokens: number): string {

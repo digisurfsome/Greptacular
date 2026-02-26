@@ -229,7 +229,9 @@ export function WorkspaceSidebar({
   const handleCreateNamedChat = useCallback(() => {
     if (!namingCategory) return
     const title = newChatName.trim() || undefined
-    const preset = SIDEBAR_MODEL_PRESETS[modelPresetIndex]
+    const safeIdx = Math.min(modelPresetIndex, SIDEBAR_MODEL_PRESETS.length - 1)
+    const preset = SIDEBAR_MODEL_PRESETS[safeIdx]
+    if (!preset) return
     // Only pass effort for Claude 1M context models; others don't support it
     const effort = (isClaudeProvider && preset.context === '1m') ? effortLevel : 'high'
     createConversationMut.mutate({
@@ -723,19 +725,37 @@ export function WorkspaceSidebar({
                       onMouseEnter={() => handleMouseEnter(conv.id)}
                       onMouseLeave={handleMouseLeave}
                     >
-                      {/* Model+context badge — top-right corner, clickable to cycle O-1M -> O-200K -> S-200K -> O-1M */}
+                      {/* Model+context badge — top-right corner. Claude: clickable to cycle. Others: static label. */}
                       {(() => {
                         const model = conv.model ?? 'opus'
                         const ctx = conv.context_mode ?? '1m'
+                        const convProvider = conv.provider ?? 'claude'
+
+                        // Non-Claude providers: static badge showing model ID
+                        if (convProvider !== 'claude') {
+                          const badgeColor = convProvider === 'codex'
+                            ? 'bg-emerald-600 text-white border-emerald-400'
+                            : 'bg-violet-600 text-white border-violet-400'
+                          return (
+                            <span
+                              className={`absolute -top-1 -right-1 z-10 text-[9px] font-mono font-extrabold px-1.5 py-0.5 rounded-md border shadow-sm ${badgeColor}`}
+                              title={`${convProvider}: ${model}`}
+                            >
+                              {model}
+                            </span>
+                          )
+                        }
+
+                        // Claude: clickable cycling badge
                         const abbr = model === 'sonnet' ? 'S' : 'O'
                         const badgeLabel = `${abbr}\u00B7${ctx === '1m' ? '1M' : '200K'}`
 
                         // Cycle: O-1M -> S-1M -> O-200K -> O-1M
                         const cycleNext = () => {
-                          if (model === 'opus' && ctx === '1m') return { model: 'sonnet' as const, context_mode: '1m' as const }
-                          if (model === 'sonnet' && ctx === '1m') return { model: 'opus' as const, context_mode: '200k' as const }
-                          if (model === 'opus' && ctx === '200k') return { model: 'opus' as const, context_mode: '1m' as const }
-                          return { model: 'opus' as const, context_mode: '1m' as const }
+                          if (model === 'opus' && ctx === '1m') return { model: 'sonnet', context_mode: '1m' }
+                          if (model === 'sonnet' && ctx === '1m') return { model: 'opus', context_mode: '200k' }
+                          if (model === 'opus' && ctx === '200k') return { model: 'opus', context_mode: '1m' }
+                          return { model: 'opus', context_mode: '1m' }
                         }
                         const next = cycleNext()
 

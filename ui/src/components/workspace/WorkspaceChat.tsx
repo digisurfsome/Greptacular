@@ -106,7 +106,7 @@ interface WorkspaceChatProps {
    * Model chosen at new-chat creation time (from sidebar dropdown).
    * Only used when conversationId is null to determine model for the new session.
    */
-  pendingModel?: 'opus' | 'sonnet'
+  pendingModel?: string
   /**
    * Context mode chosen at new-chat creation time (from sidebar dropdown).
    * Only used when conversationId is null to determine context mode for the new session.
@@ -410,7 +410,7 @@ export function WorkspaceChat({
     return MODEL_PRESETS.findIndex(
       p => p.model === conversationModel && p.context === conversationContextMode
     )
-  }, [conversationModel, conversationContextMode]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [conversationModel, conversationContextMode, MODEL_PRESETS])
 
   // Sync sessionContextMode from conversation data when switching conversations
   useEffect(() => {

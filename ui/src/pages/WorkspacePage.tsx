@@ -151,28 +151,28 @@ export function WorkspacePage(): React.JSX.Element {
   // Model preset state — shared between sidebar (new chat form) and WorkspaceChat (pill toggle)
   const [modelPresetIndex, setModelPresetIndex] = useState(() => {
     const saved = Number(localStorage.getItem('workspace-model-preset') ?? '0')
-    return saved >= 0 && saved < 3 ? saved : 0
+    return saved >= 0 && saved < 10 ? saved : 0  // generous upper bound; sidebar clamps to actual preset count
   })
   const handleModelPresetChange = useCallback((idx: number) => {
     setModelPresetIndex(idx)
     localStorage.setItem('workspace-model-preset', String(idx))
-    // Also update context mode in localStorage so WorkspaceChat picks it up
-    // Presets: 0=Opus 1M, 1=Sonnet 1M, 2=Opus 200K
-    const contexts = ['1m', '1m', '200k'] as const
-    localStorage.setItem('workspace-context-mode', contexts[idx])
+    // Context mode for Claude presets: 0=Opus 1M, 1=Sonnet 1M, 2=Opus 200K
+    // Non-Claude presets are all '1m'. Fallback to '1m' for out-of-range indices.
+    const claudeContexts: Record<number, string> = { 0: '1m', 1: '1m', 2: '200k' }
+    localStorage.setItem('workspace-context-mode', claudeContexts[idx] ?? '1m')
   }, [])
 
   // Model + context chosen at new-chat creation time (from sidebar dropdown).
   // Stored as pending state, passed to WorkspaceChat for the new session.
   // newChatKey is a counter that increments on every "New Chat" click to ensure
   // state changes even when the same model is selected twice in a row.
-  const [pendingModel, setPendingModel] = useState<'opus' | 'sonnet'>('opus')
+  const [pendingModel, setPendingModel] = useState<string>('opus')
   const [pendingContextMode, setPendingContextMode] = useState<'1m' | '200k'>('200k')
   const [pendingEffort, setPendingEffort] = useState<'low' | 'medium' | 'high'>('high')
   const [newChatKey, setNewChatKey] = useState(0)
 
   const handleNewChat = useCallback((model: string, contextMode: '1m' | '200k', effort: 'low' | 'medium' | 'high' = 'high') => {
-    setPendingModel(model as 'opus' | 'sonnet')
+    setPendingModel(model)
     setPendingContextMode(contextMode)
     setPendingEffort(effort)
     setNewChatKey(k => k + 1)

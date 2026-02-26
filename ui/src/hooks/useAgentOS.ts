@@ -35,6 +35,10 @@ import {
   agentOSListSessions,
   agentOSGetSession,
   agentOSCancelSession,
+  agentOSAddExpandedFeatures,
+  agentOSScanCodebase,
+  agentOSGetCREAnalysis,
+  agentOSGetCRESummary,
   type AgentOSStagedFile,
   type AgentOSReadinessStatus,
   type AgentOSFeatureCreate,
@@ -42,6 +46,8 @@ import {
   type AgentOSGapItem,
   type AgentOSHandoffStatus,
   type AgentOSFileEntry,
+  type AgentOSExpandResult,
+  type AgentOSCREAnalysis,
 } from '@/lib/api'
 
 // Re-export types for consumers
@@ -53,6 +59,8 @@ export type {
   AgentOSGapItem,
   AgentOSHandoffStatus,
   AgentOSFileEntry,
+  AgentOSExpandResult,
+  AgentOSCREAnalysis,
 }
 
 // ============================================================================
@@ -78,6 +86,9 @@ export const agentOSKeys = {
   readiness: (projectName: string) => [...agentOSKeys.all, 'readiness', projectName] as const,
   sessions: () => [...agentOSKeys.all, 'sessions'] as const,
   session: (projectName: string) => [...agentOSKeys.all, 'session', projectName] as const,
+  expand: (projectName: string) => [...agentOSKeys.all, 'expand', projectName] as const,
+  cre: (projectName: string) => [...agentOSKeys.all, 'cre', projectName] as const,
+  creSummary: (projectName: string) => [...agentOSKeys.all, 'cre-summary', projectName] as const,
 }
 
 // ============================================================================
@@ -349,5 +360,53 @@ export function useCancelSession(projectName: string) {
       queryClient.invalidateQueries({ queryKey: agentOSKeys.sessions() })
       queryClient.invalidateQueries({ queryKey: agentOSKeys.session(projectName) })
     },
+  })
+}
+
+// ============================================================================
+// Expand Hooks (Phase 7)
+// ============================================================================
+
+export function useExpandFeatures(projectName: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (features: Record<string, unknown>[]) =>
+      agentOSAddExpandedFeatures(projectName, features),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: agentOSKeys.features(projectName) })
+      queryClient.invalidateQueries({ queryKey: agentOSKeys.buildPlan(projectName) })
+      queryClient.invalidateQueries({ queryKey: agentOSKeys.handoff(projectName) })
+    },
+  })
+}
+
+// ============================================================================
+// CRE Hooks (Phase 7)
+// ============================================================================
+
+export function useScanCodebase(projectName: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => agentOSScanCodebase(projectName),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: agentOSKeys.cre(projectName) })
+      queryClient.invalidateQueries({ queryKey: agentOSKeys.creSummary(projectName) })
+    },
+  })
+}
+
+export function useCREAnalysis(projectName: string) {
+  return useQuery({
+    queryKey: agentOSKeys.cre(projectName),
+    queryFn: () => agentOSGetCREAnalysis(projectName),
+    enabled: !!projectName,
+  })
+}
+
+export function useCRESummary(projectName: string) {
+  return useQuery({
+    queryKey: agentOSKeys.creSummary(projectName),
+    queryFn: () => agentOSGetCRESummary(projectName),
+    enabled: !!projectName,
   })
 }

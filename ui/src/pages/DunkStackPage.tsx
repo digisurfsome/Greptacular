@@ -43,6 +43,7 @@ import { StandardsPanel } from '@/components/appbuilder/StandardsPanel'
 import { ProductPanel } from '@/components/appbuilder/ProductPanel'
 import { SpecCards } from '@/components/appbuilder/SpecCards'
 import { GapAnalysisPanel } from '@/components/appbuilder/GapAnalysisPanel'
+import { ExpandPanel } from '@/components/appbuilder/ExpandPanel'
 import {
   useFeatures,
   useGaps,
@@ -427,6 +428,14 @@ export function DunkStackPage(): React.JSX.Element {
                     gaps={gapsData?.gaps ?? []}
                     onResolveGap={(gapId, resolution) => resolveGap.mutate({ gapId, resolution })}
                     onAutoResolve={() => autoResolveGaps.mutate()}
+                  />
+                )}
+                {(featuresData?.features?.length ?? 0) > 0 && (
+                  <ExpandPanel
+                    projectName={selectedProject}
+                    onExpansionComplete={() => {
+                      // Refresh features data after expansion
+                    }}
                   />
                 )}
               </div>

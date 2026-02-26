@@ -1824,3 +1824,54 @@ export async function agentOSGetSession(projectName: string): Promise<Record<str
 export async function agentOSCancelSession(projectName: string): Promise<{ status: string }> {
   return fetchJSON(`/agent-os/sessions/${encodeURIComponent(projectName)}`, { method: 'DELETE' })
 }
+
+// -- Expand (Phase 7) --
+
+export interface AgentOSExpandResult {
+  status: string
+  added: AgentOSFeatureItem[]
+  conflicts: Array<{ name: string; reason: string; type: string }>
+  warnings: string[]
+  graph: Record<string, unknown>
+  new_build_order: number[]
+}
+
+export async function agentOSAnalyzeExpansion(projectName: string, description: string): Promise<{ prompt: string; description: string }> {
+  return fetchJSON(`/agent-os/expand/${encodeURIComponent(projectName)}/analyze`, {
+    method: 'POST',
+    body: JSON.stringify({ description }),
+  })
+}
+
+export async function agentOSAddExpandedFeatures(projectName: string, features: Record<string, unknown>[]): Promise<AgentOSExpandResult> {
+  return fetchJSON(`/agent-os/expand/${encodeURIComponent(projectName)}/add`, {
+    method: 'POST',
+    body: JSON.stringify({ features }),
+  })
+}
+
+export async function agentOSGetExpansionSummary(projectName: string): Promise<{ summary: string }> {
+  return fetchJSON(`/agent-os/expand/${encodeURIComponent(projectName)}/summary`)
+}
+
+// -- Codebase Reality Engine (Phase 7) --
+
+export interface AgentOSCREAnalysis {
+  tech_stack: { languages: string[]; frameworks: string[]; databases: string[]; tools: string[] }
+  file_structure: { pattern: string; key_directories: string[]; file_count: number }
+  code_patterns: { naming: string; component_style: string; indentation: string; import_style: string; files_sampled: number }
+  linter_config: { detected_configs: string[] }
+  test_patterns: { framework: string; pattern: string; test_file_count: number; coverage: boolean }
+}
+
+export async function agentOSScanCodebase(projectName: string): Promise<{ analysis: AgentOSCREAnalysis }> {
+  return fetchJSON(`/agent-os/cre/${encodeURIComponent(projectName)}/scan`, { method: 'POST' })
+}
+
+export async function agentOSGetCREAnalysis(projectName: string): Promise<{ analysis: AgentOSCREAnalysis }> {
+  return fetchJSON(`/agent-os/cre/${encodeURIComponent(projectName)}/analysis`)
+}
+
+export async function agentOSGetCRESummary(projectName: string): Promise<{ summary: string }> {
+  return fetchJSON(`/agent-os/cre/${encodeURIComponent(projectName)}/summary`)
+}

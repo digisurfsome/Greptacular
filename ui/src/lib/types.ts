@@ -677,7 +677,7 @@ export interface WorkspaceConversation {
   pinned: boolean
   tags: string  // comma-separated tags
   context_mode: '1m' | '200k'  // context window mode used for this conversation
-  model: 'opus' | 'sonnet' | null  // model used for this conversation (null = legacy, default opus)
+  model: string | null  // model ID varies by provider (opus, sonnet, o3, pro, flash, etc.)
   effort: EffortLevel  // thinking effort level (only active for 1M context models)
   provider: WorkspaceProvider  // CLI provider: claude, codex, or gemini
   created_at: string | null
@@ -700,7 +700,7 @@ export interface WorkspaceConversationDetail {
   working_directory: string | null
   tags: string  // comma-separated tags
   context_mode: '1m' | '200k'  // context window mode used for this conversation
-  model: 'opus' | 'sonnet' | null  // model used for this conversation (null = legacy, default opus)
+  model: string | null  // model ID varies by provider (opus, sonnet, o3, pro, flash, etc.)
   effort: EffortLevel  // thinking effort level (only active for 1M context models)
   provider: WorkspaceProvider  // CLI provider: claude, codex, or gemini
   created_at: string | null

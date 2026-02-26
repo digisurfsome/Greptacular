@@ -177,7 +177,7 @@ export function DashboardPage(): React.JSX.Element {
   panesRef.current = panes
 
   // Model/effort for new chats from sidebar
-  const [pendingModel, setPendingModel] = useState<'opus' | 'sonnet'>('opus')
+  const [pendingModel, setPendingModel] = useState<string>('opus')
   const [pendingContextMode, setPendingContextMode] = useState<'1m' | '200k'>('200k')
   const [pendingEffort, setPendingEffort] = useState<EffortLevel>('high')
   const [newChatKey, setNewChatKey] = useState(0)
@@ -224,6 +224,8 @@ export function DashboardPage(): React.JSX.Element {
       label: provider.charAt(0).toUpperCase() + provider.slice(1),
       conversationId: null, // Reset conversation when switching provider
     })
+    // Reset model preset index when provider changes (model lists differ per provider)
+    setModelPresetIndex(0)
   }, [updatePane])
 
   const handlePaneConversationCreated = useCallback((paneId: string, convId: number) => {
@@ -279,7 +281,7 @@ export function DashboardPage(): React.JSX.Element {
   }, [])
 
   const handleNewChat = useCallback((model: string, contextMode: '1m' | '200k', effort: EffortLevel = 'high', provider?: WorkspaceProvider) => {
-    setPendingModel(model as 'opus' | 'sonnet')
+    setPendingModel(model)
     setPendingContextMode(contextMode)
     setPendingEffort(effort)
     setNewChatKey(k => k + 1)

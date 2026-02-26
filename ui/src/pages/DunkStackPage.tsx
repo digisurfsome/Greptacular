@@ -26,6 +26,7 @@ import {
   ChevronRight,
   FolderOpen,
   Cpu,
+  Sparkles,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ThemeSelector } from '@/components/ThemeSelector'
@@ -36,8 +37,21 @@ import { dunkstackUpdateConfig } from '@/lib/api'
 import { DunkStackContextGauge } from '@/components/dunkstack/DunkStackContextGauge'
 import { DunkStackCommsChat } from '@/components/dunkstack/DunkStackCommsChat'
 import { DunkStackSafetyPanel } from '@/components/dunkstack/DunkStackSafetyPanel'
+import { IntakeDock } from '@/components/appbuilder/IntakeDock'
+import { AgentOSChat } from '@/components/appbuilder/AgentOSChat'
+import { StandardsPanel } from '@/components/appbuilder/StandardsPanel'
+import { ProductPanel } from '@/components/appbuilder/ProductPanel'
+import { SpecCards } from '@/components/appbuilder/SpecCards'
+import { GapAnalysisPanel } from '@/components/appbuilder/GapAnalysisPanel'
+import {
+  useFeatures,
+  useGaps,
+  useResolveGap,
+  useAutoResolveGaps,
+} from '@/hooks/useAgentOS'
 
-type RightPanel = 'safety' | 'files' | null
+type RightPanel = 'safety' | 'files' | 'agent-os' | null
+type CenterView = 'chat' | 'agent-os-intake' | 'agent-os-workflow'
 
 type ModelPreset = { model: string; context: string; label: string; limit: number; color: string }
 
@@ -87,6 +101,16 @@ export function DunkStackPage(): React.JSX.Element {
   const [modelPresetIndex, setModelPresetIndex] = useState(getStoredModelPreset)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [selectedProject, setSelectedProject] = useState<string | null>(getStoredProject)
+  const [centerView, setCenterView] = useState<CenterView>('chat')
+  const [standardsPanelOpen, setStandardsPanelOpen] = useState(true)
+  const [productPanelOpen, setProductPanelOpen] = useState(false)
+
+  // Agent OS data hooks (only active when a project is selected and in agent-os view)
+  const isAgentOSView = centerView === 'agent-os-intake' || centerView === 'agent-os-workflow'
+  const { data: featuresData } = useFeatures(isAgentOSView && selectedProject ? selectedProject : '')
+  const { data: gapsData } = useGaps(isAgentOSView && selectedProject ? selectedProject : '')
+  const resolveGap = useResolveGap(selectedProject || '')
+  const autoResolveGaps = useAutoResolveGaps(selectedProject || '')
 
   /** Switch model preset: persist to localStorage and push config to backend. */
   const handleModelPresetChange = useCallback(async (index: number) => {
@@ -193,6 +217,26 @@ export function DunkStackPage(): React.JSX.Element {
             <span className="hidden sm:inline">Files</span>
           </Button>
 
+          {/* Agent OS toggle */}
+          <Button
+            variant={isAgentOSView ? 'default' : 'ghost'}
+            size="sm"
+            className="gap-1.5 text-xs"
+            onClick={() => {
+              if (isAgentOSView) {
+                setCenterView('chat')
+                setRightPanel('safety')
+              } else {
+                setCenterView('agent-os-intake')
+                setRightPanel('agent-os')
+              }
+            }}
+            title="Toggle Agent OS PRD Creator"
+          >
+            <Sparkles size={14} />
+            <span className="hidden sm:inline">Agent OS</span>
+          </Button>
+
           {/* Separator */}
           <div className="w-px h-5 bg-border mx-1" />
 
@@ -296,22 +340,51 @@ export function DunkStackPage(): React.JSX.Element {
           </div>
         )}
 
-        {/* Chat panel (main area) */}
+        {/* Main content area */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          {loading ? (
-            <div className="flex items-center justify-center h-full">
-              <div className="flex flex-col items-center gap-3">
-                <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                <span className="text-sm text-muted-foreground">Loading DunkStack...</span>
+          {centerView === 'chat' && (
+            loading ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="flex flex-col items-center gap-3">
+                  <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                  <span className="text-sm text-muted-foreground">Loading DunkStack...</span>
+                </div>
               </div>
+            ) : (
+              <DunkStackCommsChat
+                commsLog={commsLog}
+                onSendMessage={sendMessage}
+                controlMode={controlMode}
+                connected={connected}
+              />
+            )
+          )}
+
+          {centerView === 'agent-os-intake' && selectedProject && (
+            <div className="flex-1 overflow-y-auto">
+              <IntakeDock
+                projectName={selectedProject}
+                onProcessComplete={() => setCenterView('agent-os-workflow')}
+                onSkip={() => setCenterView('agent-os-workflow')}
+              />
             </div>
-          ) : (
-            <DunkStackCommsChat
-              commsLog={commsLog}
-              onSendMessage={sendMessage}
-              controlMode={controlMode}
-              connected={connected}
+          )}
+
+          {centerView === 'agent-os-workflow' && selectedProject && (
+            <AgentOSChat
+              projectName={selectedProject}
+              onComplete={() => {
+                setCenterView('chat')
+                setRightPanel('safety')
+              }}
+              onCancel={() => setCenterView('agent-os-intake')}
             />
+          )}
+
+          {isAgentOSView && !selectedProject && (
+            <div className="flex items-center justify-center h-full">
+              <p className="text-sm text-muted-foreground">Select a project from the sidebar to start Agent OS</p>
+            </div>
           )}
         </div>
 
@@ -331,6 +404,33 @@ export function DunkStackPage(): React.JSX.Element {
             {rightPanel === 'files' && (
               <FileViewer />
             )}
+            {rightPanel === 'agent-os' && selectedProject && (
+              <div className="p-3 space-y-3">
+                <StandardsPanel
+                  projectName={selectedProject}
+                  isOpen={standardsPanelOpen}
+                  onToggle={() => setStandardsPanelOpen(prev => !prev)}
+                />
+                <ProductPanel
+                  projectName={selectedProject}
+                  isOpen={productPanelOpen}
+                  onToggle={() => setProductPanelOpen(prev => !prev)}
+                />
+                {(featuresData?.features?.length ?? 0) > 0 && (
+                  <SpecCards
+                    features={featuresData?.features ?? []}
+                    onReviewSpec={() => {}}
+                  />
+                )}
+                {(gapsData?.gaps?.length ?? 0) > 0 && (
+                  <GapAnalysisPanel
+                    gaps={gapsData?.gaps ?? []}
+                    onResolveGap={(gapId, resolution) => resolveGap.mutate({ gapId, resolution })}
+                    onAutoResolve={() => autoResolveGaps.mutate()}
+                  />
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -347,24 +447,24 @@ export function DunkStackPage(): React.JSX.Element {
 // File Viewer - Shows .agent/ file contents
 // ============================================================================
 
+const FILE_TABS = [
+  { id: 'index', label: 'Index', endpoint: '/api/dunkstack/index' },
+  { id: 'working-memory', label: 'Working Memory', endpoint: '/api/dunkstack/working-memory' },
+  { id: 'bridge', label: 'Bridge', endpoint: '/api/dunkstack/bridge' },
+  { id: 'build-log', label: 'Build Log', endpoint: '/api/dunkstack/build-log' },
+  { id: 'config', label: 'Config', endpoint: '/api/dunkstack/config' },
+] as const
+
 function FileViewer(): React.JSX.Element {
   const [activeFile, setActiveFile] = useState<string>('index')
   const [fileContent, setFileContent] = useState<string>('')
   const [fileLoading, setFileLoading] = useState(false)
 
-  const files = [
-    { id: 'index', label: 'Index', endpoint: '/api/dunkstack/index' },
-    { id: 'working-memory', label: 'Working Memory', endpoint: '/api/dunkstack/working-memory' },
-    { id: 'bridge', label: 'Bridge', endpoint: '/api/dunkstack/bridge' },
-    { id: 'build-log', label: 'Build Log', endpoint: '/api/dunkstack/build-log' },
-    { id: 'config', label: 'Config', endpoint: '/api/dunkstack/config' },
-  ]
-
   const loadFile = useCallback(async (fileId: string) => {
     setActiveFile(fileId)
     setFileLoading(true)
     try {
-      const file = files.find(f => f.id === fileId)
+      const file = FILE_TABS.find(f => f.id === fileId)
       if (!file) return
       const resp = await fetch(file.endpoint)
       const data = await resp.json()
@@ -380,8 +480,8 @@ function FileViewer(): React.JSX.Element {
     }
   }, [])
 
-  // Load on mount and when tab changes
-  useState(() => { loadFile('index') })
+  // Load initial file on mount
+  useEffect(() => { loadFile('index') }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="flex flex-col h-full">
@@ -392,7 +492,7 @@ function FileViewer(): React.JSX.Element {
 
       {/* File tabs */}
       <div className="flex flex-wrap gap-1 px-3 py-2 border-b border-border/50">
-        {files.map(f => (
+        {FILE_TABS.map(f => (
           <button
             key={f.id}
             onClick={() => loadFile(f.id)}

@@ -13,6 +13,7 @@ Provides:
 - Mechanism analysis trigger
 - Handoff trigger
 - Interactive PRD creation WebSocket session
+- Intake dock file staging
 """
 
 import json
@@ -20,12 +21,13 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
 from ..services.agent_os_features import AgentOSFeatures
 from ..services.agent_os_file_utils import AgentOSFileUtils
 from ..services.agent_os_handoff import AgentOSHandoff
+from ..services.agent_os_intake_dock import AgentOSIntakeDock
 from ..services.agent_os_session import (
     create_session,
     get_session,
@@ -91,6 +93,15 @@ class SessionStatus(BaseModel):
     current_stage: str
     stage_index: int
     message_count: int
+
+
+class PasteFileRequest(BaseModel):
+    filename: str
+    content: str
+
+
+class TagFileRequest(BaseModel):
+    tag: str  # "standards" | "product" | "spec" | "reference" | "intake"
 
 
 # ============================================================================
@@ -435,6 +446,92 @@ async def get_build_plan(project_name: str):
     specs_service = AgentOSSpecs(project_dir, fu, features, mechanism=None)
     handoff = AgentOSHandoff(project_dir, fu, features, specs_service)
     return {"plan": handoff.get_build_plan_summary()}
+
+
+# ============================================================================
+# Intake Dock Endpoints
+# ============================================================================
+
+
+_intake_docks: dict[str, AgentOSIntakeDock] = {}
+
+
+def _get_intake_dock(project_name: str, project_dir: Path) -> AgentOSIntakeDock:
+    """Get or create an intake dock instance for a project."""
+    if project_name not in _intake_docks:
+        fu = _get_file_utils(project_dir)
+        _intake_docks[project_name] = AgentOSIntakeDock(project_dir, fu)
+    return _intake_docks[project_name]
+
+
+@router.get("/intake-dock/{project_name}")
+async def list_staged_files(project_name: str):
+    """List all staged files."""
+    project_dir = _resolve_project(project_name)
+    dock = _get_intake_dock(project_name, project_dir)
+    return {"files": dock.get_staged_files()}
+
+
+@router.post("/intake-dock/{project_name}/upload")
+async def upload_file(project_name: str, file: UploadFile):
+    """Upload and stage a file (multipart form)."""
+    project_dir = _resolve_project(project_name)
+    dock = _get_intake_dock(project_name, project_dir)
+
+    content = await file.read()
+    filename = file.filename or "upload.md"
+    mime_type = file.content_type or "application/octet-stream"
+
+    entry = dock.stage_file(filename, content, mime_type)
+    return {"file": entry}
+
+
+@router.post("/intake-dock/{project_name}/paste")
+async def paste_text(project_name: str, body: PasteFileRequest):
+    """Create a file from pasted text."""
+    project_dir = _resolve_project(project_name)
+    dock = _get_intake_dock(project_name, project_dir)
+    entry = dock.stage_text(body.filename, body.content)
+    return {"file": entry}
+
+
+@router.put("/intake-dock/{project_name}/{file_id}/tag")
+async def tag_staged_file(project_name: str, file_id: str, body: TagFileRequest):
+    """Set tag for a staged file."""
+    project_dir = _resolve_project(project_name)
+    dock = _get_intake_dock(project_name, project_dir)
+    entry = dock.tag_file(file_id, body.tag)
+    if entry is None:
+        raise HTTPException(status_code=400, detail="Invalid file ID or tag")
+    return {"file": entry}
+
+
+@router.delete("/intake-dock/{project_name}/{file_id}")
+async def remove_staged_file(project_name: str, file_id: str):
+    """Remove a staged file."""
+    project_dir = _resolve_project(project_name)
+    dock = _get_intake_dock(project_name, project_dir)
+    removed = dock.remove_file(file_id)
+    if not removed:
+        raise HTTPException(status_code=404, detail="File not found")
+    return {"status": "ok"}
+
+
+@router.get("/intake-dock/{project_name}/readiness")
+async def get_readiness(project_name: str):
+    """Get readiness checklist status."""
+    project_dir = _resolve_project(project_name)
+    dock = _get_intake_dock(project_name, project_dir)
+    return dock.get_readiness()
+
+
+@router.post("/intake-dock/{project_name}/process")
+async def process_intake(project_name: str):
+    """Process all staged files - distribute to directories."""
+    project_dir = _resolve_project(project_name)
+    dock = _get_intake_dock(project_name, project_dir)
+    result = dock.process_files()
+    return result
 
 
 # ============================================================================

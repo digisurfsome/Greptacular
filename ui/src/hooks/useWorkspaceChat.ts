@@ -536,7 +536,7 @@ export function useWorkspaceChat({
         console.error("Failed to parse WebSocket message:", e);
       }
     };
-  }, [onError]);
+  }, [onError, addWalkieTalkieEntry]);
 
   const start = useCallback(
     (existingConversationId?: number | null, workingDirectory?: string, contextMode?: string, costSettings?: Record<string, unknown>, model?: string, provider?: string) => {
@@ -698,7 +698,7 @@ export function useWorkspaceChat({
 
       wsRef.current.send(JSON.stringify(wsPayload));
     },
-    [onError, pendingInjection],
+    [pendingInjection],
   );
 
   const sendWalkieTalkie = useCallback(

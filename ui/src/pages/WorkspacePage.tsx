@@ -171,8 +171,8 @@ export function WorkspacePage(): React.JSX.Element {
   const [pendingEffort, setPendingEffort] = useState<'low' | 'medium' | 'high'>('high')
   const [newChatKey, setNewChatKey] = useState(0)
 
-  const handleNewChat = useCallback((model: 'opus' | 'sonnet', contextMode: '1m' | '200k', effort: 'low' | 'medium' | 'high' = 'high') => {
-    setPendingModel(model)
+  const handleNewChat = useCallback((model: string, contextMode: '1m' | '200k', effort: 'low' | 'medium' | 'high' = 'high') => {
+    setPendingModel(model as 'opus' | 'sonnet')
     setPendingContextMode(contextMode)
     setPendingEffort(effort)
     setNewChatKey(k => k + 1)

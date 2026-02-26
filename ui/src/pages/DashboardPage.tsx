@@ -278,16 +278,21 @@ export function DashboardPage(): React.JSX.Element {
     })
   }, [])
 
-  const handleNewChat = useCallback((model: 'opus' | 'sonnet', contextMode: '1m' | '200k', effort: EffortLevel = 'high') => {
-    setPendingModel(model)
+  const handleNewChat = useCallback((model: string, contextMode: '1m' | '200k', effort: EffortLevel = 'high', provider?: WorkspaceProvider) => {
+    setPendingModel(model as 'opus' | 'sonnet')
     setPendingContextMode(contextMode)
     setPendingEffort(effort)
     setNewChatKey(k => k + 1)
-    // Clear first pane's conversation to trigger new chat
+    // Clear first pane's conversation and optionally update its provider
     setPanes(prev => {
       const updated = [...prev]
       if (updated.length > 0) {
-        updated[0] = { ...updated[0], conversationId: null }
+        const updates: Partial<PaneState> = { conversationId: null }
+        if (provider && provider !== updated[0].provider) {
+          updates.provider = provider
+          updates.label = provider.charAt(0).toUpperCase() + provider.slice(1)
+        }
+        updated[0] = { ...updated[0], ...updates }
       }
       return updated
     })
@@ -388,6 +393,7 @@ export function DashboardPage(): React.JSX.Element {
           onModelPresetChange={setModelPresetIndex}
           effortLevel={pendingEffort}
           onEffortChange={setPendingEffort}
+          activeProvider={panes[0]?.provider ?? 'claude'}
         />
 
         {/* Panes — always mounted, toggled via CSS hidden to preserve session state */}

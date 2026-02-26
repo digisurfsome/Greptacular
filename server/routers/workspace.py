@@ -91,6 +91,18 @@ class ConversationUpdateRequest(BaseModel):
 
 
 # ============================================================================
+# REST Endpoints - Providers
+# ============================================================================
+
+@router.get("/providers")
+async def get_workspace_providers():
+    """Return the WORKSPACE_PROVIDERS dict so the frontend can build provider-aware model dropdowns."""
+    from registry import WORKSPACE_PROVIDERS
+
+    return WORKSPACE_PROVIDERS
+
+
+# ============================================================================
 # REST Endpoints - Conversation Management
 # ============================================================================
 

@@ -14,9 +14,20 @@ import {
   updateWorkspaceConversation,
   deleteWorkspaceConversation,
   bulkDeleteWorkspaceConversations,
+  fetchWorkspaceProviders,
 } from '../lib/api'
 
 const CONVERSATIONS_KEY = ['workspace', 'conversations'] as const
+const PROVIDERS_KEY = ['workspace', 'providers'] as const
+
+/** Hook to fetch workspace provider definitions (models per provider). Cached for 5 minutes. */
+export function useWorkspaceProviders() {
+  return useQuery({
+    queryKey: [...PROVIDERS_KEY],
+    queryFn: fetchWorkspaceProviders,
+    staleTime: 5 * 60 * 1000,  // providers rarely change — cache 5 min
+  })
+}
 
 /** Hook to fetch all workspace conversations with auto-refresh. */
 export function useWorkspaceConversations() {

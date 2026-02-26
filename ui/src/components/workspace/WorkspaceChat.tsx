@@ -31,7 +31,7 @@ import {
   BookOpen,
 } from 'lucide-react'
 import { useWorkspaceChat } from '@/hooks/useWorkspaceChat'
-import { useWorkspaceConversation } from '@/hooks/useWorkspaceConversations'
+import { useWorkspaceConversation, useWorkspaceProviders } from '@/hooks/useWorkspaceConversations'
 import { ChatMessage } from '@/components/ChatMessage'
 import { isSubmitEnter } from '@/lib/keyboard'
 import { Button } from '@/components/ui/button'
@@ -247,13 +247,26 @@ export function WorkspaceChat({
     fixedContextMode ?? pendingContextModeProp ?? '200k'
   )
 
-  // Model preset definitions (used for read-only display).
-  type ModelPreset = { model: 'opus' | 'sonnet'; context: '1m' | '200k'; label: string }
-  const MODEL_PRESETS: ModelPreset[] = [
-    { model: 'opus', context: '1m', label: 'Opus 4.6 · 1M' },
-    { model: 'sonnet', context: '1m', label: 'Sonnet 4.6 · 1M' },
-    { model: 'opus', context: '200k', label: 'Opus 4.6 · 200K' },
-  ]
+  // Provider-aware model presets (used for read-only display in the header badge).
+  const { data: wsProviders } = useWorkspaceProviders()
+  const effectiveProvider = providerProp ?? 'claude'
+  type ModelPreset = { model: string; context: '1m' | '200k'; label: string }
+  const MODEL_PRESETS: ModelPreset[] = useMemo(() => {
+    const CLAUDE_FALLBACK: ModelPreset[] = [
+      { model: 'opus', context: '1m', label: 'Opus 4.6 · 1M' },
+      { model: 'sonnet', context: '1m', label: 'Sonnet 4.6 · 1M' },
+      { model: 'opus', context: '200k', label: 'Opus 4.6 · 200K' },
+    ]
+    if (!wsProviders || !wsProviders[effectiveProvider]) return CLAUDE_FALLBACK
+    const pDef = wsProviders[effectiveProvider]
+    if (effectiveProvider === 'claude') {
+      return [
+        ...pDef.models.map((m: { id: string; name: string }) => ({ model: m.id, context: '1m' as const, label: `${m.name} · 1M` })),
+        { model: pDef.models[0]?.id ?? 'opus', context: '200k' as const, label: `${pDef.models[0]?.name ?? 'Opus'} · 200K` },
+      ]
+    }
+    return pDef.models.map((m: { id: string; name: string }) => ({ model: m.id, context: '1m' as const, label: m.name }))
+  }, [wsProviders, effectiveProvider])
 
   // Keep sessionContextMode in sync when fixedContextMode changes (split-view)
   useEffect(() => {
@@ -382,10 +395,11 @@ export function WorkspaceChat({
 
   // Derive the active model from the conversation data (read-only display).
   // For split-view panels, use preferredModel. For normal mode, use the conversation's model field.
-  const conversationModel: 'opus' | 'sonnet' = preferredModel
+  // Model can be any string (e.g. 'opus', 'sonnet', 'o3', 'pro', 'flash', etc.)
+  const conversationModel: string = preferredModel
     ?? conversationDetail?.model
     ?? pendingModel
-    ?? 'opus'
+    ?? (effectiveProvider === 'claude' ? 'opus' : wsProviders?.[effectiveProvider]?.default_model ?? 'opus')
   const conversationContextMode: '1m' | '200k' = fixedContextMode
     ?? conversationDetail?.context_mode
     ?? pendingContextModeProp
@@ -959,14 +973,22 @@ export function WorkspaceChat({
               const activePreset = MODEL_PRESETS[showPresetIndex]
               if (!activePreset) return null
 
-              // Color coding: Opus 1M = blue, Sonnet 1M = violet, Opus 200K = zinc
-              const pillClass = activePreset.model === 'sonnet'
-                ? 'bg-violet-500 text-white'
-                : activePreset.context === '1m'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-zinc-600 text-white'
+              // Provider-aware color coding
+              const pillClass = effectiveProvider === 'codex'
+                ? 'bg-emerald-600 text-white'
+                : effectiveProvider === 'gemini'
+                  ? 'bg-violet-600 text-white'
+                  : activePreset.model === 'sonnet'
+                    ? 'bg-violet-500 text-white'
+                    : activePreset.context === '1m'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-zinc-600 text-white'
 
-              const displayId = modelId || (conversationModel === 'sonnet' ? 'claude-sonnet-4-6' : 'claude-opus-4-6')
+              // Provider-aware display ID
+              const displayId = modelId
+                || (effectiveProvider === 'claude'
+                  ? (conversationModel === 'sonnet' ? 'claude-sonnet-4-6' : 'claude-opus-4-6')
+                  : conversationModel)
 
               return (
                 <>

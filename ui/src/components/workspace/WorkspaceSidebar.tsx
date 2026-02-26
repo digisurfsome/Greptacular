@@ -27,6 +27,7 @@ import {
   useBulkDeleteWorkspaceConversations,
   useTogglePin,
   useCycleModelBadge,
+  useWorkspaceProviders,
 } from '@/hooks/useWorkspaceConversations'
 import { useBackgroundSessions } from '@/hooks/useBackgroundSessions'
 import {
@@ -52,20 +53,35 @@ import {
   DropdownMenuSubContent,
 } from '@/components/ui/dropdown-menu'
 import { parseUtcTimestamp } from '@/lib/utils'
-import type { WorkspaceConversation, WorkspaceCategory, EffortLevel } from '@/lib/types'
+import type { WorkspaceConversation, WorkspaceCategory, WorkspaceProvider, EffortLevel } from '@/lib/types'
+import type { WorkspaceProviderDef } from '@/lib/api'
 
 /** Model preset option for the sidebar pill selector. */
 interface ModelPreset {
-  model: 'opus' | 'sonnet'
+  model: string
   context: '1m' | '200k'
   label: string
 }
 
-const SIDEBAR_MODEL_PRESETS: ModelPreset[] = [
+/** Claude-only fallback presets (used when providers haven't loaded yet). */
+const CLAUDE_MODEL_PRESETS: ModelPreset[] = [
   { model: 'opus', context: '1m', label: 'Opus 4.6 · 1M' },
   { model: 'sonnet', context: '1m', label: 'Sonnet 4.6 · 1M' },
   { model: 'opus', context: '200k', label: 'Opus 4.6 · 200K' },
 ]
+
+/** Build model presets from a provider definition. Claude gets context modes; others don't. */
+function buildPresetsForProvider(providerId: string, providerDef: WorkspaceProviderDef): ModelPreset[] {
+  if (providerId === 'claude') {
+    // Claude models get 1M + 200K context variants
+    return [
+      ...providerDef.models.map(m => ({ model: m.id, context: '1m' as const, label: `${m.name} · 1M` })),
+      { model: providerDef.models[0]?.id ?? 'opus', context: '200k' as const, label: `${providerDef.models[0]?.name ?? 'Opus'} · 200K` },
+    ]
+  }
+  // Non-Claude: single context mode, no 200K variant
+  return providerDef.models.map(m => ({ model: m.id, context: '1m' as const, label: m.name }))
+}
 
 /** Effort level presets with Anthropic's recommended use cases. */
 interface EffortPreset {
@@ -87,7 +103,7 @@ interface WorkspaceSidebarProps {
   collapsed: boolean
   onToggleCollapse: () => void
   /** Called when user starts a new chat with model selection from the dropdown. */
-  onNewChat: (model: 'opus' | 'sonnet', contextMode: '1m' | '200k', effort: EffortLevel) => void
+  onNewChat: (model: string, contextMode: '1m' | '200k', effort: EffortLevel, provider?: WorkspaceProvider) => void
   onSelectConversation: (id: number, provider?: string) => void
   /** Called when a conversation is deleted. Parent should clear activeConversationId if it matches. */
   onDeleteConversation?: (id: number) => void
@@ -103,6 +119,8 @@ interface WorkspaceSidebarProps {
   effortLevel?: EffortLevel
   /** Callback when user changes the effort level from the naming form. */
   onEffortChange?: (effort: EffortLevel) => void
+  /** Active provider from the focused dashboard pane (drives which models appear in the dropdown). */
+  activeProvider?: WorkspaceProvider
 }
 
 // ---------------------------------------------------------------------------
@@ -145,7 +163,18 @@ export function WorkspaceSidebar({
   onModelPresetChange,
   effortLevel = 'high',
   onEffortChange,
+  activeProvider = 'claude',
 }: WorkspaceSidebarProps): React.JSX.Element {
+  // Fetch provider definitions from backend
+  const { data: providers } = useWorkspaceProviders()
+
+  // Build model presets for the active provider (falls back to Claude presets)
+  const isClaudeProvider = activeProvider === 'claude'
+  const SIDEBAR_MODEL_PRESETS: ModelPreset[] = useMemo(() => {
+    if (!providers || !providers[activeProvider]) return CLAUDE_MODEL_PRESETS
+    return buildPresetsForProvider(activeProvider, providers[activeProvider])
+  }, [providers, activeProvider])
+
   const [search, setSearch] = useState('')
   const [hoveredId, setHoveredId] = useState<number | null>(null)
   const [showCategoryManager, setShowCategoryManager] = useState(false)
@@ -201,14 +230,15 @@ export function WorkspaceSidebar({
     if (!namingCategory) return
     const title = newChatName.trim() || undefined
     const preset = SIDEBAR_MODEL_PRESETS[modelPresetIndex]
-    // Only pass effort for 1M context models; 200K models don't support it
-    const effort = preset.context === '1m' ? effortLevel : 'high'
+    // Only pass effort for Claude 1M context models; others don't support it
+    const effort = (isClaudeProvider && preset.context === '1m') ? effortLevel : 'high'
     createConversationMut.mutate({
       title,
       category: namingCategory,
       model: preset.model,
       context_mode: preset.context,
       effort,
+      provider: activeProvider,
     }, {
       onSuccess: (newConv) => {
         onSelectConversation(newConv.id, newConv.provider)
@@ -216,7 +246,7 @@ export function WorkspaceSidebar({
         setNewChatName('')
       },
     })
-  }, [namingCategory, newChatName, createConversationMut, onSelectConversation, modelPresetIndex, effortLevel])
+  }, [namingCategory, newChatName, createConversationMut, onSelectConversation, modelPresetIndex, effortLevel, SIDEBAR_MODEL_PRESETS, isClaudeProvider, activeProvider])
 
   /** Cancel the naming form. */
   const handleCancelNaming = useCallback(() => {
@@ -369,17 +399,24 @@ export function WorkspaceSidebar({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-56">
-            <DropdownMenuLabel className="text-xs">Select model</DropdownMenuLabel>
+            <DropdownMenuLabel className="text-xs">
+              {activeProvider === 'claude' ? 'Select model' : `${activeProvider.charAt(0).toUpperCase() + activeProvider.slice(1)} models`}
+            </DropdownMenuLabel>
             <DropdownMenuSeparator />
             {SIDEBAR_MODEL_PRESETS.map((preset) => {
-              const dotColor = preset.model === 'sonnet'
-                ? 'bg-violet-500'
-                : preset.context === '1m'
-                  ? 'bg-blue-500'
-                  : 'bg-zinc-500'
+              // Color coding: provider-specific dot colors
+              const dotColor = activeProvider === 'codex'
+                ? 'bg-emerald-500'
+                : activeProvider === 'gemini'
+                  ? 'bg-violet-500'
+                  : preset.model === 'sonnet'
+                    ? 'bg-violet-500'
+                    : preset.context === '1m'
+                      ? 'bg-blue-500'
+                      : 'bg-zinc-500'
 
-              // Opus 1M: show effort sub-menu (effort only works on Opus 4.6)
-              if (preset.context === '1m' && preset.model === 'opus') {
+              // Claude Opus 1M: show effort sub-menu (effort only works on Claude Opus)
+              if (isClaudeProvider && preset.context === '1m' && preset.model === 'opus') {
                 return (
                   <DropdownMenuSub key={preset.label}>
                     <DropdownMenuSubTrigger className="gap-2 text-xs">
@@ -393,7 +430,7 @@ export function WorkspaceSidebar({
                       {EFFORT_PRESETS.map((ep) => (
                         <DropdownMenuItem
                           key={ep.key}
-                          onClick={() => onNewChat(preset.model, preset.context, ep.key)}
+                          onClick={() => onNewChat(preset.model, preset.context, ep.key, activeProvider)}
                           className="gap-2 text-xs"
                         >
                           <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
@@ -410,16 +447,20 @@ export function WorkspaceSidebar({
                 )
               }
 
-              // 200K models: direct click, no effort choice
+              // Non-Claude models or Claude 200K: direct click, no effort choice
               return (
                 <DropdownMenuItem
                   key={preset.label}
-                  onClick={() => onNewChat(preset.model, preset.context, 'high')}
+                  onClick={() => onNewChat(preset.model, preset.context, 'high', activeProvider)}
                   className="gap-2 text-xs"
                 >
                   <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dotColor}`} />
                   <span className="font-medium">{preset.label}</span>
-                  <span className="ml-auto text-[10px] text-muted-foreground">Subscription</span>
+                  {isClaudeProvider && (
+                    <span className="ml-auto text-[10px] text-muted-foreground">
+                      {preset.context === '200k' ? 'Subscription' : 'API key'}
+                    </span>
+                  )}
                 </DropdownMenuItem>
               )
             })}
@@ -502,6 +543,16 @@ export function WorkspaceSidebar({
             <div className="flex rounded-full border border-border overflow-hidden shadow-sm" role="radiogroup" aria-label="Model selection">
               {SIDEBAR_MODEL_PRESETS.map((preset, idx) => {
                 const isActive = modelPresetIndex === idx
+                // Provider-specific active colors
+                const activeColor = activeProvider === 'codex'
+                  ? 'bg-emerald-600 text-white shadow-inner'
+                  : activeProvider === 'gemini'
+                    ? 'bg-violet-600 text-white shadow-inner'
+                    : preset.model === 'sonnet'
+                      ? 'bg-violet-500 text-white shadow-inner'
+                      : preset.context === '1m'
+                        ? 'bg-primary text-primary-foreground shadow-inner'
+                        : 'bg-zinc-600 text-white shadow-inner'
                 return (
                   <button
                     key={preset.label}
@@ -511,11 +562,7 @@ export function WorkspaceSidebar({
                     onClick={() => onModelPresetChange?.(idx)}
                     className={`flex-1 px-1.5 py-1 text-[10px] font-semibold whitespace-nowrap transition-all duration-150 ${
                       isActive
-                        ? preset.model === 'sonnet'
-                          ? 'bg-violet-500 text-white shadow-inner'
-                          : preset.context === '1m'
-                            ? 'bg-primary text-primary-foreground shadow-inner'
-                            : 'bg-zinc-600 text-white shadow-inner'
+                        ? activeColor
                         : 'bg-card text-muted-foreground hover:bg-muted hover:text-foreground'
                     } ${idx === 0 ? 'rounded-l-full' : ''} ${idx === SIDEBAR_MODEL_PRESETS.length - 1 ? 'rounded-r-full' : 'border-r border-border'}`}
                   >
@@ -525,8 +572,8 @@ export function WorkspaceSidebar({
               })}
             </div>
           </div>
-          {/* Effort level selector — only active for 1M context models */}
-          {(() => {
+          {/* Effort level selector — only shown for Claude provider, active for Opus 1M */}
+          {isClaudeProvider && (() => {
             const selectedPreset = SIDEBAR_MODEL_PRESETS[modelPresetIndex]
             const isOpus1M = selectedPreset?.context === '1m' && selectedPreset?.model === 'opus'
             return (

@@ -191,6 +191,8 @@ class AgentOSHandoff:
                     criteria.append(text)
             if criteria:
                 steps = criteria
+        else:
+            logger.warning("No spec content for feature #%d (%s) — steps will be empty", feature["id"], feature["name"])
 
         return {
             "priority": _PRIORITY_MAP.get(feature.get("priority", "should_have"), 2),
@@ -202,7 +204,7 @@ class AgentOSHandoff:
 
     # ── Dependency graph ─────────────────────────────────────────────
 
-    def generate_dependency_graph(self, db_path: Optional[Path] = None) -> dict[str, Any]:
+    def generate_dependency_graph(self) -> dict[str, Any]:
         """Validate and report on the dependency graph.
 
         Dependencies are already written during populate_features_db.
@@ -210,9 +212,11 @@ class AgentOSHandoff:
         """
         feature_list = self.features.get_feature_list()
 
-        # Build feature dicts in the format dependency_resolver expects
+        # Build feature dicts in the format dependency_resolver expects.
+        # The resolver's heap sorts by priority (lower int = higher priority),
+        # so we must convert Agent OS string priorities to integers.
         feature_dicts = [
-            {"id": f["id"], "priority": f.get("priority", 999), "dependencies": f.get("dependencies", []), "passes": False}
+            {"id": f["id"], "priority": _PRIORITY_MAP.get(f.get("priority", "nice_to_have"), 3), "dependencies": f.get("dependencies", []), "passes": False}
             for f in feature_list
         ]
 
@@ -242,7 +246,7 @@ class AgentOSHandoff:
         feature_list = self.features.get_feature_list()
 
         feature_dicts = [
-            {"id": f["id"], "priority": f.get("priority", 999), "dependencies": f.get("dependencies", []), "passes": False}
+            {"id": f["id"], "priority": _PRIORITY_MAP.get(f.get("priority", "nice_to_have"), 3), "dependencies": f.get("dependencies", []), "passes": False}
             for f in feature_list
         ]
 

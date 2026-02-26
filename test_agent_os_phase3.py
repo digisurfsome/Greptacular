@@ -415,6 +415,25 @@ class TestFeatures:
         gap_prompt = service.get_gap_analysis_prompt()
         assert "resource" in gap_prompt
 
+    def test_process_extracted_features_resets_ids(self, features_service: AgentOSFeatures) -> None:
+        """Calling process_extracted_features twice resets IDs to 1."""
+        first = features_service.process_extracted_features([
+            {"name": "Alpha"}, {"name": "Beta"},
+        ])
+        assert first[0]["id"] == 1
+        assert first[1]["id"] == 2
+
+        # Second call should reset IDs back to 1
+        second = features_service.process_extracted_features([
+            {"name": "Gamma"}, {"name": "Delta"}, {"name": "Epsilon"},
+        ])
+        assert second[0]["id"] == 1
+        assert second[1]["id"] == 2
+        assert second[2]["id"] == 3
+        # Old features should be replaced
+        assert len(features_service.get_feature_list()) == 3
+        assert features_service.get_feature_by_id(1)["name"] == "Gamma"
+
 
 # ── TestMechanism ────────────────────────────────────────────────────
 
@@ -645,3 +664,13 @@ class TestMechanism:
         analysis = {"decision_point": "Test", "options": [], "confidence": 0.7, "auto_selected": False, "reasoning": "Fallback reason"}
         decision = mechanism.record_decision(analysis, "X")
         assert decision["reason"] == "Fallback reason"
+
+    def test_decision_point_from_process_analysis(self, mechanism: AgentOSMechanism) -> None:
+        """decision_point passed to process_analysis is preserved in result."""
+        analysis = mechanism.process_analysis(
+            {"options": [{"name": "A", "scores": {}, "overall_score": 0.8, "pros": [], "cons": []}], "reasoning": "test"},
+            decision_point="Authentication method",
+        )
+        assert analysis["decision_point"] == "Authentication method"
+        decision = mechanism.record_decision(analysis, "A")
+        assert decision["decision_point"] == "Authentication method"

@@ -87,7 +87,7 @@ class AgentOSMechanism:
 
     # ── Processing Claude responses ──────────────────────────────────
 
-    def process_analysis(self, analysis_json: dict[str, Any], feature_id: Optional[int] = None) -> dict[str, Any]:
+    def process_analysis(self, analysis_json: dict[str, Any], feature_id: Optional[int] = None, decision_point: str = "") -> dict[str, Any]:
         """Process Claude's analysis output. Apply Developer's Choice if scores are close."""
         raw_options = analysis_json.get("options", [])
         reasoning = analysis_json.get("reasoning", "")
@@ -134,7 +134,7 @@ class AgentOSMechanism:
         auto_selected = confidence >= auto_threshold
 
         analysis: dict[str, Any] = {
-            "decision_point": "",  # Set by caller
+            "decision_point": decision_point,
             "feature_id": feature_id,
             "options": options,
             "recommended": recommended,

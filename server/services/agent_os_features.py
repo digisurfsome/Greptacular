@@ -178,7 +178,13 @@ class AgentOSFeatures:
         )
 
     def process_extracted_features(self, features_json: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """Process Claude's extracted features: assign IDs, validate, store."""
+        """Process Claude's extracted features: assign IDs, validate, store.
+
+        Replaces the entire feature list. Resets the ID counter so IDs
+        always start at 1, keeping them consistent with any downstream
+        specs or DB rows that reference features by ID.
+        """
+        self._next_feature_id = 1  # Reset so re-extraction starts at ID 1
         processed: list[dict[str, Any]] = []
 
         # Build a name→id mapping for dependency resolution

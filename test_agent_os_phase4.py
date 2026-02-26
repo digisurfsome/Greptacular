@@ -349,6 +349,27 @@ class TestHandoff:
         # Task CRUD (2) must come before Notifications (3)
         assert order.index(2) < order.index(3)
 
+    def test_build_order_priority_integer_conversion(self, tmp_project: Path, file_utils: AgentOSFileUtils) -> None:
+        """Build order correctly maps string priorities to integer sort values.
+
+        Without conversion, heap comparison would use string sorting where
+        'nice_to_have' < 'should_have' alphabetically, producing wrong order.
+        """
+        entities = {"product_name": "PriorityTest"}
+        features = AgentOSFeatures(tmp_project, file_utils, entities, {})
+        features.process_extracted_features([
+            {"name": "Nice", "description": "Future", "priority": "nice_to_have", "complexity": "small", "category": "ui", "dependencies": []},
+            {"name": "Should", "description": "V1.1", "priority": "should_have", "complexity": "small", "category": "ui", "dependencies": []},
+            {"name": "Must", "description": "MVP", "priority": "must_have", "complexity": "small", "category": "ui", "dependencies": []},
+        ])
+        mech = AgentOSMechanism({})
+        specs = AgentOSSpecs(tmp_project, file_utils, features, mech)
+        handoff = AgentOSHandoff(tmp_project, file_utils, features, specs)
+        order = handoff.calculate_build_order()
+        # must_have (id=3) should come before should_have (id=2) before nice_to_have (id=1)
+        assert order.index(3) < order.index(2)  # must before should
+        assert order.index(2) < order.index(1)  # should before nice
+
     def test_generate_scope_boundary(self, handoff_service: AgentOSHandoff, tmp_project: Path) -> None:
         """Scope boundary file is created with MVP/next/future sections."""
         path = handoff_service.generate_scope_boundary()

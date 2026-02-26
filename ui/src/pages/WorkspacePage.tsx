@@ -183,15 +183,15 @@ export function WorkspacePage(): React.JSX.Element {
   const handleDeleteConversation = useCallback((deletedId: number) => {
     if (activeConversationId === deletedId) {
       setActiveConversationId(null)
-      setStreamingIds(prev => {
-        if (prev.has(deletedId)) {
-          const next = new Set(prev)
-          next.delete(deletedId)
-          return next
-        }
-        return prev
-      })
     }
+    // Always clean up streaming state — the deleted conversation could be
+    // streaming in any panel (main, PRD, coder) or split-view mode.
+    setStreamingIds(prev => {
+      if (!prev.has(deletedId)) return prev
+      const next = new Set(prev)
+      next.delete(deletedId)
+      return next
+    })
   }, [activeConversationId])
 
   /** Navigate back to conversation list (no model selection needed). */
@@ -511,6 +511,16 @@ export function WorkspacePage(): React.JSX.Element {
                   onCopyToPassoff={handleCopyToPassoff}
                   preferredModel={researchModel}
                   onModelChange={setResearchModel}
+                  onStreamingChange={(streaming) => {
+                    if (activeConversationId != null) {
+                      setStreamingIds(prev => {
+                        const next = new Set(prev)
+                        if (streaming) next.add(activeConversationId)
+                        else next.delete(activeConversationId)
+                        return next
+                      })
+                    }
+                  }}
                 />
               </div>
             )}
@@ -590,6 +600,16 @@ export function WorkspacePage(): React.JSX.Element {
                     onResponseComplete={handlePrdResponseComplete}
                     preferredModel={prdModel}
                     onModelChange={setPrdModel}
+                    onStreamingChange={(streaming) => {
+                      if (prdConversationId != null) {
+                        setStreamingIds(prev => {
+                          const next = new Set(prev)
+                          if (streaming) next.add(prdConversationId)
+                          else next.delete(prdConversationId)
+                          return next
+                        })
+                      }
+                    }}
                   />
                 )}
               </div>
@@ -623,6 +643,16 @@ export function WorkspacePage(): React.JSX.Element {
                   onInjectConsumed={handleCoderInjectConsumed}
                   preferredModel={coderModel}
                   onModelChange={setCoderModel}
+                  onStreamingChange={(streaming) => {
+                    if (coderConversationId != null) {
+                      setStreamingIds(prev => {
+                        const next = new Set(prev)
+                        if (streaming) next.add(coderConversationId)
+                        else next.delete(coderConversationId)
+                        return next
+                      })
+                    }
+                  }}
                 />
               </div>
             )}

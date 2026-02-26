@@ -457,7 +457,7 @@ def create_session(project_name: str, project_dir: Path) -> AgentOSSession:
     return session
 
 
-async def remove_session(project_name: str) -> None:
+def remove_session(project_name: str) -> None:
     with _sessions_lock:
         _sessions.pop(project_name, None)
 
@@ -467,7 +467,7 @@ def list_sessions() -> list[str]:
         return list(_sessions.keys())
 
 
-async def cleanup_all_agent_os_sessions() -> None:
+def cleanup_all_agent_os_sessions() -> None:
     """Close all active sessions. Called on server shutdown."""
     with _sessions_lock:
         _sessions.clear()

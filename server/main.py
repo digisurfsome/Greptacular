@@ -98,7 +98,7 @@ async def lifespan(app: FastAPI):
     await cleanup_all_workspace_sessions()
     await cleanup_all_swarms()
     await cleanup_all_monitors()
-    await cleanup_all_agent_os_sessions()
+    cleanup_all_agent_os_sessions()
 
 
 # Create FastAPI app

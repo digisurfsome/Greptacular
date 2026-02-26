@@ -8,6 +8,7 @@ import { WorkspacePage } from './pages/WorkspacePage'
 import { RoleLibraryPage } from './pages/RoleLibraryPage'
 import { DunkStackPage } from './pages/DunkStackPage'
 import { DashboardPage } from './pages/DashboardPage'
+import { YTStrategyLabPage } from './pages/YTStrategyLabPage'
 import './styles/globals.css'
 
 const queryClient = new QueryClient({
@@ -53,6 +54,9 @@ function Root() {
   }
   if (hash === '#/dashboard' || hash.startsWith('#/dashboard/')) {
     return <DashboardPage />
+  }
+  if (hash === '#/yt-lab' || hash.startsWith('#/yt-lab/')) {
+    return <YTStrategyLabPage />
   }
   return <App />
 }

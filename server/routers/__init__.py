@@ -25,6 +25,7 @@ from .spec_creation import router as spec_creation_router
 from .swarm import router as swarm_router
 from .terminal import router as terminal_router
 from .workspace import router as workspace_router
+from .yt_ingestion import router as yt_ingestion_router
 
 __all__ = [
     "ci_status_router",
@@ -48,4 +49,5 @@ __all__ = [
     "swarm_router",
     "dunkstack_router",
     "agent_os_router",
+    "yt_ingestion_router",
 ]

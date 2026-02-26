@@ -1429,3 +1429,41 @@ export interface YTStrategyProject {
   createdAt: string
   updatedAt: string
 }
+
+// ============================================================================
+// YT Lab Ingestion Types
+// ============================================================================
+
+export interface YTTranscriptSegment {
+  text: string
+  start: number
+  duration: number
+}
+
+export interface YTScreenshotSuggestion {
+  timestamp: number
+  reason: string
+  captured: boolean
+  filepath: string | null
+}
+
+export interface YTIngestResponse {
+  video_id: string
+  title: string
+  channel: string
+  duration: number
+  publish_date: string
+  thumbnail_url: string
+  description: string
+  transcript: YTTranscriptSegment[]
+  extracted_urls: string[]
+  screenshot_suggestions: YTScreenshotSuggestion[]
+  screenshots: string[]
+}
+
+export interface YTLabHealth {
+  yt_dlp: boolean
+  ffmpeg: boolean
+  youtube_transcript_api: boolean
+  youtube_api_key: boolean
+}

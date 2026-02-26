@@ -144,6 +144,9 @@ export function useWorkspaceChat({
       if (checkAndSendTimeoutRef.current) {
         clearTimeout(checkAndSendTimeoutRef.current);
       }
+      if (loadingSafetyTimeoutRef.current) {
+        clearTimeout(loadingSafetyTimeoutRef.current);
+      }
       if (wsRef.current) {
         wsRef.current.close();
       }

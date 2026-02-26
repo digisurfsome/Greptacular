@@ -131,7 +131,7 @@ export function WorkspacePage(): React.JSX.Element {
   const [commAutoReply, setCommAutoReply] = useState(true)
 
   // Track which conversation is currently streaming (for sidebar activity indicator)
-  const [streamingConversationId, setStreamingConversationId] = useState<number | null>(null)
+  const [streamingIds, setStreamingIds] = useState<Set<number>>(new Set())
 
   // Walkie-talkie log (bridged from WorkspaceChat to WorkspaceLibrary)
   const [walkieTalkieLog, setWalkieTalkieLog] = useState<WalkieTalkieLogEntry[]>([])
@@ -183,7 +183,14 @@ export function WorkspacePage(): React.JSX.Element {
   const handleDeleteConversation = useCallback((deletedId: number) => {
     if (activeConversationId === deletedId) {
       setActiveConversationId(null)
-      setStreamingConversationId(null)
+      setStreamingIds(prev => {
+        if (prev.has(deletedId)) {
+          const next = new Set(prev)
+          next.delete(deletedId)
+          return next
+        }
+        return prev
+      })
     }
   }, [activeConversationId])
 
@@ -458,7 +465,7 @@ export function WorkspacePage(): React.JSX.Element {
       <div className="flex flex-1 overflow-hidden">
         <WorkspaceSidebar
           activeConversationId={activeConversationId}
-          streamingConversationId={streamingConversationId}
+          streamingIds={streamingIds}
           collapsed={sidebarCollapsed}
           onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
           onNewChat={handleNewChat}
@@ -635,9 +642,16 @@ export function WorkspacePage(): React.JSX.Element {
               pendingContextMode={pendingContextMode}
               pendingEffort={pendingEffort}
               newChatKey={newChatKey}
-              onStreamingChange={(streaming) =>
-                setStreamingConversationId(streaming ? activeConversationId : null)
-              }
+              onStreamingChange={(streaming) => {
+                if (activeConversationId != null) {
+                  setStreamingIds(prev => {
+                    const next = new Set(prev)
+                    if (streaming) next.add(activeConversationId)
+                    else next.delete(activeConversationId)
+                    return next
+                  })
+                }
+              }}
             />
           </div>
         )}

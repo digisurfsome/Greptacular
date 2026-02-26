@@ -87,7 +87,7 @@ interface WorkspaceSidebarProps {
   onToggleCollapse: () => void
   /** Called when user starts a new chat with model selection from the dropdown. */
   onNewChat: (model: 'opus' | 'sonnet', contextMode: '1m' | '200k', effort: EffortLevel) => void
-  onSelectConversation: (id: number) => void
+  onSelectConversation: (id: number, provider?: string) => void
   /** Called when a conversation is deleted. Parent should clear activeConversationId if it matches. */
   onDeleteConversation?: (id: number) => void
   /** Currently selected working directory (repo path) from the page. */
@@ -199,7 +199,7 @@ export function WorkspaceSidebar({
       effort,
     }, {
       onSuccess: (newConv) => {
-        onSelectConversation(newConv.id)
+        onSelectConversation(newConv.id, newConv.provider)
         setNamingCategory(null)
         setNewChatName('')
       },
@@ -702,7 +702,7 @@ export function WorkspaceSidebar({
                       )}
                       <button
                         type="button"
-                        onClick={() => selectMode ? handleToggleSelect(conv.id) : onSelectConversation(conv.id)}
+                        onClick={() => selectMode ? handleToggleSelect(conv.id) : onSelectConversation(conv.id, conv.provider)}
                         className={`w-full flex items-center gap-2 px-2 py-2 rounded-lg border text-left transition-colors overflow-hidden ${
                           selectMode && selectedIds.has(conv.id)
                             ? 'bg-destructive/10 text-foreground border-destructive/30'

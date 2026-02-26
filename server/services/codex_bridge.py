@@ -58,7 +58,16 @@ class CodexBridge:
     async def start(self) -> None:
         """Spawn the codex mcp-server subprocess and perform MCP initialize handshake."""
         if self._process is not None:
-            return
+            # Check if the process has crashed — if so, clean up and restart
+            if self._process.returncode is not None:
+                logger.warning("Codex MCP server process exited (code=%s), restarting", self._process.returncode)
+                self._process = None
+                self._initialized = False
+                if self._reader_task and not self._reader_task.done():
+                    self._reader_task.cancel()
+                self._reader_task = None
+            else:
+                return
 
         # Find codex CLI — prefer global install, fall back to npx
         codex_path = shutil.which("codex")
@@ -269,11 +278,14 @@ class CodexBridge:
             pass
         except Exception as e:
             logger.error("Codex stdout reader error: %s", e)
-            # Fail all pending requests
-            for fut in self._pending.values():
-                if not fut.done():
-                    fut.set_exception(RuntimeError(f"Codex reader died: {e}"))
-            self._pending.clear()
+        finally:
+            # Fail all pending requests — covers both normal EOF and errors
+            if self._pending:
+                err = RuntimeError("Codex MCP server process exited")
+                for fut in self._pending.values():
+                    if not fut.done():
+                        fut.set_exception(err)
+                self._pending.clear()
 
     @staticmethod
     def _parse_tool_result(result: dict) -> tuple[str, Optional[str]]:

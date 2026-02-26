@@ -239,13 +239,25 @@ export function DashboardPage(): React.JSX.Element {
     })
   }, [])
 
-  // Sidebar: assign conversation to first available pane (or active pane)
-  const handleSelectConversation = useCallback((convId: number) => {
+  // Sidebar: assign conversation to first available pane (or active pane).
+  // If the conversation has a stored provider, update the pane's provider to match
+  // so the UI correctly reflects which CLI backend handles this conversation.
+  const handleSelectConversation = useCallback((convId: number, provider?: string) => {
     setPanes(prev => {
-      // Find first pane without a conversation, or update first pane
+      // Prefer a pane with matching provider, then any empty pane, then pane 0
+      const matchIdx = provider ? prev.findIndex(p => p.conversationId === null && p.provider === provider) : -1
       const emptyIdx = prev.findIndex(p => p.conversationId === null)
-      const targetIdx = emptyIdx >= 0 ? emptyIdx : 0
-      return prev.map((p, i) => i === targetIdx ? { ...p, conversationId: convId } : p)
+      const targetIdx = matchIdx >= 0 ? matchIdx : emptyIdx >= 0 ? emptyIdx : 0
+      return prev.map((p, i) => {
+        if (i !== targetIdx) return p
+        const updates: Partial<PaneState> = { conversationId: convId }
+        // Sync pane provider to match the conversation's stored provider
+        if (provider && provider !== p.provider) {
+          updates.provider = provider as WorkspaceProvider
+          updates.label = provider.charAt(0).toUpperCase() + provider.slice(1)
+        }
+        return { ...p, ...updates }
+      })
     })
   }, [])
 

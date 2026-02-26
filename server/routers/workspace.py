@@ -109,6 +109,11 @@ async def create_new_conversation(body: ConversationCreateRequest):
     """Create a new workspace conversation."""
     from ..services.workspace_database import create_conversation
 
+    # Validate provider
+    provider = body.provider
+    if provider not in ("claude", "codex", "gemini"):
+        provider = "claude"
+
     conversation = create_conversation(
         title=body.title,
         category=body.category,
@@ -116,6 +121,7 @@ async def create_new_conversation(body: ConversationCreateRequest):
         context_mode=body.context_mode,
         model=body.model,
         effort=body.effort,
+        provider=provider,
     )
     return WorkspaceConversationSummary(
         id=int(conversation.id),
@@ -164,6 +170,11 @@ async def update_conversation(conversation_id: int, body: ConversationUpdateRequ
     """Update a workspace conversation's title or category."""
     from ..services.workspace_database import update_conversation as db_update_conversation
 
+    # Validate provider if provided
+    provider = body.provider
+    if provider is not None and provider not in ("claude", "codex", "gemini"):
+        provider = None  # Ignore invalid values
+
     updated = db_update_conversation(
         conversation_id,
         title=body.title,
@@ -173,6 +184,7 @@ async def update_conversation(conversation_id: int, body: ConversationUpdateRequ
         context_mode=body.context_mode,
         model=body.model,
         effort=body.effort,
+        provider=provider,
     )
     if not updated:
         raise HTTPException(status_code=404, detail="Conversation not found")
@@ -1185,6 +1197,10 @@ async def workspace_chat_websocket(websocket: WebSocket):
 
                         # Extract provider from start message (multi-provider support)
                         provider = message.get("provider")  # "claude", "codex", "gemini", or None
+                        # Validate provider value to prevent invalid strings in DB
+                        if provider and provider not in ("claude", "codex", "gemini"):
+                            logger.warning("Invalid provider %r from WebSocket, defaulting to claude", provider)
+                            provider = "claude"
 
                         # Server-side safety net: when resuming an existing conversation,
                         # cross-check context_mode against the stored DB value. The DB

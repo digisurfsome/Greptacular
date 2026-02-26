@@ -483,179 +483,175 @@ export function WorkspacePage(): React.JSX.Element {
           /* Three-panel split view with accordion collapse */
           <div className="flex-1 flex overflow-hidden">
 
-            {/* Panel 1: Research (200K subscription) */}
-            {researchCollapsed ? (
+            {/* Panel 1: Research (200K subscription) — always mounted, toggled via CSS */}
+            {researchCollapsed && (
               <CollapsedPanelBar
                 label="RESEARCH"
                 color="bg-emerald-500/5"
                 onClick={() => setResearchCollapsed(false)}
               />
-            ) : (
-              <div className="flex-1 min-w-0 flex flex-col overflow-hidden border-r border-border relative">
-                {/* Collapse button */}
-                <button
-                  onClick={() => setResearchCollapsed(true)}
-                  className="absolute top-1 right-1 z-10 p-0.5 text-muted-foreground/40 hover:text-muted-foreground"
-                  title="Collapse Research panel"
-                >
-                  <ChevronsLeft size={14} />
-                </button>
-                <WorkspaceChat
-                  conversationId={activeConversationId}
-                  onConversationCreated={handleConversationCreated}
-                  onNewConversation={handleBackToConversations}
-                  chatInputRef={chatInputRef}
-                  workingDirectory={workingDirectory}
-                  fixedContextMode="200k"
-                  panelLabel={`RESEARCH (${researchModel === 'opus' ? 'Opus' : 'Sonnet'} · 200K)`}
-                  onCopyToPassoff={handleCopyToPassoff}
-                  preferredModel={researchModel}
-                  onModelChange={setResearchModel}
-                  onStreamingChange={(streaming) => {
-                    if (activeConversationId != null) {
-                      setStreamingIds(prev => {
-                        const next = new Set(prev)
-                        if (streaming) next.add(activeConversationId)
-                        else next.delete(activeConversationId)
-                        return next
-                      })
-                    }
-                  }}
-                />
-              </div>
             )}
+            <div className={`flex-1 min-w-0 flex flex-col overflow-hidden border-r border-border relative${researchCollapsed ? ' hidden' : ''}`}>
+              {/* Collapse button */}
+              <button
+                onClick={() => setResearchCollapsed(true)}
+                className="absolute top-1 right-1 z-10 p-0.5 text-muted-foreground/40 hover:text-muted-foreground"
+                title="Collapse Research panel"
+              >
+                <ChevronsLeft size={14} />
+              </button>
+              <WorkspaceChat
+                conversationId={activeConversationId}
+                onConversationCreated={handleConversationCreated}
+                onNewConversation={handleBackToConversations}
+                chatInputRef={chatInputRef}
+                workingDirectory={workingDirectory}
+                fixedContextMode="200k"
+                panelLabel={`RESEARCH (${researchModel === 'opus' ? 'Opus' : 'Sonnet'} · 200K)`}
+                onCopyToPassoff={handleCopyToPassoff}
+                preferredModel={researchModel}
+                onModelChange={setResearchModel}
+                onStreamingChange={(streaming) => {
+                  if (activeConversationId != null) {
+                    setStreamingIds(prev => {
+                      const next = new Set(prev)
+                      if (streaming) next.add(activeConversationId)
+                      else next.delete(activeConversationId)
+                      return next
+                    })
+                  }
+                }}
+              />
+            </div>
 
-            {/* Panel 2: PRD Builder (Opus 4.6, 1M API) with passoff tabs */}
-            {prdCollapsed ? (
+            {/* Panel 2: PRD Builder (Opus 4.6, 1M API) with passoff tabs — always mounted, toggled via CSS */}
+            {prdCollapsed && (
               <CollapsedPanelBar
                 label="PRD BUILDER"
                 color="bg-violet-500/5"
                 onClick={() => setPrdCollapsed(false)}
               />
-            ) : (
-              <div className="flex-1 min-w-0 flex flex-col overflow-hidden border-r border-border relative">
-                {/* Collapse button */}
-                <button
-                  onClick={() => setPrdCollapsed(true)}
-                  className="absolute top-1 right-1 z-10 p-0.5 text-muted-foreground/40 hover:text-muted-foreground"
-                  title="Collapse PRD Builder panel"
-                >
-                  <ChevronsLeft size={14} />
-                </button>
-
-                {/* Tab bar */}
-                <div className="flex items-center border-b border-border bg-card shrink-0">
-                  <button
-                    onClick={() => setShowPassoffOverlay(false)}
-                    className={`px-3 py-1.5 text-xs font-semibold border-b-2 transition-colors ${
-                      !showPassoffOverlay
-                        ? 'border-violet-500 text-violet-600'
-                        : 'border-transparent text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    Chat
-                  </button>
-                  <button
-                    onClick={() => setShowPassoffOverlay(true)}
-                    className={`px-3 py-1.5 text-xs font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${
-                      showPassoffOverlay
-                        ? 'border-amber-500 text-amber-600'
-                        : 'border-transparent text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    Passoff
-                    {passoffSections.length > 0 && (
-                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                        showPassoffOverlay
-                          ? 'bg-amber-500/20 text-amber-600'
-                          : 'bg-muted text-muted-foreground'
-                      }`}>
-                        {passoffSections.length}
-                      </span>
-                    )}
-                  </button>
-                </div>
-
-                {/* Tab content */}
-                {showPassoffOverlay ? (
-                  <div className="flex-1 overflow-hidden">
-                    <PassoffEditor
-                      sections={passoffSections}
-                      onSectionsChange={setPassoffSections}
-                      onSendToExecute={handleSendToPrd}
-                      preamble={passoffPreamble}
-                      onPreambleChange={setPassoffPreamble}
-                    />
-                  </div>
-                ) : (
-                  <WorkspaceChat
-                    conversationId={prdConversationId}
-                    onConversationCreated={handlePrdConversationCreated}
-                    onNewConversation={handlePrdNewChat}
-                    workingDirectory={workingDirectory}
-                    fixedContextMode={prdModel === 'sonnet' ? '200k' : '1m'}
-                    panelLabel={`PRD BUILDER (${prdModel === 'opus' ? 'Opus' : 'Sonnet'} · ${prdModel === 'sonnet' ? '200K' : '1M'})`}
-                    injectMessage={prdInjectMessage}
-                    onInjectConsumed={handlePrdInjectConsumed}
-                    onResponseComplete={handlePrdResponseComplete}
-                    preferredModel={prdModel}
-                    onModelChange={setPrdModel}
-                    onStreamingChange={(streaming) => {
-                      if (prdConversationId != null) {
-                        setStreamingIds(prev => {
-                          const next = new Set(prev)
-                          if (streaming) next.add(prdConversationId)
-                          else next.delete(prdConversationId)
-                          return next
-                        })
-                      }
-                    }}
-                  />
-                )}
-              </div>
             )}
+            <div className={`flex-1 min-w-0 flex flex-col overflow-hidden border-r border-border relative${prdCollapsed ? ' hidden' : ''}`}>
+              {/* Collapse button */}
+              <button
+                onClick={() => setPrdCollapsed(true)}
+                className="absolute top-1 right-1 z-10 p-0.5 text-muted-foreground/40 hover:text-muted-foreground"
+                title="Collapse PRD Builder panel"
+              >
+                <ChevronsLeft size={14} />
+              </button>
 
-            {/* Panel 3: Coder (model-dependent context) */}
-            {coderCollapsed ? (
-              <CollapsedPanelBar
-                label="CODER"
-                color="bg-cyan-500/5"
-                onClick={() => setCoderCollapsed(false)}
-              />
-            ) : (
-              <div className="flex-1 min-w-0 flex flex-col overflow-hidden relative">
-                {/* Collapse button */}
+              {/* Tab bar */}
+              <div className="flex items-center border-b border-border bg-card shrink-0">
                 <button
-                  onClick={() => setCoderCollapsed(true)}
-                  className="absolute top-1 right-1 z-10 p-0.5 text-muted-foreground/40 hover:text-muted-foreground"
-                  title="Collapse Coder panel"
+                  onClick={() => setShowPassoffOverlay(false)}
+                  className={`px-3 py-1.5 text-xs font-semibold border-b-2 transition-colors ${
+                    !showPassoffOverlay
+                      ? 'border-violet-500 text-violet-600'
+                      : 'border-transparent text-muted-foreground hover:text-foreground'
+                  }`}
                 >
-                  <ChevronsRight size={14} />
+                  Chat
                 </button>
+                <button
+                  onClick={() => setShowPassoffOverlay(true)}
+                  className={`px-3 py-1.5 text-xs font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${
+                    showPassoffOverlay
+                      ? 'border-amber-500 text-amber-600'
+                      : 'border-transparent text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Passoff
+                  {passoffSections.length > 0 && (
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                      showPassoffOverlay
+                        ? 'bg-amber-500/20 text-amber-600'
+                        : 'bg-muted text-muted-foreground'
+                    }`}>
+                      {passoffSections.length}
+                    </span>
+                  )}
+                </button>
+              </div>
+
+              {/* Tab content — both kept mounted, toggled via CSS hidden */}
+              <div className={`flex-1 overflow-hidden${showPassoffOverlay ? '' : ' hidden'}`}>
+                <PassoffEditor
+                  sections={passoffSections}
+                  onSectionsChange={setPassoffSections}
+                  onSendToExecute={handleSendToPrd}
+                  preamble={passoffPreamble}
+                  onPreambleChange={setPassoffPreamble}
+                />
+              </div>
+              <div className={`flex-1 overflow-hidden${showPassoffOverlay ? ' hidden' : ''}`}>
                 <WorkspaceChat
-                  conversationId={coderConversationId}
-                  onConversationCreated={handleCoderConversationCreated}
-                  onNewConversation={handleCoderNewChat}
+                  conversationId={prdConversationId}
+                  onConversationCreated={handlePrdConversationCreated}
+                  onNewConversation={handlePrdNewChat}
                   workingDirectory={workingDirectory}
-                  fixedContextMode={coderModel === 'sonnet' ? '200k' : '1m'}
-                  panelLabel={`CODER (${coderModel === 'opus' ? 'Opus' : 'Sonnet'} · ${coderModel === 'sonnet' ? '200K' : '1M'})`}
-                  injectMessage={coderInjectMessage}
-                  onInjectConsumed={handleCoderInjectConsumed}
-                  preferredModel={coderModel}
-                  onModelChange={setCoderModel}
+                  fixedContextMode={prdModel === 'sonnet' ? '200k' : '1m'}
+                  panelLabel={`PRD BUILDER (${prdModel === 'opus' ? 'Opus' : 'Sonnet'} · ${prdModel === 'sonnet' ? '200K' : '1M'})`}
+                  injectMessage={prdInjectMessage}
+                  onInjectConsumed={handlePrdInjectConsumed}
+                  onResponseComplete={handlePrdResponseComplete}
+                  preferredModel={prdModel}
+                  onModelChange={setPrdModel}
                   onStreamingChange={(streaming) => {
-                    if (coderConversationId != null) {
+                    if (prdConversationId != null) {
                       setStreamingIds(prev => {
                         const next = new Set(prev)
-                        if (streaming) next.add(coderConversationId)
-                        else next.delete(coderConversationId)
+                        if (streaming) next.add(prdConversationId)
+                        else next.delete(prdConversationId)
                         return next
                       })
                     }
                   }}
                 />
               </div>
+            </div>
+
+            {/* Panel 3: Coder (model-dependent context) — always mounted, toggled via CSS */}
+            {coderCollapsed && (
+              <CollapsedPanelBar
+                label="CODER"
+                color="bg-cyan-500/5"
+                onClick={() => setCoderCollapsed(false)}
+              />
             )}
+            <div className={`flex-1 min-w-0 flex flex-col overflow-hidden relative${coderCollapsed ? ' hidden' : ''}`}>
+              {/* Collapse button */}
+              <button
+                onClick={() => setCoderCollapsed(true)}
+                className="absolute top-1 right-1 z-10 p-0.5 text-muted-foreground/40 hover:text-muted-foreground"
+                title="Collapse Coder panel"
+              >
+                <ChevronsRight size={14} />
+              </button>
+              <WorkspaceChat
+                conversationId={coderConversationId}
+                onConversationCreated={handleCoderConversationCreated}
+                onNewConversation={handleCoderNewChat}
+                workingDirectory={workingDirectory}
+                fixedContextMode={coderModel === 'sonnet' ? '200k' : '1m'}
+                panelLabel={`CODER (${coderModel === 'opus' ? 'Opus' : 'Sonnet'} · ${coderModel === 'sonnet' ? '200K' : '1M'})`}
+                injectMessage={coderInjectMessage}
+                onInjectConsumed={handleCoderInjectConsumed}
+                preferredModel={coderModel}
+                onModelChange={setCoderModel}
+                onStreamingChange={(streaming) => {
+                  if (coderConversationId != null) {
+                    setStreamingIds(prev => {
+                      const next = new Set(prev)
+                      if (streaming) next.add(coderConversationId)
+                      else next.delete(coderConversationId)
+                      return next
+                    })
+                  }
+                }}
+              />
+            </div>
 
           </div>
         ) : (

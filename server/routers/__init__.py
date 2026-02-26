@@ -6,6 +6,7 @@ FastAPI routers for different API endpoints.
 """
 
 from .agent import router as agent_router
+from .agent_os import router as agent_os_router
 from .assistant_chat import router as assistant_chat_router
 from .ci_status import router as ci_status_router
 from .design_guide import router as design_guide_router
@@ -46,4 +47,5 @@ __all__ = [
     "role_library_router",
     "swarm_router",
     "dunkstack_router",
+    "agent_os_router",
 ]

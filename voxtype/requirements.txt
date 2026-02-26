@@ -1,0 +1,22 @@
+# VoxType - Voice to text for any application
+
+# Speech recognition engine
+RealtimeSTT>=0.3.0
+faster-whisper>=1.0.0
+
+# Keystroke injection (types into any focused app)
+pynput>=1.7.6
+
+# System tray icon
+pystray>=0.19.5
+Pillow>=10.0.0
+
+# Global hotkeys
+keyboard>=0.13.5
+
+# Audio (usually comes with RealtimeSTT, listed for clarity)
+PyAudio>=0.2.14
+webrtcvad>=2.0.10
+
+# GPU support (optional - install separately if you have NVIDIA GPU)
+# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121

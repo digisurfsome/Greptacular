@@ -16,6 +16,11 @@ from .agent_os_file_utils import AgentOSFileUtils
 
 logger = logging.getLogger(__name__)
 
+
+def _escape_braces(text: str) -> str:
+    """Escape curly braces in user content so .format() doesn't choke."""
+    return text.replace("{", "{{").replace("}", "}}")
+
 # ── Spec template ────────────────────────────────────────────────────
 
 SPEC_TEMPLATE = """# Feature {id}: {name}
@@ -127,7 +132,8 @@ def _slugify(name: str, max_len: int = 30) -> str:
     slug = name.lower().strip()
     slug = re.sub(r"[^a-z0-9]+", "-", slug)
     slug = slug.strip("-")
-    return slug[:max_len].rstrip("-")
+    result = slug[:max_len].rstrip("-")
+    return result if result else "unnamed"
 
 
 class AgentOSSpecs:
@@ -174,14 +180,14 @@ class AgentOSSpecs:
 
         return SPEC_GENERATION_PROMPT.format(
             feature_id=feature["id"],
-            feature_name=feature["name"],
-            feature_description=feature.get("description", ""),
+            feature_name=_escape_braces(feature["name"]),
+            feature_description=_escape_braces(feature.get("description", "")),
             feature_priority=feature.get("priority", "should_have"),
             feature_category=feature.get("category", "general"),
-            feature_dependencies=feature_dependencies,
-            product_summary=self.product_summary or "(No product context)",
-            standards_summary=self.standards_summary or "(No standards defined)",
-            all_features_summary=all_features_summary or "(No other features)",
+            feature_dependencies=_escape_braces(feature_dependencies),
+            product_summary=_escape_braces(self.product_summary or "(No product context)"),
+            standards_summary=_escape_braces(self.standards_summary or "(No standards defined)"),
+            all_features_summary=_escape_braces(all_features_summary or "(No other features)"),
         )
 
     def process_generated_spec(self, feature_id: int, spec_content: str) -> Path:

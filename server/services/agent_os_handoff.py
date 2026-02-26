@@ -17,6 +17,11 @@ from .agent_os_file_utils import AgentOSFileUtils
 
 logger = logging.getLogger(__name__)
 
+
+def _escape_braces(text: str) -> str:
+    """Escape curly braces in user content so .format() doesn't choke."""
+    return text.replace("{", "{{").replace("}", "}}")
+
 # Priority mapping: Agent OS priority names → features.db integer priorities
 _PRIORITY_MAP = {"must_have": 1, "should_have": 2, "nice_to_have": 3}
 
@@ -138,6 +143,7 @@ class AgentOSHandoff:
             for feature in feature_list:
                 row_data = self._feature_to_db_row(feature)
                 db_feature = Feature(
+                    id=feature["id"],  # Explicit ID to match in-memory deps
                     priority=row_data["priority"],
                     category=row_data["category"],
                     name=row_data["name"],
@@ -206,7 +212,7 @@ class AgentOSHandoff:
 
         # Build feature dicts in the format dependency_resolver expects
         feature_dicts = [
-            {"id": f["id"], "dependencies": f.get("dependencies", []), "passes": False}
+            {"id": f["id"], "priority": f.get("priority", 999), "dependencies": f.get("dependencies", []), "passes": False}
             for f in feature_list
         ]
 
@@ -281,11 +287,11 @@ class AgentOSHandoff:
 
         content = SCOPE_BOUNDARY_TEMPLATE.format(
             timestamp=timestamp,
-            project_name=project_name,
-            mvp_features="\n".join(mvp) if mvp else "(None)",
-            next_features="\n".join(next_phase) if next_phase else "(None)",
-            future_features="\n".join(future) if future else "(None)",
-            build_order="\n".join(build_order_lines) if build_order_lines else "(Not calculated)",
+            project_name=_escape_braces(project_name),
+            mvp_features=_escape_braces("\n".join(mvp)) if mvp else "(None)",
+            next_features=_escape_braces("\n".join(next_phase)) if next_phase else "(None)",
+            future_features=_escape_braces("\n".join(future)) if future else "(None)",
+            build_order=_escape_braces("\n".join(build_order_lines)) if build_order_lines else "(Not calculated)",
         )
 
         # Write to .agent/scope_boundary.md
@@ -387,13 +393,13 @@ class AgentOSHandoff:
         # ── Assemble ─────────────────────────────────────────────────
         content = CONTEXT_PRIMER_TEMPLATE.format(
             timestamp=timestamp,
-            project_name=project_name,
-            standards_summary=standards_summary,
-            product_summary=product_summary,
-            feature_overview=feature_overview,
-            build_order=build_order,
-            decisions_summary=decisions_summary,
-            spec_index=spec_index,
+            project_name=_escape_braces(project_name),
+            standards_summary=_escape_braces(standards_summary),
+            product_summary=_escape_braces(product_summary),
+            feature_overview=_escape_braces(feature_overview),
+            build_order=_escape_braces(build_order),
+            decisions_summary=_escape_braces(decisions_summary),
+            spec_index=_escape_braces(spec_index),
         )
 
         path = self.file_utils.write_file("knowledge", "context-primer.md", content)

@@ -13,6 +13,11 @@ from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
+
+def _escape_braces(text: str) -> str:
+    """Escape curly braces in user content so .format() doesn't choke."""
+    return text.replace("{", "{{").replace("}", "}}")
+
 # Scoring criteria
 SCORING_CRITERIA = ["complexity", "standards_match", "scalability", "maintainability"]
 
@@ -74,10 +79,10 @@ class AgentOSMechanism:
         """Return a prompt for Claude to analyze competing technical options."""
         options_list = "\n".join(f"- {opt}" for opt in options)
         return MECHANISM_ANALYSIS_PROMPT.format(
-            decision_point=decision_point,
-            options_list=options_list,
-            context=context,
-            standards_summary=self.standards_summary or "(No standards defined)",
+            decision_point=_escape_braces(decision_point),
+            options_list=_escape_braces(options_list),
+            context=_escape_braces(context),
+            standards_summary=_escape_braces(self.standards_summary or "(No standards defined)"),
         )
 
     # ── Processing Claude responses ──────────────────────────────────
@@ -155,7 +160,7 @@ class AgentOSMechanism:
         bias_simplicity = dc_config.get("bias_toward_simplicity", 0.2)
         bias_adoption = dc_config.get("bias_toward_adoption", 0.2)
         bias_docs = dc_config.get("bias_toward_docs", 0.1)
-        raw_weight = 1.0 - bias_standards - bias_simplicity - bias_adoption - bias_docs
+        raw_weight = max(0.0, 1.0 - bias_standards - bias_simplicity - bias_adoption - bias_docs)
 
         for option in options:
             scores = option.get("scores", {})

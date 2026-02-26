@@ -550,3 +550,123 @@ class TestHandoff:
         feature = {"id": 1, "name": "Test", "description": "", "priority": "unknown", "category": "general"}
         row = handoff_service._feature_to_db_row(feature)
         assert row["priority"] == 2
+
+    # ── Edge case & integration tests ────────────────────────────────
+
+    def test_db_ids_match_in_memory_ids(self, handoff_service: AgentOSHandoff, tmp_project: Path) -> None:
+        """Database feature IDs match the in-memory IDs (dependency refs are valid)."""
+        db_path = tmp_project / ".autoforge" / "features.db"
+        handoff_service.populate_features_db(db_path=db_path)
+
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+
+        from api.database import Feature
+
+        engine = create_engine(f"sqlite:///{db_path.as_posix()}")
+        SessionLocal = sessionmaker(bind=engine)
+        session = SessionLocal()
+
+        features = session.query(Feature).all()
+        # Verify DB IDs match in-memory IDs
+        db_ids = {f.id for f in features}
+        memory_ids = {f["id"] for f in handoff_service.features.get_feature_list()}
+        assert db_ids == memory_ids
+
+        # Verify dependency references point to valid DB IDs
+        for f in features:
+            deps = f.get_dependencies_safe()
+            for dep_id in deps:
+                assert dep_id in db_ids, f"Feature {f.id} has dangling dependency {dep_id}"
+
+        session.close()
+
+    def test_slugify_empty_name(self) -> None:
+        """Slug of all-special-characters returns 'unnamed' fallback."""
+        assert _slugify("!!! @@@") == "unnamed"
+        assert _slugify("") == "unnamed"
+
+    def test_braces_in_content_survive_templates(self, tmp_project: Path, file_utils: AgentOSFileUtils) -> None:
+        """Curly braces in feature content don't crash scope/primer templates."""
+        # Write a product doc with curly braces
+        (tmp_project / ".agent" / "product" / "vision.md").write_text(
+            "# Vision\n\n## Core Purpose\nUse {userId} for auth tokens\n"
+        )
+        entities = {"product_name": "BraceTest", "product_description": "Testing {braces}"}
+        config = {"auto_select_threshold": 85}
+        features = AgentOSFeatures(tmp_project, file_utils, entities, config)
+        features.process_extracted_features([
+            {"name": "Add {config} loader", "description": "Load {env} vars", "priority": "must_have",
+             "complexity": "small", "category": "infrastructure", "dependencies": []},
+        ])
+        mech = AgentOSMechanism({})
+        specs = AgentOSSpecs(tmp_project, file_utils, features, mech)
+        specs.process_generated_spec(1, "# Feature 1\n\n## Overview\nLoad {config}\n\n## User Stories\n- As a dev\n\n## Acceptance Criteria\n- [ ] Works\n- [ ] Done\n\n## Technical Specification\n- **Dependencies:** None\n\n## Standards References\n- See standards\n\n## Success Metrics\nOK\n" + "\n".join(f"L{i}" for i in range(10)))
+
+        handoff = AgentOSHandoff(tmp_project, file_utils, features, specs, mechanism=mech)
+        # These should NOT raise KeyError from .format()
+        scope_path = handoff.generate_scope_boundary()
+        assert scope_path.exists()
+        scope_content = scope_path.read_text(encoding="utf-8")
+        assert "{config}" in scope_content  # Braces preserved in output
+
+        primer_path = handoff.generate_context_primer()
+        assert primer_path.exists()
+        primer_content = primer_path.read_text(encoding="utf-8")
+        assert "{userId}" in primer_content  # Braces from product doc preserved
+
+    def test_full_pipeline_features_to_handoff(self, tmp_project: Path, file_utils: AgentOSFileUtils) -> None:
+        """Integration: full pipeline from feature extraction through handoff."""
+        # Overwrite product file so primer contains our product name
+        (tmp_project / ".agent" / "product" / "vision.md").write_text(
+            "# Vision\n\n## Core Purpose\nIntegrationTest full pipeline app\n"
+        )
+
+        # Phase 3: Extract features
+        entities = {"product_name": "IntegrationTest", "product_description": "Testing the full pipeline"}
+        config = {"auto_select_threshold": 85}
+        features = AgentOSFeatures(tmp_project, file_utils, entities, config)
+        features.process_extracted_features([
+            {"name": "Setup", "description": "Project setup", "priority": "must_have", "complexity": "small", "category": "infrastructure", "dependencies": []},
+            {"name": "Core Logic", "description": "Business logic", "priority": "must_have", "complexity": "large", "category": "data", "dependencies": ["Setup"]},
+        ])
+        assert len(features.get_feature_list()) == 2
+
+        # Phase 3: Mechanism analysis
+        mech_config = {
+            "mechanism_analysis": {"auto_select_threshold": 85, "present_alternatives_gap": 15, "min_viable_score": 60},
+            "developers_choice": {"enabled": True, "bias_toward_standards": 0.3, "bias_toward_simplicity": 0.2, "bias_toward_adoption": 0.2, "bias_toward_docs": 0.1},
+        }
+        mechanism = AgentOSMechanism(mech_config)
+        analysis = mechanism.process_analysis({
+            "options": [
+                {"name": "SQLite", "scores": {"complexity": 0.9, "standards_match": 0.8, "scalability": 0.5, "maintainability": 0.9}, "overall_score": 0.78, "pros": ["Simple"], "cons": ["Scale"]},
+            ],
+            "reasoning": "Simple for MVP",
+        })
+        mechanism.record_decision(analysis, "SQLite", "MVP simplicity")
+
+        # Phase 4: Generate specs
+        specs = AgentOSSpecs(tmp_project, file_utils, features, mechanism, standards_summary="TypeScript", product_summary="IntegrationTest")
+        specs.process_generated_spec(1, "# Feature 1: Setup\n\n## Overview\nSetup\n\n## User Stories\n- As a dev, I want to start\n\n## Acceptance Criteria\n- [ ] Init project\n- [ ] Create config\n\n## Technical Specification\n- **Dependencies:** None\n\n## Standards References\n- See standards\n\n## Success Metrics\nProject starts.\n\n" + "\n".join(f"Line {i}" for i in range(10)))
+        specs.process_generated_spec(2, "# Feature 2: Core Logic\n\n## Overview\nLogic\n\n## User Stories\n- As a dev, I want logic\n\n## Acceptance Criteria\n- [ ] Process data\n- [ ] Return results\n\n## Technical Specification\n- **Dependencies:** Setup\n\n## Standards References\n- See standards\n\n## Success Metrics\nLogic works.\n\n" + "\n".join(f"Line {i}" for i in range(10)))
+
+        # Phase 4: Handoff
+        handoff = AgentOSHandoff(tmp_project, file_utils, features, specs, mechanism=mechanism)
+        db_path = tmp_project / ".autoforge" / "features.db"
+        count = handoff.populate_features_db(db_path=db_path)
+        assert count == 2
+
+        # Build order should respect deps
+        order = handoff.calculate_build_order()
+        assert order.index(1) < order.index(2)
+
+        # Scope boundary + context primer via assemble
+        handoff.generate_scope_boundary()
+        result = handoff.assemble_handoff_package()
+        assert result["ready"] is True
+
+        # Context primer should include the mechanism decision
+        primer = (tmp_project / ".agent" / "knowledge" / "context-primer.md").read_text(encoding="utf-8")
+        assert "SQLite" in primer
+        assert "IntegrationTest" in primer

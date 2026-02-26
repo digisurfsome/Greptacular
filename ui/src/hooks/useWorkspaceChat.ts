@@ -231,7 +231,7 @@ export function useWorkspaceChat({
         sessionReadyRef.current = false;
         const params = lastStartParamsRef.current;
         const payload: Record<string, unknown> = { type: "start" };
-        if (params.conversationId) {
+        if (params.conversationId != null) {
           payload.conversation_id = params.conversationId;
         }
         if (params.workingDirectory) {
@@ -593,7 +593,7 @@ export function useWorkspaceChat({
             provider?: string;
           } = { type: "start" };
 
-          if (existingConversationId) {
+          if (existingConversationId != null) {
             payload.conversation_id = existingConversationId;
             setConversationId(existingConversationId);
           }

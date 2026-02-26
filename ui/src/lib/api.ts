@@ -64,6 +64,8 @@ import type {
   NextRunResponse,
   TokenLogEntry,
   TokenLogSummary,
+  YTIngestResponse,
+  YTLabHealth,
 } from './types'
 
 const API_BASE = '/api'
@@ -1891,4 +1893,22 @@ export async function agentOSGetCREAnalysis(projectName: string): Promise<{ anal
 
 export async function agentOSGetCRESummary(projectName: string): Promise<{ summary: string }> {
   return fetchJSON(`/agent-os/cre/${encodeURIComponent(projectName)}/summary`)
+}
+
+// ============================================================================
+// YT Lab Ingestion API
+// ============================================================================
+
+export async function ingestYouTubeVideo(
+  url: string,
+  captureScreenshots: boolean = false,
+): Promise<YTIngestResponse> {
+  return fetchJSON('/yt-lab/ingest', {
+    method: 'POST',
+    body: JSON.stringify({ url, capture_screenshots: captureScreenshots }),
+  })
+}
+
+export async function getYTLabHealth(): Promise<YTLabHealth> {
+  return fetchJSON('/yt-lab/health')
 }

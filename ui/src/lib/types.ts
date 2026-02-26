@@ -1384,3 +1384,86 @@ export interface BlueprintCategoryCount {
   category: string
   count: number
 }
+
+// ============================================================================
+// YT Strategy Lab Types
+// ============================================================================
+
+export type YTStrategyStepStatus = 'pending' | 'in_progress' | 'complete'
+
+export interface YTStrategySubStep {
+  id: string
+  stepId: string
+  order: number
+  title: string
+  description: string
+  prompt: string
+  status: YTStrategyStepStatus
+}
+
+export interface YTStrategyStep {
+  id: string
+  projectId: string
+  order: number
+  title: string
+  description: string
+  prompt: string
+  expectedOutput: string
+  notes: string
+  aiOutput: string
+  status: YTStrategyStepStatus
+  model: string
+  subSteps: YTStrategySubStep[]
+}
+
+export type YTProjectStatus = 'draft' | 'in-progress' | 'complete'
+
+export interface YTStrategyProject {
+  id: string
+  name: string
+  sourceUrl: string
+  niche: string
+  description: string
+  tags: string[]
+  status: YTProjectStatus
+  createdAt: string
+  updatedAt: string
+}
+
+// ============================================================================
+// YT Lab Ingestion Types
+// ============================================================================
+
+export interface YTTranscriptSegment {
+  text: string
+  start: number
+  duration: number
+}
+
+export interface YTScreenshotSuggestion {
+  timestamp: number
+  reason: string
+  captured: boolean
+  filepath: string | null
+}
+
+export interface YTIngestResponse {
+  video_id: string
+  title: string
+  channel: string
+  duration: number
+  publish_date: string
+  thumbnail_url: string
+  description: string
+  transcript: YTTranscriptSegment[]
+  extracted_urls: string[]
+  screenshot_suggestions: YTScreenshotSuggestion[]
+  screenshots: string[]
+}
+
+export interface YTLabHealth {
+  yt_dlp: boolean
+  ffmpeg: boolean
+  youtube_transcript_api: boolean
+  youtube_api_key: boolean
+}

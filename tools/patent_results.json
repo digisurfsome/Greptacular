@@ -1,0 +1,75 @@
+{
+  "search_metadata": {
+    "timestamp": "2026-02-26T01:47:33.612170",
+    "description_length": 25,
+    "description_preview": "context window management",
+    "queries_run": 12,
+    "patentsview_key_used": false,
+    "lens_token_used": false,
+    "elapsed_seconds": 0.0
+  },
+  "result_count": 0,
+  "patents": [],
+  "google_patents_urls": [
+    {
+      "label": "context window + file system + language model",
+      "terms": "context window file system language model",
+      "url": "https://patents.google.com/?q=context+window+file+system+language+model&oq=context+window+file+system+language+model"
+    },
+    {
+      "label": "token reduction + AI agent + file",
+      "terms": "token reduction AI agent file output",
+      "url": "https://patents.google.com/?q=token+reduction+AI+agent+file+output&oq=token+reduction+AI+agent+file+output"
+    },
+    {
+      "label": "session persistence + language model",
+      "terms": "session persistence language model continuity",
+      "url": "https://patents.google.com/?q=session+persistence+language+model+continuity&oq=session+persistence+language+model+continuity"
+    },
+    {
+      "label": "output redirection + artificial intelligence",
+      "terms": "output redirection artificial intelligence agent",
+      "url": "https://patents.google.com/?q=output+redirection+artificial+intelligence+agent&oq=output+redirection+artificial+intelligence+agent"
+    },
+    {
+      "label": "context management + LLM",
+      "terms": "context management large language model token",
+      "url": "https://patents.google.com/?q=context+management+large+language+model+token&oq=context+management+large+language+model+token"
+    },
+    {
+      "label": "context window + state persistence",
+      "terms": "context window state persistence structured file",
+      "url": "https://patents.google.com/?q=context+window+state+persistence+structured+file&oq=context+window+state+persistence+structured+file"
+    },
+    {
+      "label": "AI agent + bridge + session continuity",
+      "terms": "AI agent bridge session continuity handoff",
+      "url": "https://patents.google.com/?q=AI+agent+bridge+session+continuity+handoff&oq=AI+agent+bridge+session+continuity+handoff"
+    },
+    {
+      "label": "idle engine + API session + holding pattern",
+      "terms": "idle engine API session holding pattern token cost",
+      "url": "https://patents.google.com/?q=idle+engine+API+session+holding+pattern+token+cost&oq=idle+engine+API+session+holding+pattern+token+cost"
+    },
+    {
+      "label": "context compaction + recovery + language model",
+      "terms": "context compaction recovery language model summarization",
+      "url": "https://patents.google.com/?q=context+compaction+recovery+language+model+summarization&oq=context+compaction+recovery+language+model+summarization"
+    },
+    {
+      "label": "bidirectional communication + AI agent + file protocol",
+      "terms": "bidirectional communication AI agent file protocol",
+      "url": "https://patents.google.com/?q=bidirectional+communication+AI+agent+file+protocol&oq=bidirectional+communication+AI+agent+file+protocol"
+    },
+    {
+      "label": "context window degradation + attention",
+      "terms": "context window degradation attention dilution token",
+      "url": "https://patents.google.com/?q=context+window+degradation+attention+dilution+token&oq=context+window+degradation+attention+dilution+token"
+    },
+    {
+      "label": "file-based memory + AI agent",
+      "terms": "file-based memory AI agent persistent working memory",
+      "url": "https://patents.google.com/?q=file-based+memory+AI+agent+persistent+working+memory&oq=file-based+memory+AI+agent+persistent+working+memory"
+    }
+  ]
+}

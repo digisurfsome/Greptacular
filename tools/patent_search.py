@@ -4,7 +4,8 @@ Patent Prior Art Search Tool
 =============================
 
 Searches the PatentsView API for patents related to a given invention description,
-then saves and summarizes the results.
+then saves and summarizes the results. Falls back to generating Google Patents
+search URLs when the API is unavailable.
 
 Usage:
     python tools/patent_search.py "description of invention"
@@ -12,7 +13,9 @@ Usage:
     python tools/patent_search.py --file desc.txt --claims-file tools/my_claims.txt
 
 Environment:
-    PATENTSVIEW_API_KEY  - API key for PatentsView (optional; tries without key first)
+    PATENTSVIEW_API_KEY  - Required for PatentsView API access (free, request at
+                           https://patentsview.org/apis/keyrequest)
+    LENS_API_TOKEN       - Optional token for Lens.org API fallback
 """
 
 from __future__ import annotations
@@ -20,23 +23,25 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import ssl
 import sys
 import textwrap
 import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from urllib.error import HTTPError, URLError
+from urllib.parse import quote_plus
 from urllib.request import Request, urlopen
 
 # ---------------------------------------------------------------------------
 # Try to use 'requests' for cleaner HTTP handling; fall back to urllib
 # ---------------------------------------------------------------------------
 try:
-    import requests
+    import requests as _requests_lib
 
     _HAS_REQUESTS = True
 except ImportError:
+    _requests_lib = None  # type: ignore[assignment]
     _HAS_REQUESTS = False
 
 # ---------------------------------------------------------------------------
@@ -44,9 +49,11 @@ except ImportError:
 # ---------------------------------------------------------------------------
 
 PATENTSVIEW_V1_URL = "https://search.patentsview.org/api/v1/patent/"
+LENS_API_URL = "https://api.lens.org/patent/search"
+GOOGLE_PATENTS_URL = "https://patents.google.com/"
 
-# Fields to request from the API
-PATENT_FIELDS = [
+# Fields to request from PatentsView
+PATENTSVIEW_FIELDS = [
     "patent_id",
     "patent_title",
     "patent_date",
@@ -58,14 +65,14 @@ PATENT_FIELDS = [
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_OUTPUT = SCRIPT_DIR / "patent_results.json"
 
-# Maximum results per query (API cap is 1000)
+# Maximum results per query
 RESULTS_PER_QUERY = 100
 
-# Delay between API calls to stay under the 45 req/min rate limit
+# Delay between API calls to respect rate limits (45 req/min for PatentsView)
 API_DELAY_SECONDS = 1.5
 
-# Search queries: each tuple is (label, search_terms)
-# These are designed to cast a wide net around the patent's core concepts.
+# Search queries: each tuple is (label, search_terms).
+# Designed to cast a wide net around AI context window management concepts.
 SEARCH_QUERIES: list[tuple[str, str]] = [
     ("context window + file system + language model",
      "context window file system language model"),
@@ -95,93 +102,259 @@ SEARCH_QUERIES: list[tuple[str, str]] = [
 
 
 # ---------------------------------------------------------------------------
-# HTTP helpers
+# HTTP helpers — support both 'requests' and stdlib 'urllib'
 # ---------------------------------------------------------------------------
 
-def _post_requests(url: str, payload: dict[str, Any], headers: dict[str, str]) -> dict[str, Any]:
+def _build_ssl_context() -> ssl.SSLContext:
+    """
+    Build an SSL context that tries system certs first, then falls back to
+    an unverified context if CA bundles are missing (common in sandboxes).
+    """
+    ctx = ssl.create_default_context()
+    try:
+        # Test if we can actually verify anything
+        ctx.load_default_certs()
+    except Exception:
+        pass
+    return ctx
+
+
+def _post_with_requests(
+    url: str,
+    payload: dict[str, Any],
+    headers: dict[str, str],
+) -> dict[str, Any]:
     """POST using the requests library."""
-    resp = requests.post(url, json=payload, headers=headers, timeout=30)
+    assert _requests_lib is not None
+    resp = _requests_lib.post(url, json=payload, headers=headers, timeout=30)
     resp.raise_for_status()
     return resp.json()  # type: ignore[no-any-return]
 
 
-def _post_urllib(url: str, payload: dict[str, Any], headers: dict[str, str]) -> dict[str, Any]:
+def _post_with_urllib(
+    url: str,
+    payload: dict[str, Any],
+    headers: dict[str, str],
+) -> dict[str, Any]:
     """POST using urllib from the standard library."""
     data = json.dumps(payload).encode("utf-8")
     req = Request(url, data=data, method="POST")
     for key, value in headers.items():
         req.add_header(key, value)
-    with urlopen(req, timeout=30) as resp:
+    ctx = _build_ssl_context()
+    with urlopen(req, timeout=30, context=ctx) as resp:
         body = resp.read().decode("utf-8")
     return json.loads(body)  # type: ignore[no-any-return]
 
 
-def post_json(url: str, payload: dict[str, Any], api_key: str | None = None) -> dict[str, Any]:
+def post_json(
+    url: str,
+    payload: dict[str, Any],
+    extra_headers: dict[str, str] | None = None,
+) -> dict[str, Any]:
     """
-    Send a POST request with JSON body. Uses requests if available, otherwise urllib.
-    Adds the PatentsView API key header when provided.
+    Send a POST request with a JSON body. Uses 'requests' if available,
+    otherwise falls back to urllib.
     """
     headers: dict[str, str] = {
         "Content-Type": "application/json",
         "Accept": "application/json",
     }
-    if api_key:
-        headers["X-Api-Key"] = api_key
+    if extra_headers:
+        headers.update(extra_headers)
 
     if _HAS_REQUESTS:
-        return _post_requests(url, payload, headers)
-    return _post_urllib(url, payload, headers)
+        return _post_with_requests(url, payload, headers)
+    return _post_with_urllib(url, payload, headers)
 
 
 # ---------------------------------------------------------------------------
-# PatentsView API interaction
+# PatentsView v1 API
 # ---------------------------------------------------------------------------
 
-def search_patents_v1(
+def search_patentsview(
     terms: str,
-    api_key: str | None = None,
+    api_key: str,
     size: int = RESULTS_PER_QUERY,
 ) -> dict[str, Any]:
     """
     Search the PatentsView v1 API for patents whose abstract matches the
     given terms (using _text_any for broad matching).
+
+    Requires an API key (free, request at https://patentsview.org/apis/keyrequest).
     """
     payload: dict[str, Any] = {
         "q": {"_text_any": {"patent_abstract": terms}},
-        "f": PATENT_FIELDS,
+        "f": PATENTSVIEW_FIELDS,
         "o": {"size": size},
         "s": [{"patent_date": "desc"}],
     }
-    return post_json(PATENTSVIEW_V1_URL, payload, api_key=api_key)
+    return post_json(
+        PATENTSVIEW_V1_URL,
+        payload,
+        extra_headers={"X-Api-Key": api_key},
+    )
 
+
+def normalize_patentsview_result(patent: dict[str, Any]) -> dict[str, Any]:
+    """Normalize a PatentsView result into the common output schema."""
+    return {
+        "patent_id": patent.get("patent_id", ""),
+        "title": patent.get("patent_title", ""),
+        "date": patent.get("patent_date", ""),
+        "abstract": patent.get("patent_abstract", ""),
+        "type": patent.get("patent_type", ""),
+        "source": "patentsview",
+        "url": f"https://patents.google.com/patent/US{patent.get('patent_id', '')}",
+    }
+
+
+# ---------------------------------------------------------------------------
+# Lens.org API (fallback)
+# ---------------------------------------------------------------------------
+
+def search_lens(
+    terms: str,
+    token: str,
+    size: int = RESULTS_PER_QUERY,
+) -> dict[str, Any]:
+    """
+    Search the Lens.org patent API. Requires an access token (free for
+    non-commercial/academic use; request at https://www.lens.org/lens/api).
+    """
+    payload: dict[str, Any] = {
+        "query": {
+            "bool": {
+                "must": [
+                    {
+                        "query_string": {
+                            "query": terms,
+                            "fields": ["title", "abstract", "claims"],
+                            "default_operator": "or",
+                        }
+                    }
+                ],
+                "filter": [
+                    {"term": {"jurisdiction": "US"}},
+                ],
+            }
+        },
+        "size": size,
+        "sort": [{"date_published": "desc"}],
+        "include": ["lens_id", "doc_number", "title", "abstract", "date_published", "publication_type"],
+    }
+    return post_json(
+        LENS_API_URL,
+        payload,
+        extra_headers={"Authorization": f"Bearer {token}"},
+    )
+
+
+def normalize_lens_result(patent: dict[str, Any]) -> dict[str, Any]:
+    """Normalize a Lens.org result into the common output schema."""
+    # Lens returns title as an object with 'text' key in some responses
+    title = patent.get("title", "")
+    if isinstance(title, dict):
+        title = title.get("text", "")
+    elif isinstance(title, list) and title:
+        title = title[0].get("text", "") if isinstance(title[0], dict) else str(title[0])
+
+    abstract = patent.get("abstract", "")
+    if isinstance(abstract, dict):
+        abstract = abstract.get("text", "")
+    elif isinstance(abstract, list) and abstract:
+        abstract = abstract[0].get("text", "") if isinstance(abstract[0], dict) else str(abstract[0])
+
+    doc_number = patent.get("doc_number", "")
+    lens_id = patent.get("lens_id", "")
+    date_published = patent.get("date_published", "")
+
+    return {
+        "patent_id": doc_number or lens_id,
+        "title": title,
+        "date": date_published,
+        "abstract": abstract,
+        "type": patent.get("publication_type", ""),
+        "source": "lens",
+        "url": f"https://www.lens.org/lens/patent/{lens_id}" if lens_id else "",
+    }
+
+
+# ---------------------------------------------------------------------------
+# Google Patents URL generation (no-API fallback)
+# ---------------------------------------------------------------------------
+
+def generate_google_patents_urls(queries: list[tuple[str, str]]) -> list[dict[str, str]]:
+    """
+    Generate Google Patents search URLs for each query. These can be opened
+    in a browser when no API access is available.
+    """
+    urls: list[dict[str, str]] = []
+    for label, terms in queries:
+        encoded = quote_plus(terms)
+        url = f"{GOOGLE_PATENTS_URL}?q={encoded}&oq={encoded}"
+        urls.append({"label": label, "terms": terms, "url": url})
+    return urls
+
+
+# ---------------------------------------------------------------------------
+# Search dispatcher — tries PatentsView, then Lens, then Google URLs
+# ---------------------------------------------------------------------------
 
 def run_single_search(
     label: str,
     terms: str,
     api_key: str | None = None,
+    lens_token: str | None = None,
 ) -> list[dict[str, Any]]:
     """
-    Execute one search query and return the list of patent results.
-    Handles errors gracefully so one failing query does not abort the batch.
+    Execute one search query against the best available API and return
+    normalized patent results. Handles errors gracefully so one failing
+    query does not abort the entire batch.
     """
-    print(f"  Searching: {label} ...", end=" ", flush=True)
-    try:
-        data = search_patents_v1(terms, api_key=api_key)
-        patents = data.get("patents", [])
-        total = data.get("total_hits", len(patents))
-        print(f"OK  ({len(patents)} returned, {total} total hits)")
-        return patents
-    except (requests.RequestException if _HAS_REQUESTS else Exception) as exc:
-        print(f"FAILED ({exc})")
-        return []
-    except (HTTPError, URLError, OSError, json.JSONDecodeError, KeyError) as exc:
-        print(f"FAILED ({exc})")
-        return []
+    print(f"  [{label}]", end=" ", flush=True)
+
+    # Attempt 1: PatentsView v1 (preferred)
+    if api_key:
+        try:
+            data = search_patentsview(terms, api_key)
+            patents = data.get("patents", [])
+            total = data.get("total_hits", len(patents))
+            normalized = [normalize_patentsview_result(p) for p in patents]
+            print(f"PatentsView OK ({len(normalized)} results, {total} total)")
+            return normalized
+        except Exception as exc:
+            print(f"PatentsView failed ({_short_error(exc)})", end=" ", flush=True)
+
+    # Attempt 2: Lens.org
+    if lens_token:
+        try:
+            data = search_lens(terms, lens_token)
+            patents = data.get("data", [])
+            total = data.get("total", len(patents))
+            normalized = [normalize_lens_result(p) for p in patents]
+            print(f"Lens OK ({len(normalized)} results, {total} total)")
+            return normalized
+        except Exception as exc:
+            print(f"Lens failed ({_short_error(exc)})", end=" ", flush=True)
+
+    # No API available or all attempts failed
+    print("SKIPPED (no API key)")
+    return []
+
+
+def _short_error(exc: Exception) -> str:
+    """Return a short string representation of an error for log output."""
+    msg = str(exc)
+    if len(msg) > 120:
+        msg = msg[:117] + "..."
+    return f"{type(exc).__name__}: {msg}"
 
 
 def run_all_searches(
     extra_queries: list[tuple[str, str]] | None = None,
     api_key: str | None = None,
+    lens_token: str | None = None,
 ) -> list[dict[str, Any]]:
     """
     Run all configured search queries plus any extras, deduplicate results,
@@ -191,11 +364,12 @@ def run_all_searches(
     if extra_queries:
         queries.extend(extra_queries)
 
-    all_patents: dict[str, dict[str, Any]] = {}  # keyed by patent_id to deduplicate
+    # Keyed by patent_id to deduplicate across queries
+    all_patents: dict[str, dict[str, Any]] = {}
     total_raw = 0
 
     for i, (label, terms) in enumerate(queries):
-        results = run_single_search(label, terms, api_key=api_key)
+        results = run_single_search(label, terms, api_key=api_key, lens_token=lens_token)
         total_raw += len(results)
         for patent in results:
             pid = patent.get("patent_id", "")
@@ -203,13 +377,13 @@ def run_all_searches(
                 all_patents[pid] = patent
 
         # Rate-limit politeness (skip delay after the last query)
-        if i < len(queries) - 1:
+        if i < len(queries) - 1 and (api_key or lens_token):
             time.sleep(API_DELAY_SECONDS)
 
     # Sort by date descending (most recent first)
     merged = sorted(
         all_patents.values(),
-        key=lambda p: p.get("patent_date", ""),
+        key=lambda p: p.get("date", ""),
         reverse=True,
     )
 
@@ -223,14 +397,14 @@ def run_all_searches(
 
 def generate_extra_queries(description: str) -> list[tuple[str, str]]:
     """
-    Generate additional search queries by extracting key phrases from the
-    user-supplied description. This is a simple keyword extraction approach
-    that supplements the hardcoded queries.
+    Generate additional search queries by extracting key concept groups from
+    the user-supplied description. Builds pairwise combinations of detected
+    concepts to supplement the hardcoded queries.
     """
-    # Normalize whitespace
     text = " ".join(description.split()).lower()
 
-    # Keyword groups relevant to AI context management patents
+    # Keyword groups relevant to AI context management patents.
+    # Each group has a canonical label and trigger phrases.
     keyword_groups: list[tuple[str, list[str]]] = [
         ("context window", ["context window", "context length", "token limit", "token window"]),
         ("file system", ["file system", "filesystem", "file-based", "persistent file"]),
@@ -244,9 +418,7 @@ def generate_extra_queries(description: str) -> list[tuple[str, str]]:
         ("token", ["token reduction", "token cost", "token budget", "token saving"]),
     ]
 
-    extra: list[tuple[str, str]] = []
     found_groups: list[str] = []
-
     for group_name, keywords in keyword_groups:
         for kw in keywords:
             if kw in text:
@@ -254,25 +426,32 @@ def generate_extra_queries(description: str) -> list[tuple[str, str]]:
                 break
 
     # Build pairwise queries from detected keyword groups
+    extra: list[tuple[str, str]] = []
     for i in range(len(found_groups)):
         for j in range(i + 1, min(i + 3, len(found_groups))):
             label = f"(auto) {found_groups[i]} + {found_groups[j]}"
             terms = f"{found_groups[i]} {found_groups[j]} artificial intelligence"
             extra.append((label, terms))
 
-    return extra[:8]  # Cap at 8 additional queries to keep runtime reasonable
+    return extra[:8]  # Cap to keep runtime reasonable
 
 
 # ---------------------------------------------------------------------------
 # Output and display
 # ---------------------------------------------------------------------------
 
-def save_results(patents: list[dict[str, Any]], output_path: Path, metadata: dict[str, Any]) -> None:
-    """Save the full results and metadata to a JSON file."""
+def save_results(
+    patents: list[dict[str, Any]],
+    google_urls: list[dict[str, str]],
+    output_path: Path,
+    metadata: dict[str, Any],
+) -> None:
+    """Save the full results, Google Patents fallback URLs, and metadata to JSON."""
     payload = {
         "search_metadata": metadata,
         "result_count": len(patents),
         "patents": patents,
+        "google_patents_urls": google_urls,
     }
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
@@ -283,7 +462,7 @@ def save_results(patents: list[dict[str, Any]], output_path: Path, metadata: dic
 def print_summary(patents: list[dict[str, Any]], max_display: int = 25) -> None:
     """Print a human-readable summary of the search results."""
     if not patents:
-        print("\n  No patents found.")
+        print("\n  No patents found via API.")
         return
 
     print(f"\n{'=' * 80}")
@@ -291,15 +470,25 @@ def print_summary(patents: list[dict[str, Any]], max_display: int = 25) -> None:
     print(f"{'=' * 80}")
 
     # Date range
-    dates = [p.get("patent_date", "") for p in patents if p.get("patent_date")]
+    dates = [p.get("date", "") for p in patents if p.get("date")]
     if dates:
         print(f"  Date range: {min(dates)} to {max(dates)}")
+
+    # Source breakdown
+    sources: dict[str, int] = {}
+    for p in patents:
+        src = p.get("source", "unknown")
+        sources[src] = sources.get(src, 0) + 1
+    if sources:
+        breakdown = ", ".join(f"{k}: {v}" for k, v in sorted(sources.items()))
+        print(f"  Sources: {breakdown}")
 
     # Type breakdown
     types: dict[str, int] = {}
     for p in patents:
-        ptype = p.get("patent_type", "unknown")
-        types[ptype] = types.get(ptype, 0) + 1
+        ptype = p.get("type", "unknown")
+        if ptype:
+            types[ptype] = types.get(ptype, 0) + 1
     if types:
         breakdown = ", ".join(f"{k}: {v}" for k, v in sorted(types.items()))
         print(f"  Types: {breakdown}")
@@ -308,24 +497,43 @@ def print_summary(patents: list[dict[str, Any]], max_display: int = 25) -> None:
 
     for i, patent in enumerate(patents[:max_display], 1):
         pid = patent.get("patent_id", "N/A")
-        title = patent.get("patent_title", "No title")
-        date = patent.get("patent_date", "N/A")
-        abstract = patent.get("patent_abstract", "")
+        title = patent.get("title", "No title")
+        date = patent.get("date", "N/A")
+        abstract = patent.get("abstract", "")
+        url = patent.get("url", "")
 
         # Truncate abstract for display
         if abstract and len(abstract) > 200:
             abstract = abstract[:197] + "..."
 
-        print(f"  [{i:>3}] Patent {pid}  ({date})")
+        print(f"  [{i:>3}] {pid}  ({date})")
         print(f"        {title}")
         if abstract:
-            # Indent wrapped abstract text
-            wrapped = textwrap.fill(abstract, width=72, initial_indent="        ", subsequent_indent="        ")
+            wrapped = textwrap.fill(
+                abstract, width=72,
+                initial_indent="        ",
+                subsequent_indent="        ",
+            )
             print(wrapped)
+        if url:
+            print(f"        {url}")
         print()
 
     if len(patents) > max_display:
-        print(f"  ... and {len(patents) - max_display} more (see JSON output for full list)")
+        remaining = len(patents) - max_display
+        print(f"  ... and {remaining} more (see JSON output for full list)")
+
+
+def print_google_urls(google_urls: list[dict[str, str]]) -> None:
+    """Print Google Patents search URLs for manual searching."""
+    print(f"\n{'=' * 80}")
+    print("  GOOGLE PATENTS SEARCH URLS (open in browser)")
+    print(f"{'=' * 80}")
+    print("  Use these links to search Google Patents manually:\n")
+    for i, entry in enumerate(google_urls, 1):
+        print(f"  [{i:>2}] {entry['label']}")
+        print(f"       {entry['url']}")
+        print()
 
 
 def print_claims_context(claims_text: str) -> None:
@@ -333,7 +541,6 @@ def print_claims_context(claims_text: str) -> None:
     print(f"\n{'=' * 80}")
     print("  YOUR PATENT CLAIMS (for comparison)")
     print(f"{'=' * 80}")
-    # Show first ~40 lines to keep terminal output manageable
     lines = claims_text.strip().splitlines()
     for line in lines[:40]:
         print(f"  {line}")
@@ -348,14 +555,25 @@ def print_claims_context(claims_text: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Search PatentsView for prior art related to an invention description.",
+        description="Search for prior art patents related to an invention description.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=textwrap.dedent("""\
-            Examples:
-              python tools/patent_search.py "AI context window management through file-based persistence"
+            examples:
+              python tools/patent_search.py "AI context window management via file-based persistence"
               python tools/patent_search.py --file docs/invention.txt
               python tools/patent_search.py --file docs/invention.txt --claims-file tools/my_claims.txt
               python tools/patent_search.py --file docs/invention.txt --output results.json
+              python tools/patent_search.py --file docs/invention.txt --api-key YOUR_KEY
+
+            API keys:
+              PatentsView (free): https://patentsview.org/apis/keyrequest
+                Set PATENTSVIEW_API_KEY env var or use --api-key
+
+              Lens.org (free for research): https://www.lens.org/lens/api
+                Set LENS_API_TOKEN env var or use --lens-token
+
+              No key? The tool still generates Google Patents search URLs
+              you can open in a browser.
         """),
     )
     parser.add_argument(
@@ -389,6 +607,12 @@ def main() -> None:
         help="PatentsView API key (or set PATENTSVIEW_API_KEY env var)",
     )
     parser.add_argument(
+        "--lens-token",
+        type=str,
+        default=None,
+        help="Lens.org API token (or set LENS_API_TOKEN env var)",
+    )
+    parser.add_argument(
         "--max-display",
         type=int,
         default=25,
@@ -416,14 +640,22 @@ def main() -> None:
         sys.exit(1)
 
     # -----------------------------------------------------------------------
-    # Resolve API key
+    # Resolve API credentials
     # -----------------------------------------------------------------------
     api_key = args.api_key or os.environ.get("PATENTSVIEW_API_KEY")
+    lens_token = args.lens_token or os.environ.get("LENS_API_TOKEN")
+
+    has_any_api = bool(api_key or lens_token)
+
     if api_key:
-        print("Using PatentsView API key from", "argument" if args.api_key else "environment")
-    else:
-        print("No API key provided. Attempting requests without authentication.")
-        print("  (Set PATENTSVIEW_API_KEY or use --api-key if you get 401/403 errors)\n")
+        print(f"PatentsView API key: {'(from --api-key)' if args.api_key else '(from env)'}")
+    if lens_token:
+        print(f"Lens.org API token: {'(from --lens-token)' if args.lens_token else '(from env)'}")
+    if not has_any_api:
+        print("No API keys provided.")
+        print("  - PatentsView: set PATENTSVIEW_API_KEY or use --api-key")
+        print("  - Lens.org:    set LENS_API_TOKEN or use --lens-token")
+        print("  Falling back to Google Patents URL generation.\n")
 
     # -----------------------------------------------------------------------
     # Optionally load and display claims
@@ -438,33 +670,52 @@ def main() -> None:
             print(f"Loaded claims from: {claims_path} ({len(claims_text)} chars)")
 
     # -----------------------------------------------------------------------
-    # Generate extra queries from the description
+    # Generate extra queries from the description text
     # -----------------------------------------------------------------------
     extra_queries = generate_extra_queries(description)
-    total_queries = len(SEARCH_QUERIES) + len(extra_queries)
-    print(f"\nRunning {total_queries} search queries ({len(SEARCH_QUERIES)} built-in + {len(extra_queries)} auto-generated)...\n")
+    all_queries = list(SEARCH_QUERIES) + extra_queries
+    total_queries = len(all_queries)
+    print(f"\nPrepared {total_queries} search queries "
+          f"({len(SEARCH_QUERIES)} built-in + {len(extra_queries)} auto-generated)")
 
     # -----------------------------------------------------------------------
-    # Execute searches
+    # Always generate Google Patents URLs (useful regardless of API access)
     # -----------------------------------------------------------------------
-    start_time = time.time()
-    patents = run_all_searches(extra_queries=extra_queries, api_key=api_key)
-    elapsed = time.time() - start_time
-    print(f"  Search completed in {elapsed:.1f}s")
+    google_urls = generate_google_patents_urls(all_queries)
 
     # -----------------------------------------------------------------------
-    # Save results
+    # Execute API searches (if credentials available)
+    # -----------------------------------------------------------------------
+    patents: list[dict[str, Any]] = []
+    elapsed = 0.0
+
+    if has_any_api:
+        print(f"\nRunning {total_queries} API searches...\n")
+        start_time = time.time()
+        patents = run_all_searches(
+            extra_queries=extra_queries,
+            api_key=api_key,
+            lens_token=lens_token,
+        )
+        elapsed = time.time() - start_time
+        print(f"  Search completed in {elapsed:.1f}s")
+    else:
+        print("\nSkipping API searches (no credentials). See Google Patents URLs below.")
+
+    # -----------------------------------------------------------------------
+    # Save results (always includes Google URLs even if no API results)
     # -----------------------------------------------------------------------
     output_path = Path(args.output)
-    metadata = {
+    metadata: dict[str, Any] = {
         "timestamp": datetime.now().isoformat(),
         "description_length": len(description),
         "description_preview": description[:500] + ("..." if len(description) > 500 else ""),
         "queries_run": total_queries,
-        "api_key_used": bool(api_key),
+        "patentsview_key_used": bool(api_key),
+        "lens_token_used": bool(lens_token),
         "elapsed_seconds": round(elapsed, 1),
     }
-    save_results(patents, output_path, metadata)
+    save_results(patents, google_urls, output_path, metadata)
 
     # -----------------------------------------------------------------------
     # Display results
@@ -472,26 +723,35 @@ def main() -> None:
     if claims_text:
         print_claims_context(claims_text)
 
-    print_summary(patents, max_display=args.max_display)
+    if patents:
+        print_summary(patents, max_display=args.max_display)
+
+    # Always show Google Patents URLs as a supplement / fallback
+    print_google_urls(google_urls)
 
     # -----------------------------------------------------------------------
-    # Quick relevance notes
+    # Next steps guidance
     # -----------------------------------------------------------------------
+    print(f"{'=' * 80}")
+    print("  NEXT STEPS")
+    print(f"{'=' * 80}")
     if patents:
-        print(f"{'=' * 80}")
-        print("  NEXT STEPS")
-        print(f"{'=' * 80}")
-        print("  1. Review the JSON output for full abstracts and details")
-        print(f"     {output_path}")
+        print(f"  1. Review the full JSON output: {output_path}")
         print("  2. Look for patents that describe:")
         print("     - File-based output redirection for AI agents")
         print("     - Context window management through persistent state")
         print("     - Session bridge/handoff mechanisms for LLMs")
         print("     - Idle/holding patterns for API session reuse")
         print("     - Tiered context safety thresholds")
-        print("  3. For each relevant patent, check its claims at:")
-        print("     https://patents.google.com/patent/US{patent_id}")
-        print()
+        print("  3. For each relevant patent, examine its full claims at the URL shown")
+    else:
+        print("  1. Open the Google Patents URLs above in your browser")
+        print("  2. Review the results for relevance to your claims")
+        print("  3. For programmatic searching, get a free API key:")
+        print("     PatentsView: https://patentsview.org/apis/keyrequest")
+        print("     Lens.org:    https://www.lens.org/lens/api")
+    print(f"  \n  Results file: {output_path}")
+    print()
 
 
 if __name__ == "__main__":

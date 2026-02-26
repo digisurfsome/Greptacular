@@ -24,7 +24,6 @@ import type { AgentOSGapItem } from '@/hooks/useAgentOS'
 // ============================================================================
 
 interface GapAnalysisPanelProps {
-  projectName: string
   gaps: AgentOSGapItem[]
   onResolveGap: (gapId: number, resolution: string) => void
   onAutoResolve: () => void

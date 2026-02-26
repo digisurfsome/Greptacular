@@ -16,7 +16,6 @@ import type { AgentOSFeatureItem } from '@/hooks/useAgentOS'
 // ============================================================================
 
 interface SpecCardsProps {
-  projectName: string
   features: AgentOSFeatureItem[]
   onReviewSpec: (featureId: number) => void
 }

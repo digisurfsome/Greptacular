@@ -418,14 +418,12 @@ export function DunkStackPage(): React.JSX.Element {
                 />
                 {(featuresData?.features?.length ?? 0) > 0 && (
                   <SpecCards
-                    projectName={selectedProject}
                     features={featuresData?.features ?? []}
                     onReviewSpec={() => {}}
                   />
                 )}
                 {(gapsData?.gaps?.length ?? 0) > 0 && (
                   <GapAnalysisPanel
-                    projectName={selectedProject}
                     gaps={gapsData?.gaps ?? []}
                     onResolveGap={(gapId, resolution) => resolveGap.mutate({ gapId, resolution })}
                     onAutoResolve={() => autoResolveGaps.mutate()}
@@ -449,24 +447,24 @@ export function DunkStackPage(): React.JSX.Element {
 // File Viewer - Shows .agent/ file contents
 // ============================================================================
 
+const FILE_TABS = [
+  { id: 'index', label: 'Index', endpoint: '/api/dunkstack/index' },
+  { id: 'working-memory', label: 'Working Memory', endpoint: '/api/dunkstack/working-memory' },
+  { id: 'bridge', label: 'Bridge', endpoint: '/api/dunkstack/bridge' },
+  { id: 'build-log', label: 'Build Log', endpoint: '/api/dunkstack/build-log' },
+  { id: 'config', label: 'Config', endpoint: '/api/dunkstack/config' },
+] as const
+
 function FileViewer(): React.JSX.Element {
   const [activeFile, setActiveFile] = useState<string>('index')
   const [fileContent, setFileContent] = useState<string>('')
   const [fileLoading, setFileLoading] = useState(false)
 
-  const files = [
-    { id: 'index', label: 'Index', endpoint: '/api/dunkstack/index' },
-    { id: 'working-memory', label: 'Working Memory', endpoint: '/api/dunkstack/working-memory' },
-    { id: 'bridge', label: 'Bridge', endpoint: '/api/dunkstack/bridge' },
-    { id: 'build-log', label: 'Build Log', endpoint: '/api/dunkstack/build-log' },
-    { id: 'config', label: 'Config', endpoint: '/api/dunkstack/config' },
-  ]
-
   const loadFile = useCallback(async (fileId: string) => {
     setActiveFile(fileId)
     setFileLoading(true)
     try {
-      const file = files.find(f => f.id === fileId)
+      const file = FILE_TABS.find(f => f.id === fileId)
       if (!file) return
       const resp = await fetch(file.endpoint)
       const data = await resp.json()
@@ -482,8 +480,8 @@ function FileViewer(): React.JSX.Element {
     }
   }, [])
 
-  // Load on mount and when tab changes
-  useState(() => { loadFile('index') })
+  // Load initial file on mount
+  useEffect(() => { loadFile('index') }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="flex flex-col h-full">
@@ -494,7 +492,7 @@ function FileViewer(): React.JSX.Element {
 
       {/* File tabs */}
       <div className="flex flex-wrap gap-1 px-3 py-2 border-b border-border/50">
-        {files.map(f => (
+        {FILE_TABS.map(f => (
           <button
             key={f.id}
             onClick={() => loadFile(f.id)}

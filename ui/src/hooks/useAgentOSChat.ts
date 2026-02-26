@@ -120,6 +120,12 @@ export function useAgentOSChat({
   const pingIntervalRef = useRef<number | null>(null)
   const reconnectTimeoutRef = useRef<number | null>(null)
 
+  // Stable callback refs to avoid reconnection loops
+  const onCompleteRef = useRef(onComplete)
+  const onErrorRef = useRef(onError)
+  useEffect(() => { onCompleteRef.current = onComplete }, [onComplete])
+  useEffect(() => { onErrorRef.current = onError }, [onError])
+
   // Clean up on unmount
   useEffect(() => {
     return () => {
@@ -203,20 +209,20 @@ export function useAgentOSChat({
         case 'handoff_ready': {
           setHandoffStatus(data.status || data)
           setIsThinking(false)
-          onComplete?.()
+          onCompleteRef.current?.()
           break
         }
 
         case 'complete': {
           setIsThinking(false)
-          onComplete?.()
+          onCompleteRef.current?.()
           break
         }
 
         case 'error': {
           setIsThinking(false)
           const errorMsg = data.message || data.content || 'Unknown error'
-          onError?.(errorMsg)
+          onErrorRef.current?.(errorMsg)
           setMessages(prev => [
             ...prev,
             {
@@ -235,7 +241,7 @@ export function useAgentOSChat({
     } catch (e) {
       console.error('Failed to parse Agent OS WebSocket message:', e)
     }
-  }, [onComplete, onError])
+  }, [])
 
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return
@@ -277,11 +283,11 @@ export function useAgentOSChat({
 
     ws.onerror = () => {
       setConnectionStatus('error')
-      onError?.('WebSocket connection error')
+      onErrorRef.current?.('WebSocket connection error')
     }
 
     ws.onmessage = handleServerMessage
-  }, [projectName, handleServerMessage, onError])
+  }, [projectName, handleServerMessage])
 
   const disconnect = useCallback(() => {
     reconnectAttempts.current = maxReconnectAttempts

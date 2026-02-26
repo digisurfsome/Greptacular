@@ -109,7 +109,7 @@ class AgentOSIntakeDock:
             filename = filename + ".md"
         return self.stage_file(filename, text.encode("utf-8"), "text/markdown")
 
-    def auto_detect_tag(self, filename: str, content: str) -> Optional[str]:
+    def auto_detect_tag(self, filename: str, content: str) -> str:
         """Content-based tag suggestion using keyword matching."""
         lower = content.lower()
         scores: dict[str, int] = {}

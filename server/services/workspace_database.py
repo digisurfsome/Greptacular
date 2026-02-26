@@ -348,6 +348,35 @@ class RoleBlueprint(Base):
 
 
 # ============================================================================
+# Background Session Event Persistence
+# ============================================================================
+
+
+class WorkspaceSessionEvent(Base):
+    """Persisted event from a background AI session.
+
+    Each row records a single streaming event (text chunk, tool call,
+    token usage, response_done, error, etc.) from a background session.
+    Events are written in batches for performance and read back for
+    catch-up replay when a viewer reconnects.
+
+    The ``sequence`` column is a monotonically increasing counter
+    within a session, allowing viewers to request "all events since
+    sequence N" for efficient catch-up without re-downloading the
+    entire history.
+    """
+    __tablename__ = "workspace_session_events"
+
+    id = Column(Integer, primary_key=True)
+    session_id = Column(String(50), nullable=False, index=True)
+    conversation_id = Column(Integer, nullable=False, index=True)
+    sequence = Column(Integer, nullable=False)
+    event_type = Column(String(50), nullable=False)
+    event_data = Column(Text, nullable=False)  # JSON-encoded event payload
+    created_at = Column(DateTime, default=_utc_now)
+
+
+# ============================================================================
 # Engine and Session Management
 # ============================================================================
 
@@ -2717,5 +2746,114 @@ def list_blueprint_categories() -> list[dict]:
             .all()
         )
         return [{"category": cat, "count": cnt} for cat, cnt in rows]
+    finally:
+        session.close()
+
+
+# ============================================================================
+# Background Session Event Operations
+# ============================================================================
+
+
+def persist_session_events_batch(events: list[dict]) -> int:
+    """Persist a batch of session events to the database.
+
+    Each dict in ``events`` must contain: session_id, conversation_id,
+    sequence, event_type, event_data (JSON string).
+
+    Args:
+        events: List of event dicts to persist.
+
+    Returns:
+        Number of events persisted.
+    """
+    if not events:
+        return 0
+
+    session = get_db_session()
+    try:
+        for evt in events:
+            row = WorkspaceSessionEvent(
+                session_id=evt["session_id"],
+                conversation_id=evt["conversation_id"],
+                sequence=evt["sequence"],
+                event_type=evt["event_type"],
+                event_data=evt["event_data"],
+            )
+            session.add(row)
+        session.commit()
+        return len(events)
+    except Exception:
+        session.rollback()
+        logger.exception("Failed to persist %d session events", len(events))
+        raise
+    finally:
+        session.close()
+
+
+def get_session_events_since(session_id: str, since_sequence: int, limit: int = 2000) -> list[dict]:
+    """Retrieve session events after a given sequence number.
+
+    Used for catch-up replay when a viewer reconnects to a running
+    or completed session.
+
+    Args:
+        session_id: The background session ID.
+        since_sequence: Return events with sequence > this value.
+            Use 0 to get all events from the beginning.
+        limit: Maximum number of events to return (default 2000).
+
+    Returns:
+        List of event dicts ordered by sequence number, each containing:
+        sequence, event_type, event_data, created_at.
+    """
+    session = get_db_session()
+    try:
+        rows = (
+            session.query(WorkspaceSessionEvent)
+            .filter(
+                WorkspaceSessionEvent.session_id == session_id,
+                WorkspaceSessionEvent.sequence > since_sequence,
+            )
+            .order_by(WorkspaceSessionEvent.sequence)
+            .limit(limit)
+            .all()
+        )
+        return [
+            {
+                "sequence": row.sequence,
+                "event_type": row.event_type,
+                "event_data": row.event_data,
+                "created_at": row.created_at.isoformat() if row.created_at else None,
+            }
+            for row in rows
+        ]
+    finally:
+        session.close()
+
+
+def delete_session_events(session_id: str) -> int:
+    """Delete all persisted events for a background session.
+
+    Args:
+        session_id: The background session ID whose events to delete.
+
+    Returns:
+        Number of events deleted.
+    """
+    session = get_db_session()
+    try:
+        count = (
+            session.query(WorkspaceSessionEvent)
+            .filter(WorkspaceSessionEvent.session_id == session_id)
+            .delete(synchronize_session=False)
+        )
+        session.commit()
+        logger.info("Deleted %d session events for session %s", count, session_id)
+        return count
+    except Exception:
+        session.rollback()
+        logger.exception("Failed to delete session events for %s", session_id)
+        raise
     finally:
         session.close()

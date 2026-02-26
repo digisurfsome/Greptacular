@@ -81,8 +81,8 @@ const EFFORT_PRESETS: EffortPreset[] = [
 
 interface WorkspaceSidebarProps {
   activeConversationId: number | null
-  /** Conversation ID that is currently streaming (agent actively working). Null when idle. */
-  streamingConversationId?: number | null
+  /** Set of conversation IDs that are currently streaming (agents actively working). */
+  streamingIds?: Set<number>
   collapsed: boolean
   onToggleCollapse: () => void
   /** Called when user starts a new chat with model selection from the dropdown. */
@@ -132,7 +132,7 @@ function relativeTime(dateString: string | null): string {
 /** Conversation list sidebar with search, categories, pinning, and category management. */
 export function WorkspaceSidebar({
   activeConversationId,
-  streamingConversationId,
+  streamingIds,
   collapsed,
   onToggleCollapse,
   onNewChat,
@@ -646,7 +646,7 @@ export function WorkspaceSidebar({
                 {!collapsedGroups[groupKey] && items.map((conv) => {
                   const isActive = conv.id === activeConversationId
                   const isHovered = conv.id === hoveredId
-                  const isStreaming = conv.id === streamingConversationId
+                  const isStreaming = streamingIds?.has(conv.id) ?? false
 
                   return (
                     <div

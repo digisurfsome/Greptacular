@@ -291,8 +291,7 @@ export function DashboardPage(): React.JSX.Element {
     setWorkingDirectory(path || null)
   }, [])
 
-  // Get the first streaming conversation ID for sidebar indicator
-  const firstStreamingId = streamingIds.size > 0 ? Array.from(streamingIds)[0] : null
+  // Pass all streaming conversation IDs to sidebar for multi-session indicators
 
   return (
     <div className="h-screen flex flex-col bg-background">
@@ -371,7 +370,7 @@ export function DashboardPage(): React.JSX.Element {
       <div className="flex flex-1 overflow-hidden">
         <WorkspaceSidebar
           activeConversationId={panes[0]?.conversationId ?? null}
-          streamingConversationId={firstStreamingId}
+          streamingIds={streamingIds}
           collapsed={sidebarCollapsed}
           onToggleCollapse={() => setSidebarCollapsed(v => !v)}
           onNewChat={handleNewChat}

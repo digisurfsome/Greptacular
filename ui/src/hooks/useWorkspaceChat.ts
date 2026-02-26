@@ -757,23 +757,50 @@ export function useWorkspaceChat({
     queuedPayloadRef.current = null;
   }, []);
 
-  // Safety timeout: if isLoading is stuck true for 10 minutes without any
-  // response_done or error, force-reset it. Prevents permanent spinner lock.
+  // Adaptive safety timeout: provider-aware to support long-running sessions.
+  // Claude sessions get a 10-minute timeout (fast model, quick responses).
+  // Codex/Gemini sessions can run for hours, so they get NO timeout — they
+  // rely on the WebSocket ping/pong keepalive and show a non-destructive
+  // warning after 30 minutes instead of force-resetting isLoading.
   useEffect(() => {
     if (isLoading) {
-      loadingSafetyTimeoutRef.current = window.setTimeout(() => {
-        setIsLoading(false);
-        sessionReadyRef.current = true;
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `safety-${Date.now()}`,
-            role: "system" as const,
-            content: "Request timed out (10 min). The connection may have dropped. Try sending your message again.",
-            timestamp: new Date(),
-          },
-        ]);
-      }, 10 * 60 * 1000);
+      const provider = lastStartParamsRef.current?.provider ?? 'claude';
+      const isLongRunningProvider = provider === 'codex' || provider === 'gemini';
+
+      if (isLongRunningProvider) {
+        // For Codex/Gemini: show a non-destructive info message after 30 min,
+        // but do NOT reset isLoading — the session may still be working.
+        loadingSafetyTimeoutRef.current = window.setTimeout(() => {
+          setMessages((prev) => {
+            // Don't add duplicate long-running notices
+            if (prev.some(m => m.id.startsWith('long-running-'))) return prev;
+            return [
+              ...prev,
+              {
+                id: `long-running-${Date.now()}`,
+                role: "system" as const,
+                content: `Session has been running for 30+ minutes. ${provider === 'codex' ? 'Codex' : 'Gemini'} agents can run for hours — the session is still active.`,
+                timestamp: new Date(),
+              },
+            ];
+          });
+        }, 30 * 60 * 1000);
+      } else {
+        // For Claude: keep the original 10-minute safety timeout
+        loadingSafetyTimeoutRef.current = window.setTimeout(() => {
+          setIsLoading(false);
+          sessionReadyRef.current = true;
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `safety-${Date.now()}`,
+              role: "system" as const,
+              content: "Request timed out (10 min). The connection may have dropped. Try sending your message again.",
+              timestamp: new Date(),
+            },
+          ]);
+        }, 10 * 60 * 1000);
+      }
     } else if (loadingSafetyTimeoutRef.current) {
       window.clearTimeout(loadingSafetyTimeoutRef.current);
       loadingSafetyTimeoutRef.current = null;

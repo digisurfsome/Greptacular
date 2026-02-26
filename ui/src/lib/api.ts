@@ -1597,3 +1597,230 @@ export async function dunkstackGetTokenLog(): Promise<{ entries: Array<Record<st
 export async function dunkstackReadBuildLog(): Promise<DunkStackCommsResponse> {
   return fetchJSON('/dunkstack/build-log')
 }
+
+// ============================================================================
+// Agent OS API
+// ============================================================================
+
+// -- Types --
+
+export interface AgentOSStagedFile {
+  id: string
+  name: string
+  size: number
+  type: string
+  tag: string | null
+  auto_tag: string | null
+  processed: boolean
+  destination_path: string | null
+  created_at: string
+}
+
+export interface AgentOSReadinessStatus {
+  standards: { count: number; ready: boolean }
+  product: { count: number; ready: boolean }
+  spec: { count: number; ready: boolean }
+  reference: { count: number; ready: boolean }
+  intake: { count: number; ready: boolean }
+  untagged: number
+  can_proceed: boolean
+}
+
+export interface AgentOSFeatureCreate {
+  name: string
+  description: string
+  priority?: string
+  complexity?: string
+  category?: string
+  dependencies?: number[]
+}
+
+export interface AgentOSFeatureItem {
+  id: number
+  name: string
+  description: string
+  priority: string
+  complexity: string
+  category: string
+  dependencies: number[]
+}
+
+export interface AgentOSGapItem {
+  id: number
+  type: string
+  severity: string
+  message: string
+  recommendation: string
+  confidence: number
+  auto_fillable: boolean
+  resolved: boolean
+}
+
+export interface AgentOSHandoffStatus {
+  ready: boolean
+  missing: string[]
+  feature_count: number
+  build_order: number[]
+  estimated_sessions: number
+}
+
+export interface AgentOSFileEntry {
+  name: string
+  size: number
+  modified: string
+}
+
+// -- Standards --
+
+export async function agentOSListStandards(projectName: string): Promise<{ files: AgentOSFileEntry[] }> {
+  return fetchJSON(`/agent-os/standards/${encodeURIComponent(projectName)}`)
+}
+
+export async function agentOSGetStandard(projectName: string, filename: string): Promise<{ filename: string; content: string }> {
+  return fetchJSON(`/agent-os/standards/${encodeURIComponent(projectName)}/${encodeURIComponent(filename)}`)
+}
+
+export async function agentOSUpdateStandard(projectName: string, filename: string, content: string, location = 'project'): Promise<{ status: string }> {
+  return fetchJSON(`/agent-os/standards/${encodeURIComponent(projectName)}/${encodeURIComponent(filename)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ filename, content, location }),
+  })
+}
+
+export async function agentOSInferStandards(projectName: string): Promise<{ inferred: Record<string, unknown> }> {
+  return fetchJSON(`/agent-os/standards/${encodeURIComponent(projectName)}/infer`, { method: 'POST' })
+}
+
+export async function agentOSGetStandardsSummary(projectName: string): Promise<{ summary: string }> {
+  return fetchJSON(`/agent-os/standards/${encodeURIComponent(projectName)}/summary`)
+}
+
+// -- Product --
+
+export async function agentOSListProduct(projectName: string): Promise<{ files: AgentOSFileEntry[] }> {
+  return fetchJSON(`/agent-os/product/${encodeURIComponent(projectName)}`)
+}
+
+export async function agentOSGetProduct(projectName: string, filename: string): Promise<{ filename: string; content: string }> {
+  return fetchJSON(`/agent-os/product/${encodeURIComponent(projectName)}/${encodeURIComponent(filename)}`)
+}
+
+// -- Features --
+
+export async function agentOSListFeatures(projectName: string): Promise<{ features: AgentOSFeatureItem[] }> {
+  return fetchJSON(`/agent-os/features/${encodeURIComponent(projectName)}`)
+}
+
+export async function agentOSAddFeature(projectName: string, feature: AgentOSFeatureCreate): Promise<{ feature: AgentOSFeatureItem }> {
+  return fetchJSON(`/agent-os/features/${encodeURIComponent(projectName)}`, {
+    method: 'POST',
+    body: JSON.stringify(feature),
+  })
+}
+
+export async function agentOSRemoveFeature(projectName: string, featureId: number): Promise<void> {
+  return fetchJSON(`/agent-os/features/${encodeURIComponent(projectName)}/${featureId}`, { method: 'DELETE' })
+}
+
+// -- Gaps --
+
+export async function agentOSListGaps(projectName: string): Promise<{ gaps: AgentOSGapItem[] }> {
+  return fetchJSON(`/agent-os/gaps/${encodeURIComponent(projectName)}`)
+}
+
+export async function agentOSResolveGap(projectName: string, gapId: number, resolution: string): Promise<{ gap: AgentOSGapItem }> {
+  return fetchJSON(`/agent-os/gaps/${encodeURIComponent(projectName)}/${gapId}/resolve`, {
+    method: 'POST',
+    body: JSON.stringify({ resolution }),
+  })
+}
+
+export async function agentOSAutoResolveGaps(projectName: string): Promise<{ resolved: AgentOSGapItem[]; count: number }> {
+  return fetchJSON(`/agent-os/gaps/${encodeURIComponent(projectName)}/auto-resolve`, { method: 'POST' })
+}
+
+// -- Specs --
+
+export async function agentOSListSpecs(projectName: string): Promise<{ files: AgentOSFileEntry[] }> {
+  return fetchJSON(`/agent-os/specs/${encodeURIComponent(projectName)}`)
+}
+
+export async function agentOSGetSpec(projectName: string, featureId: number): Promise<{ feature_id: number; filename: string; content: string }> {
+  return fetchJSON(`/agent-os/specs/${encodeURIComponent(projectName)}/${featureId}`)
+}
+
+// -- Handoff --
+
+export async function agentOSPopulateDB(projectName: string): Promise<{ status: string; feature_count: number }> {
+  return fetchJSON(`/agent-os/handoff/${encodeURIComponent(projectName)}/populate-db`, { method: 'POST' })
+}
+
+export async function agentOSGetHandoffStatus(projectName: string): Promise<{ status: AgentOSHandoffStatus }> {
+  return fetchJSON(`/agent-os/handoff/${encodeURIComponent(projectName)}/status`)
+}
+
+export async function agentOSAssembleHandoff(projectName: string): Promise<{ handoff: Record<string, unknown> }> {
+  return fetchJSON(`/agent-os/handoff/${encodeURIComponent(projectName)}/assemble`, { method: 'POST' })
+}
+
+export async function agentOSGetBuildPlan(projectName: string): Promise<{ plan: string }> {
+  return fetchJSON(`/agent-os/handoff/${encodeURIComponent(projectName)}/build-plan`)
+}
+
+// -- Intake Dock --
+
+export async function agentOSListStagedFiles(projectName: string): Promise<{ files: AgentOSStagedFile[] }> {
+  return fetchJSON(`/agent-os/intake-dock/${encodeURIComponent(projectName)}`)
+}
+
+export async function agentOSStageFile(projectName: string, formData: FormData): Promise<{ file: AgentOSStagedFile }> {
+  const response = await fetch(`${API_BASE}/agent-os/intake-dock/${encodeURIComponent(projectName)}/upload`, {
+    method: 'POST',
+    body: formData,
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(error.detail || `HTTP ${response.status}`)
+  }
+  return response.json()
+}
+
+export async function agentOSPasteText(projectName: string, filename: string, content: string): Promise<{ file: AgentOSStagedFile }> {
+  return fetchJSON(`/agent-os/intake-dock/${encodeURIComponent(projectName)}/paste`, {
+    method: 'POST',
+    body: JSON.stringify({ filename, content }),
+  })
+}
+
+export async function agentOSTagFile(projectName: string, fileId: string, tag: string): Promise<{ file: AgentOSStagedFile }> {
+  return fetchJSON(`/agent-os/intake-dock/${encodeURIComponent(projectName)}/${fileId}/tag`, {
+    method: 'PUT',
+    body: JSON.stringify({ tag }),
+  })
+}
+
+export async function agentOSRemoveStagedFile(projectName: string, fileId: string): Promise<{ status: string }> {
+  return fetchJSON(`/agent-os/intake-dock/${encodeURIComponent(projectName)}/${fileId}`, { method: 'DELETE' })
+}
+
+export async function agentOSGetReadiness(projectName: string): Promise<AgentOSReadinessStatus> {
+  return fetchJSON(`/agent-os/intake-dock/${encodeURIComponent(projectName)}/readiness`)
+}
+
+export async function agentOSProcessIntake(projectName: string): Promise<{ processed: number; destinations: Record<string, string[]> }> {
+  return fetchJSON(`/agent-os/intake-dock/${encodeURIComponent(projectName)}/process`, { method: 'POST' })
+}
+
+// -- Sessions --
+
+export async function agentOSListSessions(): Promise<{ sessions: Array<Record<string, unknown>> }> {
+  return fetchJSON('/agent-os/sessions')
+}
+
+export async function agentOSGetSession(projectName: string): Promise<Record<string, unknown>> {
+  return fetchJSON(`/agent-os/sessions/${encodeURIComponent(projectName)}`)
+}
+
+export async function agentOSCancelSession(projectName: string): Promise<{ status: string }> {
+  return fetchJSON(`/agent-os/sessions/${encodeURIComponent(projectName)}`, { method: 'DELETE' })
+}

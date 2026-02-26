@@ -81,6 +81,10 @@ class AgentOSSession:
 
         self.complete: bool = False
 
+        # Track whether the user has been shown the first question in questionnaire stages
+        self._standards_question_shown: bool = False
+        self._product_question_shown: bool = False
+
     def _load_config(self) -> dict[str, Any]:
         """Load agent_os config from .agent/settings/config.yml."""
         config_path = self.project_dir / ".agent" / "settings" / "config.yml"
@@ -133,6 +137,9 @@ class AgentOSSession:
 
         self.intake.add_input(message)
 
+        # Extract entities from accumulated raw input (local, no LLM)
+        self.intake.extract_from_raw_input()
+
         # Return classification and extraction prompts for the caller to process
         yield {
             "type": "message",
@@ -175,7 +182,22 @@ class AgentOSSession:
             yield {"type": "stage_change", "stage": self.current_stage, "index": self.current_stage_index, "total": len(self.STAGES)}
             return
 
-        # Process previous answer if one exists
+        # On first entry, show the first question without consuming the message as an answer
+        if not self._standards_question_shown:
+            self._standards_question_shown = True
+            next_q = self.standards.get_next_question()
+            if next_q:
+                yield {"type": "question", "question": next_q}
+                yield {"type": "progress", "stage": "standards", **self.standards.get_progress()}
+            else:
+                # No questions to ask — generate files and advance
+                self.standards.generate_standards_files()
+                yield {"type": "message", "content": "Standards files generated."}
+                self.advance_stage()
+                yield {"type": "stage_change", "stage": self.current_stage, "index": self.current_stage_index, "total": len(self.STAGES)}
+            return
+
+        # Process the answer to the previously shown question
         next_q = self.standards.get_next_question()
         if message and next_q:
             self.standards.process_answer(next_q["id"], message)
@@ -207,7 +229,21 @@ class AgentOSSession:
             yield {"type": "stage_change", "stage": self.current_stage, "index": self.current_stage_index, "total": len(self.STAGES)}
             return
 
-        # Process previous answer
+        # On first entry, show the first question without consuming the message as an answer
+        if not self._product_question_shown:
+            self._product_question_shown = True
+            next_q = self.product.get_next_question()
+            if next_q:
+                yield {"type": "question", "question": next_q}
+                yield {"type": "progress", "stage": "product_discovery", **self.product.get_progress()}
+            else:
+                self.product.generate_product_docs()
+                yield {"type": "message", "content": "All product questions answered. Documents generated."}
+                self.advance_stage()
+                yield {"type": "stage_change", "stage": self.current_stage, "index": self.current_stage_index, "total": len(self.STAGES)}
+            return
+
+        # Process the answer to the previously shown question
         next_q = self.product.get_next_question()
         if message and next_q:
             self.product.process_answer(next_q["id"], message)
@@ -421,7 +457,7 @@ def create_session(project_name: str, project_dir: Path) -> AgentOSSession:
     return session
 
 
-async def remove_session(project_name: str) -> None:
+def remove_session(project_name: str) -> None:
     with _sessions_lock:
         _sessions.pop(project_name, None)
 
@@ -431,7 +467,7 @@ def list_sessions() -> list[str]:
         return list(_sessions.keys())
 
 
-async def cleanup_all_agent_os_sessions() -> None:
+def cleanup_all_agent_os_sessions() -> None:
     """Close all active sessions. Called on server shutdown."""
     with _sessions_lock:
         _sessions.clear()

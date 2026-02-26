@@ -31,14 +31,19 @@ router = APIRouter(prefix="/api/dunkstack", tags=["dunkstack"])
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 
 
-def _agent_dir() -> Path:
-    """Return the .agent directory path."""
+def _agent_dir(project_name: Optional[str] = None) -> Path:
+    """Return the .agent directory path, optionally scoped to a project."""
+    if project_name:
+        from ..utils.project_helpers import get_project_path
+        project_dir = get_project_path(project_name)
+        if project_dir and project_dir.exists():
+            return project_dir / ".agent"
     return ROOT_DIR / ".agent"
 
 
-def _ensure_agent_dir():
+def _ensure_agent_dir(project_name: Optional[str] = None):
     """Ensure .agent directory structure exists."""
-    agent = _agent_dir()
+    agent = _agent_dir(project_name)
     for subdir in ["comms", "knowledge", "output", "progress", "settings"]:
         (agent / subdir).mkdir(parents=True, exist_ok=True)
 
@@ -129,28 +134,28 @@ async def _broadcast(msg: dict):
 
 
 @router.get("/comms/to-human")
-async def read_to_human():
+def read_to_human(project_name: Optional[str] = None):
     """Read the agent's messages to the human."""
-    path = _agent_dir() / "comms" / "to_human.md"
+    path = _agent_dir(project_name) / "comms" / "to_human.md"
     if not path.exists():
         return {"content": "", "exists": False}
     return {"content": path.read_text(encoding="utf-8"), "exists": True}
 
 
 @router.get("/comms/from-human")
-async def read_from_human():
+def read_from_human(project_name: Optional[str] = None):
     """Read the human's messages to the agent."""
-    path = _agent_dir() / "comms" / "from_human.md"
+    path = _agent_dir(project_name) / "comms" / "from_human.md"
     if not path.exists():
         return {"content": "", "exists": False}
     return {"content": path.read_text(encoding="utf-8"), "exists": True}
 
 
 @router.post("/comms/from-human")
-async def write_from_human(msg: CommsMessage):
+async def write_from_human(msg: CommsMessage, project_name: Optional[str] = None):
     """Append a message to from_human.md (human → agent communication)."""
-    _ensure_agent_dir()
-    path = _agent_dir() / "comms" / "from_human.md"
+    _ensure_agent_dir(project_name)
+    path = _agent_dir(project_name) / "comms" / "from_human.md"
 
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
     title = msg.title or msg.category or "Message"
@@ -177,10 +182,10 @@ async def write_from_human(msg: CommsMessage):
 
 
 @router.post("/comms/to-human")
-async def write_to_human(msg: CommsMessage):
+async def write_to_human(msg: CommsMessage, project_name: Optional[str] = None):
     """Append a message to to_human.md (agent → human communication)."""
-    _ensure_agent_dir()
-    path = _agent_dir() / "comms" / "to_human.md"
+    _ensure_agent_dir(project_name)
+    path = _agent_dir(project_name) / "comms" / "to_human.md"
 
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
     title = msg.title or msg.category or "Update"
@@ -210,9 +215,9 @@ async def write_to_human(msg: CommsMessage):
 
 
 @router.get("/control")
-async def read_control():
+def read_control(project_name: Optional[str] = None):
     """Read the current session control mode."""
-    path = _agent_dir() / "comms" / "control.md"
+    path = _agent_dir(project_name) / "comms" / "control.md"
     if not path.exists():
         return {"mode": "idle", "message": "none"}
 
@@ -230,10 +235,10 @@ async def read_control():
 
 
 @router.post("/control")
-async def update_control(update: ControlUpdate):
+async def update_control(update: ControlUpdate, project_name: Optional[str] = None):
     """Update the session control mode."""
-    _ensure_agent_dir()
-    path = _agent_dir() / "comms" / "control.md"
+    _ensure_agent_dir(project_name)
+    path = _agent_dir(project_name) / "comms" / "control.md"
 
     content = f"# Session Control\nmode: {update.mode}\nmessage: {update.message or 'none'}\n"
     path.write_text(content, encoding="utf-8")
@@ -253,18 +258,18 @@ async def update_control(update: ControlUpdate):
 
 
 @router.get("/working-memory")
-async def read_working_memory():
+def read_working_memory(project_name: Optional[str] = None):
     """Read the agent's working memory."""
-    path = _agent_dir() / "working_memory.md"
+    path = _agent_dir(project_name) / "working_memory.md"
     if not path.exists():
         return {"content": "", "exists": False}
     return {"content": path.read_text(encoding="utf-8"), "exists": True}
 
 
 @router.get("/index")
-async def read_index():
+def read_index(project_name: Optional[str] = None):
     """Read the agent's file index."""
-    path = _agent_dir() / "index.md"
+    path = _agent_dir(project_name) / "index.md"
     if not path.exists():
         return {"content": "", "exists": False}
     return {"content": path.read_text(encoding="utf-8"), "exists": True}
@@ -276,10 +281,10 @@ async def read_index():
 
 
 @router.post("/bridge/save")
-async def save_bridge(req: BridgeSaveRequest):
+async def save_bridge(req: BridgeSaveRequest, project_name: Optional[str] = None):
     """Create a bridge save for session continuity."""
-    _ensure_agent_dir()
-    path = _agent_dir() / "bridge.md"
+    _ensure_agent_dir(project_name)
+    path = _agent_dir(project_name) / "bridge.md"
 
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     content = f"""# Bridge State
@@ -301,7 +306,7 @@ Reason: {req.reason}
     path.write_text(content, encoding="utf-8")
 
     # Also append to build log
-    log_path = _agent_dir() / "progress" / "build_log.md"
+    log_path = _agent_dir(project_name) / "progress" / "build_log.md"
     if log_path.exists():
         log_content = log_path.read_text(encoding="utf-8")
     else:
@@ -316,9 +321,9 @@ Reason: {req.reason}
 
 
 @router.get("/bridge")
-async def read_bridge():
+def read_bridge(project_name: Optional[str] = None):
     """Read the bridge state (if exists)."""
-    path = _agent_dir() / "bridge.md"
+    path = _agent_dir(project_name) / "bridge.md"
     if not path.exists():
         return {"content": "", "exists": False}
     return {"content": path.read_text(encoding="utf-8"), "exists": True}
@@ -330,9 +335,9 @@ async def read_bridge():
 
 
 @router.get("/config")
-async def read_config():
+def read_config(project_name: Optional[str] = None):
     """Read the agent config.yml as JSON."""
-    path = _agent_dir() / "settings" / "config.yml"
+    path = _agent_dir(project_name) / "settings" / "config.yml"
     if not path.exists():
         return {"config": {}, "exists": False}
 
@@ -345,10 +350,10 @@ async def read_config():
 
 
 @router.patch("/config")
-async def update_config(update: ConfigUpdate):
+async def update_config(update: ConfigUpdate, project_name: Optional[str] = None):
     """Partially update config.yml settings."""
-    _ensure_agent_dir()
-    path = _agent_dir() / "settings" / "config.yml"
+    _ensure_agent_dir(project_name)
+    path = _agent_dir(project_name) / "settings" / "config.yml"
 
     # Read existing
     config = {}
@@ -389,7 +394,7 @@ async def update_config(update: ConfigUpdate):
 
 
 @router.get("/tokens")
-async def get_token_state():
+def get_token_state(project_name: Optional[str] = None):
     """Get the current token tracking state for the context gauge."""
     cumulative = _token_state["cumulative"]
     model_limit = _token_state["model_limit"]
@@ -407,7 +412,7 @@ async def get_token_state():
 
 
 @router.post("/tokens/record")
-async def record_tokens(snapshot: TokenSnapshot):
+async def record_tokens(snapshot: TokenSnapshot, project_name: Optional[str] = None):
     """Record a token usage snapshot from an API call."""
     ts = snapshot.timestamp or datetime.now(timezone.utc).isoformat()
 
@@ -425,7 +430,7 @@ async def record_tokens(snapshot: TokenSnapshot):
     cum = _token_state["cumulative"]
     cum["input_tokens"] += snapshot.input_tokens
     cum["output_tokens"] += snapshot.output_tokens
-    cum["cache_read_tokens"] = snapshot.cache_read_tokens  # Latest, not cumulative
+    cum["cache_read_tokens"] += snapshot.cache_read_tokens
     cum["cache_creation_tokens"] += snapshot.cache_creation_tokens
     cum["total_cost_usd"] += snapshot.total_cost_usd
     cum["api_calls"] += 1
@@ -448,7 +453,7 @@ async def record_tokens(snapshot: TokenSnapshot):
 
 
 @router.post("/tokens/reset")
-async def reset_tokens():
+async def reset_tokens(project_name: Optional[str] = None):
     """Reset token tracking state (new session)."""
     _token_state["entries"] = []
     _token_state["cumulative"] = {
@@ -465,7 +470,7 @@ async def reset_tokens():
 
 
 @router.get("/tokens/log")
-async def get_token_log():
+def get_token_log(project_name: Optional[str] = None):
     """Get the full token log entries."""
     return {"entries": _token_state["entries"]}
 
@@ -505,9 +510,9 @@ def _get_safety_status(usage_pct: float) -> dict:
 
 
 @router.get("/build-log")
-async def read_build_log():
+def read_build_log(project_name: Optional[str] = None):
     """Read the build log."""
-    path = _agent_dir() / "progress" / "build_log.md"
+    path = _agent_dir(project_name) / "progress" / "build_log.md"
     if not path.exists():
         return {"content": "", "exists": False}
     return {"content": path.read_text(encoding="utf-8"), "exists": True}

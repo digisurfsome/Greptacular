@@ -125,6 +125,8 @@ interface WorkspaceChatProps {
   pendingEffort?: 'low' | 'medium' | 'high'
   /** Called when agent streaming starts or stops, so the sidebar can show an activity indicator. */
   onStreamingChange?: (isStreaming: boolean) => void
+  /** CLI provider for this pane ('claude' | 'codex' | 'gemini'). Passed to backend on conversation create. */
+  provider?: 'claude' | 'codex' | 'gemini'
 }
 
 /** Generate a unique ID for local messages. */
@@ -192,6 +194,7 @@ export function WorkspaceChat({
   newChatKey,
   pendingEffort: pendingEffortProp,
   onStreamingChange,
+  provider: providerProp,
 }: WorkspaceChatProps): React.JSX.Element {
   const [inputValue, setInputValue] = useState('')
   const messagesContainerRef = useRef<HTMLDivElement>(null)
@@ -462,9 +465,9 @@ export function WorkspaceChat({
       console.info('[WorkspaceChat] session-switch effect: starting session', {
         conversationId, modeForSession, modelForSession, previousId,
       })
-      start(conversationId, workingDirectory ?? undefined, modeForSession, { effort: effortLevel }, modelForSession)
+      start(conversationId, workingDirectory ?? undefined, modeForSession, { effort: effortLevel }, modelForSession, providerProp)
     }
-  }, [conversationId, isLoadingConversation, activeConversationId, start, disconnect, clearMessages, workingDirectory, conversationModel, conversationContextMode, effortLevel])
+  }, [conversationId, isLoadingConversation, activeConversationId, start, disconnect, clearMessages, workingDirectory, conversationModel, conversationContextMode, effortLevel, providerProp])
 
   // Reconnect when badge cycling or split-view toggle changes the conversation's
   // model or context mode while a session is already active. We intentionally do
@@ -487,8 +490,8 @@ export function WorkspaceChat({
     setSessionContextMode(conversationContextMode)
     disconnect()
     clearMessages()
-    start(conversationId, workingDirectory ?? undefined, conversationContextMode, { effort: effortLevel }, conversationModel)
-  }, [conversationModel, conversationContextMode, conversationId, isLoadingConversation, disconnect, clearMessages, start, workingDirectory, effortLevel])
+    start(conversationId, workingDirectory ?? undefined, conversationContextMode, { effort: effortLevel }, conversationModel, providerProp)
+  }, [conversationModel, conversationContextMode, conversationId, isLoadingConversation, disconnect, clearMessages, start, workingDirectory, effortLevel, providerProp])
 
   // Smart auto-scroll: only scroll if user is near the bottom
   const handleScroll = useCallback(() => {
@@ -593,7 +596,7 @@ export function WorkspaceChat({
     if (!injectMessage || isLoading) return
     // If no conversation yet, start a new one
     if (conversationId === null && activeConversationId === null) {
-      start(undefined, workingDirectory ?? undefined, conversationContextMode, { effort: effortLevel }, conversationModel)
+      start(undefined, workingDirectory ?? undefined, conversationContextMode, { effort: effortLevel }, conversationModel, providerProp)
     }
     sendMessage(injectMessage)
     onInjectConsumed?.()
@@ -801,7 +804,7 @@ export function WorkspaceChat({
       console.info('[WorkspaceChat] handleSend: starting new session', {
         conversationContextMode, conversationModel, conversationId, activeConversationId,
       })
-      start(undefined, workingDirectory ?? undefined, conversationContextMode, { effort: effortLevel }, conversationModel)
+      start(undefined, workingDirectory ?? undefined, conversationContextMode, { effort: effortLevel }, conversationModel, providerProp)
     } else {
       console.info('[WorkspaceChat] handleSend: existing session', {
         conversationContextMode, conversationModel, conversationId, activeConversationId,
@@ -818,7 +821,7 @@ export function WorkspaceChat({
     if (effectiveId) {
       localStorage.removeItem(`${DRAFT_KEY_PREFIX}${effectiveId}`)
     }
-  }, [inputValue, isLoading, conversationId, activeConversationId, start, sendMessage, workingDirectory, pendingImages, pendingFiles, attachedLibraryFiles, conversationContextMode, conversationModel, effortLevel])
+  }, [inputValue, isLoading, conversationId, activeConversationId, start, sendMessage, workingDirectory, pendingImages, pendingFiles, attachedLibraryFiles, conversationContextMode, conversationModel, effortLevel, providerProp])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -1125,7 +1128,7 @@ export function WorkspaceChat({
               disconnect()
               clearMessages()
               if (effectiveConversationId !== null) {
-                start(effectiveConversationId, workingDirectory ?? undefined, conversationContextMode, { effort: effortLevel }, conversationModel)
+                start(effectiveConversationId, workingDirectory ?? undefined, conversationContextMode, { effort: effortLevel }, conversationModel, providerProp)
               }
             }}
             className="underline font-medium hover:text-destructive/80 flex-shrink-0"
@@ -1354,7 +1357,7 @@ export function WorkspaceChat({
                     disconnect()
                     clearMessages()
                     if (effectiveConversationId !== null) {
-                      start(effectiveConversationId, workingDirectory ?? undefined, conversationContextMode, { effort: effortLevel }, conversationModel)
+                      start(effectiveConversationId, workingDirectory ?? undefined, conversationContextMode, { effort: effortLevel }, conversationModel, providerProp)
                     }
                   }}
                 >

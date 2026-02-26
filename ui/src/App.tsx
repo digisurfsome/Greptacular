@@ -31,7 +31,7 @@ import { ResetProjectModal } from './components/ResetProjectModal'
 import { ProjectSetupRequired } from './components/ProjectSetupRequired'
 import { GitActivityWidget } from './components/GitActivityWidget'
 import { getDependencyGraph, startAgent } from './lib/api'
-import { Loader2, Settings, Moon, Sun, RotateCcw, BookOpen, MessageSquare, Layers } from 'lucide-react'
+import { Loader2, Settings, Moon, Sun, RotateCcw, BookOpen, MessageSquare, Layers, LayoutDashboard } from 'lucide-react'
 import type { Feature } from './lib/types'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -380,6 +380,18 @@ function App() {
               >
                 <MessageSquare size={16} />
                 <span className="hidden sm:inline text-xs">Workspace</span>
+              </Button>
+
+              {/* Multi-session Dashboard link */}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => { window.location.hash = '#/dashboard' }}
+                title="Multi-session Dashboard — run Claude, Codex, and Gemini side by side"
+              >
+                <LayoutDashboard size={16} />
+                <span className="hidden sm:inline text-xs">Dashboard</span>
               </Button>
 
               {/* Docs link */}

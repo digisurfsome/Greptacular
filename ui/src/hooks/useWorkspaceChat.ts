@@ -40,7 +40,7 @@ interface UseWorkspaceChatReturn {
   agentWaiting: boolean;
   /** The question the agent asked when entering waiting state. */
   agentWaitingQuestion: string | null;
-  start: (conversationId?: number | null, workingDirectory?: string, contextMode?: string, costSettings?: Record<string, unknown>, model?: string) => void;
+  start: (conversationId?: number | null, workingDirectory?: string, contextMode?: string, costSettings?: Record<string, unknown>, model?: string, provider?: string) => void;
   sendMessage: (content: string, attachments?: ImageAttachment[], libraryFileIds?: number[]) => void;
   /** Send a walkie-talkie message to the running agent (injected via PreToolUse hook). */
   sendWalkieTalkie: (content: string) => void;
@@ -123,6 +123,7 @@ export function useWorkspaceChat({
     contextMode?: string;
     costSettings?: Record<string, unknown>;
     model?: string;
+    provider?: string;
   } | null>(null);
 
   // Session readiness tracking: prevents sending messages before the backend
@@ -230,7 +231,7 @@ export function useWorkspaceChat({
         sessionReadyRef.current = false;
         const params = lastStartParamsRef.current;
         const payload: Record<string, unknown> = { type: "start" };
-        if (params.conversationId) {
+        if (params.conversationId != null) {
           payload.conversation_id = params.conversationId;
         }
         if (params.workingDirectory) {
@@ -242,6 +243,9 @@ export function useWorkspaceChat({
         }
         if (params.model) {
           payload.model = params.model;
+        }
+        if (params.provider) {
+          payload.provider = params.provider;
         }
 
         if (import.meta.env.DEV) {
@@ -532,10 +536,10 @@ export function useWorkspaceChat({
         console.error("Failed to parse WebSocket message:", e);
       }
     };
-  }, [onError]);
+  }, [onError, addWalkieTalkieEntry]);
 
   const start = useCallback(
-    (existingConversationId?: number | null, workingDirectory?: string, contextMode?: string, costSettings?: Record<string, unknown>, model?: string) => {
+    (existingConversationId?: number | null, workingDirectory?: string, contextMode?: string, costSettings?: Record<string, unknown>, model?: string, provider?: string) => {
       // Clear any pending check timeout from a previous call
       if (checkAndSendTimeoutRef.current) {
         clearTimeout(checkAndSendTimeoutRef.current);
@@ -560,6 +564,7 @@ export function useWorkspaceChat({
         contextMode,
         costSettings,
         model,
+        provider,
       };
 
       // Reset session readiness — the session is not ready until we receive
@@ -585,9 +590,10 @@ export function useWorkspaceChat({
             context_mode?: string;
             cost_settings?: Record<string, unknown>;
             model?: string;
+            provider?: string;
           } = { type: "start" };
 
-          if (existingConversationId) {
+          if (existingConversationId != null) {
             payload.conversation_id = existingConversationId;
             setConversationId(existingConversationId);
           }
@@ -600,6 +606,9 @@ export function useWorkspaceChat({
           }
           if (model) {
             payload.model = model;
+          }
+          if (provider) {
+            payload.provider = provider;
           }
 
           if (import.meta.env.DEV) {
@@ -689,7 +698,7 @@ export function useWorkspaceChat({
 
       wsRef.current.send(JSON.stringify(wsPayload));
     },
-    [onError, pendingInjection],
+    [pendingInjection],
   );
 
   const sendWalkieTalkie = useCallback(

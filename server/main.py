@@ -29,6 +29,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .routers import (
+    agent_os_router,
     agent_router,
     assistant_chat_router,
     boilerplate_router,
@@ -51,6 +52,7 @@ from .routers import (
     workspace_router,
 )
 from .schemas import SetupStatus
+from .services.agent_os_session import cleanup_all_agent_os_sessions
 from .services.assistant_chat_session import cleanup_all_sessions as cleanup_assistant_sessions
 from .services.chat_constants import ROOT_DIR
 from .services.ci_monitor import cleanup_all_monitors
@@ -96,6 +98,7 @@ async def lifespan(app: FastAPI):
     await cleanup_all_workspace_sessions()
     await cleanup_all_swarms()
     await cleanup_all_monitors()
+    await cleanup_all_agent_os_sessions()
 
 
 # Create FastAPI app
@@ -184,6 +187,7 @@ app.include_router(notifications_router)
 app.include_router(role_library_router)
 app.include_router(swarm_router)
 app.include_router(dunkstack_router)
+app.include_router(agent_os_router)
 
 
 # ============================================================================

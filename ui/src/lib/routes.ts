@@ -38,3 +38,4 @@ export function isRoleLibraryRoute(): boolean {
   return window.location.hash === '#/roles' ||
          window.location.hash.startsWith('#/roles/')
 }
+

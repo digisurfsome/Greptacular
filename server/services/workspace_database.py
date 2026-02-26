@@ -69,6 +69,8 @@ class WorkspaceConversation(Base):
     model = Column(String(20), nullable=True, default="opus")  # "opus" or "sonnet"
     effort = Column(String(10), nullable=True, default="high")  # "low", "medium", "high"
     branch_name = Column(String(200), nullable=True)  # Git branch for this conversation
+    provider = Column(String(20), nullable=False, default="claude")  # "claude" | "codex" | "gemini"
+    provider_thread_id = Column(String(200), nullable=True)  # Codex threadId / Gemini session_id
     token_count = Column(Integer, nullable=False, default=0)
     summary = Column(Text, nullable=True)
     summary_updated_at = Column(DateTime, nullable=True)
@@ -438,6 +440,14 @@ def get_engine() -> Engine:
                 cursor.execute(
                     "ALTER TABLE workspace_conversations ADD COLUMN branch_name TEXT"
                 )
+            if "provider" not in existing_cols:
+                cursor.execute(
+                    "ALTER TABLE workspace_conversations ADD COLUMN provider TEXT NOT NULL DEFAULT 'claude'"
+                )
+            if "provider_thread_id" not in existing_cols:
+                cursor.execute(
+                    "ALTER TABLE workspace_conversations ADD COLUMN provider_thread_id TEXT"
+                )
 
             # Migrate workspace_library_files: add folder_id if missing
             cursor.execute("PRAGMA table_info(workspace_library_files)")
@@ -501,6 +511,7 @@ def create_conversation(
     context_mode: Optional[str] = None,
     model: Optional[str] = None,
     effort: Optional[str] = None,
+    provider: Optional[str] = None,
 ) -> WorkspaceConversation:
     """Create a new workspace conversation.
 
@@ -512,6 +523,7 @@ def create_conversation(
         context_mode: Context window mode ("1m" or "200k").
         model: Model shorthand ("opus" or "sonnet").
         effort: Thinking effort level ("low", "medium", "high").
+        provider: CLI provider ("claude", "codex", or "gemini").
 
     Returns:
         The newly created WorkspaceConversation instance.
@@ -525,6 +537,7 @@ def create_conversation(
             context_mode=context_mode or "1m",
             model=model or "opus",
             effort=effort or "high",
+            provider=provider or "claude",
         )
         session.add(conversation)
         session.commit()
@@ -586,6 +599,7 @@ def get_conversations(category: Optional[str] = None) -> list[dict]:
                 "context_mode": row.WorkspaceConversation.context_mode or "1m",
                 "model": row.WorkspaceConversation.model or "opus",
                 "effort": row.WorkspaceConversation.effort or "high",
+                "provider": row.WorkspaceConversation.provider or "claude",
                 "created_at": (
                     row.WorkspaceConversation.created_at.isoformat()
                     if row.WorkspaceConversation.created_at else None
@@ -630,6 +644,8 @@ def get_conversation(conversation_id: int) -> Optional[dict]:
             "context_mode": conversation.context_mode or "1m",
             "model": conversation.model or "opus",
             "effort": conversation.effort or "high",
+            "provider": conversation.provider or "claude",
+            "provider_thread_id": conversation.provider_thread_id,
             "created_at": conversation.created_at.isoformat() if conversation.created_at else None,
             "updated_at": conversation.updated_at.isoformat() if conversation.updated_at else None,
             "messages": [
@@ -735,6 +751,8 @@ def update_conversation(
     context_mode: Optional[str] = None,
     model: Optional[str] = None,
     effort: Optional[str] = None,
+    provider: Optional[str] = None,
+    provider_thread_id: Optional[str] = None,
 ) -> Optional[dict]:
     """Update a conversation's metadata.
 
@@ -749,6 +767,8 @@ def update_conversation(
         tags: New comma-separated tags, or None to leave unchanged.
         context_mode: New context mode (``"1m"`` or ``"200k"``), or None to leave unchanged.
         model: New model shorthand (``"opus"`` or ``"sonnet"``), or None to leave unchanged.
+        provider: CLI provider (``"claude"``, ``"codex"``, or ``"gemini"``), or None.
+        provider_thread_id: Provider session/thread ID for continuity, or None.
 
     Returns:
         Updated conversation dict, or None if the conversation was not found.
@@ -779,6 +799,10 @@ def update_conversation(
             conversation.model = model
         if effort is not None:
             conversation.effort = effort
+        if provider is not None:
+            conversation.provider = provider
+        if provider_thread_id is not None:
+            conversation.provider_thread_id = provider_thread_id
 
         conversation.updated_at = _utc_now()
         session.commit()
@@ -801,6 +825,8 @@ def update_conversation(
             "context_mode": conversation.context_mode or "1m",
             "model": conversation.model or "opus",
             "effort": conversation.effort or "high",
+            "provider": conversation.provider or "claude",
+            "provider_thread_id": conversation.provider_thread_id,
             "created_at": conversation.created_at.isoformat() if conversation.created_at else None,
             "updated_at": conversation.updated_at.isoformat() if conversation.updated_at else None,
             "message_count": msg_count,

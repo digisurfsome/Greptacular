@@ -992,9 +992,22 @@ async def get_walkie_talkie_status(session_id: str):
     """Get the walkie-talkie status for a workspace session.
 
     Useful for debugging and for the UI to check if a session is waiting.
+    Supports both background sessions (UUID) and legacy direct sessions.
     """
-    from ..services.workspace_chat_session import get_session as ws_get_session
+    # Try background session manager first.
+    from ..services.background_session_manager import get_background_session_manager
+    mgr = await get_background_session_manager()
+    bg_session = mgr.get_session(session_id)
+    if bg_session and bg_session._chat_session:
+        chat = bg_session._chat_session
+        return {
+            "active": chat.walkie_talkie_enabled,
+            "waiting": chat.walkie_talkie_waiting,
+            "queue_size": chat.walkie_talkie_queue.qsize(),
+        }
 
+    # Fall back to legacy direct session lookup.
+    from ..services.workspace_chat_session import get_session as ws_get_session
     session = ws_get_session(session_id)
     if not session:
         return {"active": False, "waiting": False, "queue_size": 0}
@@ -1303,8 +1316,9 @@ async def workspace_chat_websocket(websocket: WebSocket):
                     # Walkie-talkie: inject a message into the running agent's queue.
                     content = message.get("content", "")
                     if content and attached_session_id:
+                        from ..services.background_session_manager import _is_terminal
                         bg_session = manager.get_session(attached_session_id)
-                        if bg_session and bg_session._chat_session:
+                        if bg_session and bg_session._chat_session and not _is_terminal(bg_session.state):
                             await bg_session._chat_session.queue_walkie_talkie_message(content)
                             await websocket.send_json({
                                 "type": "walkie_talkie_queued",

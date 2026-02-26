@@ -22,6 +22,38 @@ _PRIORITY_MAP = {"must_have": 1, "should_have": 2, "nice_to_have": 3}
 
 # ── Scope boundary template ─────────────────────────────────────────
 
+CONTEXT_PRIMER_TEMPLATE = """# Context Primer
+Generated: {timestamp}
+Project: {project_name}
+
+> This document is the build agent's first read. It summarizes everything
+> the Agent OS blueprint produced so the build agent has full context
+> before implementing any feature.
+
+## Standards Summary
+{standards_summary}
+
+## Product Vision
+{product_summary}
+
+## Feature Overview
+{feature_overview}
+
+## Build Order
+{build_order}
+
+## Key Decisions
+{decisions_summary}
+
+## Spec Index
+{spec_index}
+
+## Constraints & Boundaries
+- See `scope_boundary.md` for what's in/out of scope
+- See individual specs in `.agent/specs/` for implementation details
+- Standards files in `agent-os/standards/` are the source of truth for patterns
+"""
+
 SCOPE_BOUNDARY_TEMPLATE = """# Scope Boundary
 Generated: {timestamp}
 Project: {project_name}
@@ -63,16 +95,19 @@ class AgentOSHandoff:
         file_utils: AgentOSFileUtils,
         features: Any,  # AgentOSFeatures
         specs: Any,  # AgentOSSpecs
+        mechanism: Optional[Any] = None,  # AgentOSMechanism — for decisions log
     ):
         self.project_dir = project_dir
         self.file_utils = file_utils
         self.features = features
         self.specs = specs
+        self.mechanism = mechanism
         self._build_order: list[int] = []
         self._handoff_complete: bool = False
         self._features_db_populated: bool = False
         self._dependencies_set: bool = False
         self._scope_boundary_generated: bool = False
+        self._context_primer_generated: bool = False
 
     # ── Database population ──────────────────────────────────────────
 
@@ -261,6 +296,111 @@ class AgentOSHandoff:
         logger.info("Generated scope boundary at %s", path)
         return path
 
+    # ── Context primer ────────────────────────────────────────────────
+
+    def generate_context_primer(self) -> Path:
+        """Assemble the context primer from all 3 layers + decisions.
+
+        Writes to .agent/knowledge/context-primer.md.
+        This is the single briefing document the build agent reads first.
+        """
+        timestamp = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        project_name = self.project_dir.name
+
+        # ── Standards summary ────────────────────────────────────────
+        standards_files = self.file_utils.list_files_in_layer("standards")
+        standards_parts: list[str] = []
+        for f in standards_files:
+            content = self.file_utils.read_standards_file(f["name"])
+            if content:
+                # Take first 5 non-empty lines as summary
+                lines = [line for line in content.split("\n") if line.strip()][:5]
+                standards_parts.append(f"**{f['name']}:** {' | '.join(lines)}")
+        standards_summary = "\n".join(standards_parts) if standards_parts else "(No standards defined)"
+
+        # ── Product summary ──────────────────────────────────────────
+        product_files = self.file_utils.list_files_in_layer("product")
+        product_parts: list[str] = []
+        for f in product_files:
+            content = self.file_utils.read_product_file(f["name"])
+            if content:
+                lines = [line for line in content.split("\n") if line.strip()][:5]
+                product_parts.append(f"**{f['name']}:** {' | '.join(lines)}")
+        product_summary = "\n".join(product_parts) if product_parts else "(No product documents)"
+
+        # ── Feature overview ─────────────────────────────────────────
+        feature_list = self.features.get_feature_list()
+        counts = self.features.get_feature_count_by_priority()
+        feature_lines = [
+            f"**Total:** {len(feature_list)} features "
+            f"({counts.get('must_have', 0)} must-have, "
+            f"{counts.get('should_have', 0)} should-have, "
+            f"{counts.get('nice_to_have', 0)} nice-to-have)",
+            "",
+        ]
+        for feat in feature_list:
+            deps = feat.get("dependencies", [])
+            dep_str = f" → depends on {', '.join(f'#{d}' for d in deps)}" if deps else ""
+            feature_lines.append(
+                f"- **#{feat['id']} {feat['name']}** [{feat.get('priority', '?')}] — "
+                f"{feat.get('description', '')[:80]}{dep_str}"
+            )
+        feature_overview = "\n".join(feature_lines)
+
+        # ── Build order ──────────────────────────────────────────────
+        build_order_ids = self._build_order or self.calculate_build_order()
+        build_order_lines: list[str] = []
+        for i, fid in enumerate(build_order_ids, 1):
+            feat = self.features.get_feature_by_id(fid)
+            if feat:
+                build_order_lines.append(f"{i}. #{fid} {feat['name']} [{feat.get('priority', '?')}]")
+        build_order = "\n".join(build_order_lines) if build_order_lines else "(Not calculated)"
+
+        # ── Decisions summary ────────────────────────────────────────
+        decisions_lines: list[str] = []
+        if self.mechanism is not None:
+            for decision in self.mechanism.get_all_decisions():
+                alts = ", ".join(decision.get("alternatives", []))
+                alt_str = f" (over {alts})" if alts else ""
+                decisions_lines.append(
+                    f"- **{decision.get('decision_point', 'Unknown')}:** "
+                    f"{decision.get('chosen', '?')}{alt_str} "
+                    f"— confidence {decision.get('confidence', 0):.0%}"
+                )
+        decisions_summary = "\n".join(decisions_lines) if decisions_lines else "(No mechanism decisions recorded)"
+
+        # ── Spec index ───────────────────────────────────────────────
+        all_specs = self.specs.get_all_specs()
+        spec_lines: list[str] = []
+        for fid in sorted(all_specs.keys()):
+            feat = self.features.get_feature_by_id(fid)
+            name = feat["name"] if feat else f"Feature #{fid}"
+            spec_path = all_specs[fid]
+            # Show relative path from project root
+            try:
+                rel = Path(spec_path).relative_to(self.project_dir)
+            except ValueError:
+                rel = Path(spec_path)
+            spec_lines.append(f"- #{fid} {name} → `{rel}`")
+        spec_index = "\n".join(spec_lines) if spec_lines else "(No specs generated)"
+
+        # ── Assemble ─────────────────────────────────────────────────
+        content = CONTEXT_PRIMER_TEMPLATE.format(
+            timestamp=timestamp,
+            project_name=project_name,
+            standards_summary=standards_summary,
+            product_summary=product_summary,
+            feature_overview=feature_overview,
+            build_order=build_order,
+            decisions_summary=decisions_summary,
+            spec_index=spec_index,
+        )
+
+        path = self.file_utils.write_file("knowledge", "context-primer.md", content)
+        self._context_primer_generated = True
+        logger.info("Generated context primer at %s", path)
+        return path
+
     # ── Handoff assembly ─────────────────────────────────────────────
 
     def assemble_handoff_package(self) -> dict[str, Any]:
@@ -287,6 +427,11 @@ class AgentOSHandoff:
         scope_path = self.project_dir / ".agent" / "scope_boundary.md"
         if not scope_path.is_file():
             missing.append("scope_boundary.md")
+
+        # Check context primer
+        primer_path = self.project_dir / ".agent" / "knowledge" / "context-primer.md"
+        if not primer_path.is_file():
+            missing.append("context-primer.md")
 
         feature_count = len(self.features.get_feature_list())
         build_order = self._build_order or []
@@ -345,6 +490,7 @@ class AgentOSHandoff:
             "features_db_populated": self._features_db_populated,
             "dependencies_set": self._dependencies_set,
             "scope_boundary_generated": self._scope_boundary_generated,
+            "context_primer_generated": self._context_primer_generated,
             "build_order_calculated": len(self._build_order) > 0,
             "handoff_complete": self._handoff_complete,
         }

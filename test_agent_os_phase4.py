@@ -249,13 +249,13 @@ class TestSpecs:
 
 class TestHandoff:
     @pytest.fixture
-    def handoff_service(self, tmp_project: Path, file_utils: AgentOSFileUtils, features_service: AgentOSFeatures, specs_service: AgentOSSpecs, sample_spec_content: str) -> AgentOSHandoff:
+    def handoff_service(self, tmp_project: Path, file_utils: AgentOSFileUtils, features_service: AgentOSFeatures, mechanism_service: AgentOSMechanism, specs_service: AgentOSSpecs, sample_spec_content: str) -> AgentOSHandoff:
         # Generate specs for all features
         specs_service.process_generated_spec(1, sample_spec_content)
         specs_service.process_generated_spec(2, "# Feature 2: Task CRUD\n\n## Acceptance Criteria\n- [ ] Create tasks\n- [ ] Read tasks\n- [ ] Update tasks\n")
         specs_service.process_generated_spec(3, "# Feature 3: Notifications\n\n## Acceptance Criteria\n- [ ] Send email\n")
         specs_service.process_generated_spec(4, "# Feature 4: Dark Mode\n\n## Acceptance Criteria\n- [ ] Toggle theme\n")
-        return AgentOSHandoff(tmp_project, file_utils, features_service, specs_service)
+        return AgentOSHandoff(tmp_project, file_utils, features_service, specs_service, mechanism=mechanism_service)
 
     def test_populate_features_db_creates_rows(self, handoff_service: AgentOSHandoff, tmp_project: Path) -> None:
         """Features are created in the database with correct fields."""
@@ -367,8 +367,6 @@ class TestHandoff:
     def test_assemble_handoff_reports_missing(self, tmp_project: Path, file_utils: AgentOSFileUtils, features_service: AgentOSFeatures) -> None:
         """Handoff reports missing components."""
         # Create a handoff with no specs generated
-        from server.services.agent_os_mechanism import AgentOSMechanism
-        from server.services.agent_os_specs import AgentOSSpecs
         mech = AgentOSMechanism({})
         specs = AgentOSSpecs(tmp_project, file_utils, features_service, mech)
         handoff = AgentOSHandoff(tmp_project, file_utils, features_service, specs)
@@ -384,6 +382,8 @@ class TestHandoff:
         handoff_service.populate_features_db(db_path=db_path)
         # Generate scope boundary
         handoff_service.generate_scope_boundary()
+        # Generate context primer
+        handoff_service.generate_context_primer()
 
         result = handoff_service.assemble_handoff_package()
         assert result["ready"] is True
@@ -403,8 +403,6 @@ class TestHandoff:
 
     def test_build_plan_summary_empty(self, tmp_project: Path, file_utils: AgentOSFileUtils) -> None:
         """Empty feature list returns appropriate message."""
-        from server.services.agent_os_mechanism import AgentOSMechanism
-        from server.services.agent_os_specs import AgentOSSpecs
         empty_features = AgentOSFeatures(tmp_project, file_utils, {}, {})
         mech = AgentOSMechanism({})
         specs = AgentOSSpecs(tmp_project, file_utils, empty_features, mech)
@@ -412,10 +410,105 @@ class TestHandoff:
         summary = handoff.get_build_plan_summary()
         assert "No features" in summary
 
+    def test_generate_context_primer_creates_file(self, handoff_service: AgentOSHandoff, tmp_project: Path) -> None:
+        """Context primer is written to .agent/knowledge/context-primer.md."""
+        path = handoff_service.generate_context_primer()
+        assert path.exists()
+        assert path.name == "context-primer.md"
+        assert (tmp_project / ".agent" / "knowledge" / "context-primer.md").exists()
+
+    def test_context_primer_includes_standards(self, handoff_service: AgentOSHandoff) -> None:
+        """Context primer includes standards layer summary."""
+        path = handoff_service.generate_context_primer()
+        content = path.read_text(encoding="utf-8")
+        assert "## Standards Summary" in content
+        assert "TypeScript" in content
+
+    def test_context_primer_includes_product(self, handoff_service: AgentOSHandoff) -> None:
+        """Context primer includes product layer summary."""
+        path = handoff_service.generate_context_primer()
+        content = path.read_text(encoding="utf-8")
+        assert "## Product Vision" in content
+        assert "task management" in content.lower()
+
+    def test_context_primer_includes_features(self, handoff_service: AgentOSHandoff) -> None:
+        """Context primer includes feature overview with counts and names."""
+        path = handoff_service.generate_context_primer()
+        content = path.read_text(encoding="utf-8")
+        assert "## Feature Overview" in content
+        assert "User Auth" in content
+        assert "Task CRUD" in content
+        assert "must-have" in content
+        assert "should-have" in content
+
+    def test_context_primer_includes_build_order(self, handoff_service: AgentOSHandoff) -> None:
+        """Context primer includes build order section."""
+        path = handoff_service.generate_context_primer()
+        content = path.read_text(encoding="utf-8")
+        assert "## Build Order" in content
+        # User Auth should appear in build order
+        assert "User Auth" in content
+
+    def test_context_primer_includes_spec_index(self, handoff_service: AgentOSHandoff) -> None:
+        """Context primer includes an index of all generated specs."""
+        path = handoff_service.generate_context_primer()
+        content = path.read_text(encoding="utf-8")
+        assert "## Spec Index" in content
+        assert ".agent/specs/" in content
+
+    def test_context_primer_includes_decisions(self, handoff_service: AgentOSHandoff, mechanism_service: AgentOSMechanism) -> None:
+        """Context primer includes mechanism decisions when present."""
+        # Record a decision on the mechanism service
+        analysis = {
+            "decision_point": "Authentication method",
+            "feature_id": 1,
+            "options": [{"name": "JWT"}, {"name": "Session cookies"}],
+            "confidence": 0.9,
+            "auto_selected": True,
+            "reasoning": "JWT is standard for SPAs",
+        }
+        mechanism_service.record_decision(analysis, "JWT", "Industry standard for SPAs")
+
+        path = handoff_service.generate_context_primer()
+        content = path.read_text(encoding="utf-8")
+        assert "## Key Decisions" in content
+        assert "Authentication method" in content
+        assert "JWT" in content
+        assert "90%" in content
+
+    def test_context_primer_no_decisions(self, tmp_project: Path, file_utils: AgentOSFileUtils, features_service: AgentOSFeatures) -> None:
+        """Context primer handles no decisions gracefully."""
+        mech = AgentOSMechanism({})
+        specs = AgentOSSpecs(tmp_project, file_utils, features_service, mech)
+        handoff = AgentOSHandoff(tmp_project, file_utils, features_service, specs, mechanism=mech)
+        path = handoff.generate_context_primer()
+        content = path.read_text(encoding="utf-8")
+        assert "No mechanism decisions recorded" in content
+
+    def test_context_primer_no_mechanism(self, tmp_project: Path, file_utils: AgentOSFileUtils, features_service: AgentOSFeatures) -> None:
+        """Context primer handles missing mechanism service gracefully."""
+        mech = AgentOSMechanism({})
+        specs = AgentOSSpecs(tmp_project, file_utils, features_service, mech)
+        handoff = AgentOSHandoff(tmp_project, file_utils, features_service, specs)  # No mechanism
+        path = handoff.generate_context_primer()
+        content = path.read_text(encoding="utf-8")
+        assert "No mechanism decisions recorded" in content
+
+    def test_assemble_handoff_reports_missing_primer(self, handoff_service: AgentOSHandoff, tmp_project: Path) -> None:
+        """Handoff reports missing context primer when not generated."""
+        db_path = tmp_project / ".autoforge" / "features.db"
+        handoff_service.populate_features_db(db_path=db_path)
+        handoff_service.generate_scope_boundary()
+        # Don't generate context primer
+        result = handoff_service.assemble_handoff_package()
+        assert result["ready"] is False
+        assert "context-primer.md" in result["missing"]
+
     def test_handoff_status(self, handoff_service: AgentOSHandoff, tmp_project: Path) -> None:
         """Handoff status tracks all steps."""
         status = handoff_service.get_handoff_status()
         assert status["features_db_populated"] is False
+        assert status["context_primer_generated"] is False
         assert status["handoff_complete"] is False
 
         db_path = tmp_project / ".autoforge" / "features.db"
@@ -426,6 +519,10 @@ class TestHandoff:
         handoff_service.generate_scope_boundary()
         status = handoff_service.get_handoff_status()
         assert status["scope_boundary_generated"] is True
+
+        handoff_service.generate_context_primer()
+        status = handoff_service.get_handoff_status()
+        assert status["context_primer_generated"] is True
 
     def test_feature_to_db_row_mapping(self, handoff_service: AgentOSHandoff) -> None:
         """Verify the feature → DB row mapping logic."""

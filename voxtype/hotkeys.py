@@ -6,6 +6,7 @@ of which application is focused.
 
 import logging
 from collections.abc import Callable
+
 import keyboard
 
 logger = logging.getLogger("voxtype.hotkeys")

@@ -12,12 +12,12 @@ We handle this by tracking what's been injected and sending backspaces
 to correct changed words when needed.
 """
 
-import threading
 import logging
+import threading
 import time
-from pynput.keyboard import Controller, Key
 
 from config import VoxConfig
+from pynput.keyboard import Controller, Key
 
 logger = logging.getLogger("voxtype.injector")
 

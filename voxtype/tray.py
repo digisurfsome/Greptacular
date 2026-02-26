@@ -6,9 +6,10 @@ Provides:
   - Icon color indicates state: green=listening, yellow=paused, gray=off
 """
 
-import threading
 import logging
+import threading
 from collections.abc import Callable
+
 from PIL import Image, ImageDraw
 
 logger = logging.getLogger("voxtype.tray")

@@ -8,13 +8,12 @@ The partial stream drives word-by-word injection.
 The finalized stream drives correction passes.
 """
 
-import threading
 import logging
+import threading
 from collections.abc import Callable
 
-from RealtimeSTT import AudioToTextRecorder
-
 from config import VoxConfig
+from RealtimeSTT import AudioToTextRecorder
 
 logger = logging.getLogger("voxtype.transcriber")
 
@@ -145,7 +144,7 @@ class Transcriber:
                 try:
                     # text() blocks until a complete phrase is detected (pause)
                     # then returns the finalized transcription
-                    text = self._recorder.text(self._handle_finalized)
+                    self._recorder.text(self._handle_finalized)
                     # text() returns the finalized text, but we already handle
                     # it via the callback. This just keeps the loop running.
                 except Exception:

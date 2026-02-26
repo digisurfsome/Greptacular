@@ -13,10 +13,10 @@ import sys
 import time
 
 from config import VoxConfig
-from transcriber import Transcriber
-from injector import TextInjector
-from tray import TrayIcon
 from hotkeys import HotkeyManager
+from injector import TextInjector
+from transcriber import Transcriber
+from tray import TrayIcon
 
 logging.basicConfig(
     level=logging.INFO,
@@ -148,7 +148,7 @@ def list_audio_devices() -> None:
                 default = " (DEFAULT)" if i == pa.get_default_input_device_info()["index"] else ""
                 print(f"  [{i}] {info['name']}{default}")
         pa.terminate()
-        print(f"\nUse --device <number> to select a specific microphone.\n")
+        print("\nUse --device <number> to select a specific microphone.\n")
     except ImportError:
         print("PyAudio not available. Install it to list devices.")
         print("  pip install pyaudio")

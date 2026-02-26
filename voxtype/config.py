@@ -1,9 +1,8 @@
 """VoxType configuration."""
 
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
-import json
-
 
 CONFIG_PATH = Path.home() / ".voxtype" / "config.json"
 

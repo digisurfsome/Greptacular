@@ -333,6 +333,107 @@ class TestFeatures:
         counts = features_service.get_feature_count_by_priority()
         assert counts == {"must_have": 2, "should_have": 1, "nice_to_have": 1}
 
+    # ── Edge case tests ──────────────────────────────────────────────
+
+    def test_process_empty_features(self, features_service: AgentOSFeatures) -> None:
+        """Empty feature list is handled."""
+        result = features_service.process_extracted_features([])
+        assert result == []
+        assert features_service.get_feature_list() == []
+
+    def test_process_features_missing_all_fields(self, features_service: AgentOSFeatures) -> None:
+        """Feature with no fields gets safe defaults."""
+        result = features_service.process_extracted_features([{}])
+        assert len(result) == 1
+        assert result[0]["name"] == "Unnamed Feature"
+        assert result[0]["priority"] == "should_have"
+        assert result[0]["complexity"] == "medium"
+        assert result[0]["dependencies"] == []
+
+    def test_self_dependency_int_blocked(self, features_service: AgentOSFeatures) -> None:
+        """Integer self-dependency is blocked."""
+        result = features_service.process_extracted_features([
+            {"name": "Self-ref", "dependencies": [1]},  # ID will be 1
+        ])
+        assert result[0]["dependencies"] == []
+
+    def test_dependency_on_nonexistent_name_ignored(self, features_service: AgentOSFeatures) -> None:
+        """Dependency on a name that doesn't match any feature is silently dropped."""
+        result = features_service.process_extracted_features([
+            {"name": "A", "dependencies": ["Nonexistent Feature"]},
+        ])
+        assert result[0]["dependencies"] == []
+
+    def test_duplicate_feature_names(self, features_service: AgentOSFeatures) -> None:
+        """Duplicate names map to the later feature's ID for dependencies."""
+        result = features_service.process_extracted_features([
+            {"name": "Widget", "dependencies": []},
+            {"name": "Widget", "dependencies": []},  # Same name
+            {"name": "Uses Widget", "dependencies": ["Widget"]},
+        ])
+        # "Widget" name maps to id=2 (the second one overwrites in name_to_id)
+        assert result[2]["dependencies"] == [2]
+
+    def test_gap_analysis_with_empty_features(self, features_service: AgentOSFeatures) -> None:
+        """Gap analysis prompt works with no features."""
+        prompt = features_service.get_gap_analysis_prompt()
+        assert "[]" in prompt  # Empty feature list serializes to []
+
+    def test_update_feature_id_ignored(self, features_service: AgentOSFeatures) -> None:
+        """Attempting to update the 'id' field is silently ignored."""
+        features_service.add_feature({"name": "Test"})
+        result = features_service.update_feature(1, {"id": 999})
+        assert result["id"] == 1  # ID unchanged
+
+    def test_gap_severity_invalid_falls_back(self, features_service: AgentOSFeatures) -> None:
+        """Invalid severity falls back to 'minor'."""
+        gaps = features_service.process_gap_analysis([
+            {"type": "test", "severity": "catastrophic", "message": "Bad", "layers": [], "recommendation": "", "confidence": 0.5}
+        ])
+        assert gaps[0]["severity"] == "minor"
+
+    def test_prompt_survives_braces_in_content(self, tmp_project: Path) -> None:
+        """Curly braces in user content don't crash .format() prompt generation."""
+        file_utils = AgentOSFileUtils(tmp_project)
+        # Write a standards file containing curly braces (common in code specs)
+        (tmp_project / "agent-os" / "standards" / "technology-stack.md").write_text(
+            "# Tech Stack\n\nUse {userId} as the path param\nConfig: {\"key\": \"value\"}\n"
+        )
+        # Write a product file with braces
+        (tmp_project / ".agent" / "product" / "vision.md").write_text(
+            "# Vision\n\nEndpoint format: /api/{resource}/{id}\n"
+        )
+
+        entities = {"product_name": "BraceTest", "product_description": "Tests {braces} in content"}
+        service = AgentOSFeatures(tmp_project, file_utils, entities, {"auto_select_threshold": 85})
+
+        # These should NOT raise KeyError
+        prompt = service.get_feature_extraction_prompt()
+        assert "userId" in prompt  # Content preserved (escaped)
+
+        service.process_extracted_features([{"name": "A"}])
+        gap_prompt = service.get_gap_analysis_prompt()
+        assert "resource" in gap_prompt
+
+    def test_process_extracted_features_resets_ids(self, features_service: AgentOSFeatures) -> None:
+        """Calling process_extracted_features twice resets IDs to 1."""
+        first = features_service.process_extracted_features([
+            {"name": "Alpha"}, {"name": "Beta"},
+        ])
+        assert first[0]["id"] == 1
+        assert first[1]["id"] == 2
+
+        # Second call should reset IDs back to 1
+        second = features_service.process_extracted_features([
+            {"name": "Gamma"}, {"name": "Delta"}, {"name": "Epsilon"},
+        ])
+        assert second[0]["id"] == 1
+        assert second[1]["id"] == 2
+        assert second[2]["id"] == 3
+        # Old features should be replaced
+        assert len(features_service.get_feature_list()) == 3
+        assert features_service.get_feature_by_id(1)["name"] == "Gamma"
+
 
 # ── TestMechanism ────────────────────────────────────────────────────
 
@@ -520,3 +621,56 @@ class TestMechanism:
             "reasoning": "test",
         })
         assert len(mechanism.get_all_analyses()) == 1
+
+    # ── Edge case tests ──────────────────────────────────────────────
+
+    def test_process_analysis_empty_options(self, mechanism: AgentOSMechanism) -> None:
+        """Empty options list returns 'None' as recommended."""
+        analysis = mechanism.process_analysis({"options": [], "reasoning": "nothing"})
+        assert analysis["recommended"] == "None"
+        assert analysis["confidence"] == 0.0
+
+    def test_process_analysis_missing_scores(self, mechanism: AgentOSMechanism) -> None:
+        """Options with missing scores get defaults of 0.5."""
+        analysis = mechanism.process_analysis({
+            "options": [{"name": "A", "scores": {}, "overall_score": 0, "pros": [], "cons": []}],
+            "reasoning": "test",
+        })
+        scores = analysis["options"][0]["scores"]
+        assert all(v == 0.5 for v in scores.values())
+
+    def test_developers_choice_biases_exceed_1(self) -> None:
+        """When bias weights sum > 1, raw_weight is clamped to 0."""
+        config = {
+            "developers_choice": {
+                "enabled": True,
+                "bias_toward_standards": 0.5,
+                "bias_toward_simplicity": 0.3,
+                "bias_toward_adoption": 0.3,
+                "bias_toward_docs": 0.2,
+            },
+        }
+        mechanism = AgentOSMechanism(config)
+        options = [
+            {"name": "A", "scores": {"complexity": 0.5, "standards_match": 0.5, "scalability": 0.5, "maintainability": 0.5}, "overall_score": 0.9},
+        ]
+        result = mechanism.apply_developers_choice(options)
+        # Should not crash even with biases summing to 1.3
+        assert "adjusted_score" in result[0]
+        assert result[0]["adjusted_score"] >= 0
+
+    def test_record_decision_without_reason(self, mechanism: AgentOSMechanism) -> None:
+        """Recording a decision with no reason uses analysis reasoning."""
+        analysis = {"decision_point": "Test", "options": [], "confidence": 0.7, "auto_selected": False, "reasoning": "Fallback reason"}
+        decision = mechanism.record_decision(analysis, "X")
+        assert decision["reason"] == "Fallback reason"
+
+    def test_decision_point_from_process_analysis(self, mechanism: AgentOSMechanism) -> None:
+        """decision_point passed to process_analysis is preserved in result."""
+        analysis = mechanism.process_analysis(
+            {"options": [{"name": "A", "scores": {}, "overall_score": 0.8, "pros": [], "cons": []}], "reasoning": "test"},
+            decision_point="Authentication method",
+        )
+        assert analysis["decision_point"] == "Authentication method"
+        decision = mechanism.record_decision(analysis, "A")
+        assert decision["decision_point"] == "Authentication method"

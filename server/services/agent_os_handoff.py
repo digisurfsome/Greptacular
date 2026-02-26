@@ -17,6 +17,11 @@ from .agent_os_file_utils import AgentOSFileUtils
 
 logger = logging.getLogger(__name__)
 
+
+def _escape_braces(text: str) -> str:
+    """Escape curly braces in user content so .format() doesn't choke."""
+    return text.replace("{", "{{").replace("}", "}}")
+
 # Priority mapping: Agent OS priority names → features.db integer priorities
 _PRIORITY_MAP = {"must_have": 1, "should_have": 2, "nice_to_have": 3}
 
@@ -138,6 +143,7 @@ class AgentOSHandoff:
             for feature in feature_list:
                 row_data = self._feature_to_db_row(feature)
                 db_feature = Feature(
+                    id=feature["id"],  # Explicit ID to match in-memory deps
                     priority=row_data["priority"],
                     category=row_data["category"],
                     name=row_data["name"],
@@ -185,6 +191,8 @@ class AgentOSHandoff:
                     criteria.append(text)
             if criteria:
                 steps = criteria
+        else:
+            logger.warning("No spec content for feature #%d (%s) — steps will be empty", feature["id"], feature["name"])
 
         return {
             "priority": _PRIORITY_MAP.get(feature.get("priority", "should_have"), 2),
@@ -196,7 +204,7 @@ class AgentOSHandoff:
 
     # ── Dependency graph ─────────────────────────────────────────────
 
-    def generate_dependency_graph(self, db_path: Optional[Path] = None) -> dict[str, Any]:
+    def generate_dependency_graph(self) -> dict[str, Any]:
         """Validate and report on the dependency graph.
 
         Dependencies are already written during populate_features_db.
@@ -204,9 +212,11 @@ class AgentOSHandoff:
         """
         feature_list = self.features.get_feature_list()
 
-        # Build feature dicts in the format dependency_resolver expects
+        # Build feature dicts in the format dependency_resolver expects.
+        # The resolver's heap sorts by priority (lower int = higher priority),
+        # so we must convert Agent OS string priorities to integers.
         feature_dicts = [
-            {"id": f["id"], "dependencies": f.get("dependencies", []), "passes": False}
+            {"id": f["id"], "priority": _PRIORITY_MAP.get(f.get("priority", "nice_to_have"), 3), "dependencies": f.get("dependencies", []), "passes": False}
             for f in feature_list
         ]
 
@@ -236,7 +246,7 @@ class AgentOSHandoff:
         feature_list = self.features.get_feature_list()
 
         feature_dicts = [
-            {"id": f["id"], "priority": f.get("priority", 999), "dependencies": f.get("dependencies", []), "passes": False}
+            {"id": f["id"], "priority": _PRIORITY_MAP.get(f.get("priority", "nice_to_have"), 3), "dependencies": f.get("dependencies", []), "passes": False}
             for f in feature_list
         ]
 
@@ -281,11 +291,11 @@ class AgentOSHandoff:
 
         content = SCOPE_BOUNDARY_TEMPLATE.format(
             timestamp=timestamp,
-            project_name=project_name,
-            mvp_features="\n".join(mvp) if mvp else "(None)",
-            next_features="\n".join(next_phase) if next_phase else "(None)",
-            future_features="\n".join(future) if future else "(None)",
-            build_order="\n".join(build_order_lines) if build_order_lines else "(Not calculated)",
+            project_name=_escape_braces(project_name),
+            mvp_features=_escape_braces("\n".join(mvp)) if mvp else "(None)",
+            next_features=_escape_braces("\n".join(next_phase)) if next_phase else "(None)",
+            future_features=_escape_braces("\n".join(future)) if future else "(None)",
+            build_order=_escape_braces("\n".join(build_order_lines)) if build_order_lines else "(Not calculated)",
         )
 
         # Write to .agent/scope_boundary.md
@@ -387,13 +397,13 @@ class AgentOSHandoff:
         # ── Assemble ─────────────────────────────────────────────────
         content = CONTEXT_PRIMER_TEMPLATE.format(
             timestamp=timestamp,
-            project_name=project_name,
-            standards_summary=standards_summary,
-            product_summary=product_summary,
-            feature_overview=feature_overview,
-            build_order=build_order,
-            decisions_summary=decisions_summary,
-            spec_index=spec_index,
+            project_name=_escape_braces(project_name),
+            standards_summary=_escape_braces(standards_summary),
+            product_summary=_escape_braces(product_summary),
+            feature_overview=_escape_braces(feature_overview),
+            build_order=_escape_braces(build_order),
+            decisions_summary=_escape_braces(decisions_summary),
+            spec_index=_escape_braces(spec_index),
         )
 
         path = self.file_utils.write_file("knowledge", "context-primer.md", content)
@@ -401,10 +411,30 @@ class AgentOSHandoff:
         logger.info("Generated context primer at %s", path)
         return path
 
+    def _generate_context_primer_if_ready(self, current_missing: list[str]) -> Optional[Path]:
+        """Generate the context primer if upstream layers are available.
+
+        Called by assemble_handoff_package(). Only generates if standards,
+        product, and specs exist — the primer can't be assembled without them.
+        Returns the path if generated, None if upstream layers are missing.
+        """
+        # The primer needs content from all 3 layers to be meaningful.
+        # If any upstream layer is missing, we can't generate a useful primer.
+        upstream_missing = {"standards files", "product documents", "spec files"}
+        if upstream_missing & set(current_missing):
+            return None
+
+        return self.generate_context_primer()
+
     # ── Handoff assembly ─────────────────────────────────────────────
 
     def assemble_handoff_package(self) -> dict[str, Any]:
-        """Verify all pieces exist and return handoff status."""
+        """Assemble all handoff artifacts and verify readiness.
+
+        This is the final stage that bridges Agent OS → build agent.
+        It actively generates the context primer (the build agent's
+        first-read briefing doc) from all 3 layers + decisions log.
+        """
         missing: list[str] = []
 
         # Check standards
@@ -428,9 +458,10 @@ class AgentOSHandoff:
         if not scope_path.is_file():
             missing.append("scope_boundary.md")
 
-        # Check context primer
-        primer_path = self.project_dir / ".agent" / "knowledge" / "context-primer.md"
-        if not primer_path.is_file():
+        # Generate context primer — the build agent's briefing doc
+        # Pulls summaries from all 3 layers + decisions log
+        primer_path = self._generate_context_primer_if_ready(missing)
+        if primer_path is None:
             missing.append("context-primer.md")
 
         feature_count = len(self.features.get_feature_list())

@@ -16,6 +16,11 @@ from .agent_os_file_utils import AgentOSFileUtils
 
 logger = logging.getLogger(__name__)
 
+
+def _escape_braces(text: str) -> str:
+    """Escape curly braces in user content so .format() doesn't choke."""
+    return text.replace("{", "{{").replace("}", "}}")
+
 # Feature priority levels
 PRIORITY_LEVELS = ["must_have", "should_have", "nice_to_have"]
 
@@ -166,14 +171,20 @@ class AgentOSFeatures:
         product_summary = "\n".join(product_summary_parts) if product_summary_parts else "(No product summary)"
 
         return FEATURE_EXTRACTION_PROMPT.format(
-            product_summary=product_summary,
-            entities_json=entities_json,
-            product_files_content=product_files_content,
-            standards_summary=standards_summary,
+            product_summary=_escape_braces(product_summary),
+            entities_json=_escape_braces(entities_json),
+            product_files_content=_escape_braces(product_files_content),
+            standards_summary=_escape_braces(standards_summary),
         )
 
     def process_extracted_features(self, features_json: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """Process Claude's extracted features: assign IDs, validate, store."""
+        """Process Claude's extracted features: assign IDs, validate, store.
+
+        Replaces the entire feature list. Resets the ID counter so IDs
+        always start at 1, keeping them consistent with any downstream
+        specs or DB rows that reference features by ID.
+        """
+        self._next_feature_id = 1  # Reset so re-extraction starts at ID 1
         processed: list[dict[str, Any]] = []
 
         # Build a name→id mapping for dependency resolution
@@ -206,7 +217,9 @@ class AgentOSFeatures:
                         if dep_id != processed[i]["id"]:
                             resolved_ids.append(dep_id)
                     elif isinstance(dep_name, int):
-                        resolved_ids.append(dep_name)
+                        # Don't allow self-dependency for integer IDs either
+                        if dep_name != processed[i]["id"]:
+                            resolved_ids.append(dep_name)
                 processed[i]["dependencies"] = resolved_ids
 
         self._features = processed
@@ -301,9 +314,9 @@ class AgentOSFeatures:
         features_json = json.dumps(self.get_feature_list(), indent=2, default=str)
 
         return GAP_ANALYSIS_PROMPT.format(
-            standards_summary=standards_summary,
-            product_summary=product_summary,
-            features_json=features_json,
+            standards_summary=_escape_braces(standards_summary),
+            product_summary=_escape_braces(product_summary),
+            features_json=_escape_braces(features_json),
         )
 
     def process_gap_analysis(self, gaps_json: list[dict[str, Any]]) -> list[dict[str, Any]]:

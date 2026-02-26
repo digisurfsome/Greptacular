@@ -51,7 +51,7 @@ User input:
 Classify as one of: casual_description, formal_spec, reference_material, rant, mixed
 
 Return ONLY valid JSON:
-{"type": "<classification>", "confidence": <0.0-1.0>, "reasoning": "<brief explanation>"}
+{{"type": "<classification>", "confidence": <0.0-1.0>, "reasoning": "<brief explanation>"}}
 """
 
 EXTRACTION_PROMPT = """Extract structured entities from the following user input about a software project.
@@ -64,7 +64,7 @@ User input:
 Extract as many of these fields as you can find (leave empty array [] or empty string "" for fields not mentioned):
 
 Return ONLY valid JSON:
-{
+{{
   "product_name": "<name or empty string if not mentioned>",
   "product_description": "<1-2 sentence summary>",
   "target_users": ["<user type 1>", "<user type 2>"],
@@ -73,7 +73,7 @@ Return ONLY valid JSON:
   "tech_preferences": ["<technology 1>", "<technology 2>"],
   "problem_statement": "<what problem this solves>",
   "competitive_refs": ["<competitor or alternative 1>"]
-}
+}}
 """
 
 
@@ -101,12 +101,13 @@ class AgentOSIntake:
 
     def get_classification_prompt(self, user_input: str) -> str:
         """Return the prompt string for Claude to classify the input."""
-        # Use replace instead of .format() to avoid KeyError on user input with braces
-        return CLASSIFICATION_PROMPT.replace("{user_input}", user_input)
+        safe_input = user_input.replace("{", "{{").replace("}", "}}")
+        return CLASSIFICATION_PROMPT.format(user_input=safe_input)
 
     def get_extraction_prompt(self, user_input: str) -> str:
         """Return the prompt string for Claude to extract entities."""
-        return EXTRACTION_PROMPT.replace("{user_input}", user_input)
+        safe_input = user_input.replace("{", "{{").replace("}", "}}")
+        return EXTRACTION_PROMPT.format(user_input=safe_input)
 
     # ── Processing Claude responses ──────────────────────────────────
 
@@ -178,6 +179,33 @@ class AgentOSIntake:
     def get_all_input(self) -> str:
         """Return all raw inputs concatenated with newlines."""
         return "\n".join(self._raw_inputs)
+
+    # ── Local extraction ────────────────────────────────────────────
+
+    def extract_from_raw_input(self) -> None:
+        """Populate entities from accumulated raw input text (no LLM needed).
+
+        This is a best-effort local extraction that treats the user's raw text
+        as a product description. It ensures detect_gaps() has data to work with
+        so the intake stage can auto-advance when minimum info is present.
+        """
+        combined = self.get_all_input().strip()
+        if not combined:
+            return
+
+        # Always set product_description from the raw input if not already set
+        if not _is_non_empty(self._entities.get("product_description")):
+            # Use first 500 chars as the product description
+            self._entities["product_description"] = combined[:500]
+
+        # Use the full text as problem_statement too if not set
+        if not _is_non_empty(self._entities.get("problem_statement")):
+            self._entities["problem_statement"] = combined[:500]
+
+        logger.debug(
+            "Local extraction: %d fields populated from raw input",
+            sum(1 for v in self._entities.values() if _is_non_empty(v)),
+        )
 
     # ── Accessors ────────────────────────────────────────────────────
 

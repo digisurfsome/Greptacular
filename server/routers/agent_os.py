@@ -295,7 +295,17 @@ _project_features: dict[str, AgentOSFeatures] = {}
 
 
 def _get_features_service(project_name: str, project_dir: Path) -> AgentOSFeatures:
-    """Get or create the features service for a project."""
+    """Get the features service for a project.
+
+    Prefers the active session's features instance to stay in sync
+    with the WebSocket workflow. Falls back to a standalone instance.
+    """
+    # If there's an active session, use its features (keeps REST and WS in sync)
+    session = get_session(project_name)
+    if session is not None and session.features is not None:
+        return session.features
+
+    # Fallback: standalone instance for REST-only usage
     if project_name not in _project_features:
         fu = _get_file_utils(project_dir)
         _project_features[project_name] = AgentOSFeatures(

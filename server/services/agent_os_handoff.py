@@ -140,6 +140,10 @@ class AgentOSHandoff:
 
         session = SessionLocal()
         try:
+            # Clear existing rows for idempotent re-population
+            session.query(Feature).delete()
+            session.flush()
+
             for feature in feature_list:
                 row_data = self._feature_to_db_row(feature)
                 db_feature = Feature(

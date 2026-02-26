@@ -31,14 +31,19 @@ router = APIRouter(prefix="/api/dunkstack", tags=["dunkstack"])
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 
 
-def _agent_dir() -> Path:
-    """Return the .agent directory path."""
+def _agent_dir(project_name: Optional[str] = None) -> Path:
+    """Return the .agent directory path, optionally scoped to a project."""
+    if project_name:
+        from ..utils.project_helpers import get_project_path
+        project_dir = get_project_path(project_name)
+        if project_dir and project_dir.exists():
+            return project_dir / ".agent"
     return ROOT_DIR / ".agent"
 
 
-def _ensure_agent_dir():
+def _ensure_agent_dir(project_name: Optional[str] = None):
     """Ensure .agent directory structure exists."""
-    agent = _agent_dir()
+    agent = _agent_dir(project_name)
     for subdir in ["comms", "knowledge", "output", "progress", "settings"]:
         (agent / subdir).mkdir(parents=True, exist_ok=True)
 
@@ -129,28 +134,28 @@ async def _broadcast(msg: dict):
 
 
 @router.get("/comms/to-human")
-async def read_to_human():
+async def read_to_human(project_name: Optional[str] = None):
     """Read the agent's messages to the human."""
-    path = _agent_dir() / "comms" / "to_human.md"
+    path = _agent_dir(project_name) / "comms" / "to_human.md"
     if not path.exists():
         return {"content": "", "exists": False}
     return {"content": path.read_text(encoding="utf-8"), "exists": True}
 
 
 @router.get("/comms/from-human")
-async def read_from_human():
+async def read_from_human(project_name: Optional[str] = None):
     """Read the human's messages to the agent."""
-    path = _agent_dir() / "comms" / "from_human.md"
+    path = _agent_dir(project_name) / "comms" / "from_human.md"
     if not path.exists():
         return {"content": "", "exists": False}
     return {"content": path.read_text(encoding="utf-8"), "exists": True}
 
 
 @router.post("/comms/from-human")
-async def write_from_human(msg: CommsMessage):
+async def write_from_human(msg: CommsMessage, project_name: Optional[str] = None):
     """Append a message to from_human.md (human → agent communication)."""
-    _ensure_agent_dir()
-    path = _agent_dir() / "comms" / "from_human.md"
+    _ensure_agent_dir(project_name)
+    path = _agent_dir(project_name) / "comms" / "from_human.md"
 
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
     title = msg.title or msg.category or "Message"
@@ -425,7 +430,7 @@ async def record_tokens(snapshot: TokenSnapshot):
     cum = _token_state["cumulative"]
     cum["input_tokens"] += snapshot.input_tokens
     cum["output_tokens"] += snapshot.output_tokens
-    cum["cache_read_tokens"] = snapshot.cache_read_tokens  # Latest, not cumulative
+    cum["cache_read_tokens"] += snapshot.cache_read_tokens
     cum["cache_creation_tokens"] += snapshot.cache_creation_tokens
     cum["total_cost_usd"] += snapshot.total_cost_usd
     cum["api_calls"] += 1

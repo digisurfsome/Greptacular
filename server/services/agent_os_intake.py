@@ -51,7 +51,7 @@ User input:
 Classify as one of: casual_description, formal_spec, reference_material, rant, mixed
 
 Return ONLY valid JSON:
-{{"type": "<classification>", "confidence": <0.0-1.0>, "reasoning": "<brief explanation>"}}
+{"type": "<classification>", "confidence": <0.0-1.0>, "reasoning": "<brief explanation>"}
 """
 
 EXTRACTION_PROMPT = """Extract structured entities from the following user input about a software project.
@@ -64,7 +64,7 @@ User input:
 Extract as many of these fields as you can find (leave empty array [] or empty string "" for fields not mentioned):
 
 Return ONLY valid JSON:
-{{
+{
   "product_name": "<name or empty string if not mentioned>",
   "product_description": "<1-2 sentence summary>",
   "target_users": ["<user type 1>", "<user type 2>"],
@@ -73,7 +73,7 @@ Return ONLY valid JSON:
   "tech_preferences": ["<technology 1>", "<technology 2>"],
   "problem_statement": "<what problem this solves>",
   "competitive_refs": ["<competitor or alternative 1>"]
-}}
+}
 """
 
 
@@ -101,11 +101,12 @@ class AgentOSIntake:
 
     def get_classification_prompt(self, user_input: str) -> str:
         """Return the prompt string for Claude to classify the input."""
-        return CLASSIFICATION_PROMPT.format(user_input=user_input)
+        # Use replace instead of .format() to avoid KeyError on user input with braces
+        return CLASSIFICATION_PROMPT.replace("{user_input}", user_input)
 
     def get_extraction_prompt(self, user_input: str) -> str:
         """Return the prompt string for Claude to extract entities."""
-        return EXTRACTION_PROMPT.format(user_input=user_input)
+        return EXTRACTION_PROMPT.replace("{user_input}", user_input)
 
     # ── Processing Claude responses ──────────────────────────────────
 

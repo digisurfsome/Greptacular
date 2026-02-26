@@ -18,6 +18,22 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+
+def _safe_filename(filename: str) -> str:
+    """Sanitize a filename to prevent path traversal attacks.
+
+    Strips directory components so only the bare filename remains.
+    Rejects absolute paths, parent references (..), and empty names.
+    """
+    # Use PurePosixPath to handle both / and \ separators
+    from pathlib import PurePosixPath
+
+    name = PurePosixPath(filename.replace("\\", "/")).name
+    if not name or name in (".", ".."):
+        raise ValueError(f"Invalid filename: {filename!r}")
+    return name
+
+
 # Layer name to relative path mapping
 _LAYER_PATHS: dict[str, str] = {
     "standards": "agent-os/standards",
@@ -61,9 +77,9 @@ class AgentOSFileUtils:
         for subdir in _AGENT_SUBDIRS:
             (self.project_dir / subdir).mkdir(parents=True, exist_ok=True)
 
-        # Copy standards templates if project standards dir is empty
+        # Copy standards templates if project standards dir has no .md files
         project_standards = self.project_dir / "agent-os" / "standards"
-        if not any(project_standards.iterdir()):
+        if not any(project_standards.glob("*.md")):
             templates_dir = _TEMPLATES_DIR / "standards"
             if templates_dir.is_dir():
                 for tmpl in templates_dir.glob("*.md"):
@@ -71,9 +87,9 @@ class AgentOSFileUtils:
                     dest.write_text(tmpl.read_text(encoding="utf-8"), encoding="utf-8")
                     logger.debug("Copied standards template: %s", tmpl.name)
 
-        # Copy product templates if product dir is empty
+        # Copy product templates if product dir has no .md files
         product_dir = self.project_dir / ".agent" / "product"
-        if not any(product_dir.iterdir()):
+        if not any(product_dir.glob("*.md")):
             templates_dir = _TEMPLATES_DIR / "product"
             if templates_dir.is_dir():
                 for tmpl in templates_dir.glob("*.md"):
@@ -87,11 +103,12 @@ class AgentOSFileUtils:
 
     def read_standards_file(self, filename: str) -> Optional[str]:
         """Read a standards file. Falls back to global if project-level doesn't exist."""
-        project_path = self.project_dir / "agent-os" / "standards" / filename
+        safe = _safe_filename(filename)
+        project_path = self.project_dir / "agent-os" / "standards" / safe
         if project_path.is_file():
             return project_path.read_text(encoding="utf-8")
 
-        global_path = self.global_standards_dir / filename
+        global_path = self.global_standards_dir / safe
         if global_path.is_file():
             return global_path.read_text(encoding="utf-8")
 
@@ -99,48 +116,53 @@ class AgentOSFileUtils:
 
     def write_standards_file(self, filename: str, content: str, location: str = "project") -> Path:
         """Write a standards file to project or global location."""
+        safe = _safe_filename(filename)
         if location == "global":
-            path = self.global_standards_dir / filename
+            path = self.global_standards_dir / safe
         else:
-            path = self.project_dir / "agent-os" / "standards" / filename
+            path = self.project_dir / "agent-os" / "standards" / safe
 
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
-        logger.debug("Wrote standards file: %s (location=%s)", filename, location)
+        logger.debug("Wrote standards file: %s (location=%s)", safe, location)
         return path
 
     # ── Product layer ────────────────────────────────────────────────
 
     def read_product_file(self, filename: str) -> Optional[str]:
         """Read a product file from .agent/product/."""
-        path = self.project_dir / ".agent" / "product" / filename
+        safe = _safe_filename(filename)
+        path = self.project_dir / ".agent" / "product" / safe
         if path.is_file():
             return path.read_text(encoding="utf-8")
         return None
 
     def write_product_file(self, filename: str, content: str) -> Path:
         """Write a product file to .agent/product/."""
-        path = self.project_dir / ".agent" / "product" / filename
+        safe = _safe_filename(filename)
+        path = self.project_dir / ".agent" / "product" / safe
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
-        logger.debug("Wrote product file: %s", filename)
+        logger.debug("Wrote product file: %s", safe)
         return path
 
     # ── Specs layer ──────────────────────────────────────────────────
 
     def read_spec_file(self, filename: str) -> Optional[str]:
         """Read a spec file from .agent/specs/."""
-        path = self.project_dir / ".agent" / "specs" / filename
+        safe = _safe_filename(filename)
+        path = self.project_dir / ".agent" / "specs" / safe
         if path.is_file():
             return path.read_text(encoding="utf-8")
         return None
 
     def write_spec_file(self, filename: str, content: str) -> Path:
         """Write a spec file to .agent/specs/."""
-        path = self.project_dir / ".agent" / "specs" / filename
+        safe = _safe_filename(filename)
+        path = self.project_dir / ".agent" / "specs" / safe
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
-        logger.debug("Wrote spec file: %s", filename)
+        logger.debug("Wrote spec file: %s", safe)
         return path
 
     # ── Generic dispatchers ──────────────────────────────────────────
@@ -163,7 +185,8 @@ class AgentOSFileUtils:
         if layer == "specs":
             return self.read_spec_file(filename)
         # Fallback for intake/knowledge
-        path = self.get_layer_path(layer) / filename
+        safe = _safe_filename(filename)
+        path = self.get_layer_path(layer) / safe
         if path.is_file():
             return path.read_text(encoding="utf-8")
         return None
@@ -177,7 +200,8 @@ class AgentOSFileUtils:
         if layer == "specs":
             return self.write_spec_file(filename, content)
         # Fallback for intake/knowledge
-        path = self.get_layer_path(layer) / filename
+        safe = _safe_filename(filename)
+        path = self.get_layer_path(layer) / safe
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
         return path
@@ -233,20 +257,20 @@ class AgentOSFileUtils:
     # ── Existence checks ─────────────────────────────────────────────
 
     def standards_exist(self) -> bool:
-        """Return True if any standards files exist (project or global)."""
+        """Return True if any standards .md files exist (project or global)."""
         project_dir = self.project_dir / "agent-os" / "standards"
-        if project_dir.is_dir() and any(project_dir.iterdir()):
+        if project_dir.is_dir() and any(project_dir.glob("*.md")):
             return True
-        if self.global_standards_dir.is_dir() and any(self.global_standards_dir.iterdir()):
+        if self.global_standards_dir.is_dir() and any(self.global_standards_dir.glob("*.md")):
             return True
         return False
 
     def product_exists(self) -> bool:
-        """Return True if any product files exist."""
+        """Return True if any product .md files exist."""
         product_dir = self.project_dir / ".agent" / "product"
-        return product_dir.is_dir() and any(product_dir.iterdir())
+        return product_dir.is_dir() and any(product_dir.glob("*.md"))
 
     def specs_exist(self) -> bool:
-        """Return True if any spec files exist."""
+        """Return True if any spec .md files exist."""
         specs_dir = self.project_dir / ".agent" / "specs"
-        return specs_dir.is_dir() and any(specs_dir.iterdir())
+        return specs_dir.is_dir() and any(specs_dir.glob("*.md"))

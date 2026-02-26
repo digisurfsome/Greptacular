@@ -118,7 +118,7 @@ class OutputBuffer:
     ``workspace_session_events`` table in batches for durability.
     """
 
-    def __init__(self, session_id: str, conversation_id: int) -> None:
+    def __init__(self, session_id: str, conversation_id: Optional[int]) -> None:
         self._session_id = session_id
         self._conversation_id = conversation_id
 
@@ -180,8 +180,16 @@ class OutputBuffer:
         """Force-flush all pending events to SQLite.
 
         Called at session completion to ensure no events are lost.
+        Skips flushing if conversation_id is not yet set (events remain
+        in _pending_persist for a future flush once the ID is available).
         """
         async with self._lock:
+            if self._conversation_id is None:
+                logger.debug(
+                    "Skipping flush for session %s (conversation_id not yet set, %d events pending)",
+                    self._session_id, len(self._pending_persist),
+                )
+                return
             batch = list(self._pending_persist)
             self._pending_persist.clear()
             self._last_flush_time = time.monotonic()
@@ -192,6 +200,11 @@ class OutputBuffer:
     async def _maybe_flush(self) -> None:
         """Flush pending events if batch size or time threshold is met."""
         async with self._lock:
+            # Don't flush if conversation_id is not yet set — events stay in
+            # _pending_persist until the conversation is created, preventing
+            # permanent data loss.
+            if self._conversation_id is None:
+                return
             should_flush = (
                 len(self._pending_persist) >= PERSIST_BATCH_SIZE
                 or (time.monotonic() - self._last_flush_time) >= PERSIST_INTERVAL_SECONDS
@@ -216,6 +229,17 @@ class OutputBuffer:
 
     def _persist_batch_sync(self, batch: list[tuple[int, dict[str, Any]]]) -> None:
         """Synchronous batch insert into SQLite (runs in a thread)."""
+        # Skip persistence if conversation_id is not yet known (new conversations
+        # set it when the conversation_created event fires).  The events remain
+        # in the in-memory ring buffer for replay and will be persisted once the
+        # conversation_id is available on the next flush cycle.
+        if self._conversation_id is None:
+            logger.debug(
+                "Skipping persistence of %d events for session %s (conversation_id not yet set)",
+                len(batch), self._session_id,
+            )
+            return
+
         db_session = get_db_session()
         try:
             for seq, event in batch:
@@ -263,6 +287,7 @@ class BackgroundSession:
         working_directory: Optional[str] = None,
         context_mode: str = "1m",
         cost_settings: Optional[dict[str, Any]] = None,
+        manager: Optional["BackgroundSessionManager"] = None,
     ) -> None:
         self.session_id = session_id
         self.conversation_id = conversation_id
@@ -280,9 +305,10 @@ class BackgroundSession:
 
         self._output_buffer = OutputBuffer(session_id, conversation_id)
         self._viewers: set[WebSocket] = set()
-        self._input_queue: asyncio.Queue[str] = asyncio.Queue()
+        self._input_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
         self._task: Optional[asyncio.Task[None]] = None
         self._chat_session: Optional[WorkspaceChatSession] = None
+        self._manager = manager
 
         # Lock for viewer set mutations.
         self._viewer_lock = asyncio.Lock()
@@ -324,7 +350,13 @@ class BackgroundSession:
             name=f"bg-session-{self.session_id}",
         )
 
-    async def submit_message(self, message: str) -> int:
+    async def submit_message(
+        self,
+        message: str,
+        *,
+        attachments: Any = None,
+        library_file_ids: Optional[list[int]] = None,
+    ) -> int:
         """Submit a user message to the running session.
 
         The message is placed in the input queue and will be picked up by the
@@ -333,6 +365,8 @@ class BackgroundSession:
 
         Args:
             message: The user's message text.
+            attachments: Optional list of ImageAttachment objects.
+            library_file_ids: Optional list of library file IDs to include.
 
         Returns:
             The sequence number of the ``user_message`` event in the output buffer.
@@ -344,7 +378,13 @@ class BackgroundSession:
             raise RuntimeError(
                 f"Cannot submit message to session {self.session_id} in state {self.state.value}"
             )
-        await self._input_queue.put(message)
+
+        msg_data: dict[str, Any] = {"content": message}
+        if attachments:
+            msg_data["attachments"] = attachments
+        if library_file_ids:
+            msg_data["library_file_ids"] = library_file_ids
+        await self._input_queue.put(msg_data)
 
         # Record the user message as a buffer event so viewers see it.
         seq = await self._output_buffer.append({
@@ -415,23 +455,26 @@ class BackgroundSession:
         self.state = SessionState.CANCELLED
         self.completed_at = datetime.now(timezone.utc)
 
-        # Cancel the background task.
         if self._task and not self._task.done():
+            # Cancel the background task — its finally block will close the
+            # chat session and flush the output buffer, so we must NOT close
+            # the chat session again here (double-close bug).
             self._task.cancel()
             try:
                 await self._task
             except asyncio.CancelledError:
                 pass
+        else:
+            # Task was never started or already finished — close directly
+            # since _run()'s finally block won't run.
+            if self._chat_session:
+                try:
+                    await self._chat_session.close()
+                except Exception as e:
+                    logger.warning("Error closing chat session during cancel: %s", e)
+            await self._output_buffer.flush()
 
-        # Close the underlying chat session.
-        if self._chat_session:
-            try:
-                await self._chat_session.close()
-            except Exception as e:
-                logger.warning("Error closing chat session during cancel: %s", e)
-
-        # Notify viewers of cancellation, then flush everything (including
-        # the cancellation event itself) to SQLite.
+        # Notify viewers of cancellation.
         cancel_event: dict[str, Any] = {"type": "session_cancelled", "session_id": self.session_id}
         seq = await self._output_buffer.append(cancel_event)
         cancel_event["seq"] = seq
@@ -477,6 +520,19 @@ class BackgroundSession:
             await self._emit_state_event()
 
             async for event in self._chat_session.start():
+                # Track conversation_id for new conversations.
+                if (
+                    event.get("type") == "conversation_created"
+                    and self.conversation_id is None
+                ):
+                    new_conv_id = event.get("conversation_id")
+                    if new_conv_id is not None:
+                        self.conversation_id = new_conv_id
+                        self._output_buffer._conversation_id = new_conv_id
+                        # Update the manager's reverse index.
+                        if self._manager is not None:
+                            async with self._manager._lock:
+                                self._manager._conversation_sessions[new_conv_id] = self.session_id
                 await self._buffer_and_broadcast(event)
 
             # Start the heartbeat loop.
@@ -490,18 +546,33 @@ class BackgroundSession:
                 self.state = SessionState.WAITING_INPUT
                 await self._emit_state_event()
 
-                # Wait for a user message.
+                # Wait for a user message (structured dict with content + optional attachments).
                 try:
-                    message = await self._input_queue.get()
+                    msg_data = await self._input_queue.get()
                 except asyncio.CancelledError:
                     raise
+
+                # Unpack structured message data.
+                if isinstance(msg_data, dict):
+                    msg_content = msg_data.get("content", "")
+                    msg_attachments = msg_data.get("attachments")
+                    msg_library_file_ids = msg_data.get("library_file_ids")
+                else:
+                    # Backward compat: plain string
+                    msg_content = str(msg_data)
+                    msg_attachments = None
+                    msg_library_file_ids = None
 
                 # Transition to streaming.
                 self.state = SessionState.STREAMING
                 await self._emit_state_event()
 
                 # Stream the AI response.
-                async for event in self._chat_session.send_message(message):
+                async for event in self._chat_session.send_message(
+                    msg_content,
+                    attachments=msg_attachments,
+                    library_file_ids=msg_library_file_ids,
+                ):
                     await self._buffer_and_broadcast(event)
 
             # If we exit the loop normally (shouldn't happen unless state was
@@ -702,7 +773,7 @@ class BackgroundSessionManager:
 
     async def create_session(
         self,
-        conversation_id: Optional[int],
+        conversation_id: Optional[int] = None,
         provider: str = "claude",
         model: str = "opus",
         working_directory: Optional[str] = None,
@@ -713,6 +784,8 @@ class BackgroundSessionManager:
 
         Args:
             conversation_id: The workspace conversation ID to associate with.
+                Pass None for new conversations (the underlying session will
+                create one and broadcast a ``conversation_created`` event).
             provider: AI provider (``"claude"``, ``"codex"``, ``"gemini"``).
             model: Model shorthand (``"opus"``, ``"sonnet"``).
             working_directory: Absolute path for the session's working directory.
@@ -739,15 +812,16 @@ class BackgroundSessionManager:
                 )
 
             # Check if the conversation already has an active session.
-            existing_sid = self._conversation_sessions.get(conversation_id)
-            if existing_sid and existing_sid in self._sessions:
-                existing = self._sessions[existing_sid]
-                if not _is_terminal(existing.state):
-                    raise RuntimeError(
-                        f"Conversation {conversation_id} already has an active session "
-                        f"({existing_sid}, state={existing.state.value}). "
-                        f"Cancel it first."
-                    )
+            if conversation_id is not None:
+                existing_sid = self._conversation_sessions.get(conversation_id)
+                if existing_sid and existing_sid in self._sessions:
+                    existing = self._sessions[existing_sid]
+                    if not _is_terminal(existing.state):
+                        raise RuntimeError(
+                            f"Conversation {conversation_id} already has an active session "
+                            f"({existing_sid}, state={existing.state.value}). "
+                            f"Cancel it first."
+                        )
 
             # Generate a unique session ID.
             session_id = str(uuid.uuid4())
@@ -760,10 +834,12 @@ class BackgroundSessionManager:
                 working_directory=working_directory,
                 context_mode=context_mode,
                 cost_settings=cost_settings,
+                manager=self,
             )
 
             self._sessions[session_id] = session
-            self._conversation_sessions[conversation_id] = session_id
+            if conversation_id is not None:
+                self._conversation_sessions[conversation_id] = session_id
 
         # Start the session outside the lock to avoid holding it during
         # potentially slow initialization.  If start() fails, clean up the
@@ -778,7 +854,7 @@ class BackgroundSessionManager:
             raise
 
         logger.info(
-            "Created background session %s for conversation %d (provider=%s, model=%s)",
+            "Created background session %s for conversation %s (provider=%s, model=%s)",
             session_id, conversation_id, provider, model,
         )
         return session
@@ -855,12 +931,21 @@ class BackgroundSessionManager:
             results.append(session.to_status_dict())
         return results
 
-    async def submit_message(self, session_id: str, message: str) -> int:
+    async def submit_message(
+        self,
+        session_id: str,
+        message: str,
+        *,
+        attachments: Any = None,
+        library_file_ids: Optional[list[int]] = None,
+    ) -> int:
         """Submit a user message to a running session.
 
         Args:
             session_id: The session to send the message to.
             message: The user's message text.
+            attachments: Optional list of ImageAttachment objects.
+            library_file_ids: Optional list of library file IDs.
 
         Returns:
             The sequence number of the ``user_message`` event.
@@ -872,7 +957,9 @@ class BackgroundSessionManager:
         session = self._sessions.get(session_id)
         if session is None:
             raise KeyError(f"No session found with ID {session_id}")
-        return await session.submit_message(message)
+        return await session.submit_message(
+            message, attachments=attachments, library_file_ids=library_file_ids,
+        )
 
     async def attach_viewer(self, session_id: str, ws: WebSocket) -> int:
         """Attach a WebSocket viewer to a session.
@@ -979,3 +1066,16 @@ async def get_background_session_manager() -> BackgroundSessionManager:
         _manager_instance = BackgroundSessionManager()
         await _manager_instance.start()
         return _manager_instance
+
+
+async def cleanup_background_sessions() -> None:
+    """Shutdown the background session manager if it was initialized.
+
+    Cancels all active sessions and stops the cleanup loop.
+    Safe to call even if the manager was never created.
+    """
+    global _manager_instance
+    if _manager_instance is not None:
+        await _manager_instance.stop()
+        _manager_instance = None
+        logger.info("Background session manager cleaned up")

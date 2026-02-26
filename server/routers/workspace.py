@@ -7,7 +7,6 @@ Unlike the assistant (read-only, per-project), the workspace is a global
 read/write agent with a 1M-token context window.
 """
 
-import asyncio
 import json
 import logging
 from typing import Optional
@@ -992,9 +991,22 @@ async def get_walkie_talkie_status(session_id: str):
     """Get the walkie-talkie status for a workspace session.
 
     Useful for debugging and for the UI to check if a session is waiting.
+    Supports both background sessions (UUID) and legacy direct sessions.
     """
-    from ..services.workspace_chat_session import get_session as ws_get_session
+    # Try background session manager first.
+    from ..services.background_session_manager import get_background_session_manager
+    mgr = await get_background_session_manager()
+    bg_session = mgr.get_session(session_id)
+    if bg_session and bg_session._chat_session:
+        chat = bg_session._chat_session
+        return {
+            "active": chat.walkie_talkie_enabled,
+            "waiting": chat.walkie_talkie_waiting,
+            "queue_size": chat.walkie_talkie_queue.qsize(),
+        }
 
+    # Fall back to legacy direct session lookup.
+    from ..services.workspace_chat_session import get_session as ws_get_session
     session = ws_get_session(session_id)
     if not session:
         return {"active": False, "waiting": False, "queue_size": 0}
@@ -1009,194 +1021,46 @@ async def get_walkie_talkie_status(session_id: str):
 # WebSocket Endpoint
 # ============================================================================
 
-_STREAM_SENTINEL = object()
-
-
-async def _stream_with_walkie_talkie(
-    websocket: WebSocket,
-    session,
-    response_gen,
-):
-    """Stream an agent response while concurrently handling walkie-talkie messages.
-
-    The core problem: Starlette WebSockets are single-reader — you can't call
-    ``receive_text()`` while you're in an ``async for chunk`` loop.  So during
-    response streaming, walkie-talkie messages from the client sit in the
-    transport buffer and never reach the session queue.
-
-    This helper decouples response generation from WebSocket I/O using an
-    ``asyncio.Queue``.  A background producer feeds chunks into the queue while
-    the main coroutine alternates between:
-
-    1. Sending queued response chunks to the client.
-    2. Polling for incoming walkie-talkie messages (short timeout).
-
-    Worst-case delivery latency for a walkie-talkie message is ~250 ms, which
-    is well within the seconds-long gap between agent tool calls where the
-    ``PreToolUse`` hook actually fires.
-    """
-    chunk_queue: asyncio.Queue = asyncio.Queue()
-
-    async def _produce():
-        try:
-            async for chunk in response_gen:
-                await chunk_queue.put(chunk)
-        finally:
-            await chunk_queue.put(_STREAM_SENTINEL)
-
-    producer = asyncio.create_task(_produce())
-
-    try:
-        while True:
-            # --- 1. Wait for the next response chunk (with timeout) ---
-            try:
-                chunk = await asyncio.wait_for(chunk_queue.get(), timeout=0.2)
-            except asyncio.TimeoutError:
-                chunk = None
-
-            if chunk is _STREAM_SENTINEL:
-                break
-
-            if chunk is not None:
-                await websocket.send_json(chunk)
-                if chunk.get("type") == "agent_waiting":
-                    logger.info(
-                        "Agent waiting in session %s: %s",
-                        session.session_id,
-                        chunk.get("question", "")[:80],
-                    )
-                # Drain any buffered chunks for throughput
-                while not chunk_queue.empty():
-                    c = chunk_queue.get_nowait()
-                    if c is _STREAM_SENTINEL:
-                        return
-                    await websocket.send_json(c)
-
-            # --- 2. Poll for incoming walkie-talkie / ping messages ---
-            try:
-                data = await asyncio.wait_for(websocket.receive_text(), timeout=0.05)
-                msg = json.loads(data)
-                msg_type = msg.get("type")
-                if msg_type == "walkie_talkie":
-                    content = msg.get("content", "")
-                    if content:
-                        await session.queue_walkie_talkie_message(content)
-                        await websocket.send_json({
-                            "type": "walkie_talkie_queued",
-                            "content": content[:100],
-                        })
-                        logger.info(
-                            "Walkie-talkie queued during stream in session %s",
-                            session.session_id,
-                        )
-                elif msg_type == "ping":
-                    await websocket.send_json({"type": "pong"})
-            except asyncio.TimeoutError:
-                pass
-            except json.JSONDecodeError:
-                pass
-    finally:
-        producer.cancel()
-        try:
-            await producer
-        except asyncio.CancelledError:
-            pass
-
-
-# ============================================================================
-# Background Session REST Endpoints
-# ============================================================================
-
-@router.get("/sessions")
-async def list_background_sessions():
-    """List all background sessions with status."""
-    from ..services.background_session_manager import get_background_session_manager
-    manager = await get_background_session_manager()
-    return manager.list_sessions(include_completed=True)
-
-
-@router.get("/sessions/{session_id}")
-async def get_session_status(session_id: str):
-    """Get status of a specific background session."""
-    from ..services.background_session_manager import get_background_session_manager
-    manager = await get_background_session_manager()
-    session = manager.get_session(session_id)
-    if not session:
-        raise HTTPException(404, "Session not found")
-    return session.to_status_dict()
-
-
-@router.post("/sessions/{session_id}/cancel")
-async def cancel_session(session_id: str):
-    """Cancel a running background session."""
-    from ..services.background_session_manager import get_background_session_manager
-    manager = await get_background_session_manager()
-    try:
-        await manager.cancel_session(session_id)
-    except KeyError:
-        raise HTTPException(404, "Session not found")
-    return {"status": "cancelled"}
-
-
-@router.get("/sessions/{session_id}/events")
-async def get_session_events(session_id: str, since_seq: int = 0, limit: int = 200):
-    """REST fallback for getting session events (alternative to WebSocket replay)."""
-    from ..services.background_session_manager import get_background_session_manager
-    manager = await get_background_session_manager()
-    session = manager.get_session(session_id)
-    if not session:
-        raise HTTPException(404, "Session not found")
-    events = await session.get_events_since(since_seq)
-    if limit:
-        events = events[:limit]
-    return {
-        "events": [{"seq": seq, **ev} for seq, ev in events],
-        "current_seq": session._output_buffer.current_sequence,
-    }
-
-
-# ============================================================================
-# WebSocket Endpoint
-# ============================================================================
-
 @router.websocket("/ws")
 async def workspace_chat_websocket(websocket: WebSocket):
     """
-    WebSocket endpoint for workspace chat — viewer protocol.
+    WebSocket endpoint for workspace chat (viewer protocol).
 
-    The WebSocket acts as a "viewer" that attaches/detaches from background
-    sessions managed by BackgroundSessionManager. Sessions continue running
-    independently of WebSocket connections.
+    Viewers attach/detach from background sessions managed by
+    BackgroundSessionManager.  Sessions continue running even when all
+    viewers disconnect.
 
     Client -> Server:
-    - {"type": "start", ...}                          → Create BackgroundSession and attach as viewer
-    - {"type": "attach", "session_id": "...", "since_seq": 0} → Attach to existing session with catch-up
-    - {"type": "message", "content": "...", ...}      → Submit message to attached background session
-    - {"type": "walkie_talkie", "content": "..."}     → Inject walkie-talkie message
-    - {"type": "answer", "answers": {...}}            → Answer structured questions
-    - {"type": "detach"}                              → Stop watching (session keeps running)
-    - {"type": "ping"}                                → Keepalive
+    - {"type": "start", "conversation_id": int | null, "working_directory": "...", ...} - Create session + attach
+    - {"type": "attach", "session_id": "...", "since_seq": 0} - Attach to existing session
+    - {"type": "message", "content": "..."} - Send user message
+    - {"type": "walkie_talkie", "content": "..."} - Inject message into running agent
+    - {"type": "answer", "answers": {...}} - Answer structured questions
+    - {"type": "detach"} - Detach from session (session keeps running)
+    - {"type": "ping"} - Keep-alive ping
 
     Server -> Client:
-    - All existing types (text, tool_call, token_usage, response_done, error, etc.)
-    - {"type": "session_created", "session_id": "...", "conversation_id": int}
-    - {"type": "attached", "session_id": "...", "state": "...", "seq": int}
-    - {"type": "replay", "events": [...]}
-    - {"type": "replay_done", "current_seq": int}
-    - {"type": "heartbeat", "session_id": "...", "state": "...", ...}
-    - {"type": "session_completed"}
-    - {"type": "session_failed", "error": "..."}
-    - {"type": "pong"}
+    - {"type": "session_created", "session_id": "...", "conversation_id": int} - Session created
+    - {"type": "attached", "session_id": "...", "state": "...", "seq": int} - Attached to session
+    - {"type": "replay", "events": [...]} - Catch-up events
+    - {"type": "replay_done", "current_seq": int} - Replay complete
+    - All existing types (text, tool_call, token_usage, etc.) via broadcast
+    - {"type": "heartbeat", ...} - Periodic heartbeat
+    - {"type": "session_completed"} - Session completed
+    - {"type": "session_failed", "error": "..."} - Session failed
+    - {"type": "detached"} - Detach confirmation
+    - {"type": "error", "content": "..."} - Error message
+    - {"type": "pong"} - Keep-alive pong
     """
     from ..services.background_session_manager import get_background_session_manager
 
     # Always accept WebSocket first to avoid opaque 403 errors
     await websocket.accept()
 
-    logger.info("Workspace WebSocket connected (viewer protocol)")
-
     manager = await get_background_session_manager()
     attached_session_id: Optional[str] = None
+
+    logger.info("Workspace WebSocket connected (viewer mode)")
 
     try:
         while True:
@@ -1204,20 +1068,19 @@ async def workspace_chat_websocket(websocket: WebSocket):
                 data = await websocket.receive_text()
                 message = json.loads(data)
                 msg_type = message.get("type")
-                logger.debug("Workspace viewer received message type: %s", msg_type)
+                logger.debug("Workspace received message type: %s", msg_type)
 
                 if msg_type == "ping":
                     await websocket.send_json({"type": "pong"})
 
                 elif msg_type == "start":
                     # Create a NEW background session and attach as viewer.
-                    # Keep ALL existing validation logic.
-
+                    # All existing validation logic is preserved.
                     conversation_id = message.get("conversation_id")
                     working_directory = message.get("working_directory")
 
-                    # If resuming an existing conversation without an explicit working_directory,
-                    # look it up from the database so the agent uses the same cwd.
+                    # If resuming an existing conversation without an explicit
+                    # working_directory, look it up from the database.
                     if conversation_id is not None and working_directory is None:
                         from ..services.workspace_database import get_conversation
                         conv = get_conversation(conversation_id)
@@ -1225,10 +1088,7 @@ async def workspace_chat_websocket(websocket: WebSocket):
                             working_directory = conv.get("working_directory")
 
                     try:
-                        # Extract context mode from start message.
-                        # Default to "200k" (safer/cheaper) rather than "1m" so that
-                        # any frontend bug that omits context_mode doesn't silently
-                        # activate 1M billing.
+                        # Extract context mode (default to "200k" for safety).
                         context_mode = message.get("context_mode", "200k")
                         if context_mode not in ("1m", "200k"):
                             logger.warning(
@@ -1237,25 +1097,21 @@ async def workspace_chat_websocket(websocket: WebSocket):
                             )
                             context_mode = "200k"
 
-                        # Extract cost control settings from start message
+                        # Extract cost control settings
                         cost_settings = message.get("cost_settings")
                         logger.info(
                             "WS EFFORT TRACE: cost_settings=%s, effort=%s",
                             cost_settings, cost_settings.get("effort") if cost_settings else None,
                         )
 
-                        # Extract model preference from start message (for per-panel model routing)
-                        model = message.get("model")  # e.g. "opus", "sonnet", or None
-
-                        # Extract provider from start message (multi-provider support)
-                        provider = message.get("provider")  # "claude", "codex", "gemini", or None
+                        # Extract model and provider
+                        model = message.get("model")
+                        provider = message.get("provider")
                         if provider and provider not in ("claude", "codex", "gemini"):
                             logger.warning("Invalid provider %r from WebSocket, defaulting to claude", provider)
                             provider = "claude"
 
-                        # Server-side safety net: when resuming an existing conversation,
-                        # cross-check context_mode against the stored DB value. The DB
-                        # record is authoritative.
+                        # Server-side safety net: cross-check against DB for resumed conversations.
                         if conversation_id is not None:
                             from ..services.workspace_database import get_conversation as get_conv_for_mode
                             conv_for_mode = get_conv_for_mode(conversation_id)
@@ -1283,93 +1139,118 @@ async def workspace_chat_websocket(websocket: WebSocket):
                                     provider = stored_provider
 
                         logger.info(
-                            "WS start (viewer): context_mode=%s, model=%s, provider=%s, conversation_id=%s",
+                            "WS start (viewer mode): context_mode=%s, model=%s, provider=%s, conversation_id=%s",
                             context_mode, model, provider, conversation_id,
                         )
 
-                        # Check if conversation already has an active background session.
-                        # If so, attach to it instead of creating a new one.
+                        # Check if this conversation already has an active background session.
+                        existing_session = None
                         if conversation_id is not None:
-                            existing = manager.get_session_for_conversation(conversation_id)
-                            if existing:
-                                # Detach from previous session if any
-                                if attached_session_id:
-                                    try:
-                                        await manager.detach_viewer(attached_session_id, websocket)
-                                    except KeyError:
-                                        pass
+                            existing_session = manager.get_session_for_conversation(conversation_id)
 
-                                attached_session_id = existing.session_id
-                                current_seq = await manager.attach_viewer(existing.session_id, websocket)
+                        if existing_session:
+                            # Attach to the existing session instead of creating a new one.
+                            if attached_session_id and attached_session_id != existing_session.session_id:
+                                try:
+                                    await manager.detach_viewer(attached_session_id, websocket)
+                                except KeyError:
+                                    pass
 
+                            attached_session_id = existing_session.session_id
+                            current_seq = await manager.attach_viewer(attached_session_id, websocket)
+
+                            await websocket.send_json({
+                                "type": "attached",
+                                "session_id": attached_session_id,
+                                "state": existing_session.state.value,
+                                "seq": current_seq,
+                                "conversation_id": existing_session.conversation_id,
+                            })
+
+                            # Replay all events for the new viewer.
+                            events = await existing_session.get_events_since(0)
+                            if events:
+                                replay_events = [{**ev, "seq": seq} for seq, ev in events]
                                 await websocket.send_json({
-                                    "type": "session_created",
-                                    "session_id": existing.session_id,
-                                    "conversation_id": existing.conversation_id,
+                                    "type": "replay",
+                                    "events": replay_events,
                                 })
+                            await websocket.send_json({
+                                "type": "replay_done",
+                                "current_seq": current_seq,
+                            })
+                        else:
+                            # Create a new background session.
+                            bg_session = await manager.create_session(
+                                conversation_id=conversation_id,
+                                provider=provider or "claude",
+                                model=model or "opus",
+                                working_directory=working_directory,
+                                context_mode=context_mode,
+                                cost_settings=cost_settings,
+                            )
 
-                                # Replay from the beginning for a fresh "start"
-                                events = await existing.get_events_since(0)
-                                if events:
+                            # Detach from previous session if any.
+                            if attached_session_id:
+                                try:
+                                    await manager.detach_viewer(attached_session_id, websocket)
+                                except KeyError:
+                                    pass
+
+                            attached_session_id = bg_session.session_id
+                            current_seq = await manager.attach_viewer(bg_session.session_id, websocket)
+
+                            await websocket.send_json({
+                                "type": "session_created",
+                                "session_id": bg_session.session_id,
+                                "conversation_id": bg_session.conversation_id,
+                            })
+
+                            # Replay events emitted between task start and viewer
+                            # attachment.  Only include events up to current_seq to
+                            # avoid duplicating events already being broadcast live.
+                            early_events = await bg_session.get_events_since(0)
+                            if early_events:
+                                replay_events = [
+                                    {**ev, "seq": seq}
+                                    for seq, ev in early_events
+                                    if seq <= current_seq
+                                ]
+                                if replay_events:
                                     await websocket.send_json({
                                         "type": "replay",
-                                        "events": [{"seq": seq, **ev} for seq, ev in events],
+                                        "events": replay_events,
                                     })
-                                await websocket.send_json({
-                                    "type": "replay_done",
-                                    "current_seq": current_seq,
-                                    "state": existing.state.value,
-                                })
-                                continue
-
-                        # Create a new background session
-                        bg_session = await manager.create_session(
-                            conversation_id=conversation_id,
-                            provider=provider or "claude",
-                            model=model or "opus",
-                            working_directory=working_directory,
-                            context_mode=context_mode,
-                            cost_settings=cost_settings,
-                        )
-
-                        # Detach from previous session if any
-                        if attached_session_id:
-                            try:
-                                await manager.detach_viewer(attached_session_id, websocket)
-                            except KeyError:
-                                pass
-
-                        attached_session_id = bg_session.session_id
-                        await manager.attach_viewer(bg_session.session_id, websocket)
-
-                        await websocket.send_json({
-                            "type": "session_created",
-                            "session_id": bg_session.session_id,
-                            "conversation_id": bg_session.conversation_id,
-                        })
-
-                        # The session's _run() loop starts automatically and broadcasts
-                        # events to all viewers. No need to stream here.
 
                     except Exception as e:
-                        logger.exception("Error creating background session")
+                        logger.exception("Error starting/attaching workspace session")
                         await websocket.send_json({
                             "type": "error",
                             "content": f"Failed to start session: {str(e)}",
                         })
 
                 elif msg_type == "attach":
-                    # Attach to an EXISTING background session (for reconnection/catch-up)
+                    # Attach to an EXISTING background session (for reconnection/catch-up).
                     target_session_id = message.get("session_id")
                     since_seq = message.get("since_seq", 0)
 
-                    session = manager.get_session(target_session_id)
-                    if not session:
-                        await websocket.send_json({"type": "error", "content": "Session not found"})
+                    if not target_session_id:
+                        await websocket.send_json({
+                            "type": "error",
+                            "content": "Missing session_id in attach message",
+                        })
                         continue
 
-                    # Detach from previous session if any
-                    if attached_session_id:
+                    session = manager.get_session(target_session_id)
+                    if not session:
+                        await websocket.send_json({
+                            "type": "error",
+                            "content": f"Session {target_session_id} not found",
+                        })
+                        continue
+
+                    # Detach from previous session if any.
+                    if attached_session_id and attached_session_id != target_session_id:
                         try:
                             await manager.detach_viewer(attached_session_id, websocket)
                         except KeyError:
@@ -1378,17 +1259,25 @@ async def workspace_chat_websocket(websocket: WebSocket):
                     attached_session_id = target_session_id
                     current_seq = await manager.attach_viewer(target_session_id, websocket)
 
-                    # Replay missed events
+                    await websocket.send_json({
+                        "type": "attached",
+                        "session_id": target_session_id,
+                        "state": session.state.value,
+                        "seq": current_seq,
+                        "conversation_id": session.conversation_id,
+                    })
+
+                    # Replay missed events.
                     events = await session.get_events_since(since_seq)
                     if events:
+                        replay_events = [{**ev, "seq": seq} for seq, ev in events]
                         await websocket.send_json({
                             "type": "replay",
-                            "events": [{"seq": seq, **ev} for seq, ev in events],
+                            "events": replay_events,
                         })
                     await websocket.send_json({
                         "type": "replay_done",
                         "current_seq": current_seq,
-                        "state": session.state.value,
                     })
 
                 elif msg_type == "message":
@@ -1404,17 +1293,19 @@ async def workspace_chat_websocket(websocket: WebSocket):
                         await websocket.send_json({"type": "error", "content": "Empty message"})
                         continue
 
-                    # Build the full message content with optional attachments
-                    # (attachments are included in the message text for background sessions)
-                    raw_attachments = message.get("attachments", [])
+                    # Extract optional attachments and library file IDs.
+                    attachments = message.get("attachments") or None
                     library_file_ids = message.get("library_file_ids")
                     if library_file_ids and not isinstance(library_file_ids, list):
                         library_file_ids = None
 
-                    # For background sessions, submit the message text.
-                    # The BackgroundSession._run() loop picks it up from the input queue.
                     try:
-                        await manager.submit_message(attached_session_id, user_content)
+                        await manager.submit_message(
+                            attached_session_id,
+                            user_content,
+                            attachments=attachments,
+                            library_file_ids=library_file_ids,
+                        )
                     except KeyError:
                         await websocket.send_json({
                             "type": "error",
@@ -1427,6 +1318,7 @@ async def workspace_chat_websocket(websocket: WebSocket):
                         })
 
                 elif msg_type == "walkie_talkie":
+                    # Walkie-talkie: inject a message into the running agent's queue.
                     content = message.get("content", "")
                     if not attached_session_id:
                         await websocket.send_json({
@@ -1434,9 +1326,10 @@ async def workspace_chat_websocket(websocket: WebSocket):
                             "content": "No active session. Send 'start' first.",
                         })
                     elif content:
-                        session = manager.get_session(attached_session_id)
-                        if session and session._chat_session:
-                            await session._chat_session.queue_walkie_talkie_message(content)
+                        from ..services.background_session_manager import _is_terminal
+                        bg_session = manager.get_session(attached_session_id)
+                        if bg_session and bg_session._chat_session and not _is_terminal(bg_session.state):
+                            await bg_session._chat_session.queue_walkie_talkie_message(content)
                             await websocket.send_json({
                                 "type": "walkie_talkie_queued",
                                 "content": content[:100],
@@ -1444,7 +1337,7 @@ async def workspace_chat_websocket(websocket: WebSocket):
                         else:
                             await websocket.send_json({
                                 "type": "error",
-                                "content": "Session not ready for walkie-talkie.",
+                                "content": "Session not found or not running.",
                             })
 
                 elif msg_type == "answer":
@@ -1483,7 +1376,7 @@ async def workspace_chat_websocket(websocket: WebSocket):
                         except KeyError:
                             pass
                         attached_session_id = None
-                        await websocket.send_json({"type": "detached"})
+                    await websocket.send_json({"type": "detached"})
 
                 else:
                     await websocket.send_json({
@@ -1498,10 +1391,10 @@ async def workspace_chat_websocket(websocket: WebSocket):
                 })
 
     except WebSocketDisconnect:
-        logger.info("Workspace viewer WebSocket disconnected")
+        logger.info("Workspace chat WebSocket disconnected (viewer mode)")
 
     except Exception as e:
-        logger.exception("Workspace viewer WebSocket error")
+        logger.exception("Workspace chat WebSocket error (viewer mode)")
         try:
             await websocket.send_json({
                 "type": "error",
@@ -1511,13 +1404,67 @@ async def workspace_chat_websocket(websocket: WebSocket):
             pass
 
     finally:
-        # CRITICAL: detach viewer, do NOT destroy the session.
-        # The background session continues running independently.
+        # CRITICAL: detach viewer only — do NOT destroy the session.
+        # The session continues running in the background.
         if attached_session_id:
             try:
                 await manager.detach_viewer(attached_session_id, websocket)
-            except KeyError:
-                pass
+            except Exception as e:
+                logger.warning("Error detaching viewer on disconnect: %s", e)
+        logger.info("Workspace WebSocket viewer cleaned up")
+
+
+# ============================================================================
+# Background Session REST Endpoints
+# ============================================================================
+
+
+@router.get("/sessions")
+async def list_background_sessions():
+    """List all background sessions with status."""
+    from ..services.background_session_manager import get_background_session_manager
+    mgr = await get_background_session_manager()
+    return mgr.list_sessions(include_completed=True)
+
+
+@router.get("/sessions/{session_id}")
+async def get_background_session_status(session_id: str):
+    """Get the status of a specific background session."""
+    from ..services.background_session_manager import get_background_session_manager
+    mgr = await get_background_session_manager()
+    session = mgr.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return session.to_status_dict()
+
+
+@router.post("/sessions/{session_id}/cancel")
+async def cancel_background_session(session_id: str):
+    """Cancel a running background session."""
+    from ..services.background_session_manager import get_background_session_manager
+    mgr = await get_background_session_manager()
+    try:
+        await mgr.cancel_session(session_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return {"status": "cancelled"}
+
+
+@router.get("/sessions/{session_id}/events")
+async def get_background_session_events(session_id: str, since_seq: int = 0, limit: int = 200):
+    """REST fallback for getting session events (alternative to WebSocket replay)."""
+    from ..services.background_session_manager import get_background_session_manager
+    mgr = await get_background_session_manager()
+    session = mgr.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    events = await session.get_events_since(since_seq)
+    if limit > 0:
+        events = events[:limit]
+    return {
+        "events": [{**ev, "seq": seq} for seq, ev in events],
+        "current_seq": session._output_buffer.current_sequence,
+    }
 
 
 # ============================================================================

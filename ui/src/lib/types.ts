@@ -810,6 +810,57 @@ export interface WorkspaceChatTokenLogMessage {
   entry: TokenLogEntry
 }
 
+// Background session viewer protocol messages
+export interface BackgroundSessionCreatedMessage {
+  type: 'session_created'
+  session_id: string
+  conversation_id: number
+}
+
+export interface BackgroundSessionReplayMessage {
+  type: 'replay'
+  events: Array<Record<string, unknown>>
+}
+
+export interface BackgroundSessionReplayDoneMessage {
+  type: 'replay_done'
+  current_seq: number
+  state: string
+}
+
+export interface BackgroundSessionHeartbeatMessage {
+  type: 'heartbeat'
+  session_id: string
+  state: string
+  seq: number
+  viewer_count: number
+}
+
+export interface BackgroundSessionStateMessage {
+  type: 'session_state'
+  session_id: string
+  state: string
+  seq?: number
+}
+
+export interface BackgroundSessionCompletedMessage {
+  type: 'session_completed'
+}
+
+export interface BackgroundSessionFailedMessage {
+  type: 'session_failed'
+  error: string
+}
+
+export interface BackgroundSessionCancelledMessage {
+  type: 'session_cancelled'
+  session_id: string
+}
+
+export interface BackgroundSessionDetachedMessage {
+  type: 'detached'
+}
+
 export type WorkspaceChatServerMessage =
   | AssistantChatTextMessage
   | AssistantChatToolCallMessage
@@ -825,6 +876,15 @@ export type WorkspaceChatServerMessage =
   | AssistantChatConversationCreatedMessage
   | WorkspaceBranchCreatedMessage
   | AssistantChatPongMessage
+  | BackgroundSessionCreatedMessage
+  | BackgroundSessionReplayMessage
+  | BackgroundSessionReplayDoneMessage
+  | BackgroundSessionHeartbeatMessage
+  | BackgroundSessionStateMessage
+  | BackgroundSessionCompletedMessage
+  | BackgroundSessionFailedMessage
+  | BackgroundSessionCancelledMessage
+  | BackgroundSessionDetachedMessage
 
 // ============================================================================
 // Workspace Types (Phase 2)

@@ -257,7 +257,7 @@ class BackgroundSession:
         self,
         *,
         session_id: str,
-        conversation_id: int,
+        conversation_id: Optional[int],
         provider: str = "claude",
         model: str = "opus",
         working_directory: Optional[str] = None,
@@ -582,7 +582,7 @@ class BackgroundSession:
                     "state": self.state.value,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "viewer_count": len(self._viewers),
-                    "buffer_sequence": self._output_buffer.current_sequence,
+                    "seq": self._output_buffer.current_sequence,
                 }
                 # Heartbeats are broadcast directly (not buffered) to avoid
                 # filling the output buffer with noise.
@@ -702,7 +702,7 @@ class BackgroundSessionManager:
 
     async def create_session(
         self,
-        conversation_id: int,
+        conversation_id: Optional[int],
         provider: str = "claude",
         model: str = "opus",
         working_directory: Optional[str] = None,

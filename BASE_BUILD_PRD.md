@@ -722,8 +722,20 @@ Give the agent a small task (build a simple component, write a utility function)
 - Does the context gauge display accurate token counts?
 - Do the safety thresholds trigger at the correct levels?
 
-### Step 7: Iterate
-Based on test results, adjust the system prompt language, file formats, settings, and safety thresholds. The config.yml levers allow tuning without code changes.
+### Step 7: Build the analytics collection system
+Implement the data capture hooks that log token usage, file write destinations, feature completions, and session lifecycle events. Create the session JSON writer that dumps metrics after each session. Create the aggregate updater that maintains running totals. This must work before we start real builds so we capture data from session 1.
+
+### Step 8: Build the report generator
+Implement the post-session report generator that reads session JSON + aggregate JSON and produces the markdown report. Implement the cross-build comparison report. These are template-driven markdown generators — not complex, just structured.
+
+### Step 9: Build the baseline runner
+Create a "baseline mode" toggle in config.yml that runs a standard agent session WITHOUT the DunkStack file protocol. Same task, same model, but normal conversational behavior. This generates control data for A/B comparison.
+
+### Step 10: Build the lever optimizer
+Implement the lever registry, the recommendation engine (conservative hill-climbing), the approval workflow (write to comms/to_human.md), and the config.yml updater. Implement the impact tracker that flags post-adjustment sessions.
+
+### Step 11: Run test builds and iterate
+Run 3 builds in baseline mode (control), then 3 builds in DunkStack mode (experiment). Compare results. Adjust the system prompt language, file formats, settings, and safety thresholds based on analytical data. The config.yml levers allow tuning without code changes. Let the optimizer start generating recommendations after session 3.
 
 ---
 
@@ -910,15 +922,452 @@ The change log tells you what to focus on without re-reading everything.
 
 ---
 
-## Updated File Structure (Mechanisms 2 + 8 + 9 + 10)
+## Mechanism 11: Build Analytics & Measurement System
 
-With the three new mechanisms, the complete `.agent/` directory structure becomes:
+### What It Does
+An automated data collection and analysis system that captures every meaningful metric during a DunkStack build session, stores it in a structured database, and produces comparison reports across builds. This is the proof engine — it generates the hard numbers that prove (or disprove) whether the file-based architecture actually delivers the claimed benefits.
+
+### Why It's Critical
+Without measurement, we have a theory. "File-based context should reduce degradation" is an opinion. "File-based context reduced context utilization by 47%, maintained code quality through 87% of the window, and reduced cost per feature by 62%" is ammunition. Every build should automatically generate this data with zero manual effort.
+
+This is also the foundation for self-optimization. You can't tune levers if you don't know what the current settings produce. Every configurable threshold in config.yml (safety percentages, file read budgets, working memory frequency, idle cycle timing) needs a feedback loop: what did this setting produce, and would a different value produce better results?
+
+### What Gets Measured
+
+**Category 1: Context Window Efficiency**
+
+These metrics prove whether the file-based system actually keeps the context window clean.
+
+| Metric | What It Measures | How It's Captured |
+|--------|-----------------|-------------------|
+| `context_utilization_pct` | Peak context window usage as % of model limit | From API response `input_tokens` (cumulative high-water mark) |
+| `tokens_per_turn_avg` | Average tokens consumed per agent turn | Sum of all turn token counts / number of turns |
+| `tokens_per_turn_trend` | Whether per-turn cost is stable or growing | Linear regression on per-turn token counts |
+| `file_vs_chat_ratio` | Ratio of output written to files vs. chat responses | Count output tokens in file writes vs. chat responses |
+| `context_at_session_end` | Where the context window was when session ended | Final cumulative token count |
+| `compaction_events` | Number of times context was compacted mid-session | Count compaction triggers detected |
+| `bridge_resume_cost` | Tokens spent restoring state from bridge files | Token count for the first N turns of a resumed session |
+| `cold_start_cost` | Tokens spent when starting without bridge | Token count for first N turns of a fresh session (for comparison) |
+
+**Category 2: Build Quality**
+
+These metrics prove whether the agent builds BETTER with file-based context.
+
+| Metric | What It Measures | How It's Captured |
+|--------|-----------------|-------------------|
+| `features_completed` | Features marked passing per session | Count from features.db |
+| `features_per_10k_tokens` | Feature completion efficiency | features_completed / (total_tokens / 10000) |
+| `lint_pass_rate` | % of lint checks that pass on first run | Count passes / total lint runs |
+| `type_check_pass_rate` | % of type checks that pass on first run | Count passes / total type-check runs |
+| `test_pass_rate` | % of tests that pass on first run (non-YOLO only) | Count passes / total test runs |
+| `decision_revisit_count` | How often the agent re-evaluates a settled decision | Parse decisions.log for entries that reference the same topic |
+| `scope_drift_count` | How often the agent worked on out-of-scope items | Count entries in scope_boundary.md DEFER section added by agent |
+| `error_recovery_count` | How often the agent had to fix its own mistakes | Count entries in changes.md that reference fixing a previous change |
+
+**Category 3: Cost Efficiency**
+
+These metrics prove whether the system saves money.
+
+| Metric | What It Measures | How It's Captured |
+|--------|-----------------|-------------------|
+| `total_tokens_session` | Total tokens consumed (input + output) | Sum of all API response token counts |
+| `total_cost_session` | Dollar cost of the session | Calculated from token counts × per-token pricing |
+| `cost_per_feature` | Average cost to complete one feature | total_cost / features_completed |
+| `idle_tokens` | Tokens consumed during idle/waiting periods | Token count during turns where agent was in idle loop |
+| `idle_pct_of_total` | What % of total cost was idle overhead | idle_tokens / total_tokens |
+| `cache_hit_rate` | % of input tokens served from cache | cache_read_tokens / total_input_tokens |
+| `working_memory_update_cost` | Tokens spent on working_memory.md updates | Token count for turns that updated working_memory |
+
+**Category 4: Session Lifecycle**
+
+These metrics track how sessions behave over time.
+
+| Metric | What It Measures | How It's Captured |
+|--------|-----------------|-------------------|
+| `session_duration_minutes` | Wall-clock time of session | Start timestamp to end timestamp |
+| `active_minutes` | Time spent actively working (not idle) | Sum of turn durations excluding idle cycles |
+| `turns_total` | Total agent turns in session | Count of API round-trips |
+| `turns_productive` | Turns that produced code or file output | Turns that included Write/Edit tool calls |
+| `safety_tier_triggered` | Which safety tier was reached (0/1/2/3) | Highest tier trigger logged |
+| `bridge_save_triggered` | Whether bridge save occurred | Boolean from session end |
+| `session_end_reason` | Why session ended (human, timeout, safety, complete) | Categorize from last turn context |
+
+### Data Storage
+
+**File: `.agent/analytics/session_{timestamp}.json`**
+
+Each session produces one JSON file with all metrics:
+
+```json
+{
+  "session_id": "2026-02-25T14-30-00",
+  "project_name": "my-app",
+  "model": "claude-sonnet-4-6",
+  "model_limit": 200000,
+  "config_snapshot": {
+    "utilization_target": 85,
+    "working_memory_frequency": 3,
+    "file_read_budget": 4000,
+    "warning_threshold_pct": 45,
+    "handoff_threshold_pct": 47.5,
+    "hard_stop_threshold_pct": 50
+  },
+  "context_efficiency": {
+    "context_utilization_pct": 42.3,
+    "tokens_per_turn_avg": 1850,
+    "tokens_per_turn_trend": "stable",
+    "file_vs_chat_ratio": 14.2,
+    "context_at_session_end": 84600,
+    "compaction_events": 0,
+    "bridge_resume_cost": 1700,
+    "cold_start_cost": null
+  },
+  "build_quality": {
+    "features_completed": 4,
+    "features_per_10k_tokens": 0.47,
+    "lint_pass_rate": 0.92,
+    "type_check_pass_rate": 0.88,
+    "test_pass_rate": 0.85,
+    "decision_revisit_count": 1,
+    "scope_drift_count": 0,
+    "error_recovery_count": 2
+  },
+  "cost_efficiency": {
+    "total_tokens_session": 84600,
+    "total_cost_session": 2.54,
+    "cost_per_feature": 0.64,
+    "idle_tokens": 1200,
+    "idle_pct_of_total": 1.4,
+    "cache_hit_rate": 0.34,
+    "working_memory_update_cost": 2400
+  },
+  "session_lifecycle": {
+    "session_duration_minutes": 47,
+    "active_minutes": 44,
+    "turns_total": 38,
+    "turns_productive": 31,
+    "safety_tier_triggered": 0,
+    "bridge_save_triggered": true,
+    "session_end_reason": "human_departure"
+  },
+  "per_turn_log": [
+    {
+      "turn": 1,
+      "timestamp": "2026-02-25T14:30:15",
+      "input_tokens": 3200,
+      "output_tokens": 890,
+      "cache_read": 1500,
+      "cache_write": 800,
+      "cumulative_tokens": 4090,
+      "tools_used": ["Read", "Write"],
+      "files_read": ["index.md", "working_memory.md"],
+      "files_written": [],
+      "action": "session_startup"
+    }
+  ]
+}
+```
+
+**File: `.agent/analytics/aggregate.json`**
+
+Running aggregate across ALL sessions for this project:
+
+```json
+{
+  "total_sessions": 12,
+  "total_features_completed": 28,
+  "total_cost": 31.40,
+  "avg_cost_per_feature": 1.12,
+  "avg_context_utilization": 44.7,
+  "avg_features_per_session": 2.3,
+  "trend_cost_per_feature": "decreasing",
+  "trend_context_utilization": "stable",
+  "trend_quality_score": "increasing",
+  "lever_history": [
+    {
+      "session_range": "1-3",
+      "config": {"file_read_budget": 4000, "working_memory_frequency": 3},
+      "avg_cost_per_feature": 1.45
+    },
+    {
+      "session_range": "4-12",
+      "config": {"file_read_budget": 3000, "working_memory_frequency": 5},
+      "avg_cost_per_feature": 0.98
+    }
+  ]
+}
+```
+
+### Automated Reports
+
+After each session, the system generates a human-readable report:
+
+**File: `.agent/analytics/reports/session_{timestamp}_report.md`**
+
+```markdown
+# Build Analytics Report — Session 2026-02-25T14:30
+
+## Headlines
+- 4 features completed in 47 minutes ($2.54 total, $0.64/feature)
+- Context window peaked at 42.3% — 57.7% headroom remaining
+- File-to-chat output ratio: 14.2x (target: >10x)
+- Zero scope drift incidents, 1 decision revisit
+
+## vs. Previous Session
+| Metric | This Session | Last Session | Change |
+|--------|-------------|-------------|--------|
+| Cost/feature | $0.64 | $0.82 | -22% ↓ |
+| Context peak | 42.3% | 51.1% | -8.8pp ↓ |
+| Features/session | 4 | 3 | +33% ↑ |
+| Lint pass rate | 92% | 85% | +7pp ↑ |
+
+## vs. All-Time Average
+| Metric | This Session | All-Time Avg | Delta |
+|--------|-------------|-------------|-------|
+| Cost/feature | $0.64 | $1.12 | -43% |
+| Features/session | 4 | 2.3 | +74% |
+
+## Token Distribution
+- File writes: 68% of output tokens (good — target is >60%)
+- Chat responses: 5% of output tokens (good — target is <10%)
+- Tool overhead: 12% of output tokens
+- Working memory updates: 8% of output tokens
+- Idle cycles: 1.4% of total tokens
+
+## Lever Recommendations
+> Based on this session's data compared to historical performance:
+
+1. **file_read_budget: 4000 → 3500** — Average file reads per turn only used 2,800 tokens. Lowering the budget saves ~200 tokens/turn of unused headroom the agent is reserving.
+2. **working_memory_frequency: 3 → 4** — Working memory updates consumed 2,400 tokens but state wasn't changing fast enough to need every-3-turn updates. Every-4-turns would save ~600 tokens/session.
+
+## Quality Flags
+- ⚠️ 2 error recovery events (agent fixed own mistakes) — review changes.md entries at 14:45 and 15:30
+- ✅ No compaction events
+- ✅ No safety tier triggers
+- ✅ No scope drift
+```
+
+### Comparison Reports (Cross-Build)
+
+**File: `.agent/analytics/reports/comparison_{project}.md`**
+
+Generated on demand or after every 5 sessions:
+
+```markdown
+# Cross-Build Comparison — my-app
+
+## Build Progression (12 sessions)
+
+| Session | Features | Cost/Feature | Context Peak | Quality Score |
+|---------|----------|-------------|-------------|--------------|
+| 1 | 1 | $2.80 | 67% | 62% |
+| 2 | 2 | $1.90 | 58% | 71% |
+| 3 | 2 | $1.45 | 52% | 78% |
+| ... | ... | ... | ... | ... |
+| 12 | 4 | $0.64 | 42% | 91% |
+
+## Trend Analysis
+- Cost/feature: ↓ 77% reduction over 12 sessions
+- Context efficiency: ↓ 25pp reduction in peak utilization
+- Quality: ↑ 29pp increase in composite quality score
+- Features/session: ↑ 300% increase in throughput
+
+## Lever Impact Analysis
+| Lever Change | Sessions | Before → After | Impact |
+|-------------|----------|----------------|--------|
+| file_read_budget 4000→3000 | 3→4 | $1.45→$1.20/feat | -17% cost |
+| working_memory_freq 3→5 | 6→7 | 48%→43% context | -5pp utilization |
+
+## Proof Metrics (for external documentation)
+- **Claim: Context extends past 50%** — PROVEN. 9 of 12 sessions stayed under 50%.
+- **Claim: Quality maintained through session** — MEASURING. Quality score at end of session avg 88% vs 91% at start (3pp drop vs typical 35pp+ drop).
+- **Claim: Cost reduction vs baseline** — NEEDS BASELINE. Run 3 builds without DunkStack for comparison.
+```
+
+### Baseline Comparison System
+
+To scientifically prove DunkStack works, we need a CONTROL. Run the same build task two ways:
+
+1. **DunkStack mode** — Full file-based protocol active
+2. **Baseline mode** — Standard agent behavior (no file protocol, normal chat responses)
+
+The analytics system flags metrics that need baseline comparison and generates side-by-side reports:
+
+```markdown
+## DunkStack vs. Baseline — Task: "Build a todo app with auth"
+
+| Metric | DunkStack | Baseline | Improvement |
+|--------|-----------|----------|-------------|
+| Total cost | $8.40 | $22.10 | -62% |
+| Features completed | 12/12 | 9/12 | +33% |
+| Context peak | 44% | 100% (ran out) | N/A |
+| Sessions needed | 2 | 4 | -50% |
+| Lint pass rate | 94% | 71% | +23pp |
+| Total time | 1h 42m | 3h 15m | -48% |
+```
+
+### Integration Points
+
+1. **Data capture hooks** — The DunkStack session wrapper intercepts every API response and logs token data to the per-turn log. This is a thin wrapper around the existing API call, not a separate system.
+
+2. **File write tracking** — Every Write/Edit tool call is intercepted to categorize output destination (file vs. chat) and count tokens directed to each.
+
+3. **Feature completion tracking** — Hooks into the existing features.db to detect status changes (pending → in_progress → passing).
+
+4. **Session lifecycle events** — Start, bridge load, idle enter/exit, safety tier triggers, bridge save, end.
+
+5. **Post-session report generation** — Runs automatically after session ends. Reads the session JSON, reads aggregate JSON, generates the markdown report.
+
+6. **Aggregate update** — After each session report, updates aggregate.json with new running totals and trend calculations.
+
+### Config Settings
+
+```yaml
+analytics:
+  enabled: true                    # Master switch
+  per_turn_logging: true           # Log every API call (disable to save disk)
+  auto_report: true                # Generate report after each session
+  comparison_frequency: 5          # Generate cross-build comparison every N sessions
+  baseline_mode: false             # Set true to run WITHOUT DunkStack (for control data)
+  retention_sessions: 100          # Keep detailed data for last N sessions
+```
+
+---
+
+## Mechanism 12: Self-Optimization Engine (Lever Tuning)
+
+### What It Does
+An automated analysis system that reads the analytics data, identifies which configurable levers (thresholds, frequencies, budgets) are suboptimal, generates specific adjustment recommendations with projected impact, and can execute approved changes to config.yml.
+
+### Why It's Critical
+Every configurable value in config.yml is a guess until proven by data. The file_read_budget of 4000 tokens — is that too high? Too low? The working_memory_frequency of every 3 turns — should it be 4? 5? Every lever has an optimal value that depends on the type of project, the model being used, and the complexity of features. Manual tuning is slow and biased. Data-driven tuning converges on optimal faster.
+
+### How It Works
+
+**Step 1: Data collection** — Analytics system (Mechanism 11) runs automatically for every session.
+
+**Step 2: Pattern detection** — After each session, the optimizer reads the session data and identifies:
+- Levers where the actual usage is significantly different from the configured budget (e.g., file_read_budget set to 4000 but average usage is 2800 — the budget is too generous)
+- Levers where changing the value correlated with improvement in past sessions (e.g., when working_memory_frequency changed from 3 to 5, cost/feature dropped 17%)
+- Levers where the current value is producing diminishing returns (e.g., increasing utilization_target past 85% didn't improve features/session but did increase safety tier triggers)
+
+**Step 3: Recommendation generation** — The optimizer produces a structured recommendation:
+
+```markdown
+## Optimization Report — Post Session 12
+
+### Recommended Lever Adjustments
+
+#### 1. file_read_budget: 4000 → 3200
+**Evidence:** Last 5 sessions averaged 2,800 tokens per turn on file reads. Current budget leaves 1,200 unused tokens of headroom per turn. Reducing to 3,200 still provides 400 tokens of buffer while signaling to the agent to be more selective with reads.
+**Projected impact:** ~200 fewer tokens per turn → ~7,600 fewer tokens per session (38 turns avg)
+**Risk:** Low — 400 token buffer handles occasional larger reads
+**Confidence:** High (based on 5 sessions of consistent data)
+
+#### 2. working_memory_frequency: 3 → 4
+**Evidence:** Working memory updates at frequency-3 cost 2,400 tokens/session. State changes between turns 2→3 averaged only 12% delta, suggesting updates are mostly redundant. At frequency-4, projected savings of 600 tokens/session with <1% information loss risk.
+**Projected impact:** 600 fewer tokens per session, 1 fewer file write per 12 turns
+**Risk:** Low — bridge save provides safety net if working memory falls behind
+**Confidence:** Medium (would benefit from 3 more sessions of data)
+
+#### 3. No change recommended for: safety thresholds, idle_cycle_seconds, api_response_max_sentences
+**Reason:** Current values are producing target outcomes within acceptable bounds.
+```
+
+**Step 4: Human approval** — The report is written to `.agent/analytics/reports/optimization_{timestamp}.md` and a notification is posted to `comms/to_human.md`. The human reviews and either:
+- Approves all changes → system updates config.yml automatically
+- Approves some changes → system applies only approved ones
+- Rejects → no changes, system logs the rejection reason for future reference
+
+**Step 5: Impact tracking** — After lever changes are applied, the next N sessions are flagged as "post-adjustment." The optimizer compares pre- and post-adjustment metrics to verify the change had the expected effect. If it didn't, the lever change is flagged for reversal.
+
+### Lever Registry
+
+Every adjustable value has a metadata entry:
+
+```yaml
+# Internal lever registry (not user-facing, used by optimizer)
+levers:
+  file_read_budget:
+    current: 4000
+    min: 1000
+    max: 8000
+    step: 200
+    metric_to_optimize: tokens_per_turn_avg
+    direction: minimize
+    constraint: must_not_increase error_recovery_count
+
+  working_memory_frequency:
+    current: 3
+    min: 1
+    max: 10
+    step: 1
+    metric_to_optimize: working_memory_update_cost
+    direction: minimize
+    constraint: must_not_increase decision_revisit_count
+
+  warning_threshold_pct:
+    current: 45
+    min: 30
+    max: 80
+    step: 5
+    metric_to_optimize: context_utilization_pct
+    direction: maximize
+    constraint: must_not_trigger safety_tier_3
+
+  idle_cycle_seconds:
+    current: 300
+    min: 60
+    max: 900
+    step: 60
+    metric_to_optimize: idle_pct_of_total
+    direction: minimize
+    constraint: must_not_miss from_human messages
+```
+
+Each lever has:
+- **Bounds** (min/max) — prevents the optimizer from going to absurd values
+- **Step size** — how much to adjust per optimization cycle
+- **Target metric** — which analytics metric this lever primarily affects
+- **Direction** — whether we want that metric higher or lower
+- **Constraint** — a guardrail metric that must NOT get worse when this lever changes
+
+### Optimization Strategy
+
+The optimizer uses a **conservative hill-climbing** approach:
+1. Only change ONE lever per optimization cycle (isolate variables)
+2. Only change by ONE step (don't make dramatic jumps)
+3. Wait at least 3 sessions after a change before evaluating impact
+4. If a change makes the constraint metric worse, auto-revert immediately
+5. If a change shows no improvement after 5 sessions, revert and try a different lever
+6. Log every change and its outcome to build a historical model of lever interactions
+
+This is deliberately simple. Not ML, not gradient descent, not reinforcement learning. Just: change one thing, measure, keep or revert. Works with small sample sizes (which is what we have — individual build sessions, not millions of data points).
+
+### Config Settings
+
+```yaml
+optimization:
+  enabled: true                        # Master switch
+  auto_recommend: true                 # Generate recommendations after each session
+  auto_apply: false                    # If true, apply recommendations without human approval
+  min_sessions_before_first: 3         # Don't recommend anything until N sessions of baseline data
+  sessions_between_changes: 3          # Wait N sessions between lever adjustments
+  max_levers_per_cycle: 1             # Only change N levers at a time
+  revert_on_constraint_violation: true # Auto-revert if constraint metric worsens
+```
+
+---
+
+## Updated File Structure (Mechanisms 2 + 8 + 9 + 10 + 11 + 12)
+
+With all mechanisms, the complete `.agent/` directory structure becomes:
 
 ```
 .agent/
 ├── index.md
 ├── working_memory.md
-├── scope_boundary.md          ← NEW: What's in/out of scope
+├── scope_boundary.md          ← Mechanism 9: What's in/out of scope
 ├── bridge.md                  (temporary, created by bridge mechanism)
 ├── system_prompt.md
 ├── comms/
@@ -931,8 +1380,16 @@ With the three new mechanisms, the complete `.agent/` directory structure become
 │   └── .gitkeep
 ├── progress/
 │   ├── build_log.md
-│   ├── decisions.log          ← NEW: Why choices were made
-│   └── changes.md             ← NEW: Semantic change tracking
+│   ├── decisions.log          ← Mechanism 8: Why choices were made
+│   └── changes.md             ← Mechanism 10: Semantic change tracking
+├── analytics/                 ← Mechanism 11+12: Measurement & optimization
+│   ├── session_{timestamp}.json    (one per session, raw data)
+│   ├── aggregate.json              (running totals across all sessions)
+│   ├── lever_registry.yml          (optimizer metadata for each lever)
+│   └── reports/
+│       ├── session_{timestamp}_report.md    (auto-generated after each session)
+│       ├── comparison_{project}.md          (cross-build analysis, every N sessions)
+│       └── optimization_{timestamp}.md      (lever adjustment recommendations)
 ├── settings/
 │   └── config.yml
 └── features.db                (created by dependency system)

@@ -1018,9 +1018,8 @@ async def get_walkie_talkie_status(session_id: str):
 
 
 # ============================================================================
-# WebSocket Endpoint (Viewer Protocol)
+# WebSocket Endpoint
 # ============================================================================
-
 
 @router.websocket("/ws")
 async def workspace_chat_websocket(websocket: WebSocket):
@@ -1047,17 +1046,19 @@ async def workspace_chat_websocket(websocket: WebSocket):
     - {"type": "replay_done", "current_seq": int} - Replay complete
     - All existing types (text, tool_call, token_usage, etc.) via broadcast
     - {"type": "heartbeat", ...} - Periodic heartbeat
+    - {"type": "session_completed"} - Session completed
+    - {"type": "session_failed", "error": "..."} - Session failed
     - {"type": "detached"} - Detach confirmation
     - {"type": "error", "content": "..."} - Error message
     - {"type": "pong"} - Keep-alive pong
     """
+    from ..services.background_session_manager import get_background_session_manager
+
     # Always accept WebSocket first to avoid opaque 403 errors
     await websocket.accept()
 
-    from ..services.background_session_manager import get_background_session_manager
-
     manager = await get_background_session_manager()
-    attached_session_id: str | None = None
+    attached_session_id: Optional[str] = None
 
     logger.info("Workspace WebSocket connected (viewer mode)")
 
@@ -1071,7 +1072,6 @@ async def workspace_chat_websocket(websocket: WebSocket):
 
                 if msg_type == "ping":
                     await websocket.send_json({"type": "pong"})
-                    continue
 
                 elif msg_type == "start":
                     # Create a NEW background session and attach as viewer.
@@ -1151,7 +1151,10 @@ async def workspace_chat_websocket(websocket: WebSocket):
                         if existing_session:
                             # Attach to the existing session instead of creating a new one.
                             if attached_session_id and attached_session_id != existing_session.session_id:
-                                await manager.detach_viewer(attached_session_id, websocket)
+                                try:
+                                    await manager.detach_viewer(attached_session_id, websocket)
+                                except KeyError:
+                                    pass
 
                             attached_session_id = existing_session.session_id
                             current_seq = await manager.attach_viewer(attached_session_id, websocket)
@@ -1189,7 +1192,10 @@ async def workspace_chat_websocket(websocket: WebSocket):
 
                             # Detach from previous session if any.
                             if attached_session_id:
-                                await manager.detach_viewer(attached_session_id, websocket)
+                                try:
+                                    await manager.detach_viewer(attached_session_id, websocket)
+                                except KeyError:
+                                    pass
 
                             attached_session_id = bg_session.session_id
                             current_seq = await manager.attach_viewer(bg_session.session_id, websocket)
@@ -1220,7 +1226,7 @@ async def workspace_chat_websocket(websocket: WebSocket):
                         logger.exception("Error starting/attaching workspace session")
                         await websocket.send_json({
                             "type": "error",
-                            "content": f"Failed to start session: {str(e)}"
+                            "content": f"Failed to start session: {str(e)}",
                         })
 
                 elif msg_type == "attach":
@@ -1231,7 +1237,7 @@ async def workspace_chat_websocket(websocket: WebSocket):
                     if not target_session_id:
                         await websocket.send_json({
                             "type": "error",
-                            "content": "Missing session_id in attach message"
+                            "content": "Missing session_id in attach message",
                         })
                         continue
 
@@ -1239,13 +1245,16 @@ async def workspace_chat_websocket(websocket: WebSocket):
                     if not session:
                         await websocket.send_json({
                             "type": "error",
-                            "content": f"Session {target_session_id} not found"
+                            "content": f"Session {target_session_id} not found",
                         })
                         continue
 
                     # Detach from previous session if any.
                     if attached_session_id and attached_session_id != target_session_id:
-                        await manager.detach_viewer(attached_session_id, websocket)
+                        try:
+                            await manager.detach_viewer(attached_session_id, websocket)
+                        except KeyError:
+                            pass
 
                     attached_session_id = target_session_id
                     current_seq = await manager.attach_viewer(target_session_id, websocket)
@@ -1275,29 +1284,17 @@ async def workspace_chat_websocket(websocket: WebSocket):
                     if not attached_session_id:
                         await websocket.send_json({
                             "type": "error",
-                            "content": "No active session. Send 'start' first."
+                            "content": "No active session. Send 'start' first.",
                         })
                         continue
 
                     user_content = message.get("content", "").strip()
                     if not user_content:
-                        await websocket.send_json({
-                            "type": "error",
-                            "content": "Empty message"
-                        })
+                        await websocket.send_json({"type": "error", "content": "Empty message"})
                         continue
 
-                    # Extract optional image attachments
-                    raw_attachments = message.get("attachments", [])
-                    attachments = None
-                    if raw_attachments:
-                        from ..schemas import ImageAttachment
-                        try:
-                            attachments = [ImageAttachment(**att) for att in raw_attachments]
-                        except Exception as e:
-                            logger.warning("Invalid attachment data: %s", e)
-
-                    # Extract optional library file IDs
+                    # Extract optional attachments and library file IDs.
+                    attachments = message.get("attachments") or None
                     library_file_ids = message.get("library_file_ids")
                     if library_file_ids and not isinstance(library_file_ids, list):
                         library_file_ids = None
@@ -1309,16 +1306,26 @@ async def workspace_chat_websocket(websocket: WebSocket):
                             attachments=attachments,
                             library_file_ids=library_file_ids,
                         )
-                    except (KeyError, RuntimeError) as e:
+                    except KeyError:
                         await websocket.send_json({
                             "type": "error",
-                            "content": str(e)
+                            "content": "Session not found. It may have been cleaned up.",
+                        })
+                    except RuntimeError as e:
+                        await websocket.send_json({
+                            "type": "error",
+                            "content": str(e),
                         })
 
                 elif msg_type == "walkie_talkie":
                     # Walkie-talkie: inject a message into the running agent's queue.
                     content = message.get("content", "")
-                    if content and attached_session_id:
+                    if not attached_session_id:
+                        await websocket.send_json({
+                            "type": "error",
+                            "content": "No active session. Send 'start' first.",
+                        })
+                    elif content:
                         from ..services.background_session_manager import _is_terminal
                         bg_session = manager.get_session(attached_session_id)
                         if bg_session and bg_session._chat_session and not _is_terminal(bg_session.state):
@@ -1330,19 +1337,14 @@ async def workspace_chat_websocket(websocket: WebSocket):
                         else:
                             await websocket.send_json({
                                 "type": "error",
-                                "content": "Session not found or not running"
+                                "content": "Session not found or not running.",
                             })
-                    elif not attached_session_id:
-                        await websocket.send_json({
-                            "type": "error",
-                            "content": "No active session. Send 'start' first."
-                        })
 
                 elif msg_type == "answer":
                     if not attached_session_id:
                         await websocket.send_json({
                             "type": "error",
-                            "content": "No active session. Send 'start' first."
+                            "content": "No active session. Send 'start' first.",
                         })
                         continue
 
@@ -1364,25 +1366,28 @@ async def workspace_chat_websocket(websocket: WebSocket):
                     except (KeyError, RuntimeError) as e:
                         await websocket.send_json({
                             "type": "error",
-                            "content": str(e)
+                            "content": str(e),
                         })
 
                 elif msg_type == "detach":
                     if attached_session_id:
-                        await manager.detach_viewer(attached_session_id, websocket)
+                        try:
+                            await manager.detach_viewer(attached_session_id, websocket)
+                        except KeyError:
+                            pass
                         attached_session_id = None
                     await websocket.send_json({"type": "detached"})
 
                 else:
                     await websocket.send_json({
                         "type": "error",
-                        "content": f"Unknown message type: {msg_type}"
+                        "content": f"Unknown message type: {msg_type}",
                     })
 
             except json.JSONDecodeError:
                 await websocket.send_json({
                     "type": "error",
-                    "content": "Invalid JSON"
+                    "content": "Invalid JSON",
                 })
 
     except WebSocketDisconnect:
@@ -1393,7 +1398,7 @@ async def workspace_chat_websocket(websocket: WebSocket):
         try:
             await websocket.send_json({
                 "type": "error",
-                "content": f"Server error: {str(e)}"
+                "content": f"Server error: {str(e)}",
             })
         except Exception:
             pass

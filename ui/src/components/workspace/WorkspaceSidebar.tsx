@@ -28,6 +28,7 @@ import {
   useTogglePin,
   useCycleModelBadge,
 } from '@/hooks/useWorkspaceConversations'
+import { useBackgroundSessions } from '@/hooks/useBackgroundSessions'
 import {
   useWorkspaceCategories,
   useCreateCategory,
@@ -159,6 +160,17 @@ export function WorkspaceSidebar({
   const namingInputRef = useRef<HTMLInputElement>(null)
 
   const { data: conversations, isLoading } = useWorkspaceConversations()
+  const { data: bgSessions } = useBackgroundSessions()
+
+  // Build a map of conversation_id → background session state for self-sufficient indicators
+  const sessionStateMap = useMemo(() => {
+    const map = new Map<number, { state: string; provider: string; startedAt: string | null }>()
+    bgSessions?.forEach(s => {
+      map.set(s.conversation_id, { state: s.state, provider: s.provider, startedAt: s.started_at })
+    })
+    return map
+  }, [bgSessions])
+
   const createConversationMut = useCreateWorkspaceConversation()
   const deleteMutation = useDeleteWorkspaceConversation()
   const { data: categories = [] } = useWorkspaceCategories()
@@ -648,6 +660,15 @@ export function WorkspaceSidebar({
                   const isHovered = conv.id === hoveredId
                   const isStreaming = streamingIds?.has(conv.id) ?? false
 
+                  // Background session state for richer indicators
+                  const bgState = sessionStateMap.get(conv.id)
+                  const isRunningBg = bgState && (bgState.state === 'running' || bgState.state === 'streaming')
+                  const isWaitingInput = bgState?.state === 'waiting_input'
+                  const isCompletedRecent = bgState?.state === 'completed'
+                  const isFailedBg = bgState?.state === 'failed'
+                  // Show activity from either WebSocket streaming or background session
+                  const showActivity = isStreaming || isRunningBg
+
                   return (
                     <div
                       key={conv.id}
@@ -697,8 +718,16 @@ export function WorkspaceSidebar({
                         )
                       })()}
                       {/* Streaming accent bar — glowing left edge when agent is active */}
-                      {isStreaming && (
+                      {showActivity && (
                         <div className="absolute left-0 top-1 bottom-1 w-0.5 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(0,180,216,0.6)] animate-pulse z-10" />
+                      )}
+                      {/* Waiting input accent bar — yellow glow */}
+                      {isWaitingInput && !showActivity && (
+                        <div className="absolute left-0 top-1 bottom-1 w-0.5 rounded-full bg-yellow-400 shadow-[0_0_8px_rgba(234,179,8,0.6)] animate-pulse z-10" />
+                      )}
+                      {/* Failed accent bar — red */}
+                      {isFailedBg && !showActivity && !isWaitingInput && (
+                        <div className="absolute left-0 top-1 bottom-1 w-0.5 rounded-full bg-red-400 z-10" />
                       )}
                       <button
                         type="button"
@@ -725,11 +754,30 @@ export function WorkspaceSidebar({
                         {!selectMode && conv.pinned && <Star size={10} className="text-primary flex-shrink-0" />}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1">
-                            {/* Pulsing dot when agent is streaming */}
-                            {isStreaming && (
+                            {/* Pulsing dot — running/streaming */}
+                            {showActivity && (
                               <span className="relative flex h-2 w-2 flex-shrink-0">
                                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75" />
                                 <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500" />
+                              </span>
+                            )}
+                            {/* Pulsing dot — waiting for input */}
+                            {isWaitingInput && !showActivity && (
+                              <span className="relative flex h-2 w-2 flex-shrink-0">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75" />
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-yellow-500" />
+                              </span>
+                            )}
+                            {/* Green check — recently completed */}
+                            {isCompletedRecent && !showActivity && !isWaitingInput && (
+                              <span className="flex h-2 w-2 flex-shrink-0">
+                                <span className="inline-flex rounded-full h-2 w-2 bg-green-500" />
+                              </span>
+                            )}
+                            {/* Red dot — failed */}
+                            {isFailedBg && !showActivity && !isWaitingInput && !isCompletedRecent && (
+                              <span className="flex h-2 w-2 flex-shrink-0">
+                                <span className="inline-flex rounded-full h-2 w-2 bg-red-500" />
                               </span>
                             )}
                             <span className={`text-xs font-medium truncate ${conv.title ? '' : 'italic text-muted-foreground'}`}>
@@ -741,8 +789,8 @@ export function WorkspaceSidebar({
                           </span>
                         </div>
 
-                        {/* Shimmer sweep when streaming */}
-                        {isStreaming && (
+                        {/* Shimmer sweep when active */}
+                        {showActivity && (
                           <div className="absolute inset-0 pointer-events-none overflow-hidden rounded-lg">
                             <div className="absolute top-0 right-0 h-full w-12 animate-shimmer bg-gradient-to-r from-transparent via-white/10 to-transparent" />
                           </div>

@@ -108,7 +108,7 @@ def _is_terminal(state: SessionState) -> bool:
 # ---------------------------------------------------------------------------
 
 class OutputBuffer:
-    """Thread-safe ring buffer with monotonic sequence numbers and SQLite persistence.
+    """Coroutine-safe ring buffer with monotonic sequence numbers and SQLite persistence.
 
     Every event appended to the buffer receives a monotonically increasing
     sequence number.  Viewers use ``get_since(seq)`` to retrieve events they
@@ -479,6 +479,7 @@ class BackgroundSession:
         seq = await self._output_buffer.append(cancel_event)
         cancel_event["seq"] = seq
         await self._broadcast(cancel_event)
+        await self._output_buffer.flush()
 
     def to_status_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable status summary of this session."""
@@ -591,11 +592,18 @@ class BackgroundSession:
             self.error_message = str(e)
 
             # Emit an error event so viewers see what happened.
-            await self._buffer_and_broadcast({
-                "type": "error",
-                "content": f"Session failed: {e}",
-            })
-            await self._emit_state_event()
+            # Wrap in try/except: if _buffer_and_broadcast itself raised the
+            # original exception, calling it again here would fail too.
+            try:
+                await self._buffer_and_broadcast({
+                    "type": "error",
+                    "content": f"Session failed: {e}",
+                })
+                await self._emit_state_event()
+            except Exception:
+                logger.warning(
+                    "Failed to broadcast error event for session %s", self.session_id,
+                )
 
         finally:
             # Stop heartbeat.
@@ -607,7 +615,12 @@ class BackgroundSession:
                     pass
 
             # Flush all remaining events to SQLite.
-            await self._output_buffer.flush()
+            try:
+                await self._output_buffer.flush()
+            except Exception:
+                logger.warning(
+                    "Failed to flush output buffer for session %s", self.session_id,
+                )
 
             # Close the underlying chat session.
             if self._chat_session:
@@ -640,7 +653,7 @@ class BackgroundSession:
                     "state": self.state.value,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "viewer_count": len(self._viewers),
-                    "buffer_sequence": self._output_buffer.current_sequence,
+                    "seq": self._output_buffer.current_sequence,
                 }
                 # Heartbeats are broadcast directly (not buffered) to avoid
                 # filling the output buffer with noise.
@@ -829,8 +842,16 @@ class BackgroundSessionManager:
                 self._conversation_sessions[conversation_id] = session_id
 
         # Start the session outside the lock to avoid holding it during
-        # potentially slow initialization.
-        await session.start()
+        # potentially slow initialization.  If start() fails, clean up the
+        # registration so the conversation isn't permanently blocked.
+        try:
+            await session.start()
+        except Exception:
+            async with self._lock:
+                self._sessions.pop(session_id, None)
+                if self._conversation_sessions.get(conversation_id) == session_id:
+                    del self._conversation_sessions[conversation_id]
+            raise
 
         logger.info(
             "Created background session %s for conversation %s (provider=%s, model=%s)",

@@ -50,6 +50,8 @@ interface UseWorkspaceChatReturn {
   addWalkieTalkieEntry: (sender: 'user' | 'agent' | 'system', content: string) => void;
   /** Real-time token processing log entries received via WebSocket. */
   tokenLog: TokenLogEntry[];
+  /** The background session ID this viewer is attached to (null if none). */
+  attachedSessionId: string | null;
   disconnect: () => void;
   clearMessages: () => void;
 }
@@ -90,6 +92,13 @@ export function useWorkspaceChat({
   const [agentWaitingQuestion, setAgentWaitingQuestion] = useState<string | null>(null);
   const [walkieTalkieLog, setWalkieTalkieLog] = useState<WalkieTalkieLogEntry[]>([]);
   const [tokenLog, setTokenLog] = useState<TokenLogEntry[]>([]);
+
+  // Background session viewer protocol state
+  const [attachedSessionId, setAttachedSessionId] = useState<string | null>(null);
+  const lastSeqRef = useRef<number>(0);
+  const attachedSessionIdRef = useRef<string | null>(null);
+  // Keep ref in sync with state for use in callbacks
+  attachedSessionIdRef.current = attachedSessionId;
 
   const addWalkieTalkieEntry = useCallback(
     (sender: 'user' | 'agent' | 'system', content: string) => {
@@ -223,35 +232,46 @@ export function useWorkspaceChat({
         }
       }, 30000);
 
-      // On reconnect, automatically re-send the "start" message so the
-      // server creates a new session for this WebSocket connection.
-      // Without this, the server has no session and returns
-      // "No active session. Send 'start' first." on every message.
-      if (wasReconnect && lastStartParamsRef.current) {
-        sessionReadyRef.current = false;
-        const params = lastStartParamsRef.current;
-        const payload: Record<string, unknown> = { type: "start" };
-        if (params.conversationId != null) {
-          payload.conversation_id = params.conversationId;
-        }
-        if (params.workingDirectory) {
-          payload.working_directory = params.workingDirectory;
-        }
-        payload.context_mode = params.contextMode ?? "200k";
-        if (params.costSettings) {
-          payload.cost_settings = params.costSettings;
-        }
-        if (params.model) {
-          payload.model = params.model;
-        }
-        if (params.provider) {
-          payload.provider = params.provider;
-        }
+      // On reconnect, reattach to the existing background session if we
+      // have one (viewer protocol). Otherwise fall back to re-sending "start".
+      if (wasReconnect) {
+        if (attachedSessionIdRef.current) {
+          // Reattach to existing background session with catch-up
+          const attachPayload = {
+            type: "attach",
+            session_id: attachedSessionIdRef.current,
+            since_seq: lastSeqRef.current,
+          };
+          if (import.meta.env.DEV) {
+            console.debug('[useWorkspaceChat] Reattaching to session on reconnect:', attachPayload);
+          }
+          ws.send(JSON.stringify(attachPayload));
+        } else if (lastStartParamsRef.current) {
+          sessionReadyRef.current = false;
+          const params = lastStartParamsRef.current;
+          const payload: Record<string, unknown> = { type: "start" };
+          if (params.conversationId != null) {
+            payload.conversation_id = params.conversationId;
+          }
+          if (params.workingDirectory) {
+            payload.working_directory = params.workingDirectory;
+          }
+          payload.context_mode = params.contextMode ?? "200k";
+          if (params.costSettings) {
+            payload.cost_settings = params.costSettings;
+          }
+          if (params.model) {
+            payload.model = params.model;
+          }
+          if (params.provider) {
+            payload.provider = params.provider;
+          }
 
-        if (import.meta.env.DEV) {
-          console.debug('[useWorkspaceChat] Re-sending start on reconnect:', payload);
+          if (import.meta.env.DEV) {
+            console.debug('[useWorkspaceChat] Re-sending start on reconnect:', payload);
+          }
+          ws.send(JSON.stringify(payload));
         }
-        ws.send(JSON.stringify(payload));
       }
     };
 
@@ -293,6 +313,12 @@ export function useWorkspaceChat({
         const data = JSON.parse(event.data) as WorkspaceChatServerMessage;
         if (import.meta.env.DEV) {
           console.debug('[useWorkspaceChat] Received WebSocket message:', data.type, data);
+        }
+
+        // Track sequence number from background session events
+        const eventSeq = (data as unknown as Record<string, unknown>).seq as number | undefined;
+        if (eventSeq && eventSeq > lastSeqRef.current) {
+          lastSeqRef.current = eventSeq;
         }
 
         switch (data.type) {
@@ -478,6 +504,180 @@ export function useWorkspaceChat({
             if (logData.entry) {
               setTokenLog((prev) => [...prev, logData.entry]);
             }
+            break;
+          }
+
+          // --- Background session viewer protocol messages ---
+
+          case "session_created": {
+            const scData = data as { session_id: string; conversation_id: number };
+            setAttachedSessionId(scData.session_id);
+            lastSeqRef.current = 0;
+            if (scData.conversation_id) {
+              setConversationId(scData.conversation_id);
+            }
+            break;
+          }
+
+          case "replay": {
+            // Process replayed events (same handlers as live events).
+            // Events arrive as an array with seq numbers.
+            const replayData = data as { events: Array<Record<string, unknown>> };
+            if (replayData.events) {
+              for (const event of replayData.events) {
+                const seq = (event.seq ?? event._seq ?? 0) as number;
+                if (seq > lastSeqRef.current) {
+                  lastSeqRef.current = seq;
+                }
+                // Replay events flow through the same handlers as live events.
+                // We dispatch them as synthetic onmessage calls.
+                const eventType = event.type as string;
+                if (eventType === "text") {
+                  setMessages((prev) => {
+                    const lastMessage = prev[prev.length - 1];
+                    if (lastMessage?.role === "assistant" && lastMessage.isStreaming) {
+                      return [
+                        ...prev.slice(0, -1),
+                        { ...lastMessage, content: lastMessage.content + (event.content as string || "") },
+                      ];
+                    } else {
+                      return [
+                        ...prev,
+                        {
+                          id: generateId(),
+                          role: "assistant",
+                          content: (event.content as string) || "",
+                          timestamp: new Date(),
+                          isStreaming: true,
+                        },
+                      ];
+                    }
+                  });
+                } else if (eventType === "tool_call") {
+                  const toolDesc = describeToolCall(
+                    event.tool as string,
+                    (event.input as Record<string, unknown>) || {},
+                  );
+                  setMessages((prev) => [
+                    ...prev,
+                    { id: generateId(), role: "system", content: toolDesc, timestamp: new Date() },
+                  ]);
+                } else if (eventType === "response_done") {
+                  setMessages((prev) => {
+                    const lastMessage = prev[prev.length - 1];
+                    if (lastMessage?.role === "assistant" && lastMessage.isStreaming) {
+                      return [...prev.slice(0, -1), { ...lastMessage, isStreaming: false }];
+                    }
+                    return prev;
+                  });
+                } else if (eventType === "conversation_created") {
+                  setConversationId(event.conversation_id as number);
+                } else if (eventType === "token_usage") {
+                  setTotalTokens((event.total_tokens as number) || 0);
+                  setContextWindow((event.context_window as number) || 200_000);
+                } else if (eventType === "user_message") {
+                  setMessages((prev) => [
+                    ...prev,
+                    {
+                      id: generateId(),
+                      role: "user",
+                      content: (event.content as string) || "",
+                      timestamp: new Date(),
+                    },
+                  ]);
+                }
+              }
+            }
+            break;
+          }
+
+          case "replay_done": {
+            const rdData = data as { current_seq: number; state: string };
+            lastSeqRef.current = rdData.current_seq;
+            // Mark streaming messages as complete after replay
+            setMessages((prev) => {
+              const lastMessage = prev[prev.length - 1];
+              if (lastMessage?.role === "assistant" && lastMessage.isStreaming) {
+                return [...prev.slice(0, -1), { ...lastMessage, isStreaming: false }];
+              }
+              return prev;
+            });
+            // If the session is in a waiting state, mark as ready for input
+            if (rdData.state === "waiting_input" || rdData.state === "completed" || rdData.state === "failed") {
+              setIsLoading(false);
+              sessionReadyRef.current = true;
+            }
+            break;
+          }
+
+          case "heartbeat": {
+            const hbData = data as { seq: number };
+            if (hbData.seq) {
+              lastSeqRef.current = hbData.seq;
+            }
+            break;
+          }
+
+          case "session_state": {
+            const ssData = data as { state: string; seq?: number };
+            if (ssData.seq && ssData.seq > lastSeqRef.current) {
+              lastSeqRef.current = ssData.seq;
+            }
+            if (ssData.state === "waiting_input") {
+              setIsLoading(false);
+              sessionReadyRef.current = true;
+            } else if (ssData.state === "streaming") {
+              setIsLoading(true);
+              sessionReadyRef.current = false;
+            } else if (ssData.state === "completed") {
+              setIsLoading(false);
+              sessionReadyRef.current = true;
+            } else if (ssData.state === "failed") {
+              setIsLoading(false);
+              sessionReadyRef.current = true;
+            }
+            break;
+          }
+
+          case "session_completed": {
+            setIsLoading(false);
+            sessionReadyRef.current = true;
+            break;
+          }
+
+          case "session_failed": {
+            const sfData = data as { error: string };
+            setIsLoading(false);
+            sessionReadyRef.current = true;
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: `fail-${Date.now()}`,
+                role: "system",
+                content: `Session failed: ${sfData.error || "Unknown error"}`,
+                timestamp: new Date(),
+              },
+            ]);
+            break;
+          }
+
+          case "session_cancelled": {
+            setIsLoading(false);
+            sessionReadyRef.current = true;
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: `cancel-${Date.now()}`,
+                role: "system",
+                content: "Session was cancelled.",
+                timestamp: new Date(),
+              },
+            ]);
+            break;
+          }
+
+          case "detached": {
+            // Confirmation that we detached from the session
             break;
           }
 
@@ -723,6 +923,18 @@ export function useWorkspaceChat({
     // Reset the conversation identity so callers (handleSend) don't think
     // a session is still active for the old conversation.
     setConversationId(null);
+
+    // Send detach before closing so the background session keeps running
+    if (wsRef.current?.readyState === WebSocket.OPEN && attachedSessionIdRef.current) {
+      try {
+        wsRef.current.send(JSON.stringify({ type: "detach" }));
+      } catch {
+        // Ignore send errors during disconnect
+      }
+    }
+    setAttachedSessionId(null);
+    lastSeqRef.current = 0;
+
     if (pingIntervalRef.current) {
       clearInterval(pingIntervalRef.current);
       pingIntervalRef.current = null;
@@ -755,6 +967,8 @@ export function useWorkspaceChat({
     setTokenLog([]);
     sessionReadyRef.current = false;
     queuedPayloadRef.current = null;
+    setAttachedSessionId(null);
+    lastSeqRef.current = 0;
   }, []);
 
   // Adaptive safety timeout: provider-aware to support long-running sessions.
@@ -833,6 +1047,7 @@ export function useWorkspaceChat({
     sendMessage,
     sendWalkieTalkie,
     tokenLog,
+    attachedSessionId,
     disconnect,
     clearMessages,
   };

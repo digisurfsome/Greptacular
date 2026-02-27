@@ -66,6 +66,9 @@ import type {
   TokenLogSummary,
   YTIngestResponse,
   YTLabHealth,
+  YTExecutionSession,
+  YTExecutionStepConfig,
+  YTExecutionHealth,
 } from './types'
 
 const API_BASE = '/api'
@@ -1911,4 +1914,48 @@ export async function ingestYouTubeVideo(
 
 export async function getYTLabHealth(): Promise<YTLabHealth> {
   return fetchJSON('/yt-lab/health')
+}
+
+// ============================================================================
+// Execution Engine API
+// ============================================================================
+
+export async function startExecution(
+  projectId: string,
+  steps: YTExecutionStepConfig[],
+): Promise<{ session_id: string; status: string; novnc_url: string | null }> {
+  return fetchJSON('/execution/start', {
+    method: 'POST',
+    body: JSON.stringify({ project_id: projectId, steps }),
+  })
+}
+
+export async function pauseExecution(sessionId: string): Promise<{ session_id: string; status: string }> {
+  return fetchJSON(`/execution/${sessionId}/pause`, { method: 'POST' })
+}
+
+export async function resumeExecution(sessionId: string): Promise<{ session_id: string; status: string }> {
+  return fetchJSON(`/execution/${sessionId}/resume`, { method: 'POST' })
+}
+
+export async function injectExecutionMessage(
+  sessionId: string,
+  message: string,
+): Promise<{ session_id: string; message: string }> {
+  return fetchJSON(`/execution/${sessionId}/inject`, {
+    method: 'POST',
+    body: JSON.stringify({ message }),
+  })
+}
+
+export async function stopExecution(sessionId: string): Promise<{ session_id: string; status: string }> {
+  return fetchJSON(`/execution/${sessionId}/stop`, { method: 'POST' })
+}
+
+export async function getExecutionStatus(sessionId: string): Promise<YTExecutionSession> {
+  return fetchJSON(`/execution/${sessionId}/status`)
+}
+
+export async function getExecutionHealth(): Promise<YTExecutionHealth> {
+  return fetchJSON('/execution/health')
 }

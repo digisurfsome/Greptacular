@@ -167,14 +167,22 @@ function ProjectCard({
   stepsCompleted,
   totalSteps,
   onClick,
+  onEdit,
+  onParse,
   onDelete,
 }: {
   project: YTStrategyProject
   stepsCompleted: number
   totalSteps: number
   onClick: () => void
+  onEdit: () => void
+  onParse: () => void
   onDelete: () => void
 }): React.JSX.Element {
+  const isYouTubeUrl = project.sourceUrl && (
+    project.sourceUrl.includes('youtube.com') || project.sourceUrl.includes('youtu.be')
+  )
+
   return (
     <Card
       className="cursor-pointer hover:shadow-md transition-shadow group relative"
@@ -201,6 +209,20 @@ function ProjectCard({
             <ExternalLink size={12} />
             <span className="truncate">{project.sourceUrl}</span>
           </p>
+        )}
+
+        {/* Parse Video button - shown when source is a YouTube URL */}
+        {isYouTubeUrl && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full gap-1.5 text-xs"
+            onClick={(e) => { e.stopPropagation(); onParse() }}
+            aria-label={`Parse video for ${project.name}`}
+          >
+            <CirclePlay size={14} />
+            Parse Video
+          </Button>
         )}
 
         {/* Progress bar */}
@@ -241,14 +263,23 @@ function ProjectCard({
           {new Date(project.createdAt).toLocaleDateString()}
         </p>
 
-        {/* Delete button (appears on hover) */}
-        <button
-          className="absolute top-2 right-2 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-          onClick={(e) => { e.stopPropagation(); onDelete() }}
-          aria-label={`Delete project ${project.name}`}
-        >
-          <Trash2 size={14} />
-        </button>
+        {/* Action buttons (appear on hover) */}
+        <div className="absolute top-2 right-2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted"
+            onClick={(e) => { e.stopPropagation(); onEdit() }}
+            aria-label={`Edit project ${project.name}`}
+          >
+            <Pencil size={14} />
+          </button>
+          <button
+            className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+            onClick={(e) => { e.stopPropagation(); onDelete() }}
+            aria-label={`Delete project ${project.name}`}
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
       </CardContent>
     </Card>
   )
@@ -288,11 +319,15 @@ interface CreateFormData {
 function CreateProjectForm({
   onSubmit,
   onCancel,
+  initialData,
+  editMode = false,
 }: {
   onSubmit: (data: CreateFormData) => void
   onCancel: () => void
+  initialData?: CreateFormData
+  editMode?: boolean
 }): React.JSX.Element {
-  const [form, setForm] = useState<CreateFormData>({
+  const [form, setForm] = useState<CreateFormData>(initialData ?? {
     name: '',
     sourceUrl: '',
     niche: '',
@@ -310,9 +345,13 @@ function CreateProjectForm({
   return (
     <form onSubmit={handleSubmit} className="max-w-2xl mx-auto space-y-6">
       <div>
-        <h2 className="text-2xl font-semibold text-foreground mb-1">New Strategy Project</h2>
+        <h2 className="text-2xl font-semibold text-foreground mb-1">
+          {editMode ? 'Edit Project' : 'New Strategy Project'}
+        </h2>
         <p className="text-sm text-muted-foreground">
-          Define a new project for extracting and organizing strategies.
+          {editMode
+            ? 'Update the project details below.'
+            : 'Define a new project for extracting and organizing strategies.'}
         </p>
       </div>
 
@@ -384,8 +423,8 @@ function CreateProjectForm({
 
       <div className="flex items-center gap-3 pt-2">
         <Button type="submit" disabled={!isValid} className="gap-1.5">
-          <Plus size={16} />
-          Create Project
+          {editMode ? <Pencil size={16} /> : <Plus size={16} />}
+          {editMode ? 'Save Changes' : 'Create Project'}
         </Button>
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
@@ -1092,12 +1131,13 @@ function StrategyBuilder({
 // Main Page Component
 // ============================================================================
 
-type View = 'list' | 'create' | 'detail'
+type View = 'list' | 'create' | 'edit' | 'detail'
 
 export function YTStrategyLabPage(): React.JSX.Element {
   const [view, setView] = useState<View>('list')
   const [projects, setProjects] = useState<YTStrategyProject[]>(loadProjects)
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
+  const [editingProjectId, setEditingProjectId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [sortBy, setSortBy] = useState<SortOption>('date-desc')
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
@@ -1183,6 +1223,40 @@ export function YTStrategyLabPage(): React.JSX.Element {
     setView('detail')
   }, [])
 
+  /** Open edit form for a project. */
+  const handleEditProject = useCallback((projectId: string) => {
+    setEditingProjectId(projectId)
+    setView('edit')
+  }, [])
+
+  /** Save edits to an existing project. */
+  const handleSaveEdit = useCallback((data: CreateFormData) => {
+    if (!editingProjectId) return
+    setProjects(prev => prev.map(p =>
+      p.id === editingProjectId
+        ? {
+            ...p,
+            name: data.name.trim(),
+            sourceUrl: data.sourceUrl.trim(),
+            niche: data.niche.trim(),
+            description: data.description.trim(),
+            tags: data.tags.split(',').map(t => t.trim()).filter(t => t.length > 0),
+            updatedAt: new Date().toISOString(),
+          }
+        : p
+    ))
+    setEditingProjectId(null)
+    setView('list')
+  }, [editingProjectId])
+
+  /** Handle parsing a YouTube video for a project. */
+  const handleParseVideo = useCallback((projectId: string) => {
+    setSelectedProjectId(projectId)
+    setView('detail')
+    // TODO: Auto-open the VideoIngestPanel when navigating to detail view
+    // For now, navigates to the project so user can use the ingest panel there
+  }, [])
+
   /** Delete a project and its steps. */
   const handleDeleteProject = useCallback((projectId: string) => {
     deleteSteps(projectId)
@@ -1239,18 +1313,20 @@ export function YTStrategyLabPage(): React.JSX.Element {
             </span>
           )}
 
-          {view === 'create' && (
+          {(view === 'create' || view === 'edit') && (
             <>
               <Button
                 variant="ghost"
                 size="sm"
                 className="text-muted-foreground hover:text-foreground h-7 px-2"
-                onClick={handleBackToList}
+                onClick={() => { setEditingProjectId(null); setView('list') }}
               >
                 <span className="text-xs">YT Strategy Lab</span>
               </Button>
               <ChevronRight size={12} className="text-muted-foreground" />
-              <span className="text-xs font-semibold text-foreground">New Project</span>
+              <span className="text-xs font-semibold text-foreground">
+                {view === 'edit' ? 'Edit Project' : 'New Project'}
+              </span>
             </>
           )}
 
@@ -1367,6 +1443,8 @@ export function YTStrategyLabPage(): React.JSX.Element {
                       stepsCompleted={counts.completed}
                       totalSteps={counts.total}
                       onClick={() => handleOpenProject(project.id)}
+                      onEdit={() => handleEditProject(project.id)}
+                      onParse={() => handleParseVideo(project.id)}
                       onDelete={() => setConfirmDeleteId(project.id)}
                     />
                   )
@@ -1385,6 +1463,27 @@ export function YTStrategyLabPage(): React.JSX.Element {
           />
         </div>
       )}
+
+      {view === 'edit' && editingProjectId && (() => {
+        const editProject = projects.find(p => p.id === editingProjectId)
+        if (!editProject) return null
+        return (
+          <div className="flex-1 overflow-auto p-6">
+            <CreateProjectForm
+              editMode
+              initialData={{
+                name: editProject.name,
+                sourceUrl: editProject.sourceUrl,
+                niche: editProject.niche,
+                description: editProject.description,
+                tags: editProject.tags.join(', '),
+              }}
+              onSubmit={handleSaveEdit}
+              onCancel={() => { setEditingProjectId(null); setView('list') }}
+            />
+          </div>
+        )
+      })()}
 
       {view === 'detail' && selectedProject && (
         <StrategyBuilder

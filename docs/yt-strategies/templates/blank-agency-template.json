@@ -1,0 +1,488 @@
+{
+  "project": {
+    "id": "proj_{niche_slug}_agency",
+    "name": "AI Ad Agency for {niche}",
+    "sourceUrl": "",
+    "niche": "{niche}",
+    "description": "Build a complete AI-fulfilled ad agency targeting {niche} using a computer-use AI agent. Covers brand creation, competitive research, ad creative generation, ad deployment, lead generation, and automated outreach. Revenue target: {revenue_target}/month at {price_per_client}/month per client.",
+    "tags": [
+      "ai-agency",
+      "{niche_tag}",
+      "meta-ads",
+      "computer-use",
+      "ad-creative",
+      "lead-generation",
+      "outreach-automation"
+    ],
+    "status": "draft",
+    "createdAt": "",
+    "updatedAt": ""
+  },
+  "variables": {
+    "niche": "The target industry/business type (e.g., car dealerships, restaurants, real estate agents, dentists)",
+    "niche_slug": "URL-safe version of the niche (e.g., car-dealerships, restaurants, real-estate)",
+    "niche_tag": "Short tag for the niche (e.g., automotive, food-service, real-estate, dental)",
+    "location": "Target geographic area (e.g., Kansas City, MO or Austin, TX)",
+    "radius": "Outreach radius in miles (e.g., 25)",
+    "revenue_target": "Monthly revenue goal (e.g., $10,000)",
+    "price_per_client": "Monthly price per client (e.g., $2,500)",
+    "num_clients_target": "Number of clients needed for revenue target (e.g., 4)",
+    "client_website": "A real client or prospect website URL for testing ad generation",
+    "brand_guide_doc": "Reference to the brand style guide created in Step 2",
+    "strategy_doc": "Reference to the competitive strategy playbook from Step 3",
+    "ad_creatives_from_step_5": "Reference to the ad creatives generated in Step 5",
+    "dealership_name": "Replace with the generic client business name",
+    "dealership_address": "Replace with the client's physical address for geo-targeting",
+    "calendar_booking_link": "Your Calendly or scheduling tool link",
+    "prospect_spreadsheet_from_step_7": "Reference to the prospect spreadsheet from Step 7",
+    "check_interval": "How often to check for new inventory (e.g., every hour, every 6 hours)",
+    "ad_platform": "Primary ad platform (e.g., Meta, Google, TikTok)",
+    "ad_library_url": "Platform-specific ad library URL (e.g., https://www.facebook.com/ads/library/)",
+    "outreach_platform": "Platform for outreach (e.g., Instagram, LinkedIn, Email)",
+    "current_month": "Current month name (e.g., February)",
+    "current_year": "Current year (e.g., 2026)"
+  },
+  "steps": [
+    {
+      "id": "step_01_niche_selection",
+      "projectId": "proj_{niche_slug}_agency",
+      "order": 1,
+      "title": "Niche Selection & Positioning",
+      "description": "Identify and validate {niche} as the target niche for your AI ad agency. The ideal niche has businesses that already spend money on advertising, have recurring needs for new creative, and operate in a market where ad performance directly drives revenue. Define the agency positioning, pricing model, and revenue target.",
+      "prompt": "I'm building an AI-fulfilled ad agency. I need you to help me validate and define the niche.\n\nTarget niche: {niche}\n\nPlease analyze this niche and create a positioning document that includes:\n\n1. **Niche Validation**:\n   - Why {niche} are ideal clients for an AI ad agency\n   - Average monthly ad spend for a typical business in {niche}\n   - Pain points these businesses face with their current advertising\n   - How frequently they need new ad creatives and why\n\n2. **Agency Positioning**:\n   - Agency name suggestion (something that conveys AI + {niche} + performance)\n   - One-line value proposition\n   - 3-5 key differentiators vs traditional agencies\n   - Why AI fulfillment is specifically advantageous for {niche} ads\n\n3. **Revenue Model**:\n   - Recommended monthly retainer price per client\n   - Services included at that price point\n   - Number of clients needed to hit {revenue_target}/month\n   - Upsell opportunities (additional services at higher tiers)\n\n4. **Ideal Client Profile**:\n   - Business size (small independent vs large chain/franchise)\n   - Geographic focus (local, regional, national)\n   - Current advertising maturity level\n   - Decision maker title and typical objections\n\nFormat this as a clean strategy document I can reference throughout the agency build.",
+      "expectedOutput": "A comprehensive niche validation and positioning document covering: niche analysis with market data, agency brand positioning with name and value proposition, revenue model with pricing tiers and client targets, and ideal client profile with qualification criteria. Should be 2-3 pages and serve as the strategic foundation for all subsequent steps.",
+      "notes": "ADAPT FOR YOUR NICHE:\n- Research the total addressable market (TAM) for {niche} in your geography\n- Identify industry-specific regulations that affect advertising (e.g., healthcare HIPAA, financial services compliance)\n- Find the industry association or trade group for {niche} (useful for credibility and lead generation)\n- Define 3 pricing tiers instead of a single price point\n- Create a 'niche scoring rubric' you can reuse to evaluate other niches later\n- Consider adjacent niches you could expand into\n- Document seasonal patterns specific to {niche}",
+      "aiOutput": "",
+      "status": "pending",
+      "model": "Claude Opus 4.6",
+      "subSteps": [
+        {
+          "id": "sub_01a_market_research",
+          "stepId": "step_01_niche_selection",
+          "order": 1,
+          "title": "Research {niche} Ad Spend",
+          "description": "Search for data on average advertising budgets and spending patterns for businesses in {niche}.",
+          "prompt": "Search the web for recent data on advertising budgets and spending patterns for {niche}. I need: average monthly ad spend by business size, what percentage goes to digital vs traditional, which platforms they use most (Meta, Google, etc.), and any industry reports. Compile findings into a brief research summary.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_01b_competitor_scan",
+          "stepId": "step_01_niche_selection",
+          "order": 2,
+          "title": "Scan Existing Agencies Serving {niche}",
+          "description": "Identify 5-10 agencies that already serve {niche} to understand competitive positioning and pricing.",
+          "prompt": "Search for agencies that specialize in advertising for {niche}. Find 5-10 examples and for each, note: their pricing (if public), services offered, how they position themselves, whether they use AI, and any client testimonials. Create a competitive landscape table.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_01c_pricing_model",
+          "stepId": "step_01_niche_selection",
+          "order": 3,
+          "title": "Define Pricing Tiers",
+          "description": "Create a tiered pricing model based on competitive research and the value delivered.",
+          "prompt": "Based on the competitive research, design a 3-tier pricing model for our AI ad agency targeting {niche}:\n- Starter tier: Basic ad creation and deployment\n- Growth tier: Full service with competitive research and optimization\n- Enterprise tier: Everything plus automated monitoring and continuous ad generation\n\nFor each tier, define: monthly price, included services, ad volume limits, reporting frequency, and the ideal client size it targets. Anchor the Growth tier at {price_per_client}/month.",
+          "status": "pending"
+        }
+      ]
+    },
+    {
+      "id": "step_02_brand_style_guide",
+      "projectId": "proj_{niche_slug}_agency",
+      "order": 2,
+      "title": "Brand Style Guide Creation",
+      "description": "Create a comprehensive brand style guide that will govern all visual and copy elements produced by the agency. This ensures every ad creative, landing page, and client deliverable has a consistent, professional look. The style guide becomes the foundation that the AI references when generating any creative asset.",
+      "prompt": "Create a comprehensive brand style guide for my AI-powered advertising agency targeting {niche}. The agency name is \"{agency_name}\" (or suggest a name if I haven't chosen one yet).\n\nThe style guide must include:\n\n1. **Brand Identity**:\n   - Agency name and tagline\n   - Brand story (2-3 sentences on what we do and why)\n   - Brand personality traits\n   - Tone of voice guidelines (how we speak in ads, emails, and client communications)\n\n2. **Color Palette**:\n   - Primary color with hex code (should convey trust and performance for {niche})\n   - Secondary color with hex code\n   - Accent color with hex code (for CTAs and highlights)\n   - Neutral colors with hex codes\n   - Example color combinations for different ad types\n\n3. **Typography**:\n   - Primary font family for headlines\n   - Secondary font family for body copy\n   - Font sizes for: main headline, sub-headline, body, CTA, fine print\n   - Font weight guidelines\n\n4. **Visual Guidelines**:\n   - Image treatment rules (filters, overlays, borders)\n   - Layout templates for common ad sizes (1080x1080, 1200x628, 1080x1920)\n   - Logo placement rules\n   - White space and margin guidelines\n   - Do's and Don'ts\n\n5. **Ad Copy Framework**:\n   - Headline formulas (3-5 proven patterns for {niche})\n   - CTA button text options ranked by urgency\n   - Tone spectrum (when to be urgent vs informational vs aspirational)\n   - Industry-specific language: words to always use / words to never use\n   - Legal disclaimer templates relevant to {niche}\n\nSave this as a structured document I can reference in every future step.",
+      "expectedOutput": "A complete brand style guide document (3-5 pages) with specific hex codes, font selections, layout rules, copy frameworks, and visual guidelines. Should be immediately usable as a reference document for all creative work. The guide should feel premium and tailored to {niche}.",
+      "notes": "ADAPT FOR YOUR NICHE:\n- Research color psychology specific to {niche} (e.g., healthcare uses blues/greens for trust, food uses reds/yellows for appetite)\n- Include industry-specific compliance requirements in the copy framework\n- Create both a 'client-facing' version and an 'internal AI generation' version\n- Include responsive design guidelines for mobile, desktop, and in-feed\n- Create a per-client brand overlay template that adapts the agency guide for individual clients\n- Add social media profile templates\n- Build a 'brand compliance checklist' the AI runs through before finalizing any creative",
+      "aiOutput": "",
+      "status": "pending",
+      "model": "Claude Opus 4.6",
+      "subSteps": [
+        {
+          "id": "sub_02a_color_research",
+          "stepId": "step_02_brand_style_guide",
+          "order": 1,
+          "title": "Research Color Psychology for {niche}",
+          "description": "Research which colors perform best in advertising for {niche} and why.",
+          "prompt": "Search for research on color psychology in {niche} advertising. Which colors are most associated with trust, performance, and conversion in this industry? Look at what top brands in {niche} use and what colors top-performing ads tend to feature. Summarize findings with specific hex code recommendations.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_02b_generate_guide",
+          "stepId": "step_02_brand_style_guide",
+          "order": 2,
+          "title": "Generate the Full Style Guide",
+          "description": "Use the research to create the complete brand style guide document.",
+          "prompt": "Using the color psychology research and {niche} advertising best practices, create the full brand style guide as specified in the main step prompt. Make sure every element has a specific, concrete value (exact hex codes, exact font names, exact pixel sizes). Do not use vague language - specify exact values.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_02c_client_template",
+          "stepId": "step_02_brand_style_guide",
+          "order": 3,
+          "title": "Create Per-Client Brand Overlay Template",
+          "description": "Create a template that adapts the agency brand guide for individual clients.",
+          "prompt": "Create a 'Client Brand Overlay' template document. This is a shorter version of our brand guide that gets customized per client. It should have fill-in sections for: business name, business logo, brand colors (if they have them), specific products/services to highlight, geographic area, and any compliance requirements. The template should show how the client's brand elements merge with our agency's framework.",
+          "status": "pending"
+        }
+      ]
+    },
+    {
+      "id": "step_03_competitive_intelligence",
+      "projectId": "proj_{niche_slug}_agency",
+      "order": 3,
+      "title": "Competitive Intelligence ({ad_platform} Ad Library Research)",
+      "description": "Conduct deep competitive research by scanning the {ad_platform} Ad Library for active ads from businesses in {niche}. The AI agent opens a browser, navigates to the ad library, and searches for competitors one by one, cataloging their ad strategies, copy patterns, visual approaches, and offer structures. The output is a comprehensive strategy playbook for the agency.",
+      "prompt": "I need you to conduct competitive intelligence research on {niche} advertising using the {ad_platform} Ad Library.\n\nHere is what I need you to do:\n\n1. Open your browser and go to the ad library: {ad_library_url}\n2. Search for 20 businesses in {niche} (one at a time). Choose a mix of:\n   - 10 large/well-known businesses in {niche} (national brands)\n   - 5 successful local/regional businesses in {niche}\n   - 5 businesses near {location} (our target market)\n\n3. For each business, catalog:\n   - Number of active ads\n   - Types of offers being promoted\n   - Visual style and layout patterns\n   - Copy tone and messaging patterns\n   - Call-to-action language\n   - Any unique or standout creative approaches\n\n4. After scanning all 20, compile a comprehensive strategy document that covers:\n   - **Seasonal/Event Patterns**: What seasonal hooks or events drive ad campaigns in {niche}?\n   - **Offer Structures**: How do they structure discounts, promotions, or special offers?\n   - **Urgency & Scarcity Tactics**: What language creates urgency in {niche} advertising?\n   - **Social Proof Patterns**: How do they use testimonials, reviews, or case studies in ads?\n   - **Visual Layout Patterns**: What layouts and image styles perform well?\n   - **CTA Patterns**: What calls-to-action are most common and effective?\n   - **Copy Formulas**: Document 5-10 proven headline and body copy formulas\n   - **Ad Format Preferences**: Single image vs carousel vs video - what is most common?\n   - **Industry-Specific Tactics**: What strategies are unique to {niche}?\n   - **Compliance Observations**: Any regulatory patterns or required disclaimers?\n\nFormat this as a professional strategy playbook document.",
+      "expectedOutput": "A 5-8 page competitive intelligence strategy document organized by tactic category. Should include specific examples from real ads, proven copy formulas, visual layout recommendations, and a prioritized list of strategies ranked by frequency. This becomes the agency's core strategic playbook.",
+      "notes": "ADAPT FOR YOUR NICHE:\n- Identify the specific seasonal patterns that matter for {niche}\n- Research industry-specific regulations that affect ad content and claims\n- Also scan Google Ads Transparency Center if search ads are important for {niche}\n- Consider scanning TikTok, YouTube, or LinkedIn ads depending on where {niche} audiences spend time\n- Save screenshots of the best ads as a swipe file\n- Track ad longevity - ads running for months are likely profitable\n- Run this research quarterly to keep the playbook current",
+      "aiOutput": "",
+      "status": "pending",
+      "model": "Claude Opus 4.6",
+      "subSteps": [
+        {
+          "id": "sub_03a_scan_national",
+          "stepId": "step_03_competitive_intelligence",
+          "order": 1,
+          "title": "Scan National/Large Brands in {niche}",
+          "description": "Research the top 10 large brands in {niche} in the ad library.",
+          "prompt": "Open the ad library at {ad_library_url} and search for 10 large/well-known businesses in {niche}. For each, note the number of active ads, types of offers, visual style, copy tone, and standout creatives. Take detailed notes.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_03b_scan_local",
+          "stepId": "step_03_competitive_intelligence",
+          "order": 2,
+          "title": "Scan Local and Regional Businesses in {niche}",
+          "description": "Research 10 local/regional businesses in {niche}, focusing on the target market area.",
+          "prompt": "Continue in the ad library and search for 10 more businesses in {niche}: 5 successful regional businesses and 5 near {location}. Same process: catalog active ads, offers, visual patterns, copy tone, and standout creatives.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_03c_compile_playbook",
+          "stepId": "step_03_competitive_intelligence",
+          "order": 3,
+          "title": "Compile Strategy Playbook",
+          "description": "Synthesize all research into a structured strategy playbook document.",
+          "prompt": "Using all notes from scanning 20 businesses, compile a comprehensive strategy playbook. Organize by tactic category: seasonal patterns, offer structures, urgency/scarcity, social proof, visual layouts, CTAs, copy formulas, ad formats, and industry-specific tactics. Include examples, rank tactics by frequency, and add recommendations. This should be 5-8 pages.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_03d_swipe_file",
+          "stepId": "step_03_competitive_intelligence",
+          "order": 4,
+          "title": "Create Ad Swipe File",
+          "description": "Save the 10 best ads found as a reference swipe file.",
+          "prompt": "From all ads reviewed, identify the 10 best. For each, save a screenshot or detailed description and explain why it works: tactic used, why the copy is effective, what makes the visual compelling, and how to adapt it. Organize as a 'Swipe File' reference document.",
+          "status": "pending"
+        }
+      ]
+    },
+    {
+      "id": "step_04_sales_infrastructure",
+      "projectId": "proj_{niche_slug}_agency",
+      "order": 4,
+      "title": "Sales Infrastructure (Store Page + Checkout)",
+      "description": "Build the sales infrastructure needed to sell the agency's services: a professional landing page explaining the service, pricing display, calendar booking for sales calls, and a checkout flow for the {price_per_client}/month retainer.",
+      "prompt": "I need you to build the sales infrastructure for my AI ad agency targeting {niche}. Here is what I need:\n\n1. **Landing Page / Store Page**:\n   Build a professional landing page for \"{agency_name}\" that includes:\n   - Hero section with a compelling headline and sub-headline for {niche}\n   - \"What You Get\" section listing all services included\n   - Social proof section (placeholder for testimonials and case studies)\n   - Pricing section showing the {price_per_client}/month plan clearly\n   - FAQ section addressing common objections from {niche} businesses\n   - Calendar booking widget for scheduling a demo call\n   - Footer with contact information\n\n2. **Checkout / Payment Link**:\n   Create a checkout page or payment link for {price_per_client}/month recurring subscription. Use Stripe (or available payment platform). The checkout should:\n   - Clearly state what the client is purchasing\n   - Show the monthly price\n   - Collect business name and contact info\n   - Process the recurring payment\n\n3. **Calendar Booking**:\n   Set up a calendar booking system where prospects can book a 30-minute demo call. Configure:\n   - Available hours (Mon-Fri, 9am-5pm)\n   - 30-minute meeting duration\n   - Confirmation and reminder emails\n\nFollow the brand style guide: {brand_guide_doc}\n\nMake it look premium and professional. {niche} businesses are used to dealing with polished vendors.",
+      "expectedOutput": "A live landing page with hero, services, pricing, FAQ, and calendar booking. A working checkout link for {price_per_client}/month. A configured calendar booking system. All elements should follow the brand style guide.",
+      "notes": "ADAPT FOR YOUR NICHE:\n- Customize the FAQ section with objections specific to {niche}\n- Add an ROI calculator relevant to {niche} (e.g., 'If you get X more customers per month at $Y average value...')\n- Create a niche-specific case study page (even with projected/mock data initially)\n- Build a 'Free Ad Audit' or 'Free Assessment' lead magnet specific to {niche}\n- Include industry-specific social proof (logos, certifications, partnerships)\n- Set up email sequences for post-booking and post-call follow-up",
+      "aiOutput": "",
+      "status": "pending",
+      "model": "Claude Opus 4.6",
+      "subSteps": [
+        {
+          "id": "sub_04a_landing_page",
+          "stepId": "step_04_sales_infrastructure",
+          "order": 1,
+          "title": "Build Landing Page",
+          "description": "Create the main agency landing page with all sections tailored to {niche}.",
+          "prompt": "Build a professional landing page for '{agency_name}' using our brand style guide. Include: hero section with a headline targeting {niche}, services list, pricing ({price_per_client}/mo), FAQ section with {niche}-specific objections, and placeholder for calendar booking. Make it mobile-responsive and premium.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_04b_payment_setup",
+          "stepId": "step_04_sales_infrastructure",
+          "order": 2,
+          "title": "Set Up Payment Processing",
+          "description": "Create a checkout link for {price_per_client}/month recurring subscription.",
+          "prompt": "Open Stripe (or available payment platform) and create a recurring payment link for {price_per_client}/month. Product name: '{agency_name} - Monthly Retainer'. Add a description of included services. Generate a shareable checkout link and embed it on the landing page.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_04c_calendar_booking",
+          "stepId": "step_04_sales_infrastructure",
+          "order": 3,
+          "title": "Configure Calendar Booking",
+          "description": "Set up scheduling tool for prospect demo calls.",
+          "prompt": "Open Calendly (or similar) and create a '30-Minute Agency Demo' event type. Set availability to Mon-Fri 9am-5pm, enable confirmation and reminder emails, and add a booking page description explaining what the demo covers for {niche} businesses. Get the embed code and add it to the landing page.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_04d_lead_magnet",
+          "stepId": "step_04_sales_infrastructure",
+          "order": 4,
+          "title": "Create Lead Magnet",
+          "description": "Build a free assessment or audit offer as a low-friction entry point.",
+          "prompt": "Create a 'Free Ad Audit' page or form for {niche} businesses. The form should collect: business name, website URL, current monthly ad spend (range), biggest advertising challenge, and contact email. This gives us a reason to reach out and demonstrates value. Add as a secondary CTA on the landing page.",
+          "status": "pending"
+        }
+      ]
+    },
+    {
+      "id": "step_05_ad_creative_generation",
+      "projectId": "proj_{niche_slug}_agency",
+      "order": 5,
+      "title": "Ad Creative Generation (The Core Service)",
+      "description": "The core service delivery step. Take a real client's website, scrape their actual products/services/inventory, and generate professional ad creatives using the brand style guide and competitive strategy playbook. The key differentiator is 100% data accuracy - zero hallucinated information.",
+      "prompt": "I need you to create ad creatives for a real {niche} client. Here is the information:\n\n**Client Website**: {client_website}\n**Brand Style Guide**: {brand_guide_doc}\n**Strategy Playbook**: {strategy_doc}\n\nHere is what I need you to do:\n\n1. **Scrape Current Products/Services/Inventory**:\n   - Visit {client_website} and navigate to their offerings\n   - Pull detailed data for 10-15 products, services, or listings\n   - CRITICAL: Use ONLY real data from the website. Do NOT fabricate or hallucinate any details, prices, or information. Every data point must be verifiable.\n\n2. **Generate Ad Creatives** (create 5-8 different ads):\n   Using the brand style guide and strategy playbook, create:\n   \n   a. **Single Product/Service Spotlight** (2 ads): Feature one high-value offering with full details and a direct response CTA\n   b. **Multi-Product Showcase** (1 ad): Grid or carousel showing 3-4 offerings\n   c. **Seasonal/Event Ad** (1 ad): Tie to the nearest relevant seasonal event\n   d. **Special Offer Ad** (1 ad): Focus on the best current deal, discount, or promotion\n   e. **Social Proof Ad** (1 ad): Lead with reviews, results, or testimonials\n   f. **Urgency/Scarcity Ad** (1-2 ads): Limited time or limited availability format\n\n3. **For Each Ad, Provide**:\n   - Headline (under 40 characters for Meta)\n   - Primary text (125 characters visible, up to 500 total)\n   - Description text\n   - CTA button text\n   - Image description or layout specification\n   - Link URL (back to the specific page on the client website)\n   - Target audience notes (age range, geographic radius, interests)\n\n4. **Quality Checklist**:\n   - [ ] All data matches the client website exactly\n   - [ ] All prices/offers are current and accurate\n   - [ ] Ad copy follows the brand style guide tone\n   - [ ] Strategies used match the competitive playbook\n   - [ ] CTAs are clear and action-oriented\n   - [ ] No misleading claims or compliance issues\n   - [ ] Geographic targeting is appropriate",
+      "expectedOutput": "5-8 complete ad creatives ready for deployment, each with headline, primary text, description, CTA, image specs, and targeting notes. All data must be 100% accurate from the real client website. Include a data verification table.",
+      "notes": "ADAPT FOR YOUR NICHE:\n- Identify what 'inventory' means for {niche} (products? services? listings? menu items?)\n- Include industry-specific compliance requirements for ad content\n- Create ads in multiple sizes: 1080x1080 (feed), 1200x628 (link), 1080x1920 (story/reel)\n- Generate A/B test variants with different headlines or CTAs\n- Add video ad scripts in addition to static creatives if relevant for {niche}\n- Include retargeting ad variants for website visitors who didn't convert\n- Consider which ad platform(s) are most effective for {niche}",
+      "aiOutput": "",
+      "status": "pending",
+      "model": "Claude Opus 4.6",
+      "subSteps": [
+        {
+          "id": "sub_05a_scrape_data",
+          "stepId": "step_05_ad_creative_generation",
+          "order": 1,
+          "title": "Scrape Client Website Data",
+          "description": "Visit the client website and extract real product/service/inventory data.",
+          "prompt": "Visit {client_website} and navigate to their products, services, or listings. Extract data for 10-15 items including: names, descriptions, prices, current promotions, and key details. Organize into a structured table. CRITICAL: Only use data actually on the website.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_05b_generate_spotlight_ads",
+          "stepId": "step_05_ad_creative_generation",
+          "order": 2,
+          "title": "Create Spotlight Ads",
+          "description": "Generate 2 spotlight ads featuring individual high-value offerings.",
+          "prompt": "Using the scraped data, select the 2 most compelling items and create a Spotlight ad for each. Follow the brand style guide. Each ad needs: headline, primary text, description, CTA, image layout, and correct URL. Use specificity and real data.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_05c_generate_remaining_ads",
+          "stepId": "step_05_ad_creative_generation",
+          "order": 3,
+          "title": "Create Remaining Ad Types",
+          "description": "Generate the remaining 4-6 ad creatives covering different strategy types.",
+          "prompt": "Create: 1 multi-product showcase, 1 seasonal/event ad, 1 special offer ad, 1 social proof ad, and 1-2 urgency/scarcity ads. Use real data, follow the brand guide, apply playbook tactics. Each needs full copy, CTA, image specs, and targeting notes.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_05d_verify_accuracy",
+          "stepId": "step_05_ad_creative_generation",
+          "order": 4,
+          "title": "Verify Data Accuracy",
+          "description": "Cross-check all ad creatives against the client website for accuracy.",
+          "prompt": "Revisit {client_website} and verify every data point in the ad creatives. Create a verification table: each claim, its source URL, and pass/fail status. Flag any discrepancies. This is critical for trust and compliance.",
+          "status": "pending"
+        }
+      ]
+    },
+    {
+      "id": "step_06_ad_deployment",
+      "projectId": "proj_{niche_slug}_agency",
+      "order": 6,
+      "title": "Ad Deployment to {ad_platform} Ads Manager",
+      "description": "Deploy the finished ad creatives into {ad_platform} Ads Manager. The AI opens Ads Manager in the browser, creates a campaign, uploads creatives, fills in all copy fields, configures targeting including geographic radius, and sets up the complete campaign. The only human action needed is clicking 'Publish'.",
+      "prompt": "Now upload these ad creatives into my {ad_platform} Ads Manager account and set up the campaigns.\n\nAd creatives to deploy: {ad_creatives_from_step_5}\n\n**Campaign Setup**:\n\n1. Open {ad_platform} Ads Manager in the browser\n2. Create a new campaign:\n   - Name: \"{client_name} - {agency_name} - {current_month} {current_year}\"\n   - Objective: Traffic (or Conversions if pixel is set up)\n   - Budget: ${daily_budget}/day\n   - Schedule: Start immediately, no end date\n\n3. Create ad sets (one per ad type):\n   - Geographic targeting: {radius}-mile radius around {client_address}\n   - Age targeting: appropriate for {niche}\n   - Interest targeting: relevant to {niche}\n   - Placements: Automatic\n   - Optimization: Link clicks\n\n4. For each ad:\n   - Upload creative images\n   - Fill in headline, primary text, description\n   - Set CTA button\n   - Set destination URL with UTM parameters\n\n5. Save as DRAFT - do NOT publish. Leave for my review.",
+      "expectedOutput": "A fully configured ad campaign in draft status with all ad sets and ads properly set up, targeting configured, and creatives uploaded. Ready to publish with a single click.",
+      "notes": "ADAPT FOR YOUR NICHE:\n- Research optimal targeting parameters for {niche} (age ranges, interests, behaviors)\n- Set up conversion tracking (pixel/CAPI) on the client website before running ads\n- Create Custom and Lookalike Audiences if client has customer data\n- Set up automated rules for budget management\n- Consider multiple ad platforms if {niche} audiences are on Google, TikTok, LinkedIn, etc.\n- Create a standardized naming convention for multi-client management",
+      "aiOutput": "",
+      "status": "pending",
+      "model": "Claude Opus 4.6",
+      "subSteps": [
+        {
+          "id": "sub_06a_campaign_setup",
+          "stepId": "step_06_ad_deployment",
+          "order": 1,
+          "title": "Create Campaign",
+          "description": "Open Ads Manager and create the campaign with objective and budget.",
+          "prompt": "Open {ad_platform} Ads Manager. Create a new campaign named '{client_name} - {agency_name} - {current_month} {current_year}'. Set objective to Traffic, daily budget to ${daily_budget}, start today with no end date.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_06b_ad_set_config",
+          "stepId": "step_06_ad_deployment",
+          "order": 2,
+          "title": "Configure Ad Sets with Targeting",
+          "description": "Create ad sets with geographic, demographic, and interest targeting appropriate for {niche}.",
+          "prompt": "Create one ad set per ad type. Set geographic targeting to {radius}-mile radius around {client_address}. Configure age range, interests, and behaviors appropriate for {niche}. Use automatic placements. Optimize for link clicks.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_06c_upload_creatives",
+          "stepId": "step_06_ad_deployment",
+          "order": 3,
+          "title": "Upload Creatives and Copy",
+          "description": "Upload images and fill in all ad copy fields.",
+          "prompt": "For each ad, upload the creative, fill in headline, primary text, and description. Set CTA button. Set destination URL with UTM parameters: utm_source={ad_platform}&utm_medium=paid&utm_campaign={campaign_name}.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_06d_review_and_draft",
+          "stepId": "step_06_ad_deployment",
+          "order": 4,
+          "title": "Review and Save as Draft",
+          "description": "Preview all ads and save the campaign in draft status.",
+          "prompt": "Preview every ad across all placements. Verify images, text truncation, links, and geo-targeting. Save the entire campaign as DRAFT. Create a summary of all ad sets and ads.",
+          "status": "pending"
+        }
+      ]
+    },
+    {
+      "id": "step_07_lead_generation",
+      "projectId": "proj_{niche_slug}_agency",
+      "order": 7,
+      "title": "Lead Generation (Prospect List)",
+      "description": "Generate a prospect list of businesses in {niche} that the agency can reach out to. Search the target geographic area, compile business information and social media handles into a structured spreadsheet, and prioritize by likelihood to convert.",
+      "prompt": "I want to start getting clients for my AI ad agency. I need a prospect list of {niche} businesses I can reach out to.\n\n1. Search for {niche} businesses within {radius} miles of {location}\n2. Find at least 20 businesses (aim for 25-30)\n3. For each business, gather:\n   - Business name\n   - Physical address\n   - Phone number\n   - Website URL\n   - {outreach_platform} handle/profile\n   - Facebook page URL\n   - Owner or marketing manager name (if findable)\n   - Estimated size (small / mid-size / large)\n   - Whether they appear to be running {ad_platform} ads currently\n   - Brief notes on their current online presence quality\n\n4. Organize into a clean spreadsheet\n5. Sort by priority:\n   - HIGH: Businesses with weak online presence but clear need (they need our help most)\n   - MEDIUM: Already running ads but with room for improvement\n   - LOW: Sophisticated operations (harder to sell to)\n\n6. Add a \"Personalization Hook\" column with one specific observation per business for outreach\n\nSave as a structured spreadsheet.",
+      "expectedOutput": "A spreadsheet with 20-30 businesses including all contact info, social handles, priority ranking, and personalization hooks. Sorted with HIGH priority at the top.",
+      "notes": "ADAPT FOR YOUR NICHE:\n- Identify {niche}-specific directories and review sites to check (e.g., Yelp, industry directories)\n- Check Google Business profiles for review counts and ratings\n- Look for businesses that recently opened or changed ownership\n- Check for job postings (hiring marketing = open to outsourcing)\n- Consider using data enrichment tools (Apollo.io, Hunter.io) for verified emails\n- Build a CRM pipeline instead of just a spreadsheet\n- Tag prospects by sub-niche or specialization within {niche}",
+      "aiOutput": "",
+      "status": "pending",
+      "model": "Claude Sonnet 4.6",
+      "subSteps": [
+        {
+          "id": "sub_07a_search_businesses",
+          "stepId": "step_07_lead_generation",
+          "order": 1,
+          "title": "Search for Local {niche} Businesses",
+          "description": "Find 20-30 businesses in {niche} in the target area.",
+          "prompt": "Search Google Maps for '{niche} near {location}' within {radius} miles. List every business with name, address, phone, and website. Also check industry directories. Aim for 25+ results.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_07b_gather_social",
+          "stepId": "step_07_lead_generation",
+          "order": 2,
+          "title": "Gather Social Media Profiles",
+          "description": "Find social media profiles for each business.",
+          "prompt": "For each business, search {outreach_platform} and Facebook for their official profiles. Record handles/URLs, follower counts, and last post dates.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_07c_assess_and_prioritize",
+          "stepId": "step_07_lead_generation",
+          "order": 3,
+          "title": "Assess and Prioritize Prospects",
+          "description": "Evaluate online presence and assign priority rankings.",
+          "prompt": "For each business, visit their website and check {ad_platform} Ad Library. Rate their online presence. Assign priority (HIGH/MEDIUM/LOW). Write a personalization hook for each.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_07d_compile_spreadsheet",
+          "stepId": "step_07_lead_generation",
+          "order": 4,
+          "title": "Compile Final Spreadsheet",
+          "description": "Organize all data into a sorted spreadsheet.",
+          "prompt": "Compile all data into a clean spreadsheet. Columns: Business Name, Address, Phone, Website, {outreach_platform} Handle, Facebook, Contact Name, Size, Running Ads (Y/N), Online Presence Rating, Priority, Personalization Hook. Sort by priority. Save as spreadsheet.",
+          "status": "pending"
+        }
+      ]
+    },
+    {
+      "id": "step_08_automated_outreach",
+      "projectId": "proj_{niche_slug}_agency",
+      "order": 8,
+      "title": "Automated Outreach ({outreach_platform})",
+      "description": "Execute outreach to prospective clients via {outreach_platform}. Send personalized messages to each business from the prospect list. Consider platform Terms of Service and use personalization to improve response rates.",
+      "prompt": "I need you to reach out to the {niche} businesses on our prospect list via {outreach_platform}.\n\nProspect list: {prospect_spreadsheet_from_step_7}\n\nFor each business:\n1. Open {outreach_platform} in the browser\n2. Search for the business\n3. Navigate to their profile\n4. Send a personalized pitch message\n\n**Message Template** (personalize for each business):\n\n---\nHi [Business Name] team!\n\nI noticed [personalization hook from spreadsheet].\n\nI run an AI-powered ad agency specifically for {niche} businesses. We create high-converting ad creatives using your real products/services/inventory data and deploy them directly to {ad_platform}.\n\nHere is what makes us different:\n- Ads use YOUR real data (no stock photos, no generic copy)\n- New ads generated automatically when you update your offerings\n- Strategy based on what top {niche} businesses are running\n- Everything set up and managed for you\n\nWould you be open to a quick 15-minute call this week? I can show you sample ads I created using your actual website.\n\nHere is my calendar: {calendar_booking_link}\n\n[Your Name]\n[Agency Name]\n---\n\n**Guidelines**:\n- Personalize each message using the Personalization Hook column\n- Space messages 30+ seconds apart\n- Skip any businesses that can't be found; note them for follow-up\n- Log every message: business name, handle, time, status\n\n**DISCLAIMER**: Automated messaging may violate platform Terms of Service. Consider using this as a template for manual outreach or switching to email for ToS compliance.",
+      "expectedOutput": "A log of 20+ outreach messages with: business name, handle, time sent, personalization used, delivery status. Failed sends noted for alternative channel follow-up.",
+      "notes": "ADAPT FOR YOUR NICHE:\n- STRONGLY RECOMMEND: Use email outreach for ToS compliance\n  - Use cold email tools (Instantly, Lemlist, Smartlead)\n  - Verify emails via Apollo.io or Hunter.io\n- Create a multi-channel sequence: Email Day 1, {outreach_platform} Day 3, Follow-up Day 5, Phone Day 7\n- Include a FREE sample ad creative as an attachment\n- A/B test message angles: lead with competitive intel vs samples vs ROI\n- Track response rates and optimize\n- Set up a CRM for tracking\n- Create automated follow-up sequences\n- Consider Loom video pitches personalized per prospect\n- Build a referral program for existing clients",
+      "aiOutput": "",
+      "status": "pending",
+      "model": "Claude Sonnet 4.6",
+      "subSteps": [
+        {
+          "id": "sub_08a_prepare_messages",
+          "stepId": "step_08_automated_outreach",
+          "order": 1,
+          "title": "Prepare Personalized Messages",
+          "description": "Create customized messages for each prospect using their personalization hooks.",
+          "prompt": "Using the prospect spreadsheet, create a personalized version of the outreach message for each of the top 20 businesses. Replace the personalization hook with the specific observation. Save all 20 messages for review before sending.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_08b_send_first_batch",
+          "stepId": "step_08_automated_outreach",
+          "order": 2,
+          "title": "Send First 10 Messages",
+          "description": "Send personalized messages to the first 10 HIGH-priority prospects.",
+          "prompt": "Open {outreach_platform}. For the first 10 HIGH-priority businesses, search for each, navigate to their profile, and send the personalized message. Wait 30+ seconds between sends. Log each: name, handle, time, status.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_08c_send_second_batch",
+          "stepId": "step_08_automated_outreach",
+          "order": 3,
+          "title": "Send Remaining Messages",
+          "description": "Send messages to the remaining prospects.",
+          "prompt": "Continue sending personalized messages to the remaining 10+ businesses. Same process. Note any that couldn't be found or failed.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_08d_outreach_log",
+          "stepId": "step_08_automated_outreach",
+          "order": 4,
+          "title": "Compile Outreach Log",
+          "description": "Create a complete log for tracking and follow-up.",
+          "prompt": "Compile a complete outreach log: Business Name, Handle, Message Sent (Y/N), Time, Personalization Used, Status, Follow-Up Date (3 days out), Notes. This becomes the CRM for prospect tracking.",
+          "status": "pending"
+        }
+      ]
+    },
+    {
+      "id": "step_09_automated_monitoring",
+      "projectId": "proj_{niche_slug}_agency",
+      "order": 9,
+      "title": "Automated Monitoring & Continuous Ad Generation",
+      "description": "Set up an automated system that monitors client websites for new products/services/inventory and automatically generates and deploys ads. This transforms the agency from a manual workflow into a fully autonomous system with near-zero ongoing fulfillment cost.",
+      "prompt": "I need you to help me design and set up an automated monitoring system for my {niche} clients.\n\n1. **Website Monitoring**:\n   - Check {client_website} every {check_interval}\n   - Compare current offerings to the last snapshot\n   - Detect: new items added, items removed, price changes, new promotions\n\n2. **Automatic Ad Generation Triggers**:\n   When new content detected:\n   - Pull all details\n   - Generate ad creative using brand style guide\n   - Create ad copy using strategy playbook\n   \n   When price change detected:\n   - Generate a special offer ad\n   - Update existing ads\n   \n   When item removed:\n   - Flag active ads for pausing\n\n3. **Automated Deployment**:\n   - Create new ads in {ad_platform} Ads Manager\n   - Use existing campaign structure and targeting\n   - Optionally require human approval before publishing\n   - Auto-pause ads for removed items\n\n4. **Reporting**:\n   - Daily summary: changes detected, ads created, ads paused\n   - Weekly performance report\n   - Monthly client report with ROI analysis\n\n5. **Technical Implementation**:\n   - Recommend the best approach (scheduled agent, API, or hybrid)\n   - Outline the implementation plan\n   - Document tools, scheduling, and error handling\n\nProvide a detailed technical specification.",
+      "expectedOutput": "A technical specification for the automated monitoring system including: architecture, monitoring logic, ad generation triggers, deployment workflow, reporting templates, and phased implementation plan.",
+      "notes": "ADAPT FOR YOUR NICHE:\n- Define what 'inventory changes' means for {niche} (new products? menu updates? listings?)\n- Identify the refresh frequency appropriate for {niche} (hourly for fast-moving, daily for stable)\n- Build a multi-client dashboard for monitoring all accounts\n- Add anomaly detection (website down, sudden inventory drop)\n- Implement A/B testing automation for ad variants\n- Add creative refresh scheduling\n- Consider external triggers (weather, events, holidays) relevant to {niche}\n- Build a client portal for visibility\n- Consider productizing this as SaaS if scaling beyond a few clients",
+      "aiOutput": "",
+      "status": "pending",
+      "model": "Claude Opus 4.6",
+      "subSteps": [
+        {
+          "id": "sub_09a_architecture",
+          "stepId": "step_09_automated_monitoring",
+          "order": 1,
+          "title": "Design System Architecture",
+          "description": "Create the technical architecture for automated monitoring and ad generation.",
+          "prompt": "Design the system architecture: components (scraper, database, ad generator, deployer, reporter), data flow, storage, scheduling, and error handling. Recommend tools and technologies. Create an architecture diagram or description.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_09b_scraper",
+          "stepId": "step_09_automated_monitoring",
+          "order": 2,
+          "title": "Build Website Scraper",
+          "description": "Create a script that monitors client websites for changes.",
+          "prompt": "Create a script that scrapes {client_website} for current offerings, compares against stored snapshots, identifies new items, removed items, and price changes, and outputs a change report. Include error handling for website changes and downtime.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_09c_ad_pipeline",
+          "stepId": "step_09_automated_monitoring",
+          "order": 3,
+          "title": "Build Auto-Ad Pipeline",
+          "description": "Create the pipeline connecting detection to ad generation.",
+          "prompt": "Build the pipeline: when scraper detects a new item, auto-populate ad template with real data, generate copy following brand guide and playbook, create creative, queue for deployment. Include a togglable human approval gate.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_09d_scheduling_reporting",
+          "stepId": "step_09_automated_monitoring",
+          "order": 4,
+          "title": "Set Up Scheduling and Reporting",
+          "description": "Configure monitoring schedule and automated reports.",
+          "prompt": "Set up: scraper runs every {check_interval}, ad generator triggers on changes, deployer batches daily. Create report templates: daily summary, weekly performance, monthly ROI. Configure email delivery.",
+          "status": "pending"
+        }
+      ]
+    }
+  ]
+}

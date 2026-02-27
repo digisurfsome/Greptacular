@@ -14,22 +14,27 @@ You are building **one feature** inside the **YT Strategy Lab** system in the Au
 
 **Do not write any code until you have read all documents and confirmed your understanding.**
 
-1. **Context Primer** — Read this FIRST:
+1. **Vision Document** — Read this FIRST. It explains what this system actually IS:
+   ```
+   docs/yt-strategies/VISION.md
+   ```
+
+2. **Context Primer** — Technical architecture and patterns:
    ```
    docs/yt-strategies/CONTEXT_PRIMER.md
    ```
 
-2. **Your PRD** — The specific feature you're building:
+3. **Your PRD** — The specific feature you're building:
    ```
    docs/yt-strategies/prds/08-screen-recording-and-capture.md
    ```
 
-3. **Build Standards**:
+4. **Build Standards**:
    ```
    .claude/build-prompts/App Builder Prompt Template (Platform-Agnostic).txt
    ```
 
-4. **Also read Phase 4's PRD** for Docker container context:
+5. **Also read Phase 4's PRD** for Docker container context:
    ```
    docs/yt-strategies/prds/02-custom-computer-use-engine.md
    ```

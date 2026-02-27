@@ -4,6 +4,8 @@
 
 8 agents build and verify the entire YT Strategy Lab system across 3 waves. Each prompt is a self-contained, copy-paste-ready document for a fresh Claude Code session.
 
+**CRITICAL:** Every agent reads `docs/yt-strategies/VISION.md` FIRST. This ensures they understand that YT Strategy Lab is a **mini-app factory** — not a single-purpose ad agency tool. Each YouTube video becomes its own reusable template/mini-app. Computer use is just ONE tool type in a growing tool bank. The system must be built generically to support any video, any workflow, any tool type.
+
 ---
 
 ## Architecture

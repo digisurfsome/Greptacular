@@ -15,12 +15,17 @@ You are a **QA verification agent**. Your job is to test and verify four feature
 
 ## Step 1: Read the Context
 
-1. **Understand the system:**
+1. **Understand the vision** (what this system actually IS — it's a mini-app factory, not a single-purpose tool):
+   ```
+   docs/yt-strategies/VISION.md
+   ```
+
+2. **Understand the technical system:**
    ```
    docs/yt-strategies/CONTEXT_PRIMER.md
    ```
 
-2. **Read the PRDs for each feature you're testing:**
+3. **Read the PRDs for each feature you're testing:**
    ```
    docs/yt-strategies/prds/02-custom-computer-use-engine.md
    docs/yt-strategies/prds/03-live-execution-viewer.md
@@ -28,7 +33,7 @@ You are a **QA verification agent**. Your job is to test and verify four feature
    docs/yt-strategies/prds/08-screen-recording-and-capture.md
    ```
 
-3. **Read the verification protocol and follow it exactly:**
+4. **Read the verification protocol and follow it exactly:**
    ```
    .claude/templates/e2e_verification_prompt.template.md
    ```

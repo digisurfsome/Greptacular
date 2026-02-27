@@ -16,22 +16,27 @@ You are building **two features** inside the **YT Strategy Lab** system in the A
 
 **Do not write any code until you have read all documents and confirmed your understanding.**
 
-1. **Context Primer** — Read this FIRST:
+1. **Vision Document** — Read this FIRST. It explains what this system actually IS:
+   ```
+   docs/yt-strategies/VISION.md
+   ```
+
+2. **Context Primer** — Technical architecture and patterns:
    ```
    docs/yt-strategies/CONTEXT_PRIMER.md
    ```
 
-2. **PRD for Batch Import** (Feature A):
+3. **PRD for Batch Import** (Feature A):
    ```
    docs/yt-strategies/prds/01-batch-youtube-import.md
    ```
 
-3. **PRD for Model Routing & Roles** (Feature B):
+4. **PRD for Model Routing & Roles** (Feature B):
    ```
    docs/yt-strategies/prds/06-model-routing-and-roles.md
    ```
 
-4. **Build Standards**:
+5. **Build Standards**:
    ```
    .claude/build-prompts/App Builder Prompt Template (Platform-Agnostic).txt
    ```

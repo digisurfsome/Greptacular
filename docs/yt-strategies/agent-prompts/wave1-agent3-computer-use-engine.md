@@ -14,22 +14,27 @@ Phase 1 (core UI + YouTube ingestion) is already done. You are building Phase 4.
 
 **Do not write any code until you have read all three documents and confirmed your understanding.**
 
-1. **Context Primer** — Read this FIRST. It explains the entire system, vocabulary, architecture, and patterns:
+1. **Vision Document** — Read this FIRST. It explains what this system actually IS (hint: it's not just one thing):
+   ```
+   docs/yt-strategies/VISION.md
+   ```
+
+2. **Context Primer** — Technical details: system architecture, vocabulary, patterns:
    ```
    docs/yt-strategies/CONTEXT_PRIMER.md
    ```
 
-2. **Your PRD** — The specific feature you're building:
+3. **Your PRD** — The specific feature you're building:
    ```
    docs/yt-strategies/prds/02-custom-computer-use-engine.md
    ```
 
-3. **Options Comparison** — Architectural decision context (read for background, not a build spec):
+4. **Options Comparison** — Architectural decision context (read for background, not a build spec):
    ```
    docs/yt-strategies/prds/09-computer-use-options-comparison.md
    ```
 
-4. **Build Standards** — Code quality standards to follow:
+5. **Build Standards** — Code quality standards to follow:
    ```
    .claude/build-prompts/App Builder Prompt Template (Platform-Agnostic).txt
    ```

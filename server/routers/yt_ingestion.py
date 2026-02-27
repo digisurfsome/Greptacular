@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -536,6 +537,14 @@ def ingest_video(body: IngestRequest):
             except Exception as exc:
                 logger.warning("Screenshot analysis failed: %s", exc)
 
+    # Convert filesystem paths to servable URLs for the frontend
+    screenshot_urls = [_filepath_to_url(p, video_id) for p in screenshots]
+    for ss in analyzed_screenshots:
+        ss.image_path = _filepath_to_url(ss.image_path, video_id)
+    for suggestion in screenshot_suggestions:
+        if suggestion.filepath:
+            suggestion.filepath = _filepath_to_url(suggestion.filepath, video_id)
+
     return IngestResponse(
         video_id=video_id,
         title=title,
@@ -547,7 +556,7 @@ def ingest_video(body: IngestRequest):
         transcript=transcript,
         extracted_urls=extracted_urls,
         screenshot_suggestions=screenshot_suggestions,
-        screenshots=screenshots,
+        screenshots=screenshot_urls,
         analyzed_screenshots=analyzed_screenshots,
         screenshot_summary=screenshot_summary,
     )
@@ -618,3 +627,45 @@ def cleanup_screenshots():
         pass
 
     return {"deleted_files": total_files, "freed_bytes": total_bytes}
+
+
+@router.get("/screenshots/{video_id}/{filename}")
+async def serve_screenshot(video_id: str, filename: str):
+    """
+    Serve a captured screenshot file from the temp directory.
+    Validates that the file is within the expected screenshot directory
+    to prevent path traversal attacks.
+    """
+    # Validate video_id and filename contain only safe characters
+    if not re.match(r"^[a-zA-Z0-9_-]+$", video_id):
+        raise HTTPException(status_code=400, detail="Invalid video ID")
+    if not re.match(r"^[a-zA-Z0-9_.-]+$", filename):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    screenshot_dir = Path(tempfile.gettempdir()) / "yt_lab_screenshots" / video_id
+    file_path = (screenshot_dir / filename).resolve()
+
+    # Verify the resolved path is within the expected directory (prevent traversal)
+    if not str(file_path).startswith(str(screenshot_dir.resolve())):
+        raise HTTPException(status_code=400, detail="Invalid path")
+
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Screenshot not found")
+
+    # Determine media type from extension
+    media_types = {
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".gif": "image/gif",
+        ".webp": "image/webp",
+    }
+    media_type = media_types.get(file_path.suffix.lower(), "image/jpeg")
+
+    return FileResponse(file_path, media_type=media_type)
+
+
+def _filepath_to_url(filepath: str, video_id: str) -> str:
+    """Convert a server-side screenshot filepath to a URL that the frontend can access."""
+    filename = Path(filepath).name
+    return f"/api/yt-lab/screenshots/{video_id}/{filename}"

@@ -10,6 +10,7 @@ Returns a structured project + steps matching YTStrategyProject /
 YTStrategyStep schemas for client-side localStorage persistence.
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -125,8 +126,11 @@ class YTProcessor:
         # Strip markdown code fences if present
         if text.startswith("```"):
             # Remove opening fence (```json or ```)
-            first_newline = text.index("\n")
-            text = text[first_newline + 1:]
+            newline_pos = text.find("\n")
+            if newline_pos >= 0:
+                text = text[newline_pos + 1:]
+            else:
+                text = text[3:]
             # Remove closing fence
             if text.endswith("```"):
                 text = text[:-3].strip()
@@ -191,13 +195,20 @@ class YTProcessor:
 
         start_time = time.time()
 
+        # Run the synchronous Anthropic API call in a thread pool to avoid
+        # blocking the async event loop during potentially long AI processing.
         client = anthropic.Anthropic()
-        response = client.messages.create(
-            model=use_model,
-            max_tokens=8192,
-            system=STRATEGY_EXTRACTION_PROMPT,
-            messages=[{"role": "user", "content": user_message}],
-        )
+
+        def _call_api():
+            return client.messages.create(
+                model=use_model,
+                max_tokens=8192,
+                system=STRATEGY_EXTRACTION_PROMPT,
+                messages=[{"role": "user", "content": user_message}],
+            )
+
+        loop = asyncio.get_running_loop()
+        response = await loop.run_in_executor(None, _call_api)
 
         elapsed = time.time() - start_time
 

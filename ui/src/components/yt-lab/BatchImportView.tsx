@@ -290,11 +290,13 @@ function BatchProgressBar({
         <span>
           {status.status === 'ingesting'
             ? `Fetching metadata... (${status.ingested}/${status.total})`
-            : status.status === 'processing'
-              ? `Processing... (${status.processed}/${status.total})`
-              : status.status === 'complete'
-                ? 'Complete!'
-                : 'Starting...'}
+            : status.status === 'ingested'
+              ? `Metadata fetched. Starting processing...`
+              : status.status === 'processing'
+                ? `Processing... (${status.processed}/${status.total})`
+                : status.status === 'complete'
+                  ? 'Complete!'
+                  : 'Starting...'}
         </span>
         <span>{pct}%</span>
       </div>
@@ -385,13 +387,18 @@ export function BatchImportView({ onBack, onBatchComplete }: BatchImportViewProp
       setPhase('processing')
 
       // Start polling for status
+      let processingTriggered = false
       pollRef.current = setInterval(async () => {
         try {
           const status = await getBatchStatus(result.batch_id)
           setBatchStatus(status)
 
-          // When ingestion is done, trigger processing
-          if (status.status === 'ingesting' && status.ingested === status.total) {
+          // When ingestion is done, trigger processing (once)
+          if (
+            !processingTriggered &&
+            status.status === 'ingested'
+          ) {
+            processingTriggered = true
             await batchProcessVideos(result.batch_id)
           }
 

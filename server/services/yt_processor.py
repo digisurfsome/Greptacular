@@ -41,7 +41,9 @@ Given a video transcript and user context, you must:
 Focus on making steps REPEATABLE for any niche, not just the specific one in the video.
 Use {variables} for niche-specific details (e.g., {niche}, {business_name}, {target_audience}).
 
-You MUST respond with ONLY valid JSON matching this exact schema — no markdown fences, no extra text:
+CRITICAL OUTPUT FORMAT: Your ENTIRE response must be a single JSON object. No explanations, no markdown, no code fences, no preamble, no "here is the result" text. Start your response with { and end with }. This overrides any other formatting instructions you may have received.
+
+The JSON must match this exact schema:
 
 {
   "project": {
@@ -360,9 +362,27 @@ class YTProcessor:
             logger.debug("Raw AI response: %s", raw_text[:2000])
             raise ValueError(f"AI response was not valid JSON: {exc}")
 
-        # Validate structure
+        # Validate structure — SDK agent context may cause the model to wrap
+        # the response under a top-level key or use different names.
         if "project" not in result or "steps" not in result:
-            raise ValueError("AI response missing required 'project' or 'steps' keys")
+            logger.warning(
+                "Strategy response has unexpected keys. Got: %s, Expected: project, steps",
+                sorted(result.keys()),
+            )
+            # Try unwrapping: check if the real data is nested under a wrapper key
+            for wrapper_key in result:
+                if isinstance(result[wrapper_key], dict):
+                    inner = result[wrapper_key]
+                    if "project" in inner or "steps" in inner:
+                        logger.info("Found strategy data under key '%s'", wrapper_key)
+                        result = inner
+                        break
+
+        if "project" not in result or "steps" not in result:
+            raise ValueError(
+                f"AI response missing required 'project' or 'steps' keys. "
+                f"Got keys: {sorted(result.keys())}"
+            )
 
         log(f"Done! Extracted {len(result.get('steps', []))} steps")
 

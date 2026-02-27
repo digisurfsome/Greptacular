@@ -53,7 +53,9 @@ Given a video transcript, metadata, and optional user context, you must:
 
 IMPORTANT: Be honest. Not every video has great app opportunities. If the content is purely theoretical with no actionable angles, say so. The user needs your real assessment, not forced enthusiasm.
 
-You MUST respond with ONLY valid JSON matching this exact schema — no markdown fences, no extra text:
+CRITICAL OUTPUT FORMAT: Your ENTIRE response must be a single JSON object. No explanations, no markdown, no code fences, no preamble, no "here is the result" text. Start your response with { and end with }. This overrides any other formatting instructions you may have received.
+
+The JSON must match this exact schema:
 
 {
   "video_context": {
@@ -398,11 +400,33 @@ class YTDiscovery:
             logger.debug("Raw AI response: %s", raw_text[:2000])
             raise ValueError(f"AI response was not valid JSON: {exc}")
 
-        # Validate structure
+        # Validate structure — the SDK agent context may cause the model to wrap
+        # the response differently (e.g. nested under a key, different key names).
         required_keys = {"video_context", "key_insights", "app_opportunities", "recommendation"}
         missing = required_keys - set(result.keys())
         if missing:
-            raise ValueError(f"AI response missing required keys: {missing}")
+            # Log what we actually got for debugging
+            logger.warning(
+                "Discovery response has unexpected keys. Got: %s, Expected: %s",
+                sorted(result.keys()), sorted(required_keys),
+            )
+            # Try common wrapper patterns: the model may nest the real data
+            # under a top-level key like "response", "result", "discovery", etc.
+            for wrapper_key in result:
+                if isinstance(result[wrapper_key], dict):
+                    inner = result[wrapper_key]
+                    inner_missing = required_keys - set(inner.keys())
+                    if len(inner_missing) < len(missing):
+                        logger.info("Found better match under key '%s'", wrapper_key)
+                        result = inner
+                        missing = inner_missing
+                        break
+
+        if missing:
+            raise ValueError(
+                f"AI response missing required keys: {missing}. "
+                f"Got keys: {sorted(result.keys())}"
+            )
 
         log(f"Done! Found {len(result.get('key_insights', []))} insights, {len(result.get('app_opportunities', []))} opportunities")
 

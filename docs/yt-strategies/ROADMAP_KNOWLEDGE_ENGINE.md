@@ -309,3 +309,250 @@ New video → Extract knowledge → Cross-reference against app portfolio
 
 This is what turns a collection of apps into an **ecosystem**. Each app makes every other app smarter because they share a common knowledge base that keeps growing.
 
+---
+
+## 11. Instant Micro-Tools (5-Minute Personal Tools)
+
+> **Principle:** Every extracted strategy should be USABLE within 5 minutes. Not "documented for later" — usable NOW.
+
+**The problem with PRDs:** A PRD is a planning document. It describes what to build. But for personal tools, you don't need a plan — you need the tool. A text box, a prompt chain, and an output. That's it.
+
+**How it works:**
+
+For every strategy extracted from a video, the system auto-generates the simplest possible tool:
+
+```
+Extracted strategy: "4 types of prompts for 10x output"
+                         ↓
+         Auto-generated micro-tool:
+         ┌─────────────────────────────┐
+         │  [Text box: Enter your idea] │
+         │                              │
+         │  [Button: Run]               │
+         │                              │
+         │  [Output: Optimized result]  │
+         └─────────────────────────────┘
+```
+
+- **Input:** One text box. What's your idea / raw input?
+- **Processing:** The extracted prompt chain from the video (1-3 prompts, chained)
+- **Output:** The result. Immediately usable.
+- **No auth, no database, no routing.** Just the knowledge made executable.
+
+### The Dual Path (runs in parallel, doesn't block each other)
+
+```
+Strategy extracted from video
+         ↓
+    ┌────┴────┐
+    ↓         ↓
+Path A:    Path B:
+PERSONAL   SaaS EXPLORATION
+TOOL       (background)
+
+Text box    "What would this
++ prompt    look like as a
++ output    product? Who buys
+            it? What's the
+Usable      pricing? What's
+in 5 min    the market?"
+    ↓         ↓
+USE IT     SAVE IT
+NOW        (ready when PRD
+            machine ships)
+```
+
+**Path A (personal tool)** is instant. Built the moment the strategy is extracted. Could be as simple as a prompt the user copies into Claude, or as polished as a mini-page with a text box and button.
+
+**Path B (SaaS exploration)** is a second AI pass that runs in the background. It explores the commercial opportunity: market size, pricing, competitors, differentiation. This gets saved alongside the strategy. When the PRD machine is ready, this exploration becomes the input — it's already done the thinking.
+
+### Connection to the Ecosystem
+
+The micro-tool's output doesn't just sit on screen:
+- Output can be pushed to **Workspace** (as a new conversation context)
+- Output can feed into **Dunk Stack** (as a build spec)
+- Output can feed into **AutoForge** (as a feature spec)
+- The tool itself registers in the **App Feedback Loop** (Section 10)
+
+This means: process a video → get a micro-tool → use it → the output flows into the rest of the system. No copy-paste. No manual bridging. The knowledge moves through the pipeline automatically.
+
+### Build Priority
+
+1. **Now:** For each strategy, generate a "Quick Use" prompt the user can immediately paste and use. Zero code needed — just the extracted prompt formatted for direct use.
+2. **Soon:** Auto-generate a micro-page (text box + button + output) within YT Lab for each strategy. One-click access.
+3. **Later:** PRD machine formalizes Path B. Auto-generates full product specs from the SaaS exploration.
+
+---
+
+## 12. The Knowledge Pipeline (Universal Extraction Bus)
+
+> **Principle:** Apps should be simple. The pipeline handles what happens after. Build once, connects everything forever.
+
+### The Problem
+
+Every app/tool in the ecosystem produces output. The 4-prompt tool produces optimized content. The cold email builder produces outreach sequences. The YT Lab produces strategies. Right now, that output sits wherever it was generated — in a text box, in localStorage, in a chat window. Getting it to the right place requires manual copy-paste.
+
+That doesn't scale. At 10+ tools producing output daily, manually routing knowledge is a full-time job.
+
+### The Solution: One Universal Pipe
+
+A single pipeline service that every app connects to. The app doesn't decide where its output goes — it just pushes to the pipe. The pipe decides.
+
+```
+┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐
+│ 4-Prompt │  │ Cold     │  │ YT Lab   │  │ Any New  │
+│ Tool     │  │ Email    │  │ Strategy │  │ App      │
+└────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘
+     │             │             │              │
+     └──────┬──────┴──────┬──────┴──────────────┘
+            ↓             ↓
+   ┌────────────────────────────────┐
+   │      KNOWLEDGE PIPELINE        │
+   │                                │
+   │  Step 1: CLASSIFY              │
+   │  "What kind of knowledge is    │
+   │   this? What's it about?"      │
+   │                                │
+   │  Step 2: TAG                   │
+   │  "What categories, topics,     │
+   │   and relationships apply?"    │
+   │                                │
+   │  Step 3: ROUTE                 │
+   │  "Where does this belong?      │
+   │   Which libraries, apps, and   │
+   │   databases need it?"          │
+   │                                │
+   │  Step 4: DELIVER               │
+   │  "Push to each destination     │
+   │   in the right format."        │
+   └──┬───┬───┬───┬───┬───┬────────┘
+      ↓   ↓   ↓   ↓   ↓   ↓
+    Work  Dunk  YT   App   Central  Related
+    space Stack Lab  Reg   Know-    Apps
+    Lib   Lib   Lib  istry ledge DB (features)
+```
+
+### How It Works Technically
+
+**The pipeline is pre-built infrastructure + user-configured routing.**
+
+The pipeline has two layers:
+
+**Layer 1: The Plumbing (built once, never touched again)**
+- Single API endpoint every app pushes to
+- Adapters for each destination (Workspace, Dunk Stack, YT Lab, App Registry, Central DB)
+- Delivery mechanism that pushes content to configured destinations
+- Central Knowledge DB that always stores everything (the master record)
+
+**Layer 2: The Routing Config (user-defined, per app)**
+- After building an app, the USER configures where its output goes
+- This is a simple prompt/config: "Output from the 4-prompt tool goes to Workspace Library (tagged as 'prompt engineering'), Dunk Stack Library (as reference material), and Central Knowledge DB"
+- When a new output TYPE emerges, the user describes the new routes
+- The pipeline doesn't guess — the user is the intelligence layer for routing
+
+```
+POST /api/knowledge-pipeline
+{
+  "source": "4-prompt-tool",
+  "source_context": "Generated from video #47 (prompt engineering)",
+  "content": "... the actual output ...",
+  "metadata": { ... optional hints ... }
+}
+```
+
+The pipeline looks up the routing config for "4-prompt-tool" and delivers:
+- **Central Knowledge DB:** Always (master record of everything)
+- **Workspace Library:** If configured (save as knowledge entry with tags)
+- **Dunk Stack Library:** If configured (save as build spec / reference)
+- **YT Lab:** If configured (link to source video, update strategy metadata)
+- **App Registry:** If configured (flag as potential feature for matching apps)
+
+**Key insight:** The app stays dead simple. The pipeline stays dumb plumbing. The USER configures the routing after the app is built. This means:
+- Building the app = fast (no routing logic needed)
+- Configuring distribution = fast (just describe where output goes)
+- Changing distribution later = trivial (update the config, not the app)
+
+**Future enhancement:** Once enough routing patterns exist, the AI CAN suggest routes for new apps automatically ("This looks similar to the 4-prompt tool — should I route it the same way?"). But this is optional intelligence on top of user-configured routes, not a replacement for them.
+
+### Why This Changes Everything
+
+1. **Apps stay simple.** A micro-tool is still just text box → prompt → output. It doesn't need export logic, save logic, or routing logic. It just calls the pipeline.
+
+2. **New destinations are free.** Build a new system? Add one adapter to the pipeline. Every existing app automatically routes to it.
+
+3. **New apps are free.** Build a new tool? Add one pipeline call at the end. It automatically connects to every existing destination.
+
+4. **Knowledge compounds automatically.** Every piece of output from every tool gets classified, tagged, and routed. The knowledge graph grows without manual effort.
+
+5. **Cross-pollination happens by default.** The pipeline sees ALL knowledge flowing through the system. It can identify: "This output from the prompt tool is relevant to the cold email app you built last week."
+
+### The Central Knowledge DB
+
+Everything flows through the pipeline into a central database. This is the master record of ALL knowledge in the system, regardless of where it was generated or where it was delivered.
+
+Schema (conceptual):
+```
+knowledge_entries:
+  - id
+  - source (which app/tool produced this)
+  - source_video_id (if from YT Lab)
+  - content (the actual knowledge)
+  - category
+  - tags[]
+  - related_entries[] (links to other knowledge)
+  - related_apps[] (links to apps this applies to)
+  - destinations_delivered[] (where it was sent)
+  - created_at
+  - quality_score (how actionable/valuable)
+```
+
+This is what the Mastermind advisors query. This is what the consolidation engine merges. This is what the app feedback loop references. The Central Knowledge DB is the brain.
+
+### The Staging Queue (Knowledge Inbox)
+
+Reality: output is going to flow in faster than routing can be configured. 10 tools producing output daily, can't stop to configure each one. Solution: **everything goes to staging first.**
+
+**How it works:**
+1. Output hits the pipeline
+2. AI auto-classifies and tags immediately (free, happens on intake)
+3. If routing is configured → deliver immediately
+4. If routing is NOT configured → hold in staging queue
+5. User gets notified: "12 items in staging, awaiting routing direction"
+6. When user has time, they batch-process: "this → here, that → there, those 5 → same place"
+
+**The staging queue is the default state.** Nothing gets lost. Nothing gets stuck. The system is always accumulating knowledge even when the user is asleep.
+
+**Database:** A real database — Supabase, Neon, or similar — not localStorage. This needs to:
+- Handle high volume (10+ items/day, growing)
+- Persist across sessions and devices
+- Support search, filtering, and batch operations
+- Scale without thinking about it
+
+**Staging queue schema (conceptual):**
+```
+staging_queue:
+  - id
+  - source_app (which tool produced this)
+  - content (the actual output)
+  - auto_classification (AI-generated on intake)
+  - auto_tags[] (AI-generated on intake)
+  - status: "staging" | "routed" | "delivered"
+  - routing_config: null (until user configures)
+  - created_at
+  - notified_at (when user was pinged)
+```
+
+**Notification system:**
+- Passive: badge count on the pipeline UI ("7 items in staging")
+- Active: periodic nudge ("Hey, you have items from 2 days ago still in staging. Want to route them?")
+- Smart: "These 5 items look similar to things you've routed before. Want me to suggest routes?"
+
+### Build Priority
+
+1. **Now:** Define the API contract (what apps send, what the pipeline returns)
+2. **Soon:** Build the staging queue + auto-classification + Central Knowledge DB (Supabase/Neon)
+3. **Then:** Build the routing config UI + batch-routing workflow
+4. **Then:** Add adapters for each destination (Workspace, Dunk Stack, YT Lab, App Registry)
+5. **Later:** Add the AI cross-reference layer that proactively suggests connections
+6. **Later:** Smart route suggestions based on historical patterns
+

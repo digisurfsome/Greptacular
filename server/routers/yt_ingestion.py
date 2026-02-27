@@ -320,7 +320,7 @@ def _capture_screenshots(
 
 
 @router.post("/ingest", response_model=IngestResponse)
-async def ingest_video(body: IngestRequest):
+def ingest_video(body: IngestRequest):
     """
     Ingest a YouTube video: extract transcript, metadata, description links,
     and optionally capture screenshots at key visual moments.

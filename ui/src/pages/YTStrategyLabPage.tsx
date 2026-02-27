@@ -47,6 +47,7 @@ import type {
   YTProjectStatus,
   YTStrategyStepStatus,
 } from '@/lib/types'
+import { VideoIngestPanel } from '@/components/yt-lab/VideoIngestPanel'
 
 // ============================================================================
 // Constants
@@ -897,17 +898,21 @@ function StrategyBuilder({
   useEffect(() => {
     saveSteps(project.id, steps)
 
-    // Derive project status from step states
+    // Derive project status from step states — only update if it actually changed
+    let derivedStatus: YTProjectStatus
     if (steps.length === 0) {
-      onUpdateProject({ status: 'draft' })
+      derivedStatus = 'draft'
     } else if (steps.every(s => s.status === 'complete')) {
-      onUpdateProject({ status: 'complete' })
+      derivedStatus = 'complete'
     } else if (steps.some(s => s.status === 'in_progress' || s.status === 'complete')) {
-      onUpdateProject({ status: 'in-progress' })
+      derivedStatus = 'in-progress'
     } else {
-      onUpdateProject({ status: 'draft' })
+      derivedStatus = 'draft'
     }
-  }, [steps, project.id, onUpdateProject])
+    if (derivedStatus !== project.status) {
+      onUpdateProject({ status: derivedStatus })
+    }
+  }, [steps, project.id, project.status, onUpdateProject])
 
   const selectedStep = useMemo(
     () => steps.find(s => s.id === selectedStepId) ?? null,
@@ -943,13 +948,16 @@ function StrategyBuilder({
   const deleteStep = useCallback((stepId: string) => {
     setSteps(prev => {
       const filtered = prev.filter(s => s.id !== stepId)
+      // Select an adjacent step if the deleted step was selected
+      if (selectedStepId === stepId) {
+        const deletedIdx = prev.findIndex(s => s.id === stepId)
+        const nextStep = filtered[Math.min(deletedIdx, filtered.length - 1)] ?? null
+        setSelectedStepId(nextStep?.id ?? null)
+      }
       // Re-number
       return filtered.map((s, i) => ({ ...s, order: i + 1 }))
     })
-    if (selectedStepId === stepId) {
-      setSelectedStepId(steps.length > 1 ? steps.find(s => s.id !== stepId)?.id ?? null : null)
-    }
-  }, [selectedStepId, steps])
+  }, [selectedStepId])
 
   /** Move a step up (decrease order). */
   const moveStepUp = useCallback((stepId: string) => {
@@ -1104,7 +1112,14 @@ function StrategyBuilder({
 
       {/* Main content area */}
       <div className="flex-1 overflow-auto p-6">
-        <div className="max-w-3xl mx-auto">
+        <div className="max-w-3xl mx-auto space-y-6">
+          {/* Video Ingest Panel — shown when project has a YouTube source URL */}
+          {project.sourceUrl && (
+            project.sourceUrl.includes('youtube.com') || project.sourceUrl.includes('youtu.be')
+          ) && (
+            <VideoIngestPanel />
+          )}
+
           {steps.length === 0 ? (
             <NoStepsYet onAddStep={addStep} />
           ) : selectedStep ? (
@@ -1152,14 +1167,22 @@ export function YTStrategyLabPage(): React.JSX.Element {
     [projects, selectedProjectId]
   )
 
-  /** Get step counts for a project (for the project card display). */
-  const getStepCounts = useCallback((projectId: string) => {
-    const steps = loadSteps(projectId)
-    return {
-      total: steps.length,
-      completed: steps.filter(s => s.status === 'complete').length,
+  /** Memoized step counts for all projects — avoids localStorage reads during render. */
+  const stepCountsMap = useMemo(() => {
+    const map: Record<string, { total: number; completed: number }> = {}
+    for (const p of projects) {
+      const steps = loadSteps(p.id)
+      map[p.id] = {
+        total: steps.length,
+        completed: steps.filter(s => s.status === 'complete').length,
+      }
     }
-  }, [])
+    return map
+  }, [projects])
+
+  const getStepCounts = useCallback((projectId: string) => {
+    return stepCountsMap[projectId] ?? { total: 0, completed: 0 }
+  }, [stepCountsMap])
 
   /** Filtered and sorted projects for the list view. */
   const filteredProjects = useMemo(() => {

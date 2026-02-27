@@ -74,9 +74,10 @@ const STEP_ORDER: Array<Exclude<IngestStep, 'idle' | 'done' | 'error'>> = [
 
 /** Format seconds into MM:SS or HH:MM:SS */
 function formatDuration(totalSeconds: number): string {
-  const hours = Math.floor(totalSeconds / 3600)
-  const minutes = Math.floor((totalSeconds % 3600) / 60)
-  const seconds = totalSeconds % 60
+  const total = Math.floor(totalSeconds)
+  const hours = Math.floor(total / 3600)
+  const minutes = Math.floor((total % 3600) / 60)
+  const seconds = total % 60
 
   if (hours > 0) {
     return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`

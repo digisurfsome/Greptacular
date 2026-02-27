@@ -33,6 +33,7 @@ from .routers import (
     agent_router,
     assistant_chat_router,
     boilerplate_router,
+    captures_router,
     ci_status_router,
     design_guide_router,
     devserver_router,
@@ -51,6 +52,7 @@ from .routers import (
     terminal_router,
     workspace_router,
     yt_ingestion_router,
+    yt_processing_router,
 )
 from .schemas import SetupStatus
 from .services.agent_os_session import cleanup_all_agent_os_sessions
@@ -66,6 +68,7 @@ from .services.dev_server_manager import (
 from .services.expand_chat_session import cleanup_all_expand_sessions
 from .services.process_manager import cleanup_all_managers, cleanup_orphaned_locks
 from .services.scheduler_service import cleanup_scheduler, get_scheduler
+from .services.screen_recorder import cleanup_all_capture_managers
 from .services.swarm_orchestrator import cleanup_all_swarms
 from .services.terminal_manager import cleanup_all_terminals
 from .services.workspace_chat_session import cleanup_all_workspace_sessions
@@ -102,6 +105,7 @@ async def lifespan(app: FastAPI):
     await cleanup_all_swarms()
     await cleanup_all_monitors()
     cleanup_all_agent_os_sessions()
+    await cleanup_all_capture_managers()
 
 
 # Create FastAPI app
@@ -192,6 +196,8 @@ app.include_router(swarm_router)
 app.include_router(dunkstack_router)
 app.include_router(agent_os_router)
 app.include_router(yt_ingestion_router)
+app.include_router(yt_processing_router)
+app.include_router(captures_router)
 
 
 # ============================================================================

@@ -66,6 +66,11 @@ import type {
   TokenLogSummary,
   YTIngestResponse,
   YTLabHealth,
+  YTProcessRequest,
+  YTProcessResponse,
+  YTCaptureListResponse,
+  YTManualCaptureResponse,
+  YTRecordingStatusResponse,
 } from './types'
 
 const API_BASE = '/api'
@@ -1911,4 +1916,63 @@ export async function ingestYouTubeVideo(
 
 export async function getYTLabHealth(): Promise<YTLabHealth> {
   return fetchJSON('/yt-lab/health')
+}
+
+// ============================================================================
+// YT Lab Processing API (Phase 2 — AI Auto-Processor)
+// ============================================================================
+
+export async function processYouTubeVideo(
+  request: YTProcessRequest,
+): Promise<YTProcessResponse> {
+  return fetchJSON('/yt-lab/process', {
+    method: 'POST',
+    body: JSON.stringify(request),
+  })
+}
+
+// ============================================================================
+// YT Lab Screen Capture API (Phase 8 — Screen Recording)
+// ============================================================================
+
+export async function getExecutionCaptures(
+  sessionId: string,
+  stepNumber?: number,
+): Promise<YTCaptureListResponse> {
+  const params = stepNumber != null ? `?step_number=${stepNumber}` : ''
+  return fetchJSON(`/yt-lab/execution/${encodeURIComponent(sessionId)}/captures${params}`)
+}
+
+export function getCaptureFileUrl(
+  sessionId: string,
+  captureId: string,
+): string {
+  return `${API_BASE}/yt-lab/execution/${encodeURIComponent(sessionId)}/captures/${encodeURIComponent(captureId)}`
+}
+
+export async function triggerManualCapture(
+  sessionId: string,
+  stepNumber: number,
+  includeClip: boolean = true,
+): Promise<YTManualCaptureResponse> {
+  return fetchJSON(`/yt-lab/execution/${encodeURIComponent(sessionId)}/capture`, {
+    method: 'POST',
+    body: JSON.stringify({ step_number: stepNumber, include_clip: includeClip }),
+  })
+}
+
+export async function startSessionRecording(
+  sessionId: string,
+): Promise<YTRecordingStatusResponse> {
+  return fetchJSON(`/yt-lab/execution/${encodeURIComponent(sessionId)}/recording/start`, {
+    method: 'POST',
+  })
+}
+
+export async function stopSessionRecording(
+  sessionId: string,
+): Promise<YTRecordingStatusResponse> {
+  return fetchJSON(`/yt-lab/execution/${encodeURIComponent(sessionId)}/recording/stop`, {
+    method: 'POST',
+  })
 }

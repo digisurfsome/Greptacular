@@ -12,6 +12,7 @@
 
 import { useState, useMemo, useCallback, useEffect } from 'react'
 import {
+  AlertCircle,
   ArrowLeft,
   ChevronRight,
   Plus,
@@ -34,6 +35,8 @@ import {
   Sparkles,
   PanelLeftClose,
   PanelLeftOpen,
+  Loader2,
+  Wand2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -44,9 +47,14 @@ import type {
   YTStrategyProject,
   YTStrategyStep,
   YTStrategySubStep,
+  YTIngestResponse,
   YTProjectStatus,
   YTStrategyStepStatus,
+  YTScreenshotCapture,
 } from '@/lib/types'
+import { VideoIngestPanel } from '@/components/yt-lab/VideoIngestPanel'
+import { ScreenshotGallery } from '@/components/yt-lab/ScreenshotGallery'
+import { processYouTubeVideo } from '@/lib/api'
 
 // ============================================================================
 // Constants
@@ -57,6 +65,11 @@ const STORAGE_KEY_PROJECTS = 'yt-lab-projects'
 /** Prefix for per-project step storage keys. */
 function stepsStorageKey(projectId: string): string {
   return `yt-lab-steps-${projectId}`
+}
+
+/** Key for per-project analyzed screenshots. */
+function screenshotsStorageKey(projectId: string): string {
+  return `yt-lab-screenshots-${projectId}`
 }
 
 /** AI model options displayed in the step editor dropdown. */
@@ -93,11 +106,14 @@ function loadProjects(): YTStrategyProject[] {
   return []
 }
 
+/** Callback set by the page component to show save errors in the UI. */
+let _onSaveError: ((msg: string) => void) | null = null
+
 function saveProjects(projects: YTStrategyProject[]): void {
   try {
     localStorage.setItem(STORAGE_KEY_PROJECTS, JSON.stringify(projects))
   } catch {
-    // localStorage full or unavailable
+    _onSaveError?.('Failed to save projects — localStorage may be full. Your changes may be lost.')
   }
 }
 
@@ -115,7 +131,7 @@ function saveSteps(projectId: string, steps: YTStrategyStep[]): void {
   try {
     localStorage.setItem(stepsStorageKey(projectId), JSON.stringify(steps))
   } catch {
-    // localStorage full or unavailable
+    _onSaveError?.('Failed to save steps — localStorage may be full. Your changes may be lost.')
   }
 }
 
@@ -672,6 +688,8 @@ function StepDetail({
   onSubStepStatusChange: (subStepId: string, status: YTStrategyStepStatus) => void
 }): React.JSX.Element {
   const statusConfig = STEP_STATUS_CONFIG[step.status]
+  const [confirmDeleteStep, setConfirmDeleteStep] = useState(false)
+  const [confirmDeleteSubStepId, setConfirmDeleteSubStepId] = useState<string | null>(null)
 
   /** Copy prompt text to clipboard. */
   const copyPrompt = useCallback(() => {
@@ -684,6 +702,50 @@ function StepDetail({
 
   return (
     <div className="space-y-6">
+      {/* Step deletion confirmation */}
+      {confirmDeleteStep && (
+        <div className="flex items-center gap-3 rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3">
+          <p className="text-sm text-foreground flex-1">
+            Delete <strong>Step {step.order}{step.title ? `: ${step.title}` : ''}</strong> and all its sub-steps?
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setConfirmDeleteStep(false)}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => { setConfirmDeleteStep(false); onDelete() }}
+          >
+            Delete
+          </Button>
+        </div>
+      )}
+
+      {/* Sub-step deletion confirmation */}
+      {confirmDeleteSubStepId && (
+        <div className="flex items-center gap-3 rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3">
+          <p className="text-sm text-foreground flex-1">Delete this sub-step?</p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setConfirmDeleteSubStepId(null)}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => { onDeleteSubStep(confirmDeleteSubStepId); setConfirmDeleteSubStepId(null) }}
+          >
+            Delete
+          </Button>
+        </div>
+      )}
+
       {/* Step header */}
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 space-y-2">
@@ -718,7 +780,7 @@ function StepDetail({
         <Button
           variant="outline"
           size="sm"
-          onClick={onDelete}
+          onClick={() => setConfirmDeleteStep(true)}
           className="text-destructive hover:bg-destructive/10 shrink-0"
           aria-label="Delete step"
         >
@@ -813,7 +875,7 @@ function StepDetail({
                 key={subStep.id}
                 subStep={subStep}
                 onUpdate={(updates) => onUpdateSubStep(subStep.id, updates)}
-                onDelete={() => onDeleteSubStep(subStep.id)}
+                onDelete={() => setConfirmDeleteSubStepId(subStep.id)}
                 onStatusChange={(status) => onSubStepStatusChange(subStep.id, status)}
               />
             ))}
@@ -893,21 +955,43 @@ function StrategyBuilder({
   )
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
+  // Load analyzed screenshots from localStorage
+  const [analyzedScreenshots, setAnalyzedScreenshots] = useState<YTScreenshotCapture[]>(() => {
+    const stored = localStorage.getItem(screenshotsStorageKey(project.id))
+    return stored ? JSON.parse(stored) : []
+  })
+  const [screenshotSummary] = useState<string>(() => {
+    const stored = localStorage.getItem(`yt-lab-screenshot-summary-${project.id}`)
+    return stored || ''
+  })
+
+  // --- AI Processing state (Phase 2) ---
+  const [ingestResult, setIngestResult] = useState<YTIngestResponse | null>(null)
+  const [userContext, setUserContext] = useState('')
+  const [processingModel, setProcessingModel] = useState('claude-sonnet-4-6')
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [processingError, setProcessingError] = useState<string | null>(null)
+  const [processingTime, setProcessingTime] = useState<number | null>(null)
+
   // Persist steps whenever they change
   useEffect(() => {
     saveSteps(project.id, steps)
 
-    // Derive project status from step states
+    // Derive project status from step states — only update if it actually changed
+    let derivedStatus: YTProjectStatus
     if (steps.length === 0) {
-      onUpdateProject({ status: 'draft' })
+      derivedStatus = 'draft'
     } else if (steps.every(s => s.status === 'complete')) {
-      onUpdateProject({ status: 'complete' })
+      derivedStatus = 'complete'
     } else if (steps.some(s => s.status === 'in_progress' || s.status === 'complete')) {
-      onUpdateProject({ status: 'in-progress' })
+      derivedStatus = 'in-progress'
     } else {
-      onUpdateProject({ status: 'draft' })
+      derivedStatus = 'draft'
     }
-  }, [steps, project.id, onUpdateProject])
+    if (derivedStatus !== project.status) {
+      onUpdateProject({ status: derivedStatus })
+    }
+  }, [steps, project.id, project.status, onUpdateProject])
 
   const selectedStep = useMemo(
     () => steps.find(s => s.id === selectedStepId) ?? null,
@@ -943,13 +1027,16 @@ function StrategyBuilder({
   const deleteStep = useCallback((stepId: string) => {
     setSteps(prev => {
       const filtered = prev.filter(s => s.id !== stepId)
+      // Select an adjacent step if the deleted step was selected
+      if (selectedStepId === stepId) {
+        const deletedIdx = prev.findIndex(s => s.id === stepId)
+        const nextStep = filtered[Math.min(deletedIdx, filtered.length - 1)] ?? null
+        setSelectedStepId(nextStep?.id ?? null)
+      }
       // Re-number
       return filtered.map((s, i) => ({ ...s, order: i + 1 }))
     })
-    if (selectedStepId === stepId) {
-      setSelectedStepId(steps.length > 1 ? steps.find(s => s.id !== stepId)?.id ?? null : null)
-    }
-  }, [selectedStepId, steps])
+  }, [selectedStepId])
 
   /** Move a step up (decrease order). */
   const moveStepUp = useCallback((stepId: string) => {
@@ -1022,6 +1109,73 @@ function StrategyBuilder({
   const changeSubStepStatus = useCallback((stepId: string, subStepId: string, status: YTStrategyStepStatus) => {
     updateSubStep(stepId, subStepId, { status })
   }, [updateSubStep])
+
+  /** Handle ingestion complete — store result for processing. */
+  const handleIngestComplete = useCallback((result: YTIngestResponse) => {
+    setIngestResult(result)
+    setProcessingError(null)
+    setProcessingTime(null)
+  }, [])
+
+  /** Process ingested video through AI to generate steps. */
+  const handleProcessVideo = useCallback(async () => {
+    if (!ingestResult) return
+
+    setIsProcessing(true)
+    setProcessingError(null)
+    setProcessingTime(null)
+
+    try {
+      const response = await processYouTubeVideo({
+        video_id: ingestResult.video_id,
+        transcript: ingestResult.transcript,
+        metadata: {
+          title: ingestResult.title,
+          channel: ingestResult.channel,
+          duration: ingestResult.duration,
+          description: ingestResult.description,
+        },
+        user_context: userContext,
+        extracted_urls: ingestResult.extracted_urls,
+        screenshot_suggestions: ingestResult.screenshot_suggestions,
+        model: processingModel,
+      })
+
+      // Update project metadata from AI response
+      onUpdateProject({
+        name: response.project.name || project.name,
+        niche: response.project.niche || project.niche,
+        description: response.project.description || project.description,
+        tags: response.project.tags.length > 0 ? response.project.tags : project.tags,
+      })
+
+      // Create steps from AI response
+      const newSteps: YTStrategyStep[] = response.steps.map((s) => ({
+        id: generateId(),
+        projectId: project.id,
+        order: s.order,
+        title: s.title,
+        description: s.description,
+        prompt: s.prompt,
+        expectedOutput: s.expectedOutput,
+        notes: s.notes,
+        aiOutput: '',
+        status: 'pending' as const,
+        model: s.model || 'claude-opus-4-6',
+        subSteps: [],
+      }))
+
+      setSteps(newSteps)
+      if (newSteps.length > 0) {
+        setSelectedStepId(newSteps[0].id)
+      }
+      setProcessingTime(response.processing_time)
+    } catch (err) {
+      setProcessingError(err instanceof Error ? err.message : 'Failed to process video')
+    } finally {
+      setIsProcessing(false)
+    }
+  }, [ingestResult, userContext, processingModel, project.id, project.name, project.niche, project.description, project.tags, onUpdateProject])
 
   const completedCount = steps.filter(s => s.status === 'complete').length
 
@@ -1104,7 +1258,129 @@ function StrategyBuilder({
 
       {/* Main content area */}
       <div className="flex-1 overflow-auto p-6">
-        <div className="max-w-3xl mx-auto">
+        <div className="max-w-3xl mx-auto space-y-6">
+          {/* Video Ingest Panel — shown when project has a YouTube source URL */}
+          {project.sourceUrl && (
+            project.sourceUrl.includes('youtube.com') || project.sourceUrl.includes('youtu.be')
+          ) && (
+            <VideoIngestPanel
+              onIngestComplete={(result) => {
+                handleIngestComplete(result)
+                if (result.analyzed_screenshots?.length > 0) {
+                  setAnalyzedScreenshots(result.analyzed_screenshots)
+                  localStorage.setItem(
+                    screenshotsStorageKey(project.id),
+                    JSON.stringify(result.analyzed_screenshots),
+                  )
+                  if (result.screenshot_summary) {
+                    localStorage.setItem(
+                      `yt-lab-screenshot-summary-${project.id}`,
+                      result.screenshot_summary,
+                    )
+                  }
+                }
+              }}
+            />
+          )}
+
+          {/* Screenshot Gallery — shown when analyzed screenshots exist */}
+          {analyzedScreenshots.length > 0 && (
+            <div className="rounded-lg border border-border bg-card p-4">
+              <ScreenshotGallery
+                screenshots={analyzedScreenshots}
+                summary={screenshotSummary}
+              />
+            </div>
+          )}
+
+          {/* AI Processing Panel — shown after successful ingestion */}
+          {ingestResult && (
+            <div className="rounded-lg border border-border bg-card">
+              <div className="flex items-center gap-2 border-b border-border px-4 py-3">
+                <Wand2 size={18} className="text-primary" />
+                <h3 className="text-sm font-semibold text-foreground">AI Strategy Extraction</h3>
+                {processingTime != null && (
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    Processed in {processingTime.toFixed(1)}s
+                  </span>
+                )}
+              </div>
+
+              <div className="p-4 space-y-4">
+                {/* User context textarea */}
+                <div className="space-y-1.5">
+                  <label htmlFor="user-context" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    What do you want to extract from this video?
+                  </label>
+                  <Textarea
+                    id="user-context"
+                    value={userContext}
+                    onChange={(e) => setUserContext(e.target.value)}
+                    placeholder="e.g., I want the step-by-step process for building an AI ad agency. Focus on the automation workflow and computer-use prompts."
+                    className="min-h-20 text-sm"
+                    disabled={isProcessing}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Providing context helps the AI focus on what matters to you. Leave blank to extract the full strategy.
+                  </p>
+                </div>
+
+                {/* Model selection */}
+                <div className="space-y-1.5">
+                  <label htmlFor="processing-model" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    Processing Model
+                  </label>
+                  <select
+                    id="processing-model"
+                    value={processingModel}
+                    onChange={(e) => setProcessingModel(e.target.value)}
+                    disabled={isProcessing}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm
+                      text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent
+                      disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <option value="claude-sonnet-4-6">Claude Sonnet 4.6 (Recommended)</option>
+                    <option value="claude-opus-4-6">Claude Opus 4.6 (Premium)</option>
+                    <option value="claude-haiku-4-5">Claude Haiku 4.5 (Fast)</option>
+                  </select>
+                </div>
+
+                {/* Error message */}
+                {processingError && (
+                  <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2">
+                    <AlertCircle size={16} className="text-destructive shrink-0 mt-0.5" />
+                    <p className="text-sm text-destructive">{processingError}</p>
+                  </div>
+                )}
+
+                {/* Process button */}
+                <Button
+                  onClick={handleProcessVideo}
+                  disabled={isProcessing || !ingestResult.transcript.length}
+                  className="w-full gap-2"
+                >
+                  {isProcessing ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      Processing Video...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={16} />
+                      Process Video
+                    </>
+                  )}
+                </Button>
+
+                {!ingestResult.transcript.length && (
+                  <p className="text-xs text-muted-foreground text-center">
+                    No transcript available — video processing requires a transcript.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
           {steps.length === 0 ? (
             <NoStepsYet onAddStep={addStep} />
           ) : selectedStep ? (
@@ -1141,6 +1417,13 @@ export function YTStrategyLabPage(): React.JSX.Element {
   const [searchQuery, setSearchQuery] = useState('')
   const [sortBy, setSortBy] = useState<SortOption>('date-desc')
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  // Register save error callback so persistence helpers can show errors
+  useEffect(() => {
+    _onSaveError = (msg) => setSaveError(msg)
+    return () => { _onSaveError = null }
+  }, [])
 
   // Persist projects whenever they change
   useEffect(() => {
@@ -1152,14 +1435,22 @@ export function YTStrategyLabPage(): React.JSX.Element {
     [projects, selectedProjectId]
   )
 
-  /** Get step counts for a project (for the project card display). */
-  const getStepCounts = useCallback((projectId: string) => {
-    const steps = loadSteps(projectId)
-    return {
-      total: steps.length,
-      completed: steps.filter(s => s.status === 'complete').length,
+  /** Memoized step counts for all projects — avoids localStorage reads during render. */
+  const stepCountsMap = useMemo(() => {
+    const map: Record<string, { total: number; completed: number }> = {}
+    for (const p of projects) {
+      const steps = loadSteps(p.id)
+      map[p.id] = {
+        total: steps.length,
+        completed: steps.filter(s => s.status === 'complete').length,
+      }
     }
-  }, [])
+    return map
+  }, [projects])
+
+  const getStepCounts = useCallback((projectId: string) => {
+    return stepCountsMap[projectId] ?? { total: 0, completed: 0 }
+  }, [stepCountsMap])
 
   /** Filtered and sorted projects for the list view. */
   const filteredProjects = useMemo(() => {
@@ -1365,6 +1656,21 @@ export function YTStrategyLabPage(): React.JSX.Element {
         )}
       </div>
 
+      {/* Save error banner */}
+      {saveError && (
+        <div className="flex items-center gap-2 px-4 py-2 bg-destructive/10 border-b border-destructive/30">
+          <AlertCircle size={14} className="text-destructive shrink-0" />
+          <p className="text-xs text-destructive flex-1">{saveError}</p>
+          <button
+            onClick={() => setSaveError(null)}
+            className="p-0.5 text-destructive hover:text-destructive/80"
+            aria-label="Dismiss save error"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
       {/* Main content */}
       {view === 'list' && (
         <div className="flex-1 overflow-auto p-6">
@@ -1494,11 +1800,19 @@ export function YTStrategyLabPage(): React.JSX.Element {
 
       {/* Delete confirmation overlay */}
       {confirmDeleteId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-dialog-title"
+          aria-describedby="delete-dialog-desc"
+          onClick={(e) => { if (e.target === e.currentTarget) setConfirmDeleteId(null) }}
+          onKeyDown={(e) => { if (e.key === 'Escape') setConfirmDeleteId(null) }}
+        >
           <Card className="w-full max-w-sm mx-4">
             <CardContent className="p-6 space-y-4">
-              <h3 className="text-base font-semibold text-foreground">Delete Project?</h3>
-              <p className="text-sm text-muted-foreground">
+              <h3 id="delete-dialog-title" className="text-base font-semibold text-foreground">Delete Project?</h3>
+              <p id="delete-dialog-desc" className="text-sm text-muted-foreground">
                 This will permanently delete the project and all its steps. This action cannot be undone.
               </p>
               <div className="flex items-center gap-3 justify-end">
@@ -1513,6 +1827,7 @@ export function YTStrategyLabPage(): React.JSX.Element {
                   variant="destructive"
                   size="sm"
                   onClick={() => handleDeleteProject(confirmDeleteId)}
+                  autoFocus
                 >
                   Delete
                 </Button>

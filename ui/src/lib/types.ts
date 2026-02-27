@@ -1447,6 +1447,17 @@ export interface YTScreenshotSuggestion {
   filepath: string | null
 }
 
+export interface YTScreenshotCapture {
+  timestamp: number
+  reason: string
+  image_path: string
+  ocr_text: string
+  ui_detected: string
+  classification: 'prompt' | 'result' | 'dashboard' | 'form' | 'navigation' | 'other'
+  relevance_score: number
+  transcript_segment: string
+}
+
 export interface YTIngestResponse {
   video_id: string
   title: string
@@ -1459,6 +1470,8 @@ export interface YTIngestResponse {
   extracted_urls: string[]
   screenshot_suggestions: YTScreenshotSuggestion[]
   screenshots: string[]
+  analyzed_screenshots: YTScreenshotCapture[]
+  screenshot_summary: string
 }
 
 export interface YTLabHealth {
@@ -1466,4 +1479,93 @@ export interface YTLabHealth {
   ffmpeg: boolean
   youtube_transcript_api: boolean
   youtube_api_key: boolean
+}
+
+// ============================================================================
+// YT Lab Processing Types (Phase 2 — AI Auto-Processor)
+// ============================================================================
+
+export interface YTVideoMetadata {
+  title: string
+  channel: string
+  duration: number
+  description: string
+}
+
+export interface YTProcessRequest {
+  video_id: string
+  transcript: YTTranscriptSegment[]
+  metadata: YTVideoMetadata
+  user_context: string
+  extracted_urls: string[]
+  screenshot_suggestions: YTScreenshotSuggestion[]
+  model: string
+}
+
+export interface YTProcessProjectData {
+  name: string
+  niche: string
+  description: string
+  tags: string[]
+}
+
+export interface YTProcessStepData {
+  order: number
+  title: string
+  description: string
+  prompt: string
+  expectedOutput: string
+  notes: string
+  model: string
+}
+
+export interface YTProcessResponse {
+  project: YTProcessProjectData
+  steps: YTProcessStepData[]
+  processing_time: number
+}
+
+// ============================================================================
+// YT Lab Screen Capture Types (Phase 8 — Screen Recording)
+// ============================================================================
+
+export type YTCaptureType = 'screenshot' | 'clip' | 'session'
+
+export type YTCaptureTrigger =
+  | 'step_start'
+  | 'step_complete'
+  | 'button_click'
+  | 'form_fill'
+  | 'navigation'
+  | 'user_pause'
+  | 'error'
+  | 'manual'
+
+export interface YTCaptureItem {
+  id: string
+  session_id: string
+  step_number: number
+  capture_type: YTCaptureType
+  trigger: YTCaptureTrigger
+  filename: string
+  duration: number | null
+  timestamp: number
+  created_at: string
+  status: 'ready' | 'capturing'
+}
+
+export interface YTCaptureListResponse {
+  session_id: string
+  captures: YTCaptureItem[]
+  total: number
+  is_recording: boolean
+}
+
+export interface YTManualCaptureResponse {
+  captures: YTCaptureItem[]
+}
+
+export interface YTRecordingStatusResponse {
+  is_recording: boolean
+  session_id: string
 }

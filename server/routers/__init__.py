@@ -8,6 +8,7 @@ FastAPI routers for different API endpoints.
 from .agent import router as agent_router
 from .agent_os import router as agent_os_router
 from .assistant_chat import router as assistant_chat_router
+from .captures import router as captures_router
 from .ci_status import router as ci_status_router
 from .design_guide import router as design_guide_router
 from .devserver import router as devserver_router
@@ -26,6 +27,7 @@ from .swarm import router as swarm_router
 from .terminal import router as terminal_router
 from .workspace import router as workspace_router
 from .yt_ingestion import router as yt_ingestion_router
+from .yt_processing import router as yt_processing_router
 
 __all__ = [
     "ci_status_router",
@@ -50,4 +52,6 @@ __all__ = [
     "dunkstack_router",
     "agent_os_router",
     "yt_ingestion_router",
+    "yt_processing_router",
+    "captures_router",
 ]

@@ -243,6 +243,7 @@ class YTDiscovery:
 
             full_text = ""
             msg_types_seen = []
+            sdk_error: str | None = None
             async for msg in client.receive_response():
                 msg_type = type(msg).__name__
                 msg_types_seen.append(msg_type)
@@ -253,11 +254,23 @@ class YTDiscovery:
                             full_text += block.text
                         else:
                             logger.debug("YT discovery SDK: non-text block type=%s", block_type)
+                elif msg_type == "ResultMessage":
+                    is_error = getattr(msg, "is_error", False)
+                    if is_error:
+                        sdk_error = f"SDK ResultMessage reported an error (model={model})"
+                    logger.info(
+                        "YT discovery SDK ResultMessage: is_error=%s, model=%s",
+                        is_error, getattr(msg, "model", "unknown"),
+                    )
 
             logger.info(
                 "YT discovery SDK response: %d chars, msg_types=%s, preview=%.200s",
                 len(full_text), msg_types_seen, full_text[:200],
             )
+
+            # If the SDK flagged an error, raise so the caller can fall back
+            if sdk_error:
+                raise RuntimeError(sdk_error)
 
             if not full_text.strip():
                 raise RuntimeError(
@@ -399,6 +412,26 @@ class YTDiscovery:
             logger.error("Failed to parse AI discovery response as JSON: %s", exc)
             logger.debug("Raw AI response: %s", raw_text[:2000])
             raise ValueError(f"AI response was not valid JSON: {exc}")
+
+        # Detect API error responses — the SDK or Anthropic API may return
+        # a valid JSON object with {error, type, request_id} instead of
+        # the expected discovery schema.
+        if "error" in result and "type" in result and len(result) <= 4:
+            error_detail = result.get("error", {})
+            if isinstance(error_detail, dict):
+                error_msg = error_detail.get("message", str(error_detail))
+                error_type = error_detail.get("type", "unknown")
+            else:
+                error_msg = str(error_detail)
+                error_type = result.get("type", "unknown")
+            logger.error(
+                "AI returned an API error instead of discovery results: type=%s message=%s",
+                error_type, error_msg,
+            )
+            raise RuntimeError(
+                f"Claude API error ({error_type}): {error_msg}. "
+                "Check your subscription status, model availability, or try again."
+            )
 
         # Validate structure — the SDK agent context may cause the model to wrap
         # the response differently (e.g. nested under a key, different key names).

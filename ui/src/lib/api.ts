@@ -66,6 +66,8 @@ import type {
   TokenLogSummary,
   YTIngestResponse,
   YTLabHealth,
+  YTProcessRequest,
+  YTProcessResponse,
 } from './types'
 
 const API_BASE = '/api'
@@ -1911,4 +1913,17 @@ export async function ingestYouTubeVideo(
 
 export async function getYTLabHealth(): Promise<YTLabHealth> {
   return fetchJSON('/yt-lab/health')
+}
+
+// ============================================================================
+// YT Lab Processing API (Phase 2 — AI Auto-Processor)
+// ============================================================================
+
+export async function processYouTubeVideo(
+  request: YTProcessRequest,
+): Promise<YTProcessResponse> {
+  return fetchJSON('/yt-lab/process', {
+    method: 'POST',
+    body: JSON.stringify(request),
+  })
 }

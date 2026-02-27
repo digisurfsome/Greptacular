@@ -51,6 +51,7 @@ from .routers import (
     terminal_router,
     workspace_router,
     yt_ingestion_router,
+    yt_processing_router,
 )
 from .schemas import SetupStatus
 from .services.agent_os_session import cleanup_all_agent_os_sessions
@@ -192,6 +193,7 @@ app.include_router(swarm_router)
 app.include_router(dunkstack_router)
 app.include_router(agent_os_router)
 app.include_router(yt_ingestion_router)
+app.include_router(yt_processing_router)
 
 
 # ============================================================================

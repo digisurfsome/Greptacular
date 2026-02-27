@@ -1467,3 +1467,47 @@ export interface YTLabHealth {
   youtube_transcript_api: boolean
   youtube_api_key: boolean
 }
+
+// ============================================================================
+// YT Lab Processing Types (Phase 2 — AI Auto-Processor)
+// ============================================================================
+
+export interface YTVideoMetadata {
+  title: string
+  channel: string
+  duration: number
+  description: string
+}
+
+export interface YTProcessRequest {
+  video_id: string
+  transcript: YTTranscriptSegment[]
+  metadata: YTVideoMetadata
+  user_context: string
+  extracted_urls: string[]
+  screenshot_suggestions: YTScreenshotSuggestion[]
+  model: string
+}
+
+export interface YTProcessProjectData {
+  name: string
+  niche: string
+  description: string
+  tags: string[]
+}
+
+export interface YTProcessStepData {
+  order: number
+  title: string
+  description: string
+  prompt: string
+  expectedOutput: string
+  notes: string
+  model: string
+}
+
+export interface YTProcessResponse {
+  project: YTProcessProjectData
+  steps: YTProcessStepData[]
+  processing_time: number
+}

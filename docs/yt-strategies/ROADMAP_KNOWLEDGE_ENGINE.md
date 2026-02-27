@@ -382,3 +382,127 @@ This means: process a video → get a micro-tool → use it → the output flows
 2. **Soon:** Auto-generate a micro-page (text box + button + output) within YT Lab for each strategy. One-click access.
 3. **Later:** PRD machine formalizes Path B. Auto-generates full product specs from the SaaS exploration.
 
+---
+
+## 12. The Knowledge Pipeline (Universal Extraction Bus)
+
+> **Principle:** Apps should be simple. The pipeline handles what happens after. Build once, connects everything forever.
+
+### The Problem
+
+Every app/tool in the ecosystem produces output. The 4-prompt tool produces optimized content. The cold email builder produces outreach sequences. The YT Lab produces strategies. Right now, that output sits wherever it was generated — in a text box, in localStorage, in a chat window. Getting it to the right place requires manual copy-paste.
+
+That doesn't scale. At 10+ tools producing output daily, manually routing knowledge is a full-time job.
+
+### The Solution: One Universal Pipe
+
+A single pipeline service that every app connects to. The app doesn't decide where its output goes — it just pushes to the pipe. The pipe decides.
+
+```
+┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐
+│ 4-Prompt │  │ Cold     │  │ YT Lab   │  │ Any New  │
+│ Tool     │  │ Email    │  │ Strategy │  │ App      │
+└────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘
+     │             │             │              │
+     └──────┬──────┴──────┬──────┴──────────────┘
+            ↓             ↓
+   ┌────────────────────────────────┐
+   │      KNOWLEDGE PIPELINE        │
+   │                                │
+   │  Step 1: CLASSIFY              │
+   │  "What kind of knowledge is    │
+   │   this? What's it about?"      │
+   │                                │
+   │  Step 2: TAG                   │
+   │  "What categories, topics,     │
+   │   and relationships apply?"    │
+   │                                │
+   │  Step 3: ROUTE                 │
+   │  "Where does this belong?      │
+   │   Which libraries, apps, and   │
+   │   databases need it?"          │
+   │                                │
+   │  Step 4: DELIVER               │
+   │  "Push to each destination     │
+   │   in the right format."        │
+   └──┬───┬───┬───┬───┬───┬────────┘
+      ↓   ↓   ↓   ↓   ↓   ↓
+    Work  Dunk  YT   App   Central  Related
+    space Stack Lab  Reg   Know-    Apps
+    Lib   Lib   Lib  istry ledge DB (features)
+```
+
+### How It Works Technically
+
+**The pipeline is a single API endpoint + one AI prompt.**
+
+Every app calls the same endpoint:
+```
+POST /api/knowledge-pipeline
+{
+  "source": "4-prompt-tool",
+  "source_context": "Generated from video #47 (prompt engineering)",
+  "content_type": "optimized_prompt",
+  "content": "... the actual output ...",
+  "metadata": { ... optional hints ... }
+}
+```
+
+The pipeline receives it and runs ONE AI classification prompt:
+```
+Given this output from [source], classify it:
+1. Primary category (automation, marketing, development, content, ...)
+2. Tags (3-10 relevant tags)
+3. Related entities (which videos, apps, strategies does this connect to?)
+4. Destinations (which libraries/databases should receive this?)
+5. Format for each destination (how should it be stored in each place?)
+```
+
+Then it delivers. Each destination has a simple adapter:
+- **Workspace Library:** Save as a knowledge entry with tags
+- **Dunk Stack Library:** Save as a build spec / reference
+- **YT Lab:** Link to source video(s), update strategy metadata
+- **App Registry:** Flag as potential feature for matching apps
+- **Central Knowledge DB:** Always save here (the master record)
+
+### Why This Changes Everything
+
+1. **Apps stay simple.** A micro-tool is still just text box → prompt → output. It doesn't need export logic, save logic, or routing logic. It just calls the pipeline.
+
+2. **New destinations are free.** Build a new system? Add one adapter to the pipeline. Every existing app automatically routes to it.
+
+3. **New apps are free.** Build a new tool? Add one pipeline call at the end. It automatically connects to every existing destination.
+
+4. **Knowledge compounds automatically.** Every piece of output from every tool gets classified, tagged, and routed. The knowledge graph grows without manual effort.
+
+5. **Cross-pollination happens by default.** The pipeline sees ALL knowledge flowing through the system. It can identify: "This output from the prompt tool is relevant to the cold email app you built last week."
+
+### The Central Knowledge DB
+
+Everything flows through the pipeline into a central database. This is the master record of ALL knowledge in the system, regardless of where it was generated or where it was delivered.
+
+Schema (conceptual):
+```
+knowledge_entries:
+  - id
+  - source (which app/tool produced this)
+  - source_video_id (if from YT Lab)
+  - content (the actual knowledge)
+  - category
+  - tags[]
+  - related_entries[] (links to other knowledge)
+  - related_apps[] (links to apps this applies to)
+  - destinations_delivered[] (where it was sent)
+  - created_at
+  - quality_score (how actionable/valuable)
+```
+
+This is what the Mastermind advisors query. This is what the consolidation engine merges. This is what the app feedback loop references. The Central Knowledge DB is the brain.
+
+### Build Priority
+
+1. **Now:** Define the API contract (what apps send, what the pipeline returns)
+2. **Soon:** Build the pipeline endpoint + classification prompt + Central Knowledge DB
+3. **Then:** Add adapters for each destination (Workspace, Dunk Stack, YT Lab, App Registry)
+4. **Later:** Add the AI cross-reference layer that proactively suggests connections
+

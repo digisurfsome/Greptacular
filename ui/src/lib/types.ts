@@ -1467,3 +1467,48 @@ export interface YTLabHealth {
   youtube_transcript_api: boolean
   youtube_api_key: boolean
 }
+
+// ============================================================================
+// YT Lab Execution Engine Types
+// ============================================================================
+
+export type YTExecutionStatus = 'idle' | 'starting' | 'running' | 'paused' | 'completed' | 'error' | 'stopped'
+
+export interface YTExecutionStepConfig {
+  step_id: string
+  prompt: string
+  model: string
+  role_system_prompt: string
+  previous_outputs: string[]
+}
+
+export interface YTExecutionStepResult {
+  step_id: string
+  ai_output: string
+  screenshots: string[]
+  status: 'completed' | 'error' | 'paused'
+  error_message: string
+}
+
+export interface YTExecutionSession {
+  session_id: string
+  project_id: string
+  status: YTExecutionStatus
+  current_step_index: number
+  total_steps: number
+  novnc_url: string | null
+  started_at: string
+  results: YTExecutionStepResult[]
+}
+
+export interface YTExecutionEvent {
+  type: 'status' | 'screenshot' | 'step_progress' | 'agent_message' | 'error'
+  session_id: string
+  data: Record<string, unknown>
+}
+
+export interface YTExecutionHealth {
+  enabled: boolean
+  docker_available: boolean
+  active_sessions: number
+}

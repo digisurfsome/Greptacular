@@ -17,7 +17,7 @@ import json
 import logging
 import os
 import shutil
-import subprocess
+import tempfile
 import time
 from typing import Callable, Optional
 
@@ -171,53 +171,61 @@ class YTDiscovery:
 
         return json.loads(text)
 
-    async def _call_via_cli(self, system_prompt: str, user_message: str, model: str) -> str:
-        """Call Claude via the CLI subprocess using subscription auth.
+    async def _call_via_sdk(self, system_prompt: str, user_message: str, model: str) -> str:
+        """Call Claude via the Agent SDK using subscription auth.
 
-        Uses ``claude -p`` (print mode) with ``force_subscription=True`` so the
-        CLI falls back to subscription OAuth instead of burning API credits.
-        This matches the pattern used by all other services (workspace chat,
-        assistant chat, spec chat, etc.).
+        Uses ``ClaudeSDKClient`` — the same pattern used by workspace chat,
+        assistant chat, spec chat, and all AutoForge coding agents.  The SDK
+        handles subscription OAuth internally so we never burn API credits.
 
         Returns the raw text response from Claude.
         Raises RuntimeError if the CLI is not available or the call fails.
         """
-        cli_path = shutil.which("claude")
-        if not cli_path:
-            raise RuntimeError("Claude CLI not found on PATH")
+        from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 
         from registry import get_effective_sdk_env
+
+        system_cli = shutil.which("claude")
+        if not system_cli:
+            raise RuntimeError("Claude CLI not found on PATH")
+
         sdk_env = get_effective_sdk_env(force_subscription=True)
 
-        env = {**os.environ, **sdk_env}
+        # Use a temp directory as cwd — we don't need file access
+        scratch = tempfile.mkdtemp(prefix="yt_discovery_")
 
-        cmd = [
-            cli_path, "-p",
-            "--model", model,
-            "--system-prompt", system_prompt,
-            "--output-format", "text",
-            "--no-session-persistence",
-        ]
-
-        loop = asyncio.get_running_loop()
-
-        def _run():
-            result = subprocess.run(
-                cmd,
-                input=user_message,
-                capture_output=True,
-                text=True,
-                env=env,
-                timeout=300,  # 5 min timeout for long transcripts
+        client = ClaudeSDKClient(
+            options=ClaudeAgentOptions(
+                model=model,
+                cli_path=system_cli,
+                system_prompt=system_prompt,
+                env=sdk_env,
+                max_turns=1,
+                permission_mode="bypassPermissions",
+                allowed_tools=[],
+                cwd=scratch,
             )
-            if result.returncode != 0:
-                raise RuntimeError(
-                    f"Claude CLI exited with code {result.returncode}: "
-                    f"{result.stderr[:500]}"
-                )
-            return result.stdout.strip()
+        )
 
-        return await loop.run_in_executor(None, _run)
+        try:
+            await client.__aenter__()
+            await client.query(user_message)
+
+            full_text = ""
+            async for msg in client.receive_response():
+                if type(msg).__name__ == "AssistantMessage" and hasattr(msg, "content"):
+                    for block in msg.content:
+                        if type(block).__name__ == "TextBlock" and hasattr(block, "text"):
+                            full_text += block.text
+
+            if not full_text.strip():
+                raise RuntimeError("Claude SDK returned empty response")
+            return full_text.strip()
+        finally:
+            try:
+                await client.__aexit__(None, None, None)
+            except Exception:
+                pass
 
     async def discover(
         self,
@@ -286,13 +294,13 @@ class YTDiscovery:
         # Falls back to Anthropic SDK if CLI is not available.
         raw_text = ""
         try:
-            log("Using Claude CLI (subscription billing)...")
-            raw_text = await self._call_via_cli(DISCOVERY_PROMPT, user_message, use_model)
-            log("Claude CLI responded successfully")
-            logger.info("Video %s: used Claude CLI (subscription billing)", video_id)
+            log("Using Claude SDK (subscription billing)...")
+            raw_text = await self._call_via_sdk(DISCOVERY_PROMPT, user_message, use_model)
+            log("Claude SDK responded successfully (subscription billing)")
+            logger.info("Video %s: used Claude SDK (subscription billing)", video_id)
         except Exception as cli_err:
-            logger.info("Claude CLI unavailable (%s), falling back to Anthropic SDK", cli_err)
-            log("CLI unavailable — falling back to API key billing...")
+            logger.info("Claude SDK unavailable (%s), falling back to Anthropic SDK", cli_err)
+            log("SDK unavailable — falling back to API key billing...")
 
             try:
                 import anthropic

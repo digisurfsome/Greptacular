@@ -10,7 +10,7 @@
  * ingestion result to the parent.
  */
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import {
   Download,
   Loader2,
@@ -74,9 +74,10 @@ const STEP_ORDER: Array<Exclude<IngestStep, 'idle' | 'done' | 'error'>> = [
 
 /** Format seconds into MM:SS or HH:MM:SS */
 function formatDuration(totalSeconds: number): string {
-  const hours = Math.floor(totalSeconds / 3600)
-  const minutes = Math.floor((totalSeconds % 3600) / 60)
-  const seconds = totalSeconds % 60
+  const total = Math.floor(totalSeconds)
+  const hours = Math.floor(total / 3600)
+  const minutes = Math.floor((total % 3600) / 60)
+  const seconds = total % 60
 
   if (hours > 0) {
     return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
@@ -102,32 +103,40 @@ function isValidYouTubeUrl(url: string): boolean {
 function StatusStep({
   step,
   currentStep,
+  errorAtStep,
 }: {
   step: Exclude<IngestStep, 'idle' | 'done' | 'error'>
   currentStep: IngestStep
+  errorAtStep: IngestStep | null
 }) {
   const stepIndex = STEP_ORDER.indexOf(step)
-  const currentIndex = currentStep === 'done'
-    ? STEP_ORDER.length
-    : currentStep === 'error'
-      ? -1
-      : STEP_ORDER.indexOf(currentStep as typeof step)
 
-  const isComplete = currentIndex > stepIndex || currentStep === 'done'
+  // When in error state, use the step where the error occurred to determine progress
+  const referenceStep = currentStep === 'error' && errorAtStep ? errorAtStep : currentStep
+  const currentIndex = referenceStep === 'done'
+    ? STEP_ORDER.length
+    : referenceStep === 'error'
+      ? -1
+      : STEP_ORDER.indexOf(referenceStep as Exclude<IngestStep, 'idle' | 'done' | 'error'>)
+
+  const isComplete = currentIndex > stepIndex || referenceStep === 'done'
+  const isFailed = currentStep === 'error' && errorAtStep === step
   const isActive = currentStep === step
   const config = STEP_LABELS[step]
 
   return (
     <div className="flex items-center gap-2 text-sm">
-      {isComplete ? (
+      {isFailed ? (
+        <AlertCircle size={16} className="text-destructive shrink-0" />
+      ) : isComplete ? (
         <CheckCircle2 size={16} className="text-emerald-500 shrink-0" />
       ) : isActive ? (
         <Loader2 size={16} className="text-primary animate-spin shrink-0" />
       ) : (
         <Circle size={16} className="text-muted-foreground/40 shrink-0" />
       )}
-      <span className={isComplete ? 'text-foreground' : isActive ? 'text-foreground' : 'text-muted-foreground'}>
-        {isComplete ? config.completedLabel : isActive ? config.label : config.label.replace('...', '')}
+      <span className={isFailed ? 'text-destructive' : isComplete ? 'text-foreground' : isActive ? 'text-foreground' : 'text-muted-foreground'}>
+        {isFailed ? `Failed: ${config.label.replace('...', '')}` : isComplete ? config.completedLabel : isActive ? config.label : config.label.replace('...', '')}
       </span>
     </div>
   )
@@ -141,11 +150,22 @@ export function VideoIngestPanel({ onIngestComplete }: VideoIngestPanelProps): R
   const [url, setUrl] = useState('')
   const [captureScreenshots, setCaptureScreenshots] = useState(false)
   const [currentStep, setCurrentStep] = useState<IngestStep>('idle')
+  const [errorAtStep, setErrorAtStep] = useState<IngestStep | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [result, setResult] = useState<YTIngestResponse | null>(null)
   const [showTranscript, setShowTranscript] = useState(false)
 
   const isProcessing = currentStep !== 'idle' && currentStep !== 'done' && currentStep !== 'error'
+
+  // Track latest step for error reporting and timer cleanup on unmount
+  const currentStepRef = useRef(currentStep)
+  useEffect(() => { currentStepRef.current = currentStep }, [currentStep])
+  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([])
+
+  // Clean up timers on unmount
+  useEffect(() => {
+    return () => { timersRef.current.forEach(clearTimeout) }
+  }, [])
 
   const handleImport = useCallback(async () => {
     const trimmedUrl = url.trim()
@@ -158,6 +178,7 @@ export function VideoIngestPanel({ onIngestComplete }: VideoIngestPanelProps): R
     }
 
     setErrorMessage(null)
+    setErrorAtStep(null)
     setResult(null)
     setShowTranscript(false)
 
@@ -165,19 +186,24 @@ export function VideoIngestPanel({ onIngestComplete }: VideoIngestPanelProps): R
     // call, but we show incremental feedback to keep the user informed.
     setCurrentStep('fetching_metadata')
 
-    const stepTimer1 = setTimeout(() => setCurrentStep('fetching_transcript'), 800)
-    const stepTimer2 = setTimeout(() => setCurrentStep('analyzing'), 1800)
+    timersRef.current.forEach(clearTimeout)
+    const t1 = setTimeout(() => setCurrentStep('fetching_transcript'), 800)
+    const t2 = setTimeout(() => setCurrentStep('analyzing'), 1800)
+    timersRef.current = [t1, t2]
 
     try {
       const response = await ingestYouTubeVideo(trimmedUrl, captureScreenshots)
-      clearTimeout(stepTimer1)
-      clearTimeout(stepTimer2)
+      clearTimeout(t1)
+      clearTimeout(t2)
+      timersRef.current = []
       setCurrentStep('done')
       setResult(response)
       onIngestComplete?.(response)
     } catch (err) {
-      clearTimeout(stepTimer1)
-      clearTimeout(stepTimer2)
+      clearTimeout(t1)
+      clearTimeout(t2)
+      timersRef.current = []
+      setErrorAtStep(currentStepRef.current)
       setCurrentStep('error')
       setErrorMessage(err instanceof Error ? err.message : 'Failed to ingest video')
     }
@@ -186,6 +212,7 @@ export function VideoIngestPanel({ onIngestComplete }: VideoIngestPanelProps): R
   const handleReset = useCallback(() => {
     setUrl('')
     setCurrentStep('idle')
+    setErrorAtStep(null)
     setErrorMessage(null)
     setResult(null)
     setShowTranscript(false)
@@ -290,7 +317,7 @@ export function VideoIngestPanel({ onIngestComplete }: VideoIngestPanelProps): R
           <div className="space-y-1.5 border-t border-border pt-3">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Status</p>
             {STEP_ORDER.map((step) => (
-              <StatusStep key={step} step={step} currentStep={currentStep} />
+              <StatusStep key={step} step={step} currentStep={currentStep} errorAtStep={errorAtStep} />
             ))}
           </div>
         )}

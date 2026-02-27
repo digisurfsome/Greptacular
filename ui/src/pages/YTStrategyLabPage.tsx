@@ -12,6 +12,7 @@
 
 import { useState, useMemo, useCallback, useEffect } from 'react'
 import {
+  AlertCircle,
   ArrowLeft,
   ChevronRight,
   Plus,
@@ -47,6 +48,7 @@ import type {
   YTProjectStatus,
   YTStrategyStepStatus,
 } from '@/lib/types'
+import { VideoIngestPanel } from '@/components/yt-lab/VideoIngestPanel'
 
 // ============================================================================
 // Constants
@@ -93,11 +95,14 @@ function loadProjects(): YTStrategyProject[] {
   return []
 }
 
+/** Callback set by the page component to show save errors in the UI. */
+let _onSaveError: ((msg: string) => void) | null = null
+
 function saveProjects(projects: YTStrategyProject[]): void {
   try {
     localStorage.setItem(STORAGE_KEY_PROJECTS, JSON.stringify(projects))
   } catch {
-    // localStorage full or unavailable
+    _onSaveError?.('Failed to save projects — localStorage may be full. Your changes may be lost.')
   }
 }
 
@@ -115,7 +120,7 @@ function saveSteps(projectId: string, steps: YTStrategyStep[]): void {
   try {
     localStorage.setItem(stepsStorageKey(projectId), JSON.stringify(steps))
   } catch {
-    // localStorage full or unavailable
+    _onSaveError?.('Failed to save steps — localStorage may be full. Your changes may be lost.')
   }
 }
 
@@ -672,6 +677,8 @@ function StepDetail({
   onSubStepStatusChange: (subStepId: string, status: YTStrategyStepStatus) => void
 }): React.JSX.Element {
   const statusConfig = STEP_STATUS_CONFIG[step.status]
+  const [confirmDeleteStep, setConfirmDeleteStep] = useState(false)
+  const [confirmDeleteSubStepId, setConfirmDeleteSubStepId] = useState<string | null>(null)
 
   /** Copy prompt text to clipboard. */
   const copyPrompt = useCallback(() => {
@@ -684,6 +691,50 @@ function StepDetail({
 
   return (
     <div className="space-y-6">
+      {/* Step deletion confirmation */}
+      {confirmDeleteStep && (
+        <div className="flex items-center gap-3 rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3">
+          <p className="text-sm text-foreground flex-1">
+            Delete <strong>Step {step.order}{step.title ? `: ${step.title}` : ''}</strong> and all its sub-steps?
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setConfirmDeleteStep(false)}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => { setConfirmDeleteStep(false); onDelete() }}
+          >
+            Delete
+          </Button>
+        </div>
+      )}
+
+      {/* Sub-step deletion confirmation */}
+      {confirmDeleteSubStepId && (
+        <div className="flex items-center gap-3 rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3">
+          <p className="text-sm text-foreground flex-1">Delete this sub-step?</p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setConfirmDeleteSubStepId(null)}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => { onDeleteSubStep(confirmDeleteSubStepId); setConfirmDeleteSubStepId(null) }}
+          >
+            Delete
+          </Button>
+        </div>
+      )}
+
       {/* Step header */}
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 space-y-2">
@@ -718,7 +769,7 @@ function StepDetail({
         <Button
           variant="outline"
           size="sm"
-          onClick={onDelete}
+          onClick={() => setConfirmDeleteStep(true)}
           className="text-destructive hover:bg-destructive/10 shrink-0"
           aria-label="Delete step"
         >
@@ -813,7 +864,7 @@ function StepDetail({
                 key={subStep.id}
                 subStep={subStep}
                 onUpdate={(updates) => onUpdateSubStep(subStep.id, updates)}
-                onDelete={() => onDeleteSubStep(subStep.id)}
+                onDelete={() => setConfirmDeleteSubStepId(subStep.id)}
                 onStatusChange={(status) => onSubStepStatusChange(subStep.id, status)}
               />
             ))}
@@ -897,17 +948,21 @@ function StrategyBuilder({
   useEffect(() => {
     saveSteps(project.id, steps)
 
-    // Derive project status from step states
+    // Derive project status from step states — only update if it actually changed
+    let derivedStatus: YTProjectStatus
     if (steps.length === 0) {
-      onUpdateProject({ status: 'draft' })
+      derivedStatus = 'draft'
     } else if (steps.every(s => s.status === 'complete')) {
-      onUpdateProject({ status: 'complete' })
+      derivedStatus = 'complete'
     } else if (steps.some(s => s.status === 'in_progress' || s.status === 'complete')) {
-      onUpdateProject({ status: 'in-progress' })
+      derivedStatus = 'in-progress'
     } else {
-      onUpdateProject({ status: 'draft' })
+      derivedStatus = 'draft'
     }
-  }, [steps, project.id, onUpdateProject])
+    if (derivedStatus !== project.status) {
+      onUpdateProject({ status: derivedStatus })
+    }
+  }, [steps, project.id, project.status, onUpdateProject])
 
   const selectedStep = useMemo(
     () => steps.find(s => s.id === selectedStepId) ?? null,
@@ -943,13 +998,16 @@ function StrategyBuilder({
   const deleteStep = useCallback((stepId: string) => {
     setSteps(prev => {
       const filtered = prev.filter(s => s.id !== stepId)
+      // Select an adjacent step if the deleted step was selected
+      if (selectedStepId === stepId) {
+        const deletedIdx = prev.findIndex(s => s.id === stepId)
+        const nextStep = filtered[Math.min(deletedIdx, filtered.length - 1)] ?? null
+        setSelectedStepId(nextStep?.id ?? null)
+      }
       // Re-number
       return filtered.map((s, i) => ({ ...s, order: i + 1 }))
     })
-    if (selectedStepId === stepId) {
-      setSelectedStepId(steps.length > 1 ? steps.find(s => s.id !== stepId)?.id ?? null : null)
-    }
-  }, [selectedStepId, steps])
+  }, [selectedStepId])
 
   /** Move a step up (decrease order). */
   const moveStepUp = useCallback((stepId: string) => {
@@ -1104,7 +1162,14 @@ function StrategyBuilder({
 
       {/* Main content area */}
       <div className="flex-1 overflow-auto p-6">
-        <div className="max-w-3xl mx-auto">
+        <div className="max-w-3xl mx-auto space-y-6">
+          {/* Video Ingest Panel — shown when project has a YouTube source URL */}
+          {project.sourceUrl && (
+            project.sourceUrl.includes('youtube.com') || project.sourceUrl.includes('youtu.be')
+          ) && (
+            <VideoIngestPanel />
+          )}
+
           {steps.length === 0 ? (
             <NoStepsYet onAddStep={addStep} />
           ) : selectedStep ? (
@@ -1141,6 +1206,13 @@ export function YTStrategyLabPage(): React.JSX.Element {
   const [searchQuery, setSearchQuery] = useState('')
   const [sortBy, setSortBy] = useState<SortOption>('date-desc')
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  // Register save error callback so persistence helpers can show errors
+  useEffect(() => {
+    _onSaveError = (msg) => setSaveError(msg)
+    return () => { _onSaveError = null }
+  }, [])
 
   // Persist projects whenever they change
   useEffect(() => {
@@ -1152,14 +1224,22 @@ export function YTStrategyLabPage(): React.JSX.Element {
     [projects, selectedProjectId]
   )
 
-  /** Get step counts for a project (for the project card display). */
-  const getStepCounts = useCallback((projectId: string) => {
-    const steps = loadSteps(projectId)
-    return {
-      total: steps.length,
-      completed: steps.filter(s => s.status === 'complete').length,
+  /** Memoized step counts for all projects — avoids localStorage reads during render. */
+  const stepCountsMap = useMemo(() => {
+    const map: Record<string, { total: number; completed: number }> = {}
+    for (const p of projects) {
+      const steps = loadSteps(p.id)
+      map[p.id] = {
+        total: steps.length,
+        completed: steps.filter(s => s.status === 'complete').length,
+      }
     }
-  }, [])
+    return map
+  }, [projects])
+
+  const getStepCounts = useCallback((projectId: string) => {
+    return stepCountsMap[projectId] ?? { total: 0, completed: 0 }
+  }, [stepCountsMap])
 
   /** Filtered and sorted projects for the list view. */
   const filteredProjects = useMemo(() => {
@@ -1365,6 +1445,21 @@ export function YTStrategyLabPage(): React.JSX.Element {
         )}
       </div>
 
+      {/* Save error banner */}
+      {saveError && (
+        <div className="flex items-center gap-2 px-4 py-2 bg-destructive/10 border-b border-destructive/30">
+          <AlertCircle size={14} className="text-destructive shrink-0" />
+          <p className="text-xs text-destructive flex-1">{saveError}</p>
+          <button
+            onClick={() => setSaveError(null)}
+            className="p-0.5 text-destructive hover:text-destructive/80"
+            aria-label="Dismiss save error"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
       {/* Main content */}
       {view === 'list' && (
         <div className="flex-1 overflow-auto p-6">
@@ -1494,11 +1589,19 @@ export function YTStrategyLabPage(): React.JSX.Element {
 
       {/* Delete confirmation overlay */}
       {confirmDeleteId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-dialog-title"
+          aria-describedby="delete-dialog-desc"
+          onClick={(e) => { if (e.target === e.currentTarget) setConfirmDeleteId(null) }}
+          onKeyDown={(e) => { if (e.key === 'Escape') setConfirmDeleteId(null) }}
+        >
           <Card className="w-full max-w-sm mx-4">
             <CardContent className="p-6 space-y-4">
-              <h3 className="text-base font-semibold text-foreground">Delete Project?</h3>
-              <p className="text-sm text-muted-foreground">
+              <h3 id="delete-dialog-title" className="text-base font-semibold text-foreground">Delete Project?</h3>
+              <p id="delete-dialog-desc" className="text-sm text-muted-foreground">
                 This will permanently delete the project and all its steps. This action cannot be undone.
               </p>
               <div className="flex items-center gap-3 justify-end">
@@ -1513,6 +1616,7 @@ export function YTStrategyLabPage(): React.JSX.Element {
                   variant="destructive"
                   size="sm"
                   onClick={() => handleDeleteProject(confirmDeleteId)}
+                  autoFocus
                 >
                   Delete
                 </Button>

@@ -198,10 +198,20 @@ def _get_metadata_ytdlp(url: str) -> dict:
         return {}
 
 
+def _clean_extracted_url(url: str) -> str:
+    """Strip trailing punctuation without breaking parenthesized URLs like Wikipedia."""
+    # First strip trailing punctuation that is never part of a URL
+    url = url.rstrip(".,;:!?")
+    # Only strip trailing ')' if parentheses are unbalanced (more close than open)
+    while url.endswith(")") and url.count(")") > url.count("("):
+        url = url[:-1]
+    return url
+
+
 def _extract_urls(text: str) -> list[str]:
     """Extract all URLs from a block of text (e.g., video description)."""
     url_pattern = re.compile(
-        r"https?://[^\s<>\"'\])]+",
+        r"https?://[^\s<>\"']+",
         re.IGNORECASE,
     )
     urls = url_pattern.findall(text)
@@ -209,8 +219,7 @@ def _extract_urls(text: str) -> list[str]:
     seen: set[str] = set()
     unique: list[str] = []
     for u in urls:
-        # Strip trailing punctuation that may have been captured
-        u = u.rstrip(".,;:!?)")
+        u = _clean_extracted_url(u)
         if u not in seen:
             seen.add(u)
             unique.append(u)
@@ -320,7 +329,7 @@ def _capture_screenshots(
 
 
 @router.post("/ingest", response_model=IngestResponse)
-async def ingest_video(body: IngestRequest):
+def ingest_video(body: IngestRequest):
     """
     Ingest a YouTube video: extract transcript, metadata, description links,
     and optionally capture screenshots at key visual moments.
@@ -343,9 +352,15 @@ async def ingest_video(body: IngestRequest):
     thumbnail_url = metadata.get("thumbnail_url", f"https://img.youtube.com/vi/{video_id}/maxresdefault.jpg")
     description = metadata.get("description", "")
 
-    # Format publish_date from YYYYMMDD to YYYY-MM-DD if available
+    # Format publish_date from YYYYMMDD to YYYY-MM-DD if it's a valid date
     if publish_date and len(publish_date) == 8 and publish_date.isdigit():
-        publish_date = f"{publish_date[:4]}-{publish_date[4:6]}-{publish_date[6:8]}"
+        try:
+            from datetime import datetime as _dt
+
+            _dt.strptime(publish_date, "%Y%m%d")
+            publish_date = f"{publish_date[:4]}-{publish_date[4:6]}-{publish_date[6:8]}"
+        except ValueError:
+            publish_date = ""
 
     # Fetch transcript
     transcript = _get_transcript(video_id)
@@ -391,8 +406,10 @@ async def ingest_video(body: IngestRequest):
 async def yt_lab_health():
     """
     Check availability of optional dependencies (yt-dlp, ffmpeg,
-    youtube-transcript-api).
+    youtube-transcript-api). Returns 503 if critical deps are missing.
     """
+    from fastapi.responses import JSONResponse
+
     has_ytdlp = shutil.which("yt-dlp") is not None
     has_ffmpeg = shutil.which("ffmpeg") is not None
 
@@ -406,9 +423,47 @@ async def yt_lab_health():
 
     has_api_key = bool(os.getenv("YOUTUBE_API_KEY"))
 
-    return {
+    body = {
         "yt_dlp": has_ytdlp,
         "ffmpeg": has_ffmpeg,
         "youtube_transcript_api": has_transcript_api,
         "youtube_api_key": has_api_key,
+        "status": "ok" if (has_ytdlp and has_transcript_api) else "degraded",
     }
+
+    status_code = 200 if (has_ytdlp and has_transcript_api) else 503
+    return JSONResponse(content=body, status_code=status_code)
+
+
+@router.delete("/screenshots")
+def cleanup_screenshots():
+    """
+    Delete all cached screenshot files to reclaim disk space.
+    Returns the number of files and bytes cleaned up.
+    """
+    screenshot_dir = Path(tempfile.gettempdir()) / "yt_lab_screenshots"
+    if not screenshot_dir.exists():
+        return {"deleted_files": 0, "freed_bytes": 0}
+
+    total_files = 0
+    total_bytes = 0
+
+    for path in screenshot_dir.rglob("*"):
+        if path.is_file():
+            total_bytes += path.stat().st_size
+            path.unlink(missing_ok=True)
+            total_files += 1
+
+    # Remove empty directories
+    for path in sorted(screenshot_dir.rglob("*"), reverse=True):
+        if path.is_dir():
+            try:
+                path.rmdir()
+            except OSError:
+                pass
+    try:
+        screenshot_dir.rmdir()
+    except OSError:
+        pass
+
+    return {"deleted_files": total_files, "freed_bytes": total_bytes}

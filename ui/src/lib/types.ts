@@ -1524,3 +1524,64 @@ export interface YTProcessResponse {
   steps: YTProcessStepData[]
   processing_time: number
 }
+
+// ============================================================================
+// YT Lab Execution Types (Phase 5 — Live Viewer + Phase 6 — Pause/Resume)
+// ============================================================================
+
+export type YTExecutionStatus = 'idle' | 'running' | 'paused' | 'takeover' | 'completed' | 'error'
+
+export type YTExecutionEventType =
+  | 'status_change'
+  | 'agent_action'
+  | 'agent_thinking'
+  | 'step_change'
+  | 'screenshot'
+  | 'user_message'
+  | 'agent_response'
+  | 'error'
+
+export interface YTExecutionEvent {
+  type: YTExecutionEventType
+  session_id: string
+  timestamp: string
+  data: {
+    status?: YTExecutionStatus
+    description?: string
+    content?: string
+    step_id?: string
+    step_status?: YTStrategyStepStatus
+    current_step?: number
+    total_steps?: number
+    image_url?: string
+    message?: string
+  }
+}
+
+export interface YTExecutionLogEntry {
+  id: string
+  text: string
+  type: 'action' | 'thinking' | 'error' | 'success' | 'user' | 'agent'
+  timestamp: string
+}
+
+export interface YTExecutionSession {
+  session_id: string
+  project_id: string
+  status: YTExecutionStatus
+  current_step: number
+  total_steps: number
+  novnc_url: string
+}
+
+export interface YTStartExecutionRequest {
+  project_id: string
+  step_ids: string[]
+  model: string
+}
+
+export interface YTStartExecutionResponse {
+  session_id: string
+  novnc_url: string
+  status: YTExecutionStatus
+}

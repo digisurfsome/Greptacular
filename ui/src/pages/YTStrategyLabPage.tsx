@@ -54,7 +54,8 @@ import type {
 } from '@/lib/types'
 import { VideoIngestPanel } from '@/components/yt-lab/VideoIngestPanel'
 import { ScreenshotGallery } from '@/components/yt-lab/ScreenshotGallery'
-import { processYouTubeVideo } from '@/lib/api'
+import { ExecutionViewer } from '@/components/yt-lab/ExecutionViewer'
+import { processYouTubeVideo, startExecution } from '@/lib/api'
 
 // ============================================================================
 // Constants
@@ -1407,7 +1408,7 @@ function StrategyBuilder({
 // Main Page Component
 // ============================================================================
 
-type View = 'list' | 'create' | 'edit' | 'detail'
+type View = 'list' | 'create' | 'edit' | 'detail' | 'execution'
 
 export function YTStrategyLabPage(): React.JSX.Element {
   const [view, setView] = useState<View>('list')
@@ -1415,6 +1416,8 @@ export function YTStrategyLabPage(): React.JSX.Element {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
+  const [executionSessionId, setExecutionSessionId] = useState<string | null>(null)
+  const [executionNovncUrl, setExecutionNovncUrl] = useState<string | null>(null)
   const [sortBy, setSortBy] = useState<SortOption>('date-desc')
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -1581,6 +1584,51 @@ export function YTStrategyLabPage(): React.JSX.Element {
     setView('list')
   }, [])
 
+  /** Launch execution viewer for a project. */
+  const handleStartExecution = useCallback(async (projectId: string) => {
+    const steps = loadSteps(projectId)
+    if (steps.length === 0) return
+
+    setSelectedProjectId(projectId)
+
+    try {
+      const result = await startExecution({
+        project_id: projectId,
+        step_ids: steps.map(s => s.id),
+        model: steps[0]?.model ?? 'claude-opus-4-6',
+      })
+      setExecutionSessionId(result.session_id)
+      setExecutionNovncUrl(result.novnc_url)
+    } catch {
+      // If backend isn't available, open viewer with null session (demo mode)
+      setExecutionSessionId(null)
+      setExecutionNovncUrl(null)
+    }
+
+    setView('execution')
+  }, [])
+
+  /** Return from execution viewer to project detail. */
+  const handleBackFromExecution = useCallback(() => {
+    setExecutionSessionId(null)
+    setExecutionNovncUrl(null)
+    setView('detail')
+  }, [])
+
+  // Execution view replaces the entire page layout (it has its own top bar)
+  if (view === 'execution' && selectedProject) {
+    const executionSteps = loadSteps(selectedProject.id)
+    return (
+      <ExecutionViewer
+        project={selectedProject}
+        steps={executionSteps}
+        sessionId={executionSessionId}
+        novncUrl={executionNovncUrl}
+        onBack={handleBackFromExecution}
+      />
+    )
+  }
+
   return (
     <div className="h-screen flex flex-col bg-background">
       {/* Breadcrumb navigation bar */}
@@ -1638,6 +1686,20 @@ export function YTStrategyLabPage(): React.JSX.Element {
             </>
           )}
         </nav>
+
+        {/* Right side: Run button (detail view) */}
+        {view === 'detail' && selectedProject && (
+          <div className="ml-auto flex items-center gap-1">
+            <Button
+              size="sm"
+              className="h-7 px-3 gap-1.5 text-xs"
+              onClick={() => handleStartExecution(selectedProject.id)}
+            >
+              <CirclePlay size={12} />
+              Run
+            </Button>
+          </div>
+        )}
 
         {/* Right side: Import Template placeholder */}
         {view === 'list' && (

@@ -1,0 +1,465 @@
+{
+  "project": {
+    "id": "proj_ai_ad_agency_car_dealerships",
+    "name": "AI Ad Agency for Car Dealerships",
+    "sourceUrl": "https://www.youtube.com/watch?v=AI-Ad-Agency-Car-Dealerships",
+    "niche": "Car Dealerships / Automotive Advertising",
+    "description": "Build a complete AI-fulfilled ad agency targeting car dealerships in under 45 minutes. Uses a computer-use AI agent (Claude) to handle brand creation, competitive research, ad creative generation, Meta Ads deployment, lead generation, and automated outreach. Revenue target: $10K/month at $2,500/month per dealership client.",
+    "tags": [
+      "ai-agency",
+      "car-dealerships",
+      "meta-ads",
+      "computer-use",
+      "local-business",
+      "ad-creative",
+      "lead-generation",
+      "outreach-automation"
+    ],
+    "status": "draft",
+    "createdAt": "2026-02-27T00:00:00.000Z",
+    "updatedAt": "2026-02-27T00:00:00.000Z"
+  },
+  "steps": [
+    {
+      "id": "step_01_niche_selection",
+      "projectId": "proj_ai_ad_agency_car_dealerships",
+      "order": 1,
+      "title": "Niche Selection & Positioning",
+      "description": "Identify and validate a high-value niche for the AI ad agency. The ideal niche has businesses that already spend heavily on advertising, have recurring ad needs, and operate in a space where creative turnover is constant. Car dealerships are ideal because they have large ad budgets, constant inventory changes, and rely on paid ads to move vehicles. Define the agency positioning, pricing model, and revenue target.",
+      "prompt": "I'm building an AI-fulfilled ad agency. I need you to help me validate and define the niche.\n\nTarget niche: Local car dealerships\n\nPlease analyze this niche and create a positioning document that includes:\n\n1. **Niche Validation**:\n   - Why car dealerships are ideal clients for an AI ad agency\n   - Average monthly ad spend for a mid-size car dealership\n   - Pain points dealerships face with their current advertising\n   - How frequently they need new ad creatives (inventory turnover)\n\n2. **Agency Positioning**:\n   - Agency name suggestion (something that conveys AI + automotive + performance)\n   - One-line value proposition\n   - 3-5 key differentiators vs traditional agencies\n   - Why AI fulfillment is specifically advantageous for automotive ads\n\n3. **Revenue Model**:\n   - Recommended monthly retainer price per dealership\n   - Services included at that price point\n   - Number of clients needed to hit $10,000/month\n   - Upsell opportunities (additional services at higher tiers)\n\n4. **Ideal Client Profile**:\n   - Dealership size (small independent vs large franchise)\n   - Geographic focus (local, regional, national)\n   - Current advertising maturity level\n   - Decision maker title and typical objections\n\nFormat this as a clean strategy document I can reference throughout the agency build.",
+      "expectedOutput": "A comprehensive niche validation and positioning document covering: niche analysis with market data, agency brand positioning with name and value proposition, revenue model with pricing tiers and client targets, and ideal client profile with qualification criteria. Should be 2-3 pages and serve as the strategic foundation for all subsequent steps.",
+      "notes": "ENHANCEMENTS BEYOND THE VIDEO:\n- Add a TAM (Total Addressable Market) calculation for your target geography\n- Research the number of dealerships in your state/region using NADA data\n- Include a competitive landscape section analyzing existing agencies serving dealerships\n- Define 3 pricing tiers (Starter $1,500/mo, Growth $2,500/mo, Enterprise $5,000/mo) instead of a single price\n- Create a 'niche scoring rubric' you can reuse to evaluate other niches later\n- Consider adjacent niches you could expand into (RV dealers, boat dealers, equipment rental)\n- Document seasonal patterns in automotive advertising (year-end clearance, tax refund season, etc.)",
+      "aiOutput": "",
+      "status": "pending",
+      "model": "Claude Opus 4.6",
+      "subSteps": [
+        {
+          "id": "sub_01a_market_research",
+          "stepId": "step_01_niche_selection",
+          "order": 1,
+          "title": "Research Car Dealership Ad Spend",
+          "description": "Search for data on average car dealership advertising budgets, common ad channels, and industry trends.",
+          "prompt": "Search the web for recent data on car dealership advertising budgets and spending patterns. I need: average monthly ad spend for dealerships by size, what percentage goes to digital vs traditional, which platforms they use most (Meta, Google, etc.), and any industry reports from NADA or similar organizations. Compile findings into a brief research summary.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_01b_competitor_scan",
+          "stepId": "step_01_niche_selection",
+          "order": 2,
+          "title": "Scan Existing Automotive Ad Agencies",
+          "description": "Identify 5-10 agencies that already serve car dealerships to understand competitive positioning and pricing.",
+          "prompt": "Search for agencies that specialize in car dealership advertising. Find 5-10 examples and for each, note: their pricing (if public), services offered, how they position themselves, whether they use AI, and any client testimonials. Focus on both large players (like Dealer.com) and smaller boutique agencies. Create a competitive landscape table.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_01c_pricing_model",
+          "stepId": "step_01_niche_selection",
+          "order": 3,
+          "title": "Define Pricing Tiers",
+          "description": "Create a tiered pricing model based on competitive research and the value delivered.",
+          "prompt": "Based on the competitive research, design a 3-tier pricing model for our AI ad agency:\n- Starter tier: Basic ad creation and deployment\n- Growth tier: Full service with competitive research and optimization\n- Enterprise tier: Everything plus automated monitoring and instant new-inventory ads\n\nFor each tier, define: monthly price, included services, ad volume limits, reporting frequency, and the ideal dealership size it targets. Make sure the Growth tier is priced at $2,500/month as our anchor offer.",
+          "status": "pending"
+        }
+      ]
+    },
+    {
+      "id": "step_02_brand_style_guide",
+      "projectId": "proj_ai_ad_agency_car_dealerships",
+      "order": 2,
+      "title": "Brand Style Guide Creation",
+      "description": "Create a comprehensive brand style guide that will govern all visual and copy elements produced by the agency. This ensures every ad creative, landing page, and client deliverable has a consistent, professional look. The style guide becomes the foundation that the AI references when generating any creative asset. In the video, this took less than 1 minute and produced a complete premium automotive brand guideline.",
+      "prompt": "Create a comprehensive brand style guide for my AI-powered automotive advertising agency. The agency name is \"AI Powered Automotive Ad Engine\" (or suggest a better name if you have one).\n\nThe style guide must include:\n\n1. **Brand Identity**:\n   - Agency name and tagline\n   - Brand story (2-3 sentences on what we do and why)\n   - Brand personality traits (e.g., bold, data-driven, modern)\n   - Tone of voice guidelines (how we speak in ads, emails, and client communications)\n\n2. **Color Palette**:\n   - Primary color with hex code (should convey trust and performance)\n   - Secondary color with hex code (complementary, used for accents)\n   - Accent color with hex code (for CTAs and highlights)\n   - Neutral colors (background, text) with hex codes\n   - Example color combinations for different ad types\n\n3. **Typography**:\n   - Primary font family for headlines (bold, attention-grabbing)\n   - Secondary font family for body copy (clean, readable)\n   - Font sizes for: main headline, sub-headline, body, CTA, fine print\n   - Font weight guidelines (when to use bold, semi-bold, regular)\n\n4. **Visual Guidelines**:\n   - Image treatment rules (filters, overlays, borders)\n   - Layout templates for common ad sizes (1080x1080, 1200x628, 1080x1920)\n   - Logo placement rules\n   - White space and margin guidelines\n   - Do's and Don'ts with examples\n\n5. **Ad Copy Framework**:\n   - Headline formulas (3-5 proven patterns)\n   - CTA button text options (ranked by urgency)\n   - Tone spectrum (when to be urgent vs informational vs aspirational)\n   - Words to always use / words to never use in automotive ads\n   - Legal disclaimer templates\n\nSave this as a structured document I can reference in every future step. This is the single source of truth for our brand.",
+      "expectedOutput": "A complete brand style guide document (3-5 pages) with specific hex codes, font selections, layout rules, copy frameworks, and visual guidelines. Should be immediately usable as a reference document for all creative work. The guide should feel premium and automotive-focused, not generic.",
+      "notes": "ENHANCEMENTS BEYOND THE VIDEO:\n- Create both a 'client-facing' version (what dealership clients see) and an 'internal' version (what the AI uses for generation)\n- Include responsive design guidelines for ads that work on mobile, desktop, and in-feed\n- Add a section on accessibility (contrast ratios, font sizes for readability)\n- Create a mini brand guide template that gets customized per dealership client (their colors + your framework)\n- Include social media profile templates (cover photos, profile pics, bio copy)\n- Add animation/motion guidelines for video ads\n- Create a 'brand compliance checklist' the AI can run through before finalizing any creative\n- Store the style guide as a reusable context document that gets injected into every creative generation prompt",
+      "aiOutput": "",
+      "status": "pending",
+      "model": "Claude Opus 4.6",
+      "subSteps": [
+        {
+          "id": "sub_02a_color_research",
+          "stepId": "step_02_brand_style_guide",
+          "order": 1,
+          "title": "Research Automotive Color Psychology",
+          "description": "Research which colors perform best in automotive advertising and why.",
+          "prompt": "Search for research on color psychology in automotive advertising. Which colors are most associated with trust, performance, and urgency in car ads? Look at what colors major automotive brands use (BMW, Toyota, Ford) and what colors top-performing Meta ads in the automotive space tend to use. Summarize findings with specific hex code recommendations.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_02b_generate_guide",
+          "stepId": "step_02_brand_style_guide",
+          "order": 2,
+          "title": "Generate the Full Style Guide",
+          "description": "Use the research to create the complete brand style guide document.",
+          "prompt": "Using the color psychology research and automotive advertising best practices, create the full brand style guide as specified in the main step prompt. Make sure every element has a specific, concrete value (exact hex codes, exact font names, exact pixel sizes). Do not use vague language like 'a bold color' - specify '#1A1A2E' or similar.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_02c_client_template",
+          "stepId": "step_02_brand_style_guide",
+          "order": 3,
+          "title": "Create Per-Client Brand Overlay Template",
+          "description": "Create a template that adapts the agency brand guide for individual dealership clients.",
+          "prompt": "Create a 'Client Brand Overlay' template document. This is a shorter version of our brand guide that gets customized per dealership client. It should have fill-in sections for: dealership name, dealership logo, dealership brand colors (if they have them), specific inventory categories they want to highlight, their geographic area, and any compliance requirements specific to their state. The template should show how the client's brand elements merge with our agency's framework.",
+          "status": "pending"
+        }
+      ]
+    },
+    {
+      "id": "step_03_competitive_intelligence",
+      "projectId": "proj_ai_ad_agency_car_dealerships",
+      "order": 3,
+      "title": "Competitive Intelligence (Meta Ad Library Research)",
+      "description": "Conduct deep competitive research by scanning the Meta Ad Library for active car dealership ads. The AI agent opens a browser, navigates to the Meta Ad Library, and searches for car dealerships one by one, cataloging their ad strategies, copy patterns, visual approaches, and offer structures. The output is a comprehensive strategy document that serves as the agency's playbook. In the video, this produced a 6-page document after scanning 20 dealerships and indexing thousands of ads in about 10 minutes.",
+      "prompt": "I need you to conduct competitive intelligence research on car dealership advertising using the Meta Ad Library.\n\nHere is what I need you to do:\n\n1. Open your browser and go to the Meta Ad Library: https://www.facebook.com/ads/library/\n2. Search for the following 20 car dealerships (one at a time) and analyze their active ads:\n   - AutoNation\n   - Hendrick Automotive\n   - Penske Automotive\n   - Larry H. Miller Dealerships\n   - Sewell Automotive\n   - Park Place Dealerships\n   - Sonic Automotive\n   - Group 1 Automotive\n   - Asbury Automotive\n   - Lithia Motors\n   - CarMax\n   - Carvana\n   - McCarthy Auto Group\n   - Jim Ellis Automotive\n   - Holman Enterprises\n   - JM Family Enterprises\n   - Bill Luke Dealerships\n   - Koons Automotive\n   - Herb Chambers Companies\n   - Bob Rohrman Auto Group\n\n3. For each dealership, catalog:\n   - Number of active ads\n   - Types of offers being promoted (financing, trade-in, seasonal)\n   - Visual style and layout patterns\n   - Copy tone and messaging patterns\n   - Call-to-action language\n   - Any unique or standout creative approaches\n\n4. After scanning all 20, compile a comprehensive strategy document that covers:\n   - **Seasonal Sales Events**: What seasonal hooks are dealerships using? (Memorial Day, Black Friday, Year-End Clearance, Tax Refund Season, etc.)\n   - **Financial Offer Patterns**: How do they structure financing offers? (0% APR, low monthly payments, stacked incentives)\n   - **Urgency & Scarcity Tactics**: What language creates urgency? (limited time, only X left, ends this weekend)\n   - **Public Notice Framing**: Are any ads styled as public notices or announcements?\n   - **Trade-In Promotions**: How are trade-in bonuses structured and presented?\n   - **Visual Layout Patterns**: What layouts perform well? (single vehicle hero, multi-vehicle grid, lifestyle shot)\n   - **CTA Patterns**: What CTAs are most common? (Shop Now, Get Your Price, Schedule Test Drive)\n   - **Copy Formulas**: Document 5-10 proven headline and body copy formulas\n   - **Ad Format Preferences**: Single image vs carousel vs video - what is most common?\n   - **Targeting Clues**: Any geographic or demographic targeting patterns evident from ad content?\n\nFormat this as a professional strategy playbook document that our agency can reference when creating ads for any dealership client.",
+      "expectedOutput": "A 5-8 page competitive intelligence strategy document organized by tactic category. Should include specific examples from real dealership ads, proven copy formulas, visual layout recommendations, and a prioritized list of strategies ranked by how commonly they appear across the 20 dealerships analyzed. This becomes the agency's core strategic playbook.",
+      "notes": "ENHANCEMENTS BEYOND THE VIDEO:\n- Run this research quarterly to keep the playbook current (seasonal strategies change)\n- Also scan Google Ads (via Google Ads Transparency Center) for search ad copy patterns\n- Track which dealerships are spending the most (more ads = bigger budget = proven strategies)\n- Save screenshots of the best-performing ad creatives as a reference swipe file\n- Analyze ad longevity - ads that have been running for months are likely profitable\n- Cross-reference with organic social media posts to see what content resonates\n- Look for patterns in ad frequency (how often they post new creatives)\n- Consider scanning TikTok and YouTube ads for video creative patterns\n- Build a 'strategy scoring matrix' that ranks which tactics to use based on dealership size, location, and inventory type\n- Note any compliance patterns (required disclaimers, fine print formatting)",
+      "aiOutput": "",
+      "status": "pending",
+      "model": "Claude Opus 4.6",
+      "subSteps": [
+        {
+          "id": "sub_03a_scan_first_10",
+          "stepId": "step_03_competitive_intelligence",
+          "order": 1,
+          "title": "Scan First 10 Dealerships in Meta Ad Library",
+          "description": "Open Meta Ad Library and research the first 10 dealerships on the list, noting ad styles, copy, and offers.",
+          "prompt": "Open the Meta Ad Library at https://www.facebook.com/ads/library/ and search for the first 10 dealerships: AutoNation, Hendrick Automotive, Penske Automotive, Larry H. Miller Dealerships, Sewell Automotive, Park Place Dealerships, Sonic Automotive, Group 1 Automotive, Asbury Automotive, and Lithia Motors. For each, note the number of active ads, types of offers, visual style, copy tone, and any standout creatives. Take notes as you go.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_03b_scan_next_10",
+          "stepId": "step_03_competitive_intelligence",
+          "order": 2,
+          "title": "Scan Next 10 Dealerships in Meta Ad Library",
+          "description": "Continue the Meta Ad Library research with the remaining 10 dealerships.",
+          "prompt": "Continue in the Meta Ad Library and search for the next 10 dealerships: CarMax, Carvana, McCarthy Auto Group, Jim Ellis Automotive, Holman Enterprises, JM Family Enterprises, Bill Luke Dealerships, Koons Automotive, Herb Chambers Companies, and Bob Rohrman Auto Group. Same process: catalog active ads, offers, visual patterns, copy tone, and standout creatives.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_03c_compile_playbook",
+          "stepId": "step_03_competitive_intelligence",
+          "order": 3,
+          "title": "Compile Strategy Playbook",
+          "description": "Synthesize all research into a structured strategy playbook document.",
+          "prompt": "Using all the notes from scanning 20 dealerships, compile a comprehensive strategy playbook. Organize by tactic category (seasonal events, financial offers, urgency/scarcity, public notice framing, trade-ins, visual layouts, CTAs, copy formulas). Include specific examples, rank tactics by frequency, and add recommendations for which tactics to prioritize. This should be 5-8 pages and serve as the agency's core reference document.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_03d_swipe_file",
+          "stepId": "step_03_competitive_intelligence",
+          "order": 4,
+          "title": "Create Ad Swipe File",
+          "description": "Save screenshots and descriptions of the 10 best ads found during research.",
+          "prompt": "From all the ads you reviewed across 20 dealerships, identify the 10 best-performing or most creative ads. For each, save a screenshot (or describe it in detail) and explain why it works: what tactic it uses, why the copy is effective, what makes the visual compelling, and how we can adapt this approach for our clients. Organize this as a 'Swipe File' reference document.",
+          "status": "pending"
+        }
+      ]
+    },
+    {
+      "id": "step_04_sales_infrastructure",
+      "projectId": "proj_ai_ad_agency_car_dealerships",
+      "order": 4,
+      "title": "Sales Infrastructure (Store Page + Checkout)",
+      "description": "Build the sales infrastructure needed to actually sell the agency's services. This includes a professional storefront/landing page that explains the service, displays pricing, and includes a calendar booking system for sales calls. Also create a checkout flow for the $2,500/month retainer. This transforms the project from an experiment into a sellable business with a real revenue collection mechanism.",
+      "prompt": "I need you to build the sales infrastructure for my AI ad agency. Here is what I need:\n\n1. **Landing Page / Store Page**:\n   Build a professional landing page for \"The AI Powered Automotive Ad Engine\" that includes:\n   - Hero section with a compelling headline and sub-headline\n   - \"What You Get\" section listing all services included:\n     * Custom ad creatives generated from your actual inventory\n     * Competitive intelligence based on top dealership ad strategies\n     * Meta Ads campaign setup and management\n     * New inventory detection and automatic ad generation\n     * Monthly performance reporting\n   - Social proof section (placeholder for testimonials and case studies)\n   - Pricing section showing the $2,500/month plan clearly\n   - FAQ section addressing common dealership objections\n   - Calendar booking widget for scheduling a demo call\n   - Footer with contact information\n\n2. **Checkout / Payment Link**:\n   Create a checkout page or payment link for $2,500/month recurring subscription. Use Stripe (or whatever payment platform is available in the browser). The checkout should:\n   - Clearly state what the dealership is purchasing\n   - Show the monthly price\n   - Collect business name and contact info\n   - Process the recurring payment\n\n3. **Calendar Booking**:\n   Set up a calendar booking system (Calendly or similar) where prospects can book a 30-minute demo call. Configure:\n   - Available hours (Mon-Fri, 9am-5pm)\n   - 30-minute meeting duration\n   - Confirmation email with meeting details\n   - Reminder emails 24 hours and 1 hour before\n\nThe landing page should follow our brand style guide: {brand_guide_doc}\n\nMake it look premium and professional. Car dealerships are used to dealing with polished vendors.",
+      "expectedOutput": "A live landing page with hero section, services list, pricing, FAQ, and calendar booking integration. A working checkout link for $2,500/month recurring payment. A configured calendar booking system with confirmation and reminder emails. All elements should follow the brand style guide and look professional enough to present to dealership decision-makers.",
+      "notes": "ENHANCEMENTS BEYOND THE VIDEO:\n- Build a dedicated case study page showing before/after ad performance (even with mock data initially)\n- Create a 'Free Ad Audit' lead magnet - offer to analyze a dealership's current ads for free as an entry point\n- Add an ROI calculator widget: 'If you sell X more cars per month at $Y average profit, your ROI is Z%'\n- Include a video walkthrough or demo video on the landing page\n- Build a separate 'Dealership Portal' page where existing clients can log in to see their ad performance\n- Set up email sequences: post-booking confirmation drip, post-call follow-up, proposal template\n- Add live chat or chatbot for immediate prospect engagement\n- Create a one-page PDF pitch deck that can be attached to outreach messages\n- Track page analytics (Google Analytics or similar) to optimize conversion rates\n- A/B test different headlines and CTA copy on the landing page",
+      "aiOutput": "",
+      "status": "pending",
+      "model": "Claude Opus 4.6",
+      "subSteps": [
+        {
+          "id": "sub_04a_landing_page",
+          "stepId": "step_04_sales_infrastructure",
+          "order": 1,
+          "title": "Build Landing Page",
+          "description": "Create the main agency landing page with all sections.",
+          "prompt": "Build a professional landing page for 'The AI Powered Automotive Ad Engine' using our brand style guide. Include: hero section with headline, services list, pricing ($2,500/mo), FAQ section, and placeholder for calendar booking. Use a website builder available in the browser (Carrd, Webflow, WordPress, or similar). Make it mobile-responsive and premium-looking.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_04b_payment_setup",
+          "stepId": "step_04_sales_infrastructure",
+          "order": 2,
+          "title": "Set Up Payment Processing",
+          "description": "Create a Stripe checkout link for $2,500/month recurring subscription.",
+          "prompt": "Open Stripe (or the payment platform I'm logged into) and create a recurring payment link for $2,500/month. The product name should be 'AI Powered Automotive Ad Engine - Monthly Retainer'. Add a description of what's included. Generate a shareable checkout link and embed it on the landing page.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_04c_calendar_booking",
+          "stepId": "step_04_sales_infrastructure",
+          "order": 3,
+          "title": "Configure Calendar Booking",
+          "description": "Set up Calendly or similar tool for prospect demo calls.",
+          "prompt": "Open Calendly (or similar scheduling tool I'm logged into) and create a '30-Minute Ad Agency Demo' event type. Set availability to Mon-Fri 9am-5pm, enable confirmation and reminder emails (24hr and 1hr before), and add a custom booking page description explaining what the demo call covers. Get the embed code and add it to the landing page.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_04d_lead_magnet",
+          "stepId": "step_04_sales_infrastructure",
+          "order": 4,
+          "title": "Create Free Ad Audit Lead Magnet",
+          "description": "Build a free ad audit offer as a low-friction entry point for prospects.",
+          "prompt": "Create a 'Free Ad Audit' page or form that dealerships can fill out to get a complimentary analysis of their current advertising. The form should collect: dealership name, website URL, current monthly ad spend (range), biggest advertising challenge, and contact email. This gives us a reason to reach out and demonstrates value before asking for payment. Add this as a secondary CTA on the landing page.",
+          "status": "pending"
+        }
+      ]
+    },
+    {
+      "id": "step_05_ad_creative_generation",
+      "projectId": "proj_ai_ad_agency_car_dealerships",
+      "order": 5,
+      "title": "Ad Creative Generation (The Core Service)",
+      "description": "This is the core service delivery step. Take a real dealership's website, scrape their actual inventory (real VINs, real pricing, real promotions), and generate professional ad creatives using the brand style guide and competitive strategy playbook. The key differentiator is 100% data accuracy - zero hallucinated vehicles, prices, or offers. In the video, the AI pulled actual inventory from McCarthy Auto in Kansas and created ads with real data that the creator said he would 'absolutely run' in a real campaign.",
+      "prompt": "I need you to create ad creatives for a real car dealership client. Here is the information:\n\n**Client Website**: {client_website}\n**Brand Style Guide**: {brand_guide_doc}\n**Strategy Playbook**: {strategy_doc}\n\nHere is what I need you to do:\n\n1. **Scrape Current Inventory**:\n   - Visit {client_website} and navigate to their inventory/vehicle listings\n   - Pull the following data for 10-15 vehicles currently in stock:\n     * Vehicle year, make, model, trim\n     * VIN number\n     * Listed price (MSRP and sale price if different)\n     * Any current promotions or incentives\n     * Key features and specifications\n     * Vehicle images (if accessible)\n   - CRITICAL: Use ONLY real data from the website. Do NOT fabricate or hallucinate any vehicle details, prices, or VIN numbers. Every data point must be verifiable on the dealership's website.\n\n2. **Generate Ad Creatives** (create 5-8 different ads):\n   Using the brand style guide and strategy playbook, create the following ad types:\n   \n   a. **Single Vehicle Spotlight** (2 ads): Feature one high-value vehicle with full details, price, and a direct response CTA\n   b. **Multi-Vehicle Showcase** (1 ad): Grid or carousel showing 3-4 vehicles with \"Starting at $XX,XXX\" pricing\n   c. **Seasonal/Event Ad** (1 ad): Tie to the nearest seasonal event from the strategy playbook\n   d. **Financial Offer Ad** (1 ad): Focus on financing terms (0% APR, low monthly payment, etc.) using real current offers\n   e. **Trade-In Promotion** (1 ad): \"Your trade-in is worth more than you think\" style ad with real incentive details\n   f. **Urgency/Scarcity Ad** (1-2 ads): \"Only X left at this price\" or \"Sale ends [date]\" format\n\n3. **For Each Ad, Provide**:\n   - Headline (under 40 characters for Meta)\n   - Primary text (125 characters visible, up to 500 total)\n   - Description text\n   - CTA button text\n   - Image description or layout specification\n   - Link URL (back to the specific vehicle or dealership page)\n   - Target audience notes (age range, geographic radius, interests)\n\n4. **Quality Checklist**:\n   - [ ] All vehicle data matches the dealership website exactly\n   - [ ] All prices are current and accurate\n   - [ ] VIN numbers are real and correct\n   - [ ] Ad copy follows the brand style guide tone\n   - [ ] Strategies used match the competitive playbook\n   - [ ] CTAs are clear and action-oriented\n   - [ ] No misleading claims or compliance issues\n   - [ ] Geographic targeting is appropriate for the dealership location",
+      "expectedOutput": "5-8 complete ad creatives ready for deployment, each with headline, primary text, description, CTA, image specs, and targeting notes. All vehicle data must be 100% accurate and pulled from the real dealership website. Ads should follow the brand style guide visually and use strategies from the competitive playbook. Include a data verification table showing each vehicle's details matched against the source website.",
+      "notes": "ENHANCEMENTS BEYOND THE VIDEO:\n- Create ads in multiple sizes: 1080x1080 (feed), 1200x628 (link), 1080x1920 (story/reel)\n- Generate A/B test variants: same vehicle, different headlines or CTAs\n- Include a 'compliance review' section checking state-specific auto ad regulations\n- Create dynamic templates that can be auto-populated with new inventory data\n- Build a 'creative brief' document for each ad explaining the strategic rationale\n- Add performance prediction notes: which ads are likely to perform best and why\n- Create video ad scripts in addition to static creatives\n- Include retargeting ad variants (for people who visited the site but didn't convert)\n- Generate Google Ads responsive search ad copy in addition to Meta ads\n- Create a landing page for each ad that continues the same messaging and visual style",
+      "aiOutput": "",
+      "status": "pending",
+      "model": "Claude Opus 4.6",
+      "subSteps": [
+        {
+          "id": "sub_05a_scrape_inventory",
+          "stepId": "step_05_ad_creative_generation",
+          "order": 1,
+          "title": "Scrape Dealership Inventory",
+          "description": "Visit the client dealership website and extract real vehicle inventory data.",
+          "prompt": "Visit {client_website} and navigate to their vehicle inventory section. Extract data for 10-15 currently listed vehicles including: year, make, model, trim, VIN, MSRP, sale price, current promotions, and key features. Organize this into a structured data table. CRITICAL: Only use data that is actually on the website. Do not guess or fabricate any details.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_05b_generate_single_vehicle",
+          "stepId": "step_05_ad_creative_generation",
+          "order": 2,
+          "title": "Create Single Vehicle Spotlight Ads",
+          "description": "Generate 2 spotlight ads featuring individual high-value vehicles.",
+          "prompt": "Using the scraped inventory data, select the 2 most compelling vehicles (highest value or best deals) and create a Single Vehicle Spotlight ad for each. Follow the brand style guide for visual design and tone. Each ad needs: headline (under 40 chars), primary text, description, CTA, image layout description, and the correct vehicle page URL. Use urgency and specificity (real price, real VIN).",
+          "status": "pending"
+        },
+        {
+          "id": "sub_05c_generate_remaining_ads",
+          "stepId": "step_05_ad_creative_generation",
+          "order": 3,
+          "title": "Create Multi-Vehicle, Seasonal, Financial, and Trade-In Ads",
+          "description": "Generate the remaining 4-6 ad creatives covering different strategy types.",
+          "prompt": "Create the remaining ad creatives: 1 multi-vehicle showcase (3-4 vehicles in a grid/carousel), 1 seasonal/event ad tied to the nearest holiday or sales event, 1 financial offer ad focused on financing terms, 1 trade-in promotion ad, and 1-2 urgency/scarcity ads. Use real inventory data from the scrape, follow the brand guide, and apply tactics from the strategy playbook. Each ad needs full copy, CTA, image specs, and targeting notes.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_05d_verify_accuracy",
+          "stepId": "step_05_ad_creative_generation",
+          "order": 4,
+          "title": "Verify Data Accuracy",
+          "description": "Cross-check all ad creatives against the dealership website to ensure zero hallucinations.",
+          "prompt": "Go back to {client_website} and verify every data point used in the ad creatives: vehicle names, VINs, prices, promotions, and offers. Create a verification table showing each claim in the ad, the source URL on the website where that data appears, and a pass/fail check. Flag any discrepancies immediately. This is critical for legal compliance in automotive advertising.",
+          "status": "pending"
+        }
+      ]
+    },
+    {
+      "id": "step_06_ad_deployment",
+      "projectId": "proj_ai_ad_agency_car_dealerships",
+      "order": 6,
+      "title": "Ad Deployment to Meta Ads Manager",
+      "description": "Deploy the finished ad creatives into Meta Ads Manager. The AI agent opens Ads Manager in the browser, creates a new campaign, uploads images, fills in all copy fields, configures targeting (including geographic radius around the dealership), and sets up the complete campaign structure. In the video, this was triggered with a single sentence and the AI handled 100% of the setup - the only human action needed was clicking 'Publish'.",
+      "prompt": "Now upload these ad creatives into my Meta Ads Manager account and set up the campaigns.\n\nHere are the ad creatives to deploy: {ad_creatives_from_step_5}\n\n**Campaign Setup Instructions**:\n\n1. Open Meta Ads Manager in the browser\n2. Create a new campaign with the following structure:\n\n   **Campaign Level**:\n   - Campaign name: \"{dealership_name} - AI Ad Engine - {current_month} {current_year}\"\n   - Campaign objective: Traffic (or Conversions if pixel is set up)\n   - Campaign budget: Start with $50/day (can adjust later)\n   - Campaign schedule: Start immediately, no end date\n\n   **Ad Set Level**:\n   - Create one ad set per ad type (spotlight, showcase, seasonal, etc.)\n   - Ad set naming: \"{dealership_name} - {ad_type} - {date}\"\n   - Geographic targeting: 25-mile radius around {dealership_address}\n   - Age targeting: 25-65+\n   - Detailed targeting: Interest in automobiles, car shopping, new cars, used cars\n   - Placements: Automatic (or Facebook Feed + Instagram Feed for best results)\n   - Optimization: Link clicks\n\n   **Ad Level**:\n   - Upload the ad images/creatives\n   - Fill in the headline from each ad creative\n   - Fill in the primary text from each ad creative\n   - Fill in the description from each ad creative\n   - Set the CTA button (Learn More or Shop Now)\n   - Set the destination URL to the correct dealership page\n   - Enable URL parameters for tracking: utm_source=meta&utm_medium=paid&utm_campaign={campaign_name}\n\n3. **Before Publishing**:\n   - Review all ads in preview mode\n   - Verify all links work correctly\n   - Check that images display properly in all placements\n   - Confirm geographic targeting is correct on the map\n   - Leave the campaign in DRAFT status so I can review before publishing\n\nDo NOT click Publish - leave everything in draft for my review.",
+      "expectedOutput": "A fully configured Meta Ads campaign in draft status with all ad sets and individual ads properly set up. Each ad should have the correct creative, copy, targeting, and links. The campaign should be ready to go live with a single click of the Publish button. Include a summary of the campaign structure showing all ad sets and ads created.",
+      "notes": "ENHANCEMENTS BEYOND THE VIDEO:\n- Set up Meta Pixel on the dealership website before running ads (for conversion tracking)\n- Create a Custom Audience from the dealership's existing customer list (email uploads)\n- Set up a Lookalike Audience based on the Custom Audience\n- Create separate ad sets for retargeting website visitors vs cold prospecting\n- Add UTM parameters to all URLs for Google Analytics tracking\n- Set up automated rules: pause ads with CPC above $X, increase budget for ads with CTR above Y%\n- Create a naming convention document for campaigns/ad sets/ads for easy reporting\n- Set up a Facebook Business Manager properly (not just Ads Manager) for multi-client management\n- Configure the Conversions API (CAPI) for server-side tracking\n- Create a reporting dashboard template that shows key metrics per dealership client",
+      "aiOutput": "",
+      "status": "pending",
+      "model": "Claude Opus 4.6",
+      "subSteps": [
+        {
+          "id": "sub_06a_campaign_setup",
+          "stepId": "step_06_ad_deployment",
+          "order": 1,
+          "title": "Create Campaign in Ads Manager",
+          "description": "Open Meta Ads Manager and create the campaign with proper objective and budget.",
+          "prompt": "Open Meta Ads Manager in the browser. Create a new campaign named '{dealership_name} - AI Ad Engine - {current_month} {current_year}'. Set the objective to Traffic, daily budget to $50, and start date to today with no end date. Save and proceed to ad set creation.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_06b_ad_set_config",
+          "stepId": "step_06_ad_deployment",
+          "order": 2,
+          "title": "Configure Ad Sets with Targeting",
+          "description": "Create ad sets with proper geographic, demographic, and interest targeting.",
+          "prompt": "Within the campaign, create one ad set for each ad type (spotlight, showcase, seasonal, financial, trade-in, urgency). For each ad set: set geographic targeting to a 25-mile radius around {dealership_address}, age range 25-65+, interests in automobiles/car shopping/new cars/used cars. Use automatic placements. Optimize for link clicks.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_06c_upload_creatives",
+          "stepId": "step_06_ad_deployment",
+          "order": 3,
+          "title": "Upload Ad Creatives and Copy",
+          "description": "Upload images, fill in headlines, copy, CTAs, and destination URLs for each ad.",
+          "prompt": "For each ad in each ad set, upload the corresponding ad creative image, fill in the headline (under 40 chars), primary text, and description from the ad creative specifications. Set the CTA button to 'Shop Now' or 'Learn More' as specified. Set the destination URL to the correct vehicle or dealership page. Add UTM parameters: utm_source=meta&utm_medium=paid&utm_campaign={campaign_name}.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_06d_review_and_draft",
+          "stepId": "step_06_ad_deployment",
+          "order": 4,
+          "title": "Review Ads and Save as Draft",
+          "description": "Preview all ads across placements and save the campaign in draft status.",
+          "prompt": "Use the Meta Ads Manager preview tool to review every ad across Feed, Stories, and other placements. Verify: images display correctly, text is not truncated awkwardly, links point to the right pages, and geographic targeting shows the correct area on the map. Save the entire campaign as DRAFT - do NOT publish. Create a summary document listing all ad sets and ads with their status.",
+          "status": "pending"
+        }
+      ]
+    },
+    {
+      "id": "step_07_lead_generation",
+      "projectId": "proj_ai_ad_agency_car_dealerships",
+      "order": 7,
+      "title": "Lead Generation (Prospect List)",
+      "description": "Generate a list of prospective dealership clients for the agency. The AI searches for car dealerships in the target geographic area, compiles their business information and social media handles into a structured spreadsheet, creating a ready-to-use prospect list. In the video, this produced an Excel sheet of 20 dealerships with Instagram handles in under 2 minutes.",
+      "prompt": "I want to start getting clients for my AI ad agency services. I need a prospect list of car dealerships I can reach out to.\n\nPlease do the following:\n\n1. Search for car dealerships within a {radius}-mile radius of {location}\n2. Find at least 20 dealerships (aim for 25-30 if possible)\n3. For each dealership, gather the following information:\n   - Business name\n   - Physical address\n   - Phone number\n   - Website URL\n   - Instagram handle (search Instagram to verify)\n   - Facebook page URL\n   - General manager or marketing manager name (if findable)\n   - Estimated size (small independent / mid-size / large franchise)\n   - Whether they appear to be running Meta ads currently (check Ad Library quickly)\n   - Brief notes on their current online presence quality (good website? active social? outdated?)\n\n4. Organize this into a clean Excel spreadsheet (or CSV) with columns for each data point\n5. Sort the list by priority:\n   - HIGH priority: Dealerships with weak online presence but large inventory (they need our help most)\n   - MEDIUM priority: Dealerships already running ads but with room for improvement\n   - LOW priority: Dealerships with sophisticated ad operations (harder to sell to)\n\n6. Add a \"Personalization Hook\" column with one specific observation per dealership that can be used to personalize outreach (e.g., \"Their Facebook page hasn't posted in 3 months\" or \"Running ads with stock photos instead of real inventory\" or \"Website still shows last year's models\")\n\nSave this as an organized spreadsheet file.",
+      "expectedOutput": "A spreadsheet with 20-30 car dealerships including: business name, address, phone, website, Instagram handle, Facebook URL, contact name (where available), estimated size, current ad status, online presence notes, priority ranking (HIGH/MEDIUM/LOW), and a personalization hook for each. Sorted by priority tier with HIGH priority prospects at the top.",
+      "notes": "ENHANCEMENTS BEYOND THE VIDEO:\n- Expand beyond Instagram: also get LinkedIn profiles for marketing managers and GMs\n- Check Google My Business profiles for review count and rating (low ratings = need marketing help)\n- Cross-reference with DealerRater or Cars.com for online reputation data\n- Identify dealerships that recently changed ownership (new owners often revamp marketing)\n- Check for job postings - dealerships hiring marketing roles may be open to outsourcing\n- Tag dealerships by brand (Ford, Toyota, BMW, etc.) for brand-specific pitch angles\n- Note which CRM/DMS system they likely use (visible in website source code sometimes)\n- Build a CRM pipeline (HubSpot free tier) instead of just a spreadsheet\n- Set up automated enrichment: use tools like Apollo.io or Hunter.io for verified email addresses\n- Create a scoring model that predicts likelihood to convert based on multiple signals",
+      "aiOutput": "",
+      "status": "pending",
+      "model": "Claude Sonnet 4.6",
+      "subSteps": [
+        {
+          "id": "sub_07a_search_dealerships",
+          "stepId": "step_07_lead_generation",
+          "order": 1,
+          "title": "Search for Local Dealerships",
+          "description": "Find 20-30 car dealerships in the target area using Google Maps and business directories.",
+          "prompt": "Search Google Maps for 'car dealerships near {location}' and expand the radius to {radius} miles. List every dealership you find with their name, address, phone number, and website URL. Aim for at least 25 results. Also check business directories like Yellow Pages and DealerRater to catch any that don't show up in Maps.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_07b_gather_social",
+          "stepId": "step_07_lead_generation",
+          "order": 2,
+          "title": "Gather Social Media Handles",
+          "description": "Find Instagram and Facebook profiles for each dealership on the list.",
+          "prompt": "For each dealership on the list, search Instagram and Facebook to find their official profiles. Record the Instagram handle and Facebook page URL. Note the follower count and last post date for each as indicators of how active they are on social media.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_07c_assess_and_prioritize",
+          "stepId": "step_07_lead_generation",
+          "order": 3,
+          "title": "Assess Online Presence and Prioritize",
+          "description": "Evaluate each dealership's current marketing quality and assign priority rankings.",
+          "prompt": "For each dealership, quickly visit their website and check the Meta Ad Library for any active ads. Rate their online presence: Is their website modern or outdated? Are they running Meta ads? How active is their social media? Assign a priority (HIGH/MEDIUM/LOW) and write a one-sentence 'personalization hook' - a specific observation you can use in outreach to show you did your homework.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_07d_compile_spreadsheet",
+          "stepId": "step_07_lead_generation",
+          "order": 4,
+          "title": "Compile Final Spreadsheet",
+          "description": "Organize all data into a clean, sorted spreadsheet file.",
+          "prompt": "Compile all gathered data into a clean spreadsheet with columns: Dealership Name, Address, Phone, Website, Instagram, Facebook, Contact Name, Size, Running Ads (Y/N), Online Presence Rating, Priority (HIGH/MEDIUM/LOW), Personalization Hook. Sort by priority tier with HIGH at the top. Save as an Excel file.",
+          "status": "pending"
+        }
+      ]
+    },
+    {
+      "id": "step_08_automated_outreach",
+      "projectId": "proj_ai_ad_agency_car_dealerships",
+      "order": 8,
+      "title": "Automated Outreach (Instagram DMs)",
+      "description": "Execute automated outreach to prospective dealership clients by sending personalized DMs via Instagram. The AI opens Instagram, searches for each dealership from the prospect list, navigates to their profile, and sends a pitch message. In the video, 20 DMs were sent completely hands-off. Important: consider platform Terms of Service and use personalization to improve response rates.",
+      "prompt": "I need you to reach out to the car dealerships on our prospect list via Instagram DMs.\n\nHere is the prospect list: {prospect_spreadsheet_from_step_7}\n\nFor each dealership on the list, do the following:\n\n1. Open Instagram in the browser\n2. Search for the dealership by their Instagram handle from the spreadsheet\n3. Navigate to their profile\n4. Click the \"Message\" button\n5. Send a personalized pitch message\n\n**Message Template** (personalize the bracketed sections for each dealership):\n\n---\nHi [Dealership Name] team!\n\nI noticed [personalization hook from spreadsheet - e.g., \"your Facebook ads are using stock photos instead of your actual inventory\" or \"you haven't posted new inventory on social media in a while\"].\n\nI run an AI-powered ad agency specifically for car dealerships. We create high-converting ad creatives using your real inventory data - actual VINs, actual pricing, actual promotions - and deploy them directly to Meta Ads.\n\nHere is what makes us different:\n- Ads use your REAL inventory (no stock photos, no fake prices)\n- New ads generated automatically when you list new vehicles\n- Full competitive strategy based on what top dealerships are running\n- Everything set up and managed for you\n\nWould you be open to a quick 15-minute call this week? I can show you sample ads I created using your actual website inventory.\n\nHere is my calendar: {calendar_booking_link}\n\n[Your Name]\n[Agency Name]\n---\n\n**Important Guidelines**:\n- Personalize each message using the \"Personalization Hook\" column from the spreadsheet\n- Space messages out by at least 30 seconds between each send to avoid rate limiting\n- If a dealership's Instagram account cannot be found, skip to the next one and note it\n- Keep a log of every message sent: dealership name, Instagram handle, time sent, message status\n\n**DISCLAIMER**: Automated messaging may violate Instagram's Terms of Service. Use at your own risk. Consider using this as a template for manual outreach instead, or switch to email outreach for a ToS-compliant approach.",
+      "expectedOutput": "A log of 20+ outreach messages sent via Instagram DM, each personalized with a specific observation about the dealership. The log should include: dealership name, Instagram handle, time sent, personalization used, and delivery status. Any failed sends (account not found, message blocked) should be noted for follow-up via alternative channels.",
+      "notes": "ENHANCEMENTS BEYOND THE VIDEO:\n- STRONGLY RECOMMEND: Use email outreach instead of Instagram DMs to avoid ToS violations\n  - Use verified email addresses from Apollo.io or Hunter.io\n  - Email outreach via proper cold email tools (Instantly, Lemlist, Smartlead) is ToS-compliant\n- Create a multi-channel sequence: Email Day 1, LinkedIn Day 3, Follow-up Email Day 5, Phone Call Day 7\n- Personalize at a deeper level: reference specific vehicles from their inventory, mention their Google review rating\n- Include a FREE sample ad creative as an attachment (created using their real inventory from Step 5)\n- A/B test different message angles: lead with competitive intelligence vs lead with ad samples vs lead with ROI data\n- Track response rates and optimize messaging based on what gets the most replies\n- Set up a CRM (HubSpot free) to track all outreach touches and follow-ups\n- Create an automated follow-up sequence: if no reply in 3 days, send a brief follow-up\n- Consider creating short Loom video pitches personalized per dealership (show their website + your ads)\n- Build a referral program: offer existing clients a discount for referring other dealerships",
+      "aiOutput": "",
+      "status": "pending",
+      "model": "Claude Sonnet 4.6",
+      "subSteps": [
+        {
+          "id": "sub_08a_prepare_messages",
+          "stepId": "step_08_automated_outreach",
+          "order": 1,
+          "title": "Prepare Personalized Messages",
+          "description": "Create customized outreach messages for each dealership using their personalization hooks.",
+          "prompt": "Using the prospect spreadsheet from Step 7, create a personalized version of the outreach message template for each of the top 20 dealerships. Replace the personalization hook with the specific observation noted for each dealership. Save all 20 messages in a document so I can review them before sending.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_08b_send_first_batch",
+          "stepId": "step_08_automated_outreach",
+          "order": 2,
+          "title": "Send First 10 DMs",
+          "description": "Open Instagram and send personalized DMs to the first 10 HIGH-priority dealerships.",
+          "prompt": "Open Instagram in the browser. For the first 10 HIGH-priority dealerships from the prospect list, search for each by their Instagram handle, navigate to their profile, click Message, and send the personalized pitch message. Wait at least 30 seconds between each message. Log each send with: dealership name, handle, time, and status (sent/failed/account not found).",
+          "status": "pending"
+        },
+        {
+          "id": "sub_08c_send_second_batch",
+          "stepId": "step_08_automated_outreach",
+          "order": 3,
+          "title": "Send Remaining DMs",
+          "description": "Send personalized DMs to the remaining dealerships on the list.",
+          "prompt": "Continue sending personalized DMs to the remaining 10+ dealerships on the prospect list. Same process: search by handle, navigate to profile, send message, wait 30 seconds, log the result. Note any accounts that could not be found or any messages that failed to send.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_08d_outreach_log",
+          "stepId": "step_08_automated_outreach",
+          "order": 4,
+          "title": "Compile Outreach Log",
+          "description": "Create a complete log of all outreach activity for tracking and follow-up.",
+          "prompt": "Compile a complete outreach log spreadsheet with columns: Dealership Name, Instagram Handle, Message Sent (Y/N), Time Sent, Personalization Used, Delivery Status, Follow-Up Date (3 days from send date), and Notes. This becomes the CRM for tracking prospect engagement and scheduling follow-ups.",
+          "status": "pending"
+        }
+      ]
+    },
+    {
+      "id": "step_09_automated_monitoring",
+      "projectId": "proj_ai_ad_agency_car_dealerships",
+      "order": 9,
+      "title": "Automated Monitoring & Continuous Ad Generation",
+      "description": "Set up an automated system that monitors client dealership websites for new inventory listings and automatically generates and deploys ads for new vehicles. This transforms the agency from a manual workflow into a fully autonomous system. In the video, the AI confirmed this is technically possible - checking the website hourly, detecting new vehicles, auto-creating ads, and programmatically deploying them through Meta. This is the endgame that makes the agency scalable with near-zero ongoing fulfillment cost.",
+      "prompt": "I need you to help me design and set up an automated monitoring system for my dealership clients. The goal is to automatically detect new inventory and create ads without any human intervention.\n\nHere is the system I need:\n\n1. **Inventory Monitoring**:\n   - Check {client_website} every {check_interval} (default: every hour)\n   - Compare current inventory to the last known inventory snapshot\n   - Detect: new vehicles added, vehicles removed (sold), price changes, new promotions\n   - Store inventory snapshots for comparison\n\n2. **Automatic Ad Generation Triggers**:\n   When a new vehicle is detected:\n   - Pull all vehicle details (year, make, model, trim, VIN, price, features)\n   - Generate a Single Vehicle Spotlight ad using the brand style guide\n   - Generate appropriate ad copy using the strategy playbook\n   - Create the ad creative files\n   \n   When a price change is detected:\n   - Generate a \"Price Drop\" ad highlighting the savings\n   - Update any existing ads with the old price\n   \n   When a vehicle is removed (sold):\n   - Flag any active ads for that vehicle to be paused\n   - Log the sale for reporting\n\n3. **Automated Deployment**:\n   - Automatically create new ads in Meta Ads Manager for new vehicles\n   - Use the same campaign structure, targeting, and settings from Step 6\n   - Optionally: require human approval before publishing (configurable)\n   - Auto-pause ads for sold vehicles\n\n4. **Reporting**:\n   - Daily summary email: new vehicles detected, ads created, ads paused, performance metrics\n   - Weekly performance report: spend, clicks, CTR, cost per click, top performing ads\n   - Monthly client report: ROI analysis, recommendations, next month strategy\n\n5. **Technical Implementation Options**:\n   - Option A: Scheduled computer-use agent (runs on a cron schedule)\n   - Option B: Web scraping script + Meta Marketing API\n   - Option C: Hybrid approach (scraping for inventory, computer-use for deployment)\n   \n   Recommend the best approach and outline the implementation plan.\n\nProvide a detailed technical specification for this system, including what tools are needed, how to set up the scheduling, and any limitations or risks to consider.",
+      "expectedOutput": "A detailed technical specification document for the automated monitoring system, including: system architecture diagram, inventory monitoring logic, ad generation triggers, deployment workflow, reporting templates, and a recommended implementation approach. Should include specific tools, scheduling setup, error handling, and a phased rollout plan (Phase 1: monitoring only, Phase 2: auto-generate, Phase 3: auto-deploy).",
+      "notes": "ENHANCEMENTS BEYOND THE VIDEO:\n- Build a dashboard for monitoring all clients' inventory changes and ad status in one view\n- Add anomaly detection: alert if a dealership's website goes down or inventory drops suddenly\n- Implement A/B testing automation: for each new vehicle, create 2-3 ad variants and let Meta optimize\n- Add a 'creative refresh' schedule: even for existing inventory, rotate ad creatives every 2-3 weeks\n- Build inventory trend analytics: which models sell fastest, which sit longest, seasonal patterns\n- Create automated competitive monitoring: alert when competitor dealerships launch new campaigns\n- Add a client portal where dealerships can see their ad performance, approve pending ads, and request changes\n- Implement budget pacing: automatically adjust daily spend based on inventory levels and performance\n- Build a notification system: Slack/email alerts for important events (new client ad goes live, ad underperforming, budget depleted)\n- Consider building this as a proper SaaS product with multi-tenant architecture if you want to scale beyond a few clients\n- Add weather-based triggers: promote 4WD/AWD vehicles before snowstorms, convertibles during warm spells\n- Integrate with dealership DMS (Dealer Management System) for real-time inventory updates instead of web scraping",
+      "aiOutput": "",
+      "status": "pending",
+      "model": "Claude Opus 4.6",
+      "subSteps": [
+        {
+          "id": "sub_09a_architecture_design",
+          "stepId": "step_09_automated_monitoring",
+          "order": 1,
+          "title": "Design System Architecture",
+          "description": "Create a technical architecture for the automated monitoring and ad generation system.",
+          "prompt": "Design the system architecture for automated dealership inventory monitoring and ad generation. Define: components (scraper, inventory database, ad generator, deployer, reporter), data flow between components, storage requirements, scheduling approach, and error handling. Create an architecture diagram or detailed description. Recommend specific tools and technologies for each component.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_09b_inventory_scraper",
+          "stepId": "step_09_automated_monitoring",
+          "order": 2,
+          "title": "Build Inventory Scraper",
+          "description": "Create a script that scrapes dealership websites for current inventory and detects changes.",
+          "prompt": "Create a script (Python or JavaScript) that scrapes {client_website} for current vehicle inventory. It should: extract all vehicle listings with full details, compare against a stored snapshot of the previous inventory, identify new vehicles, removed vehicles, and price changes, and output a change report. Store snapshots in a local database or JSON file. Include error handling for website changes and downtime.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_09c_auto_ad_pipeline",
+          "stepId": "step_09_automated_monitoring",
+          "order": 3,
+          "title": "Build Auto-Ad Generation Pipeline",
+          "description": "Create the pipeline that automatically generates ad creatives when new inventory is detected.",
+          "prompt": "Build the pipeline that connects inventory detection to ad generation. When the scraper detects a new vehicle: automatically populate the ad creative template with real vehicle data, generate headline and copy following the brand style guide and strategy playbook, create the ad creative file, and queue it for deployment. For price changes, generate a 'Price Drop' variant. For sold vehicles, flag the ad for pausing. Include a human approval gate that can be toggled on/off.",
+          "status": "pending"
+        },
+        {
+          "id": "sub_09d_scheduling_and_reporting",
+          "stepId": "step_09_automated_monitoring",
+          "order": 4,
+          "title": "Set Up Scheduling and Reporting",
+          "description": "Configure the cron schedule for monitoring and set up automated reporting.",
+          "prompt": "Set up the scheduling system: configure the inventory scraper to run every hour (or configurable interval), the ad generator to trigger immediately on inventory changes, and the deployer to batch-deploy new ads daily. Create report templates: daily summary (new vehicles, ads created, ads paused), weekly performance (spend, clicks, CTR, CPC, top ads), and monthly client report (ROI, recommendations). Set up email delivery for each report type.",
+          "status": "pending"
+        }
+      ]
+    }
+  ]
+}

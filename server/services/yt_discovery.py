@@ -102,8 +102,8 @@ SCORING GUIDE for app_opportunities[].score (0-100):
 - 30-49: Weak — probably not worth the effort unless the user has unique advantages
 - 0-29: Skip — too complex, no clear demand, or better alternatives exist"""
 
-# Default model for discovery (Sonnet for speed/cost balance)
-DEFAULT_DISCOVERY_MODEL = "claude-sonnet-4-6"
+# Default model for discovery (Opus on subscription billing)
+DEFAULT_DISCOVERY_MODEL = "claude-opus-4-6"
 
 
 class YTDiscovery:

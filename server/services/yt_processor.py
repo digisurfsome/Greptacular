@@ -150,6 +150,7 @@ class YTProcessor:
         Raises RuntimeError if the CLI is not available or the call fails.
         """
         from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
+
         from registry import get_effective_sdk_env
 
         system_cli = shutil.which("claude")

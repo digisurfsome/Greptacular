@@ -53,6 +53,7 @@ from .routers import (
     workspace_router,
     yt_ingestion_router,
 )
+from .routers.execution import cleanup_all_execution_sessions, execution_websocket_handler
 from .schemas import SetupStatus
 from .services.agent_os_session import cleanup_all_agent_os_sessions
 from .services.assistant_chat_session import cleanup_all_sessions as cleanup_assistant_sessions
@@ -70,7 +71,6 @@ from .services.scheduler_service import cleanup_scheduler, get_scheduler
 from .services.swarm_orchestrator import cleanup_all_swarms
 from .services.terminal_manager import cleanup_all_terminals
 from .services.workspace_chat_session import cleanup_all_workspace_sessions
-from .routers.execution import cleanup_all_execution_sessions, execution_websocket_handler
 from .websocket import project_websocket
 
 # Paths

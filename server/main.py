@@ -50,6 +50,7 @@ from .routers import (
     swarm_router,
     terminal_router,
     workspace_router,
+    yt_batch_router,
     yt_ingestion_router,
 )
 from .schemas import SetupStatus
@@ -192,6 +193,7 @@ app.include_router(swarm_router)
 app.include_router(dunkstack_router)
 app.include_router(agent_os_router)
 app.include_router(yt_ingestion_router)
+app.include_router(yt_batch_router)
 
 
 # ============================================================================

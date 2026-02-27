@@ -1413,6 +1413,7 @@ export interface YTStrategyStep {
   aiOutput: string
   status: YTStrategyStepStatus
   model: string
+  role: string
   subSteps: YTStrategySubStep[]
 }
 
@@ -1466,4 +1467,71 @@ export interface YTLabHealth {
   ffmpeg: boolean
   youtube_transcript_api: boolean
   youtube_api_key: boolean
+}
+
+// ============================================================================
+// YT Lab Batch Import Types
+// ============================================================================
+
+export type YTBatchVideoStatus = 'pending' | 'ingesting' | 'ingested' | 'processing' | 'complete' | 'error'
+
+export interface YTBatchVideoInput {
+  url: string
+  context: string
+  niche: string
+  tags: string[]
+  capture_screenshots: boolean
+  priority: number
+}
+
+export interface YTBatchVideoState {
+  url: string
+  video_id: string | null
+  title: string | null
+  channel: string | null
+  duration: number
+  thumbnail_url: string
+  publish_date: string
+  context: string
+  niche: string
+  tags: string[]
+  capture_screenshots: boolean
+  priority: number
+  status: YTBatchVideoStatus
+  error: string | null
+}
+
+export interface YTBatchIngestResponse {
+  batch_id: string
+  total: number
+  status: string
+}
+
+export interface YTBatchStatusResponse {
+  batch_id: string
+  status: string
+  total: number
+  ingested: number
+  processed: number
+  videos: YTBatchVideoState[]
+}
+
+// ============================================================================
+// YT Lab Model Routing & Roles Types
+// ============================================================================
+
+export type YTModelId = 'claude-opus-4-6' | 'claude-sonnet-4-6' | 'claude-haiku-4-5' | 'auto'
+
+export interface YTModelOption {
+  value: YTModelId
+  label: string
+  description: string
+}
+
+export type YTRoleKey = 'researcher' | 'marketer' | 'designer' | 'analyst' | 'outreach_specialist' | 'full_stack_operator' | 'custom' | 'none'
+
+export interface YTRoleOption {
+  key: YTRoleKey
+  label: string
+  systemPrompt: string
 }

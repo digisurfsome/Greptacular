@@ -66,6 +66,9 @@ import type {
   TokenLogSummary,
   YTIngestResponse,
   YTLabHealth,
+  YTBatchVideoInput,
+  YTBatchIngestResponse,
+  YTBatchStatusResponse,
 } from './types'
 
 const API_BASE = '/api'
@@ -1911,4 +1914,29 @@ export async function ingestYouTubeVideo(
 
 export async function getYTLabHealth(): Promise<YTLabHealth> {
   return fetchJSON('/yt-lab/health')
+}
+
+// ============================================================================
+// YT Lab Batch Import API
+// ============================================================================
+
+export async function batchIngestVideos(
+  videos: YTBatchVideoInput[],
+  model: string = 'claude-sonnet-4-6',
+): Promise<YTBatchIngestResponse> {
+  return fetchJSON('/yt-lab/batch-ingest', {
+    method: 'POST',
+    body: JSON.stringify({ videos, model }),
+  })
+}
+
+export async function batchProcessVideos(batchId: string): Promise<{ batch_id: string; status: string; queued: number }> {
+  return fetchJSON('/yt-lab/batch-process', {
+    method: 'POST',
+    body: JSON.stringify({ batch_id: batchId }),
+  })
+}
+
+export async function getBatchStatus(batchId: string): Promise<YTBatchStatusResponse> {
+  return fetchJSON(`/yt-lab/batch-status/${encodeURIComponent(batchId)}`)
 }

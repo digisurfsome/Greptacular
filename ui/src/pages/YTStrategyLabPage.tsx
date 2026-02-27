@@ -35,6 +35,7 @@ import {
   Sparkles,
   PanelLeftClose,
   PanelLeftOpen,
+  Layers,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -49,6 +50,7 @@ import type {
   YTStrategyStepStatus,
 } from '@/lib/types'
 import { VideoIngestPanel } from '@/components/yt-lab/VideoIngestPanel'
+import { BatchImportView } from '@/components/yt-lab/BatchImportView'
 
 // ============================================================================
 // Constants
@@ -63,11 +65,34 @@ function stepsStorageKey(projectId: string): string {
 
 /** AI model options displayed in the step editor dropdown. */
 const MODEL_OPTIONS = [
-  { value: 'claude-opus-4-6', label: 'Claude Opus 4.6' },
-  { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
-  { value: 'codex', label: 'Codex' },
-  { value: 'gemini', label: 'Gemini' },
-  { value: 'custom', label: 'Custom' },
+  { value: 'auto', label: 'Auto (system decides)' },
+  { value: 'claude-opus-4-6', label: 'Opus 4.6 (Heavy thinking)' },
+  { value: 'claude-sonnet-4-6', label: 'Sonnet 4.6 (Balanced)' },
+  { value: 'claude-haiku-4-5', label: 'Haiku 4.5 (Fast & light)' },
+] as const
+
+/** Keywords for auto-routing model selection. */
+const OPUS_KEYWORDS = ['strategy', 'create', 'write', 'analyze', 'design', 'brand']
+const HAIKU_KEYWORDS = ['list', 'find', 'search', 'gather', 'collect', 'navigate']
+
+/** Determine recommended model for a step title (used in Auto mode). */
+function autoSelectModel(title: string): string {
+  const lower = title.toLowerCase()
+  if (OPUS_KEYWORDS.some((kw) => lower.includes(kw))) return 'claude-opus-4-6'
+  if (HAIKU_KEYWORDS.some((kw) => lower.includes(kw))) return 'claude-haiku-4-5'
+  return 'claude-sonnet-4-6'
+}
+
+/** Role options for step assignment. */
+const ROLE_OPTIONS = [
+  { value: 'none', label: 'None (no role)' },
+  { value: 'researcher', label: 'Researcher' },
+  { value: 'marketer', label: 'Marketer' },
+  { value: 'designer', label: 'Designer' },
+  { value: 'analyst', label: 'Analyst' },
+  { value: 'outreach_specialist', label: 'Outreach Specialist' },
+  { value: 'full_stack_operator', label: 'Full-Stack Operator' },
+  { value: 'custom', label: 'Custom (from Role Library)...' },
 ] as const
 
 /** Sort options for the project list. */
@@ -560,14 +585,19 @@ function EditableSection({
   )
 }
 
-/** Model selector dropdown for a step. */
+/** Model selector dropdown for a step, with auto-routing hint. */
 function ModelSelector({
   value,
   onChange,
+  stepTitle,
 }: {
   value: string
   onChange: (value: string) => void
+  stepTitle?: string
 }): React.JSX.Element {
+  const autoRecommendation = stepTitle ? autoSelectModel(stepTitle) : 'claude-sonnet-4-6'
+  const autoLabel = MODEL_OPTIONS.find((o) => o.value === autoRecommendation)?.label ?? 'Sonnet 4.6'
+
   return (
     <div className="flex items-center gap-2">
       <label className="text-xs text-muted-foreground whitespace-nowrap">Model:</label>
@@ -577,6 +607,41 @@ function ModelSelector({
         className="text-xs bg-card border border-border rounded px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
       >
         {MODEL_OPTIONS.map((opt) => (
+          <option key={opt.value} value={opt.value}>{opt.label}</option>
+        ))}
+      </select>
+      {value === 'auto' && stepTitle && (
+        <span className="text-[10px] text-muted-foreground italic">
+          → {autoLabel}
+        </span>
+      )}
+    </div>
+  )
+}
+
+/** Role selector dropdown for a step. */
+function RoleSelector({
+  value,
+  onChange,
+}: {
+  value: string
+  onChange: (value: string) => void
+}): React.JSX.Element {
+  return (
+    <div className="flex items-center gap-2">
+      <label className="text-xs text-muted-foreground whitespace-nowrap">Role:</label>
+      <select
+        value={value || 'none'}
+        onChange={(e) => {
+          if (e.target.value === 'custom') {
+            window.location.hash = '#/roles'
+            return
+          }
+          onChange(e.target.value)
+        }}
+        className="text-xs bg-card border border-border rounded px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+      >
+        {ROLE_OPTIONS.map((opt) => (
           <option key={opt.value} value={opt.value}>{opt.label}</option>
         ))}
       </select>
@@ -763,6 +828,11 @@ function StepDetail({
             <ModelSelector
               value={step.model}
               onChange={(model) => onUpdate({ model })}
+              stepTitle={step.title}
+            />
+            <RoleSelector
+              value={step.role}
+              onChange={(role) => onUpdate({ role })}
             />
           </div>
         </div>
@@ -982,7 +1052,8 @@ function StrategyBuilder({
       notes: '',
       aiOutput: '',
       status: 'pending',
-      model: 'claude-opus-4-6',
+      model: 'auto',
+      role: 'none',
       subSteps: [],
     }
     setSteps(prev => [...prev, newStep])
@@ -1196,7 +1267,7 @@ function StrategyBuilder({
 // Main Page Component
 // ============================================================================
 
-type View = 'list' | 'create' | 'edit' | 'detail'
+type View = 'list' | 'create' | 'edit' | 'detail' | 'batch'
 
 export function YTStrategyLabPage(): React.JSX.Element {
   const [view, setView] = useState<View>('list')
@@ -1393,6 +1464,21 @@ export function YTStrategyLabPage(): React.JSX.Element {
             </span>
           )}
 
+          {view === 'batch' && (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground hover:text-foreground h-7 px-2"
+                onClick={() => setView('list')}
+              >
+                <span className="text-xs">YT Strategy Lab</span>
+              </Button>
+              <ChevronRight size={12} className="text-muted-foreground" />
+              <span className="text-xs font-semibold text-foreground">Batch Import</span>
+            </>
+          )}
+
           {(view === 'create' || view === 'edit') && (
             <>
               <Button
@@ -1475,10 +1561,16 @@ export function YTStrategyLabPage(): React.JSX.Element {
                   Extract, organize, and operationalize strategies from YouTube videos.
                 </p>
               </div>
-              <Button onClick={() => setView('create')} className="gap-1.5 shrink-0">
-                <Plus size={16} />
-                New Project
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" onClick={() => setView('batch')} className="gap-1.5 shrink-0">
+                  <Layers size={16} />
+                  Batch Import
+                </Button>
+                <Button onClick={() => setView('create')} className="gap-1.5 shrink-0">
+                  <Plus size={16} />
+                  New Project
+                </Button>
+              </div>
             </div>
 
             {/* Search + sort controls */}
@@ -1546,6 +1638,19 @@ export function YTStrategyLabPage(): React.JSX.Element {
                 })}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {view === 'batch' && (
+        <div className="flex-1 overflow-auto p-6">
+          <div className="max-w-4xl mx-auto">
+            <BatchImportView
+              onBack={() => setView('list')}
+              onBatchComplete={() => {
+                // Batch complete — user can navigate back to list
+              }}
+            />
           </div>
         </div>
       )}

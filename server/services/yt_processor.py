@@ -285,6 +285,9 @@ class YTProcessor:
 
             client = anthropic.Anthropic(**client_kwargs)
 
+            key_source = "API key" if client_kwargs.get("api_key") else "environment"
+            log(f"Calling Anthropic API ({key_source}) — this takes 60-90s...")
+
             # Run the synchronous Anthropic API call in a thread pool
             def _call_api():
                 return client.messages.create(

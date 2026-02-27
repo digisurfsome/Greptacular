@@ -1521,9 +1521,18 @@ function StrategyBuilder({
                     className="min-h-20 text-sm"
                     disabled={isProcessing}
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Providing context helps the AI focus on what matters to you. Leave blank to extract the full strategy.
-                  </p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground">
+                      Providing context helps the AI focus on what matters to you. Leave blank to extract the full strategy.
+                    </p>
+                    <p className={`text-xs mt-1 text-right tabular-nums ${
+                      userContext.length > 100_000 ? 'text-red-500 font-medium' :
+                      userContext.length > 90_000 ? 'text-yellow-500 font-medium' :
+                      'text-muted-foreground'
+                    }`}>
+                      {userContext.length.toLocaleString()} / 100,000
+                    </p>
+                  </div>
                 </div>
 
                 {/* Model selection */}

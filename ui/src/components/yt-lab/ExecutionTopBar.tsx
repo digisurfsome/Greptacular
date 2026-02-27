@@ -96,7 +96,7 @@ export function ExecutionTopBar({
   const modelLabel = MODEL_LABELS[model] ?? model
 
   const canChat = status === 'running' || status === 'paused'
-  const isTerminal = status === 'completed' || status === 'error'
+  const isTerminal = status === 'completed' || status === 'error' || status === 'idle'
 
   return (
     <div className="flex items-center h-12 px-3 border-b border-border bg-card shrink-0 gap-3">

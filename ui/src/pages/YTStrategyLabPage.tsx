@@ -10,7 +10,7 @@
  * All data is persisted in localStorage. No backend API calls.
  */
 
-import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import {
   AlertCircle,
   ArrowLeft,
@@ -58,7 +58,8 @@ import { VideoIngestPanel } from '@/components/yt-lab/VideoIngestPanel'
 import { ScreenshotGallery } from '@/components/yt-lab/ScreenshotGallery'
 import { ExecutionViewer } from '@/components/yt-lab/ExecutionViewer'
 import { DiscoveryPanel } from '@/components/yt-lab/DiscoveryPanel'
-import { processYouTubeVideo, startExecution } from '@/lib/api'
+import { processVideoStream, startExecution } from '@/lib/api'
+import type { ProcessingLogEntry } from '@/lib/api'
 import { BatchImportView } from '@/components/yt-lab/BatchImportView'
 
 // ============================================================================
@@ -1045,6 +1046,22 @@ function StrategyBuilder({
   const [isProcessing, setIsProcessing] = useState(false)
   const [processingError, setProcessingError] = useState<string | null>(null)
   const [processingTime, setProcessingTime] = useState<number | null>(null)
+  const [processingLogs, setProcessingLogs] = useState<Array<{ message: string; elapsed: number }>>([])
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  const logEndRef = useRef<HTMLDivElement>(null)
+
+  // --- Elapsed timer for processing ---
+  useEffect(() => {
+    if (!isProcessing) return
+    setElapsedSeconds(0)
+    const interval = setInterval(() => setElapsedSeconds(prev => prev + 1), 1000)
+    return () => clearInterval(interval)
+  }, [isProcessing])
+
+  // Auto-scroll log to bottom
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [processingLogs])
 
   // --- Discovery state (opportunity evaluation before building) ---
   const [selectedOpportunity, setSelectedOpportunity] = useState<YTAppOpportunity | null>(null)
@@ -1212,29 +1229,37 @@ function StrategyBuilder({
     setProcessingTime(null)
   }, [])
 
-  /** Process ingested video through AI to generate steps. */
+  /** Process ingested video through AI to generate steps (with real-time log). */
   const handleProcessVideo = useCallback(async () => {
     if (!ingestResult) return
 
     setIsProcessing(true)
     setProcessingError(null)
     setProcessingTime(null)
+    setProcessingLogs([])
 
     try {
-      const response = await processYouTubeVideo({
-        video_id: ingestResult.video_id,
-        transcript: ingestResult.transcript,
-        metadata: {
-          title: ingestResult.title,
-          channel: ingestResult.channel,
-          duration: ingestResult.duration,
-          description: ingestResult.description,
+      const response = await processVideoStream(
+        {
+          video_id: ingestResult.video_id,
+          transcript: ingestResult.transcript,
+          metadata: {
+            title: ingestResult.title,
+            channel: ingestResult.channel,
+            duration: ingestResult.duration,
+            description: ingestResult.description,
+          },
+          user_context: userContext,
+          extracted_urls: ingestResult.extracted_urls,
+          screenshot_suggestions: ingestResult.screenshot_suggestions,
+          model: processingModel,
         },
-        user_context: userContext,
-        extracted_urls: ingestResult.extracted_urls,
-        screenshot_suggestions: ingestResult.screenshot_suggestions,
-        model: processingModel,
-      })
+        (entry: ProcessingLogEntry) => {
+          if (entry.type === 'log' && entry.message) {
+            setProcessingLogs(prev => [...prev, { message: entry.message!, elapsed: entry.elapsed }])
+          }
+        },
+      )
 
       // Update project metadata from AI response
       onUpdateProject({
@@ -1467,7 +1492,7 @@ function StrategyBuilder({
                   {isProcessing ? (
                     <>
                       <Loader2 size={16} className="animate-spin" />
-                      Processing Video...
+                      Processing Video... {elapsedSeconds}s
                     </>
                   ) : (
                     <>
@@ -1476,6 +1501,25 @@ function StrategyBuilder({
                     </>
                   )}
                 </Button>
+
+                {/* Processing log */}
+                {(isProcessing || processingLogs.length > 0) && processingLogs.length > 0 && (
+                  <div className="rounded-md border border-border bg-black/90 p-3 font-mono text-xs max-h-44 overflow-y-auto">
+                    {processingLogs.map((log, i) => (
+                      <div key={i} className="flex gap-2 py-0.5">
+                        <span className="text-emerald-400 shrink-0 tabular-nums">[{log.elapsed.toFixed(1)}s]</span>
+                        <span className="text-gray-200">{log.message}</span>
+                      </div>
+                    ))}
+                    {isProcessing && (
+                      <div className="flex gap-2 py-0.5">
+                        <span className="text-emerald-400 shrink-0 tabular-nums">[{elapsedSeconds}.0s]</span>
+                        <span className="text-yellow-300 animate-pulse">Waiting...</span>
+                      </div>
+                    )}
+                    <div ref={logEndRef} />
+                  </div>
+                )}
 
                 {!ingestResult.transcript.length && (
                   <p className="text-xs text-muted-foreground text-center">

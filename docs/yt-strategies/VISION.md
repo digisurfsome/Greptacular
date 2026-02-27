@@ -116,11 +116,165 @@ The file system is nested — the parent template is the root, sub-projects live
 
 ---
 
-## The Breakaway Potential
+## Breakaway Architecture (The Real Product Strategy)
 
-If any mini-app turns out to be really good — like the automated ad agency becomes a killer workflow — you can **pull it out** and make it a standalone product. It's already structured as its own application with steps, prompts, and tooling. Extracting it into its own dedicated software is just a matter of giving it its own UI and removing the YT Lab wrapper.
+> **YT Strategy Lab is the factory. The breakaway apps are the products.** This section is foundational — every architectural decision must support easy extraction. If a project can't cleanly leave the nest, we built it wrong.
 
-The ad agency mini-app could have 10-20 different automated processes added to it over time (competitor research, ad creation, outreach, reporting, client onboarding, etc.). Each of those is its own mini-app within the mini-app. And any of THOSE could be pulled out as standalone tools if they're good enough.
+### Why This Matters
+
+YT Strategy Lab itself probably never gets sold. What gets sold are the 10+ standalone apps that grow out of it. The automated ad agency becomes its own SaaS. The audience avatar tool becomes its own product. The content pipeline becomes its own thing. Each of those is a business. So the architecture must treat breakaway as a **first-class feature**, not an afterthought.
+
+### The Strip Mall Principle
+
+Think of YT Lab as a strip mall. Each store (project) has its own walls, its own plumbing, its own electrical. The strip mall provides the shared parking lot and the roof. When a store gets successful enough, you pick it up and put it on its own lot — you don't have to rewire anything because it was already self-contained.
+
+**This means every project must be built as if it's ALREADY a standalone app that just happens to live inside YT Lab.**
+
+### Structural Rules for Breakaway-Ready Projects
+
+#### Rule 1: Self-Contained Project Folders
+
+Every project lives in ONE folder with EVERYTHING it needs. Nothing scattered across the main app.
+
+```
+projects/
+├── automated-agency/              ← one project = one folder
+│   ├── manifest.json              ← the blueprint (see Rule 2)
+│   ├── steps/                     ← workflow definitions
+│   │   ├── 01-style-sheet.json
+│   │   ├── 02-research.json
+│   │   └── 03-ad-creation.json
+│   ├── prompts/                   ← AI prompts per step
+│   ├── config/                    ← project-specific settings
+│   ├── data/                      ← outputs, captures, results
+│   ├── sub-projects/              ← nested child projects
+│   │   ├── car-dealerships/
+│   │   ├── real-estate/
+│   │   └── dentists/
+│   └── README.md                  ← human-readable description
+```
+
+**The test:** Can you zip this folder, hand it to someone, and they understand what the project does? If yes, it's self-contained. If no, something leaked outside the folder.
+
+#### Rule 2: The Manifest File
+
+Every project has a `manifest.json` at its root. This is the single source of truth — the blueprint an export tool reads to know exactly what to grab.
+
+```json
+{
+  "name": "Automated Ad Agency",
+  "slug": "automated-agency",
+  "description": "End-to-end automation for creating and deploying social media ads for local businesses",
+  "version": "1.0.0",
+  "source_video": "https://youtube.com/watch?v=...",
+  "mode": "full-automation",
+  "tools_required": ["computer-use"],
+  "steps_count": 9,
+  "has_sub_projects": true,
+  "sub_project_count": 3,
+  "breakaway_ready": true,
+  "created_at": "2026-02-27",
+  "tags": ["ads", "agency", "facebook", "automation"]
+}
+```
+
+When you break away, the export function reads this manifest and knows: grab this folder, grab the `computer-use` tool module, grab the core runtime. Done.
+
+#### Rule 3: Tools Are Separate, Pluggable Modules
+
+Tools live in their own directory, completely independent of any project. A project REFERENCES a tool — it never contains it inline.
+
+```
+tools/
+├── computer-use/          ← one tool = one module
+│   ├── index.js           ← entry point
+│   ├── config.json        ← tool configuration
+│   └── README.md          ← what this tool does
+├── cli-automation/
+├── api-integration/
+└── file-generation/
+```
+
+A project says `"tools_required": ["computer-use"]`. It doesn't import computer-use code directly — it goes through a tool registry. When you break away, the export copies the tool module into the new app. Like unplugging a cable and plugging it into a new building.
+
+#### Rule 4: The Core Runtime Is a Portable Starter Kit
+
+There's a small, clean "core" that every app needs:
+
+- **Step executor** — runs through steps in sequence
+- **Chat interface shell** — the conversational UI wrapper
+- **Tool adapter layer** — loads and runs whatever tools the manifest says
+- **Data persistence** — stores results, state, history
+- **Config system** — settings, API keys, preferences
+
+This core is the same across YT Lab and every breakaway app. It's the foundation you never rewrite. When you export, it comes along as the base. The breakaway app builds ON TOP of it, never modifies it.
+
+```
+core/
+├── executor/        ← step runner
+├── chat/            ← chat UI shell
+├── tools/           ← tool adapter/loader
+├── data/            ← persistence layer
+└── config/          ← settings management
+```
+
+#### Rule 5: No Cross-Project Dependencies
+
+Project A never imports from Project B. Never. They share tools from the tool bank and they share the core runtime, but they don't know each other exist. If you delete Project A, Project B doesn't even notice.
+
+#### Rule 6: The Export Function
+
+This is the actual mechanism. A command (or UI button) that says: "Package this project as a standalone app."
+
+What it does:
+1. Reads the project's `manifest.json`
+2. Copies the project folder to a new directory
+3. Copies the tool modules listed in `tools_required`
+4. Copies the core runtime
+5. Generates a fresh `package.json` / project config
+6. Produces a working, runnable standalone app
+
+What you get:
+```
+my-ad-agency-app/               ← fresh standalone app
+├── core/                       ← copied from YT Lab core
+├── tools/
+│   └── computer-use/           ← only the tools this project needs
+├── project/                    ← the project folder, renamed
+│   ├── manifest.json
+│   ├── steps/
+│   ├── prompts/
+│   ├── sub-projects/
+│   └── ...
+├── package.json                ← generated, independent
+└── README.md                   ← generated from manifest
+```
+
+**This app runs.** Without YT Lab. Without any other projects. It's independent.
+
+### The Customization Phase (Post-Breakaway)
+
+Once a project breaks away, you'll almost always want to add things that didn't make sense inside YT Lab:
+
+- **Branding** — custom logo, colors, domain name
+- **Billing** — Stripe, packages, client payment
+- **Client-facing dashboard** — a UI their customers see
+- **Niche-specific features** — things only this type of app needs
+- **Onboarding flow** — getting new users set up
+
+The breakaway flow:
+```
+1. Project thrives inside YT Lab (10-20 sub-projects, proven workflow)
+2. Decision: "This should be its own product"
+3. Export → standalone app in a fresh directory
+4. Agent reads the manifest + all the project code
+5. You describe customizations: "Add Stripe billing, client dashboard,
+   custom branding for [business name]"
+6. Agent builds on top of already-working code — not from scratch
+7. Result: sellable product with the automation already proven
+```
+
+The key insight: **you're never starting from zero.** The automation already works. The steps are proven. The prompts are refined. You're just wrapping it in a product shell. That's a weekend, not a month.
 
 ---
 
@@ -165,7 +319,7 @@ When you're building features for YT Strategy Lab, keep this in mind:
 
 2. **The template system is the core.** Steps + prompts + tool slots = the universal format. Every video maps to this structure regardless of what it's about.
 
-3. **Tools are pluggable.** Computer-use is ONE tool. The architecture should support adding new tool types without rewriting the template system.
+3. **Tools are pluggable.** Computer-use is ONE tool. The architecture should support adding new tool types without rewriting the template system. Tools live in their own modules, projects reference them by name.
 
 4. **Projects can nest.** A template can be a parent with sub-projects inside it. The data model and file system need to support this hierarchy — not just flat projects.
 
@@ -175,10 +329,16 @@ When you're building features for YT Strategy Lab, keep this in mind:
 
 7. **Intake is guided, not blind.** The video processing pipeline always has user-provided context (a description of what to build). Design the intake flow to collect and use this context before touching the transcript.
 
+8. **Every project must be breakaway-ready.** This is non-negotiable. Self-contained folder, manifest file, tool references (not inline tool code), no cross-project dependencies. If you can't export it with a single command, it's built wrong. The breakaway apps are the actual products — YT Lab is the factory. See the Breakaway Architecture section above.
+
+9. **Core runtime stays thin and portable.** The step executor, chat shell, tool adapter, data layer, and config system are shared infrastructure. Keep them clean, keep them minimal, keep them independent of any specific project. Every breakaway app takes a copy of core.
+
 ---
 
 ## TL;DR
 
-**YT Strategy Lab = YouTube video → reusable mini-app template.**
+**YT Strategy Lab = YouTube video → reusable mini-app template → (optionally) standalone sellable app.**
 
-Some templates are simple checklists. Some are fully automated workflows. All of them are repeatable. Templates can have nested sub-projects for variations of the same pattern. The tool bank grows over time. CLI power is wrapped in chat for accessibility. Video intake is guided by user-provided context, not blind processing. The best mini-apps can become standalone products. It's an app factory, not a single-purpose tool.
+Some templates are simple checklists. Some are fully automated workflows. All of them are repeatable. Templates can have nested sub-projects for variations of the same pattern. The tool bank grows over time. CLI power is wrapped in chat for accessibility. Video intake is guided by user-provided context, not blind processing.
+
+**The business model:** YT Lab is the factory — it probably never gets sold. The breakaway apps are the products. Any project that proves itself (10-20+ sub-projects, proven workflow) can be exported as a standalone app in one command. The automation already works; you just wrap it in a product shell with billing, branding, and client-facing UI. That's why breakaway-ready architecture is Rule #1, not an afterthought.

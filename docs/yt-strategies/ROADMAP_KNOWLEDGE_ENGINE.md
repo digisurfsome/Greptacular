@@ -508,10 +508,51 @@ knowledge_entries:
 
 This is what the Mastermind advisors query. This is what the consolidation engine merges. This is what the app feedback loop references. The Central Knowledge DB is the brain.
 
+### The Staging Queue (Knowledge Inbox)
+
+Reality: output is going to flow in faster than routing can be configured. 10 tools producing output daily, can't stop to configure each one. Solution: **everything goes to staging first.**
+
+**How it works:**
+1. Output hits the pipeline
+2. AI auto-classifies and tags immediately (free, happens on intake)
+3. If routing is configured → deliver immediately
+4. If routing is NOT configured → hold in staging queue
+5. User gets notified: "12 items in staging, awaiting routing direction"
+6. When user has time, they batch-process: "this → here, that → there, those 5 → same place"
+
+**The staging queue is the default state.** Nothing gets lost. Nothing gets stuck. The system is always accumulating knowledge even when the user is asleep.
+
+**Database:** A real database — Supabase, Neon, or similar — not localStorage. This needs to:
+- Handle high volume (10+ items/day, growing)
+- Persist across sessions and devices
+- Support search, filtering, and batch operations
+- Scale without thinking about it
+
+**Staging queue schema (conceptual):**
+```
+staging_queue:
+  - id
+  - source_app (which tool produced this)
+  - content (the actual output)
+  - auto_classification (AI-generated on intake)
+  - auto_tags[] (AI-generated on intake)
+  - status: "staging" | "routed" | "delivered"
+  - routing_config: null (until user configures)
+  - created_at
+  - notified_at (when user was pinged)
+```
+
+**Notification system:**
+- Passive: badge count on the pipeline UI ("7 items in staging")
+- Active: periodic nudge ("Hey, you have items from 2 days ago still in staging. Want to route them?")
+- Smart: "These 5 items look similar to things you've routed before. Want me to suggest routes?"
+
 ### Build Priority
 
 1. **Now:** Define the API contract (what apps send, what the pipeline returns)
-2. **Soon:** Build the pipeline endpoint + classification prompt + Central Knowledge DB
-3. **Then:** Add adapters for each destination (Workspace, Dunk Stack, YT Lab, App Registry)
-4. **Later:** Add the AI cross-reference layer that proactively suggests connections
+2. **Soon:** Build the staging queue + auto-classification + Central Knowledge DB (Supabase/Neon)
+3. **Then:** Build the routing config UI + batch-routing workflow
+4. **Then:** Add adapters for each destination (Workspace, Dunk Stack, YT Lab, App Registry)
+5. **Later:** Add the AI cross-reference layer that proactively suggests connections
+6. **Later:** Smart route suggestions based on historical patterns
 

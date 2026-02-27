@@ -35,6 +35,8 @@ import {
   Sparkles,
   PanelLeftClose,
   PanelLeftOpen,
+  Loader2,
+  Wand2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -45,10 +47,12 @@ import type {
   YTStrategyProject,
   YTStrategyStep,
   YTStrategySubStep,
+  YTIngestResponse,
   YTProjectStatus,
   YTStrategyStepStatus,
 } from '@/lib/types'
 import { VideoIngestPanel } from '@/components/yt-lab/VideoIngestPanel'
+import { processYouTubeVideo } from '@/lib/api'
 
 // ============================================================================
 // Constants
@@ -944,6 +948,14 @@ function StrategyBuilder({
   )
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
+  // --- AI Processing state (Phase 2) ---
+  const [ingestResult, setIngestResult] = useState<YTIngestResponse | null>(null)
+  const [userContext, setUserContext] = useState('')
+  const [processingModel, setProcessingModel] = useState('claude-sonnet-4-6')
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [processingError, setProcessingError] = useState<string | null>(null)
+  const [processingTime, setProcessingTime] = useState<number | null>(null)
+
   // Persist steps whenever they change
   useEffect(() => {
     saveSteps(project.id, steps)
@@ -1081,6 +1093,73 @@ function StrategyBuilder({
     updateSubStep(stepId, subStepId, { status })
   }, [updateSubStep])
 
+  /** Handle ingestion complete — store result for processing. */
+  const handleIngestComplete = useCallback((result: YTIngestResponse) => {
+    setIngestResult(result)
+    setProcessingError(null)
+    setProcessingTime(null)
+  }, [])
+
+  /** Process ingested video through AI to generate steps. */
+  const handleProcessVideo = useCallback(async () => {
+    if (!ingestResult) return
+
+    setIsProcessing(true)
+    setProcessingError(null)
+    setProcessingTime(null)
+
+    try {
+      const response = await processYouTubeVideo({
+        video_id: ingestResult.video_id,
+        transcript: ingestResult.transcript,
+        metadata: {
+          title: ingestResult.title,
+          channel: ingestResult.channel,
+          duration: ingestResult.duration,
+          description: ingestResult.description,
+        },
+        user_context: userContext,
+        extracted_urls: ingestResult.extracted_urls,
+        screenshot_suggestions: ingestResult.screenshot_suggestions,
+        model: processingModel,
+      })
+
+      // Update project metadata from AI response
+      onUpdateProject({
+        name: response.project.name || project.name,
+        niche: response.project.niche || project.niche,
+        description: response.project.description || project.description,
+        tags: response.project.tags.length > 0 ? response.project.tags : project.tags,
+      })
+
+      // Create steps from AI response
+      const newSteps: YTStrategyStep[] = response.steps.map((s) => ({
+        id: generateId(),
+        projectId: project.id,
+        order: s.order,
+        title: s.title,
+        description: s.description,
+        prompt: s.prompt,
+        expectedOutput: s.expectedOutput,
+        notes: s.notes,
+        aiOutput: '',
+        status: 'pending' as const,
+        model: s.model || 'claude-opus-4-6',
+        subSteps: [],
+      }))
+
+      setSteps(newSteps)
+      if (newSteps.length > 0) {
+        setSelectedStepId(newSteps[0].id)
+      }
+      setProcessingTime(response.processing_time)
+    } catch (err) {
+      setProcessingError(err instanceof Error ? err.message : 'Failed to process video')
+    } finally {
+      setIsProcessing(false)
+    }
+  }, [ingestResult, userContext, processingModel, project.id, project.name, project.niche, project.description, project.tags, onUpdateProject])
+
   const completedCount = steps.filter(s => s.status === 'complete').length
 
   return (
@@ -1167,7 +1246,95 @@ function StrategyBuilder({
           {project.sourceUrl && (
             project.sourceUrl.includes('youtube.com') || project.sourceUrl.includes('youtu.be')
           ) && (
-            <VideoIngestPanel />
+            <VideoIngestPanel onIngestComplete={handleIngestComplete} />
+          )}
+
+          {/* AI Processing Panel — shown after successful ingestion */}
+          {ingestResult && (
+            <div className="rounded-lg border border-border bg-card">
+              <div className="flex items-center gap-2 border-b border-border px-4 py-3">
+                <Wand2 size={18} className="text-primary" />
+                <h3 className="text-sm font-semibold text-foreground">AI Strategy Extraction</h3>
+                {processingTime != null && (
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    Processed in {processingTime.toFixed(1)}s
+                  </span>
+                )}
+              </div>
+
+              <div className="p-4 space-y-4">
+                {/* User context textarea */}
+                <div className="space-y-1.5">
+                  <label htmlFor="user-context" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    What do you want to extract from this video?
+                  </label>
+                  <Textarea
+                    id="user-context"
+                    value={userContext}
+                    onChange={(e) => setUserContext(e.target.value)}
+                    placeholder="e.g., I want the step-by-step process for building an AI ad agency. Focus on the automation workflow and computer-use prompts."
+                    className="min-h-20 text-sm"
+                    disabled={isProcessing}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Providing context helps the AI focus on what matters to you. Leave blank to extract the full strategy.
+                  </p>
+                </div>
+
+                {/* Model selection */}
+                <div className="space-y-1.5">
+                  <label htmlFor="processing-model" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    Processing Model
+                  </label>
+                  <select
+                    id="processing-model"
+                    value={processingModel}
+                    onChange={(e) => setProcessingModel(e.target.value)}
+                    disabled={isProcessing}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm
+                      text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent
+                      disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <option value="claude-sonnet-4-6">Claude Sonnet 4.6 (Recommended)</option>
+                    <option value="claude-opus-4-6">Claude Opus 4.6 (Premium)</option>
+                    <option value="claude-haiku-4-5">Claude Haiku 4.5 (Fast)</option>
+                  </select>
+                </div>
+
+                {/* Error message */}
+                {processingError && (
+                  <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2">
+                    <AlertCircle size={16} className="text-destructive shrink-0 mt-0.5" />
+                    <p className="text-sm text-destructive">{processingError}</p>
+                  </div>
+                )}
+
+                {/* Process button */}
+                <Button
+                  onClick={handleProcessVideo}
+                  disabled={isProcessing || !ingestResult.transcript.length}
+                  className="w-full gap-2"
+                >
+                  {isProcessing ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      Processing Video...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={16} />
+                      Process Video
+                    </>
+                  )}
+                </Button>
+
+                {!ingestResult.transcript.length && (
+                  <p className="text-xs text-muted-foreground text-center">
+                    No transcript available — video processing requires a transcript.
+                  </p>
+                )}
+              </div>
+            </div>
           )}
 
           {steps.length === 0 ? (

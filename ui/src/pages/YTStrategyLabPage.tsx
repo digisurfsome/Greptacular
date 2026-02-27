@@ -1385,6 +1385,7 @@ function StrategyBuilder({
             project.sourceUrl.includes('youtube.com') || project.sourceUrl.includes('youtu.be')
           ) && (
             <VideoIngestPanel
+              initialUrl={project.sourceUrl}
               onIngestComplete={(result) => {
                 handleIngestComplete(result)
                 if (result.analyzed_screenshots?.length > 0) {

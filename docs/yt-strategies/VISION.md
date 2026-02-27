@@ -86,11 +86,74 @@ The automated ad agency template? Run it for car dealerships, then run it for de
 
 ---
 
+## Nested Sub-Projects (Templates Have Children)
+
+A template isn't always a dead end. Some templates are **parent systems** that can hold 10, 20, or more sub-projects inside them — each following the same pattern but doing a different task.
+
+**Example — The Automated Agency template:**
+The original video built one automation: car dealership Facebook ads. But that same agency framework could automate dozens of different processes — real estate lead gen, restaurant review management, dental practice outreach, etc. Each of those is a sub-project nested inside the agency template, using the same tool (computer use) and the same structural pattern, just pointed at a different task.
+
+**Example — The Claude Code Automation template:**
+A video shows someone using Claude Code to build one-off automations (like running 50 ad variations to find audience avatars). Right now that person rebuilds the workflow from scratch every time. With our system, the base template captures the pattern, and each new automation task (audience discovery, landing page generation, competitor analysis) becomes a sub-project. Same CLI tool, same structural approach, different task each time.
+
+```
+Template: Automated Agency (computer use)
+├── Sub-project: Car Dealership Facebook Ads
+├── Sub-project: Real Estate Lead Gen
+├── Sub-project: Restaurant Review Outreach
+└── Sub-project: [next idea goes here]
+
+Template: Claude Code Automations (CLI)
+├── Sub-project: Audience Avatar Discovery (50 ad variations)
+├── Sub-project: Landing Page A/B Generator
+├── Sub-project: Competitor Analysis Pipeline
+└── Sub-project: [next idea goes here]
+```
+
+The file system is nested — the parent template is the root, sub-projects live inside it. Each sub-project is its own mini-app but inherits the parent's tool type and structural pattern.
+
+**The breakaway signal:** When a template accumulates enough successful sub-projects (10-20+), that's a strong indicator it should become its own standalone product. At that point you pull it out and give it its own dedicated UI.
+
+---
+
 ## The Breakaway Potential
 
-Here's the kicker: if any mini-app turns out to be really good — like the automated ad agency becomes a killer workflow — you can **pull it out** and make it a standalone product. It's already structured as its own application with steps, prompts, and tooling. Extracting it into its own dedicated software is just a matter of giving it its own UI and removing the YT Lab wrapper.
+If any mini-app turns out to be really good — like the automated ad agency becomes a killer workflow — you can **pull it out** and make it a standalone product. It's already structured as its own application with steps, prompts, and tooling. Extracting it into its own dedicated software is just a matter of giving it its own UI and removing the YT Lab wrapper.
 
 The ad agency mini-app could have 10-20 different automated processes added to it over time (competitor research, ad creation, outreach, reporting, client onboarding, etc.). Each of those is its own mini-app within the mini-app. And any of THOSE could be pulled out as standalone tools if they're good enough.
+
+---
+
+## The CLI-to-Chat Bridge (Making It Accessible)
+
+A lot of the powerful stuff people demonstrate in YouTube videos happens in a terminal. They're typing CLI commands, piping outputs, running scripts. The audience watching is often intimidated — they see the power but can't replicate it because they don't live in a terminal.
+
+**YT Strategy Lab solves this by wrapping CLI workflows in a chat interface.** Under the hood, the system is still executing via CLI (we have full CLI access built in, and the dashboard pulls results back). But the user interacts through a friendly chat — type what you need like you're talking to a person, not a terminal.
+
+This means:
+- **Expert users** still get the full power — the CLI is there, the automation runs the same way
+- **Normal users** ("normies") get a guided experience — the template tells them what to input at each step, the chat handles the rest
+- **The scary terminal is hidden** — the person who was terrified watching the YouTube video can now actually DO the thing
+
+This is a big part of the value proposition: you're taking expert-level CLI workflows and making them accessible to anyone through structured templates + chat UI.
+
+---
+
+## Guided Intake (The Video Isn't Processed Blind)
+
+When a YouTube video enters the system, it doesn't get processed blindly. The person submitting the video provides **context alongside the URL**:
+
+1. **The YouTube URL** — the source material
+2. **A description of what you're trying to build from it** — the user's intent
+
+This description is critical. It tells the AI:
+- Sometimes only HALF the video is relevant — the description says which half
+- Sometimes the whole video maps to one system — the description confirms that
+- The specific angle or use case the user wants to extract
+
+**The AI reads the description BEFORE processing the transcript.** This means it's laser-focused from the start — it knows exactly what it's looking for, what to extract, what to skip. It's not guessing. The description acts as the creative brief for template creation.
+
+*Example: A 45-minute video covers 4 different automation topics. The user writes: "I want the audience avatar discovery process from the first 15 minutes — the part where he runs 50 ad variations and pulls out winning language." The AI ignores the other 30 minutes and builds a focused template for just that workflow.*
 
 ---
 
@@ -104,9 +167,13 @@ When you're building features for YT Strategy Lab, keep this in mind:
 
 3. **Tools are pluggable.** Computer-use is ONE tool. The architecture should support adding new tool types without rewriting the template system.
 
-4. **Projects are independent.** Each video creates its own project. Projects don't share data. They might share tools from the tool bank, but their workflows are separate.
+4. **Projects can nest.** A template can be a parent with sub-projects inside it. The data model and file system need to support this hierarchy — not just flat projects.
 
 5. **Repeatability is the whole point.** A template that only works once is useless. Every project must be runnable with different inputs (different niche, different client, different market).
+
+6. **The chat interface is as important as the automation.** Non-technical users need to be able to use these templates through a conversational UI. Don't build features that only work if someone knows CLI commands.
+
+7. **Intake is guided, not blind.** The video processing pipeline always has user-provided context (a description of what to build). Design the intake flow to collect and use this context before touching the transcript.
 
 ---
 
@@ -114,4 +181,4 @@ When you're building features for YT Strategy Lab, keep this in mind:
 
 **YT Strategy Lab = YouTube video → reusable mini-app template.**
 
-Some templates are simple checklists. Some are fully automated workflows. All of them are repeatable. The tool bank grows over time. The best mini-apps can become standalone products. It's an app factory, not a single-purpose tool.
+Some templates are simple checklists. Some are fully automated workflows. All of them are repeatable. Templates can have nested sub-projects for variations of the same pattern. The tool bank grows over time. CLI power is wrapped in chat for accessibility. Video intake is guided by user-provided context, not blind processing. The best mini-apps can become standalone products. It's an app factory, not a single-purpose tool.

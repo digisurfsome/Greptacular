@@ -1524,3 +1524,48 @@ export interface YTProcessResponse {
   steps: YTProcessStepData[]
   processing_time: number
 }
+
+// ============================================================================
+// YT Lab Screen Capture Types (Phase 8 — Screen Recording)
+// ============================================================================
+
+export type YTCaptureType = 'screenshot' | 'clip' | 'session'
+
+export type YTCaptureTrigger =
+  | 'step_start'
+  | 'step_complete'
+  | 'button_click'
+  | 'form_fill'
+  | 'navigation'
+  | 'user_pause'
+  | 'error'
+  | 'manual'
+
+export interface YTCaptureItem {
+  id: string
+  session_id: string
+  step_number: number
+  capture_type: YTCaptureType
+  trigger: YTCaptureTrigger
+  file_path: string
+  filename: string
+  duration: number | null
+  timestamp: number
+  created_at: string
+}
+
+export interface YTCaptureListResponse {
+  session_id: string
+  captures: YTCaptureItem[]
+  total: number
+  is_recording: boolean
+}
+
+export interface YTManualCaptureResponse {
+  captures: YTCaptureItem[]
+}
+
+export interface YTRecordingStatusResponse {
+  is_recording: boolean
+  session_id: string
+}

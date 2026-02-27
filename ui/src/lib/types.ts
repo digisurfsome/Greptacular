@@ -1447,6 +1447,17 @@ export interface YTScreenshotSuggestion {
   filepath: string | null
 }
 
+export interface YTScreenshotCapture {
+  timestamp: number
+  reason: string
+  image_path: string
+  ocr_text: string
+  ui_detected: string
+  classification: 'prompt' | 'result' | 'dashboard' | 'form' | 'navigation' | 'other'
+  relevance_score: number
+  transcript_segment: string
+}
+
 export interface YTIngestResponse {
   video_id: string
   title: string
@@ -1459,6 +1470,8 @@ export interface YTIngestResponse {
   extracted_urls: string[]
   screenshot_suggestions: YTScreenshotSuggestion[]
   screenshots: string[]
+  analyzed_screenshots: YTScreenshotCapture[]
+  screenshot_summary: string
 }
 
 export interface YTLabHealth {

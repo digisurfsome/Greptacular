@@ -50,8 +50,10 @@ import type {
   YTIngestResponse,
   YTProjectStatus,
   YTStrategyStepStatus,
+  YTScreenshotCapture,
 } from '@/lib/types'
 import { VideoIngestPanel } from '@/components/yt-lab/VideoIngestPanel'
+import { ScreenshotGallery } from '@/components/yt-lab/ScreenshotGallery'
 import { processYouTubeVideo } from '@/lib/api'
 
 // ============================================================================
@@ -63,6 +65,11 @@ const STORAGE_KEY_PROJECTS = 'yt-lab-projects'
 /** Prefix for per-project step storage keys. */
 function stepsStorageKey(projectId: string): string {
   return `yt-lab-steps-${projectId}`
+}
+
+/** Key for per-project analyzed screenshots. */
+function screenshotsStorageKey(projectId: string): string {
+  return `yt-lab-screenshots-${projectId}`
 }
 
 /** AI model options displayed in the step editor dropdown. */
@@ -948,6 +955,16 @@ function StrategyBuilder({
   )
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
+  // Load analyzed screenshots from localStorage
+  const [analyzedScreenshots, setAnalyzedScreenshots] = useState<YTScreenshotCapture[]>(() => {
+    const stored = localStorage.getItem(screenshotsStorageKey(project.id))
+    return stored ? JSON.parse(stored) : []
+  })
+  const [screenshotSummary] = useState<string>(() => {
+    const stored = localStorage.getItem(`yt-lab-screenshot-summary-${project.id}`)
+    return stored || ''
+  })
+
   // --- AI Processing state (Phase 2) ---
   const [ingestResult, setIngestResult] = useState<YTIngestResponse | null>(null)
   const [userContext, setUserContext] = useState('')
@@ -1246,7 +1263,34 @@ function StrategyBuilder({
           {project.sourceUrl && (
             project.sourceUrl.includes('youtube.com') || project.sourceUrl.includes('youtu.be')
           ) && (
-            <VideoIngestPanel onIngestComplete={handleIngestComplete} />
+            <VideoIngestPanel
+              onIngestComplete={(result) => {
+                handleIngestComplete(result)
+                if (result.analyzed_screenshots?.length > 0) {
+                  setAnalyzedScreenshots(result.analyzed_screenshots)
+                  localStorage.setItem(
+                    screenshotsStorageKey(project.id),
+                    JSON.stringify(result.analyzed_screenshots),
+                  )
+                  if (result.screenshot_summary) {
+                    localStorage.setItem(
+                      `yt-lab-screenshot-summary-${project.id}`,
+                      result.screenshot_summary,
+                    )
+                  }
+                }
+              }}
+            />
+          )}
+
+          {/* Screenshot Gallery — shown when analyzed screenshots exist */}
+          {analyzedScreenshots.length > 0 && (
+            <div className="rounded-lg border border-border bg-card p-4">
+              <ScreenshotGallery
+                screenshots={analyzedScreenshots}
+                summary={screenshotSummary}
+              />
+            </div>
           )}
 
           {/* AI Processing Panel — shown after successful ingestion */}

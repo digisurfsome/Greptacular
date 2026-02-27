@@ -12,7 +12,7 @@
  *   - <768px: Full-screen browser, sidebar/log in drawers
  */
 
-import { useState, useCallback, useMemo, useEffect } from 'react'
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { YTStrategyProject, YTStrategyStep, YTStrategyStepStatus } from '@/lib/types'
@@ -47,6 +47,7 @@ export function ExecutionViewer({
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [isPending, setIsPending] = useState(false)
   const [confirmingStop, setConfirmingStop] = useState(false)
+  const stopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const ws = useExecutionWebSocket(sessionId)
 
@@ -102,7 +103,8 @@ export function ExecutionViewer({
     if (!confirmingStop) {
       setConfirmingStop(true)
       // Auto-dismiss after 3 seconds
-      setTimeout(() => setConfirmingStop(false), 3000)
+      if (stopTimerRef.current) clearTimeout(stopTimerRef.current)
+      stopTimerRef.current = setTimeout(() => setConfirmingStop(false), 3000)
       return
     }
     setConfirmingStop(false)
@@ -118,6 +120,13 @@ export function ExecutionViewer({
     if (!sessionId) return
     void handleAction(() => setTakeoverMode(sessionId, false))
   }, [sessionId, handleAction])
+
+  // Cleanup stop confirmation timer on unmount
+  useEffect(() => {
+    return () => {
+      if (stopTimerRef.current) clearTimeout(stopTimerRef.current)
+    }
+  }, [])
 
   const handleSendMessage = useCallback(
     (message: string) => {

@@ -17,6 +17,7 @@ Storage:
 
 import logging
 import os
+import signal
 import subprocess
 import threading
 import time
@@ -24,7 +25,7 @@ import uuid
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -223,6 +224,8 @@ def capture_clip(
                 FFMPEG_PRESET,
                 "-crf",
                 str(DEFAULT_CLIP_CRF),
+                "-pix_fmt",
+                "yuv420p",
                 output_path,
             ],
             timeout=duration + CLIP_TIMEOUT_BUFFER,
@@ -242,7 +245,7 @@ def capture_clip_async(
     duration: int = 5,
     width: int = DEFAULT_DISPLAY_WIDTH,
     height: int = DEFAULT_DISPLAY_HEIGHT,
-    on_complete: Optional[callable] = None,
+    on_complete: Optional[Callable[[bool], None]] = None,
 ) -> threading.Thread:
     """
     Non-blocking version of capture_clip. Returns the running thread.
@@ -330,6 +333,8 @@ class SessionRecorder:
                     FFMPEG_PRESET,
                     "-crf",
                     str(DEFAULT_SESSION_CRF),
+                    "-pix_fmt",
+                    "yuv420p",
                     self.output_path,
                 ],
                 stdout=subprocess.DEVNULL,
@@ -352,7 +357,7 @@ class SessionRecorder:
         final_elapsed = self.elapsed
 
         try:
-            self.process.terminate()
+            self.process.send_signal(signal.SIGINT)
             self.process.wait(timeout=10)
             logger.info(
                 "Session recording stopped (%.1fs): %s",
@@ -363,7 +368,10 @@ class SessionRecorder:
         except subprocess.TimeoutExpired:
             logger.warning("ffmpeg did not terminate in time, killing")
             self.process.kill()
-            self.process.wait(timeout=5)
+            try:
+                self.process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                logger.error("ffmpeg did not respond to SIGKILL within 5s")
             return True
         except Exception as exc:
             logger.error("Error stopping session recording: %s", exc)
@@ -404,6 +412,7 @@ class CaptureManager:
         self.height = height
 
         self.captures: list[CaptureRecord] = []
+        self._lock = threading.Lock()
         self._session_recorder: Optional[SessionRecorder] = None
         self._session_start_time: float = time.time()
 
@@ -455,7 +464,8 @@ class CaptureManager:
             created_at=datetime.now(timezone.utc).isoformat(),
             status=status,
         )
-        self.captures.append(record)
+        with self._lock:
+            self.captures.append(record)
         return record
 
     # ---- Auto-capture triggers ----
@@ -496,7 +506,7 @@ class CaptureManager:
         )
         capture_clip_async(
             self.display_number, str(clip_path), duration=3, width=self.width, height=self.height,
-            on_complete=lambda _ok, r=clip_record: setattr(r, "status", "ready"),
+            on_complete=lambda ok, r=clip_record: setattr(r, "status", "ready" if ok else "failed"),
         )
         records.append(clip_record)
 
@@ -511,7 +521,7 @@ class CaptureManager:
         )
         capture_clip_async(
             self.display_number, str(path), duration=3, width=self.width, height=self.height,
-            on_complete=lambda _ok, r=record: setattr(r, "status", "ready"),
+            on_complete=lambda ok, r=record: setattr(r, "status", "ready" if ok else "failed"),
         )
         return record
 
@@ -524,7 +534,7 @@ class CaptureManager:
         )
         capture_clip_async(
             self.display_number, str(path), duration=5, width=self.width, height=self.height,
-            on_complete=lambda _ok, r=record: setattr(r, "status", "ready"),
+            on_complete=lambda ok, r=record: setattr(r, "status", "ready" if ok else "failed"),
         )
         return record
 
@@ -567,7 +577,7 @@ class CaptureManager:
         )
         capture_clip_async(
             self.display_number, str(clip_path), duration=5, width=self.width, height=self.height,
-            on_complete=lambda _ok, r=clip_record: setattr(r, "status", "ready"),
+            on_complete=lambda ok, r=clip_record: setattr(r, "status", "ready" if ok else "failed"),
         )
         records.append(clip_record)
 
@@ -597,7 +607,7 @@ class CaptureManager:
             )
             capture_clip_async(
                 self.display_number, str(clip_path), duration=5, width=self.width, height=self.height,
-                on_complete=lambda _ok, r=clip_record: setattr(r, "status", "ready"),
+                on_complete=lambda ok, r=clip_record: setattr(r, "status", "ready" if ok else "failed"),
             )
             records.append(clip_record)
 
@@ -647,7 +657,8 @@ class CaptureManager:
 
     def get_captures(self, step_number: Optional[int] = None) -> list[dict]:
         """Get all captures, optionally filtered by step number."""
-        captures = self.captures
+        with self._lock:
+            captures = list(self.captures)
         if step_number is not None:
             captures = [c for c in captures if c.step_number == step_number]
         return [c.to_dict() for c in captures]

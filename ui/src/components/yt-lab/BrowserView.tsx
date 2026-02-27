@@ -6,7 +6,7 @@
  * (takeover) modes. Maintains display aspect ratio with letterboxing.
  */
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Monitor, Loader2, WifiOff } from 'lucide-react'
 import type { YTExecutionStatus } from '@/lib/types'
 
@@ -39,6 +39,9 @@ export function BrowserView({ novncUrl, status, isTakeover }: BrowserViewProps) 
   }
 
   const iframeUrl = buildIframeUrl()
+
+  // Reset iframe loaded state when URL changes
+  useEffect(() => { setIframeLoaded(false) }, [iframeUrl])
 
   // Status-specific overlays
   if (status === 'idle') {

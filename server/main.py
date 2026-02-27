@@ -38,6 +38,8 @@ from .routers import (
     design_guide_router,
     devserver_router,
     dunkstack_router,
+    execution_router,
+    execution_websocket,
     expand_project_router,
     features_router,
     filesystem_router,
@@ -61,6 +63,7 @@ from .services.assistant_chat_session import cleanup_all_sessions as cleanup_ass
 from .services.background_session_manager import cleanup_background_sessions
 from .services.chat_constants import ROOT_DIR
 from .services.ci_monitor import cleanup_all_monitors
+from .services.computer_use_agent import cleanup_all_sessions
 from .services.design_guide_session import cleanup_all_design_guide_sessions
 from .services.dev_server_manager import (
     cleanup_all_devservers,
@@ -106,6 +109,7 @@ async def lifespan(app: FastAPI):
     await cleanup_all_swarms()
     await cleanup_all_monitors()
     cleanup_all_agent_os_sessions()
+    await cleanup_all_sessions()
     await cleanup_all_capture_managers()
 
 
@@ -199,6 +203,7 @@ app.include_router(agent_os_router)
 app.include_router(yt_ingestion_router)
 app.include_router(yt_processing_router)
 app.include_router(captures_router)
+app.include_router(execution_router)
 app.include_router(yt_batch_router)
 
 
@@ -210,6 +215,12 @@ app.include_router(yt_batch_router)
 async def websocket_endpoint(websocket: WebSocket, project_name: str):
     """WebSocket endpoint for real-time project updates."""
     await project_websocket(websocket, project_name)
+
+
+@app.websocket("/ws/execution/{session_id}")
+async def execution_ws_endpoint(websocket: WebSocket, session_id: str):
+    """WebSocket endpoint for real-time execution events."""
+    await execution_websocket(websocket, session_id)
 
 
 # ============================================================================

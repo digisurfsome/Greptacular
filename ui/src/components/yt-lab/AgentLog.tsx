@@ -59,9 +59,10 @@ export function AgentLog({ logs, onClear, collapsed = false }: AgentLogProps) {
   }
 
   if (collapsed) {
+    const hasRecentActivity = logs.length > 0 && (Date.now() - new Date(logs[logs.length - 1].timestamp).getTime()) < 10000
     return (
       <div className="flex flex-col items-center py-2 gap-1">
-        <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" title="Agent active" />
+        <div className={`w-2 h-2 rounded-full ${hasRecentActivity ? 'bg-cyan-400 animate-pulse' : 'bg-muted-foreground/30'}`} title={hasRecentActivity ? 'Agent active' : 'No recent activity'} />
         <span className="text-[9px] text-muted-foreground [writing-mode:vertical-rl]">
           Logs ({logs.length})
         </span>

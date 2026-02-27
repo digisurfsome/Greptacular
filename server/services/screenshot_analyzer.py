@@ -137,7 +137,7 @@ def analyze_screenshot(filepath: str) -> ScreenshotAnalysis:
     try:
         client = anthropic.Anthropic(api_key=api_key)
         response = client.messages.create(
-            model="claude-haiku-4-5-20241022",
+            model="claude-haiku-4-5",
             max_tokens=1024,
             messages=[
                 {

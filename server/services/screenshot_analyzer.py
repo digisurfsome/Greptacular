@@ -56,7 +56,15 @@ class ScreenshotCapture(BaseModel):
 
 
 def _get_api_key() -> Optional[str]:
-    """Get the Anthropic API key from environment."""
+    """Get the Anthropic API key from settings database or environment."""
+    try:
+        from registry import get_effective_sdk_env
+        sdk_env = get_effective_sdk_env()
+        key = sdk_env.get("ANTHROPIC_API_KEY")
+        if key:
+            return key
+    except Exception:
+        pass
     return os.getenv("ANTHROPIC_API_KEY")
 
 

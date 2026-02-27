@@ -21,7 +21,7 @@ interface SettingsModalProps {
 }
 
 const PROVIDER_INFO_TEXT: Record<string, string> = {
-  claude: 'Default provider. Uses your Claude CLI credentials.',
+  claude: 'Default provider. CLI uses your subscription. API key needed for YT Lab AI processing.',
   kimi: 'Get an API key at kimi.com',
   glm: 'Get an API key at open.bigmodel.cn',
   ollama: 'Run models locally. Install from ollama.com',
@@ -138,7 +138,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const currentProvider = settings?.api_provider ?? 'claude'
   const currentProviderInfo: ProviderInfo | undefined = providers.find(p => p.id === currentProvider)
   const isAlternativeProvider = currentProvider !== 'claude'
-  const showAuthField = isAlternativeProvider && currentProviderInfo?.requires_auth
+  const showAuthField = currentProvider === 'claude' || (isAlternativeProvider && currentProviderInfo?.requires_auth)
   const showBaseUrlField = currentProvider === 'custom'
   const showCustomModelInput = currentProvider === 'custom' || currentProvider === 'ollama'
 

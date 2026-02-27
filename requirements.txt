@@ -12,6 +12,11 @@ pywinpty>=2.0.0; sys_platform == "win32"
 pyyaml>=6.0.0
 cryptography>=43.0.0
 
+# YT Strategy Lab dependencies
+anthropic>=0.40.0
+youtube-transcript-api>=1.0.0
+yt-dlp>=2024.0.0
+
 # Dev dependencies
 ruff>=0.8.0
 mypy>=1.13.0

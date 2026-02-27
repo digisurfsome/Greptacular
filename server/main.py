@@ -51,6 +51,7 @@ from .routers import (
     swarm_router,
     terminal_router,
     workspace_router,
+    yt_batch_router,
     yt_ingestion_router,
     yt_processing_router,
 )
@@ -198,6 +199,7 @@ app.include_router(agent_os_router)
 app.include_router(yt_ingestion_router)
 app.include_router(yt_processing_router)
 app.include_router(captures_router)
+app.include_router(yt_batch_router)
 
 
 # ============================================================================

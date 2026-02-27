@@ -52,10 +52,13 @@ import type {
   YTProjectStatus,
   YTStrategyStepStatus,
   YTScreenshotCapture,
+  YTAppOpportunity,
+  YTDiscoverResponse,
 } from '@/lib/types'
 import { VideoIngestPanel } from '@/components/yt-lab/VideoIngestPanel'
 import { ScreenshotGallery } from '@/components/yt-lab/ScreenshotGallery'
 import { ExecutionViewer } from '@/components/yt-lab/ExecutionViewer'
+import { DiscoveryPanel } from '@/components/yt-lab/DiscoveryPanel'
 import { processYouTubeVideo, startExecution } from '@/lib/api'
 import { BatchImportView } from '@/components/yt-lab/BatchImportView'
 
@@ -1044,6 +1047,27 @@ function StrategyBuilder({
   const [processingError, setProcessingError] = useState<string | null>(null)
   const [processingTime, setProcessingTime] = useState<number | null>(null)
 
+  // --- Discovery state (opportunity evaluation before building) ---
+  const [selectedOpportunity, setSelectedOpportunity] = useState<YTAppOpportunity | null>(null)
+
+  /** Handle opportunity selection from the DiscoveryPanel. */
+  const handleOpportunitySelected = useCallback(
+    (opp: YTAppOpportunity | null, _discovery: YTDiscoverResponse | null) => {
+      setSelectedOpportunity(opp)
+      // Auto-populate the processing user context with the selected opportunity
+      if (opp) {
+        setUserContext(
+          `FOCUS: Build "${opp.name}" — ${opp.one_liner}\n\n` +
+          `Type: ${opp.type} app\n` +
+          `Core features: ${opp.features.join(', ')}\n` +
+          `Strategic value: ${opp.strategic_value}\n` +
+          `Growth path: ${opp.growth_path}`
+        )
+      }
+    },
+    [],
+  )
+
   // Persist steps whenever they change
   useEffect(() => {
     saveSteps(project.id, steps)
@@ -1364,6 +1388,15 @@ function StrategyBuilder({
                 summary={screenshotSummary}
               />
             </div>
+          )}
+
+          {/* Discovery Panel — analyze before building */}
+          {ingestResult && (
+            <DiscoveryPanel
+              ingestResult={ingestResult}
+              onOpportunitySelected={handleOpportunitySelected}
+              selectedOpportunity={selectedOpportunity}
+            />
           )}
 
           {/* AI Processing Panel — shown after successful ingestion */}

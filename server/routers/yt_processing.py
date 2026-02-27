@@ -16,6 +16,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from ..services.yt_discovery import YTDiscovery
 from ..services.yt_processor import YTProcessor
 
 logger = logging.getLogger(__name__)
@@ -142,4 +143,115 @@ async def process_video(body: ProcessRequest):
         project=ProjectData(**result["project"]),
         steps=[StepData(**s) for s in result["steps"]],
         processing_time=result["processing_time"],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Discovery Schemas
+# ---------------------------------------------------------------------------
+
+
+class VideoContext(BaseModel):
+    """Who is speaking, what the video is about, who benefits."""
+
+    speaker: str = ""
+    core_topic: str = ""
+    target_audience: str = ""
+
+
+class KeyInsight(BaseModel):
+    """A key lesson or principle from the video."""
+
+    insight: str
+    quote: str = ""
+    timestamp_approx: str = ""
+    applicability: str = ""
+
+
+class AppOpportunity(BaseModel):
+    """A concrete app opportunity identified from the video content."""
+
+    name: str
+    type: str = "companion"  # companion | direct | derivative | teaching
+    one_liner: str = ""
+    description: str = ""
+    why_this_works: str = ""
+    concerns: str = ""
+    complexity: int = Field(3, ge=1, le=5)
+    strategic_value: str = ""
+    market_signal: str = ""
+    features: list[str] = []
+    growth_path: str = ""
+    score: int = Field(50, ge=0, le=100)
+
+
+class Recommendation(BaseModel):
+    """The AI's recommended path forward."""
+
+    top_pick_index: int = 0
+    reasoning: str = ""
+    sequence: str = ""
+    quick_win: str = ""
+
+
+class DiscoverResponse(BaseModel):
+    """Response from the discovery endpoint."""
+
+    video_context: VideoContext
+    key_insights: list[KeyInsight]
+    app_opportunities: list[AppOpportunity]
+    recommendation: Recommendation
+    discovery_time: float
+
+
+# ---------------------------------------------------------------------------
+# Discovery Endpoint
+# ---------------------------------------------------------------------------
+
+
+@router.post("/discover", response_model=DiscoverResponse)
+async def discover_opportunities(body: ProcessRequest):
+    """
+    Analyze a YouTube video's transcript to discover and evaluate app
+    opportunities BEFORE building anything.
+
+    Returns key insights, ranked app opportunities with honest evaluation,
+    and a recommendation for what to build first.
+
+    Uses the same request schema as /process for consistency.
+    """
+    if not body.transcript:
+        raise HTTPException(
+            status_code=400,
+            detail="Transcript is empty — cannot discover opportunities without transcript data.",
+        )
+
+    discovery = YTDiscovery()
+
+    try:
+        result = await discovery.discover(
+            video_id=body.video_id,
+            transcript=[seg.model_dump() for seg in body.transcript],
+            metadata=body.metadata.model_dump(),
+            user_context=body.user_context,
+            extracted_urls=body.extracted_urls,
+            screenshot_suggestions=[s.model_dump() for s in body.screenshot_suggestions],
+            model=body.model,
+        )
+    except RuntimeError as exc:
+        logger.error("Discovery setup error: %s", exc)
+        raise HTTPException(status_code=503, detail=str(exc))
+    except ValueError as exc:
+        logger.error("Discovery parse error: %s", exc)
+        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception as exc:
+        logger.exception("Unexpected error during video discovery")
+        raise HTTPException(status_code=500, detail=f"Discovery failed: {exc}")
+
+    return DiscoverResponse(
+        video_context=VideoContext(**result["video_context"]),
+        key_insights=[KeyInsight(**i) for i in result["key_insights"]],
+        app_opportunities=[AppOpportunity(**o) for o in result["app_opportunities"]],
+        recommendation=Recommendation(**result["recommendation"]),
+        discovery_time=result["discovery_time"],
     )

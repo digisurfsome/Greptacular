@@ -314,7 +314,7 @@ function OpportunityCard({
 
 interface DiscoveryPanelProps {
   ingestResult: YTIngestResponse
-  onOpportunitySelected: (opportunity: YTAppOpportunity | null, discovery: YTDiscoverResponse | null) => void
+  onOpportunitySelected: (opportunity: YTAppOpportunity | null) => void
   selectedOpportunity: YTAppOpportunity | null
 }
 
@@ -358,7 +358,7 @@ export function DiscoveryPanel({
       if (response.app_opportunities.length > 0) {
         const topIdx = response.recommendation.top_pick_index
         const topPick = response.app_opportunities[topIdx] || response.app_opportunities[0]
-        onOpportunitySelected(topPick, response)
+        onOpportunitySelected(topPick)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Discovery failed')
@@ -370,12 +370,12 @@ export function DiscoveryPanel({
   const handleSelectOpportunity = useCallback(
     (opp: YTAppOpportunity) => {
       if (selectedOpportunity?.name === opp.name) {
-        onOpportunitySelected(null, result)
+        onOpportunitySelected(null)
       } else {
-        onOpportunitySelected(opp, result)
+        onOpportunitySelected(opp)
       }
     },
-    [selectedOpportunity, onOpportunitySelected, result],
+    [selectedOpportunity, onOpportunitySelected],
   )
 
   return (
@@ -558,7 +558,7 @@ export function DiscoveryPanel({
               onClick={() => {
                 setResult(null)
                 setDiscoveryTime(null)
-                onOpportunitySelected(null, null)
+                onOpportunitySelected(null)
               }}
               className="w-full text-muted-foreground"
             >

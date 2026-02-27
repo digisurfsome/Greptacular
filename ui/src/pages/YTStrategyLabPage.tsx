@@ -53,7 +53,6 @@ import type {
   YTStrategyStepStatus,
   YTScreenshotCapture,
   YTAppOpportunity,
-  YTDiscoverResponse,
 } from '@/lib/types'
 import { VideoIngestPanel } from '@/components/yt-lab/VideoIngestPanel'
 import { ScreenshotGallery } from '@/components/yt-lab/ScreenshotGallery'
@@ -1052,7 +1051,7 @@ function StrategyBuilder({
 
   /** Handle opportunity selection from the DiscoveryPanel. */
   const handleOpportunitySelected = useCallback(
-    (opp: YTAppOpportunity | null, _discovery: YTDiscoverResponse | null) => {
+    (opp: YTAppOpportunity | null) => {
       setSelectedOpportunity(opp)
       // Auto-populate the processing user context with the selected opportunity
       if (opp) {

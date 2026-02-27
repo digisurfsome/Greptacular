@@ -36,6 +36,8 @@ import { ingestYouTubeVideo } from '@/lib/api'
 interface VideoIngestPanelProps {
   /** Called with the full ingestion result when processing completes */
   onIngestComplete?: (result: YTIngestResponse) => void
+  /** Pre-populate the URL field (e.g. from the project creation form) */
+  initialUrl?: string
 }
 
 type IngestStep = 'idle' | 'fetching_metadata' | 'fetching_transcript' | 'analyzing' | 'done' | 'error'
@@ -146,8 +148,8 @@ function StatusStep({
 // Main Component
 // ---------------------------------------------------------------------------
 
-export function VideoIngestPanel({ onIngestComplete }: VideoIngestPanelProps): React.JSX.Element {
-  const [url, setUrl] = useState('')
+export function VideoIngestPanel({ onIngestComplete, initialUrl }: VideoIngestPanelProps): React.JSX.Element {
+  const [url, setUrl] = useState(initialUrl ?? '')
   const [captureScreenshots, setCaptureScreenshots] = useState(false)
   const [currentStep, setCurrentStep] = useState<IngestStep>('idle')
   const [errorAtStep, setErrorAtStep] = useState<IngestStep | null>(null)

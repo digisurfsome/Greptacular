@@ -1041,7 +1041,7 @@ function StrategyBuilder({
 
   // --- AI Processing state (Phase 2) ---
   const [ingestResult, setIngestResult] = useState<YTIngestResponse | null>(null)
-  const [userContext, setUserContext] = useState('')
+  const [userContext, setUserContext] = useState(project.description || '')
   const [processingModel, setProcessingModel] = useState('claude-sonnet-4-6')
   const [isProcessing, setIsProcessing] = useState(false)
   const [processingError, setProcessingError] = useState<string | null>(null)
@@ -1385,6 +1385,7 @@ function StrategyBuilder({
             project.sourceUrl.includes('youtube.com') || project.sourceUrl.includes('youtu.be')
           ) && (
             <VideoIngestPanel
+              initialUrl={project.sourceUrl}
               onIngestComplete={(result) => {
                 handleIngestComplete(result)
                 if (result.analyzed_screenshots?.length > 0) {
@@ -1420,6 +1421,7 @@ function StrategyBuilder({
               ingestResult={ingestResult}
               onOpportunitySelected={handleOpportunitySelected}
               selectedOpportunity={selectedOpportunity}
+              initialContext={project.description}
             />
           )}
 

@@ -317,14 +317,17 @@ interface DiscoveryPanelProps {
   ingestResult: YTIngestResponse
   onOpportunitySelected: (opportunity: YTAppOpportunity | null) => void
   selectedOpportunity: YTAppOpportunity | null
+  /** Pre-populate the context field (e.g. from project description) */
+  initialContext?: string
 }
 
 export function DiscoveryPanel({
   ingestResult,
   onOpportunitySelected,
   selectedOpportunity,
+  initialContext,
 }: DiscoveryPanelProps) {
-  const [userContext, setUserContext] = useState('')
+  const [userContext, setUserContext] = useState(initialContext ?? '')
   const [model, setModel] = useState('claude-sonnet-4-6')
   const [isDiscovering, setIsDiscovering] = useState(false)
   const [error, setError] = useState<string | null>(null)

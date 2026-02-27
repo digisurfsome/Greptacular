@@ -81,6 +81,7 @@ class CaptureRecord:
     duration: Optional[float] = None  # seconds, for clips/sessions
     timestamp: float = 0.0  # time since session start
     created_at: str = ""
+    status: str = "ready"  # "ready" or "capturing" (for async clips)
 
     def to_dict(self) -> dict:
         return {
@@ -94,6 +95,7 @@ class CaptureRecord:
             "duration": self.duration,
             "timestamp": self.timestamp,
             "created_at": self.created_at,
+            "status": self.status,
         }
 
 
@@ -240,17 +242,22 @@ def capture_clip_async(
     duration: int = 5,
     width: int = DEFAULT_DISPLAY_WIDTH,
     height: int = DEFAULT_DISPLAY_HEIGHT,
+    on_complete: Optional[callable] = None,
 ) -> threading.Thread:
     """
     Non-blocking version of capture_clip. Returns the running thread.
 
-    The caller can optionally join the thread to wait for completion.
+    Args:
+        on_complete: Optional callback invoked when the clip finishes.
+            Called with a single bool argument indicating success.
     """
-    thread = threading.Thread(
-        target=capture_clip,
-        args=(display_number, output_path, duration, width, height),
-        daemon=True,
-    )
+
+    def _run():
+        result = capture_clip(display_number, output_path, duration, width, height)
+        if on_complete is not None:
+            on_complete(result)
+
+    thread = threading.Thread(target=_run, daemon=True)
     thread.start()
     return thread
 
@@ -342,12 +349,14 @@ class SessionRecorder:
             logger.warning("Session recorder not running")
             return False
 
+        final_elapsed = self.elapsed
+
         try:
             self.process.terminate()
             self.process.wait(timeout=10)
             logger.info(
                 "Session recording stopped (%.1fs): %s",
-                self.elapsed,
+                final_elapsed,
                 self.output_path,
             )
             return True
@@ -428,6 +437,7 @@ class CaptureManager:
         file_path: Path,
         filename: str,
         duration: Optional[float] = None,
+        status: str = "ready",
     ) -> CaptureRecord:
         """Create and store a CaptureRecord."""
         from datetime import datetime, timezone
@@ -443,6 +453,7 @@ class CaptureManager:
             duration=duration,
             timestamp=time.time() - self._session_start_time,
             created_at=datetime.now(timezone.utc).isoformat(),
+            status=status,
         )
         self.captures.append(record)
         return record
@@ -475,34 +486,47 @@ class CaptureManager:
                 )
             )
 
-        # 3s clip (async)
+        # 3s clip (async — status starts as "capturing", updated on completion)
         clip_path, clip_fname = self._make_filename(
             step_number, CaptureType.CLIP, CaptureTrigger.STEP_COMPLETE
         )
-        capture_clip_async(self.display_number, str(clip_path), duration=3, width=self.width, height=self.height)
-        records.append(
-            self._record(
-                step_number, CaptureType.CLIP, CaptureTrigger.STEP_COMPLETE, clip_path, clip_fname, duration=3.0
-            )
+        clip_record = self._record(
+            step_number, CaptureType.CLIP, CaptureTrigger.STEP_COMPLETE, clip_path, clip_fname,
+            duration=3.0, status="capturing",
         )
+        capture_clip_async(
+            self.display_number, str(clip_path), duration=3, width=self.width, height=self.height,
+            on_complete=lambda _ok, r=clip_record: setattr(r, "status", "ready"),
+        )
+        records.append(clip_record)
 
         return records
 
-    def on_button_click(self, step_number: int) -> Optional[CaptureRecord]:
+    def on_button_click(self, step_number: int) -> CaptureRecord:
         """3s clip when the agent clicks a button."""
         path, fname = self._make_filename(step_number, CaptureType.CLIP, CaptureTrigger.BUTTON_CLICK)
-        capture_clip_async(self.display_number, str(path), duration=3, width=self.width, height=self.height)
-        return self._record(
-            step_number, CaptureType.CLIP, CaptureTrigger.BUTTON_CLICK, path, fname, duration=3.0
+        record = self._record(
+            step_number, CaptureType.CLIP, CaptureTrigger.BUTTON_CLICK, path, fname,
+            duration=3.0, status="capturing",
         )
+        capture_clip_async(
+            self.display_number, str(path), duration=3, width=self.width, height=self.height,
+            on_complete=lambda _ok, r=record: setattr(r, "status", "ready"),
+        )
+        return record
 
-    def on_form_fill(self, step_number: int) -> Optional[CaptureRecord]:
+    def on_form_fill(self, step_number: int) -> CaptureRecord:
         """5s clip when the agent fills a form."""
         path, fname = self._make_filename(step_number, CaptureType.CLIP, CaptureTrigger.FORM_FILL)
-        capture_clip_async(self.display_number, str(path), duration=5, width=self.width, height=self.height)
-        return self._record(
-            step_number, CaptureType.CLIP, CaptureTrigger.FORM_FILL, path, fname, duration=5.0
+        record = self._record(
+            step_number, CaptureType.CLIP, CaptureTrigger.FORM_FILL, path, fname,
+            duration=5.0, status="capturing",
         )
+        capture_clip_async(
+            self.display_number, str(path), duration=5, width=self.width, height=self.height,
+            on_complete=lambda _ok, r=record: setattr(r, "status", "ready"),
+        )
+        return record
 
     def on_navigation(self, step_number: int) -> Optional[CaptureRecord]:
         """Screenshot after the agent navigates to a new page."""
@@ -537,12 +561,15 @@ class CaptureManager:
             )
 
         clip_path, clip_fname = self._make_filename(step_number, CaptureType.CLIP, CaptureTrigger.ERROR)
-        capture_clip_async(self.display_number, str(clip_path), duration=5, width=self.width, height=self.height)
-        records.append(
-            self._record(
-                step_number, CaptureType.CLIP, CaptureTrigger.ERROR, clip_path, clip_fname, duration=5.0
-            )
+        clip_record = self._record(
+            step_number, CaptureType.CLIP, CaptureTrigger.ERROR, clip_path, clip_fname,
+            duration=5.0, status="capturing",
         )
+        capture_clip_async(
+            self.display_number, str(clip_path), duration=5, width=self.width, height=self.height,
+            on_complete=lambda _ok, r=clip_record: setattr(r, "status", "ready"),
+        )
+        records.append(clip_record)
 
         return records
 
@@ -564,12 +591,15 @@ class CaptureManager:
             clip_path, clip_fname = self._make_filename(
                 step_number, CaptureType.CLIP, CaptureTrigger.MANUAL
             )
-            capture_clip_async(self.display_number, str(clip_path), duration=5, width=self.width, height=self.height)
-            records.append(
-                self._record(
-                    step_number, CaptureType.CLIP, CaptureTrigger.MANUAL, clip_path, clip_fname, duration=5.0
-                )
+            clip_record = self._record(
+                step_number, CaptureType.CLIP, CaptureTrigger.MANUAL, clip_path, clip_fname,
+                duration=5.0, status="capturing",
             )
+            capture_clip_async(
+                self.display_number, str(clip_path), duration=5, width=self.width, height=self.height,
+                on_complete=lambda _ok, r=clip_record: setattr(r, "status", "ready"),
+            )
+            records.append(clip_record)
 
         return records
 
@@ -680,6 +710,11 @@ def remove_capture_manager(session_id: str) -> None:
 
 async def cleanup_all_capture_managers() -> None:
     """Stop all recorders and clear the registry (used during shutdown)."""
-    for sid in list(_capture_managers.keys()):
-        remove_capture_manager(sid)
-    _capture_managers.clear()
+    import asyncio
+
+    def _sync_cleanup():
+        for sid in list(_capture_managers.keys()):
+            remove_capture_manager(sid)
+        _capture_managers.clear()
+
+    await asyncio.to_thread(_sync_cleanup)

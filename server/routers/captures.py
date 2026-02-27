@@ -18,6 +18,9 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from ..services.screen_recorder import (
+    CaptureManager,
+    CaptureTrigger,
+    CaptureType,
     get_capture_manager,
 )
 
@@ -37,13 +40,13 @@ class CaptureItem(BaseModel):
     id: str
     session_id: str
     step_number: int
-    capture_type: str  # "screenshot" | "clip" | "session"
-    trigger: str  # "step_start" | "step_complete" | etc.
-    file_path: str
+    capture_type: CaptureType
+    trigger: CaptureTrigger
     filename: str
     duration: Optional[float] = None
     timestamp: float = 0.0
     created_at: str = ""
+    status: str = "ready"  # "ready" or "capturing" (for async clips)
 
 
 class CaptureListResponse(BaseModel):
@@ -80,7 +83,7 @@ class RecordingStatusResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-def _require_manager(session_id: str):
+def _require_manager(session_id: str) -> CaptureManager:
     """Get the CaptureManager for a session or raise 404."""
     manager = get_capture_manager(session_id)
     if manager is None:
@@ -89,6 +92,12 @@ def _require_manager(session_id: str):
             detail=f"No active capture session found for session_id={session_id}",
         )
     return manager
+
+
+def _record_to_item(record_dict: dict) -> CaptureItem:
+    """Convert a CaptureRecord dict to a CaptureItem, stripping file_path."""
+    data = {k: v for k, v in record_dict.items() if k != "file_path"}
+    return CaptureItem(**data)
 
 
 # ---------------------------------------------------------------------------
@@ -107,7 +116,7 @@ async def list_captures(
 
     return CaptureListResponse(
         session_id=session_id,
-        captures=[CaptureItem(**c) for c in captures],
+        captures=[_record_to_item(c) for c in captures],
         total=len(captures),
         is_recording=manager.is_recording_session,
     )
@@ -125,7 +134,15 @@ async def get_capture_file(session_id: str, capture_id: str):
             detail=f"Capture {capture_id} not found in session {session_id}",
         )
 
-    file_path = Path(record.file_path)
+    file_path = Path(record.file_path).resolve()
+    captures_base = Path(manager.captures_dir).resolve()
+
+    # Prevent path traversal — file must be within the captures directory
+    try:
+        file_path.relative_to(captures_base)
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Access denied")
+
     if not file_path.exists():
         raise HTTPException(
             status_code=404,
@@ -161,7 +178,7 @@ async def manual_capture(session_id: str, request: ManualCaptureRequest) -> Manu
     )
 
     return ManualCaptureResponse(
-        captures=[CaptureItem(**r.to_dict()) for r in records],
+        captures=[_record_to_item(r.to_dict()) for r in records],
     )
 
 

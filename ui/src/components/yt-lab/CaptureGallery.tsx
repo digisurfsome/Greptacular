@@ -31,6 +31,8 @@ interface CaptureGalleryProps {
   captures: YTCaptureItem[]
   /** Base URL for fetching capture files (e.g., /api/yt-lab/execution/{id}/captures) */
   captureBaseUrl: string
+  /** Current execution step number (used for manual capture attribution) */
+  currentStepNumber?: number
   /** Whether session recording is active */
   isRecording?: boolean
   /** Callback to trigger manual capture */
@@ -301,6 +303,7 @@ function StepCaptureGroup({
 export function CaptureGallery({
   captures,
   captureBaseUrl,
+  currentStepNumber = 1,
   isRecording = false,
   onManualCapture,
   onStartRecording,
@@ -359,7 +362,7 @@ export function CaptureGallery({
           {/* Manual capture button */}
           {onManualCapture && (
             <button
-              onClick={() => onManualCapture(1)}
+              onClick={() => onManualCapture(currentStepNumber)}
               className="flex items-center gap-1 text-xs px-2 py-1 rounded-md border border-border
                 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             >

@@ -1547,11 +1547,11 @@ export interface YTCaptureItem {
   step_number: number
   capture_type: YTCaptureType
   trigger: YTCaptureTrigger
-  file_path: string
   filename: string
   duration: number | null
   timestamp: number
   created_at: string
+  status: 'ready' | 'capturing'
 }
 
 export interface YTCaptureListResponse {

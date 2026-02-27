@@ -116,7 +116,7 @@ export function BrowserView({ novncUrl, status, isTakeover }: BrowserViewProps) 
 
       {/* Loading indicator (before iframe loads) */}
       {!iframeLoaded && (
-        <div className="absolute inset-0 flex items-center justify-center z-5">
+        <div className="absolute inset-0 flex items-center justify-center z-[5]">
           <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
         </div>
       )}

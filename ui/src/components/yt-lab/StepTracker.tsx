@@ -55,6 +55,7 @@ export function StepTracker({
                 ${i === currentStepIndex ? 'ring-2 ring-primary' : ''}
                 ${config.className}`}
               title={`${i + 1}. ${step.title}`}
+              aria-label={`Step ${i + 1}: ${step.title} - ${status}`}
             >
               {config.icon}
             </button>
@@ -74,7 +75,14 @@ export function StepTracker({
             {completedCount}/{steps.length}
           </span>
         </div>
-        <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+        <div
+          className="h-1.5 bg-muted rounded-full overflow-hidden"
+          role="progressbar"
+          aria-valuenow={completedCount}
+          aria-valuemin={0}
+          aria-valuemax={steps.length}
+          aria-label={`Step progress: ${completedCount} of ${steps.length} complete`}
+        >
           <div
             className="h-full bg-green-500 rounded-full transition-all duration-500"
             style={{ width: `${progressPercent}%` }}

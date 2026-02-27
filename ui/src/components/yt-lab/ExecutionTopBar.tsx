@@ -38,6 +38,7 @@ interface ExecutionTopBarProps {
   onSendMessage: (message: string) => void
   onBack: () => void
   isPending?: boolean
+  confirmingStop?: boolean
 }
 
 const STATUS_CONFIG: Record<YTExecutionStatus, { label: string; className: string }> = {
@@ -70,6 +71,7 @@ export function ExecutionTopBar({
   onSendMessage,
   onBack,
   isPending = false,
+  confirmingStop = false,
 }: ExecutionTopBarProps) {
   const [chatMessage, setChatMessage] = useState('')
 
@@ -208,12 +210,12 @@ export function ExecutionTopBar({
           <Button
             variant="destructive"
             size="sm"
-            className="h-7 gap-1 text-xs"
+            className={`h-7 gap-1 text-xs ${confirmingStop ? 'animate-pulse' : ''}`}
             onClick={onStop}
             disabled={isPending}
           >
             <Square size={10} />
-            Stop
+            {confirmingStop ? 'Confirm?' : 'Stop'}
           </Button>
         )}
       </div>

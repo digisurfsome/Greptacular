@@ -46,6 +46,7 @@ export function ExecutionViewer({
 }: ExecutionViewerProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [isPending, setIsPending] = useState(false)
+  const [confirmingStop, setConfirmingStop] = useState(false)
 
   const ws = useExecutionWebSocket(sessionId)
 
@@ -88,27 +89,34 @@ export function ExecutionViewer({
 
   const handlePause = useCallback(() => {
     if (!sessionId) return
-    handleAction(() => pauseExecution(sessionId))
+    void handleAction(() => pauseExecution(sessionId))
   }, [sessionId, handleAction])
 
   const handleResume = useCallback(() => {
     if (!sessionId) return
-    handleAction(() => resumeExecution(sessionId))
+    void handleAction(() => resumeExecution(sessionId))
   }, [sessionId, handleAction])
 
   const handleStop = useCallback(() => {
     if (!sessionId) return
-    handleAction(() => stopExecution(sessionId))
-  }, [sessionId, handleAction])
+    if (!confirmingStop) {
+      setConfirmingStop(true)
+      // Auto-dismiss after 3 seconds
+      setTimeout(() => setConfirmingStop(false), 3000)
+      return
+    }
+    setConfirmingStop(false)
+    void handleAction(() => stopExecution(sessionId))
+  }, [sessionId, handleAction, confirmingStop])
 
   const handleTakeover = useCallback(() => {
     if (!sessionId) return
-    handleAction(() => setTakeoverMode(sessionId, true))
+    void handleAction(() => setTakeoverMode(sessionId, true))
   }, [sessionId, handleAction])
 
   const handleReturnControl = useCallback(() => {
     if (!sessionId) return
-    handleAction(() => setTakeoverMode(sessionId, false))
+    void handleAction(() => setTakeoverMode(sessionId, false))
   }, [sessionId, handleAction])
 
   const handleSendMessage = useCallback(
@@ -142,6 +150,7 @@ export function ExecutionViewer({
         onSendMessage={handleSendMessage}
         onBack={onBack}
         isPending={isPending}
+        confirmingStop={confirmingStop}
       />
 
       {/* Main content: sidebar + browser */}

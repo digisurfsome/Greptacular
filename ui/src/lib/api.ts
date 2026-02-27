@@ -68,6 +68,9 @@ import type {
   YTLabHealth,
   YTProcessRequest,
   YTProcessResponse,
+  YTStartExecutionRequest,
+  YTStartExecutionResponse,
+  YTExecutionSession,
   YTCaptureListResponse,
   YTManualCaptureResponse,
   YTRecordingStatusResponse,
@@ -1929,6 +1932,73 @@ export async function processYouTubeVideo(
     method: 'POST',
     body: JSON.stringify(request),
   })
+}
+
+// ============================================================================
+// YT Lab Execution API (Phase 5/6 — Live Viewer + Pause/Resume)
+// ============================================================================
+
+export async function startExecution(
+  request: YTStartExecutionRequest,
+): Promise<YTStartExecutionResponse> {
+  return fetchJSON('/execution/start', {
+    method: 'POST',
+    body: JSON.stringify(request),
+  })
+}
+
+export async function pauseExecution(sessionId: string): Promise<void> {
+  await fetchJSON(`/execution/${encodeURIComponent(sessionId)}/pause`, {
+    method: 'POST',
+  })
+}
+
+export async function resumeExecution(sessionId: string): Promise<void> {
+  await fetchJSON(`/execution/${encodeURIComponent(sessionId)}/resume`, {
+    method: 'POST',
+  })
+}
+
+export async function stopExecution(sessionId: string): Promise<void> {
+  await fetchJSON(`/execution/${encodeURIComponent(sessionId)}/stop`, {
+    method: 'POST',
+  })
+}
+
+export async function injectExecutionMessage(
+  sessionId: string,
+  message: string,
+): Promise<void> {
+  await fetchJSON(`/execution/${encodeURIComponent(sessionId)}/inject`, {
+    method: 'POST',
+    body: JSON.stringify({ message }),
+  })
+}
+
+export async function setTakeoverMode(
+  sessionId: string,
+  enable: boolean,
+): Promise<void> {
+  await fetchJSON(`/execution/${encodeURIComponent(sessionId)}/takeover`, {
+    method: 'POST',
+    body: JSON.stringify({ enable }),
+  })
+}
+
+export async function jumpToStep(
+  sessionId: string,
+  stepId: string,
+): Promise<void> {
+  await fetchJSON(`/execution/${encodeURIComponent(sessionId)}/jump`, {
+    method: 'POST',
+    body: JSON.stringify({ step_id: stepId }),
+  })
+}
+
+export async function getExecutionState(
+  sessionId: string,
+): Promise<YTExecutionSession> {
+  return fetchJSON(`/execution/${encodeURIComponent(sessionId)}/state`)
 }
 
 // ============================================================================

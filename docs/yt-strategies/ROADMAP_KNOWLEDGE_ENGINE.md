@@ -309,3 +309,76 @@ New video → Extract knowledge → Cross-reference against app portfolio
 
 This is what turns a collection of apps into an **ecosystem**. Each app makes every other app smarter because they share a common knowledge base that keeps growing.
 
+---
+
+## 11. Instant Micro-Tools (5-Minute Personal Tools)
+
+> **Principle:** Every extracted strategy should be USABLE within 5 minutes. Not "documented for later" — usable NOW.
+
+**The problem with PRDs:** A PRD is a planning document. It describes what to build. But for personal tools, you don't need a plan — you need the tool. A text box, a prompt chain, and an output. That's it.
+
+**How it works:**
+
+For every strategy extracted from a video, the system auto-generates the simplest possible tool:
+
+```
+Extracted strategy: "4 types of prompts for 10x output"
+                         ↓
+         Auto-generated micro-tool:
+         ┌─────────────────────────────┐
+         │  [Text box: Enter your idea] │
+         │                              │
+         │  [Button: Run]               │
+         │                              │
+         │  [Output: Optimized result]  │
+         └─────────────────────────────┘
+```
+
+- **Input:** One text box. What's your idea / raw input?
+- **Processing:** The extracted prompt chain from the video (1-3 prompts, chained)
+- **Output:** The result. Immediately usable.
+- **No auth, no database, no routing.** Just the knowledge made executable.
+
+### The Dual Path (runs in parallel, doesn't block each other)
+
+```
+Strategy extracted from video
+         ↓
+    ┌────┴────┐
+    ↓         ↓
+Path A:    Path B:
+PERSONAL   SaaS EXPLORATION
+TOOL       (background)
+
+Text box    "What would this
++ prompt    look like as a
++ output    product? Who buys
+            it? What's the
+Usable      pricing? What's
+in 5 min    the market?"
+    ↓         ↓
+USE IT     SAVE IT
+NOW        (ready when PRD
+            machine ships)
+```
+
+**Path A (personal tool)** is instant. Built the moment the strategy is extracted. Could be as simple as a prompt the user copies into Claude, or as polished as a mini-page with a text box and button.
+
+**Path B (SaaS exploration)** is a second AI pass that runs in the background. It explores the commercial opportunity: market size, pricing, competitors, differentiation. This gets saved alongside the strategy. When the PRD machine is ready, this exploration becomes the input — it's already done the thinking.
+
+### Connection to the Ecosystem
+
+The micro-tool's output doesn't just sit on screen:
+- Output can be pushed to **Workspace** (as a new conversation context)
+- Output can feed into **Dunk Stack** (as a build spec)
+- Output can feed into **AutoForge** (as a feature spec)
+- The tool itself registers in the **App Feedback Loop** (Section 10)
+
+This means: process a video → get a micro-tool → use it → the output flows into the rest of the system. No copy-paste. No manual bridging. The knowledge moves through the pipeline automatically.
+
+### Build Priority
+
+1. **Now:** For each strategy, generate a "Quick Use" prompt the user can immediately paste and use. Zero code needed — just the extracted prompt formatted for direct use.
+2. **Soon:** Auto-generate a micro-page (text box + button + output) within YT Lab for each strategy. One-click access.
+3. **Later:** PRD machine formalizes Path B. Auto-generates full product specs from the SaaS exploration.
+

@@ -1951,6 +1951,123 @@ export async function processYouTubeVideo(
   })
 }
 
+/** SSE log entry from the processing stream. */
+export interface ProcessingLogEntry {
+  type: 'log' | 'result' | 'error'
+  message?: string
+  data?: YTProcessResponse
+  elapsed: number
+}
+
+/**
+ * Stream video processing with real-time progress logs via SSE.
+ * Calls onLog for each progress message, returns the final result.
+ */
+export async function processVideoStream(
+  request: YTProcessRequest,
+  onLog: (entry: ProcessingLogEntry) => void,
+): Promise<YTProcessResponse> {
+  const response = await fetch(`${API_BASE}/yt-lab/process-stream`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  })
+
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(text || `HTTP ${response.status}`)
+  }
+
+  const reader = response.body!.getReader()
+  const decoder = new TextDecoder()
+  let result: YTProcessResponse | null = null
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+
+    buffer += decoder.decode(value, { stream: true })
+
+    // Parse SSE events (lines starting with "data: ")
+    const lines = buffer.split('\n')
+    buffer = lines.pop() || '' // Keep incomplete line in buffer
+
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        const data = JSON.parse(line.slice(6)) as ProcessingLogEntry
+        onLog(data)
+        if (data.type === 'result') {
+          result = data.data!
+        } else if (data.type === 'error') {
+          throw new Error(data.message || 'Processing failed')
+        }
+      }
+    }
+  }
+
+  if (!result) throw new Error('No result received from processing stream')
+  return result
+}
+
+/** SSE log entry from the discovery stream. */
+export interface DiscoveryLogEntry {
+  type: 'log' | 'result' | 'error'
+  message?: string
+  data?: YTDiscoverResponse
+  elapsed: number
+}
+
+/**
+ * Stream discovery with real-time progress logs via SSE.
+ * Calls onLog for each progress message, returns the final result.
+ */
+export async function discoverOpportunitiesStream(
+  request: YTProcessRequest,
+  onLog: (entry: DiscoveryLogEntry) => void,
+): Promise<YTDiscoverResponse> {
+  const response = await fetch(`${API_BASE}/yt-lab/discover-stream`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  })
+
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(text || `HTTP ${response.status}`)
+  }
+
+  const reader = response.body!.getReader()
+  const decoder = new TextDecoder()
+  let result: YTDiscoverResponse | null = null
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+
+    buffer += decoder.decode(value, { stream: true })
+
+    const lines = buffer.split('\n')
+    buffer = lines.pop() || ''
+
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        const data = JSON.parse(line.slice(6)) as DiscoveryLogEntry
+        onLog(data)
+        if (data.type === 'result') {
+          result = data.data!
+        } else if (data.type === 'error') {
+          throw new Error(data.message || 'Discovery failed')
+        }
+      }
+    }
+  }
+
+  if (!result) throw new Error('No result received from discovery stream')
+  return result
+}
+
 // ============================================================================
 // YT Lab Execution API (Phase 5/6 — Live Viewer + Pause/Resume)
 // ============================================================================

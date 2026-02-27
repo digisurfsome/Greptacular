@@ -19,7 +19,7 @@ import os
 import shutil
 import subprocess
 import time
-from typing import Optional
+from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -228,6 +228,7 @@ class YTDiscovery:
         extracted_urls: list[str],
         screenshot_suggestions: list[dict],
         model: Optional[str] = None,
+        on_progress: Optional[Callable[[str], None]] = None,
     ) -> dict:
         """
         Analyze video content to discover and evaluate app opportunities.
@@ -240,6 +241,8 @@ class YTDiscovery:
             extracted_urls: URLs found in the video description
             screenshot_suggestions: Screenshot-worthy moments from transcript analysis
             model: Override model for this request
+            on_progress: Optional callback invoked with a status message string
+                at each phase of processing (for real-time streaming updates).
 
         Returns:
             Dict with 'video_context', 'key_insights', 'app_opportunities',
@@ -249,7 +252,13 @@ class YTDiscovery:
             RuntimeError: If the anthropic package is missing or the API call fails.
             ValueError: If the AI response cannot be parsed as valid JSON.
         """
+
+        def log(msg: str) -> None:
+            if on_progress:
+                on_progress(msg)
+
         use_model = model or self.model
+        log(f"Formatting transcript ({len(transcript)} segments)...")
         transcript_text = self._format_transcript(transcript)
 
         user_message = self._build_user_message(
@@ -259,6 +268,7 @@ class YTDiscovery:
             extracted_urls=extracted_urls,
             screenshot_suggestions=screenshot_suggestions,
         )
+        log(f"Building message payload ({len(transcript_text):,} chars)...")
 
         logger.info(
             "Discovering opportunities for video %s with model %s (transcript: %d segments, %d chars)",
@@ -270,14 +280,19 @@ class YTDiscovery:
 
         start_time = time.time()
 
+        log(f"Sending to Claude AI ({use_model})...")
+
         # Try Claude CLI first (uses subscription auth, no API credits).
         # Falls back to Anthropic SDK if CLI is not available.
         raw_text = ""
         try:
+            log("Using Claude CLI (subscription billing)...")
             raw_text = await self._call_via_cli(DISCOVERY_PROMPT, user_message, use_model)
+            log("Claude CLI responded successfully")
             logger.info("Video %s: used Claude CLI (subscription billing)", video_id)
         except Exception as cli_err:
             logger.info("Claude CLI unavailable (%s), falling back to Anthropic SDK", cli_err)
+            log("CLI unavailable — falling back to API key billing...")
 
             try:
                 import anthropic
@@ -315,11 +330,14 @@ class YTDiscovery:
             loop = asyncio.get_running_loop()
             response = await loop.run_in_executor(None, _call_api)
             raw_text = response.content[0].text if response.content else ""
+            log("Anthropic SDK responded")
 
         elapsed = time.time() - start_time
 
         if not raw_text:
             raise ValueError("AI returned an empty response")
+
+        log("Parsing AI response...")
 
         try:
             result = self._parse_ai_response(raw_text)
@@ -333,6 +351,8 @@ class YTDiscovery:
         missing = required_keys - set(result.keys())
         if missing:
             raise ValueError(f"AI response missing required keys: {missing}")
+
+        log(f"Done! Found {len(result.get('key_insights', []))} insights, {len(result.get('app_opportunities', []))} opportunities")
 
         logger.info(
             "Video %s discovery completed in %.1fs: %d insights, %d opportunities",

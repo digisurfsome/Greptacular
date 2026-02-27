@@ -9,7 +9,7 @@
  * can enrich the "Process Video" step with focused context.
  */
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import {
   Lightbulb,
   Rocket,
@@ -36,7 +36,8 @@ import type {
   YTKeyInsight,
   YTIngestResponse,
 } from '@/lib/types'
-import { discoverOpportunities } from '@/lib/api'
+import { discoverOpportunitiesStream } from '@/lib/api'
+import type { DiscoveryLogEntry } from '@/lib/api'
 
 // ---------------------------------------------------------------------------
 // Score display helpers
@@ -329,27 +330,51 @@ export function DiscoveryPanel({
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<YTDiscoverResponse | null>(null)
   const [discoveryTime, setDiscoveryTime] = useState<number | null>(null)
+  const [discoveryLogs, setDiscoveryLogs] = useState<Array<{ message: string; elapsed: number }>>([])
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  const logEndRef = useRef<HTMLDivElement>(null)
+
+  // Elapsed timer
+  useEffect(() => {
+    if (!isDiscovering) return
+    setElapsedSeconds(0)
+    const interval = setInterval(() => setElapsedSeconds(prev => prev + 1), 1000)
+    return () => clearInterval(interval)
+  }, [isDiscovering])
+
+  // Auto-scroll log
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [discoveryLogs])
 
   const handleDiscover = useCallback(async () => {
     setIsDiscovering(true)
     setError(null)
     setDiscoveryTime(null)
+    setDiscoveryLogs([])
 
     try {
-      const response = await discoverOpportunities({
-        video_id: ingestResult.video_id,
-        transcript: ingestResult.transcript,
-        metadata: {
-          title: ingestResult.title,
-          channel: ingestResult.channel,
-          duration: ingestResult.duration,
-          description: ingestResult.description,
+      const response = await discoverOpportunitiesStream(
+        {
+          video_id: ingestResult.video_id,
+          transcript: ingestResult.transcript,
+          metadata: {
+            title: ingestResult.title,
+            channel: ingestResult.channel,
+            duration: ingestResult.duration,
+            description: ingestResult.description,
+          },
+          user_context: userContext,
+          extracted_urls: ingestResult.extracted_urls,
+          screenshot_suggestions: ingestResult.screenshot_suggestions,
+          model,
         },
-        user_context: userContext,
-        extracted_urls: ingestResult.extracted_urls,
-        screenshot_suggestions: ingestResult.screenshot_suggestions,
-        model,
-      })
+        (entry: DiscoveryLogEntry) => {
+          if (entry.type === 'log' && entry.message) {
+            setDiscoveryLogs(prev => [...prev, { message: entry.message!, elapsed: entry.elapsed }])
+          }
+        },
+      )
 
       setResult(response)
       setDiscoveryTime(response.discovery_time)
@@ -441,7 +466,7 @@ export function DiscoveryPanel({
               {isDiscovering ? (
                 <>
                   <Loader2 size={16} className="animate-spin" />
-                  Analyzing Video for Opportunities...
+                  Analyzing Video... {elapsedSeconds}s
                 </>
               ) : (
                 <>
@@ -450,6 +475,25 @@ export function DiscoveryPanel({
                 </>
               )}
             </Button>
+
+            {/* Discovery processing log */}
+            {(isDiscovering || discoveryLogs.length > 0) && discoveryLogs.length > 0 && (
+              <div className="rounded-md border border-border bg-black/90 p-3 font-mono text-xs max-h-44 overflow-y-auto">
+                {discoveryLogs.map((log, i) => (
+                  <div key={i} className="flex gap-2 py-0.5">
+                    <span className="text-emerald-400 shrink-0 tabular-nums">[{log.elapsed.toFixed(1)}s]</span>
+                    <span className="text-gray-200">{log.message}</span>
+                  </div>
+                ))}
+                {isDiscovering && (
+                  <div className="flex gap-2 py-0.5">
+                    <span className="text-emerald-400 shrink-0 tabular-nums">[{elapsedSeconds}.0s]</span>
+                    <span className="text-yellow-300 animate-pulse">Waiting...</span>
+                  </div>
+                )}
+                <div ref={logEndRef} />
+              </div>
+            )}
 
             <p className="text-xs text-muted-foreground text-center">
               AI will analyze the video to find key insights and app opportunities before you build anything.

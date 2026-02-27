@@ -817,6 +817,12 @@ def get_effective_sdk_env(*, force_subscription: bool = False) -> dict[str, str]
             if value:
                 sdk_env[var] = value
 
+        # If user saved an API key via Settings UI, use it as ANTHROPIC_API_KEY
+        # (enables YT Lab and other direct-SDK features without .env editing)
+        saved_token = all_settings.get("api_auth_token")
+        if saved_token and "ANTHROPIC_API_KEY" not in sdk_env:
+            sdk_env["ANTHROPIC_API_KEY"] = saved_token
+
         if force_subscription:
             # Clear API credentials so CLI uses subscription OAuth instead.
             # Setting to empty string overrides any value from os.environ when

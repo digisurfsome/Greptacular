@@ -1527,6 +1527,55 @@ export interface YTProcessResponse {
 }
 
 // ============================================================================
+// YT Lab Discovery Types (Opportunity Discovery & Evaluation)
+// ============================================================================
+
+export interface YTVideoContext {
+  speaker: string
+  core_topic: string
+  target_audience: string
+}
+
+export interface YTKeyInsight {
+  insight: string
+  quote: string
+  timestamp_approx: string
+  applicability: string
+}
+
+export type YTAppOpportunityType = 'companion' | 'direct' | 'derivative' | 'teaching'
+
+export interface YTAppOpportunity {
+  name: string
+  type: YTAppOpportunityType
+  one_liner: string
+  description: string
+  why_this_works: string
+  concerns: string
+  complexity: number
+  strategic_value: string
+  market_signal: string
+  features: string[]
+  growth_path: string
+  score: number
+}
+
+export interface YTRecommendation {
+  top_pick_index: number
+  reasoning: string
+  sequence: string
+  quick_win: string
+}
+
+export interface YTDiscoverResponse {
+  video_context: YTVideoContext
+  key_insights: YTKeyInsight[]
+  app_opportunities: YTAppOpportunity[]
+  recommendation: YTRecommendation
+  discovery_time: number
+}
+
+// ============================================================================
 // YT Lab Execution Types (Phase 5 — Live Viewer + Phase 6 — Pause/Resume)
 // ============================================================================
 

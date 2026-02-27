@@ -68,6 +68,7 @@ import type {
   YTLabHealth,
   YTProcessRequest,
   YTProcessResponse,
+  YTDiscoverResponse,
   YTStartExecutionRequest,
   YTStartExecutionResponse,
   YTExecutionSession,
@@ -1922,6 +1923,19 @@ export async function ingestYouTubeVideo(
 
 export async function getYTLabHealth(): Promise<YTLabHealth> {
   return fetchJSON('/yt-lab/health')
+}
+
+// ============================================================================
+// YT Lab Discovery API (Opportunity Discovery & Evaluation)
+// ============================================================================
+
+export async function discoverOpportunities(
+  request: YTProcessRequest,
+): Promise<YTDiscoverResponse> {
+  return fetchJSON('/yt-lab/discover', {
+    method: 'POST',
+    body: JSON.stringify(request),
+  })
 }
 
 // ============================================================================

@@ -195,10 +195,24 @@ class YTProcessor:
 
         start_time = time.time()
 
+        # Build client using the shared auth system (respects Settings UI + .env)
+        client_kwargs: dict = {}
+        try:
+            from registry import get_effective_sdk_env
+            sdk_env = get_effective_sdk_env()
+            api_key = sdk_env.get("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_API_KEY")
+            base_url = sdk_env.get("ANTHROPIC_BASE_URL")
+            if api_key:
+                client_kwargs["api_key"] = api_key
+            if base_url:
+                client_kwargs["base_url"] = base_url
+        except Exception:
+            logger.debug("Could not load SDK env from registry, falling back to env vars")
+
+        client = anthropic.Anthropic(**client_kwargs)
+
         # Run the synchronous Anthropic API call in a thread pool to avoid
         # blocking the async event loop during potentially long AI processing.
-        client = anthropic.Anthropic()
-
         def _call_api():
             return client.messages.create(
                 model=use_model,

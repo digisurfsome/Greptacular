@@ -37,6 +37,7 @@ import { dunkstackUpdateConfig } from '@/lib/api'
 import { DunkStackContextGauge } from '@/components/dunkstack/DunkStackContextGauge'
 import { DunkStackCommsChat } from '@/components/dunkstack/DunkStackCommsChat'
 import { DunkStackSafetyPanel } from '@/components/dunkstack/DunkStackSafetyPanel'
+import { DunkStackGuidePanel } from '@/components/dunkstack/DunkStackGuidePanel'
 import { IntakeDock } from '@/components/appbuilder/IntakeDock'
 import { AgentOSChat } from '@/components/appbuilder/AgentOSChat'
 import { StandardsPanel } from '@/components/appbuilder/StandardsPanel'
@@ -444,9 +445,9 @@ export function DunkStackPage(): React.JSX.Element {
         )}
       </div>
 
-      {/* Guide overlay */}
+      {/* Guide panel (floating, resizable, tabbed) */}
       {showGuide && (
-        <GuideOverlay onClose={() => setShowGuide(false)} />
+        <DunkStackGuidePanel onClose={() => setShowGuide(false)} />
       )}
     </div>
   )
@@ -532,93 +533,3 @@ function FileViewer(): React.JSX.Element {
   )
 }
 
-// ============================================================================
-// Guide Overlay
-// ============================================================================
-
-function GuideOverlay({ onClose }: { onClose: () => void }): React.JSX.Element {
-  // Close on Escape key
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [onClose])
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <div
-        className="bg-card border-2 border-border rounded-xl shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto"
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-          <div className="flex items-center gap-2">
-            <BookOpen size={20} className="text-primary" />
-            <h2 className="text-lg font-bold text-foreground">DunkStack Guide</h2>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-2 rounded hover:bg-muted text-foreground font-bold text-xl leading-none"
-            title="Close guide"
-          >
-            &times;
-          </button>
-        </div>
-        <div className="px-6 py-4 space-y-4 text-sm text-foreground">
-          <section>
-            <h3 className="font-bold text-base mb-2">Quick Start</h3>
-            <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
-              <li>Select a project from the sidebar on the left</li>
-              <li>Choose your model (Opus 4.6 200K for speed, Opus 4.6 1M for complex projects)</li>
-              <li>Set session mode: <strong className="text-foreground">Idle</strong> (manual), <strong className="text-foreground">Continue</strong> (one-task-at-a-time), or <strong className="text-foreground">Autopilot</strong> (continuous)</li>
-              <li>Type messages in the chat &mdash; they write to <code className="text-xs bg-muted px-1 rounded">.agent/comms/from_human.md</code></li>
-              <li>Watch the context gauge fill as the agent works</li>
-              <li>When approaching limits, use <strong className="text-foreground">Bridge Save</strong> to preserve state for the next session</li>
-            </ol>
-          </section>
-
-          <section>
-            <h3 className="font-bold text-base mb-2">Page Layout</h3>
-            <ul className="list-disc list-inside space-y-1 text-muted-foreground">
-              <li><strong className="text-foreground">Top bar</strong> &mdash; Back to AutoForge, model selector, panel toggles, theme</li>
-              <li><strong className="text-foreground">Context Gauge</strong> &mdash; Color-coded bar showing token usage vs model limit</li>
-              <li><strong className="text-foreground">Left sidebar</strong> &mdash; Project list &mdash; click to load a project's DunkStack context</li>
-              <li><strong className="text-foreground">Center</strong> &mdash; Walkie-talkie chat &mdash; your messages go to agent, agent replies appear here</li>
-              <li><strong className="text-foreground">Right panel</strong> &mdash; Safety thresholds + Session control (Idle/Continue/Autopilot) + Bridge Save</li>
-            </ul>
-          </section>
-
-          <section>
-            <h3 className="font-bold text-base mb-2">Session Modes</h3>
-            <ul className="list-disc list-inside space-y-1 text-muted-foreground">
-              <li><strong className="text-foreground">Idle</strong> &mdash; Agent waits after each response. You review and decide next step.</li>
-              <li><strong className="text-foreground">Continue</strong> &mdash; Agent completes one task then pauses for your input.</li>
-              <li><strong className="text-foreground">Autopilot</strong> &mdash; Agent runs continuously until context limit or completion.</li>
-            </ul>
-          </section>
-
-          <section>
-            <h3 className="font-bold text-base mb-2">Context Safety</h3>
-            <ul className="list-disc list-inside space-y-1 text-muted-foreground">
-              <li><strong className="text-emerald-400">Green (OK)</strong> &mdash; Under 45% &mdash; normal operation</li>
-              <li><strong className="text-orange-400">Orange (WARNING at 45%)</strong> &mdash; Agent starts wrapping up current work</li>
-              <li><strong className="text-red-500">Red (HANDOFF at 47.5%)</strong> &mdash; Agent stops coding, writes handoff notes</li>
-              <li><strong className="text-red-700">Dark Red (HARD STOP at 50%)</strong> &mdash; Session terminates to prevent data loss</li>
-            </ul>
-            <p className="text-muted-foreground mt-2">
-              Use <strong className="text-foreground">Bridge Save</strong> before hitting limits to transfer state to a new session.
-            </p>
-          </section>
-
-          <p className="text-xs text-muted-foreground/60 pt-2 border-t border-border/50">
-            Press <kbd className="px-1.5 py-0.5 bg-muted rounded text-[10px] font-mono">Esc</kbd> to close this guide
-          </p>
-        </div>
-      </div>
-    </div>
-  )
-}

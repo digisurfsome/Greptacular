@@ -211,3 +211,101 @@ The compounding effect is real. But it only works if:
 - Overlapping knowledge is **merged** (consolidation)
 
 Build those four pillars and you have something nobody else has.
+
+---
+
+## 9. Mastermind Advisory Panel (The Think and Grow Rich Model)
+
+> **Origin:** Napoleon Hill's "Think and Grow Rich" — the Mastermind principle. You assemble a group of minds, each with a different lens, and run every decision through all of them. The combined intelligence exceeds any individual member.
+
+**What it is:** A panel of AI advisors embedded directly into YT Strategy Lab. Not a chatbot. A **thinking council** that reacts to every video, every strategy, every decision — each from their own perspective.
+
+### The Advisors
+
+Three core advisors, each with a distinct lens:
+
+1. **The App Architect** — Thinks in products, features, user flows, and technical feasibility. When a video comes through, this advisor sees: "What app does this become? What's the MVP? What's the tech stack? What existing apps in the portfolio could absorb this as a feature?"
+
+2. **The Marketing Strategist** — Thinks in audiences, positioning, distribution, and messaging. Sees: "Who buys this? How do you reach them? What's the hook? What content does this generate? How does this position against competitors?"
+
+3. **The Business Operator** — Thinks in revenue, operations, scalability, and leverage. Sees: "What's the revenue model? What's the margin? Does this scale? What's the unfair advantage? How does this compound with what already exists?"
+
+### How It Works
+
+**Passive mode (auto-react):** Every time a video is processed, each advisor gives a brief take. Three short paragraphs that appear automatically. No user action needed. This is the "round table" — you just see three perspectives without asking.
+
+**Active mode (ask the panel):** User can ask a question and route it to:
+- One specific advisor ("Marketing, how would I position this?")
+- All three ("Round table: should I build this or add it to an existing app?")
+- A custom combination
+
+**Context-aware:** Each advisor has access to:
+- All processed videos and their extracted knowledge
+- All apps that have been built from the system
+- The tag/relationship graph connecting everything
+- The user's stated goals and priorities
+
+### Architecture: Two Modes (Try Both)
+
+**Mode A — Unified Panel (one AI, multiple personas):**
+- Single system prompt that defines all three personas
+- AI responds as each advisor in sequence
+- Simpler to build, lower resource usage
+- Natural for round-table discussions where advisors riff off each other
+- Risk: perspectives might blend together over long conversations
+
+**Mode B — Separate Advisors (independent instances):**
+- Each advisor is its own chat session with its own system prompt
+- Each maintains its own conversation thread and memory
+- Toggle between them in the UI (tabs or sidebar)
+- Cleaner separation of perspectives
+- Can go deeper on any single advisor's domain
+- Higher resource usage (3x the context windows)
+
+**Recommendation:** Build Mode A first (unified panel, fast to ship). Add Mode B as an option once the concept proves itself. The toggle between them lets the user decide what works better for their thinking style.
+
+### The Deeper Vision: Historical Mastermind
+
+Beyond the three business advisors, the Think and Grow Rich model goes further — you can populate your mastermind with **anyone who has ever existed**. The AI can embody:
+- A specific business figure (their known philosophy, decisions, patterns)
+- A specific author (their frameworks, mental models)
+- A specific practitioner (their techniques, approaches)
+
+This connects directly to the **Practitioner AI Platform** (Section 8). The mastermind is the advisory layer; the practitioner platform is the execution layer. Same underlying capability, different use case.
+
+### Integration Points
+
+- **Video processing:** Auto-generate advisor reactions for every new video
+- **App feedback loop:** When an app gets updated, advisors are notified and can suggest cross-pollination ("The email enrichment technique from video #23 would be a killer feature for the cold outreach app you built from video #7")
+- **Decision support:** Before building anything, run it through the panel. Three perspectives in 30 seconds.
+- **Knowledge graph:** Advisors can reference connections between videos, strategies, and apps that the user might not see
+
+---
+
+## 10. App Feedback Loop (Closed-Loop Intelligence)
+
+**The missing piece:** Right now, knowledge flows one way — from videos into the system. Apps get built, but the system forgets about them. It doesn't know what was built, what features exist, or what's working.
+
+**What needs to happen:**
+
+1. **App Registry:** Every app built from YT Lab knowledge registers back with the system. The registry stores: app name, what video(s) it came from, current feature list, tech stack, status (prototype/live/revenue).
+
+2. **Feature Sync:** When an app gets a new feature or update, that change propagates back to YT Lab. The system now knows the current state of every app in the portfolio.
+
+3. **Smart Feature Suggestions:** When a new video is processed, the system cross-references the extracted knowledge against ALL registered apps. "This video's lead enrichment technique would improve apps X, Y, and Z — here's specifically how for each one."
+
+4. **Portfolio Intelligence:** The system can answer: "Which of my apps would benefit most from this new technique?" or "Which apps overlap in functionality and should be merged?" or "What's the gap in my portfolio that no current app addresses?"
+
+**The loop:**
+```
+New video → Extract knowledge → Cross-reference against app portfolio
+    ↑                                        ↓
+    │                          Suggest features for existing apps
+    │                                        ↓
+    │                          App gets updated with new features
+    │                                        ↓
+    └───────── App reports update back to system ←──┘
+```
+
+This is what turns a collection of apps into an **ecosystem**. Each app makes every other app smarter because they share a common knowledge base that keeps growing.
+

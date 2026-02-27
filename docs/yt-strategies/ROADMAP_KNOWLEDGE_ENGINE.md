@@ -434,36 +434,45 @@ A single pipeline service that every app connects to. The app doesn't decide whe
 
 ### How It Works Technically
 
-**The pipeline is a single API endpoint + one AI prompt.**
+**The pipeline is pre-built infrastructure + user-configured routing.**
 
-Every app calls the same endpoint:
+The pipeline has two layers:
+
+**Layer 1: The Plumbing (built once, never touched again)**
+- Single API endpoint every app pushes to
+- Adapters for each destination (Workspace, Dunk Stack, YT Lab, App Registry, Central DB)
+- Delivery mechanism that pushes content to configured destinations
+- Central Knowledge DB that always stores everything (the master record)
+
+**Layer 2: The Routing Config (user-defined, per app)**
+- After building an app, the USER configures where its output goes
+- This is a simple prompt/config: "Output from the 4-prompt tool goes to Workspace Library (tagged as 'prompt engineering'), Dunk Stack Library (as reference material), and Central Knowledge DB"
+- When a new output TYPE emerges, the user describes the new routes
+- The pipeline doesn't guess — the user is the intelligence layer for routing
+
 ```
 POST /api/knowledge-pipeline
 {
   "source": "4-prompt-tool",
   "source_context": "Generated from video #47 (prompt engineering)",
-  "content_type": "optimized_prompt",
   "content": "... the actual output ...",
   "metadata": { ... optional hints ... }
 }
 ```
 
-The pipeline receives it and runs ONE AI classification prompt:
-```
-Given this output from [source], classify it:
-1. Primary category (automation, marketing, development, content, ...)
-2. Tags (3-10 relevant tags)
-3. Related entities (which videos, apps, strategies does this connect to?)
-4. Destinations (which libraries/databases should receive this?)
-5. Format for each destination (how should it be stored in each place?)
-```
+The pipeline looks up the routing config for "4-prompt-tool" and delivers:
+- **Central Knowledge DB:** Always (master record of everything)
+- **Workspace Library:** If configured (save as knowledge entry with tags)
+- **Dunk Stack Library:** If configured (save as build spec / reference)
+- **YT Lab:** If configured (link to source video, update strategy metadata)
+- **App Registry:** If configured (flag as potential feature for matching apps)
 
-Then it delivers. Each destination has a simple adapter:
-- **Workspace Library:** Save as a knowledge entry with tags
-- **Dunk Stack Library:** Save as a build spec / reference
-- **YT Lab:** Link to source video(s), update strategy metadata
-- **App Registry:** Flag as potential feature for matching apps
-- **Central Knowledge DB:** Always save here (the master record)
+**Key insight:** The app stays dead simple. The pipeline stays dumb plumbing. The USER configures the routing after the app is built. This means:
+- Building the app = fast (no routing logic needed)
+- Configuring distribution = fast (just describe where output goes)
+- Changing distribution later = trivial (update the config, not the app)
+
+**Future enhancement:** Once enough routing patterns exist, the AI CAN suggest routes for new apps automatically ("This looks similar to the 4-prompt tool — should I route it the same way?"). But this is optional intelligence on top of user-configured routes, not a replacement for them.
 
 ### Why This Changes Everything
 

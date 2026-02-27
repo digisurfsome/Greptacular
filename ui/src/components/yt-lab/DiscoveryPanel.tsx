@@ -319,6 +319,10 @@ interface DiscoveryPanelProps {
   selectedOpportunity: YTAppOpportunity | null
   /** Pre-populate the context field (e.g. from project description) */
   initialContext?: string
+  /** Pre-loaded discovery result from localStorage persistence. */
+  discoveryResult?: YTDiscoverResponse | null
+  /** Called when discovery completes so parent can persist to localStorage. */
+  onDiscoveryComplete?: (result: YTDiscoverResponse) => void
 }
 
 export function DiscoveryPanel({
@@ -326,12 +330,14 @@ export function DiscoveryPanel({
   onOpportunitySelected,
   selectedOpportunity,
   initialContext,
+  discoveryResult,
+  onDiscoveryComplete,
 }: DiscoveryPanelProps) {
   const [userContext, setUserContext] = useState(initialContext ?? '')
   const [model, setModel] = useState('claude-sonnet-4-6')
   const [isDiscovering, setIsDiscovering] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [result, setResult] = useState<YTDiscoverResponse | null>(null)
+  const [result, setResult] = useState<YTDiscoverResponse | null>(discoveryResult ?? null)
   const [discoveryTime, setDiscoveryTime] = useState<number | null>(null)
   const [discoveryLogs, setDiscoveryLogs] = useState<Array<{ message: string; elapsed: number }>>([])
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
@@ -380,6 +386,7 @@ export function DiscoveryPanel({
       )
 
       setResult(response)
+      onDiscoveryComplete?.(response)
       setDiscoveryTime(response.discovery_time)
 
       // Auto-select the top pick

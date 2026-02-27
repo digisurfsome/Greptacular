@@ -53,6 +53,7 @@ import type {
   YTStrategyStepStatus,
   YTScreenshotCapture,
   YTAppOpportunity,
+  YTDiscoverResponse,
 } from '@/lib/types'
 import { VideoIngestPanel } from '@/components/yt-lab/VideoIngestPanel'
 import { ScreenshotGallery } from '@/components/yt-lab/ScreenshotGallery'
@@ -76,6 +77,21 @@ function stepsStorageKey(projectId: string): string {
 /** Key for per-project analyzed screenshots. */
 function screenshotsStorageKey(projectId: string): string {
   return `yt-lab-screenshots-${projectId}`
+}
+
+/** Key for per-project ingestion result (transcript, metadata, URLs). */
+function ingestStorageKey(projectId: string): string {
+  return `yt-lab-ingest-${projectId}`
+}
+
+/** Key for per-project discovery results (insights, opportunities). */
+function discoveryStorageKey(projectId: string): string {
+  return `yt-lab-discovery-${projectId}`
+}
+
+/** Key for per-project selected opportunity. */
+function opportunityStorageKey(projectId: string): string {
+  return `yt-lab-opportunity-${projectId}`
 }
 
 /** AI model options displayed in the step editor dropdown. */
@@ -1040,7 +1056,14 @@ function StrategyBuilder({
   })
 
   // --- AI Processing state (Phase 2) ---
-  const [ingestResult, setIngestResult] = useState<YTIngestResponse | null>(null)
+  const [ingestResult, setIngestResult] = useState<YTIngestResponse | null>(() => {
+    try {
+      const stored = localStorage.getItem(ingestStorageKey(project.id))
+      return stored ? JSON.parse(stored) : null
+    } catch {
+      return null
+    }
+  })
   const [userContext, setUserContext] = useState(project.description || '')
   const [processingModel, setProcessingModel] = useState('claude-sonnet-4-6')
   const [isProcessing, setIsProcessing] = useState(false)
@@ -1064,12 +1087,51 @@ function StrategyBuilder({
   }, [processingLogs])
 
   // --- Discovery state (opportunity evaluation before building) ---
-  const [selectedOpportunity, setSelectedOpportunity] = useState<YTAppOpportunity | null>(null)
+  const [selectedOpportunity, setSelectedOpportunity] = useState<YTAppOpportunity | null>(() => {
+    try {
+      const stored = localStorage.getItem(opportunityStorageKey(project.id))
+      return stored ? JSON.parse(stored) : null
+    } catch {
+      return null
+    }
+  })
+
+  // --- Discovery results persistence ---
+  const [discoveryResult, setDiscoveryResult] = useState<YTDiscoverResponse | null>(() => {
+    try {
+      const stored = localStorage.getItem(discoveryStorageKey(project.id))
+      return stored ? JSON.parse(stored) : null
+    } catch {
+      return null
+    }
+  })
+
+  /** Called by DiscoveryPanel when discovery completes — persists to localStorage. */
+  const handleDiscoveryComplete = useCallback(
+    (result: YTDiscoverResponse) => {
+      setDiscoveryResult(result)
+      try {
+        localStorage.setItem(discoveryStorageKey(project.id), JSON.stringify(result))
+      } catch {
+        // localStorage may be full — log but don't crash
+        console.warn('Failed to persist discovery results to localStorage')
+      }
+    },
+    [project.id],
+  )
 
   /** Handle opportunity selection from the DiscoveryPanel. */
   const handleOpportunitySelected = useCallback(
     (opp: YTAppOpportunity | null) => {
       setSelectedOpportunity(opp)
+      // Persist selected opportunity
+      try {
+        if (opp) {
+          localStorage.setItem(opportunityStorageKey(project.id), JSON.stringify(opp))
+        } else {
+          localStorage.removeItem(opportunityStorageKey(project.id))
+        }
+      } catch { /* ignore */ }
       // Auto-populate the processing user context with the selected opportunity
       if (opp) {
         setUserContext(
@@ -1222,12 +1284,17 @@ function StrategyBuilder({
     updateSubStep(stepId, subStepId, { status })
   }, [updateSubStep])
 
-  /** Handle ingestion complete — store result for processing. */
+  /** Handle ingestion complete — store result for processing and persist to localStorage. */
   const handleIngestComplete = useCallback((result: YTIngestResponse) => {
     setIngestResult(result)
     setProcessingError(null)
     setProcessingTime(null)
-  }, [])
+    try {
+      localStorage.setItem(ingestStorageKey(project.id), JSON.stringify(result))
+    } catch {
+      console.warn('Failed to persist ingest result to localStorage')
+    }
+  }, [project.id])
 
   /** Process ingested video through AI to generate steps (with real-time log). */
   const handleProcessVideo = useCallback(async () => {
@@ -1422,6 +1489,8 @@ function StrategyBuilder({
               onOpportunitySelected={handleOpportunitySelected}
               selectedOpportunity={selectedOpportunity}
               initialContext={project.description}
+              discoveryResult={discoveryResult}
+              onDiscoveryComplete={handleDiscoveryComplete}
             />
           )}
 
@@ -1704,6 +1773,12 @@ export function YTStrategyLabPage(): React.JSX.Element {
   /** Delete a project and its steps. */
   const handleDeleteProject = useCallback((projectId: string) => {
     deleteSteps(projectId)
+    // Clean up all per-project localStorage keys
+    localStorage.removeItem(screenshotsStorageKey(projectId))
+    localStorage.removeItem(`yt-lab-screenshot-summary-${projectId}`)
+    localStorage.removeItem(ingestStorageKey(projectId))
+    localStorage.removeItem(discoveryStorageKey(projectId))
+    localStorage.removeItem(opportunityStorageKey(projectId))
     setProjects(prev => prev.filter(p => p.id !== projectId))
     if (selectedProjectId === projectId) {
       setSelectedProjectId(null)

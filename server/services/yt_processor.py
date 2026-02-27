@@ -122,22 +122,45 @@ class YTProcessor:
         return "\n".join(lines)
 
     def _parse_ai_response(self, raw_text: str) -> dict:
-        """Parse JSON from the AI response, handling markdown fences if present."""
+        """Parse JSON from the AI response, handling various wrapper formats.
+
+        The response may arrive as:
+        - Pure JSON: ``{"project": ...}``
+        - Markdown-fenced: ````json\\n{...}\\n````
+        - Text + JSON: ``Here is the result:\\n{...}``
+        - Any combination of the above
+        """
         text = raw_text.strip()
 
-        # Strip markdown code fences if present
-        if text.startswith("```"):
-            # Remove opening fence (```json or ```)
-            newline_pos = text.find("\n")
-            if newline_pos >= 0:
-                text = text[newline_pos + 1:]
-            else:
-                text = text[3:]
-            # Remove closing fence
-            if text.endswith("```"):
-                text = text[:-3].strip()
+        # Try 1: direct parse (fastest path)
+        try:
+            return json.loads(text)
+        except (json.JSONDecodeError, ValueError):
+            pass
 
-        return json.loads(text)
+        # Try 2: strip markdown code fences
+        if "```" in text:
+            import re
+            fence_match = re.search(r"```(?:json)?\s*\n?(.*?)```", text, re.DOTALL)
+            if fence_match:
+                try:
+                    return json.loads(fence_match.group(1).strip())
+                except (json.JSONDecodeError, ValueError):
+                    pass
+
+        # Try 3: find the outermost JSON object { ... }
+        first_brace = text.find("{")
+        last_brace = text.rfind("}")
+        if first_brace >= 0 and last_brace > first_brace:
+            json_candidate = text[first_brace:last_brace + 1]
+            try:
+                return json.loads(json_candidate)
+            except (json.JSONDecodeError, ValueError):
+                pass
+
+        # Nothing worked — raise with helpful debug info
+        preview = text[:500] if text else "(empty)"
+        raise ValueError(f"Could not extract JSON from response. Preview: {preview}")
 
     async def _call_via_sdk(self, system_prompt: str, user_message: str, model: str) -> str:
         """Call Claude via the Agent SDK using subscription auth.
@@ -168,7 +191,7 @@ class YTProcessor:
                 cli_path=system_cli,
                 system_prompt=system_prompt,
                 env=sdk_env,
-                max_turns=1,
+                max_turns=2,
                 permission_mode="bypassPermissions",
                 allowed_tools=[],
                 cwd=scratch,
@@ -180,14 +203,27 @@ class YTProcessor:
             await client.query(user_message)
 
             full_text = ""
+            msg_types_seen = []
             async for msg in client.receive_response():
-                if type(msg).__name__ == "AssistantMessage" and hasattr(msg, "content"):
+                msg_type = type(msg).__name__
+                msg_types_seen.append(msg_type)
+                if msg_type == "AssistantMessage" and hasattr(msg, "content"):
                     for block in msg.content:
-                        if type(block).__name__ == "TextBlock" and hasattr(block, "text"):
+                        block_type = type(block).__name__
+                        if block_type == "TextBlock" and hasattr(block, "text"):
                             full_text += block.text
+                        else:
+                            logger.debug("YT processor SDK: non-text block type=%s", block_type)
+
+            logger.info(
+                "YT processor SDK response: %d chars, msg_types=%s, preview=%.200s",
+                len(full_text), msg_types_seen, full_text[:200],
+            )
 
             if not full_text.strip():
-                raise RuntimeError("Claude SDK returned empty response")
+                raise RuntimeError(
+                    f"Claude SDK returned empty response. Message types seen: {msg_types_seen}"
+                )
             return full_text.strip()
         finally:
             try:

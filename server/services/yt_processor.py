@@ -65,8 +65,8 @@ The JSON must match this exact schema:
   ]
 }"""
 
-# Default model for transcript processing (Sonnet for speed/cost balance)
-DEFAULT_PROCESSING_MODEL = "claude-sonnet-4-6"
+# Default model for transcript processing (Opus on subscription billing)
+DEFAULT_PROCESSING_MODEL = "claude-opus-4-6"
 
 
 class YTProcessor:

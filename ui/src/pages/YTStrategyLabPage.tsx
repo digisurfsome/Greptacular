@@ -111,7 +111,7 @@ function autoSelectModel(title: string): string {
   const lower = title.toLowerCase()
   if (OPUS_KEYWORDS.some((kw) => lower.includes(kw))) return 'claude-opus-4-6'
   if (HAIKU_KEYWORDS.some((kw) => lower.includes(kw))) return 'claude-haiku-4-5'
-  return 'claude-sonnet-4-6'
+  return 'claude-opus-4-6'
 }
 
 /** Role options for step assignment. */
@@ -626,8 +626,8 @@ function ModelSelector({
   onChange: (value: string) => void
   stepTitle?: string
 }): React.JSX.Element {
-  const autoRecommendation = stepTitle ? autoSelectModel(stepTitle) : 'claude-sonnet-4-6'
-  const autoLabel = MODEL_OPTIONS.find((o) => o.value === autoRecommendation)?.label ?? 'Sonnet 4.6'
+  const autoRecommendation = stepTitle ? autoSelectModel(stepTitle) : 'claude-opus-4-6'
+  const autoLabel = MODEL_OPTIONS.find((o) => o.value === autoRecommendation)?.label ?? 'Opus 4.6'
 
   return (
     <div className="flex items-center gap-2">
@@ -1065,7 +1065,7 @@ function StrategyBuilder({
     }
   })
   const [userContext, setUserContext] = useState(project.description || '')
-  const [processingModel, setProcessingModel] = useState('claude-sonnet-4-6')
+  const [processingModel, setProcessingModel] = useState('claude-opus-4-6')
   const [isProcessing, setIsProcessing] = useState(false)
   const [processingError, setProcessingError] = useState<string | null>(null)
   const [processingTime, setProcessingTime] = useState<number | null>(null)
@@ -1540,8 +1540,8 @@ function StrategyBuilder({
                       text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent
                       disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <option value="claude-sonnet-4-6">Claude Sonnet 4.6 (Recommended)</option>
-                    <option value="claude-opus-4-6">Claude Opus 4.6 (Premium)</option>
+                    <option value="claude-opus-4-6">Claude Opus 4.6 (Recommended)</option>
+                    <option value="claude-sonnet-4-6">Claude Sonnet 4.6 (Balanced)</option>
                     <option value="claude-haiku-4-5">Claude Haiku 4.5 (Fast)</option>
                   </select>
                 </div>

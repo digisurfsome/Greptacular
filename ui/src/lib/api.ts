@@ -2187,7 +2187,7 @@ export async function stopSessionRecording(
 
 export async function batchIngestVideos(
   videos: YTBatchVideoInput[],
-  model: string = 'claude-sonnet-4-6',
+  model: string = 'claude-opus-4-6',
 ): Promise<YTBatchIngestResponse> {
   return fetchJSON('/yt-lab/batch-ingest', {
     method: 'POST',

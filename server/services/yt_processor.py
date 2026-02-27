@@ -14,6 +14,8 @@ import asyncio
 import json
 import logging
 import os
+import shutil
+import subprocess
 import time
 from typing import Optional
 
@@ -137,6 +139,54 @@ class YTProcessor:
 
         return json.loads(text)
 
+    async def _call_via_cli(self, system_prompt: str, user_message: str, model: str) -> str:
+        """Call Claude via the CLI subprocess using subscription auth.
+
+        Uses ``claude -p`` (print mode) with ``force_subscription=True`` so the
+        CLI falls back to subscription OAuth instead of burning API credits.
+        This matches the pattern used by all other services (workspace chat,
+        assistant chat, spec chat, etc.).
+
+        Returns the raw text response from Claude.
+        Raises RuntimeError if the CLI is not available or the call fails.
+        """
+        cli_path = shutil.which("claude")
+        if not cli_path:
+            raise RuntimeError("Claude CLI not found on PATH")
+
+        from registry import get_effective_sdk_env
+        sdk_env = get_effective_sdk_env(force_subscription=True)
+
+        env = {**os.environ, **sdk_env}
+
+        cmd = [
+            cli_path, "-p",
+            "--model", model,
+            "--system-prompt", system_prompt,
+            "--output-format", "text",
+            "--no-session-persistence",
+        ]
+
+        loop = asyncio.get_running_loop()
+
+        def _run():
+            result = subprocess.run(
+                cmd,
+                input=user_message,
+                capture_output=True,
+                text=True,
+                env=env,
+                timeout=300,  # 5 min timeout for long transcripts
+            )
+            if result.returncode != 0:
+                raise RuntimeError(
+                    f"Claude CLI exited with code {result.returncode}: "
+                    f"{result.stderr[:500]}"
+                )
+            return result.stdout.strip()
+
+        return await loop.run_in_executor(None, _run)
+
     async def process(
         self,
         video_id: str,
@@ -166,14 +216,6 @@ class YTProcessor:
             RuntimeError: If the anthropic package is missing or the API call fails.
             ValueError: If the AI response cannot be parsed as valid JSON.
         """
-        try:
-            import anthropic
-        except ImportError:
-            raise RuntimeError(
-                "The anthropic package is required for video processing. "
-                "Install it with: pip install anthropic"
-            )
-
         use_model = model or self.model
         transcript_text = self._format_transcript(transcript)
 
@@ -195,38 +237,54 @@ class YTProcessor:
 
         start_time = time.time()
 
-        # Build client using the shared auth system (respects Settings UI + .env)
-        client_kwargs: dict = {}
+        # Try Claude CLI first (uses subscription auth, no API credits).
+        # Falls back to Anthropic SDK if CLI is not available.
+        raw_text = ""
         try:
-            from registry import get_effective_sdk_env
-            sdk_env = get_effective_sdk_env()
-            api_key = sdk_env.get("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_API_KEY")
-            base_url = sdk_env.get("ANTHROPIC_BASE_URL")
-            if api_key:
-                client_kwargs["api_key"] = api_key
-            if base_url:
-                client_kwargs["base_url"] = base_url
-        except Exception:
-            logger.debug("Could not load SDK env from registry, falling back to env vars")
+            raw_text = await self._call_via_cli(STRATEGY_EXTRACTION_PROMPT, user_message, use_model)
+            logger.info("Video %s: used Claude CLI (subscription billing)", video_id)
+        except Exception as cli_err:
+            logger.info("Claude CLI unavailable (%s), falling back to Anthropic SDK", cli_err)
 
-        client = anthropic.Anthropic(**client_kwargs)
+            try:
+                import anthropic
+            except ImportError:
+                raise RuntimeError(
+                    "The anthropic package is required for video processing. "
+                    "Install it with: pip install anthropic"
+                )
 
-        # Run the synchronous Anthropic API call in a thread pool to avoid
-        # blocking the async event loop during potentially long AI processing.
-        def _call_api():
-            return client.messages.create(
-                model=use_model,
-                max_tokens=8192,
-                system=STRATEGY_EXTRACTION_PROMPT,
-                messages=[{"role": "user", "content": user_message}],
-            )
+            # Build client using the shared auth system (respects Settings UI + .env)
+            client_kwargs: dict = {}
+            try:
+                from registry import get_effective_sdk_env
+                sdk_env = get_effective_sdk_env()
+                api_key = sdk_env.get("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_API_KEY")
+                base_url = sdk_env.get("ANTHROPIC_BASE_URL")
+                if api_key:
+                    client_kwargs["api_key"] = api_key
+                if base_url:
+                    client_kwargs["base_url"] = base_url
+            except Exception:
+                logger.debug("Could not load SDK env from registry, falling back to env vars")
 
-        loop = asyncio.get_running_loop()
-        response = await loop.run_in_executor(None, _call_api)
+            client = anthropic.Anthropic(**client_kwargs)
+
+            # Run the synchronous Anthropic API call in a thread pool
+            def _call_api():
+                return client.messages.create(
+                    model=use_model,
+                    max_tokens=8192,
+                    system=STRATEGY_EXTRACTION_PROMPT,
+                    messages=[{"role": "user", "content": user_message}],
+                )
+
+            loop = asyncio.get_running_loop()
+            response = await loop.run_in_executor(None, _call_api)
+            raw_text = response.content[0].text if response.content else ""
 
         elapsed = time.time() - start_time
 
-        raw_text = response.content[0].text if response.content else ""
         if not raw_text:
             raise ValueError("AI returned an empty response")
 

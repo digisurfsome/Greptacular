@@ -635,6 +635,146 @@ def read_build_log(project_name: Optional[str] = None):
 
 
 # ============================================================================
+# Coding Agent - Start/Stop/Status/Send
+# ============================================================================
+
+
+class AgentStartRequest(BaseModel):
+    """Request to start the coding agent."""
+    project_name: str
+    model_id: str = "claude-opus-4-6"
+    context_window: int = 200000
+
+
+class AgentMessageRequest(BaseModel):
+    """Request to send a message to the running agent."""
+    message: str
+
+
+@router.post("/agent/start")
+async def start_coding_agent(req: AgentStartRequest):
+    """Start a coding agent session for a project.
+
+    Creates a DunkStackCodingSession, initializes the Claude SDK client,
+    and sends the startup message so the agent begins following the
+    file-based protocol (reads index.md, working_memory.md, etc.).
+    """
+    from ..services.dunkstack_session import (
+        create_coding_session,
+        get_coding_session,
+    )
+    from ..utils.project_helpers import get_project_path
+
+    # Check if already running
+    existing = get_coding_session(req.project_name)
+    if existing and existing.status == "running":
+        return {"status": "already_running", **existing.get_status()}
+
+    # Resolve project path
+    project_dir = get_project_path(req.project_name)
+    if not project_dir or not project_dir.exists():
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # Ensure .agent/ directory exists
+    _ensure_agent_dir(req.project_name)
+
+    # Create session (async - stops any existing session for this project)
+    session = await create_coding_session(
+        project_name=req.project_name,
+        project_dir=project_dir,
+        model_id=req.model_id,
+        context_window=req.context_window,
+    )
+
+    # Start the agent - this initializes the SDK client AND sends the
+    # bootstrap message so the agent reads its .agent/ files and begins working.
+    all_events = []
+    async for event in session.start():
+        all_events.append(event)
+        await _broadcast({"type": "agent_event", **event})
+
+    # Check if start succeeded
+    if session.status != "running":
+        return {
+            "status": "error",
+            "error": session.error or "Failed to start",
+            "events": all_events,
+        }
+
+    return {
+        "status": "running",
+        **session.get_status(),
+        "events": all_events,
+    }
+
+
+@router.post("/agent/send")
+async def send_to_coding_agent(req: AgentMessageRequest, project_name: Optional[str] = None):
+    """Send a message to the running coding agent and get its response.
+
+    The message is sent directly to the Claude SDK client. The agent
+    will process it according to its file-based protocol.
+    """
+    from ..services.dunkstack_session import get_coding_session
+
+    if not project_name:
+        raise HTTPException(status_code=400, detail="project_name query param required")
+
+    session = get_coding_session(project_name)
+    if not session or session.status != "running":
+        raise HTTPException(status_code=404, detail="No running agent for this project")
+
+    response_events = []
+    async for event in session.send_message(req.message):
+        response_events.append(event)
+        await _broadcast({"type": "agent_event", **event})
+
+    return {"status": "ok", "events": response_events}
+
+
+@router.post("/agent/stop")
+async def stop_coding_agent(project_name: Optional[str] = None):
+    """Stop the running coding agent."""
+    from ..services.dunkstack_session import get_coding_session, remove_coding_session
+
+    if not project_name:
+        raise HTTPException(status_code=400, detail="project_name query param required")
+
+    session = get_coding_session(project_name)
+    if not session:
+        return {"status": "not_running"}
+
+    await remove_coding_session(project_name)
+
+    await _broadcast({"type": "agent_event", "status": "stopped"})
+
+    return {"status": "stopped"}
+
+
+@router.get("/agent/status")
+def get_coding_agent_status(project_name: Optional[str] = None):
+    """Get the status of the coding agent."""
+    from ..services.dunkstack_session import get_coding_session
+
+    if not project_name:
+        return {"status": "stopped"}
+
+    session = get_coding_session(project_name)
+    if not session:
+        return {"status": "stopped"}
+
+    return session.get_status()
+
+
+@router.get("/agent/sessions")
+def list_coding_sessions():
+    """List all active coding agent sessions."""
+    from ..services.dunkstack_session import list_coding_sessions as _list
+
+    return {"sessions": _list()}
+
+
+# ============================================================================
 # WebSocket - Real-time updates
 # ============================================================================
 

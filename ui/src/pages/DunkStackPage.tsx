@@ -359,7 +359,6 @@ export function DunkStackPage(): React.JSX.Element {
                   <DunkStackAgentPanel
                     projectName={selectedProject}
                     modelLabel={MODEL_PRESETS[modelPresetIndex].label}
-                    onStatusChange={(status: string) => setAgentRunning(status === 'running')}
                   />
                 </div>
                 {/* Right 2/3: Walkie-Talkie Chat */}

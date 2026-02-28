@@ -276,14 +276,24 @@ export function useDunkStack(): UseDunkStackReturn {
               break
 
             case 'agent_event':
-              // Real-time agent updates from the backend
+            case 'text':
+            case 'tool_call':
+            case 'tool_result':
+            case 'result':
+            case 'response_done':
+            case 'error':
+            case 'agent_status':
+              // Real-time agent updates from the backend.
+              // Note: the backend broadcasts {"type": "agent_event", **event}
+              // but **event has its own 'type' field that overwrites "agent_event",
+              // so we receive "text", "tool_call", etc. directly.
               if (msg.status) {
                 setAgentStatus(prev => ({ ...prev, status: msg.status, error: msg.error || null }))
               }
               // Accumulate all agent events for the split-screen API call view
               setAgentEvents(prev => [...prev, {
                 id: `ae-${Date.now()}-${prev.length}`,
-                type: msg.type === 'agent_event' ? (msg.status ? 'agent_status' : (msg.content ? 'text' : 'text')) : msg.type,
+                type: msg.type,
                 content: msg.content,
                 tool: msg.tool,
                 input: msg.input,
@@ -418,7 +428,24 @@ export function useDunkStack(): UseDunkStackReturn {
   const sendToAgent = useCallback(async (projectName: string, message: string) => {
     try {
       const result = await dunkstackSendToAgent(projectName, message)
-      return result.events || []
+      const events = result.events || []
+      // Accumulate events from the HTTP response (WebSocket may also deliver
+      // them, but duplicates are harmless in the log)
+      if (events.length) {
+        setAgentEvents(prev => [...prev, ...events.map((e, i) => ({
+          id: `send-${Date.now()}-${i}`,
+          type: String(e.type || 'text'),
+          content: e.content as string | undefined,
+          tool: e.tool as string | undefined,
+          input: e.input,
+          output: e.output as string | undefined,
+          is_error: e.is_error as boolean | undefined,
+          usage: e.usage as Record<string, number> | undefined,
+          status: e.status as string | undefined,
+          timestamp: new Date().toISOString(),
+        }))])
+      }
+      return events
     } catch (e) {
       console.error('Failed to send to agent:', e)
       return []

@@ -1,17 +1,17 @@
 /**
  * DunkStack Agent View
  *
- * Resizable split-screen layout:
- *   Left (1/4 default):  Agent event log (top 3/4) + API chat input (bottom 1/4)
- *   Right (3/4 default): Walkie-talkie file comms (DunkStackCommsChat)
+ * Three-column resizable layout:
+ *   Left   (~15%): API Chat — persistent message history + input at bottom
+ *   Middle (~35%): Agent event log — real-time tool calls, text, token usage
+ *   Right  (~50%): Walkie-talkie file comms (DunkStackCommsChat)
  *
- * Both the horizontal (left/right) and vertical (log/chat) splits are
- * draggable via mouse. The first message typed into the API chat starts
- * the agent — no separate "Start Agent" button needed.
+ * Two draggable splitter handles between the columns.
+ * First message typed into the API chat auto-starts the agent.
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Terminal, Wrench, CheckCircle2, XCircle, AlertTriangle, Activity, Cpu, Coins, Send, Loader2 } from 'lucide-react'
+import { Terminal, Wrench, CheckCircle2, XCircle, AlertTriangle, Activity, Cpu, Coins, Send, Loader2, MessageSquare } from 'lucide-react'
 import { DunkStackCommsChat } from './DunkStackCommsChat'
 import type { CommsEntry } from '@/hooks/useDunkStack'
 
@@ -29,6 +29,13 @@ export interface AgentEvent {
   is_error?: boolean
   usage?: Record<string, number>
   status?: string
+  timestamp: string
+}
+
+interface ApiChatMessage {
+  id: string
+  role: 'user' | 'agent' | 'system'
+  content: string
   timestamp: string
 }
 
@@ -77,59 +84,81 @@ function formatTokens(n: number): string {
 }
 
 // ============================================================================
-// Resizable splitter hook
+// Resizable 3-column hook
 // ============================================================================
 
-function useSplitter(
-  direction: 'horizontal' | 'vertical',
-  defaultRatio: number,
+/** Manages two splitter positions for a 3-column layout. */
+function useThreeColumnSplitter(
   containerRef: React.RefObject<HTMLDivElement | null>,
+  defaultSplit1: number, // fraction for first splitter (e.g. 0.15)
+  defaultSplit2: number, // fraction for second splitter (e.g. 0.50)
 ) {
-  const [ratio, setRatio] = useState(defaultRatio)
-  const dragging = useRef(false)
+  const [split1, setSplit1] = useState(defaultSplit1)
+  const [split2, setSplit2] = useState(defaultSplit2)
+  const dragging = useRef<'none' | 'first' | 'second'>('none')
 
-  const onMouseDown = useCallback((e: React.MouseEvent) => {
+  const onMouseDown1 = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
-    dragging.current = true
-
-    const onMouseMove = (ev: MouseEvent) => {
-      if (!dragging.current || !containerRef.current) return
+    dragging.current = 'first'
+    const onMove = (ev: MouseEvent) => {
+      if (dragging.current !== 'first' || !containerRef.current) return
       const rect = containerRef.current.getBoundingClientRect()
-      let newRatio: number
-      if (direction === 'horizontal') {
-        newRatio = (ev.clientX - rect.left) / rect.width
-      } else {
-        newRatio = (ev.clientY - rect.top) / rect.height
-      }
-      // Clamp between 10% and 90%
-      setRatio(Math.min(0.9, Math.max(0.1, newRatio)))
+      const ratio = (ev.clientX - rect.left) / rect.width
+      // Clamp: min 5%, max up to 5% before split2
+      setSplit1(Math.min(split2 - 0.05, Math.max(0.05, ratio)))
     }
-
-    const onMouseUp = () => {
-      dragging.current = false
-      document.removeEventListener('mousemove', onMouseMove)
-      document.removeEventListener('mouseup', onMouseUp)
+    const onUp = () => {
+      dragging.current = 'none'
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
     }
-
-    document.addEventListener('mousemove', onMouseMove)
-    document.addEventListener('mouseup', onMouseUp)
-    document.body.style.cursor = direction === 'horizontal' ? 'col-resize' : 'row-resize'
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+    document.body.style.cursor = 'col-resize'
     document.body.style.userSelect = 'none'
-  }, [direction, containerRef])
+  }, [containerRef, split2])
 
-  return { ratio, onMouseDown }
+  const onMouseDown2 = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    dragging.current = 'second'
+    const onMove = (ev: MouseEvent) => {
+      if (dragging.current !== 'second' || !containerRef.current) return
+      const rect = containerRef.current.getBoundingClientRect()
+      const ratio = (ev.clientX - rect.left) / rect.width
+      // Clamp: min 5% after split1, max 95%
+      setSplit2(Math.min(0.95, Math.max(split1 + 0.05, ratio)))
+    }
+    const onUp = () => {
+      dragging.current = 'none'
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }, [containerRef, split1])
+
+  // Column widths as percentages
+  const col1 = `${split1 * 100}%`
+  const col2 = `${(split2 - split1) * 100}%`
+  const col3 = `${(1 - split2) * 100}%`
+
+  return { col1, col2, col3, onMouseDown1, onMouseDown2 }
 }
 
 // ============================================================================
-// Event renderers
+// Event renderers (for the log column)
 // ============================================================================
 
 function TextEvent({ event }: { event: AgentEvent }) {
   return (
-    <div className="pl-3 py-1">
-      <p className="text-sm text-foreground font-mono whitespace-pre-wrap break-words leading-relaxed">
+    <div className="pl-2 py-0.5">
+      <p className="text-xs text-foreground font-mono whitespace-pre-wrap break-words leading-relaxed">
         {event.content}
       </p>
     </div>
@@ -138,12 +167,12 @@ function TextEvent({ event }: { event: AgentEvent }) {
 
 function ToolCallEvent({ event }: { event: AgentEvent }) {
   return (
-    <div className="flex items-start gap-2 p-2 rounded-lg bg-cyan-500/5 border border-cyan-500/15">
-      <Wrench size={14} className="text-cyan-400 mt-0.5 shrink-0" />
+    <div className="flex items-start gap-1.5 p-1.5 rounded bg-cyan-500/5 border border-cyan-500/15">
+      <Wrench size={12} className="text-cyan-400 mt-0.5 shrink-0" />
       <div className="min-w-0">
-        <span className="text-xs font-bold text-cyan-400">{event.tool ?? 'tool'}</span>
+        <span className="text-[11px] font-bold text-cyan-400">{event.tool ?? 'tool'}</span>
         {event.input != null && (
-          <p className="text-[11px] text-muted-foreground font-mono mt-0.5 break-all">
+          <p className="text-[10px] text-muted-foreground font-mono mt-0.5 break-all">
             {formatInputPreview(event.input)}
           </p>
         )}
@@ -155,13 +184,13 @@ function ToolCallEvent({ event }: { event: AgentEvent }) {
 function ToolResultEvent({ event }: { event: AgentEvent }) {
   const isError = event.is_error ?? false
   return (
-    <div className={`flex items-start gap-2 p-2 rounded-lg ${
+    <div className={`flex items-start gap-1.5 p-1.5 rounded ${
       isError ? 'bg-red-500/5 border border-red-500/15' : 'bg-emerald-500/5 border border-emerald-500/15'
     }`}>
       {isError
-        ? <XCircle size={14} className="text-red-400 mt-0.5 shrink-0" />
-        : <CheckCircle2 size={14} className="text-emerald-400 mt-0.5 shrink-0" />}
-      <p className="text-[11px] text-muted-foreground font-mono break-all">
+        ? <XCircle size={12} className="text-red-400 mt-0.5 shrink-0" />
+        : <CheckCircle2 size={12} className="text-emerald-400 mt-0.5 shrink-0" />}
+      <p className="text-[10px] text-muted-foreground font-mono break-all">
         {event.output ? truncate(event.output, 200) : isError ? 'Error (no output)' : 'OK'}
       </p>
     </div>
@@ -171,12 +200,12 @@ function ToolResultEvent({ event }: { event: AgentEvent }) {
 function ResultEvent({ event }: { event: AgentEvent }) {
   const usage = event.usage ?? {}
   return (
-    <div className="flex items-center gap-3 p-2 rounded-lg bg-primary/5 border border-primary/15">
-      <Coins size={14} className="text-primary shrink-0" />
-      <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground font-mono">
+    <div className="flex items-center gap-2 p-1.5 rounded bg-primary/5 border border-primary/15">
+      <Coins size={12} className="text-primary shrink-0" />
+      <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] text-muted-foreground font-mono">
         {usage.input_tokens != null && <span>in: {formatTokens(usage.input_tokens)}</span>}
         {usage.output_tokens != null && <span>out: {formatTokens(usage.output_tokens)}</span>}
-        {usage.total_cost_usd != null && <span>cost: ${Number(usage.total_cost_usd).toFixed(4)}</span>}
+        {usage.total_cost_usd != null && <span>${Number(usage.total_cost_usd).toFixed(4)}</span>}
       </div>
     </div>
   )
@@ -184,18 +213,18 @@ function ResultEvent({ event }: { event: AgentEvent }) {
 
 function ErrorEvent({ event }: { event: AgentEvent }) {
   return (
-    <div className="flex items-start gap-2 p-2 rounded-lg bg-red-500/10 border border-red-500/20">
-      <AlertTriangle size={14} className="text-red-500 mt-0.5 shrink-0" />
-      <p className="text-xs text-red-400 font-mono break-words">{event.content ?? 'Unknown error'}</p>
+    <div className="flex items-start gap-1.5 p-1.5 rounded bg-red-500/10 border border-red-500/20">
+      <AlertTriangle size={12} className="text-red-500 mt-0.5 shrink-0" />
+      <p className="text-[10px] text-red-400 font-mono break-words">{event.content ?? 'Unknown error'}</p>
     </div>
   )
 }
 
 function AgentStatusEvent({ event }: { event: AgentEvent }) {
   return (
-    <div className="flex items-center gap-2 p-2 rounded-lg bg-yellow-500/5 border border-yellow-500/15">
-      <Activity size={14} className="text-yellow-400 shrink-0" />
-      <span className="text-xs font-semibold text-yellow-400">{event.status ?? event.content ?? 'status change'}</span>
+    <div className="flex items-center gap-1.5 p-1.5 rounded bg-yellow-500/5 border border-yellow-500/15">
+      <Activity size={12} className="text-yellow-400 shrink-0" />
+      <span className="text-[10px] font-semibold text-yellow-400">{event.status ?? event.content ?? 'status change'}</span>
     </div>
   )
 }
@@ -230,30 +259,64 @@ export function DunkStackAgentView({
   agentStarting,
   projectName,
 }: DunkStackAgentViewProps): React.JSX.Element {
-  const scrollRef = useRef<HTMLDivElement>(null)
+  const logScrollRef = useRef<HTMLDivElement>(null)
+  const chatScrollRef = useRef<HTMLDivElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+
   const [apiChatInput, setApiChatInput] = useState('')
   const [apiChatSending, setApiChatSending] = useState(false)
+  const [apiMessages, setApiMessages] = useState<ApiChatMessage[]>([])
 
-  // Refs for resizable containers
-  const hContainerRef = useRef<HTMLDivElement>(null)
-  const vContainerRef = useRef<HTMLDivElement>(null)
-
-  // Horizontal split: left (API) / right (walkie-talkie) — default 25% / 75%
-  const hSplitter = useSplitter('horizontal', 0.25, hContainerRef)
-  // Vertical split on left panel: top (log) / bottom (chat) — default 75% / 25%
-  const vSplitter = useSplitter('vertical', 0.75, vContainerRef)
+  // 3-column layout: API chat (15%) | Log (35%) | Walkie-talkie (50%)
+  const cols = useThreeColumnSplitter(containerRef, 0.15, 0.50)
 
   // Auto-scroll the event log
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    if (logScrollRef.current) {
+      logScrollRef.current.scrollTop = logScrollRef.current.scrollHeight
     }
   }, [agentEvents.length])
+
+  // Auto-scroll the API chat
+  useEffect(() => {
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight
+    }
+  }, [apiMessages.length])
+
+  // Mirror text-type agent events into the API chat as "agent" messages
+  useEffect(() => {
+    if (agentEvents.length === 0) return
+    const lastEvent = agentEvents[agentEvents.length - 1]
+    if (lastEvent.type === 'text' && lastEvent.content) {
+      setApiMessages(prev => {
+        // Dedupe by checking if last message is agent with same content
+        if (prev.length > 0) {
+          const last = prev[prev.length - 1]
+          if (last.role === 'agent' && last.content === lastEvent.content) return prev
+        }
+        return [...prev, {
+          id: `agent-${Date.now()}`,
+          role: 'agent',
+          content: lastEvent.content!,
+          timestamp: lastEvent.timestamp,
+        }]
+      })
+    }
+  }, [agentEvents.length, agentEvents])
 
   // Send a message via the API chat. If agent isn't running, start it first.
   const handleApiChatSend = useCallback(async () => {
     const msg = apiChatInput.trim()
     if (!msg) return
+
+    // Add to persistent message list immediately
+    setApiMessages(prev => [...prev, {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      content: msg,
+      timestamp: new Date().toISOString(),
+    }])
 
     setApiChatSending(true)
     setApiChatInput('')
@@ -261,6 +324,12 @@ export function DunkStackAgentView({
     try {
       // Start agent if not running
       if (!isRunning && !agentStarting && onStartAgent) {
+        setApiMessages(prev => [...prev, {
+          id: `sys-${Date.now()}`,
+          role: 'system',
+          content: 'Starting agent...',
+          timestamp: new Date().toISOString(),
+        }])
         await onStartAgent()
       }
       // Send message to agent
@@ -268,7 +337,12 @@ export function DunkStackAgentView({
         await onSendToAgent(msg)
       }
     } catch (e) {
-      console.error('Failed to send API chat message:', e)
+      setApiMessages(prev => [...prev, {
+        id: `err-${Date.now()}`,
+        role: 'system',
+        content: `Error: ${e instanceof Error ? e.message : String(e)}`,
+        timestamp: new Date().toISOString(),
+      }])
     } finally {
       setApiChatSending(false)
     }
@@ -284,122 +358,126 @@ export function DunkStackAgentView({
   const isBusy = agentStarting || apiChatSending
 
   return (
-    <div ref={hContainerRef} className="flex h-full w-full overflow-hidden">
-      {/* ── Left Panel: API Call (log + chat) ── */}
-      <div
-        className="flex flex-col min-w-0 overflow-hidden"
-        style={{ width: `${hSplitter.ratio * 100}%` }}
-      >
-        <div ref={vContainerRef} className="flex flex-col flex-1 min-h-0">
-          {/* Top: Event Log */}
-          <div
-            className="flex flex-col min-h-0 overflow-hidden"
-            style={{ height: `${vSplitter.ratio * 100}%` }}
-          >
-            {/* Log header */}
-            <div className="flex items-center justify-between px-3 py-1.5 border-b border-border bg-card shrink-0">
-              <div className="flex items-center gap-2">
-                <Terminal size={14} className="text-primary" />
-                <span className="text-xs font-semibold text-foreground">API Call</span>
-                {modelId && (
-                  <span className="text-[10px] text-muted-foreground font-mono">{modelId}</span>
-                )}
-              </div>
-              <div className="flex items-center gap-1.5">
-                <Cpu size={11} className="text-muted-foreground" />
-                <span className="text-[10px] text-muted-foreground font-mono">
-                  {agentEvents.length} events
-                </span>
-                <span
-                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                    isRunning ? 'bg-emerald-500 animate-pulse' :
-                    agentStarting ? 'bg-amber-500 animate-pulse' :
-                    'bg-muted-foreground/30'
-                  }`}
-                />
-              </div>
-            </div>
+    <div ref={containerRef} className="flex h-full w-full overflow-hidden">
+      {/* ── Column 1: API Chat (thin sliver) ── */}
+      <div className="flex flex-col min-w-0 overflow-hidden" style={{ width: cols.col1 }}>
+        {/* Header */}
+        <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-border bg-card shrink-0">
+          <MessageSquare size={12} className="text-primary shrink-0" />
+          <span className="text-[11px] font-semibold text-foreground truncate">API Chat</span>
+          <span
+            className={`w-1.5 h-1.5 rounded-full shrink-0 ml-auto ${
+              isRunning ? 'bg-emerald-500 animate-pulse' :
+              agentStarting ? 'bg-amber-500 animate-pulse' :
+              'bg-muted-foreground/30'
+            }`}
+          />
+        </div>
 
-            {/* Scrollable event log */}
-            <div ref={scrollRef} className="flex-1 overflow-y-auto p-2 space-y-1.5 min-h-0">
-              {agentEvents.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full text-center gap-2">
-                  <Terminal size={24} className="text-muted-foreground/20" />
-                  <p className="text-xs text-muted-foreground">
-                    {isRunning ? 'Waiting for output...' : 'Type a message below to start the agent'}
-                  </p>
-                </div>
-              ) : (
-                agentEvents.map((event) => (
-                  <EventItem key={event.id} event={event} />
-                ))
-              )}
+        {/* Message history */}
+        <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-1.5 space-y-1 min-h-0">
+          {apiMessages.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-center gap-1.5 px-1">
+              <MessageSquare size={18} className="text-muted-foreground/20" />
+              <p className="text-[10px] text-muted-foreground leading-tight">
+                {projectName ? 'Type below to start' : 'Select a project'}
+              </p>
             </div>
-          </div>
-
-          {/* Vertical splitter handle */}
-          <div
-            onMouseDown={vSplitter.onMouseDown}
-            className="h-1.5 shrink-0 cursor-row-resize bg-border/50 hover:bg-primary/30 transition-colors flex items-center justify-center"
-          >
-            <div className="w-8 h-0.5 rounded-full bg-muted-foreground/30" />
-          </div>
-
-          {/* Bottom: API Chat Input */}
-          <div
-            className="flex flex-col min-h-0 overflow-hidden"
-            style={{ height: `${(1 - vSplitter.ratio) * 100}%` }}
-          >
-            <div className="flex-1 flex flex-col p-2 min-h-0">
-              <textarea
-                value={apiChatInput}
-                onChange={e => setApiChatInput(e.target.value)}
-                onKeyDown={handleApiChatKeyDown}
-                placeholder={
-                  isRunning
-                    ? 'Send a message to the agent...'
-                    : projectName
-                      ? `Type a message to start the agent on "${projectName}"...`
-                      : 'Select a project, then type to start...'
-                }
-                disabled={isBusy || !projectName}
-                className="flex-1 w-full resize-none bg-background text-foreground text-sm font-mono p-2 rounded-lg border border-border focus:outline-none focus:border-primary placeholder:text-muted-foreground/50 min-h-0"
-              />
-              <div className="flex items-center justify-between mt-1.5 shrink-0">
-                <span className="text-[10px] text-muted-foreground">
-                  {isRunning ? 'Agent running' : 'Enter sends · Shift+Enter for newline'}
-                </span>
-                <button
-                  onClick={handleApiChatSend}
-                  disabled={!apiChatInput.trim() || isBusy || !projectName}
-                  className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                >
-                  {isBusy ? (
-                    <Loader2 size={12} className="animate-spin" />
-                  ) : (
-                    <Send size={12} />
-                  )}
-                  {!isRunning && !agentStarting ? 'Start' : 'Send'}
-                </button>
+          ) : (
+            apiMessages.map(msg => (
+              <div
+                key={msg.id}
+                className={`rounded px-1.5 py-1 text-[11px] font-mono break-words leading-tight ${
+                  msg.role === 'user'
+                    ? 'bg-primary/10 text-primary ml-1'
+                    : msg.role === 'system'
+                    ? 'bg-yellow-500/10 text-yellow-400 text-center italic'
+                    : 'bg-muted/50 text-foreground mr-1'
+                }`}
+              >
+                {msg.content}
               </div>
-            </div>
+            ))
+          )}
+        </div>
+
+        {/* Input */}
+        <div className="border-t border-border p-1.5 shrink-0">
+          <div className="flex gap-1">
+            <input
+              type="text"
+              value={apiChatInput}
+              onChange={e => setApiChatInput(e.target.value)}
+              onKeyDown={handleApiChatKeyDown}
+              placeholder={isRunning ? 'Message...' : 'Start...'}
+              disabled={isBusy || !projectName}
+              className="flex-1 min-w-0 bg-background text-foreground text-[11px] font-mono px-1.5 py-1 rounded border border-border focus:outline-none focus:border-primary placeholder:text-muted-foreground/40"
+            />
+            <button
+              onClick={handleApiChatSend}
+              disabled={!apiChatInput.trim() || isBusy || !projectName}
+              className="shrink-0 p-1 rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            >
+              {isBusy ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Horizontal splitter handle */}
+      {/* Splitter 1 */}
       <div
-        onMouseDown={hSplitter.onMouseDown}
-        className="w-1.5 shrink-0 cursor-col-resize bg-border/50 hover:bg-primary/30 transition-colors flex items-center justify-center"
+        onMouseDown={cols.onMouseDown1}
+        className="w-1 shrink-0 cursor-col-resize bg-border/50 hover:bg-primary/30 transition-colors flex items-center justify-center"
       >
         <div className="h-8 w-0.5 rounded-full bg-muted-foreground/30" />
       </div>
 
-      {/* ── Right Panel: Walkie-Talkie (Comms Chat) ── */}
+      {/* ── Column 2: Agent Event Log ── */}
+      <div className="flex flex-col min-w-0 overflow-hidden" style={{ width: cols.col2 }}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-2 py-1.5 border-b border-border bg-card shrink-0">
+          <div className="flex items-center gap-1.5">
+            <Terminal size={12} className="text-primary" />
+            <span className="text-[11px] font-semibold text-foreground">Log</span>
+            {modelId && (
+              <span className="text-[9px] text-muted-foreground font-mono truncate">{modelId}</span>
+            )}
+          </div>
+          <div className="flex items-center gap-1">
+            <Cpu size={10} className="text-muted-foreground" />
+            <span className="text-[9px] text-muted-foreground font-mono">
+              {agentEvents.length}
+            </span>
+          </div>
+        </div>
+
+        {/* Scrollable event log */}
+        <div ref={logScrollRef} className="flex-1 overflow-y-auto p-1.5 space-y-1 min-h-0">
+          {agentEvents.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-center gap-1.5">
+              <Terminal size={18} className="text-muted-foreground/20" />
+              <p className="text-[10px] text-muted-foreground">
+                {isRunning ? 'Waiting for output...' : 'No events yet'}
+              </p>
+            </div>
+          ) : (
+            agentEvents.map(event => (
+              <EventItem key={event.id} event={event} />
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* Splitter 2 */}
       <div
-        className="flex flex-col min-w-0 overflow-hidden"
-        style={{ width: `${(1 - hSplitter.ratio) * 100}%` }}
+        onMouseDown={cols.onMouseDown2}
+        className="w-1 shrink-0 cursor-col-resize bg-border/50 hover:bg-primary/30 transition-colors flex items-center justify-center"
       >
+        <div className="h-8 w-0.5 rounded-full bg-muted-foreground/30" />
+      </div>
+
+      {/* ── Column 3: Walkie-Talkie (Comms Chat) ── */}
+      <div className="flex flex-col min-w-0 overflow-hidden" style={{ width: cols.col3 }}>
         <DunkStackCommsChat
           commsLog={commsLog}
           onSendMessage={onSendMessage}

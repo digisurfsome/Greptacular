@@ -311,7 +311,9 @@ class YTDiscovery:
             async for msg in client.receive_response():
                 msg_type = type(msg).__name__
                 msg_types_seen.append(msg_type)
-                if msg_type == "AssistantMessage" and hasattr(msg, "content"):
+                if msg_type in ("RateLimitEvent", "rate_limit_event"):
+                    continue  # Skip SDK informational events
+                elif msg_type == "AssistantMessage" and hasattr(msg, "content"):
                     for block in msg.content:
                         block_type = type(block).__name__
                         if block_type == "TextBlock" and hasattr(block, "text"):

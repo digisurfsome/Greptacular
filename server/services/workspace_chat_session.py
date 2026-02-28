@@ -360,6 +360,68 @@ class WorkspaceChatSession:
             self.client = None
             return False
 
+    async def _fallback_to_subscription(self) -> bool:
+        """Tear down the current client and recreate with subscription OAuth.
+
+        Called when API key billing fails (e.g. credit balance too low) and the
+        user may have refreshed their OAuth token via ``claude login``.
+        Returns True if the new client started successfully.
+        """
+        if not self._shared_opts:
+            logger.warning("Cannot fall back to subscription: no saved shared_opts from start()")
+            return False
+
+        logger.warning(
+            "API key billing failed mid-session. Attempting subscription OAuth."
+        )
+
+        # Tear down the current client
+        if self.client and self._client_entered:
+            try:
+                await self.client.__aexit__(None, None, None)
+            except Exception:
+                pass
+            self._client_entered = False
+            self.client = None
+
+        try:
+            from registry import get_effective_sdk_env
+
+            # Re-create SDK env with subscription auth (clears API key)
+            sdk_env = get_effective_sdk_env(force_subscription=True)
+            self._force_sub = True
+
+            # Re-inject effort level env var
+            if self._effort in ("low", "medium", "high"):
+                sdk_env["CLAUDE_CODE_EFFORT_LEVEL"] = self._effort
+
+            # Update shared options: subscription = no 1M beta
+            self._shared_opts["env"] = sdk_env
+            self._shared_opts["betas"] = []
+
+            logger.info("Recreating client with subscription OAuth")
+
+            # Re-create the client
+            try:
+                self.client = ClaudeSDKClient(
+                    options=ClaudeAgentOptions(effort=self._effort, **self._shared_opts)
+                )
+            except TypeError:
+                self.client = ClaudeSDKClient(
+                    options=ClaudeAgentOptions(**self._shared_opts)
+                )
+
+            await asyncio.wait_for(self.client.__aenter__(), timeout=60)
+            self._client_entered = True
+            logger.info("Workspace client recreated with subscription OAuth (mid-session fallback)")
+            return True
+
+        except Exception:
+            logger.exception("Subscription fallback also failed during mid-session recovery")
+            self._client_entered = False
+            self.client = None
+            return False
+
     async def queue_walkie_talkie_message(self, content: str) -> None:
         """Queue a walkie-talkie message for the running agent to receive.
 
@@ -1281,10 +1343,41 @@ class WorkspaceChatSession:
                         return  # Retry succeeded — skip the error path below
                     except Exception as retry_err:
                         logger.exception("Retry after API key fallback also failed")
-                        yield {
-                            "type": "error",
-                            "content": f"API key fallback also failed: {retry_err}",
-                        }
+                        # API key failed too (e.g. credit balance too low).
+                        # Last resort: try subscription OAuth in case the user
+                        # just ran `claude login` to refresh their token.
+                        sub_ok = await self._fallback_to_subscription()
+                        if sub_ok:
+                            yield {
+                                "type": "text",
+                                "content": (
+                                    "API key billing failed — retrying with subscription auth.\n\n"
+                                ),
+                            }
+                            try:
+                                async for chunk in self._query_claude(message_to_send, attachments=attachments):
+                                    yield chunk
+                                yield {"type": "response_done"}
+                                return
+                            except Exception as sub_retry_err:
+                                logger.exception("Subscription retry also failed")
+                                yield {
+                                    "type": "error",
+                                    "content": (
+                                        f"All auth methods failed: {sub_retry_err}\n\n"
+                                        "Run `claude login` in a terminal to refresh subscription, "
+                                        "or add API credits at console.anthropic.com."
+                                    ),
+                                }
+                        else:
+                            yield {
+                                "type": "error",
+                                "content": (
+                                    f"API key billing failed: {retry_err}\n\n"
+                                    "Run `claude login` in a terminal to refresh subscription, "
+                                    "or add API credits at console.anthropic.com."
+                                ),
+                            }
                 else:
                     yield {
                         "type": "error",
@@ -1298,7 +1391,11 @@ class WorkspaceChatSession:
             else:
                 yield {"type": "error", "content": f"Error: {str(e)}"}
 
-            # Auto-detect rate limit / billing errors and log them for calibration
+            # Auto-detect rate limit / billing errors and log them for calibration.
+            # Guard: skip detection if the error is about an unknown SDK message
+            # type — e.g. "Unknown message type: rate_limit_event" is a parse
+            # error, NOT an actual rate limit.
+            _is_unknown_msg_type = "unknown message type" in error_str
             rate_limit_patterns = [
                 "rate limit", "rate_limit", "ratelimit",
                 "usage limit", "usage_limit",
@@ -1309,7 +1406,7 @@ class WorkspaceChatSession:
                 "credit balance", "balance too low",
                 "insufficient credit", "billing",
             ]
-            if any(p in error_str for p in rate_limit_patterns):
+            if not _is_unknown_msg_type and any(p in error_str for p in rate_limit_patterns):
                 try:
                     from . import workspace_database as db
                     usage = db.get_usage_by_period("daily")
@@ -1562,6 +1659,12 @@ class WorkspaceChatSession:
                                 yield {"type": "token_log", "entry": entry}
                             except Exception as e:
                                 logger.warning("Failed to log tool_result: %s", e)
+
+            # Silently skip SDK event types we don't need to surface.
+            # The Claude SDK may emit informational events (e.g. rate_limit_event)
+            # that are not errors and don't need UI handling.
+            elif msg_type in ("RateLimitEvent", "rate_limit_event"):
+                logger.debug("Skipping SDK event type: %s", msg_type)
 
             # Handle ResultMessage — the SDK's final summary with actual API usage
             elif msg_type == "ResultMessage":

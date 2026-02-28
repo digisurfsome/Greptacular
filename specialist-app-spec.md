@@ -645,3 +645,61 @@ The target user isn't a senior dev who wants marginally faster tooling. It's the
 A specialist that deeply understands "OAuth token expiry and API key fallback" doesn't just know how YOUR code handles it — it understands the *pattern*. When you point it at a different app with the same class of problem, it already knows what to look for and how to fix it. The repo-specific learning (file structure, naming conventions) is a fraction of the cost compared to learning the problem domain from scratch.
 
 **This is the killer feature.** Your specialist bench gets more powerful with every app you add, not more expensive.
+
+---
+
+## Context Window Management
+
+The Specialist app integrates DunkStack-style context gauges with a phased shutdown protocol — no silent compacting:
+
+| Threshold | Action |
+|-----------|--------|
+| **40%** remaining | Warning — "Getting warm" |
+| **45%** used | Stronger warning — "Consider wrapping up" |
+| **48%** used | Automatic handoff prep — bridge save, state checkpoint |
+| **50%** used | Hard stop — no exceptions, specialist parks cleanly |
+
+**Structured handoff instead of compacting:** Rather than silent compacting (forgetting context without warning), the system performs a structured handoff — bridge save with current task, progress, next steps, open questions. The next session starts fresh with full context capacity but inherits all important state.
+
+**Why this matters:** Compacting is the worst experience in AI-assisted development. It happens silently with no warning. One minute you have full context, the next your agent "forgot" everything. The Specialist app treats context as a precious resource with clear gauges, warnings, and graceful degradation.
+
+---
+
+## Existing Infrastructure to Leverage
+
+These proven components from AutoForge/Greptacular carry directly into the Specialist app:
+
+- **Claude SDK integration** — `ClaudeSDKClient`, auth management (including the OAuth-to-API-key fallback we just built), tool access, security hooks
+- **Background session manager** — sessions as independent `asyncio.Task` objects, decoupled from WebSocket connections, ring buffer replay (2000 events), up to 10 concurrent sessions
+- **WebSocket viewer protocol** — real-time streaming with attach/detach for switching between specialists
+- **Model selector** — Opus 200K / Opus 1M / Sonnet 1M presets with context gauge thresholds
+- **Project registry** — mapping names to paths, SQLite-based, cross-platform
+- **Token tracking / context gauge** — DunkStack's gauge infrastructure for monitoring specialist budget
+- **Bridge save / handoff system** — structured state persistence between sessions
+- **Workspace chat session pattern** — the conversation architecture with tool access and streaming
+
+This is not building from scratch — it's adapting battle-tested infrastructure into a new product form factor.
+
+---
+
+## CLI-to-SaaS Development Pipeline
+
+The development strategy follows the proven three-phase pipeline:
+
+1. **CLI Phase** — Dial in agent behavior, protocols, prompts, guardrails using Claude Code CLI. Get the specialist logic rock-solid in a raw terminal environment.
+2. **Dashboard Phase** — Wrap it in an AutoForge-style dashboard for visual control + CLI power underneath. Test the UI/UX, the roster grid, the orchestrator chat.
+3. **SaaS Phase** — Swap the CLI subprocess for an API-key-driven agent class. Keep all battle-tested logic. Deploy as a hosted service with BYOK API key management.
+
+Each phase builds on the last. Nothing gets thrown away. The SaaS version is the CLI version with a better frontend and user management bolted on.
+
+---
+
+## The Bowling Strike Strategy
+
+The Specialist app is the lead pin in a larger product ecosystem:
+
+1. **Land the rescue tool first** (Specialist app) — earns trust through genuine value. "This thing just saved me 4 hours and $50."
+2. **Upsell the suite** — once they see how valuable it is, offer: PRD maker, UI system, Builder, templates, themes, standardization tools
+3. **Standardization is the glue** — if someone adopts the Specialist app and standardizes their projects, they're pre-configured for the entire ecosystem. Every additional product is a natural next step, not a cold sell.
+
+**Nobody talks about standardization** — not Bolt, not Lovable, not Base44, not Claude, not Codex, not Gemini. This is both a market gap and a moat. The Specialist app fills it by teaching users to standardize (reducing their specialist costs) while simultaneously making them sticky to the whole product ecosystem.

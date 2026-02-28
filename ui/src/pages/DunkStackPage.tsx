@@ -107,8 +107,6 @@ export function DunkStackPage(): React.JSX.Element {
   const [centerView, setCenterView] = useState<CenterView>('chat')
   const [standardsPanelOpen, setStandardsPanelOpen] = useState(true)
   const [productPanelOpen, setProductPanelOpen] = useState(false)
-  const [agentRunning, setAgentRunning] = useState(false)
-
   // Agent OS data hooks (only active when a project is selected and in agent-os view)
   const isAgentOSView = centerView === 'agent-os-intake' || centerView === 'agent-os-workflow'
   const { data: featuresData } = useFeatures(isAgentOSView && selectedProject ? selectedProject : '')

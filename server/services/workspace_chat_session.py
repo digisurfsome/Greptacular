@@ -1443,6 +1443,27 @@ class WorkspaceChatSession:
                         if text:
                             full_response += text
                             turn_text_length += len(text)
+
+                            # Detect auth errors streamed as text by the CLI.
+                            # When OAuth expires mid-query, the CLI reports
+                            # "Failed to authenticate. API Error: 401 ..."
+                            # as a text response instead of raising an exception.
+                            # Catch this early so send_message() can trigger the
+                            # API-key fallback transparently.
+                            if len(full_response) < 500:
+                                _resp_lower = full_response.lower()
+                                if (
+                                    "failed to authenticate" in _resp_lower
+                                    or (
+                                        "authentication_error" in _resp_lower
+                                        and "401" in _resp_lower
+                                    )
+                                    or "oauth token has expired" in _resp_lower
+                                ):
+                                    raise RuntimeError(
+                                        f"SDK authentication error: {full_response}"
+                                    )
+
                             yield {"type": "text", "content": text}
 
                             # Detect agent-initiated wait signal: [WAITING]...[/WAITING]
@@ -1551,6 +1572,20 @@ class WorkspaceChatSession:
                 duration_api_ms = getattr(msg, "duration_api_ms", None)
                 is_error = getattr(msg, "is_error", False)
                 result_model = getattr(msg, "model", self.model)
+
+                # If the result is an error and the response looks like an auth
+                # failure, raise so send_message() can attempt the fallback.
+                if is_error and full_response:
+                    _resp_lower = full_response.lower()
+                    _auth_patterns = [
+                        "failed to authenticate",
+                        "authentication_error",
+                        "oauth token has expired",
+                    ]
+                    if any(p in _resp_lower for p in _auth_patterns):
+                        raise RuntimeError(
+                            f"SDK authentication error: {full_response}"
+                        )
 
                 # Extract token counts from usage dict
                 api_input = usage.get("input_tokens") if isinstance(usage, dict) else None

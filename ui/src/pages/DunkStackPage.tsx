@@ -38,6 +38,7 @@ import { DunkStackContextGauge } from '@/components/dunkstack/DunkStackContextGa
 import { DunkStackCommsChat } from '@/components/dunkstack/DunkStackCommsChat'
 import { DunkStackSafetyPanel } from '@/components/dunkstack/DunkStackSafetyPanel'
 import { DunkStackGuidePanel } from '@/components/dunkstack/DunkStackGuidePanel'
+import { DunkStackAgentPanel } from '@/components/dunkstack/DunkStackAgentPanel'
 import { IntakeDock } from '@/components/appbuilder/IntakeDock'
 import { AgentOSChat } from '@/components/appbuilder/AgentOSChat'
 import { StandardsPanel } from '@/components/appbuilder/StandardsPanel'
@@ -353,12 +354,25 @@ export function DunkStackPage(): React.JSX.Element {
                 </div>
               </div>
             ) : (
-              <DunkStackCommsChat
-                commsLog={commsLog}
-                onSendMessage={sendMessage}
-                controlMode={controlMode}
-                connected={connected}
-              />
+              <div className="flex flex-1 overflow-hidden">
+                {/* Left: Agent Session (API Call) */}
+                <div className="flex-1 min-w-0 border-r border-border">
+                  <DunkStackAgentPanel
+                    projectName={selectedProject}
+                    connected={connected}
+                    modelLabel={MODEL_PRESETS[modelPresetIndex].label}
+                  />
+                </div>
+                {/* Right: Walkie-Talkie Chat (File Comms) */}
+                <div className="flex-1 min-w-0">
+                  <DunkStackCommsChat
+                    commsLog={commsLog}
+                    onSendMessage={sendMessage}
+                    controlMode={controlMode}
+                    connected={connected}
+                  />
+                </div>
+              </div>
             )
           )}
 

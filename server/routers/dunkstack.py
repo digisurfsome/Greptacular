@@ -15,9 +15,12 @@ Provides:
 import asyncio
 import json
 import logging
+import os
+import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import yaml
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
@@ -683,3 +686,227 @@ async def dunkstack_websocket(ws: WebSocket):
         if ws in _ws_connections:
             _ws_connections.remove(ws)
         logger.info("DunkStack WebSocket disconnected (total: %d)", len(_ws_connections))
+
+
+# ============================================================================
+# Agent Process Management
+# ============================================================================
+
+# In-memory agent process state (one agent per DunkStack session)
+_agent_process: Optional[subprocess.Popen] = None
+_agent_output_task: Optional[asyncio.Task] = None
+_agent_status: str = "stopped"  # stopped | running | crashed
+_agent_output_lines: list[str] = []  # Rolling buffer of output lines
+_AGENT_OUTPUT_MAX = 2000  # Keep last N lines
+
+
+class AgentStartRequest(BaseModel):
+    """Request to start the DunkStack coding agent."""
+    project_name: Optional[str] = None
+    model: Optional[str] = None  # claude-opus-4-6 | claude-sonnet-4-6
+
+
+def _get_project_dir(project_name: Optional[str]) -> Path:
+    """Resolve project directory from name, or fall back to ROOT_DIR."""
+    if project_name:
+        from ..utils.project_helpers import get_project_path
+        project_dir = get_project_path(project_name)
+        if project_dir and project_dir.exists():
+            return project_dir
+    return ROOT_DIR
+
+
+async def _stream_agent_output() -> None:
+    """Stream agent subprocess output to WebSocket clients and buffer."""
+    global _agent_status, _agent_process
+    if not _agent_process or not _agent_process.stdout:
+        return
+
+    try:
+        loop = asyncio.get_running_loop()
+        while True:
+            line = await loop.run_in_executor(None, _agent_process.stdout.readline)
+            if not line:
+                break
+
+            decoded = line.decode("utf-8", errors="replace").rstrip()
+
+            # Buffer the output line
+            _agent_output_lines.append(decoded)
+            if len(_agent_output_lines) > _AGENT_OUTPUT_MAX:
+                _agent_output_lines.pop(0)
+
+            # Broadcast to WebSocket clients
+            await _broadcast({
+                "type": "agent_output",
+                "line": decoded,
+            })
+
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        logger.warning("Agent output streaming error: %s", e)
+    finally:
+        if _agent_process and _agent_process.poll() is not None:
+            exit_code = _agent_process.returncode
+            if exit_code != 0 and _agent_status == "running":
+                _agent_status = "crashed"
+            elif _agent_status == "running":
+                _agent_status = "stopped"
+
+            await _broadcast({
+                "type": "agent_status",
+                "status": _agent_status,
+                "exit_code": exit_code,
+            })
+
+
+@router.post("/agent/start")
+async def start_agent(req: AgentStartRequest = AgentStartRequest()):
+    """Start the DunkStack coding agent for a project."""
+    global _agent_process, _agent_output_task, _agent_status, _agent_output_lines
+
+    if _agent_status == "running" and _agent_process and _agent_process.poll() is None:
+        return {"status": "already_running", "pid": _agent_process.pid}
+
+    project_dir = _get_project_dir(req.project_name)
+
+    # Determine model and billing from current preset
+    model = req.model
+    if not model:
+        model_limit = _token_state["model_limit"]
+        mode = _token_state["mode"]
+        # Default: use model from current preset
+        model = "claude-sonnet-4-6"  # safe default
+
+    billing_mode = "subscription" if _token_state["model_limit"] <= 200_000 else "api"
+
+    # Build command
+    cmd = [
+        sys.executable,
+        "-u",  # Unbuffered output
+        str(ROOT_DIR / "dunkstack_agent.py"),
+        "--project-dir", str(project_dir.resolve()),
+        "--model", model,
+        "--billing-mode", billing_mode,
+    ]
+
+    # Build subprocess environment with API provider settings
+    from registry import get_effective_sdk_env
+    api_env = get_effective_sdk_env(force_subscription=billing_mode == "subscription")
+    subprocess_env = {
+        **os.environ,
+        "PYTHONUNBUFFERED": "1",
+        **api_env,
+    }
+
+    try:
+        popen_kwargs: dict[str, Any] = {
+            "stdin": subprocess.DEVNULL,
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.STDOUT,
+            "cwd": str(project_dir),
+            "env": subprocess_env,
+        }
+        if sys.platform == "win32":
+            popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+
+        _agent_process = subprocess.Popen(cmd, **popen_kwargs)
+        _agent_status = "running"
+        _agent_output_lines.clear()
+
+        # Start output streaming
+        _agent_output_task = asyncio.create_task(_stream_agent_output())
+
+        logger.info("DunkStack agent started: PID %d, project=%s, model=%s, billing=%s",
+                     _agent_process.pid, project_dir, model, billing_mode)
+
+        await _broadcast({
+            "type": "agent_status",
+            "status": "running",
+            "pid": _agent_process.pid,
+            "model": model,
+            "billing_mode": billing_mode,
+        })
+
+        return {
+            "status": "started",
+            "pid": _agent_process.pid,
+            "model": model,
+            "billing_mode": billing_mode,
+        }
+
+    except Exception as e:
+        logger.exception("Failed to start DunkStack agent")
+        _agent_status = "crashed"
+        raise HTTPException(status_code=500, detail=f"Failed to start agent: {e}")
+
+
+@router.post("/agent/stop")
+async def stop_agent():
+    """Stop the running DunkStack agent."""
+    global _agent_process, _agent_output_task, _agent_status
+
+    if not _agent_process or _agent_status == "stopped":
+        return {"status": "not_running"}
+
+    try:
+        # Cancel output streaming
+        if _agent_output_task:
+            _agent_output_task.cancel()
+            try:
+                await _agent_output_task
+            except asyncio.CancelledError:
+                pass
+
+        # Terminate the process
+        pid = _agent_process.pid
+        _agent_process.terminate()
+        try:
+            _agent_process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            _agent_process.kill()
+            _agent_process.wait(timeout=5)
+
+        _agent_status = "stopped"
+        _agent_process = None
+
+        logger.info("DunkStack agent stopped: PID %d", pid)
+
+        await _broadcast({
+            "type": "agent_status",
+            "status": "stopped",
+        })
+
+        return {"status": "stopped", "pid": pid}
+
+    except Exception as e:
+        logger.exception("Error stopping DunkStack agent")
+        _agent_status = "crashed"
+        raise HTTPException(status_code=500, detail=f"Failed to stop agent: {e}")
+
+
+@router.get("/agent/status")
+def get_agent_status():
+    """Get the DunkStack agent status."""
+    global _agent_status, _agent_process
+
+    # Check if process is still alive
+    if _agent_process and _agent_process.poll() is not None:
+        exit_code = _agent_process.returncode
+        if _agent_status == "running":
+            _agent_status = "stopped" if exit_code == 0 else "crashed"
+
+    return {
+        "status": _agent_status,
+        "pid": _agent_process.pid if _agent_process and _agent_process.poll() is None else None,
+        "model_limit": _token_state["model_limit"],
+        "mode": _token_state["mode"],
+    }
+
+
+@router.get("/agent/output")
+def get_agent_output(tail: int = 100):
+    """Get recent agent output lines."""
+    lines = _agent_output_lines[-tail:] if tail < len(_agent_output_lines) else _agent_output_lines
+    return {"lines": lines, "total": len(_agent_output_lines)}

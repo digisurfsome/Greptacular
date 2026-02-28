@@ -1640,6 +1640,27 @@ export async function dunkstackReadBuildLog(): Promise<DunkStackCommsResponse> {
   return fetchJSON('/dunkstack/build-log')
 }
 
+// -- DunkStack Agent Control --
+
+export async function dunkstackStartAgent(projectName?: string, model?: string): Promise<{ status: string; pid?: number; model?: string; billing_mode?: string }> {
+  return fetchJSON('/dunkstack/agent/start', {
+    method: 'POST',
+    body: JSON.stringify({ project_name: projectName, model }),
+  })
+}
+
+export async function dunkstackStopAgent(): Promise<{ status: string; pid?: number }> {
+  return fetchJSON('/dunkstack/agent/stop', { method: 'POST' })
+}
+
+export async function dunkstackGetAgentStatus(): Promise<{ status: string; pid?: number; model_limit?: number; mode?: string }> {
+  return fetchJSON('/dunkstack/agent/status')
+}
+
+export async function dunkstackGetAgentOutput(tail: number = 100): Promise<{ lines: string[]; total: number }> {
+  return fetchJSON(`/dunkstack/agent/output?tail=${tail}`)
+}
+
 // ============================================================================
 // Agent OS API
 // ============================================================================

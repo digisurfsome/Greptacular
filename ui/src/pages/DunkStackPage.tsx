@@ -484,6 +484,7 @@ export function DunkStackPage(): React.JSX.Element {
                 onSendToAgent={handleSendToAgent}
                 agentStarting={agentStarting}
                 projectName={selectedProject ?? undefined}
+                onStopAgent={handleToggleAgent}
               />
             )
           )}

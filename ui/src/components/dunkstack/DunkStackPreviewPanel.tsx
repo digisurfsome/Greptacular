@@ -5,9 +5,9 @@
  * can see the running frontend in real-time during development without
  * needing to merge to main and rebuild.
  *
- * Features:
  * - Start/stop dev server inline
  * - Auto-detects URL from dev server output
+ * - Responsive viewport toggles (desktop / tablet / mobile)
  * - Refresh and open-in-new-tab buttons
  * - Polls dev server status while panel is open
  */

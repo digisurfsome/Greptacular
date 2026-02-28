@@ -111,7 +111,7 @@ function autoSelectModel(title: string): string {
   const lower = title.toLowerCase()
   if (OPUS_KEYWORDS.some((kw) => lower.includes(kw))) return 'claude-opus-4-6'
   if (HAIKU_KEYWORDS.some((kw) => lower.includes(kw))) return 'claude-haiku-4-5'
-  return 'claude-sonnet-4-6'
+  return 'claude-opus-4-6'
 }
 
 /** Role options for step assignment. */
@@ -626,8 +626,8 @@ function ModelSelector({
   onChange: (value: string) => void
   stepTitle?: string
 }): React.JSX.Element {
-  const autoRecommendation = stepTitle ? autoSelectModel(stepTitle) : 'claude-sonnet-4-6'
-  const autoLabel = MODEL_OPTIONS.find((o) => o.value === autoRecommendation)?.label ?? 'Sonnet 4.6'
+  const autoRecommendation = stepTitle ? autoSelectModel(stepTitle) : 'claude-opus-4-6'
+  const autoLabel = MODEL_OPTIONS.find((o) => o.value === autoRecommendation)?.label ?? 'Opus 4.6'
 
   return (
     <div className="flex items-center gap-2">
@@ -1065,7 +1065,7 @@ function StrategyBuilder({
     }
   })
   const [userContext, setUserContext] = useState(project.description || '')
-  const [processingModel, setProcessingModel] = useState('claude-sonnet-4-6')
+  const [processingModel, setProcessingModel] = useState('claude-opus-4-6')
   const [isProcessing, setIsProcessing] = useState(false)
   const [processingError, setProcessingError] = useState<string | null>(null)
   const [processingTime, setProcessingTime] = useState<number | null>(null)
@@ -1521,9 +1521,18 @@ function StrategyBuilder({
                     className="min-h-20 text-sm"
                     disabled={isProcessing}
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Providing context helps the AI focus on what matters to you. Leave blank to extract the full strategy.
-                  </p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground">
+                      Providing context helps the AI focus on what matters to you. Leave blank to extract the full strategy.
+                    </p>
+                    <p className={`text-xs mt-1 text-right tabular-nums ${
+                      userContext.length > 100_000 ? 'text-red-500 font-medium' :
+                      userContext.length > 90_000 ? 'text-yellow-500 font-medium' :
+                      'text-muted-foreground'
+                    }`}>
+                      {userContext.length.toLocaleString()} / 100,000
+                    </p>
+                  </div>
                 </div>
 
                 {/* Model selection */}
@@ -1540,8 +1549,8 @@ function StrategyBuilder({
                       text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent
                       disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <option value="claude-sonnet-4-6">Claude Sonnet 4.6 (Recommended)</option>
-                    <option value="claude-opus-4-6">Claude Opus 4.6 (Premium)</option>
+                    <option value="claude-opus-4-6">Claude Opus 4.6 (Recommended)</option>
+                    <option value="claude-sonnet-4-6">Claude Sonnet 4.6 (Balanced)</option>
                     <option value="claude-haiku-4-5">Claude Haiku 4.5 (Fast)</option>
                   </select>
                 </div>

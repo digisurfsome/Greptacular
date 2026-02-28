@@ -15,8 +15,12 @@ import {
   dunkstackGetTokenState,
   dunkstackReadConfig,
   dunkstackSaveBridge,
+  dunkstackStartAgent,
+  dunkstackStopAgent,
+  dunkstackSendToAgent,
   type DunkStackSafetyStatus,
   type DunkStackTokenState,
+  type DunkStackAgentStatus,
 } from '@/lib/api'
 
 // ============================================================================
@@ -28,6 +32,19 @@ export interface CommsEntry {
   sender: 'human' | 'agent' | 'system'
   content: string
   title: string
+  timestamp: string
+}
+
+export interface AgentEventEntry {
+  id: string
+  type: string
+  content?: string
+  tool?: string
+  input?: unknown
+  output?: string
+  is_error?: boolean
+  usage?: Record<string, number>
+  status?: string
   timestamp: string
 }
 
@@ -45,31 +62,10 @@ export interface DunkStackConfig {
   }
 }
 
-export interface AgentState {
-  sessionId: string | null
-  running: boolean
-  streaming: boolean
-  modelId: string
-  contextMode: string
-}
-
 export interface UseDunkStackReturn {
   // Comms
   commsLog: CommsEntry[]
   sendMessage: (content: string, title?: string) => Promise<void>
-
-  // Agent
-  agentState: AgentState
-  startAgent: (opts: {
-    modelId: string
-    contextMode: string
-    workingDirectory?: string
-    projectName?: string
-    effort?: string
-  }) => void
-  sendAgentMessage: (content: string) => void
-  stopAgent: () => void
-  agentMessages: CommsEntry[]
 
   // Session control
   controlMode: string
@@ -93,6 +89,15 @@ export interface UseDunkStackReturn {
     next_steps?: string
     open_questions?: string
   }) => Promise<void>
+
+  // Coding Agent
+  agentStatus: DunkStackAgentStatus | null
+  startAgent: (projectName: string, modelId?: string, contextWindow?: number) => Promise<void>
+  stopAgent: (projectName: string) => Promise<void>
+  sendToAgent: (projectName: string, message: string) => Promise<Array<Record<string, unknown>>>
+  agentStarting: boolean
+  agentEvents: AgentEventEntry[]
+  clearAgentEvents: () => void
 
   // Connection
   connected: boolean
@@ -146,20 +151,11 @@ export function useDunkStack(): UseDunkStackReturn {
   const [config, setConfig] = useState<DunkStackConfig | null>(null)
   const [connected, setConnected] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [agentStatus, setAgentStatus] = useState<DunkStackAgentStatus | null>(null)
+  const [agentStarting, setAgentStarting] = useState(false)
+  const [agentEvents, setAgentEvents] = useState<AgentEventEntry[]>([])
   const wsRef = useRef<WebSocket | null>(null)
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-
-  // Agent state
-  const [agentState, setAgentState] = useState<AgentState>({
-    sessionId: null,
-    running: false,
-    streaming: false,
-    modelId: 'claude-opus-4-6',
-    contextMode: '1m',
-  })
-  const [agentMessages, setAgentMessages] = useState<CommsEntry[]>([])
-  // Accumulator for streaming text chunks
-  const streamingTextRef = useRef<string>('')
 
   // Load initial data on mount
   useEffect(() => {
@@ -279,103 +275,34 @@ export function useDunkStack(): UseDunkStackReturn {
               ])
               break
 
-            // Agent session events
-            case 'agent_started':
-              setAgentState(prev => ({
-                ...prev,
-                sessionId: msg.session_id,
-                running: true,
-                streaming: false,
-                modelId: msg.model_id || prev.modelId,
-                contextMode: msg.context_mode || prev.contextMode,
-              }))
-              break
-
-            case 'agent_stopped':
-              setAgentState(prev => ({
-                ...prev,
-                sessionId: null,
-                running: false,
-                streaming: false,
-              }))
-              break
-
-            case 'text': {
-              // Agent text response chunk — accumulate and update last message
-              const text = msg.content || ''
-              streamingTextRef.current += text
-              const accumulated = streamingTextRef.current
-              setAgentState(prev => ({ ...prev, streaming: true }))
-              setAgentMessages(prev => {
-                const last = prev[prev.length - 1]
-                if (last && last.sender === 'agent' && last.id.startsWith('agent-streaming-')) {
-                  // Update existing streaming message
-                  return [
-                    ...prev.slice(0, -1),
-                    { ...last, content: accumulated },
-                  ]
-                }
-                // Create new streaming message
-                return [
-                  ...prev,
-                  {
-                    id: `agent-streaming-${Date.now()}`,
-                    sender: 'agent' as const,
-                    content: accumulated,
-                    title: 'Response',
-                    timestamp: new Date().toISOString().slice(0, 16).replace('T', ' '),
-                  },
-                ]
-              })
-              break
-            }
-
+            case 'agent_event':
+            case 'text':
             case 'tool_call':
-              setAgentMessages(prev => [
-                ...prev,
-                {
-                  id: `agent-tool-${Date.now()}-${Math.random()}`,
-                  sender: 'system' as const,
-                  content: `Using tool: **${msg.tool}**`,
-                  title: msg.tool,
-                  timestamp: new Date().toISOString().slice(0, 16).replace('T', ' '),
-                },
-              ])
-              break
-
-            case 'status':
-              setAgentMessages(prev => [
-                ...prev,
-                {
-                  id: `agent-status-${Date.now()}`,
-                  sender: 'system' as const,
-                  content: msg.content || '',
-                  title: 'Status',
-                  timestamp: new Date().toISOString().slice(0, 16).replace('T', ' '),
-                },
-              ])
-              break
-
+            case 'tool_result':
+            case 'result':
             case 'response_done':
-              streamingTextRef.current = ''
-              setAgentState(prev => ({ ...prev, streaming: false }))
-              break
-
             case 'error':
-              if (msg.content) {
-                setAgentMessages(prev => [
-                  ...prev,
-                  {
-                    id: `agent-error-${Date.now()}`,
-                    sender: 'system' as const,
-                    content: `Error: ${msg.content}`,
-                    title: 'Error',
-                    timestamp: new Date().toISOString().slice(0, 16).replace('T', ' '),
-                  },
-                ])
+            case 'agent_status':
+              // Real-time agent updates from the backend.
+              // Note: the backend broadcasts {"type": "agent_event", **event}
+              // but **event has its own 'type' field that overwrites "agent_event",
+              // so we receive "text", "tool_call", etc. directly.
+              if (msg.status) {
+                setAgentStatus(prev => ({ ...prev, status: msg.status, error: msg.error || null }))
               }
-              streamingTextRef.current = ''
-              setAgentState(prev => ({ ...prev, streaming: false }))
+              // Accumulate all agent events for the split-screen API call view
+              setAgentEvents(prev => [...prev, {
+                id: `ae-${Date.now()}-${prev.length}`,
+                type: msg.type,
+                content: msg.content,
+                tool: msg.tool,
+                input: msg.input,
+                output: msg.output,
+                is_error: msg.is_error,
+                usage: msg.usage,
+                status: msg.status,
+                timestamp: new Date().toISOString(),
+              }])
               break
 
             case 'pong':
@@ -456,60 +383,82 @@ export function useDunkStack(): UseDunkStackReturn {
     fetch('/api/dunkstack/tokens/reset', { method: 'POST' })
   }, [])
 
-  // Agent control functions
-  const startAgent = useCallback((opts: {
-    modelId: string
-    contextMode: string
-    workingDirectory?: string
-    projectName?: string
-    effort?: string
-  }) => {
-    const ws = wsRef.current
-    if (!ws || ws.readyState !== WebSocket.OPEN) return
-    ws.send(JSON.stringify({
-      type: 'start_agent',
-      model_id: opts.modelId,
-      context_mode: opts.contextMode,
-      working_directory: opts.workingDirectory,
-      project_name: opts.projectName,
-      effort: opts.effort || 'high',
-    }))
-    setAgentMessages([])
-    streamingTextRef.current = ''
+  // ── Coding Agent ──
+
+  const startAgent = useCallback(async (projectName: string, modelId?: string, contextWindow?: number) => {
+    setAgentStarting(true)
+    setAgentEvents([]) // Clear events on new start
+    try {
+      const result = await dunkstackStartAgent(projectName, modelId, contextWindow)
+      setAgentStatus(result)
+      // Accumulate events from the start response
+      const events = [...(result.startup_events || []), ...(result.response_events || [])] as Array<Record<string, unknown>>
+      if (events.length) {
+        setAgentEvents(events.map((e, i) => ({
+          id: `start-${Date.now()}-${i}`,
+          type: String(e.type || 'text'),
+          content: e.content as string | undefined,
+          tool: e.tool as string | undefined,
+          input: e.input,
+          output: e.output as string | undefined,
+          is_error: e.is_error as boolean | undefined,
+          usage: e.usage as Record<string, number> | undefined,
+          status: e.status as string | undefined,
+          timestamp: new Date().toISOString(),
+        })))
+      }
+    } catch (e) {
+      setAgentStatus({ status: 'error', error: String(e) })
+    } finally {
+      setAgentStarting(false)
+    }
   }, [])
 
-  const sendAgentMessage = useCallback((content: string) => {
-    const ws = wsRef.current
-    if (!ws || ws.readyState !== WebSocket.OPEN) return
-    // Add user message to agent messages
-    setAgentMessages(prev => [
-      ...prev,
-      {
-        id: `user-${Date.now()}`,
-        sender: 'human' as const,
-        content,
-        title: 'Message',
-        timestamp: new Date().toISOString().slice(0, 16).replace('T', ' '),
-      },
-    ])
-    streamingTextRef.current = ''
-    ws.send(JSON.stringify({ type: 'message', content }))
+  const clearAgentEvents = useCallback(() => setAgentEvents([]), [])
+
+  const stopAgent = useCallback(async (projectName: string) => {
+    try {
+      await dunkstackStopAgent(projectName)
+      setAgentStatus({ status: 'stopped' })
+    } catch (e) {
+      console.error('Failed to stop agent:', e)
+    }
   }, [])
 
-  const stopAgent = useCallback(() => {
-    const ws = wsRef.current
-    if (!ws || ws.readyState !== WebSocket.OPEN) return
-    ws.send(JSON.stringify({ type: 'stop_agent' }))
+  const sendToAgent = useCallback(async (projectName: string, message: string) => {
+    try {
+      const result = await dunkstackSendToAgent(projectName, message)
+      const events = result.events || []
+      // Accumulate events from the HTTP response (WebSocket may also deliver
+      // them, but duplicates are harmless in the log)
+      if (events.length) {
+        setAgentEvents(prev => [...prev, ...events.map((e, i) => ({
+          id: `send-${Date.now()}-${i}`,
+          type: String(e.type || 'text'),
+          content: e.content as string | undefined,
+          tool: e.tool as string | undefined,
+          input: e.input,
+          output: e.output as string | undefined,
+          is_error: e.is_error as boolean | undefined,
+          usage: e.usage as Record<string, number> | undefined,
+          status: e.status as string | undefined,
+          timestamp: new Date().toISOString(),
+        }))])
+      }
+      return events
+    } catch (e) {
+      console.error('Failed to send to agent:', e)
+      return []
+    }
   }, [])
+
+  // Handle agent_event from WebSocket (update status in real-time)
+  // This is already handled in the onmessage handler above — we just need
+  // to add the agent_event case to the switch statement.
 
   return {
     commsLog,
     sendMessage,
-    agentState,
-    startAgent,
-    sendAgentMessage,
-    stopAgent,
-    agentMessages,
     controlMode,
     setControlMode,
     tokenState,
@@ -517,6 +466,13 @@ export function useDunkStack(): UseDunkStackReturn {
     safetyStatus,
     config,
     saveBridge,
+    agentStatus,
+    startAgent,
+    stopAgent,
+    sendToAgent,
+    agentStarting,
+    agentEvents,
+    clearAgentEvents,
     connected,
     loading,
   }

@@ -16,6 +16,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import shutil
 import tempfile
 import time
@@ -102,8 +103,8 @@ SCORING GUIDE for app_opportunities[].score (0-100):
 - 30-49: Weak — probably not worth the effort unless the user has unique advantages
 - 0-29: Skip — too complex, no clear demand, or better alternatives exist"""
 
-# Default model for discovery (Sonnet for speed/cost balance)
-DEFAULT_DISCOVERY_MODEL = "claude-sonnet-4-6"
+# Default model for discovery (Opus on subscription billing)
+DEFAULT_DISCOVERY_MODEL = "claude-opus-4-6"
 
 
 class YTDiscovery:
@@ -160,6 +161,46 @@ class YTDiscovery:
             lines.append(f"[{minutes}:{seconds:02d}] {seg.get('text', '')}")
         return "\n".join(lines)
 
+    # Known key misspellings/variants the model has produced
+    _KEY_ALIASES: dict[str, str] = {
+        "frame": "name",
+        "project_name": "name",
+        "title": "name",
+        "step_name": "name",
+        "desc": "description",
+        "summary": "description",
+        "context": "video_context",
+        "insights": "key_insights",
+        "opportunities": "app_opportunities",
+        "recommendations": "recommendation",
+    }
+
+    @staticmethod
+    def _repair_json(text: str) -> str:
+        """Best-effort repair of common LLM JSON mistakes."""
+        # Fix trailing commas before } or ]
+        text = re.sub(r",\s*([}\]])", r"\1", text)
+        # Fix "key","nextkey" pattern (missing colon + value)
+        text = re.sub(r'"([^"]+)"\s*,\s*"([^"]+)"\s*:', r'"\1": null, "\2":', text)
+        # Replace single-quoted strings with double-quoted
+        text = re.sub(r"(?<![\\])'\s*:", '":', text)
+        text = re.sub(r":\s*'([^']*)'", r': "\1"', text)
+        return text
+
+    @classmethod
+    def _normalize_keys(cls, obj: object) -> object:
+        """Recursively lowercase keys and apply alias mappings."""
+        if isinstance(obj, dict):
+            normalized: dict = {}
+            for key, value in obj.items():
+                lower_key = key.lower().strip()
+                mapped_key = cls._KEY_ALIASES.get(lower_key, lower_key)
+                normalized[mapped_key] = cls._normalize_keys(value)
+            return normalized
+        if isinstance(obj, list):
+            return [cls._normalize_keys(item) for item in obj]
+        return obj
+
     def _parse_ai_response(self, raw_text: str) -> dict:
         """Parse JSON from the AI response, handling various wrapper formats.
 
@@ -168,22 +209,32 @@ class YTDiscovery:
         - Markdown-fenced: ````json\\n{...}\\n````
         - Text + JSON: ``Here is the result:\\n{...}``
         - Any combination of the above
+
+        Includes JSON repair for trailing commas, missing values, and
+        key normalization for common misspellings.
         """
         text = raw_text.strip()
+        logger.info(
+            "Parsing AI response: %d chars, preview=%.500s",
+            len(text), text[:500],
+        )
 
         # Try 1: direct parse (fastest path)
         try:
-            return json.loads(text)
+            result = json.loads(text)
+            logger.info("Parse strategy: direct")
+            return self._normalize_keys(result)
         except (json.JSONDecodeError, ValueError):
             pass
 
         # Try 2: strip markdown code fences
         if "```" in text:
-            import re
             fence_match = re.search(r"```(?:json)?\s*\n?(.*?)```", text, re.DOTALL)
             if fence_match:
                 try:
-                    return json.loads(fence_match.group(1).strip())
+                    result = json.loads(fence_match.group(1).strip())
+                    logger.info("Parse strategy: markdown fence")
+                    return self._normalize_keys(result)
                 except (json.JSONDecodeError, ValueError):
                     pass
 
@@ -193,13 +244,26 @@ class YTDiscovery:
         if first_brace >= 0 and last_brace > first_brace:
             json_candidate = text[first_brace:last_brace + 1]
             try:
-                return json.loads(json_candidate)
+                result = json.loads(json_candidate)
+                logger.info("Parse strategy: brace extraction")
+                return self._normalize_keys(result)
             except (json.JSONDecodeError, ValueError):
                 pass
 
-        # Nothing worked — raise with helpful debug info
+        # Try 4: repair common LLM JSON mistakes then re-extract
+        if first_brace is not None and first_brace >= 0 and last_brace > first_brace:
+            repaired = self._repair_json(text[first_brace:last_brace + 1])
+            try:
+                result = json.loads(repaired)
+                logger.info("Parse strategy: JSON repair")
+                return self._normalize_keys(result)
+            except (json.JSONDecodeError, ValueError):
+                pass
+
+        # Nothing worked — log full response for debugging and raise
+        logger.error("All parse strategies failed. Full response:\n%s", text)
         preview = text[:500] if text else "(empty)"
-        raise ValueError(f"Could not extract JSON from response. Preview: {preview}")
+        raise ValueError(f"Could not extract valid JSON from AI response (length={len(text)}). Preview: {preview}")
 
     async def _call_via_sdk(self, system_prompt: str, user_message: str, model: str) -> str:
         """Call Claude via the Agent SDK using subscription auth.
@@ -408,10 +472,31 @@ class YTDiscovery:
 
         try:
             result = self._parse_ai_response(raw_text)
-        except (json.JSONDecodeError, ValueError) as exc:
-            logger.error("Failed to parse AI discovery response as JSON: %s", exc)
-            logger.debug("Raw AI response: %s", raw_text[:2000])
-            raise ValueError(f"AI response was not valid JSON: {exc}")
+        except (json.JSONDecodeError, ValueError) as first_exc:
+            logger.warning("First parse attempt failed: %s — retrying with stricter prompt", first_exc)
+            log("Response had formatting issues — asking Claude to fix it...")
+            retry_prompt = (
+                "Your previous response was not valid JSON. "
+                "Respond with ONLY a valid JSON object — no markdown fences, no commentary, no text before or after. "
+                "Here is the malformed response to fix:\n\n"
+                + raw_text[:6000]
+            )
+            try:
+                retry_text = await self._call_via_sdk(
+                    "You are a JSON repair assistant. Output ONLY valid JSON, nothing else.",
+                    retry_prompt,
+                    use_model,
+                )
+                result = self._parse_ai_response(retry_text)
+                log("Retry succeeded — parsed repaired JSON")
+                logger.info("JSON retry succeeded for video %s", video_id)
+            except Exception as retry_exc:
+                logger.error("Retry also failed: %s", retry_exc)
+                raise ValueError(
+                    "The AI response had formatting issues that couldn't be automatically repaired. "
+                    "This sometimes happens with complex videos. Please try again — "
+                    "the next response will likely be formatted correctly."
+                ) from first_exc
 
         # Detect API error responses — the SDK or Anthropic API may return
         # a valid JSON object with {error, type, request_id} instead of

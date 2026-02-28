@@ -126,10 +126,10 @@ This project was created from the **{option_name}** boilerplate.
 **Important guidelines for boilerplate projects:**
 - DO NOT create features for auth, payments, credits, admin, or other pre-built infrastructure
 - Build ON TOP of the existing code — follow the patterns already established in the codebase
-- Use existing components, contexts, hooks, and API patterns from the boilerplate
-- New pages go in `src/pages/`, new components in `src/components/`, new API routes in `api/`
 - The boilerplate's CLAUDE.md and AI_RULES.md contain project-specific coding standards — follow them
 - Focus ONLY on features that make this app unique (the app-specific business logic and UI)
+{"- Use existing widgets, providers, models, and routing patterns from the boilerplate" if "Flutter" in tech_summary else "- Use existing components, contexts, hooks, and API patterns from the boilerplate"}
+{"- New screens go in `lib/features/`, new widgets in `lib/shared/widgets/`, new models in `lib/shared/models/`" if "Flutter" in tech_summary else "- New pages go in `src/pages/`, new components in `src/components/`, new API routes in `api/`"}
 
 """
 

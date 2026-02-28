@@ -65,7 +65,7 @@ class ProcessRequest(BaseModel):
     video_id: str = Field(..., min_length=1, max_length=64)
     transcript: list[TranscriptSegment]
     metadata: VideoMetadata
-    user_context: str = Field("", max_length=10_000)
+    user_context: str = Field("", max_length=100_000)
     extracted_urls: list[str] = []
     screenshot_suggestions: list[ScreenshotSuggestion] = []
     model: str = Field("claude-sonnet-4-6", max_length=100)

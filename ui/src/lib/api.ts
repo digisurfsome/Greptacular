@@ -1600,6 +1600,17 @@ export async function dunkstackUpdateConfig(update: Record<string, unknown>): Pr
   })
 }
 
+export async function dunkstackUpdateModelPreset(modelId: string, contextWindow: number): Promise<{ status: string; model_id: string; model_limit: number; mode: string }> {
+  return fetchJSON('/dunkstack/model-preset', {
+    method: 'POST',
+    body: JSON.stringify({ model_id: modelId, context_window: contextWindow }),
+  })
+}
+
+export async function dunkstackGetSdkEnv(): Promise<{ mode: string; model_limit: number; env_keys: string[]; env_redacted: Record<string, string> }> {
+  return fetchJSON('/dunkstack/sdk-env')
+}
+
 export async function dunkstackGetTokenState(): Promise<DunkStackTokenState> {
   return fetchJSON('/dunkstack/tokens')
 }
@@ -1627,6 +1638,49 @@ export async function dunkstackGetTokenLog(): Promise<{ entries: Array<Record<st
 
 export async function dunkstackReadBuildLog(): Promise<DunkStackCommsResponse> {
   return fetchJSON('/dunkstack/build-log')
+}
+
+// -- Coding Agent --
+
+export interface DunkStackAgentStatus {
+  status: string
+  project_name?: string
+  model_id?: string
+  context_window?: number
+  billing?: string
+  created_at?: string
+  error?: string | null
+}
+
+export async function dunkstackStartAgent(
+  projectName: string,
+  modelId: string = 'claude-opus-4-6',
+  contextWindow: number = 200000,
+): Promise<DunkStackAgentStatus & { startup_events?: Array<Record<string, unknown>>; response_events?: Array<Record<string, unknown>> }> {
+  return fetchJSON('/dunkstack/agent/start', {
+    method: 'POST',
+    body: JSON.stringify({ project_name: projectName, model_id: modelId, context_window: contextWindow }),
+  })
+}
+
+export async function dunkstackStopAgent(projectName: string): Promise<{ status: string }> {
+  return fetchJSON(`/dunkstack/agent/stop?project_name=${encodeURIComponent(projectName)}`, {
+    method: 'POST',
+  })
+}
+
+export async function dunkstackGetAgentStatus(projectName: string): Promise<DunkStackAgentStatus> {
+  return fetchJSON(`/dunkstack/agent/status?project_name=${encodeURIComponent(projectName)}`)
+}
+
+export async function dunkstackSendToAgent(
+  projectName: string,
+  message: string,
+): Promise<{ status: string; events: Array<Record<string, unknown>> }> {
+  return fetchJSON(`/dunkstack/agent/send?project_name=${encodeURIComponent(projectName)}`, {
+    method: 'POST',
+    body: JSON.stringify({ message }),
+  })
 }
 
 // ============================================================================
@@ -2187,7 +2241,7 @@ export async function stopSessionRecording(
 
 export async function batchIngestVideos(
   videos: YTBatchVideoInput[],
-  model: string = 'claude-sonnet-4-6',
+  model: string = 'claude-opus-4-6',
 ): Promise<YTBatchIngestResponse> {
   return fetchJSON('/yt-lab/batch-ingest', {
     method: 'POST',

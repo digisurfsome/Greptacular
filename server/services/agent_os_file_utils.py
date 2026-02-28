@@ -60,6 +60,49 @@ _AGENT_SUBDIRS = [
 # Templates directory (relative to this file)
 _TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates" / "agent-os"
 
+# Universal DunkStack template files: (template_relative_path, dest_relative_path)
+_UNIVERSAL_TEMPLATES = [
+    ("system_prompt.md", "system_prompt.md"),
+    ("index.md", "index.md"),
+    ("working_memory.md", "working_memory.md"),
+    ("bridge.md", "bridge.md"),
+    ("comms/to_human.md", "comms/to_human.md"),
+    ("comms/from_human.md", "comms/from_human.md"),
+    ("comms/control.md", "comms/control.md"),
+    ("settings/config.yml", "settings/config.yml"),
+    ("progress/build_log.md", "progress/build_log.md"),
+]
+
+
+def copy_universal_templates(agent_dir: Path) -> int:
+    """Copy universal DunkStack template files into a project's .agent/ directory.
+
+    Only copies files that don't already exist (never overwrites).
+    Returns the number of files copied.
+    """
+    universal_dir = _TEMPLATES_DIR / "universal"
+    if not universal_dir.is_dir():
+        logger.warning("Universal templates directory not found: %s", universal_dir)
+        return 0
+
+    copied = 0
+    for tmpl_rel, dest_rel in _UNIVERSAL_TEMPLATES:
+        dest = agent_dir / dest_rel
+        if dest.exists():
+            continue
+        src = universal_dir / tmpl_rel
+        if not src.is_file():
+            logger.warning("Universal template not found: %s", src)
+            continue
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+        copied += 1
+        logger.debug("Copied universal template: %s → %s", tmpl_rel, dest)
+
+    if copied:
+        logger.info("Copied %d universal DunkStack template(s) to %s", copied, agent_dir)
+    return copied
+
 
 class AgentOSFileUtils:
     """Universal file I/O layer for the Agent OS 3-layer context system."""
@@ -96,6 +139,9 @@ class AgentOSFileUtils:
                     dest = product_dir / tmpl.name
                     dest.write_text(tmpl.read_text(encoding="utf-8"), encoding="utf-8")
                     logger.debug("Copied product template: %s", tmpl.name)
+
+        # Copy universal DunkStack templates (system_prompt, index, working_memory, etc.)
+        copy_universal_templates(self.project_dir / ".agent")
 
         logger.info("Agent OS directories ensured for: %s", self.project_dir)
 

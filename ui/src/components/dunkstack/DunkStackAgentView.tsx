@@ -18,7 +18,7 @@ import type { CommsEntry } from '@/hooks/useDunkStack'
 
 export interface AgentEvent {
   id: string
-  type: 'text' | 'tool_call' | 'tool_result' | 'result' | 'error' | 'agent_status' | 'response_done'
+  type: string
   content?: string
   tool?: string
   input?: unknown

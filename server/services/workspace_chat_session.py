@@ -214,6 +214,14 @@ class WorkspaceChatSession:
         # the human-readable tool name instead of the opaque UUID.
         self._tool_use_id_to_name: dict[str, str] = {}
 
+        # Saved state from start() needed for mid-session auth fallback.
+        # When subscription OAuth expires during a query, these allow
+        # _fallback_to_api_key() to recreate the client with API key billing.
+        self._shared_opts: Optional[dict[str, Any]] = None
+        self._effort: str = "high"
+        self._is_alternative_api: bool = False
+        self._force_sub: bool = False
+
         # Backup of original .claude/settings.json in the working directory,
         # restored on close() to avoid clobbering user's project settings.
         self._original_project_settings: Optional[str] = None  # None = file didn't exist
@@ -286,6 +294,71 @@ class WorkspaceChatSession:
                     logger.debug("Removed temporary .claude/settings.json at %s", self._project_settings_path)
             except Exception as e:
                 logger.warning("Failed to restore .claude/settings.json: %s", e)
+
+    async def _fallback_to_api_key(self) -> bool:
+        """Tear down the current client and recreate with API key billing.
+
+        Called mid-session when subscription OAuth expires during a query.
+        Returns True if the fallback succeeded (new client is ready).
+        """
+        if not self._shared_opts:
+            logger.warning("Cannot fall back to API key: no saved shared_opts from start()")
+            return False
+
+        logger.warning(
+            "Subscription auth expired mid-session. Falling back to API key billing."
+        )
+
+        # Tear down the expired client
+        if self.client and self._client_entered:
+            try:
+                await self.client.__aexit__(None, None, None)
+            except Exception:
+                pass
+            self._client_entered = False
+            self.client = None
+
+        try:
+            from registry import get_effective_sdk_env
+
+            # Re-create SDK env with API key billing
+            sdk_env = get_effective_sdk_env(force_subscription=False)
+            self._force_sub = False
+
+            # Re-inject effort level env var
+            if self._effort in ("low", "medium", "high"):
+                sdk_env["CLAUDE_CODE_EFFORT_LEVEL"] = self._effort
+
+            # Update shared options: new env + enable 1M context beta
+            self._shared_opts["env"] = sdk_env
+            if not self._is_alternative_api:
+                self._shared_opts["betas"] = ["context-1m-2025-08-07"]
+
+            logger.info(
+                "Recreating client with API key (betas=%s)",
+                self._shared_opts.get("betas"),
+            )
+
+            # Re-create the client
+            try:
+                self.client = ClaudeSDKClient(
+                    options=ClaudeAgentOptions(effort=self._effort, **self._shared_opts)
+                )
+            except TypeError:
+                self.client = ClaudeSDKClient(
+                    options=ClaudeAgentOptions(**self._shared_opts)
+                )
+
+            await asyncio.wait_for(self.client.__aenter__(), timeout=60)
+            self._client_entered = True
+            logger.info("Workspace client recreated with API key billing (mid-session fallback)")
+            return True
+
+        except Exception:
+            logger.exception("API key fallback also failed during mid-session recovery")
+            self._client_entered = False
+            self.client = None
+            return False
 
     async def queue_walkie_talkie_message(self, content: str) -> None:
         """Queue a walkie-talkie message for the running agent to receive.
@@ -709,6 +782,12 @@ class WorkspaceChatSession:
                     else ["context-1m-2025-08-07"]
                 ),
             )
+
+            # Save state for mid-session auth fallback
+            self._shared_opts = shared_opts
+            self._effort = effort
+            self._is_alternative_api = is_alternative_api
+            self._force_sub = force_sub
 
             # Primary: pass effort= directly to ClaudeAgentOptions (SDK ≥0.1.36).
             # Falls back to the settings-file-only approach for older SDK versions.
@@ -1172,9 +1251,43 @@ class WorkspaceChatSession:
             logger.exception("Error during workspace %s query", self.provider)
             error_str = str(e).lower()
 
-            # Detect auth errors and provide actionable guidance
+            # Detect auth errors — attempt mid-session fallback to API key billing.
+            # If fallback succeeds, retry the message transparently.
             _auth_hints = ["401", "authentication_error", "oauth", "token has expired", "credential"]
-            if any(h in error_str for h in _auth_hints):
+            if any(h in error_str for h in _auth_hints) and self._force_sub:
+                logger.warning("Auth error during query — attempting API key fallback")
+                fallback_ok = await self._fallback_to_api_key()
+                if fallback_ok:
+                    yield {
+                        "type": "text",
+                        "content": (
+                            "Subscription auth expired — switched to API key billing. "
+                            "To use free subscription billing, run `claude login` in a terminal.\n\n"
+                        ),
+                    }
+                    # Retry the message with the new API-key-backed client
+                    try:
+                        async for chunk in self._query_claude(message_to_send, attachments=attachments):
+                            yield chunk
+                        yield {"type": "response_done"}
+                        return  # Retry succeeded — skip the error path below
+                    except Exception as retry_err:
+                        logger.exception("Retry after API key fallback also failed")
+                        yield {
+                            "type": "error",
+                            "content": f"API key fallback also failed: {retry_err}",
+                        }
+                else:
+                    yield {
+                        "type": "error",
+                        "content": (
+                            f"Authentication error: {str(e)}\n\n"
+                            "Could not fall back to API key billing automatically. "
+                            "Switch to a 1M model preset (uses your API key) "
+                            "or run `claude login` in a terminal to refresh subscription credentials."
+                        ),
+                    }
+            elif any(h in error_str for h in _auth_hints):
                 yield {
                     "type": "error",
                     "content": (

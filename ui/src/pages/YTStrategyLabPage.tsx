@@ -1448,9 +1448,8 @@ function StrategyBuilder({
       <div className="flex-1 overflow-auto p-6">
         <div className="max-w-3xl mx-auto space-y-6">
           {/* Video Ingest Panel — shown when project has a YouTube source URL */}
-          {project.sourceUrl && (
-            project.sourceUrl.includes('youtube.com') || project.sourceUrl.includes('youtu.be')
-          ) && (
+          {project.sourceUrl &&
+            (project.sourceUrl.includes('youtube.com') || project.sourceUrl.includes('youtu.be')) && (
             <VideoIngestPanel
               initialUrl={project.sourceUrl}
               onIngestComplete={(result) => {

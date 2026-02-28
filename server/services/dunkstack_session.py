@@ -143,6 +143,13 @@ class DunkStackCodingSession:
         self._status: str = "stopped"  # stopped | starting | running | error
         self._error: Optional[str] = None
 
+        # Saved state for mid-session auth fallback (populated during start())
+        self._sdk_env: Optional[dict[str, str]] = None
+        self._hooks: Optional[dict[str, list[HookMatcher]]] = None
+        self._system_prompt: Optional[str] = None
+        self._force_sub: bool = False
+        self._is_alternative_api: bool = False
+
     @property
     def status(self) -> str:
         return self._status
@@ -282,6 +289,13 @@ class DunkStackCodingSession:
 
         use_1m_beta = self.context_window > 200_000 and not is_alternative_api
 
+        # Save state for mid-session auth fallback
+        self._sdk_env = sdk_env
+        self._hooks = hooks
+        self._system_prompt = system_prompt
+        self._force_sub = force_sub
+        self._is_alternative_api = is_alternative_api
+
         # ── Create Claude SDK client ──
         system_cli = shutil.which("claude")
 
@@ -304,20 +318,81 @@ class DunkStackCodingSession:
             )
 
             logger.info("DunkStack: entering Claude client context...")
+            _sub_auth_failed = False
             try:
                 await asyncio.wait_for(self.client.__aenter__(), timeout=60)
             except asyncio.TimeoutError:
-                self._status = "error"
-                self._error = "Claude CLI did not start within 60 seconds"
-                yield {
-                    "type": "error",
-                    "content": (
-                        "The Claude CLI did not start within 60 seconds. "
-                        "If using subscription (200K) mode, ensure you're logged in "
-                        "(run `claude login`). Or switch to 1M API mode."
-                    ),
-                }
-                return
+                if force_sub:
+                    logger.warning("DunkStack subscription auth timed out. Will fall back to API key.")
+                    _sub_auth_failed = True
+                else:
+                    self._status = "error"
+                    self._error = "Claude CLI did not start within 60 seconds"
+                    yield {
+                        "type": "error",
+                        "content": (
+                            "The Claude CLI did not start within 60 seconds. "
+                            "If using subscription (200K) mode, ensure you're logged in "
+                            "(run `claude login`). Or switch to 1M API mode."
+                        ),
+                    }
+                    return
+            except Exception as _enter_err:
+                _err_lower = str(_enter_err).lower()
+                _auth_hints = ["401", "auth", "oauth", "expired", "credential", "token has expired"]
+                if force_sub and any(h in _err_lower for h in _auth_hints):
+                    logger.warning(
+                        "DunkStack subscription auth failed (%s). Will fall back to API key.",
+                        _enter_err,
+                    )
+                    _sub_auth_failed = True
+                else:
+                    raise
+
+            # Fallback: if subscription auth failed, retry with API key
+            if _sub_auth_failed:
+                try:
+                    await self.client.__aexit__(None, None, None)
+                except Exception:
+                    pass
+                self.client = None
+
+                sdk_env = get_effective_sdk_env(force_subscription=False)
+                self._sdk_env = sdk_env
+                self._force_sub = False
+
+                self.client = ClaudeSDKClient(
+                    options=ClaudeAgentOptions(
+                        model=self.model_id,
+                        cli_path=system_cli,
+                        system_prompt=system_prompt,
+                        setting_sources=["project", "user"],
+                        allowed_tools=DUNKSTACK_TOOLS,
+                        permission_mode="acceptEdits",
+                        max_turns=50,
+                        cwd=str(self.project_dir),
+                        settings=str(_SETTINGS_FILE.resolve()),
+                        env=sdk_env,
+                        hooks=hooks,
+                        betas=["context-1m-2025-08-07"] if not is_alternative_api else [],
+                    )
+                )
+                try:
+                    await asyncio.wait_for(self.client.__aenter__(), timeout=60)
+                    logger.info("DunkStack client ready (API key fallback)")
+                    yield {
+                        "type": "text",
+                        "content": (
+                            "Subscription auth unavailable — using API key billing. "
+                            "Run `claude login` in a terminal to refresh subscription credentials."
+                        ),
+                    }
+                except Exception as _retry_err:
+                    self._status = "error"
+                    self._error = str(_retry_err)
+                    logger.exception("DunkStack API key fallback also failed")
+                    yield {"type": "error", "content": f"Failed to start agent: {_retry_err}"}
+                    return
 
             self._client_entered = True
             self._status = "running"
@@ -359,6 +434,65 @@ class DunkStackCodingSession:
 
         yield {"type": "response_done"}
 
+    async def _fallback_to_api_key(self) -> bool:
+        """Tear down the current client and recreate with API key billing.
+
+        Called mid-session when subscription OAuth expires during a query.
+        Returns True if the fallback succeeded (new client is ready).
+        """
+        if not self._sdk_env or not self._hooks:
+            logger.warning("DunkStack: cannot fall back — no saved state from start()")
+            return False
+
+        logger.warning("DunkStack: subscription auth expired mid-session, falling back to API key")
+
+        # Tear down the expired client
+        if self.client and self._client_entered:
+            try:
+                await self.client.__aexit__(None, None, None)
+            except Exception:
+                pass
+            self._client_entered = False
+            self.client = None
+
+        try:
+            from registry import get_effective_sdk_env
+
+            sdk_env = get_effective_sdk_env(force_subscription=False)
+            self._sdk_env = sdk_env
+            self._force_sub = False
+
+            system_cli = shutil.which("claude")
+            system_prompt = self._system_prompt or DEFAULT_SYSTEM_PROMPT
+
+            self.client = ClaudeSDKClient(
+                options=ClaudeAgentOptions(
+                    model=self.model_id,
+                    cli_path=system_cli,
+                    system_prompt=system_prompt,
+                    setting_sources=["project", "user"],
+                    allowed_tools=DUNKSTACK_TOOLS,
+                    permission_mode="acceptEdits",
+                    max_turns=50,
+                    cwd=str(self.project_dir),
+                    settings=str(_SETTINGS_FILE.resolve()),
+                    env=sdk_env,
+                    hooks=self._hooks,
+                    betas=["context-1m-2025-08-07"] if not self._is_alternative_api else [],
+                )
+            )
+
+            await asyncio.wait_for(self.client.__aenter__(), timeout=60)
+            self._client_entered = True
+            logger.info("DunkStack client recreated with API key billing (mid-session fallback)")
+            return True
+
+        except Exception:
+            logger.exception("DunkStack API key fallback failed during mid-session recovery")
+            self._client_entered = False
+            self.client = None
+            return False
+
     async def _stream_response(self, message: str) -> AsyncGenerator[dict[str, Any], None]:
         """Send a message and yield typed events from the SDK response stream.
 
@@ -383,9 +517,30 @@ class DunkStackCodingSession:
             yield {"type": "error", "content": "Agent did not accept request within 120s."}
             return
         except Exception as e:
-            logger.exception("Error sending query to DunkStack agent")
-            yield {"type": "error", "content": f"Query error: {e}"}
-            return
+            # Check if the query acceptance failed due to auth
+            _err_lower = str(e).lower()
+            _auth_hints = ["401", "auth", "oauth", "expired", "credential", "token has expired"]
+            if self._force_sub and any(h in _err_lower for h in _auth_hints):
+                logger.warning("DunkStack query auth error — attempting API key fallback")
+                fallback_ok = await self._fallback_to_api_key()
+                if fallback_ok:
+                    yield {
+                        "type": "text",
+                        "content": "Subscription auth expired — switched to API key billing.\n\n",
+                    }
+                    # Retry query with new client
+                    try:
+                        await asyncio.wait_for(self.client.query(message), timeout=120)
+                    except Exception as retry_err:
+                        yield {"type": "error", "content": f"Retry after fallback failed: {retry_err}"}
+                        return
+                else:
+                    yield {"type": "error", "content": f"Auth error: {e}. API key fallback failed."}
+                    return
+            else:
+                logger.exception("Error sending query to DunkStack agent")
+                yield {"type": "error", "content": f"Query error: {e}"}
+                return
 
         # Stream the response.  Opus can take 30-60s for the first token.
         first_token_timeout = 300  # 5 minutes for first token
@@ -477,8 +632,75 @@ class DunkStackCodingSession:
                     await self._report_token_usage(result_data)
 
         except Exception as e:
-            logger.exception("Error streaming DunkStack agent response")
-            yield {"type": "error", "content": f"Streaming error: {e}"}
+            error_str = str(e).lower()
+            _auth_hints = ["401", "authentication_error", "oauth", "token has expired", "credential"]
+
+            if any(h in error_str for h in _auth_hints) and self._force_sub:
+                logger.warning("DunkStack auth error during query — attempting API key fallback")
+                fallback_ok = await self._fallback_to_api_key()
+                if fallback_ok:
+                    yield {
+                        "type": "text",
+                        "content": (
+                            "Subscription auth expired — switched to API key billing. "
+                            "Run `claude login` to refresh subscription credentials.\n\n"
+                        ),
+                    }
+                    # Retry the message with the new client
+                    try:
+                        await asyncio.wait_for(self.client.query(message), timeout=120)
+                        response_iter2 = self.client.receive_response().__aiter__()
+                        while True:
+                            try:
+                                msg = await asyncio.wait_for(response_iter2.__anext__(), timeout=300)
+                            except StopAsyncIteration:
+                                break
+                            except asyncio.TimeoutError:
+                                yield {"type": "error", "content": "Response timed out after API key fallback."}
+                                return
+                            # Re-process the same message types as the main loop above
+                            msg_type = type(msg).__name__
+                            if msg_type == "AssistantMessage" and hasattr(msg, "content"):
+                                for block in msg.content:
+                                    block_type = type(block).__name__
+                                    if block_type == "TextBlock" and hasattr(block, "text") and block.text:
+                                        yield {"type": "text", "content": block.text}
+                                    elif block_type == "ToolUseBlock" and hasattr(block, "name"):
+                                        yield {"type": "tool_call", "tool": block.name, "input": getattr(block, "input", {})}
+                            elif msg_type == "UserMessage" and hasattr(msg, "content"):
+                                for block in msg.content:
+                                    if type(block).__name__ == "ToolResultBlock":
+                                        result_content = str(getattr(block, "content", ""))
+                                        truncated = result_content[:2000] if len(result_content) > 2000 else result_content
+                                        yield {"type": "tool_result", "output": truncated, "is_error": getattr(block, "is_error", False)}
+                            elif msg_type == "ResultMessage":
+                                usage = getattr(msg, "usage", None) or {}
+                                result_data = {
+                                    "input_tokens": usage.get("input_tokens", 0) if isinstance(usage, dict) else 0,
+                                    "output_tokens": usage.get("output_tokens", 0) if isinstance(usage, dict) else 0,
+                                    "cache_creation_tokens": usage.get("cache_creation_input_tokens", 0) if isinstance(usage, dict) else 0,
+                                    "cache_read_tokens": usage.get("cache_read_input_tokens", 0) if isinstance(usage, dict) else 0,
+                                    "total_cost_usd": getattr(msg, "total_cost_usd", None) or 0.0,
+                                    "num_turns": getattr(msg, "num_turns", None),
+                                }
+                                yield {"type": "result", "usage": result_data}
+                                await self._report_token_usage(result_data)
+                        return  # Retry succeeded
+                    except Exception as retry_err:
+                        logger.exception("DunkStack retry after fallback also failed")
+                        yield {"type": "error", "content": f"API key fallback retry failed: {retry_err}"}
+                else:
+                    yield {
+                        "type": "error",
+                        "content": (
+                            f"Authentication error: {e}\n\n"
+                            "Could not fall back to API key billing. "
+                            "Switch to a 1M model preset or run `claude login`."
+                        ),
+                    }
+            else:
+                logger.exception("Error streaming DunkStack agent response")
+                yield {"type": "error", "content": f"Streaming error: {e}"}
 
     async def _report_token_usage(self, usage: dict[str, Any]) -> None:
         """Report token usage to the DunkStack token tracking endpoint.

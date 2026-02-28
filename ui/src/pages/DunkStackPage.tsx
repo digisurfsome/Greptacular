@@ -86,6 +86,11 @@ export function DunkStackPage(): React.JSX.Element {
   const {
     commsLog,
     sendMessage,
+    agentState,
+    startAgent,
+    sendAgentMessage,
+    stopAgent,
+    agentMessages,
     controlMode,
     setControlMode,
     tokenState,
@@ -128,6 +133,18 @@ export function DunkStackPage(): React.JSX.Element {
       // Config update is best-effort; the UI still reflects the choice
     }
   }, [])
+
+  /** Start the agent with the currently selected model preset and project. */
+  const handleStartAgent = useCallback(() => {
+    const preset = MODEL_PRESETS[modelPresetIndex]
+    const modelId = preset.model === 'opus' ? 'claude-opus-4-6' : 'claude-sonnet-4-6'
+    const contextMode = preset.context
+    startAgent({
+      modelId,
+      contextMode,
+      projectName: selectedProject || undefined,
+    })
+  }, [modelPresetIndex, selectedProject, startAgent])
 
   /** Select a project and persist choice. */
   const handleSelectProject = useCallback((name: string) => {
@@ -358,6 +375,11 @@ export function DunkStackPage(): React.JSX.Element {
                 onSendMessage={sendMessage}
                 controlMode={controlMode}
                 connected={connected}
+                agentState={agentState}
+                agentMessages={agentMessages}
+                onSendAgentMessage={sendAgentMessage}
+                onStartAgent={handleStartAgent}
+                onStopAgent={stopAgent}
               />
             )
           )}

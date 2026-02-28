@@ -1442,13 +1442,18 @@ export function WorkspaceChat({
             {displayMessages.map((message) => {
               // For assistant messages, extract structured blocks and strip
               // them from the content so tags are not rendered twice.
-              const hasBlocks =
-                message.role === 'assistant' &&
-                parseStructuredBlocks(message.content).length > 0
-
-              const renderedMessage = hasBlocks
-                ? { ...message, content: stripStructuredBlocks(message.content) }
-                : message
+              let hasBlocks = false
+              let renderedMessage = message
+              try {
+                hasBlocks =
+                  message.role === 'assistant' &&
+                  parseStructuredBlocks(message.content).length > 0
+                if (hasBlocks) {
+                  renderedMessage = { ...message, content: stripStructuredBlocks(message.content) }
+                }
+              } catch {
+                // Malformed content — render as-is without crashing
+              }
 
               return (
                 <div key={message.id ?? generateId()}>

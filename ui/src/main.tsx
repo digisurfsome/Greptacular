@@ -9,6 +9,7 @@ import { RoleLibraryPage } from './pages/RoleLibraryPage'
 import { DunkStackPage } from './pages/DunkStackPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { YTStrategyLabPage } from './pages/YTStrategyLabPage'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import './styles/globals.css'
 
 const queryClient = new QueryClient({
@@ -47,7 +48,7 @@ function Root() {
     return <DunkStackPage />
   }
   if (hash === '#/workspace' || hash.startsWith('#/workspace/')) {
-    return <WorkspacePage />
+    return <ErrorBoundary><WorkspacePage /></ErrorBoundary>
   }
   if (hash === '#/roles' || hash.startsWith('#/roles/')) {
     return <RoleLibraryPage />
@@ -64,7 +65,9 @@ function Root() {
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <Root />
+      <ErrorBoundary>
+        <Root />
+      </ErrorBoundary>
     </QueryClientProvider>
   </StrictMode>,
 )

@@ -39,7 +39,7 @@ import { useDunkStack } from '@/hooks/useDunkStack'
 import { dunkstackUpdateModelPreset } from '@/lib/api'
 import { DunkStackContextGauge } from '@/components/dunkstack/DunkStackContextGauge'
 import { DunkStackCommsChat } from '@/components/dunkstack/DunkStackCommsChat'
-import { DunkStackAgentView, type AgentEvent } from '@/components/dunkstack/DunkStackAgentView'
+import { DunkStackAgentView } from '@/components/dunkstack/DunkStackAgentView'
 import { DunkStackSafetyPanel } from '@/components/dunkstack/DunkStackSafetyPanel'
 import { DunkStackGuidePanel } from '@/components/dunkstack/DunkStackGuidePanel'
 import { IntakeDock } from '@/components/appbuilder/IntakeDock'
@@ -103,7 +103,6 @@ export function DunkStackPage(): React.JSX.Element {
     sendToAgent,
     agentStarting,
     agentEvents: hookAgentEvents,
-    clearAgentEvents,
     connected,
     loading,
   } = useDunkStack()

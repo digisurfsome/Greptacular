@@ -427,6 +427,10 @@ class DunkStackChatSession:
                                 "input": tool_input,
                             }
 
+                # Silently skip SDK informational events (e.g. rate_limit_event)
+                elif msg_type in ("RateLimitEvent", "rate_limit_event"):
+                    logger.debug("Skipping SDK event type: %s", msg_type)
+
                 elif msg_type == "ResultMessage":
                     usage = getattr(msg, "usage", None) or {}
                     cost_usd = getattr(msg, "total_cost_usd", None)

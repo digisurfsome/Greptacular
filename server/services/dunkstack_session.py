@@ -580,6 +580,10 @@ class DunkStackCodingSession:
                                 "input": getattr(block, "input", {}),
                             }
 
+                # Silently skip SDK informational events (e.g. rate_limit_event)
+                elif msg_type in ("RateLimitEvent", "rate_limit_event"):
+                    logger.debug("Skipping SDK event type: %s", msg_type)
+
                 # UserMessage contains ToolResultBlock events
                 elif msg_type == "UserMessage" and hasattr(msg, "content"):
                     for block in msg.content:
@@ -667,6 +671,8 @@ class DunkStackCodingSession:
                                         yield {"type": "text", "content": block.text}
                                     elif block_type == "ToolUseBlock" and hasattr(block, "name"):
                                         yield {"type": "tool_call", "tool": block.name, "input": getattr(block, "input", {})}
+                            elif msg_type in ("RateLimitEvent", "rate_limit_event"):
+                                pass  # Skip SDK informational events
                             elif msg_type == "UserMessage" and hasattr(msg, "content"):
                                 for block in msg.content:
                                     if type(block).__name__ == "ToolResultBlock":

@@ -13,7 +13,7 @@
  * context management mechanism described in the BASE_BUILD_PRD.
  */
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import {
   ArrowLeft,
   BookOpen,
@@ -117,6 +117,32 @@ export function DunkStackPage(): React.JSX.Element {
   const [centerView, setCenterView] = useState<CenterView>('chat')
   const [standardsPanelOpen, setStandardsPanelOpen] = useState(true)
   const [productPanelOpen, setProductPanelOpen] = useState(false)
+  const [previewWidth, setPreviewWidth] = useState(520) // default preview panel width in px
+  const [previewHalf, setPreviewHalf] = useState(false) // half-screen toggle
+  const rightPanelDragRef = useRef(false)
+
+  /** Drag handler for resizable right panel (preview). */
+  const handleRightPanelDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    rightPanelDragRef.current = true
+    const onMove = (ev: MouseEvent) => {
+      if (!rightPanelDragRef.current) return
+      const newWidth = window.innerWidth - ev.clientX
+      setPreviewWidth(Math.min(window.innerWidth * 0.85, Math.max(300, newWidth)))
+      setPreviewHalf(false) // user is manually dragging, disable half snap
+    }
+    const onUp = () => {
+      rightPanelDragRef.current = false
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }, [])
 
   // Agent OS data hooks (only active when a project is selected and in agent-os view)
   const isAgentOSView = centerView === 'agent-os-intake' || centerView === 'agent-os-workflow'
@@ -492,9 +518,22 @@ export function DunkStackPage(): React.JSX.Element {
 
         {/* Right panel */}
         {rightPanel && (
-          <div className={`shrink-0 border-l border-border bg-card/60 ${
-            rightPanel === 'preview' ? 'w-[520px]' : 'w-[320px]'
-          } ${rightPanel === 'preview' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
+          <>
+          {/* Drag handle for resizable preview panel */}
+          {rightPanel === 'preview' && (
+            <div
+              onMouseDown={handleRightPanelDragStart}
+              className="w-1.5 shrink-0 cursor-col-resize bg-border/50 hover:bg-primary/30 transition-colors flex items-center justify-center"
+            >
+              <div className="h-8 w-0.5 rounded-full bg-muted-foreground/30" />
+            </div>
+          )}
+          <div
+            className={`shrink-0 border-l border-border bg-card/60 ${
+              rightPanel !== 'preview' ? 'w-[320px]' : ''
+            } ${rightPanel === 'preview' ? 'overflow-hidden' : 'overflow-y-auto'}`}
+            style={rightPanel === 'preview' ? { width: previewHalf ? '50vw' : `${previewWidth}px` } : undefined}
+          >
             {rightPanel === 'safety' && (
               <DunkStackSafetyPanel
                 safety={safetyStatus}
@@ -509,7 +548,11 @@ export function DunkStackPage(): React.JSX.Element {
               <FileViewer />
             )}
             {rightPanel === 'preview' && selectedProject && (
-              <DunkStackPreviewPanel projectName={selectedProject} />
+              <DunkStackPreviewPanel
+                projectName={selectedProject}
+                isHalf={previewHalf}
+                onToggleHalf={() => setPreviewHalf(prev => !prev)}
+              />
             )}
             {rightPanel === 'preview' && !selectedProject && (
               <div className="flex items-center justify-center h-full">
@@ -552,6 +595,7 @@ export function DunkStackPage(): React.JSX.Element {
               </div>
             )}
           </div>
+          </>
         )}
       </div>
 

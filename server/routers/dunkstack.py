@@ -17,7 +17,10 @@ import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from ..services.dunkstack_chat_session import DunkStackChatSession
 
 import yaml
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect

@@ -321,7 +321,7 @@ class AgentOSFeatures:
 
     def process_gap_analysis(self, gaps_json: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Process Claude's gap analysis output. Assigns IDs, applies thresholds."""
-        auto_select_threshold = self.config.get("auto_select_threshold", 85) / 100.0
+        auto_select_threshold = self.config.get("mechanism_analysis", {}).get("auto_select_threshold", 85) / 100.0
         processed: list[dict[str, Any]] = []
 
         for raw in gaps_json:

@@ -33,3 +33,23 @@ safety:
 
 build:
   test_after_feature: true        # Run tests after each feature built
+
+# PRD Machine / Mechanism Analysis levers
+# These thresholds control how the Developer's Choice engine makes decisions.
+# They self-adjust over time based on build outcomes (see agent_os:outcome_tracking).
+agent_os:
+  mechanism_analysis:
+    auto_select_threshold: 85     # Score >= this % → auto-pick without asking human
+    present_alternatives_gap: 15  # Top two within this % gap → show both options
+    min_viable_score: 60          # All options below this % → must ask human
+  developers_choice:
+    enabled: true                 # Apply weighted biases during close calls
+    bias_toward_standards: 0.3    # Weight for standards match
+    bias_toward_simplicity: 0.2   # Weight for simpler implementation
+    bias_toward_adoption: 0.2     # Weight for ecosystem adoption
+    bias_toward_docs: 0.1         # Weight for documentation quality
+  outcome_tracking:
+    enabled: true                 # Log decision outcomes for self-tuning
+    min_samples_before_suggest: 5 # Need N outcomes before suggesting adjustments
+    rework_penalty: 2.0           # How much a rework weighs vs a success
+    suggestion_cooldown_days: 7   # Don't suggest same adjustment within N days

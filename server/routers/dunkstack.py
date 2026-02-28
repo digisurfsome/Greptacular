@@ -77,6 +77,7 @@ class ConfigUpdate(BaseModel):
     session: Optional[dict] = None
     mode: Optional[dict] = None
     api: Optional[dict] = None
+    agent_os: Optional[dict] = None
 
 
 class BridgeSaveRequest(BaseModel):

@@ -17,7 +17,6 @@ The agent:
 import asyncio
 import json
 import logging
-import os
 import shutil
 import sys
 import threading
@@ -26,7 +25,7 @@ from pathlib import Path
 from typing import Any, AsyncGenerator, Optional
 
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
-from claude_agent_sdk.types import HookMatcher, SyncHookJSONOutput
+from claude_agent_sdk.types import HookMatcher
 
 _root_str = str(Path(__file__).parent.parent.parent)
 if _root_str not in sys.path:
@@ -151,7 +150,7 @@ class DunkStackCodingSession:
 
         # ── SDK environment (billing mode) ──
         try:
-            from registry import DEFAULT_MODEL, get_effective_sdk_env
+            from registry import get_effective_sdk_env
 
             force_sub = self._is_subscription_mode()
             sdk_env = get_effective_sdk_env(force_subscription=force_sub)

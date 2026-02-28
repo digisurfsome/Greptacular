@@ -17,7 +17,6 @@ import {
   dunkstackSaveBridge,
   dunkstackStartAgent,
   dunkstackStopAgent,
-  dunkstackGetAgentStatus,
   dunkstackSendToAgent,
   type DunkStackSafetyStatus,
   type DunkStackTokenState,

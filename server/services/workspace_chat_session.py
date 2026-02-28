@@ -745,28 +745,105 @@ class WorkspaceChatSession:
                 is_alternative_api, self.working_directory,
             )
             logger.info("Entering workspace Claude client context...")
+            _sub_auth_failed = False
             try:
                 await asyncio.wait_for(self.client.__aenter__(), timeout=60)
+                self._client_entered = True
+                logger.info("Workspace Claude client ready")
             except asyncio.TimeoutError:
-                logger.error(
-                    "Timeout (60s) waiting for Claude CLI to start (context_mode=%s, model=%s). "
-                    "This often means subscription OAuth credentials are missing or expired. "
-                    "Check ~/.claude/.credentials.json or switch to API key billing (1M mode).",
-                    self.context_mode, self.model,
+                if force_sub:
+                    logger.warning(
+                        "Subscription auth timed out (context_mode=%s, model=%s). "
+                        "Will fall back to API key billing.",
+                        self.context_mode, self.model,
+                    )
+                    _sub_auth_failed = True
+                else:
+                    logger.error(
+                        "Timeout (60s) waiting for Claude CLI to start (context_mode=%s, model=%s).",
+                        self.context_mode, self.model,
+                    )
+                    yield {
+                        "type": "error",
+                        "content": (
+                            "The Claude CLI did not start within 60 seconds. "
+                            "The model may be overloaded — try again or switch models."
+                        ),
+                    }
+                    yield {"type": "response_done"}
+                    return
+            except Exception as _enter_err:
+                _err_lower = str(_enter_err).lower()
+                _auth_hints = ["401", "auth", "oauth", "expired", "credential", "token has expired"]
+                if force_sub and any(h in _err_lower for h in _auth_hints):
+                    logger.warning(
+                        "Subscription auth failed (%s). Will fall back to API key billing.",
+                        _enter_err,
+                    )
+                    _sub_auth_failed = True
+                else:
+                    raise  # Re-raise for the outer except to handle
+
+            # ----------------------------------------------------------
+            # Fallback: if subscription auth failed, retry with API key.
+            # Same pattern used by yt_processor.py / yt_discovery.py.
+            # ----------------------------------------------------------
+            if _sub_auth_failed:
+                # Tear down the failed client
+                try:
+                    await self.client.__aexit__(None, None, None)
+                except Exception:
+                    pass
+                self.client = None
+
+                # Re-create SDK env with API key billing
+                sdk_env = get_effective_sdk_env(force_subscription=False)
+                force_sub = False
+
+                # Re-inject effort level env var
+                if effort in ("low", "medium", "high"):
+                    sdk_env["CLAUDE_CODE_EFFORT_LEVEL"] = effort
+
+                # Update shared options: new env + enable 1M context beta
+                shared_opts["env"] = sdk_env
+                if not is_alternative_api:
+                    shared_opts["betas"] = ["context-1m-2025-08-07"]
+
+                logger.info(
+                    "Retrying with API key billing (betas=%s)",
+                    shared_opts.get("betas"),
                 )
-                yield {
-                    "type": "error",
-                    "content": (
-                        "The Claude CLI did not start within 60 seconds. "
-                        "If using subscription (200K) mode, ensure you're logged in "
-                        "(run `claude login` in a terminal). "
-                        "Or switch to 1M API mode which uses your API key."
-                    ),
-                }
-                yield {"type": "response_done"}
-                return
-            self._client_entered = True
-            logger.info("Workspace Claude client ready")
+
+                # Re-create the client
+                try:
+                    self.client = ClaudeSDKClient(
+                        options=ClaudeAgentOptions(effort=effort, **shared_opts)
+                    )
+                except TypeError:
+                    self.client = ClaudeSDKClient(
+                        options=ClaudeAgentOptions(**shared_opts)
+                    )
+
+                try:
+                    await asyncio.wait_for(self.client.__aenter__(), timeout=60)
+                    self._client_entered = True
+                    logger.info("Workspace Claude client ready (API key fallback)")
+                    yield {
+                        "type": "text",
+                        "content": (
+                            "Subscription auth unavailable -- using API key billing for this session. "
+                            "To use free subscription billing, run `claude login` in a terminal."
+                        ),
+                    }
+                except Exception as _retry_err:
+                    logger.exception("API key fallback also failed")
+                    yield {
+                        "type": "error",
+                        "content": f"Failed to initialize workspace: {str(_retry_err)}",
+                    }
+                    yield {"type": "response_done"}
+                    return
+
         except Exception as e:
             logger.exception("Failed to create workspace Claude client")
             yield {"type": "error", "content": f"Failed to initialize workspace: {str(e)}"}
@@ -1094,7 +1171,20 @@ class WorkspaceChatSession:
         except Exception as e:
             logger.exception("Error during workspace %s query", self.provider)
             error_str = str(e).lower()
-            yield {"type": "error", "content": f"Error: {str(e)}"}
+
+            # Detect auth errors and provide actionable guidance
+            _auth_hints = ["401", "authentication_error", "oauth", "token has expired", "credential"]
+            if any(h in error_str for h in _auth_hints):
+                yield {
+                    "type": "error",
+                    "content": (
+                        f"Authentication error: {str(e)}\n\n"
+                        "Switch to a 1M model preset (uses your API key) "
+                        "or run `claude login` in a terminal to refresh subscription credentials."
+                    ),
+                }
+            else:
+                yield {"type": "error", "content": f"Error: {str(e)}"}
 
             # Auto-detect rate limit / billing errors and log them for calibration
             rate_limit_patterns = [

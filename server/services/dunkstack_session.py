@@ -24,6 +24,7 @@ Key design decisions:
 import asyncio
 import json
 import logging
+import os
 import shutil
 import sys
 import threading
@@ -32,7 +33,7 @@ from pathlib import Path
 from typing import Any, AsyncGenerator, Optional
 
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
-from claude_agent_sdk.types import HookMatcher
+from claude_agent_sdk.types import HookMatcher, SyncHookJSONOutput
 
 _root_str = str(Path(__file__).parent.parent.parent)
 if _root_str not in sys.path:

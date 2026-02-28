@@ -30,6 +30,7 @@ import {
   Play,
   Square,
   Loader2,
+  Globe,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ThemeSelector } from '@/components/ThemeSelector'
@@ -55,8 +56,9 @@ import {
   useResolveGap,
   useAutoResolveGaps,
 } from '@/hooks/useAgentOS'
+import { DunkStackPreviewPanel } from '@/components/dunkstack/DunkStackPreviewPanel'
 
-type RightPanel = 'safety' | 'files' | 'agent-os' | null
+type RightPanel = 'safety' | 'files' | 'agent-os' | 'preview' | null
 type CenterView = 'chat' | 'agent-os-intake' | 'agent-os-workflow'
 
 type ModelPreset = { model: string; context: string; label: string; limit: number; color: string }
@@ -241,6 +243,18 @@ export function DunkStackPage(): React.JSX.Element {
           >
             <FileText size={14} />
             <span className="hidden sm:inline">Files</span>
+          </Button>
+
+          {/* Live Preview toggle */}
+          <Button
+            variant={rightPanel === 'preview' ? 'default' : 'ghost'}
+            size="sm"
+            className="gap-1.5 text-xs"
+            onClick={() => handleToggleRightPanel('preview')}
+            title="Toggle Live Preview"
+          >
+            <Globe size={14} />
+            <span className="hidden sm:inline">Preview</span>
           </Button>
 
           {/* Agent OS toggle */}
@@ -476,7 +490,9 @@ export function DunkStackPage(): React.JSX.Element {
 
         {/* Right panel */}
         {rightPanel && (
-          <div className="w-[320px] shrink-0 border-l border-border bg-card/60 overflow-y-auto">
+          <div className={`shrink-0 border-l border-border bg-card/60 ${
+            rightPanel === 'preview' ? 'w-[520px]' : 'w-[320px]'
+          } ${rightPanel === 'preview' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
             {rightPanel === 'safety' && (
               <DunkStackSafetyPanel
                 safety={safetyStatus}
@@ -489,6 +505,14 @@ export function DunkStackPage(): React.JSX.Element {
             )}
             {rightPanel === 'files' && (
               <FileViewer />
+            )}
+            {rightPanel === 'preview' && selectedProject && (
+              <DunkStackPreviewPanel projectName={selectedProject} />
+            )}
+            {rightPanel === 'preview' && !selectedProject && (
+              <div className="flex items-center justify-center h-full">
+                <p className="text-sm text-muted-foreground">Select a project to preview</p>
+              </div>
             )}
             {rightPanel === 'agent-os' && selectedProject && (
               <div className="p-3 space-y-3">

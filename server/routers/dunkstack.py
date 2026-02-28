@@ -17,7 +17,10 @@ import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from ..services.dunkstack_chat_session import DunkStackChatSession
 
 import yaml
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
@@ -779,12 +782,80 @@ def list_coding_sessions():
 # ============================================================================
 
 
+# Active agent sessions keyed by session_id
+_agent_sessions: dict[str, "DunkStackChatSession"] = {}
+
+
+async def _record_token_usage(
+    input_tokens: int,
+    output_tokens: int,
+    cache_read_tokens: int,
+    cache_creation_tokens: int,
+    total_cost_usd: float,
+) -> None:
+    """Record token usage into the in-memory DunkStack gauge and broadcast."""
+    ts = datetime.now(timezone.utc).isoformat()
+    entry = {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "cache_read_tokens": cache_read_tokens,
+        "cache_creation_tokens": cache_creation_tokens,
+        "total_cost_usd": total_cost_usd,
+        "timestamp": ts,
+    }
+    _token_state["entries"].append(entry)
+
+    cum = _token_state["cumulative"]
+    cum["input_tokens"] += input_tokens
+    cum["output_tokens"] += output_tokens
+    cum["cache_read_tokens"] += cache_read_tokens
+    cum["cache_creation_tokens"] += cache_creation_tokens
+    cum["total_cost_usd"] += total_cost_usd
+    cum["api_calls"] += 1
+
+    model_limit = _token_state["model_limit"]
+    total = cum["input_tokens"] + cum["output_tokens"]
+    usage_pct = (total / model_limit * 100) if model_limit > 0 else 0
+    safety = _get_safety_status(usage_pct)
+
+    await _broadcast({
+        "type": "token_update",
+        "entry": entry,
+        "cumulative": cum,
+        "usage_percent": round(usage_pct, 2),
+        "safety": safety,
+    })
+
+
 @router.websocket("/ws")
 async def dunkstack_websocket(ws: WebSocket):
-    """WebSocket for real-time DunkStack updates (token gauge, comms, control)."""
+    """WebSocket for real-time DunkStack updates and agent chat.
+
+    Client -> Server:
+    - {"type": "ping"} - Keep-alive ping
+    - {"type": "start_agent", "model_id": str, "context_mode": str,
+       "working_directory": str, "effort": str} - Start a new agent session
+    - {"type": "message", "content": str} - Send a message to the running agent
+    - {"type": "stop_agent"} - Stop the running agent session
+
+    Server -> Client:
+    - {"type": "init", "token_state": {...}} - Initial state
+    - {"type": "pong"} - Keep-alive pong
+    - {"type": "agent_started", "session_id": str} - Agent session started
+    - {"type": "agent_stopped"} - Agent session stopped
+    - {"type": "text", "content": str} - Agent text response chunk
+    - {"type": "tool_call", "tool": str, "input": dict} - Agent tool call
+    - {"type": "token_usage", ...} - Token usage from agent
+    - {"type": "response_done"} - Agent finished responding
+    - {"type": "error", "content": str} - Error message
+    - {"type": "status", "content": str} - Status message
+    - All existing types (comms_update, token_update, etc.) via broadcast
+    """
     await ws.accept()
     _ws_connections.append(ws)
     logger.info("DunkStack WebSocket connected (total: %d)", len(_ws_connections))
+
+    current_session_id: Optional[str] = None
 
     try:
         # Send initial state
@@ -803,10 +874,128 @@ async def dunkstack_websocket(ws: WebSocket):
             try:
                 data = await asyncio.wait_for(ws.receive_text(), timeout=300)
                 msg = json.loads(data)
+                msg_type = msg.get("type")
 
-                # Handle client messages
-                if msg.get("type") == "ping":
+                if msg_type == "ping":
                     await ws.send_json({"type": "pong"})
+
+                elif msg_type == "start_agent":
+                    # Start a new agent session
+                    from ..services.dunkstack_chat_session import DunkStackChatSession
+
+                    model_id = msg.get("model_id", "claude-opus-4-6")
+                    context_mode = msg.get("context_mode", "1m")
+                    working_directory = msg.get("working_directory")
+                    effort = msg.get("effort", "high")
+
+                    # Resolve working directory from project name if provided
+                    project_name = msg.get("project_name")
+                    if not working_directory and project_name:
+                        from ..utils.project_helpers import get_project_path
+                        project_path = get_project_path(project_name)
+                        if project_path and project_path.exists():
+                            working_directory = str(project_path)
+
+                    if not working_directory:
+                        working_directory = str(Path.home())
+
+                    # Close existing session if any
+                    if current_session_id and current_session_id in _agent_sessions:
+                        old_session = _agent_sessions.pop(current_session_id)
+                        try:
+                            await old_session.close()
+                        except Exception as e:
+                            logger.warning("Error closing old DunkStack session: %s", e)
+
+                    session_id = f"dunkstack-{id(ws)}-{datetime.now(timezone.utc).strftime('%H%M%S')}"
+                    session = DunkStackChatSession(
+                        session_id=session_id,
+                        model_id=model_id,
+                        working_directory=working_directory,
+                        context_mode=context_mode,
+                        effort=effort,
+                        on_token_usage=_record_token_usage,
+                    )
+
+                    _agent_sessions[session_id] = session
+                    current_session_id = session_id
+
+                    # Start the session and stream initialization events
+                    try:
+                        async for event in session.start():
+                            await ws.send_json(event)
+                        await ws.send_json({
+                            "type": "agent_started",
+                            "session_id": session_id,
+                            "model_id": model_id,
+                            "context_mode": context_mode,
+                        })
+                    except Exception as e:
+                        logger.exception("Failed to start DunkStack agent session")
+                        await ws.send_json({
+                            "type": "error",
+                            "content": f"Failed to start agent: {str(e)}",
+                        })
+                        # Clean up failed session
+                        _agent_sessions.pop(session_id, None)
+                        current_session_id = None
+
+                elif msg_type == "message":
+                    # Send a message to the running agent
+                    content = msg.get("content", "").strip()
+                    if not content:
+                        await ws.send_json({"type": "error", "content": "Empty message."})
+                        continue
+
+                    if not current_session_id or current_session_id not in _agent_sessions:
+                        await ws.send_json({
+                            "type": "error",
+                            "content": "No agent session running. Start an agent first.",
+                        })
+                        continue
+
+                    session = _agent_sessions[current_session_id]
+
+                    # Also write to from_human.md for the file-based record
+                    _ensure_agent_dir()
+                    path = _agent_dir() / "comms" / "from_human.md"
+                    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
+                    entry_text = f"\n\n## [{timestamp}] Message\n{content}\n"
+                    if path.exists():
+                        existing = path.read_text(encoding="utf-8")
+                    else:
+                        existing = "# Human Messages\n> Human writes messages here.\n"
+                    path.write_text(existing + entry_text, encoding="utf-8")
+
+                    # Stream agent response
+                    try:
+                        async for event in session.send_message(content):
+                            await ws.send_json(event)
+
+                            # Also write agent text responses to to_human.md
+                            if event.get("type") == "response_done":
+                                pass  # Will write accumulated text below
+
+                    except Exception as e:
+                        logger.exception("Error during DunkStack agent message")
+                        await ws.send_json({
+                            "type": "error",
+                            "content": f"Agent error: {str(e)}",
+                        })
+                        await ws.send_json({"type": "response_done"})
+
+                elif msg_type == "stop_agent":
+                    # Stop the running agent session
+                    if current_session_id and current_session_id in _agent_sessions:
+                        session = _agent_sessions.pop(current_session_id)
+                        try:
+                            await session.close()
+                        except Exception as e:
+                            logger.warning("Error stopping DunkStack session: %s", e)
+                        current_session_id = None
+                        await ws.send_json({"type": "agent_stopped"})
+                    else:
+                        await ws.send_json({"type": "error", "content": "No agent session running."})
 
             except asyncio.TimeoutError:
                 # Send keepalive ping
@@ -820,6 +1009,14 @@ async def dunkstack_websocket(ws: WebSocket):
     except Exception as e:
         logger.debug("DunkStack WebSocket error: %s", e)
     finally:
+        # Clean up agent session on disconnect
+        if current_session_id and current_session_id in _agent_sessions:
+            session = _agent_sessions.pop(current_session_id)
+            try:
+                await session.close()
+            except Exception as e:
+                logger.warning("Error closing DunkStack session on disconnect: %s", e)
+
         if ws in _ws_connections:
             _ws_connections.remove(ws)
         logger.info("DunkStack WebSocket disconnected (total: %d)", len(_ws_connections))

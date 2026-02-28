@@ -247,6 +247,10 @@ export function WorkspaceSidebar({
         setNamingCategory(null)
         setNewChatName('')
       },
+      onError: (err) => {
+        console.error('Failed to create conversation:', err)
+        setNamingCategory(null)
+      },
     })
   }, [namingCategory, newChatName, createConversationMut, onSelectConversation, modelPresetIndex, effortLevel, SIDEBAR_MODEL_PRESETS, isClaudeProvider, activeProvider])
 

@@ -354,7 +354,7 @@ class WorkspaceChatSession:
             logger.info("Workspace client recreated with API key billing (mid-session fallback)")
             return True
 
-        except Exception as e:
+        except Exception:
             logger.exception("API key fallback also failed during mid-session recovery")
             self._client_entered = False
             self.client = None

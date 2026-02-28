@@ -487,7 +487,7 @@ class DunkStackCodingSession:
             logger.info("DunkStack client recreated with API key billing (mid-session fallback)")
             return True
 
-        except Exception as e:
+        except Exception:
             logger.exception("DunkStack API key fallback failed during mid-session recovery")
             self._client_entered = False
             self.client = None

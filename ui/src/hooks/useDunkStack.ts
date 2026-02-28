@@ -35,6 +35,11 @@ export interface CommsEntry {
   timestamp: string
 }
 
+export interface AgentState {
+  running: boolean
+  streaming: boolean
+}
+
 export interface AgentEventEntry {
   id: string
   type: string

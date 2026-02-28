@@ -13,7 +13,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { Terminal, Wrench, CheckCircle2, XCircle, AlertTriangle, Activity, Cpu, Coins, Send, Loader2, MessageSquare } from 'lucide-react'
 import { DunkStackCommsChat } from './DunkStackCommsChat'
-import type { CommsEntry } from '@/hooks/useDunkStack'
+import type { CommsEntry, AgentState } from '@/hooks/useDunkStack'
 
 // ============================================================================
 // Types
@@ -55,6 +55,8 @@ interface DunkStackAgentViewProps {
   agentStarting?: boolean
   /** Name of the selected project */
   projectName?: string
+  /** Stop the running agent session */
+  onStopAgent?: () => void
 }
 
 // ============================================================================
@@ -258,6 +260,7 @@ export function DunkStackAgentView({
   onStartAgent,
   agentStarting,
   projectName,
+  onStopAgent,
 }: DunkStackAgentViewProps): React.JSX.Element {
   const logScrollRef = useRef<HTMLDivElement>(null)
   const chatScrollRef = useRef<HTMLDivElement>(null)
@@ -266,6 +269,18 @@ export function DunkStackAgentView({
   const [apiChatInput, setApiChatInput] = useState('')
   const [apiChatSending, setApiChatSending] = useState(false)
   const [apiMessages, setApiMessages] = useState<ApiChatMessage[]>([])
+
+  // Agent state derived from props
+  const agentState: AgentState = { running: isRunning, streaming: false }
+
+  // Convert apiMessages to CommsEntry[] for the comms chat
+  const agentMessages: CommsEntry[] = apiMessages.map(m => ({
+    id: m.id,
+    sender: m.role === 'user' ? 'human' : m.role,
+    content: m.content,
+    title: '',
+    timestamp: m.timestamp,
+  }))
 
   // 3-column layout: API chat (15%) | Log (35%) | Walkie-talkie (50%)
   const cols = useThreeColumnSplitter(containerRef, 0.15, 0.50)
@@ -483,6 +498,11 @@ export function DunkStackAgentView({
           onSendMessage={onSendMessage}
           controlMode={controlMode}
           connected={connected}
+          agentState={agentState}
+          agentMessages={agentMessages}
+          onSendAgentMessage={(msg) => { onSendToAgent?.(msg) }}
+          onStartAgent={() => { onStartAgent?.() }}
+          onStopAgent={() => { onStopAgent?.() }}
         />
       </div>
     </div>

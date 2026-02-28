@@ -678,18 +678,19 @@ async def start_coding_agent(req: AgentStartRequest):
     # Ensure .agent/ directory exists
     _ensure_agent_dir(req.project_name)
 
-    # Create session
-    session = create_coding_session(
+    # Create session (async - stops any existing session for this project)
+    session = await create_coding_session(
         project_name=req.project_name,
         project_dir=project_dir,
         model_id=req.model_id,
         context_window=req.context_window,
     )
 
-    # Start the agent (initialize Claude SDK client)
-    startup_events = []
+    # Start the agent - this initializes the SDK client AND sends the
+    # bootstrap message so the agent reads its .agent/ files and begins working.
+    all_events = []
     async for event in session.start():
-        startup_events.append(event)
+        all_events.append(event)
         await _broadcast({"type": "agent_event", **event})
 
     # Check if start succeeded
@@ -697,32 +698,13 @@ async def start_coding_agent(req: AgentStartRequest):
         return {
             "status": "error",
             "error": session.error or "Failed to start",
-            "events": startup_events,
+            "events": all_events,
         }
-
-    # Send the startup message so the agent reads its files and begins working
-    from ..services.dunkstack_session import STARTUP_MESSAGE
-
-    response_events = []
-    async for event in session.send_message(STARTUP_MESSAGE):
-        response_events.append(event)
-        await _broadcast({"type": "agent_event", **event})
-
-        # Record token usage to the context gauge
-        if event.get("type") == "token_usage":
-            snapshot = TokenSnapshot(
-                input_tokens=event.get("input_tokens", 0),
-                output_tokens=event.get("output_tokens", 0),
-                cache_read_tokens=event.get("cache_read_tokens", 0),
-                cache_creation_tokens=event.get("cache_creation_tokens", 0),
-            )
-            await record_tokens(snapshot, req.project_name)
 
     return {
         "status": "running",
         **session.get_status(),
-        "startup_events": startup_events,
-        "response_events": response_events,
+        "events": all_events,
     }
 
 
@@ -747,16 +729,6 @@ async def send_to_coding_agent(req: AgentMessageRequest, project_name: Optional[
         response_events.append(event)
         await _broadcast({"type": "agent_event", **event})
 
-        # Record token usage
-        if event.get("type") == "token_usage":
-            snapshot = TokenSnapshot(
-                input_tokens=event.get("input_tokens", 0),
-                output_tokens=event.get("output_tokens", 0),
-                cache_read_tokens=event.get("cache_read_tokens", 0),
-                cache_creation_tokens=event.get("cache_creation_tokens", 0),
-            )
-            await record_tokens(snapshot, project_name)
-
     return {"status": "ok", "events": response_events}
 
 
@@ -772,8 +744,7 @@ async def stop_coding_agent(project_name: Optional[str] = None):
     if not session:
         return {"status": "not_running"}
 
-    remove_coding_session(project_name)
-    await session.stop()
+    await remove_coding_session(project_name)
 
     await _broadcast({"type": "agent_event", "status": "stopped"})
 

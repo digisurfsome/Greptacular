@@ -15,7 +15,7 @@ import { Send, Radio, User, Bot, Info, Loader2, Wrench, Play, Square } from 'luc
 import type { CommsEntry, AgentState } from '@/hooks/useDunkStack'
 
 interface DunkStackCommsChatProps {
-  /** Combined, sorted comms log (file-based) */
+  /** Combined, sorted comms log (file-based walkie-talkie) */
   commsLog: CommsEntry[]
   /** Send a message via file-based comms (human → from_human.md) */
   onSendMessage: (content: string, title?: string) => Promise<void>
@@ -25,10 +25,10 @@ interface DunkStackCommsChatProps {
   connected: boolean
   /** Agent state */
   agentState: AgentState
-  /** Agent messages (real-time chat) */
-  agentMessages: CommsEntry[]
-  /** Send message to the running agent */
-  onSendAgentMessage: (content: string) => void
+  /** Agent messages (kept for backward compat, not displayed) */
+  agentMessages?: CommsEntry[]
+  /** Send message to the running agent (kept for backward compat) */
+  onSendAgentMessage?: (content: string) => void
   /** Start agent session */
   onStartAgent: () => void
   /** Stop agent session */
@@ -80,8 +80,6 @@ export function DunkStackCommsChat({
   controlMode,
   connected,
   agentState,
-  agentMessages,
-  onSendAgentMessage,
   onStartAgent,
   onStopAgent,
 }: DunkStackCommsChatProps): React.JSX.Element {
@@ -90,8 +88,18 @@ export function DunkStackCommsChat({
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
-  // Use agent messages when agent is running, otherwise file-based comms
-  const messages = agentState.running ? agentMessages : commsLog
+  // Always show file-based comms (walkie-talkie) regardless of agent state.
+  // The walkie-talkie channel is ALWAYS file-based — that's what makes it free.
+  const [localMessages, setLocalMessages] = useState<CommsEntry[]>([])
+
+  // Merge commsLog (from server) with local optimistic messages, deduplicating
+  const messages = (() => {
+    // Start with commsLog from the server (file-based messages)
+    const serverIds = new Set(commsLog.map(e => e.id))
+    // Add local messages that haven't appeared in server yet
+    const pending = localMessages.filter(m => !serverIds.has(m.id))
+    return [...commsLog, ...pending]
+  })()
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -104,21 +112,31 @@ export function DunkStackCommsChat({
     const trimmed = input.trim()
     if (!trimmed || sending) return
 
-    if (agentState.running) {
-      // Send directly to agent via WebSocket
-      onSendAgentMessage(trimmed)
-      setInput('')
-    } else {
-      // Legacy file-based send
-      setSending(true)
-      try {
-        await onSendMessage(trimmed)
-        setInput('')
-      } finally {
-        setSending(false)
-      }
+    // Always use file-based comms (walkie-talkie = free channel).
+    // The agent reads from_human.md at every tool call boundary.
+    setSending(true)
+    const now = new Date()
+    const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+
+    // Immediately show the user's message (optimistic update)
+    const optimisticEntry: CommsEntry = {
+      id: `human-${timestamp}-local-${Date.now()}`,
+      sender: 'human',
+      content: trimmed,
+      title: 'Message',
+      timestamp,
     }
-  }, [input, sending, agentState.running, onSendAgentMessage, onSendMessage])
+    setLocalMessages(prev => [...prev, optimisticEntry])
+    setInput('')
+
+    try {
+      await onSendMessage(trimmed)
+    } catch (e) {
+      console.error('Failed to send walkie-talkie message:', e)
+    } finally {
+      setSending(false)
+    }
+  }, [input, sending, onSendMessage])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -126,6 +144,15 @@ export function DunkStackCommsChat({
       handleSend()
     }
   }, [handleSend])
+
+  // Auto-resize textarea to fit content
+  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value)
+    // Reset height to auto to correctly measure scrollHeight
+    e.target.style.height = 'auto'
+    // Set to scrollHeight, clamped by CSS max-height
+    e.target.style.height = `${e.target.scrollHeight}px`
+  }, [])
 
   return (
     <div className="flex flex-col h-full">
@@ -281,7 +308,7 @@ export function DunkStackCommsChat({
           <textarea
             ref={inputRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={handleInputChange}
             onKeyDown={handleKeyDown}
             placeholder={
               agentState.running
@@ -289,8 +316,9 @@ export function DunkStackCommsChat({
                 : 'Start an agent first, then send messages here...'
             }
             disabled={!agentState.running && !commsLog.length}
-            className="flex-1 min-h-[40px] max-h-[120px] resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-50"
+            className="flex-1 min-h-[40px] max-h-[300px] resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-50 overflow-y-auto"
             rows={1}
+            style={{ height: 'auto' }}
           />
           <button
             onClick={handleSend}

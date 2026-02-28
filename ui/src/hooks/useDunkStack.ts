@@ -337,7 +337,7 @@ export function useDunkStack(): UseDunkStackReturn {
     }
   }, [])
 
-  // Poll comms files periodically as a fallback (every 10s)
+  // Poll comms files periodically (3s) so walkie-talkie responses appear quickly
   useEffect(() => {
     pollIntervalRef.current = setInterval(async () => {
       try {
@@ -354,16 +354,31 @@ export function useDunkStack(): UseDunkStackReturn {
       } catch {
         // Ignore
       }
-    }, 10000)
+    }, 3000)
 
     return () => {
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
     }
   }, [])
 
-  // Send message (human → agent)
+  // Send message (human → agent) via file-based walkie-talkie
   const sendMessage = useCallback(async (content: string, title?: string) => {
     await dunkstackWriteFromHuman(content, title)
+    // Immediately re-poll comms to pick up any pending updates
+    try {
+      const [toHuman, fromHuman] = await Promise.all([
+        dunkstackReadToHuman(),
+        dunkstackReadFromHuman(),
+      ])
+      const agentEntries = parseCommsFile(toHuman.content, 'agent')
+      const humanEntries = parseCommsFile(fromHuman.content, 'human')
+      const combined = [...agentEntries, ...humanEntries].sort(
+        (a, b) => a.timestamp.localeCompare(b.timestamp)
+      )
+      setCommsLog(combined)
+    } catch {
+      // Ignore - periodic poll will catch it
+    }
   }, [])
 
   // Update control mode

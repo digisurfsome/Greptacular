@@ -273,14 +273,8 @@ export function DunkStackAgentView({
   // Agent state derived from props
   const agentState: AgentState = { running: isRunning, streaming: false }
 
-  // Convert apiMessages to CommsEntry[] for the comms chat
-  const agentMessages: CommsEntry[] = apiMessages.map(m => ({
-    id: m.id,
-    sender: m.role === 'user' ? 'human' : m.role,
-    content: m.content,
-    title: '',
-    timestamp: m.timestamp,
-  }))
+  // Note: agentMessages derivation removed — walkie-talkie now always
+  // shows commsLog (file-based messages) to keep channels separate.
 
   // 3-column layout: API chat (15%) | Log (35%) | Walkie-talkie (50%)
   const cols = useThreeColumnSplitter(containerRef, 0.15, 0.50)
@@ -299,26 +293,9 @@ export function DunkStackAgentView({
     }
   }, [apiMessages.length])
 
-  // Mirror text-type agent events into the API chat as "agent" messages
-  useEffect(() => {
-    if (agentEvents.length === 0) return
-    const lastEvent = agentEvents[agentEvents.length - 1]
-    if (lastEvent.type === 'text' && lastEvent.content) {
-      setApiMessages(prev => {
-        // Dedupe by checking if last message is agent with same content
-        if (prev.length > 0) {
-          const last = prev[prev.length - 1]
-          if (last.role === 'agent' && last.content === lastEvent.content) return prev
-        }
-        return [...prev, {
-          id: `agent-${Date.now()}`,
-          role: 'agent',
-          content: lastEvent.content!,
-          timestamp: lastEvent.timestamp,
-        }]
-      })
-    }
-  }, [agentEvents.length, agentEvents])
+  // NOTE: Agent text responses are NOT mirrored to the API chat.
+  // The API chat (left) only shows user-initiated messages and status.
+  // All agent responses appear on the walkie-talkie (right) via commsLog.
 
   // Send a message via the API chat. If agent isn't running, start it first.
   const handleApiChatSend = useCallback(async () => {
@@ -499,8 +476,6 @@ export function DunkStackAgentView({
           controlMode={controlMode}
           connected={connected}
           agentState={agentState}
-          agentMessages={agentMessages}
-          onSendAgentMessage={(msg) => { onSendToAgent?.(msg) }}
           onStartAgent={() => { onStartAgent?.() }}
           onStopAgent={() => { onStopAgent?.() }}
         />

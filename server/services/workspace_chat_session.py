@@ -854,9 +854,9 @@ class WorkspaceChatSession:
             except Exception as _enter_err:
                 _err_lower = str(_enter_err).lower()
                 _auth_hints = ["401", "auth", "oauth", "expired", "credential", "token has expired"]
-                if force_sub and any(h in _err_lower for h in _auth_hints):
+                if any(h in _err_lower for h in _auth_hints):
                     logger.warning(
-                        "Subscription auth failed (%s). Will fall back to API key billing.",
+                        "Auth failed (%s). Will fall back to API key billing.",
                         _enter_err,
                     )
                     _sub_auth_failed = True
@@ -878,6 +878,7 @@ class WorkspaceChatSession:
                 # Re-create SDK env with API key billing
                 sdk_env = get_effective_sdk_env(force_subscription=False)
                 force_sub = False
+                self._force_sub = False
 
                 # Re-inject effort level env var
                 if effort in ("low", "medium", "high"):
@@ -918,7 +919,12 @@ class WorkspaceChatSession:
                     logger.exception("API key fallback also failed")
                     yield {
                         "type": "error",
-                        "content": f"Failed to initialize workspace: {str(_retry_err)}",
+                        "content": (
+                            f"Failed to initialize workspace: {str(_retry_err)}\n\n"
+                            "Neither subscription auth nor API key auth succeeded. "
+                            "Set ANTHROPIC_API_KEY in ~/.autoforge/.env or save it in Settings, "
+                            "or run `claude login` in a terminal to refresh subscription credentials."
+                        ),
                     }
                     yield {"type": "response_done"}
                     return
@@ -1253,8 +1259,10 @@ class WorkspaceChatSession:
 
             # Detect auth errors — attempt mid-session fallback to API key billing.
             # If fallback succeeds, retry the message transparently.
+            # NOTE: This triggers regardless of billing mode (_force_sub). Even in
+            # 1M/API-key mode, the SDK may use OAuth if no API key is configured.
             _auth_hints = ["401", "authentication_error", "oauth", "token has expired", "credential"]
-            if any(h in error_str for h in _auth_hints) and self._force_sub:
+            if any(h in error_str for h in _auth_hints):
                 logger.warning("Auth error during query — attempting API key fallback")
                 fallback_ok = await self._fallback_to_api_key()
                 if fallback_ok:
@@ -1283,19 +1291,10 @@ class WorkspaceChatSession:
                         "content": (
                             f"Authentication error: {str(e)}\n\n"
                             "Could not fall back to API key billing automatically. "
-                            "Switch to a 1M model preset (uses your API key) "
+                            "Set ANTHROPIC_API_KEY in ~/.autoforge/.env or save it in Settings, "
                             "or run `claude login` in a terminal to refresh subscription credentials."
                         ),
                     }
-            elif any(h in error_str for h in _auth_hints):
-                yield {
-                    "type": "error",
-                    "content": (
-                        f"Authentication error: {str(e)}\n\n"
-                        "Switch to a 1M model preset (uses your API key) "
-                        "or run `claude login` in a terminal to refresh subscription credentials."
-                    ),
-                }
             else:
                 yield {"type": "error", "content": f"Error: {str(e)}"}
 

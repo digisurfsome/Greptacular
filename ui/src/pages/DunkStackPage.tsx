@@ -356,26 +356,23 @@ export function DunkStackPage(): React.JSX.Element {
               </div>
             ) : (
               <div className="flex flex-1 overflow-hidden">
-                {/* Left: Agent Session (API Call) — always visible */}
-                <div className={`min-w-0 ${agentRunning ? 'flex-1 border-r border-border' : 'flex-1'}`}>
+                {/* Left 1/3: Agent Session (API Call) */}
+                <div className="w-1/3 min-w-[280px] shrink-0 border-r border-border">
                   <DunkStackAgentPanel
                     projectName={selectedProject}
-                    connected={connected}
                     modelLabel={MODEL_PRESETS[modelPresetIndex].label}
                     onStatusChange={(status: string) => setAgentRunning(status === 'running')}
                   />
                 </div>
-                {/* Right: Walkie-Talkie Chat — only visible when agent is running */}
-                {agentRunning && (
-                  <div className="flex-1 min-w-0">
-                    <DunkStackCommsChat
-                      commsLog={commsLog}
-                      onSendMessage={sendMessage}
-                      controlMode={controlMode}
-                      connected={connected}
-                    />
-                  </div>
-                )}
+                {/* Right 2/3: Walkie-Talkie Chat */}
+                <div className="flex-1 min-w-0">
+                  <DunkStackCommsChat
+                    commsLog={commsLog}
+                    onSendMessage={sendMessage}
+                    controlMode={controlMode}
+                    connected={connected}
+                  />
+                </div>
               </div>
             )
           )}

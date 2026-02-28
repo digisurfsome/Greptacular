@@ -20,8 +20,6 @@ import {
 interface DunkStackAgentPanelProps {
   /** Currently selected project name */
   projectName: string | null
-  /** Whether WebSocket is connected */
-  connected: boolean
   /** Current model preset label for display */
   modelLabel: string
   /** Called when agent status changes */

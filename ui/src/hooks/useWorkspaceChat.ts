@@ -703,8 +703,11 @@ export function useWorkspaceChat({
             setLastError(data.content || "Unknown error");
             onError?.(data.content);
 
-            // Check if this is a rate limit or billing error -- auto-log via API as fallback
+            // Check if this is a rate limit or billing error -- auto-log via API as fallback.
+            // Guard: "Unknown message type: rate_limit_event" is a parse error,
+            // NOT an actual rate limit — skip detection in that case.
             const errorContent = (data.content || "").toLowerCase();
+            const isUnknownMsgType = errorContent.includes("unknown message type");
             const rateLimitPatterns = [
               "rate limit", "rate_limit", "ratelimit",
               "usage limit", "too many requests", "429",
@@ -713,7 +716,7 @@ export function useWorkspaceChat({
               "credit balance", "balance too low",
               "insufficient credit", "billing",
             ];
-            const isRateLimit = rateLimitPatterns.some((p) => errorContent.includes(p));
+            const isRateLimit = !isUnknownMsgType && rateLimitPatterns.some((p) => errorContent.includes(p));
             const isBillingError = ["credit balance", "balance too low", "insufficient credit"].some(
               (p) => errorContent.includes(p),
             );

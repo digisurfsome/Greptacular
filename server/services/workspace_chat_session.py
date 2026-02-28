@@ -1391,7 +1391,11 @@ class WorkspaceChatSession:
             else:
                 yield {"type": "error", "content": f"Error: {str(e)}"}
 
-            # Auto-detect rate limit / billing errors and log them for calibration
+            # Auto-detect rate limit / billing errors and log them for calibration.
+            # Guard: skip detection if the error is about an unknown SDK message
+            # type — e.g. "Unknown message type: rate_limit_event" is a parse
+            # error, NOT an actual rate limit.
+            _is_unknown_msg_type = "unknown message type" in error_str
             rate_limit_patterns = [
                 "rate limit", "rate_limit", "ratelimit",
                 "usage limit", "usage_limit",
@@ -1402,7 +1406,7 @@ class WorkspaceChatSession:
                 "credit balance", "balance too low",
                 "insufficient credit", "billing",
             ]
-            if any(p in error_str for p in rate_limit_patterns):
+            if not _is_unknown_msg_type and any(p in error_str for p in rate_limit_patterns):
                 try:
                     from . import workspace_database as db
                     usage = db.get_usage_by_period("daily")
@@ -1655,6 +1659,12 @@ class WorkspaceChatSession:
                                 yield {"type": "token_log", "entry": entry}
                             except Exception as e:
                                 logger.warning("Failed to log tool_result: %s", e)
+
+            # Silently skip SDK event types we don't need to surface.
+            # The Claude SDK may emit informational events (e.g. rate_limit_event)
+            # that are not errors and don't need UI handling.
+            elif msg_type in ("RateLimitEvent", "rate_limit_event"):
+                logger.debug("Skipping SDK event type: %s", msg_type)
 
             # Handle ResultMessage — the SDK's final summary with actual API usage
             elif msg_type == "ResultMessage":

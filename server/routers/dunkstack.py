@@ -42,10 +42,14 @@ def _agent_dir(project_name: Optional[str] = None) -> Path:
 
 
 def _ensure_agent_dir(project_name: Optional[str] = None):
-    """Ensure .agent directory structure exists."""
+    """Ensure .agent directory structure exists and universal templates are in place."""
     agent = _agent_dir(project_name)
     for subdir in ["comms", "knowledge", "output", "progress", "settings"]:
         (agent / subdir).mkdir(parents=True, exist_ok=True)
+
+    # Copy universal DunkStack template files if they don't already exist
+    from ..services.agent_os_file_utils import copy_universal_templates
+    copy_universal_templates(agent)
 
 
 # ============================================================================

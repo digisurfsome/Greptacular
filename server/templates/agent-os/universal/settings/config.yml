@@ -1,0 +1,35 @@
+# Agent Settings - Adjustable Levers
+version: 1
+
+mode:
+  type: subscription              # subscription | api
+  model_family: claude-sonnet     # claude-sonnet | claude-opus
+  # Subscription mode: system prompt via CLAUDE.md, token tracking estimates,
+  #   compaction will occur, no API key needed
+  # API mode: system prompt via API system message, exact token tracking
+  #   from response headers, no compaction, API key required
+
+api:
+  key_env_var: ANTHROPIC_API_KEY  # Environment variable name for API key
+  model_id: claude-sonnet-4-6     # Model ID for API calls
+  max_tokens_output: 16000        # Max output tokens per call
+
+context_management:
+  utilization_target: 85          # % of context window to use
+  working_memory_frequency: 3     # Update every N turns
+  file_read_budget: 4000          # Max tokens per turn on file reads
+  api_response_max_sentences: 3   # Max sentences in chat response
+
+session:
+  idle_cycle_seconds: 300         # Wait between heartbeats (5 min)
+  bridge_on_end: true             # Auto-save state on session end
+
+safety:
+  warning_threshold_pct: 45       # Tier 1: warning notification to agent
+  handoff_threshold_pct: 47.5     # Tier 2: stop coding, write handoff
+  hard_stop_threshold_pct: 50     # Tier 3: kill session
+  post_stop_review: true          # Run code review after hard stop
+  model_limit: 200000             # Current model context window size
+
+build:
+  test_after_feature: true        # Run tests after each feature built

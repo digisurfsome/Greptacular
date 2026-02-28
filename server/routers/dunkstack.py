@@ -80,6 +80,12 @@ class ConfigUpdate(BaseModel):
     agent_os: Optional[dict] = None
 
 
+class ModelPresetUpdate(BaseModel):
+    """Update the active model preset (derives billing mode automatically)."""
+    model_id: str  # claude-opus-4-6 | claude-sonnet-4-6
+    context_window: int  # 200000 | 1000000
+
+
 class BridgeSaveRequest(BaseModel):
     """Request to create a bridge save."""
     reason: str = "manual"
@@ -391,6 +397,111 @@ async def update_config(update: ConfigUpdate, project_name: Optional[str] = None
     await _broadcast({"type": "config_update", "config": config})
 
     return {"status": "ok", "config": config}
+
+
+# ============================================================================
+# Auth / SDK Environment
+# ============================================================================
+
+
+def _is_subscription_mode() -> bool:
+    """Check if the current model preset should use subscription billing.
+
+    200K context = subscription (free with Claude Max)
+    1M context   = API key billing (costs money)
+
+    Same logic as client.py: use_api_billing = (agent_type == "initializer")
+    maps to: subscription = (context_window <= 200_000)
+    """
+    return _token_state["model_limit"] <= 200_000
+
+
+@router.get("/sdk-env")
+def get_sdk_env():
+    """Get the correct SDK environment vars for the current DunkStack model preset.
+
+    Returns the env dict that should be passed to ClaudeSDKClient or
+    ClaudeAgentOptions(env=...) to route billing correctly:
+    - 200K models → subscription OAuth (free)
+    - 1M models  → API key billing (paid)
+    """
+    from registry import get_effective_sdk_env
+
+    force_sub = _is_subscription_mode()
+    sdk_env = get_effective_sdk_env(force_subscription=force_sub)
+
+    # Redact API keys in the response (for display/debugging only)
+    redacted = {}
+    for k, v in sdk_env.items():
+        if "KEY" in k or "TOKEN" in k or "SECRET" in k:
+            redacted[k] = f"{v[:8]}...{v[-4:]}" if len(v) > 12 else "***"
+        else:
+            redacted[k] = v
+
+    return {
+        "mode": "subscription" if force_sub else "api",
+        "model_limit": _token_state["model_limit"],
+        "env_keys": list(sdk_env.keys()),
+        "env_redacted": redacted,
+    }
+
+
+@router.post("/model-preset")
+async def update_model_preset(preset: ModelPresetUpdate, project_name: Optional[str] = None):
+    """Update the active model preset and derive billing mode automatically.
+
+    This is the single entry point for model changes. It:
+    1. Updates the in-memory token state (model_limit, mode)
+    2. Persists to config.yml
+    3. Broadcasts to WebSocket clients
+    """
+    # Derive billing mode: 200K = subscription, 1M = api
+    is_sub = preset.context_window <= 200_000
+    mode_str = "subscription" if is_sub else "api"
+
+    # Update in-memory state
+    _token_state["model_limit"] = preset.context_window
+    _token_state["mode"] = mode_str
+
+    # Persist to config.yml
+    _ensure_agent_dir(project_name)
+    config_path = _agent_dir(project_name) / "settings" / "config.yml"
+    config: dict = {}
+    if config_path.exists():
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                config = yaml.safe_load(f) or {}
+        except Exception:
+            config = {}
+
+    config.setdefault("api", {})["model_id"] = preset.model_id
+    config.setdefault("safety", {})["model_limit"] = preset.context_window
+    config.setdefault("mode", {})["type"] = mode_str
+
+    with open(config_path, "w", encoding="utf-8") as f:
+        yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+
+    # Log the billing mode so it's visible in server output
+    logger.info(
+        "DunkStack model preset: %s @ %dK → billing: %s",
+        preset.model_id,
+        preset.context_window // 1000,
+        mode_str,
+    )
+
+    await _broadcast({
+        "type": "model_preset_update",
+        "model_id": preset.model_id,
+        "model_limit": preset.context_window,
+        "mode": mode_str,
+    })
+
+    return {
+        "status": "ok",
+        "model_id": preset.model_id,
+        "model_limit": preset.context_window,
+        "mode": mode_str,
+    }
 
 
 # ============================================================================

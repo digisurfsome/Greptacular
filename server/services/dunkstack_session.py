@@ -493,6 +493,64 @@ class DunkStackCodingSession:
             self.client = None
             return False
 
+    async def _fallback_to_subscription(self) -> bool:
+        """Tear down the current client and recreate with subscription OAuth.
+
+        Called when API key billing fails (e.g. credit balance too low) and
+        the user may have refreshed their OAuth token via ``claude login``.
+        """
+        if not self._sdk_env or not self._hooks:
+            logger.warning("DunkStack: cannot fall back to subscription — no saved state")
+            return False
+
+        logger.warning("DunkStack: API key failed, trying subscription OAuth")
+
+        if self.client and self._client_entered:
+            try:
+                await self.client.__aexit__(None, None, None)
+            except Exception:
+                pass
+            self._client_entered = False
+            self.client = None
+
+        try:
+            from registry import get_effective_sdk_env
+
+            sdk_env = get_effective_sdk_env(force_subscription=True)
+            self._sdk_env = sdk_env
+            self._force_sub = True
+
+            system_cli = shutil.which("claude")
+            system_prompt = self._system_prompt or DEFAULT_SYSTEM_PROMPT
+
+            self.client = ClaudeSDKClient(
+                options=ClaudeAgentOptions(
+                    model=self.model_id,
+                    cli_path=system_cli,
+                    system_prompt=system_prompt,
+                    setting_sources=["project", "user"],
+                    allowed_tools=DUNKSTACK_TOOLS,
+                    permission_mode="acceptEdits",
+                    max_turns=50,
+                    cwd=str(self.project_dir),
+                    settings=str(_SETTINGS_FILE.resolve()),
+                    env=sdk_env,
+                    hooks=self._hooks,
+                    betas=[],  # No 1M beta for subscription mode
+                )
+            )
+
+            await asyncio.wait_for(self.client.__aenter__(), timeout=60)
+            self._client_entered = True
+            logger.info("DunkStack client recreated with subscription OAuth (mid-session fallback)")
+            return True
+
+        except Exception:
+            logger.exception("DunkStack subscription fallback failed")
+            self._client_entered = False
+            self.client = None
+            return False
+
     async def _stream_response(self, message: str) -> AsyncGenerator[dict[str, Any], None]:
         """Send a message and yield typed events from the SDK response stream.
 
@@ -693,8 +751,34 @@ class DunkStackCodingSession:
                                 await self._report_token_usage(result_data)
                         return  # Retry succeeded
                     except Exception as retry_err:
-                        logger.exception("DunkStack retry after fallback also failed")
-                        yield {"type": "error", "content": f"API key fallback retry failed: {retry_err}"}
+                        logger.exception("DunkStack retry after API key fallback also failed")
+                        # API key also failed — try subscription OAuth as last resort
+                        sub_ok = await self._fallback_to_subscription()
+                        if sub_ok:
+                            yield {
+                                "type": "text",
+                                "content": "API key failed — retrying with subscription auth.\n\n",
+                            }
+                            try:
+                                async for chunk in self._stream_response(message):
+                                    yield chunk
+                                return
+                            except Exception as sub_err:
+                                yield {
+                                    "type": "error",
+                                    "content": (
+                                        f"All auth methods failed: {sub_err}\n\n"
+                                        "Run `claude login` or add API credits at console.anthropic.com."
+                                    ),
+                                }
+                        else:
+                            yield {
+                                "type": "error",
+                                "content": (
+                                    f"API key fallback also failed: {retry_err}\n\n"
+                                    "Run `claude login` or add API credits at console.anthropic.com."
+                                ),
+                            }
                 else:
                     yield {
                         "type": "error",

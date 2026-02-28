@@ -17,6 +17,7 @@ import {
   ClipboardPaste,
   SkipForward,
   X,
+  Zap,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -149,6 +150,25 @@ export function IntakeDock({ projectName, onProcessComplete, onSkip }: IntakeDoc
           </p>
         </div>
       </div>
+
+      {/* Test Mode Bypass */}
+      <Card className="border-2 border-primary/40 bg-primary/5">
+        <CardContent className="flex items-center gap-4 p-4">
+          <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 shrink-0">
+            <Zap size={20} className="text-primary" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <span className="text-sm font-bold text-foreground">Skip to Agent</span>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Jump straight to the coding agent. You can set up PRD files later.
+            </p>
+          </div>
+          <Button onClick={onSkip} className="gap-2 shrink-0">
+            <Zap size={14} />
+            Go
+          </Button>
+        </CardContent>
+      </Card>
 
       {/* Drop zone */}
       <Card

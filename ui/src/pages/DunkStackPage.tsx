@@ -39,6 +39,7 @@ import { useDunkStack } from '@/hooks/useDunkStack'
 import { dunkstackUpdateModelPreset } from '@/lib/api'
 import { DunkStackContextGauge } from '@/components/dunkstack/DunkStackContextGauge'
 import { DunkStackCommsChat } from '@/components/dunkstack/DunkStackCommsChat'
+import { DunkStackAgentView, type AgentEvent } from '@/components/dunkstack/DunkStackAgentView'
 import { DunkStackSafetyPanel } from '@/components/dunkstack/DunkStackSafetyPanel'
 import { DunkStackGuidePanel } from '@/components/dunkstack/DunkStackGuidePanel'
 import { IntakeDock } from '@/components/appbuilder/IntakeDock'
@@ -101,6 +102,8 @@ export function DunkStackPage(): React.JSX.Element {
     stopAgent,
     sendToAgent,
     agentStarting,
+    agentEvents: hookAgentEvents,
+    clearAgentEvents,
     connected,
     loading,
   } = useDunkStack()
@@ -417,17 +420,27 @@ export function DunkStackPage(): React.JSX.Element {
                   <span className="text-sm text-muted-foreground">Loading DunkStack...</span>
                 </div>
               </div>
-            ) : (
-              <DunkStackCommsChat
+            ) : isAgentRunning ? (
+              /* Split screen: API Call output (left) + Walkie-Talkie chat (right) */
+              <DunkStackAgentView
+                agentEvents={hookAgentEvents}
                 commsLog={commsLog}
                 onSendMessage={async (content, title) => {
-                  // Always write to the file (for persistence)
                   await sendMessage(content, title)
-                  // If agent is running, also send directly to it
-                  if (isAgentRunning && selectedProject) {
+                  if (selectedProject) {
                     await sendToAgent(selectedProject, content)
                   }
                 }}
+                controlMode={controlMode}
+                connected={connected}
+                modelId={agentStatus?.model_id}
+                isRunning={true}
+              />
+            ) : (
+              /* Full-width comms chat when agent is not running */
+              <DunkStackCommsChat
+                commsLog={commsLog}
+                onSendMessage={sendMessage}
                 controlMode={controlMode}
                 connected={connected}
               />

@@ -106,7 +106,7 @@ export function DunkStackCommsChat({
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [messages.length, agentMessages.length])
+  }, [messages.length])
 
   const handleSend = useCallback(async () => {
     const trimmed = input.trim()

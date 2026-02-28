@@ -15,6 +15,7 @@ import {
   WifiOff,
   SkipForward,
   Loader2,
+  Zap,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -75,6 +76,7 @@ export function AgentOSChat({ projectName, onComplete, onCancel }: AgentOSChatPr
     sendAnswer,
     sendApprove,
     skipStage,
+    fastTrack,
     connect,
     disconnect,
   } = useAgentOSChat({
@@ -139,9 +141,22 @@ export function AgentOSChat({ projectName, onComplete, onCancel }: AgentOSChatPr
             <h2 className="text-sm font-bold text-foreground">Agent OS PRD Creation</h2>
             <ConnectionIndicator status={connectionStatus} />
           </div>
-          <Button variant="ghost" size="sm" onClick={onCancel}>
-            <X size={16} />
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={fastTrack}
+              disabled={!isConnected || isThinking}
+              className="gap-1 text-xs text-amber-600 border-amber-500/40 hover:bg-amber-500/10 hover:text-amber-500"
+              title="Skip all stages — I already have a complete spec"
+            >
+              <Zap size={14} />
+              Fast Track
+            </Button>
+            <Button variant="ghost" size="sm" onClick={onCancel}>
+              <X size={16} />
+            </Button>
+          </div>
         </div>
 
         {/* Stage progress bar */}

@@ -774,8 +774,6 @@ async def start_agent(req: AgentStartRequest = AgentStartRequest()):
     # Determine model and billing from current preset
     model = req.model
     if not model:
-        model_limit = _token_state["model_limit"]
-        mode = _token_state["mode"]
         # Default: use model from current preset
         model = "claude-sonnet-4-6"  # safe default
 

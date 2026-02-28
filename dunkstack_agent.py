@@ -18,7 +18,6 @@ import argparse
 import asyncio
 import io
 import json
-import os
 import shutil
 import sys
 from pathlib import Path
@@ -28,7 +27,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
-from claude_agent_sdk.types import HookContext, HookInput, HookMatcher, SyncHookJSONOutput
+from claude_agent_sdk.types import HookMatcher
 
 from registry import get_effective_sdk_env, get_project_path
 from security import bash_security_hook
@@ -115,9 +114,9 @@ def create_dunkstack_client(
     sdk_env = get_effective_sdk_env(force_subscription=force_subscription)
 
     if force_subscription:
-        print(f"   Billing: Subscription (200K context, free)")
+        print("   Billing: Subscription (200K context, free)")
     else:
-        print(f"   Billing: API key (1M context, paid)")
+        print("   Billing: API key (1M context, paid)")
 
     # Security settings - sandbox + project-scoped filesystem
     security_settings = {
@@ -248,7 +247,7 @@ async def main():
     args = parse_args()
     project_dir = resolve_project_dir(args.project_dir)
 
-    print(f"DunkStack Agent")
+    print("DunkStack Agent")
     print(f"   Project: {project_dir}")
     print(f"   Model: {args.model}")
 

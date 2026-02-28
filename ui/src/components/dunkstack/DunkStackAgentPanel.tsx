@@ -28,7 +28,6 @@ interface DunkStackAgentPanelProps {
 
 export function DunkStackAgentPanel({
   projectName,
-  connected: _connected,
   modelLabel,
 }: DunkStackAgentPanelProps): React.JSX.Element {
   const [agentStatus, setAgentStatus] = useState<string>('stopped')
@@ -46,8 +45,6 @@ export function DunkStackAgentPanel({
 
   // Poll agent status on mount + periodically
   useEffect(() => {
-    let interval: ReturnType<typeof setInterval>
-
     async function checkStatus() {
       try {
         const status = await dunkstackGetAgentStatus()
@@ -58,7 +55,7 @@ export function DunkStackAgentPanel({
     }
 
     checkStatus()
-    interval = setInterval(checkStatus, 5000)
+    const interval = setInterval(checkStatus, 5000)
 
     return () => clearInterval(interval)
   }, [])

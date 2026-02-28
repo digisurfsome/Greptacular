@@ -39,7 +39,6 @@ import { useProjects } from '@/hooks/useProjects'
 import { useDunkStack } from '@/hooks/useDunkStack'
 import { dunkstackUpdateModelPreset } from '@/lib/api'
 import { DunkStackContextGauge } from '@/components/dunkstack/DunkStackContextGauge'
-import { DunkStackCommsChat } from '@/components/dunkstack/DunkStackCommsChat'
 import { DunkStackAgentView } from '@/components/dunkstack/DunkStackAgentView'
 import { DunkStackSafetyPanel } from '@/components/dunkstack/DunkStackSafetyPanel'
 import { DunkStackGuidePanel } from '@/components/dunkstack/DunkStackGuidePanel'
@@ -147,17 +146,29 @@ export function DunkStackPage(): React.JSX.Element {
     localStorage.setItem('dunkstack-selected-project', name)
   }, [])
 
+  /** Start the coding agent for the selected project. */
+  const handleStartAgent = useCallback(async () => {
+    if (!selectedProject) return
+    const preset = MODEL_PRESETS[modelPresetIndex]
+    const modelId = preset.model === 'opus' ? 'claude-opus-4-6' : 'claude-sonnet-4-6'
+    await startAgent(selectedProject, modelId, preset.limit)
+  }, [selectedProject, modelPresetIndex, startAgent])
+
   /** Start/stop the coding agent for the selected project. */
   const handleToggleAgent = useCallback(async () => {
     if (!selectedProject) return
     if (agentStatus?.status === 'running') {
       await stopAgent(selectedProject)
     } else {
-      const preset = MODEL_PRESETS[modelPresetIndex]
-      const modelId = preset.model === 'opus' ? 'claude-opus-4-6' : 'claude-sonnet-4-6'
-      await startAgent(selectedProject, modelId, preset.limit)
+      await handleStartAgent()
     }
-  }, [selectedProject, agentStatus, modelPresetIndex, startAgent, stopAgent])
+  }, [selectedProject, agentStatus, handleStartAgent, stopAgent])
+
+  /** Send a message to the agent via the API call. */
+  const handleSendToAgent = useCallback(async (message: string) => {
+    if (!selectedProject) return
+    await sendToAgent(selectedProject, message)
+  }, [selectedProject, sendToAgent])
 
   const isAgentRunning = agentStatus?.status === 'running'
 
@@ -433,29 +444,20 @@ export function DunkStackPage(): React.JSX.Element {
                   <span className="text-sm text-muted-foreground">Loading DunkStack...</span>
                 </div>
               </div>
-            ) : isAgentRunning ? (
-              /* Split screen: API Call output (left) + Walkie-Talkie chat (right) */
+            ) : (
+              /* Always show split screen: API Call (left) + Walkie-Talkie (right) */
               <DunkStackAgentView
                 agentEvents={hookAgentEvents}
-                commsLog={commsLog}
-                onSendMessage={async (content, title) => {
-                  await sendMessage(content, title)
-                  if (selectedProject) {
-                    await sendToAgent(selectedProject, content)
-                  }
-                }}
-                controlMode={controlMode}
-                connected={connected}
-                modelId={agentStatus?.model_id}
-                isRunning={true}
-              />
-            ) : (
-              /* Full-width comms chat when agent is not running */
-              <DunkStackCommsChat
                 commsLog={commsLog}
                 onSendMessage={sendMessage}
                 controlMode={controlMode}
                 connected={connected}
+                modelId={agentStatus?.model_id}
+                isRunning={isAgentRunning}
+                onStartAgent={handleStartAgent}
+                onSendToAgent={handleSendToAgent}
+                agentStarting={agentStarting}
+                projectName={selectedProject ?? undefined}
               />
             )
           )}

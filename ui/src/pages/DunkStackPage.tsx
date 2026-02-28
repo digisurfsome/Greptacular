@@ -33,7 +33,7 @@ import { ThemeSelector } from '@/components/ThemeSelector'
 import { useTheme } from '@/hooks/useTheme'
 import { useProjects } from '@/hooks/useProjects'
 import { useDunkStack } from '@/hooks/useDunkStack'
-import { dunkstackUpdateConfig } from '@/lib/api'
+import { dunkstackUpdateModelPreset } from '@/lib/api'
 import { DunkStackContextGauge } from '@/components/dunkstack/DunkStackContextGauge'
 import { DunkStackCommsChat } from '@/components/dunkstack/DunkStackCommsChat'
 import { DunkStackSafetyPanel } from '@/components/dunkstack/DunkStackSafetyPanel'
@@ -114,16 +114,16 @@ export function DunkStackPage(): React.JSX.Element {
   const resolveGap = useResolveGap(selectedProject || '')
   const autoResolveGaps = useAutoResolveGaps(selectedProject || '')
 
-  /** Switch model preset: persist to localStorage and push config to backend. */
+  /** Switch model preset: persist to localStorage and push config to backend.
+   *  Uses the dedicated model-preset endpoint which auto-derives billing mode:
+   *  200K = subscription (free), 1M = API key (paid). */
   const handleModelPresetChange = useCallback(async (index: number) => {
     setModelPresetIndex(index)
     localStorage.setItem('dunkstack-model-preset', String(index))
     const preset = MODEL_PRESETS[index]
+    const modelId = preset.model === 'opus' ? 'claude-opus-4-6' : 'claude-sonnet-4-6'
     try {
-      await dunkstackUpdateConfig({
-        api: { model_id: preset.model === 'opus' ? 'claude-opus-4-6' : 'claude-sonnet-4-6' },
-        safety: { model_limit: preset.limit },
-      })
+      await dunkstackUpdateModelPreset(modelId, preset.limit)
     } catch {
       // Config update is best-effort; the UI still reflects the choice
     }

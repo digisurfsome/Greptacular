@@ -9,14 +9,15 @@ This manual covers everything you need to operate the DunkStack file-based conte
 ## Table of Contents
 
 1. [Quick Start](#1-quick-start)
-2. [The .agent Directory Structure](#2-the-agent-directory-structure)
-3. [DunkStack Operations](#3-dunkstack-operations)
-4. [Agent OS Workflow](#4-agent-os-workflow)
-5. [Testing Each Stage](#5-testing-each-stage)
-6. [REST API Reference](#6-rest-api-reference)
-7. [WebSocket Protocol](#7-websocket-protocol)
-8. [The Handoff](#8-the-handoff)
-9. [Troubleshooting](#9-troubleshooting)
+2. [Step-by-Step Setup Walkthrough](#2-step-by-step-setup-walkthrough)
+3. [The .agent Directory Structure](#3-the-agent-directory-structure)
+4. [DunkStack Operations](#4-dunkstack-operations)
+5. [Agent OS Workflow](#5-agent-os-workflow)
+6. [Testing Each Stage](#6-testing-each-stage)
+7. [REST API Reference](#7-rest-api-reference)
+8. [WebSocket Protocol](#8-websocket-protocol)
+9. [The Handoff](#9-the-handoff)
+10. [Troubleshooting](#10-troubleshooting)
 
 ---
 
@@ -87,7 +88,215 @@ Expected response:
 
 ---
 
-## 2. The .agent Directory Structure
+## 2. Step-by-Step Setup Walkthrough
+
+This section walks you through setting up DunkStack from scratch -- from "I just cloned the repo" to "it's running and I'm talking to the agent." Follow these steps in order.
+
+### Step 1: Start the Server
+
+```bash
+# Clone and enter the repo
+cd /path/to/Greptacular
+
+# Option A: Use the start script (recommended)
+./start_ui.sh          # Linux/macOS
+start_ui.bat           # Windows
+
+# Option B: Manual start
+python -m venv venv
+source venv/bin/activate         # Linux/macOS
+# venv\Scripts\activate          # Windows
+pip install -r requirements.txt
+cd ui && npm install && npm run build && cd ..
+python start_ui.py --port 8888
+```
+
+Verify: `curl http://127.0.0.1:8888/api/health` should return `{"status": "healthy"}`.
+
+### Step 2: Create or Select a Project
+
+DunkStack operates on **AutoForge projects**. You need at least one.
+
+**Via the UI:** Go to `http://127.0.0.1:8888` -> click "New Project" -> give it a name and directory.
+
+**Via the API:**
+```bash
+curl -X POST "http://127.0.0.1:8888/api/projects" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "my-app", "path": "/path/to/my-app"}'
+```
+
+### Step 3: Initialize the .agent/ Directory
+
+The `.agent/` directory holds all DunkStack and Agent OS files. It gets created automatically when the backend first touches a project, but you can also trigger it manually.
+
+**Automatic:** Visit the DunkStack page (`http://127.0.0.1:8888/#/dunkstack`) and select your project. The backend creates the directory on the first API call.
+
+**Manual (via API):**
+```bash
+# Any DunkStack endpoint will create .agent/ if it doesn't exist
+curl "http://127.0.0.1:8888/api/dunkstack/config?project_name=my-app"
+```
+
+**Manual (via Agent OS):**
+```bash
+# Agent OS has its own init that creates the full tree
+curl -X POST "http://127.0.0.1:8888/api/agent-os/standards/my-app/infer"
+```
+
+### Step 4: Understand the Two File Categories
+
+There are two categories of files in `.agent/`:
+
+#### Category A: Universal Files (Same for Every Project)
+
+These files are **templates** -- they have the same initial content regardless of what app you're building. They ship with the repo at `.agent/` in the project root and get copied or created automatically.
+
+| File | Purpose | Repo Location (Template) |
+|------|---------|--------------------------|
+| `system_prompt.md` | Agent operating protocol (file-based mode rules) | `.agent/system_prompt.md` |
+| `index.md` | Master file map (agent reads first each session) | `.agent/index.md` |
+| `working_memory.md` | Agent's current task, state, next steps | `.agent/working_memory.md` |
+| `bridge.md` | Session continuity (read on startup, then deleted) | `.agent/bridge.md` |
+| `comms/to_human.md` | Agent -> human messages (append-only) | `.agent/comms/to_human.md` |
+| `comms/from_human.md` | Human -> agent messages (read-only for agent) | `.agent/comms/from_human.md` |
+| `comms/control.md` | Session mode (idle/continue/autopilot) | `.agent/comms/control.md` |
+| `settings/config.yml` | Safety thresholds, mode, API settings | `.agent/settings/config.yml` |
+| `progress/build_log.md` | Append-only build log | `.agent/progress/build_log.md` |
+
+**Where to find them in the repo:** All these templates live at `/home/user/Greptacular/.agent/` in the repo root. They are the "blank slate" versions.
+
+#### Category B: Project-Specific Files (Generated per Project)
+
+These files are **generated** by Agent OS during the PRD creation process. They're different for every project because they contain your app's specific information.
+
+| File | Purpose | When It's Created |
+|------|---------|-------------------|
+| `product/vision.md` | App vision, problem statement, success | Stage 3: Product Discovery |
+| `product/target-users.md` | Who uses it, their needs | Stage 3: Product Discovery |
+| `product/use-cases.md` | Core and secondary use cases | Stage 3: Product Discovery |
+| `product/roadmap.md` | MVP, v1.1, and future features | Stage 3: Product Discovery |
+| `product/constraints.md` | Hard limits (budget, tech, timeline) | Stage 3: Product Discovery |
+| `product/competitive-context.md` | What exists today, what's different | Stage 3: Product Discovery |
+| `specs/feature-001-*.md` | Per-feature specification | Stage 6: Spec Generation |
+| `knowledge/context-primer.md` | Build agent's first-read briefing | Stage 8: Handoff |
+| `scope_boundary.md` | In-scope vs out-of-scope features | Stage 8: Handoff |
+| `../agent-os/standards/*.md` | Tech stack, coding style, quality bars | Stage 2: Standards |
+
+These are **created by the system** -- you don't need to place them manually. Agent OS generates them as you go through the PRD workflow.
+
+### Step 5: Copy Universal Template Files to Your Project
+
+If DunkStack auto-creation didn't populate all the files (or you're setting up manually), copy the templates from the repo root:
+
+```bash
+# Set your project directory
+PROJECT_DIR="/path/to/my-app"
+
+# Create the directory structure
+mkdir -p "$PROJECT_DIR/.agent/comms"
+mkdir -p "$PROJECT_DIR/.agent/knowledge"
+mkdir -p "$PROJECT_DIR/.agent/output"
+mkdir -p "$PROJECT_DIR/.agent/progress"
+mkdir -p "$PROJECT_DIR/.agent/settings"
+mkdir -p "$PROJECT_DIR/.agent/intake"
+mkdir -p "$PROJECT_DIR/.agent/intake_staging"
+mkdir -p "$PROJECT_DIR/.agent/analytics/reports"
+mkdir -p "$PROJECT_DIR/agent-os/standards"
+
+# Copy universal template files from the repo
+REPO_DIR="/path/to/Greptacular"
+
+cp "$REPO_DIR/.agent/system_prompt.md"         "$PROJECT_DIR/.agent/system_prompt.md"
+cp "$REPO_DIR/.agent/index.md"                 "$PROJECT_DIR/.agent/index.md"
+cp "$REPO_DIR/.agent/working_memory.md"        "$PROJECT_DIR/.agent/working_memory.md"
+cp "$REPO_DIR/.agent/bridge.md"                "$PROJECT_DIR/.agent/bridge.md"
+cp "$REPO_DIR/.agent/comms/to_human.md"        "$PROJECT_DIR/.agent/comms/to_human.md"
+cp "$REPO_DIR/.agent/comms/from_human.md"      "$PROJECT_DIR/.agent/comms/from_human.md"
+cp "$REPO_DIR/.agent/comms/control.md"         "$PROJECT_DIR/.agent/comms/control.md"
+cp "$REPO_DIR/.agent/settings/config.yml"      "$PROJECT_DIR/.agent/settings/config.yml"
+cp "$REPO_DIR/.agent/progress/build_log.md"    "$PROJECT_DIR/.agent/progress/build_log.md"
+```
+
+**Or, if you're lazy:** Just use the DunkStack UI. It creates everything automatically on first access.
+
+### Step 6: Open the DunkStack Dashboard
+
+1. Open `http://127.0.0.1:8888/#/dunkstack` in your browser
+2. Select your project from the left sidebar
+3. You should see:
+   - **Center panel:** Comms Chat (empty, ready for messages)
+   - **Top bar:** Model preset pills (Opus 4.6 · 200K selected by default)
+   - **Context Gauge:** Green bar at 0% (no tokens used yet)
+
+### Step 7: Pick Your Model Preset
+
+Click one of the model pills in the top bar:
+
+| Preset | Best For | Context Window |
+|--------|----------|---------------|
+| **Opus 4.6 · 200K** | Fast iteration, testing | 200K tokens |
+| **Opus 4.6 · 1M** | Large codebases, deep analysis | 1M tokens |
+| **Sonnet 4.6 · 1M** | Cost-effective, full context | 1M tokens |
+
+This updates both the frontend gauge and the backend `config.yml` so the agent knows which model/window to respect.
+
+### Step 8: Send Your First Message
+
+Type a message in the center panel input and press Enter. This writes to `.agent/comms/from_human.md`. The agent reads this file every turn.
+
+Example first messages:
+- "Start building the auth feature"
+- "Read the project specs and tell me your plan"
+- "Focus on feature #1 first"
+
+### Step 9: Set the Control Mode
+
+In the Safety panel (shield icon, top bar), set the mode:
+
+- **Idle** (default) -- Agent waits for instructions after each task
+- **Continue** -- Agent automatically picks up the next feature
+- **Autopilot** -- Full autonomous mode, works through the entire backlog
+
+For first-time testing, start with **Idle** so you can see what happens after each task.
+
+### Step 10: Use Agent OS to Create a PRD (Optional)
+
+If you want to create a full PRD before building:
+
+1. Click the **Sparkles** button in the top bar to open Agent OS
+2. Start in the **Intake Dock** -- paste your app description or upload files
+3. Walk through all stages: Standards -> Product -> Features -> Gaps -> Specs -> Handoff
+4. When complete, the system generates `features.db` and the build agent can start
+
+### Quick Reference: File Finder
+
+If you need to manually find or edit any file, here's where everything lives in the repo:
+
+| What You Need | Where to Find It |
+|---------------|-----------------|
+| DunkStack config template | `Greptacular/.agent/settings/config.yml` |
+| Agent operating protocol | `Greptacular/.agent/system_prompt.md` |
+| File index template | `Greptacular/.agent/index.md` |
+| Working memory template | `Greptacular/.agent/working_memory.md` |
+| Bridge template | `Greptacular/.agent/bridge.md` |
+| Comms: to_human template | `Greptacular/.agent/comms/to_human.md` |
+| Comms: from_human template | `Greptacular/.agent/comms/from_human.md` |
+| Comms: control template | `Greptacular/.agent/comms/control.md` |
+| Build log template | `Greptacular/.agent/progress/build_log.md` |
+| Implementation plan | `Greptacular/.agent/output/implementation_plan.md` |
+| Standards templates (6 files) | `Greptacular/server/templates/agent-os/standards/` |
+| Product templates (6 files) | `Greptacular/server/templates/agent-os/product/` |
+| Feature spec template | `Greptacular/server/templates/agent-os/specs/` |
+| DunkStack router (backend) | `Greptacular/server/routers/dunkstack.py` |
+| Agent OS router (backend) | `Greptacular/server/routers/agent_os.py` |
+| DunkStack page (frontend) | `Greptacular/ui/src/pages/DunkStackPage.tsx` |
+| DunkStack hook (frontend) | `Greptacular/ui/src/hooks/useDunkStack.ts` |
+| Full CLI manual | `Greptacular/DUNKSTACK_MANUAL.md` |
+
+---
+
+## 3. The .agent Directory Structure
 
 When Agent OS initializes for a project, it creates a complete directory tree under `{project_dir}/.agent/`. Here is every subdirectory and file, with its purpose:
 
@@ -150,7 +359,7 @@ Standards are at the project root level (`agent-os/standards/`) rather than insi
 
 ---
 
-## 3. DunkStack Operations
+## 4. DunkStack Operations
 
 DunkStack is a file-based context bridge between a human operator and an AI agent. Instead of real-time chat, communication happens through markdown files that both parties read and append to. The REST API and WebSocket provide programmatic access to these files.
 
@@ -400,7 +609,7 @@ See [Section 7: WebSocket Protocol](#7-websocket-protocol) for all message types
 
 ---
 
-## 4. Agent OS Workflow
+## 5. Agent OS Workflow
 
 Agent OS is a structured PRD (Product Requirements Document) creation system that guides you through 9 stages (0-8) to go from a raw idea to a fully populated `features.db` ready for the AutoForge build agent.
 
@@ -567,7 +776,7 @@ If all checks pass, the handoff is marked as ready and the session is complete.
 
 ---
 
-## 5. Testing Each Stage
+## 6. Testing Each Stage
 
 This section provides exact commands to test each stage. Replace `my-project` with your actual project name.
 
@@ -814,7 +1023,7 @@ curl -X DELETE "http://127.0.0.1:8888/api/agent-os/sessions/my-project"
 
 ---
 
-## 6. REST API Reference
+## 7. REST API Reference
 
 ### 6.1 DunkStack Endpoints
 
@@ -978,7 +1187,7 @@ All Agent OS endpoints are prefixed with `/api/agent-os`. The `project_name` is 
 
 ---
 
-## 7. WebSocket Protocol
+## 8. WebSocket Protocol
 
 ### 7.1 DunkStack WebSocket
 
@@ -1082,7 +1291,7 @@ All Agent OS endpoints are prefixed with `/api/agent-os`. The `project_name` is 
 
 ---
 
-## 8. The Handoff
+## 9. The Handoff
 
 The handoff is the critical bridge between Agent OS (PRD creation) and AutoForge (automated build). Here is exactly what happens and what gets produced.
 
@@ -1163,7 +1372,7 @@ The agent will:
 
 ---
 
-## 9. Troubleshooting
+## 10. Troubleshooting
 
 ### Server Will Not Start
 

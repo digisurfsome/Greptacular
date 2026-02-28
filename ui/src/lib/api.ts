@@ -1600,6 +1600,17 @@ export async function dunkstackUpdateConfig(update: Record<string, unknown>): Pr
   })
 }
 
+export async function dunkstackUpdateModelPreset(modelId: string, contextWindow: number): Promise<{ status: string; model_id: string; model_limit: number; mode: string }> {
+  return fetchJSON('/dunkstack/model-preset', {
+    method: 'POST',
+    body: JSON.stringify({ model_id: modelId, context_window: contextWindow }),
+  })
+}
+
+export async function dunkstackGetSdkEnv(): Promise<{ mode: string; model_limit: number; env_keys: string[]; env_redacted: Record<string, string> }> {
+  return fetchJSON('/dunkstack/sdk-env')
+}
+
 export async function dunkstackGetTokenState(): Promise<DunkStackTokenState> {
   return fetchJSON('/dunkstack/tokens')
 }

@@ -1,14 +1,17 @@
 /**
  * DunkStack Agent View
  *
- * Split-screen layout for when the coding agent is running.
- * Left panel shows real-time streaming API output (text, tool calls,
- * tool results, token usage, errors). Right panel renders the
- * file-based comms chat (DunkStackCommsChat).
+ * Resizable split-screen layout:
+ *   Left (1/4 default):  Agent event log (top 3/4) + API chat input (bottom 1/4)
+ *   Right (3/4 default): Walkie-talkie file comms (DunkStackCommsChat)
+ *
+ * Both the horizontal (left/right) and vertical (log/chat) splits are
+ * draggable via mouse. The first message typed into the API chat starts
+ * the agent — no separate "Start Agent" button needed.
  */
 
-import { useRef, useEffect } from 'react'
-import { Terminal, Wrench, CheckCircle2, XCircle, AlertTriangle, Activity, Cpu, Coins } from 'lucide-react'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { Terminal, Wrench, CheckCircle2, XCircle, AlertTriangle, Activity, Cpu, Coins, Send, Loader2 } from 'lucide-react'
 import { DunkStackCommsChat } from './DunkStackCommsChat'
 import type { CommsEntry } from '@/hooks/useDunkStack'
 
@@ -30,34 +33,33 @@ export interface AgentEvent {
 }
 
 interface DunkStackAgentViewProps {
-  /** Agent streaming events (accumulated from WebSocket) */
   agentEvents: AgentEvent[]
-  /** Combined, sorted comms log */
   commsLog: CommsEntry[]
-  /** Send a message (human -> agent via from_human.md) */
   onSendMessage: (content: string, title?: string) => Promise<void>
-  /** Current session control mode */
   controlMode: string
-  /** Whether connected to WebSocket */
   connected: boolean
-  /** Model identifier shown in the header */
   modelId?: string
-  /** Whether the agent is currently running */
   isRunning: boolean
+  /** Send a message to the agent via API call */
+  onSendToAgent?: (message: string) => Promise<void>
+  /** Start the agent (called automatically on first API chat message) */
+  onStartAgent?: () => Promise<void>
+  /** Whether the agent is currently starting up */
+  agentStarting?: boolean
+  /** Name of the selected project */
+  projectName?: string
 }
 
 // ============================================================================
 // Helpers
 // ============================================================================
 
-/** Truncate long strings for display, preserving start and end. */
 function truncate(text: string, max: number): string {
   if (text.length <= max) return text
   const half = Math.floor((max - 3) / 2)
   return `${text.slice(0, half)}...${text.slice(-half)}`
 }
 
-/** Format a JSON-serializable value into a compact one-line preview. */
 function formatInputPreview(input: unknown): string {
   if (input == null) return ''
   try {
@@ -68,11 +70,56 @@ function formatInputPreview(input: unknown): string {
   }
 }
 
-/** Format token counts with K/M suffixes. */
 function formatTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
   return String(n)
+}
+
+// ============================================================================
+// Resizable splitter hook
+// ============================================================================
+
+function useSplitter(
+  direction: 'horizontal' | 'vertical',
+  defaultRatio: number,
+  containerRef: React.RefObject<HTMLDivElement | null>,
+) {
+  const [ratio, setRatio] = useState(defaultRatio)
+  const dragging = useRef(false)
+
+  const onMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    dragging.current = true
+
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!dragging.current || !containerRef.current) return
+      const rect = containerRef.current.getBoundingClientRect()
+      let newRatio: number
+      if (direction === 'horizontal') {
+        newRatio = (ev.clientX - rect.left) / rect.width
+      } else {
+        newRatio = (ev.clientY - rect.top) / rect.height
+      }
+      // Clamp between 10% and 90%
+      setRatio(Math.min(0.9, Math.max(0.1, newRatio)))
+    }
+
+    const onMouseUp = () => {
+      dragging.current = false
+      document.removeEventListener('mousemove', onMouseMove)
+      document.removeEventListener('mouseup', onMouseUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+
+    document.addEventListener('mousemove', onMouseMove)
+    document.addEventListener('mouseup', onMouseUp)
+    document.body.style.cursor = direction === 'horizontal' ? 'col-resize' : 'row-resize'
+    document.body.style.userSelect = 'none'
+  }, [direction, containerRef])
+
+  return { ratio, onMouseDown }
 }
 
 // ============================================================================
@@ -178,67 +225,181 @@ export function DunkStackAgentView({
   connected,
   modelId,
   isRunning,
+  onSendToAgent,
+  onStartAgent,
+  agentStarting,
+  projectName,
 }: DunkStackAgentViewProps): React.JSX.Element {
   const scrollRef = useRef<HTMLDivElement>(null)
+  const [apiChatInput, setApiChatInput] = useState('')
+  const [apiChatSending, setApiChatSending] = useState(false)
 
-  // Auto-scroll the API call log when new events arrive
+  // Refs for resizable containers
+  const hContainerRef = useRef<HTMLDivElement>(null)
+  const vContainerRef = useRef<HTMLDivElement>(null)
+
+  // Horizontal split: left (API) / right (walkie-talkie) — default 25% / 75%
+  const hSplitter = useSplitter('horizontal', 0.25, hContainerRef)
+  // Vertical split on left panel: top (log) / bottom (chat) — default 75% / 25%
+  const vSplitter = useSplitter('vertical', 0.75, vContainerRef)
+
+  // Auto-scroll the event log
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
   }, [agentEvents.length])
 
-  return (
-    <div className="flex h-full w-full">
-      {/* ── Left Panel: API Call Output ── */}
-      <div className="flex-1 flex flex-col min-w-0 border-r border-border">
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-card shrink-0">
-          <div className="flex items-center gap-2">
-            <Terminal size={16} className="text-primary" />
-            <span className="text-sm font-semibold text-foreground">API Call</span>
-            {modelId && (
-              <span className="text-[10px] text-muted-foreground font-mono">
-                {modelId}
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <Cpu size={12} className="text-muted-foreground" />
-            <span className="text-[10px] text-muted-foreground font-mono">
-              {agentEvents.length} events
-            </span>
-            <span
-              className={`w-2 h-2 rounded-full shrink-0 ${
-                isRunning ? 'bg-emerald-500 animate-pulse' : 'bg-muted-foreground/30'
-              }`}
-              title={isRunning ? 'Agent running' : 'Agent idle'}
-            />
-          </div>
-        </div>
+  // Send a message via the API chat. If agent isn't running, start it first.
+  const handleApiChatSend = useCallback(async () => {
+    const msg = apiChatInput.trim()
+    if (!msg) return
 
-        {/* Scrollable event log */}
-        <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-2 min-h-0">
-          {agentEvents.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-center gap-3">
-              <Terminal size={32} className="text-muted-foreground/30" />
-              <div>
-                <p className="text-sm text-muted-foreground">No agent output yet</p>
-                <p className="text-xs text-muted-foreground/60 mt-1">
-                  Streaming events will appear here when the agent starts processing.
-                </p>
+    setApiChatSending(true)
+    setApiChatInput('')
+
+    try {
+      // Start agent if not running
+      if (!isRunning && !agentStarting && onStartAgent) {
+        await onStartAgent()
+      }
+      // Send message to agent
+      if (onSendToAgent) {
+        await onSendToAgent(msg)
+      }
+    } catch (e) {
+      console.error('Failed to send API chat message:', e)
+    } finally {
+      setApiChatSending(false)
+    }
+  }, [apiChatInput, isRunning, agentStarting, onStartAgent, onSendToAgent])
+
+  const handleApiChatKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleApiChatSend()
+    }
+  }, [handleApiChatSend])
+
+  const isBusy = agentStarting || apiChatSending
+
+  return (
+    <div ref={hContainerRef} className="flex h-full w-full overflow-hidden">
+      {/* ── Left Panel: API Call (log + chat) ── */}
+      <div
+        className="flex flex-col min-w-0 overflow-hidden"
+        style={{ width: `${hSplitter.ratio * 100}%` }}
+      >
+        <div ref={vContainerRef} className="flex flex-col flex-1 min-h-0">
+          {/* Top: Event Log */}
+          <div
+            className="flex flex-col min-h-0 overflow-hidden"
+            style={{ height: `${vSplitter.ratio * 100}%` }}
+          >
+            {/* Log header */}
+            <div className="flex items-center justify-between px-3 py-1.5 border-b border-border bg-card shrink-0">
+              <div className="flex items-center gap-2">
+                <Terminal size={14} className="text-primary" />
+                <span className="text-xs font-semibold text-foreground">API Call</span>
+                {modelId && (
+                  <span className="text-[10px] text-muted-foreground font-mono">{modelId}</span>
+                )}
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Cpu size={11} className="text-muted-foreground" />
+                <span className="text-[10px] text-muted-foreground font-mono">
+                  {agentEvents.length} events
+                </span>
+                <span
+                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                    isRunning ? 'bg-emerald-500 animate-pulse' :
+                    agentStarting ? 'bg-amber-500 animate-pulse' :
+                    'bg-muted-foreground/30'
+                  }`}
+                />
               </div>
             </div>
-          ) : (
-            agentEvents.map((event) => (
-              <EventItem key={event.id} event={event} />
-            ))
-          )}
+
+            {/* Scrollable event log */}
+            <div ref={scrollRef} className="flex-1 overflow-y-auto p-2 space-y-1.5 min-h-0">
+              {agentEvents.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-center gap-2">
+                  <Terminal size={24} className="text-muted-foreground/20" />
+                  <p className="text-xs text-muted-foreground">
+                    {isRunning ? 'Waiting for output...' : 'Type a message below to start the agent'}
+                  </p>
+                </div>
+              ) : (
+                agentEvents.map((event) => (
+                  <EventItem key={event.id} event={event} />
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Vertical splitter handle */}
+          <div
+            onMouseDown={vSplitter.onMouseDown}
+            className="h-1.5 shrink-0 cursor-row-resize bg-border/50 hover:bg-primary/30 transition-colors flex items-center justify-center"
+          >
+            <div className="w-8 h-0.5 rounded-full bg-muted-foreground/30" />
+          </div>
+
+          {/* Bottom: API Chat Input */}
+          <div
+            className="flex flex-col min-h-0 overflow-hidden"
+            style={{ height: `${(1 - vSplitter.ratio) * 100}%` }}
+          >
+            <div className="flex-1 flex flex-col p-2 min-h-0">
+              <textarea
+                value={apiChatInput}
+                onChange={e => setApiChatInput(e.target.value)}
+                onKeyDown={handleApiChatKeyDown}
+                placeholder={
+                  isRunning
+                    ? 'Send a message to the agent...'
+                    : projectName
+                      ? `Type a message to start the agent on "${projectName}"...`
+                      : 'Select a project, then type to start...'
+                }
+                disabled={isBusy || !projectName}
+                className="flex-1 w-full resize-none bg-background text-foreground text-sm font-mono p-2 rounded-lg border border-border focus:outline-none focus:border-primary placeholder:text-muted-foreground/50 min-h-0"
+              />
+              <div className="flex items-center justify-between mt-1.5 shrink-0">
+                <span className="text-[10px] text-muted-foreground">
+                  {isRunning ? 'Agent running' : 'Enter sends · Shift+Enter for newline'}
+                </span>
+                <button
+                  onClick={handleApiChatSend}
+                  disabled={!apiChatInput.trim() || isBusy || !projectName}
+                  className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  {isBusy ? (
+                    <Loader2 size={12} className="animate-spin" />
+                  ) : (
+                    <Send size={12} />
+                  )}
+                  {!isRunning && !agentStarting ? 'Start' : 'Send'}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
+      {/* Horizontal splitter handle */}
+      <div
+        onMouseDown={hSplitter.onMouseDown}
+        className="w-1.5 shrink-0 cursor-col-resize bg-border/50 hover:bg-primary/30 transition-colors flex items-center justify-center"
+      >
+        <div className="h-8 w-0.5 rounded-full bg-muted-foreground/30" />
+      </div>
+
       {/* ── Right Panel: Walkie-Talkie (Comms Chat) ── */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div
+        className="flex flex-col min-w-0 overflow-hidden"
+        style={{ width: `${(1 - hSplitter.ratio) * 100}%` }}
+      >
         <DunkStackCommsChat
           commsLog={commsLog}
           onSendMessage={onSendMessage}

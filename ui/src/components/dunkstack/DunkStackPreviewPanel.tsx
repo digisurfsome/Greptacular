@@ -24,6 +24,7 @@ import {
   Smartphone,
   Monitor,
   AlertTriangle,
+  Columns2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -36,6 +37,10 @@ import type { DevServerStatus } from '@/lib/types'
 interface DunkStackPreviewPanelProps {
   /** Currently selected project name */
   projectName: string
+  /** Whether the panel is snapped to half-screen */
+  isHalf?: boolean
+  /** Toggle half-screen snap */
+  onToggleHalf?: () => void
 }
 
 type ViewportMode = 'full' | 'tablet' | 'mobile'
@@ -46,7 +51,7 @@ const VIEWPORT_WIDTHS: Record<ViewportMode, string> = {
   mobile: '375px',
 }
 
-export function DunkStackPreviewPanel({ projectName }: DunkStackPreviewPanelProps): React.JSX.Element {
+export function DunkStackPreviewPanel({ projectName, isHalf, onToggleHalf }: DunkStackPreviewPanelProps): React.JSX.Element {
   const [status, setStatus] = useState<DevServerStatus>('stopped')
   const [url, setUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -145,7 +150,7 @@ export function DunkStackPreviewPanel({ projectName }: DunkStackPreviewPanelProp
   if (loading) {
     return (
       <div className="flex flex-col h-full">
-        <PreviewHeader viewport={viewport} onViewportChange={setViewport} />
+        <PreviewHeader viewport={viewport} onViewportChange={setViewport} isHalf={isHalf} onToggleHalf={onToggleHalf} />
         <div className="flex-1 flex items-center justify-center">
           <Loader2 size={24} className="animate-spin text-muted-foreground" />
         </div>
@@ -156,7 +161,7 @@ export function DunkStackPreviewPanel({ projectName }: DunkStackPreviewPanelProp
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <PreviewHeader viewport={viewport} onViewportChange={setViewport} />
+      <PreviewHeader viewport={viewport} onViewportChange={setViewport} isHalf={isHalf} onToggleHalf={onToggleHalf} />
 
       {/* Controls bar */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border/50 shrink-0">
@@ -266,9 +271,13 @@ export function DunkStackPreviewPanel({ projectName }: DunkStackPreviewPanelProp
 function PreviewHeader({
   viewport,
   onViewportChange,
+  isHalf,
+  onToggleHalf,
 }: {
   viewport: ViewportMode
   onViewportChange: (v: ViewportMode) => void
+  isHalf?: boolean
+  onToggleHalf?: () => void
 }) {
   return (
     <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-card shrink-0">
@@ -277,6 +286,18 @@ function PreviewHeader({
         <span className="text-xs font-semibold text-foreground">Live Preview</span>
       </div>
       <div className="flex items-center gap-1">
+        {onToggleHalf && (
+          <button
+            onClick={onToggleHalf}
+            className={`p-1 rounded transition-colors ${
+              isHalf ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'
+            }`}
+            title={isHalf ? 'Restore panel size' : 'Snap to half screen'}
+          >
+            <Columns2 size={13} />
+          </button>
+        )}
+        <div className="w-px h-3 bg-border mx-0.5" />
         <button
           onClick={() => onViewportChange('full')}
           className={`p-1 rounded transition-colors ${

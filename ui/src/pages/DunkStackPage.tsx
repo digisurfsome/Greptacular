@@ -13,7 +13,7 @@
  * context management mechanism described in the BASE_BUILD_PRD.
  */
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import {
   ArrowLeft,
   BookOpen,
@@ -39,7 +39,6 @@ import { useProjects } from '@/hooks/useProjects'
 import { useDunkStack } from '@/hooks/useDunkStack'
 import { dunkstackUpdateModelPreset } from '@/lib/api'
 import { DunkStackContextGauge } from '@/components/dunkstack/DunkStackContextGauge'
-import { DunkStackCommsChat } from '@/components/dunkstack/DunkStackCommsChat'
 import { DunkStackAgentView } from '@/components/dunkstack/DunkStackAgentView'
 import { DunkStackSafetyPanel } from '@/components/dunkstack/DunkStackSafetyPanel'
 import { DunkStackGuidePanel } from '@/components/dunkstack/DunkStackGuidePanel'
@@ -118,6 +117,32 @@ export function DunkStackPage(): React.JSX.Element {
   const [centerView, setCenterView] = useState<CenterView>('chat')
   const [standardsPanelOpen, setStandardsPanelOpen] = useState(true)
   const [productPanelOpen, setProductPanelOpen] = useState(false)
+  const [previewWidth, setPreviewWidth] = useState(520) // default preview panel width in px
+  const [previewHalf, setPreviewHalf] = useState(false) // half-screen toggle
+  const rightPanelDragRef = useRef(false)
+
+  /** Drag handler for resizable right panel (preview). */
+  const handleRightPanelDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    rightPanelDragRef.current = true
+    const onMove = (ev: MouseEvent) => {
+      if (!rightPanelDragRef.current) return
+      const newWidth = window.innerWidth - ev.clientX
+      setPreviewWidth(Math.min(window.innerWidth * 0.85, Math.max(300, newWidth)))
+      setPreviewHalf(false) // user is manually dragging, disable half snap
+    }
+    const onUp = () => {
+      rightPanelDragRef.current = false
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }, [])
 
   // Agent OS data hooks (only active when a project is selected and in agent-os view)
   const isAgentOSView = centerView === 'agent-os-intake' || centerView === 'agent-os-workflow'
@@ -147,17 +172,29 @@ export function DunkStackPage(): React.JSX.Element {
     localStorage.setItem('dunkstack-selected-project', name)
   }, [])
 
+  /** Start the coding agent for the selected project. */
+  const handleStartAgent = useCallback(async () => {
+    if (!selectedProject) return
+    const preset = MODEL_PRESETS[modelPresetIndex]
+    const modelId = preset.model === 'opus' ? 'claude-opus-4-6' : 'claude-sonnet-4-6'
+    await startAgent(selectedProject, modelId, preset.limit)
+  }, [selectedProject, modelPresetIndex, startAgent])
+
   /** Start/stop the coding agent for the selected project. */
   const handleToggleAgent = useCallback(async () => {
     if (!selectedProject) return
     if (agentStatus?.status === 'running') {
       await stopAgent(selectedProject)
     } else {
-      const preset = MODEL_PRESETS[modelPresetIndex]
-      const modelId = preset.model === 'opus' ? 'claude-opus-4-6' : 'claude-sonnet-4-6'
-      await startAgent(selectedProject, modelId, preset.limit)
+      await handleStartAgent()
     }
-  }, [selectedProject, agentStatus, modelPresetIndex, startAgent, stopAgent])
+  }, [selectedProject, agentStatus, handleStartAgent, stopAgent])
+
+  /** Send a message to the agent via the API call. */
+  const handleSendToAgent = useCallback(async (message: string) => {
+    if (!selectedProject) return
+    await sendToAgent(selectedProject, message)
+  }, [selectedProject, sendToAgent])
 
   const isAgentRunning = agentStatus?.status === 'running'
 
@@ -433,29 +470,20 @@ export function DunkStackPage(): React.JSX.Element {
                   <span className="text-sm text-muted-foreground">Loading DunkStack...</span>
                 </div>
               </div>
-            ) : isAgentRunning ? (
-              /* Split screen: API Call output (left) + Walkie-Talkie chat (right) */
+            ) : (
+              /* Always show split screen: API Call (left) + Walkie-Talkie (right) */
               <DunkStackAgentView
                 agentEvents={hookAgentEvents}
-                commsLog={commsLog}
-                onSendMessage={async (content, title) => {
-                  await sendMessage(content, title)
-                  if (selectedProject) {
-                    await sendToAgent(selectedProject, content)
-                  }
-                }}
-                controlMode={controlMode}
-                connected={connected}
-                modelId={agentStatus?.model_id}
-                isRunning={true}
-              />
-            ) : (
-              /* Full-width comms chat when agent is not running */
-              <DunkStackCommsChat
                 commsLog={commsLog}
                 onSendMessage={sendMessage}
                 controlMode={controlMode}
                 connected={connected}
+                modelId={agentStatus?.model_id}
+                isRunning={isAgentRunning}
+                onStartAgent={handleStartAgent}
+                onSendToAgent={handleSendToAgent}
+                agentStarting={agentStarting}
+                projectName={selectedProject ?? undefined}
               />
             )
           )}
@@ -490,9 +518,22 @@ export function DunkStackPage(): React.JSX.Element {
 
         {/* Right panel */}
         {rightPanel && (
-          <div className={`shrink-0 border-l border-border bg-card/60 ${
-            rightPanel === 'preview' ? 'w-[520px]' : 'w-[320px]'
-          } ${rightPanel === 'preview' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
+          <>
+          {/* Drag handle for resizable preview panel */}
+          {rightPanel === 'preview' && (
+            <div
+              onMouseDown={handleRightPanelDragStart}
+              className="w-1.5 shrink-0 cursor-col-resize bg-border/50 hover:bg-primary/30 transition-colors flex items-center justify-center"
+            >
+              <div className="h-8 w-0.5 rounded-full bg-muted-foreground/30" />
+            </div>
+          )}
+          <div
+            className={`shrink-0 border-l border-border bg-card/60 ${
+              rightPanel !== 'preview' ? 'w-[320px]' : ''
+            } ${rightPanel === 'preview' ? 'overflow-hidden' : 'overflow-y-auto'}`}
+            style={rightPanel === 'preview' ? { width: previewHalf ? '50vw' : `${previewWidth}px` } : undefined}
+          >
             {rightPanel === 'safety' && (
               <DunkStackSafetyPanel
                 safety={safetyStatus}
@@ -507,7 +548,11 @@ export function DunkStackPage(): React.JSX.Element {
               <FileViewer />
             )}
             {rightPanel === 'preview' && selectedProject && (
-              <DunkStackPreviewPanel projectName={selectedProject} />
+              <DunkStackPreviewPanel
+                projectName={selectedProject}
+                isHalf={previewHalf}
+                onToggleHalf={() => setPreviewHalf(prev => !prev)}
+              />
             )}
             {rightPanel === 'preview' && !selectedProject && (
               <div className="flex items-center justify-center h-full">
@@ -550,6 +595,7 @@ export function DunkStackPage(): React.JSX.Element {
               </div>
             )}
           </div>
+          </>
         )}
       </div>
 

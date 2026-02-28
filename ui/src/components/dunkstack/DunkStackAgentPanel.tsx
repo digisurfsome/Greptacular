@@ -24,17 +24,25 @@ interface DunkStackAgentPanelProps {
   connected: boolean
   /** Current model preset label for display */
   modelLabel: string
+  /** Called when agent status changes */
+  onStatusChange?: (status: string) => void
 }
 
 export function DunkStackAgentPanel({
   projectName,
   modelLabel,
+  onStatusChange,
 }: DunkStackAgentPanelProps): React.JSX.Element {
   const [agentStatus, setAgentStatus] = useState<string>('stopped')
   const [outputLines, setOutputLines] = useState<string[]>([])
   const [starting, setStarting] = useState(false)
   const [stopping, setStopping] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
+
+  // Notify parent when agent status changes
+  useEffect(() => {
+    onStatusChange?.(agentStatus)
+  }, [agentStatus, onStatusChange])
 
   // Auto-scroll to bottom when new output arrives
   useEffect(() => {

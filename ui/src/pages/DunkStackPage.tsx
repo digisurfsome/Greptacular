@@ -107,6 +107,7 @@ export function DunkStackPage(): React.JSX.Element {
   const [centerView, setCenterView] = useState<CenterView>('chat')
   const [standardsPanelOpen, setStandardsPanelOpen] = useState(true)
   const [productPanelOpen, setProductPanelOpen] = useState(false)
+  const [agentRunning, setAgentRunning] = useState(false)
 
   // Agent OS data hooks (only active when a project is selected and in agent-os view)
   const isAgentOSView = centerView === 'agent-os-intake' || centerView === 'agent-os-workflow'
@@ -355,23 +356,26 @@ export function DunkStackPage(): React.JSX.Element {
               </div>
             ) : (
               <div className="flex flex-1 overflow-hidden">
-                {/* Left: Agent Session (API Call) */}
-                <div className="flex-1 min-w-0 border-r border-border">
+                {/* Left: Agent Session (API Call) — always visible */}
+                <div className={`min-w-0 ${agentRunning ? 'flex-1 border-r border-border' : 'flex-1'}`}>
                   <DunkStackAgentPanel
                     projectName={selectedProject}
                     connected={connected}
                     modelLabel={MODEL_PRESETS[modelPresetIndex].label}
+                    onStatusChange={(status: string) => setAgentRunning(status === 'running')}
                   />
                 </div>
-                {/* Right: Walkie-Talkie Chat (File Comms) */}
-                <div className="flex-1 min-w-0">
-                  <DunkStackCommsChat
-                    commsLog={commsLog}
-                    onSendMessage={sendMessage}
-                    controlMode={controlMode}
-                    connected={connected}
-                  />
-                </div>
+                {/* Right: Walkie-Talkie Chat — only visible when agent is running */}
+                {agentRunning && (
+                  <div className="flex-1 min-w-0">
+                    <DunkStackCommsChat
+                      commsLog={commsLog}
+                      onSendMessage={sendMessage}
+                      controlMode={controlMode}
+                      connected={connected}
+                    />
+                  </div>
+                )}
               </div>
             )
           )}

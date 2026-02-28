@@ -1640,6 +1640,49 @@ export async function dunkstackReadBuildLog(): Promise<DunkStackCommsResponse> {
   return fetchJSON('/dunkstack/build-log')
 }
 
+// -- Coding Agent --
+
+export interface DunkStackAgentStatus {
+  status: string
+  project_name?: string
+  model_id?: string
+  context_window?: number
+  billing?: string
+  created_at?: string
+  error?: string | null
+}
+
+export async function dunkstackStartAgent(
+  projectName: string,
+  modelId: string = 'claude-opus-4-6',
+  contextWindow: number = 200000,
+): Promise<DunkStackAgentStatus & { startup_events?: Array<Record<string, unknown>>; response_events?: Array<Record<string, unknown>> }> {
+  return fetchJSON('/dunkstack/agent/start', {
+    method: 'POST',
+    body: JSON.stringify({ project_name: projectName, model_id: modelId, context_window: contextWindow }),
+  })
+}
+
+export async function dunkstackStopAgent(projectName: string): Promise<{ status: string }> {
+  return fetchJSON(`/dunkstack/agent/stop?project_name=${encodeURIComponent(projectName)}`, {
+    method: 'POST',
+  })
+}
+
+export async function dunkstackGetAgentStatus(projectName: string): Promise<DunkStackAgentStatus> {
+  return fetchJSON(`/dunkstack/agent/status?project_name=${encodeURIComponent(projectName)}`)
+}
+
+export async function dunkstackSendToAgent(
+  projectName: string,
+  message: string,
+): Promise<{ status: string; events: Array<Record<string, unknown>> }> {
+  return fetchJSON(`/dunkstack/agent/send?project_name=${encodeURIComponent(projectName)}`, {
+    method: 'POST',
+    body: JSON.stringify({ message }),
+  })
+}
+
 // ============================================================================
 // Agent OS API
 // ============================================================================

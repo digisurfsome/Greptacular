@@ -27,6 +27,9 @@ import {
   FolderOpen,
   Cpu,
   Sparkles,
+  Play,
+  Square,
+  Loader2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ThemeSelector } from '@/components/ThemeSelector'
@@ -93,6 +96,11 @@ export function DunkStackPage(): React.JSX.Element {
     safetyStatus,
     config,
     saveBridge,
+    agentStatus,
+    startAgent,
+    stopAgent,
+    sendToAgent,
+    agentStarting,
     connected,
     loading,
   } = useDunkStack()
@@ -134,6 +142,20 @@ export function DunkStackPage(): React.JSX.Element {
     setSelectedProject(name)
     localStorage.setItem('dunkstack-selected-project', name)
   }, [])
+
+  /** Start/stop the coding agent for the selected project. */
+  const handleToggleAgent = useCallback(async () => {
+    if (!selectedProject) return
+    if (agentStatus?.status === 'running') {
+      await stopAgent(selectedProject)
+    } else {
+      const preset = MODEL_PRESETS[modelPresetIndex]
+      const modelId = preset.model === 'opus' ? 'claude-opus-4-6' : 'claude-sonnet-4-6'
+      await startAgent(selectedProject, modelId, preset.limit)
+    }
+  }, [selectedProject, agentStatus, modelPresetIndex, startAgent, stopAgent])
+
+  const isAgentRunning = agentStatus?.status === 'running'
 
   const handleToggleRightPanel = useCallback((panel: RightPanel) => {
     setRightPanel(prev => prev === panel ? null : panel)
@@ -286,6 +308,49 @@ export function DunkStackPage(): React.JSX.Element {
         onReset={resetTokens}
       />
 
+      {/* Agent Control Bar */}
+      {selectedProject && (
+        <div className="flex items-center h-9 px-3 border-b border-border bg-card/80 shrink-0 gap-3">
+          <Button
+            variant={isAgentRunning ? 'destructive' : 'default'}
+            size="sm"
+            className="gap-1.5 text-xs h-7"
+            onClick={handleToggleAgent}
+            disabled={agentStarting || !selectedProject}
+          >
+            {agentStarting ? (
+              <Loader2 size={13} className="animate-spin" />
+            ) : isAgentRunning ? (
+              <Square size={13} />
+            ) : (
+              <Play size={13} />
+            )}
+            {agentStarting ? 'Starting...' : isAgentRunning ? 'Stop Agent' : 'Start Agent'}
+          </Button>
+
+          <div className="flex items-center gap-1.5">
+            <span className={`w-2 h-2 rounded-full ${
+              isAgentRunning ? 'bg-emerald-500 animate-pulse' :
+              agentStarting ? 'bg-amber-500 animate-pulse' :
+              agentStatus?.status === 'error' ? 'bg-red-500' :
+              'bg-zinc-400'
+            }`} />
+            <span className="text-[11px] text-muted-foreground">
+              {agentStarting ? 'Starting agent...' :
+               isAgentRunning ? `Running · ${agentStatus?.model_id ?? ''} · ${agentStatus?.billing ?? ''}` :
+               agentStatus?.status === 'error' ? `Error: ${agentStatus.error}` :
+               'Agent idle'}
+            </span>
+          </div>
+
+          <div className="flex-1" />
+
+          <span className="text-[10px] text-muted-foreground">
+            {selectedProject}
+          </span>
+        </div>
+      )}
+
       {/* Main content area */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left sidebar: project list */}
@@ -355,7 +420,14 @@ export function DunkStackPage(): React.JSX.Element {
             ) : (
               <DunkStackCommsChat
                 commsLog={commsLog}
-                onSendMessage={sendMessage}
+                onSendMessage={async (content, title) => {
+                  // Always write to the file (for persistence)
+                  await sendMessage(content, title)
+                  // If agent is running, also send directly to it
+                  if (isAgentRunning && selectedProject) {
+                    await sendToAgent(selectedProject, content)
+                  }
+                }}
                 controlMode={controlMode}
                 connected={connected}
               />

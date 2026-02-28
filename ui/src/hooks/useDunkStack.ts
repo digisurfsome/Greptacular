@@ -15,8 +15,13 @@ import {
   dunkstackGetTokenState,
   dunkstackReadConfig,
   dunkstackSaveBridge,
+  dunkstackStartAgent,
+  dunkstackStopAgent,
+  dunkstackGetAgentStatus,
+  dunkstackSendToAgent,
   type DunkStackSafetyStatus,
   type DunkStackTokenState,
+  type DunkStackAgentStatus,
 } from '@/lib/api'
 
 // ============================================================================
@@ -73,6 +78,13 @@ export interface UseDunkStackReturn {
     open_questions?: string
   }) => Promise<void>
 
+  // Coding Agent
+  agentStatus: DunkStackAgentStatus | null
+  startAgent: (projectName: string, modelId?: string, contextWindow?: number) => Promise<void>
+  stopAgent: (projectName: string) => Promise<void>
+  sendToAgent: (projectName: string, message: string) => Promise<Array<Record<string, unknown>>>
+  agentStarting: boolean
+
   // Connection
   connected: boolean
   loading: boolean
@@ -125,6 +137,8 @@ export function useDunkStack(): UseDunkStackReturn {
   const [config, setConfig] = useState<DunkStackConfig | null>(null)
   const [connected, setConnected] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [agentStatus, setAgentStatus] = useState<DunkStackAgentStatus | null>(null)
+  const [agentStarting, setAgentStarting] = useState(false)
   const wsRef = useRef<WebSocket | null>(null)
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -246,6 +260,13 @@ export function useDunkStack(): UseDunkStackReturn {
               ])
               break
 
+            case 'agent_event':
+              // Real-time agent status updates from the backend
+              if (msg.status) {
+                setAgentStatus(prev => ({ ...prev, status: msg.status, error: msg.error || null }))
+              }
+              break
+
             case 'pong':
               break
           }
@@ -324,6 +345,43 @@ export function useDunkStack(): UseDunkStackReturn {
     fetch('/api/dunkstack/tokens/reset', { method: 'POST' })
   }, [])
 
+  // ── Coding Agent ──
+
+  const startAgent = useCallback(async (projectName: string, modelId?: string, contextWindow?: number) => {
+    setAgentStarting(true)
+    try {
+      const result = await dunkstackStartAgent(projectName, modelId, contextWindow)
+      setAgentStatus(result)
+    } catch (e) {
+      setAgentStatus({ status: 'error', error: String(e) })
+    } finally {
+      setAgentStarting(false)
+    }
+  }, [])
+
+  const stopAgent = useCallback(async (projectName: string) => {
+    try {
+      await dunkstackStopAgent(projectName)
+      setAgentStatus({ status: 'stopped' })
+    } catch (e) {
+      console.error('Failed to stop agent:', e)
+    }
+  }, [])
+
+  const sendToAgent = useCallback(async (projectName: string, message: string) => {
+    try {
+      const result = await dunkstackSendToAgent(projectName, message)
+      return result.events || []
+    } catch (e) {
+      console.error('Failed to send to agent:', e)
+      return []
+    }
+  }, [])
+
+  // Handle agent_event from WebSocket (update status in real-time)
+  // This is already handled in the onmessage handler above — we just need
+  // to add the agent_event case to the switch statement.
+
   return {
     commsLog,
     sendMessage,
@@ -334,6 +392,11 @@ export function useDunkStack(): UseDunkStackReturn {
     safetyStatus,
     config,
     saveBridge,
+    agentStatus,
+    startAgent,
+    stopAgent,
+    sendToAgent,
+    agentStarting,
     connected,
     loading,
   }

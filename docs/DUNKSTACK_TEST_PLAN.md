@@ -10,21 +10,44 @@
 
 DunkStack is a **file-based context management system** for AI coding agents. Instead of stuffing everything into the chat stream (which burns context tokens), agents read and write to structured files in a `.agent/` directory. The chat stream is for 1-sentence status updates only.
 
-### Why This Matters — Three Hypotheses We're Testing
+### The Original Idea — How This Started
 
-1. **Sharper agents** — By offloading memory to files, the agent's active context stays focused on the current task. Hypothesis: 20-40% improvement in output quality vs. chat-only agents.
+The original vision was simple: **use the million-token context model to build entire applications in one shot, with one agent, without session handoffs.** One model, one session, reads the PRD, codes the whole thing. No teaching a second agent what the first one did. No degradation from context switching.
 
-2. **Longer effective context** — The agent's "memory" lives in files, not in the conversation history. It can work across sessions by reading `bridge.md` and `working_memory.md`. Hypothesis: Effective context extends 20-40% beyond the model's raw context window.
+The problem: a million-token session building an entire app would cost $40-$50+ in API calls at current rates. That's too expensive for most use cases.
 
-3. **Cheaper API calls** — The chat stream carries almost nothing (just status updates). All the heavy content lives in files the agent reads on demand. Less tokens in the conversation = lower cost per session.
+Then the key insight hit: **if the agent communicates through files instead of the chat stream, the conversation history stays tiny.** The chat stream only carries 1-sentence status updates. All the real content — PRDs, plans, code context, decisions — lives in files that the agent reads via tool use. The conversation tokens (which are the expensive part, since they compound every turn) stay minimal.
 
-4. **Multi-agent communication** — This is the big one. If agents read/write to shared files, multiple agents can collaborate without any of them needing to hold the full project in their own context. Agent A writes findings to a file, Agent B reads it. No chat-to-chat bridging, no token waste. This enables teams of specialized agents that would be impossible with chat-only architectures.
+One idea turned into **four benefits**:
+
+### The Four Benefits We're Testing
+
+1. **Cheaper API calls (~50% cost reduction)** — By moving substantive content out of the chat stream and into files, the conversation token count stays flat instead of growing every turn. In a normal agent session, every message includes the full conversation history. In DunkStack, the history is just a series of "Done. See file X." messages. The tool-use tokens (reading/writing files) still cost money, so the net savings is estimated around 50%, not 70-80%. But 50% off a $40 build is $20 — that adds up fast.
+
+2. **Sharper agents (sustained quality over long sessions)** — In a normal agent, quality degrades as context fills up. The agent is trying to hold the entire conversation, all the code it wrote, all the decisions it made, in active context. By session midpoint, it's swimming in noise. DunkStack agents offload memory to files and only load what's relevant to the current task. Hypothesis: the agent stays sharper longer because its active context is always clean and focused. The first 10K tokens might look similar to a normal agent (neither has accumulated noise yet), but from 10K-30K tokens onward, the DunkStack agent should maintain quality while the normal agent starts to degrade.
+
+3. **Longer effective context (20-40% extension)** — Because memory lives in files (`working_memory.md`, `bridge.md`, knowledge files), the agent's effective reach extends beyond its raw context window. A 200K model using DunkStack should perform like it has 240K-280K effective context. And with million-token models, this becomes even more dramatic — the agent could potentially sustain an entire large application build without running out of room.
+
+4. **Multi-agent communication (the big unlock)** — This is where it gets transformative. If one agent can read/write files, any number of agents can. Agent A writes its analysis to a file, Agent B reads it. No chat-to-chat bridging, no central controller copying messages, no token waste. Each agent maintains its own clean context while sharing knowledge through the file system. This enables specialized agent teams that would be impossible with chat-only architectures. And because each agent's chat stream is cheap (just status updates), running 3 or 5 or 20 agents becomes economically viable.
+
+### The Endgame — What This Enables
+
+**Single million-token agent**: One agent, one session, builds an entire application from a PRD. The file system keeps it sharp and cheap. Compare the cost and quality against a traditional multi-session agent doing the same thing.
+
+**Three million-token agents as a team**: Architect + Builder + Reviewer, each with a million tokens. Effective context = 3 million tokens. They communicate through files. Could build a serious application in one coordinated session. Cost is ~50% of what it would be with chat-based agents.
+
+**Million-token orchestrator + team of 200K sub-agents**: One big-brain manager that never loses the big picture, directing a team of 5-10 specialized 200K agents. The orchestrator plans, assigns, and reviews through files. The sub-agents execute, report back through files. The orchestrator can run the entire build from start to finish without losing context.
+
+**5x5 million-token swarm**: For building something massive (think Amazon-scale). Five million-token models, all communicating through the shared file system, each owning a domain of the application. With proper orchestration logic for message routing and task assignment, this could build in days what currently takes months.
+
+The key insight: **if three agents can communicate through files, there's no theoretical reason 25 can't.** The protocol is the same. The only thing that changes is the orchestration logic (who gets which messages, task assignment, conflict resolution). Phase 3 proves the protocol with three. Everything after that is scaling.
 
 ### The Products That Come From This
 
 - **DunkStack Engine** — The file-based agent system. This is what we're testing now.
 - **PRD Maker (Agent OS)** — A standalone SaaS product that creates perfect PRDs through a multi-stage interactive workflow. Currently ~60-70% built inside AutoForge. Will be extracted, decoupled, and finished as its own product. Goes everywhere — AutoForge, DunkStack, any tool. Potential $10M-$50M SaaS business.
 - **DunkStack + PRD Maker** — Once both work independently, the PRD Maker feeds specs into DunkStack's file system and agents build from them.
+- **DunkStack Multi-Agent Platform** — The swarm system. Patentable technology. If companies adopt file-based multi-agent communication, this is a level or two above current agent technology.
 
 ---
 
@@ -49,28 +72,66 @@ The tangle is in the **PRD Maker integration**, not in the **DunkStack engine**.
 
 ## The Plan — Four Phases
 
-### Phase 1: Test One Agent (CURRENT PHASE)
+### Phase 1: Test One Agent — 200K Model (CURRENT PHASE)
 
-**Goal**: Prove the file-based system works with a single agent.
+**Goal**: Prove the file-based system works with a single agent using the standard 200K context model.
 
-**What to test**:
+**Step 1a — Simple coding task**:
 1. Start a DunkStack agent session on a registered project
-2. Feed it a PRD through the walkie-talkie panel (paste directly — don't use Agent OS)
+2. Feed it a simple PRD through the walkie-talkie panel (paste directly — don't use Agent OS)
 3. Verify the agent reads `from_human.md`, processes the PRD, and writes responses to `to_human.md`
 4. Verify `working_memory.md` gets updated every ~3 turns
 5. Verify the agent stays focused (doesn't dump long explanations into chat)
 6. Verify the agent can actually build code based on the PRD
 7. Kill the session, restart it, verify `bridge.md` → `working_memory.md` handoff works (session continuity)
 
-**What we're measuring**:
-- Does the agent stay on task better than a regular chat-based agent?
-- Does context usage feel lower? (Check the ContextGauge)
-- Does session handoff actually work? (Can it resume where it left off?)
-- Does the code output quality match or beat a standard agent session?
+**Step 1b — Bigger coding job**:
+1. Give it a more complex PRD that pushes it toward the 100K token mark
+2. Watch for quality degradation as context fills — does the file system keep it sharp?
+3. Compare behavior at 50K tokens vs. 80K tokens vs. near-limit
+4. This tests the "sustained sharpness" hypothesis at the 200K model level
 
-**Success criteria**: The agent reads the PRD, builds features from it, communicates through files, and can resume after a session restart. If this works, Phase 2.
+**Step 1c — Million-token model, single-shot build**:
+1. Switch to the million-token context model (1M tokens)
+2. Give it a full application PRD — something that would normally require multiple sessions
+3. See if one agent, one session, can build the entire thing
+4. Measure: quality, cost, total tokens used, time to completion
+5. Compare against what it would cost to build the same thing with a regular multi-session agent
+
+### How to Measure Each Benefit
+
+**Benefit 1 — Cost reduction**:
+- Record total tokens billed for the DunkStack session (conversation tokens + tool-use tokens)
+- Estimate what the same task would cost with a standard chat-based agent (every turn includes full history)
+- The difference is the savings. Target: ~50% reduction
+- Note: tool-use tokens (file reads/writes) still cost money, so it won't be 70-80%. But conversation tokens compound every turn in a normal agent and stay flat in DunkStack
+
+**Benefit 2 — Sharpness / quality retention**:
+- This is the hardest to measure objectively
+- Track output quality at intervals: early session (0-10K tokens), mid session (30-50K tokens), late session (70K+ tokens)
+- In a normal agent, quality visibly degrades past ~60-70% context usage. Look for: repeated code, forgotten requirements, conflicting decisions, asking about things already established
+- In DunkStack, the hypothesis is quality stays consistent because the agent's active context is always clean
+- Key insight: at 0-10K tokens, both systems look similar (neither has accumulated noise). The divergence should appear from 10K-30K onward, widening as the session progresses
+- Practical test: give both systems the same multi-feature PRD, compare the 5th feature's implementation quality against the 1st feature's
+
+**Benefit 3 — Longer effective context**:
+- This one is straightforward to track: count tokens
+- Monitor via the ContextGauge in the UI
+- See how far into a build the DunkStack agent can get before quality drops
+- Compare against a normal agent doing the same build — at what token count does each start struggling?
+- Target: DunkStack agent maintains quality 20-40% deeper into the context window
+
+**Benefit 4 — Multi-agent communication**:
+- Tested in Phase 3 (three-agent team)
+- Success metric: can we see agents reading each other's file outputs and acting on them?
+- Check the build log and file modification timestamps
+- If Agent B reads a file Agent A wrote and produces correct follow-up work, the protocol works
+
+**Success criteria for Phase 1**: The agent reads the PRD, builds features from it, communicates through files, and can resume after a session restart. If this works, Phase 2.
 
 **Failure mode**: If the agent ignores the file system and dumps everything into chat, or can't resume sessions, or produces worse code than a normal agent — we troubleshoot. If we can't fix it after genuine effort, the single-agent file system hypothesis is invalidated, but the file architecture still has value for multi-agent communication (Phase 3).
+
+**Even if the single-agent benefits are marginal**: The file system still enables multi-agent teams (Phase 3). Even if one agent isn't dramatically sharper or cheaper, the ability for multiple agents to communicate through files is a standalone breakthrough. So Phase 1 failure doesn't kill the project — it just narrows the value proposition to multi-agent use cases.
 
 ---
 
@@ -84,8 +145,9 @@ The tangle is in the **PRD Maker integration**, not in the **DunkStack engine**.
 - Adjust how often `working_memory.md` gets updated
 - Improve the bootstrap message if the agent is missing context on startup
 - Refine the `bridge.md` format for better session continuity
+- Optimize which files the agent reads on each turn (minimize unnecessary reads)
 
-**Success criteria**: Consistent, reliable single-agent behavior across multiple test sessions with different PRDs.
+**Success criteria**: Consistent, reliable single-agent behavior across multiple test sessions with different PRDs. Cost and quality numbers from Phase 1 improve with tuning.
 
 ---
 
@@ -111,7 +173,7 @@ The tangle is in the **PRD Maker integration**, not in the **DunkStack engine**.
 
 **Success criteria**: Three agents collaboratively build a feature that would be too complex for a single agent's context window. They communicate through files, not through a central controller copying messages between them.
 
-**This is the proof point for the file system architecture.** If three agents can do it, the protocol works. The question then becomes scaling it.
+**This is the proof point for the file system architecture.** If three agents can communicate through files, there's no reason 25 can't. The protocol is the same — only the orchestration logic changes. Phase 3 proves the protocol. Everything after is scaling.
 
 ---
 
@@ -130,6 +192,24 @@ The tangle is in the **PRD Maker integration**, not in the **DunkStack engine**.
 - After proving 3 agents work in Phase 3, introduce 5+ agent swarms
 - Build the orchestration layer for message routing, task assignment, and conflict resolution
 - The file system is the foundation — the orchestration logic sits on top
+
+---
+
+## Future Agent Team Configurations (Post-Phase 3)
+
+Once the three-agent team works, these configurations become possible:
+
+| Configuration | Description | Use Case |
+|---------------|-------------|----------|
+| **1 × 1M agent** | Single million-token agent, one-shot build | Small-to-medium apps, rapid prototyping |
+| **3 × 1M agents** | Architect + Builder + Reviewer, all million-token | Medium-to-large apps, high quality |
+| **1 × 1M orchestrator + 5 × 200K sub-agents** | Big-brain manager directing specialized workers | Complex apps with distinct domains |
+| **5 × 1M agents** | Full swarm, all million-token, all communicating | Enterprise-scale applications |
+| **1 × 1M orchestrator + N × 200K workers** | Scalable team, orchestrator plans, workers execute | Variable-scale builds |
+
+The optimal configuration depends on the project size. A small app doesn't need 5 million-token agents. A large app (think Amazon-scale) might want a 5×5 grid of million-token models all coordinating through the file system. The key is that the file system protocol makes ALL of these configurations possible, and the cost stays manageable because the chat streams are cheap.
+
+**The patentable innovation**: File-based inter-agent communication that keeps each agent's conversation stream minimal while enabling unlimited agent collaboration. This is architecturally different from every current multi-agent framework (which either copies messages between agents or uses a central controller as a bottleneck).
 
 ---
 

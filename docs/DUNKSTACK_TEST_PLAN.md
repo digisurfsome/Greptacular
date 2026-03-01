@@ -70,7 +70,21 @@ The tangle is in the **PRD Maker integration**, not in the **DunkStack engine**.
 
 ---
 
-## The Plan — Four Phases
+## The Plan — Four Phases + Quick Win
+
+### Quick Win: Communication Test (DO THIS FIRST OR IN PARALLEL — 15 min)
+
+**Goal**: Prove agents can communicate through files. This is the second patent.
+
+**Why now**: This takes 15-20 minutes, proves the most patentable claim, and can run on a separate project while the long benchmark runs on another.
+
+**How**: Agent A (Architect) designs a system and writes 3 design docs to `.agent/output/`. Stop Agent A. Start Agent B (Builder) on the same project. Agent B reads A's files and implements the design. If B's code matches A's design — communication proven through files alone. Zero shared context.
+
+**Full protocol with exact prompts and scoring**: See `docs/DUNKSTACK_BENCHMARK_PROTOCOL.md`, Test 4.
+
+**What this proves for patent**: File-based inter-agent communication where agents share zero conversation tokens. The file system is the sole communication channel. Each agent maintains independent context. Knowledge transfers through structured documents, not message passing.
+
+---
 
 ### Phase 1: Test One Agent — 200K Model (CURRENT PHASE)
 

@@ -13,7 +13,7 @@ We're testing four claims. Each has a specific test methodology:
 | Cheaper API calls | Cost Comparison | Total tokens billed, DunkStack vs. standard agent |
 | Sharper agents | Consistency Test | Code quality at 4 token checkpoints |
 | Longer effective context | Memory Recall Test | Constraint adherence at 3 late-session checkpoints |
-| Multi-agent communication | Team Build Test | Phase 3 — not covered in this protocol |
+| Multi-agent communication | Communication Test | Agents reading/acting on each other's file output |
 
 ---
 
@@ -296,6 +296,127 @@ This is the key comparison. In DunkStack, conversation tokens should be tiny (ju
 DunkStack already tracks total input/output. To isolate conversation vs. tool tokens, check the token log entries (`/api/dunkstack/tokens/log`). Each entry corresponds to an API call. Entries where the agent was reading/writing files are tool-heavy. Entries that are pure conversation are the baseline.
 
 For a rough split: compare the **average tokens per API call** between DunkStack and control. DunkStack should have lower average input tokens per call (because conversation history is thin).
+
+---
+
+## Test 4: Communication Test (Multi-Agent File Handoff)
+
+### Purpose
+Prove that Agent B can receive knowledge from Agent A **exclusively through the file system** — no shared chat, no shared context, no central controller passing messages. This is the patent-critical test for file-based inter-agent communication.
+
+### Why This Can Be Tested Now
+DunkStack currently runs one agent per project (session registry is keyed by project name — starting a second kills the first). But **sequential handoff is actually a stronger proof** than simultaneous agents: Agent A's entire context is gone when Agent B starts. If B still produces correct work based on A's output, knowledge transferred through files and files alone.
+
+Simultaneous multi-agent requires a small code change (multi-key session registry). That's Phase 3 work. This test proves the communication protocol works without that change.
+
+### Estimated Time: 15-20 Minutes
+
+### Method
+
+#### Step 1: Agent A — The Architect (5-8 minutes)
+
+Start a DunkStack agent. Paste this into the walkie-talkie:
+
+```
+You are Agent A — the Architect. Your job is to design a system and leave your work in files for the next agent.
+
+Design a blog platform database schema and API. Write ALL of your output to files — the next agent will read them.
+
+Create these files:
+
+1. `.agent/output/schema_design.md` — Full database schema with:
+   - 4 tables: users, posts, comments, tags
+   - Every column: name, type, constraints, foreign keys
+   - A many-to-many join table for posts<->tags
+   - Include 3 specific business rules (e.g., "posts must have at least one tag", "comments can only be edited within 15 minutes", "users can have a max of 5 draft posts")
+
+2. `.agent/output/api_design.md` — API endpoint specification:
+   - At least 8 endpoints with method, path, request body, response shape
+   - Error codes and their meanings
+   - A specific pagination pattern (cursor-based, not offset-based)
+
+3. `.agent/output/architecture_notes.md` — Key decisions:
+   - Why cursor-based pagination (not offset)
+   - A specific note about the posts-tags relationship
+   - At least one performance recommendation
+
+Do NOT create any actual code files. Only write the design documents above. When you're done, update .agent/working_memory.md and write a summary to .agent/comms/to_human.md.
+```
+
+Wait for Agent A to finish writing all 3 files. Verify the files exist and have content. Then **stop the agent session.**
+
+#### Step 2: Verify Agent A's Context Is Gone
+
+After stopping Agent A:
+- The DunkStack session is destroyed
+- Agent A's conversation history is gone
+- The ONLY things that persist are the files in `.agent/`
+- This is critical — Agent B has zero access to Agent A's thoughts, reasoning, or conversation
+
+#### Step 3: Agent B — The Builder (8-12 minutes)
+
+Start a **new** DunkStack agent on the **same project**. Paste this:
+
+```
+You are Agent B — the Builder. A previous architect agent designed a system and left their work in files.
+
+Read these files:
+- .agent/output/schema_design.md
+- .agent/output/api_design.md
+- .agent/output/architecture_notes.md
+
+Then implement the system EXACTLY as designed:
+
+1. Create the database schema code (SQLite with an ORM or raw SQL — your choice)
+2. Implement ALL endpoints from the API design document
+3. Follow the pagination pattern specified in the design
+4. Implement ALL business rules from the schema design
+5. Follow the performance recommendation from the architecture notes
+
+Write your implementation to the project source directory (not .agent/).
+
+IMPORTANT: You must follow the architect's design exactly. Do not deviate, add extra endpoints, or change the schema. Your job is faithful implementation of what was designed.
+
+When done, write a build report to .agent/output/build_report.md listing:
+- Each endpoint implemented (with the file/line number)
+- Each business rule implemented (with the file/line number)
+- Any issues or ambiguities you found in the design
+```
+
+#### Step 4: Score the Communication
+
+After Agent B finishes, grade these criteria:
+
+| # | Criterion | Pass/Fail | How to Check |
+|---|-----------|-----------|-------------|
+| COM-1 | Agent B read all 3 design files | | Check agent's tool use — did it Read the files? |
+| COM-2 | Database schema matches Agent A's design (all tables, columns, FKs) | | Compare code against schema_design.md |
+| COM-3 | All 8+ API endpoints implemented matching Agent A's spec | | Compare endpoints against api_design.md |
+| COM-4 | Cursor-based pagination (not offset) used as A specified | | Check pagination implementation |
+| COM-5 | All 3 business rules from schema_design.md implemented | | Check for rule enforcement in code |
+| COM-6 | Performance recommendation followed | | Check for A's specific suggestion in code |
+| COM-7 | Agent B did NOT add extra endpoints/tables not in A's design | | Compare — B should be faithful, not creative |
+| COM-8 | Build report correctly maps back to A's design documents | | Read build_report.md |
+
+**Score**: X/8
+
+**Pass threshold**: 6/8 or higher = communication proven.
+
+### What This Proves (Patent Language)
+
+If Agent B scores 6+/8:
+- **Knowledge transferred through files alone** — no shared context, no message passing, no central controller
+- **Agent A's reasoning was preserved in structured documents** — schema, API spec, architecture notes
+- **Agent B independently reconstructed the architect's intent** and produced faithful implementation
+- **Zero conversation tokens were shared** between agents — total isolation except through the file system
+- **The file system acted as the sole communication channel** — this is the patentable mechanism
+
+### What This Doesn't Prove (Yet)
+- Simultaneous agent collaboration (requires multi-key session registry — Phase 3)
+- Real-time back-and-forth between agents (requires file-watching or polling — Phase 3)
+- Scaling beyond 2 agents (requires orchestration logic — Phase 3)
+
+But the core protocol — agents communicating through files — is proven if this test passes.
 
 ---
 

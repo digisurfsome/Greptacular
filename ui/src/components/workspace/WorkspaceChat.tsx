@@ -1393,7 +1393,7 @@ export function WorkspaceChat({
               {lastError ? (
                 <div className="mb-4 p-3 bg-destructive/5 border border-destructive/20 rounded-md text-sm text-left">
                   <p className="font-medium text-destructive mb-1">Error details:</p>
-                  <p className="text-muted-foreground">{lastError}</p>
+                  <p className="text-muted-foreground">{typeof lastError === 'string' ? lastError : String(lastError)}</p>
                 </div>
               ) : (
                 <p className="text-sm mb-4">

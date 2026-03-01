@@ -321,6 +321,41 @@ docs/agent-briefs/{BRIEF_NAME}.md
   const ZOOM_MIN = 30;
   const ZOOM_MAX = 300;
 
+  // ============================================================
+  // PROMPT STORAGE
+  // ============================================================
+
+  const PROMPT_STORAGE_KEY = 'cpi-custom-prompts';
+
+  /** Load prompts from localStorage, falling back to hardcoded PROMPTS. */
+  function loadCustomPrompts() {
+    try {
+      const raw = localStorage.getItem(PROMPT_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch (_) {
+      // Corrupted data — fall back to defaults
+    }
+    return PROMPTS.map((p) => ({ id: p.id, title: p.title, prompt: p.prompt }));
+  }
+
+  /** Save prompts to localStorage (strips backticks from title and prompt). */
+  function saveCustomPrompts(prompts) {
+    const cleaned = prompts.map((p) => ({
+      id: p.id,
+      title: String(p.title).replace(/`/g, ''),
+      prompt: String(p.prompt).replace(/`/g, '')
+    }));
+    localStorage.setItem(PROMPT_STORAGE_KEY, JSON.stringify(cleaned));
+    return cleaned;
+  }
+
+  let activePrompts = loadCustomPrompts();
+
   function loadZoom() {
     const saved = localStorage.getItem(ZOOM_STORAGE_KEY);
     if (saved !== null) {
@@ -530,6 +565,194 @@ docs/agent-briefs/{BRIEF_NAME}.md
       0% { background: #da7757; border-color: #da7757; }
       100% { background: #262624; border-color: #333; }
     }
+
+    /* ---- Editor Overlay ---- */
+
+    #cpi-editor-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 100000;
+      background: rgba(0, 0, 0, 0.75);
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding-top: 3vh;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    #cpi-editor-panel {
+      background: #1e1e1c;
+      border: 1px solid #555;
+      border-radius: 10px;
+      width: 100%;
+      max-width: 700px;
+      max-height: 90vh;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #cpi-editor-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border-bottom: 1px solid #555;
+      background: #262624;
+      border-radius: 10px 10px 0 0;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+
+    #cpi-editor-topbar-title {
+      color: #e0e0e0;
+      font-size: 15px;
+      font-weight: 700;
+    }
+
+    .cpi-editor-topbar-btns {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .cpi-editor-btn {
+      padding: 5px 14px;
+      border: 1px solid #555;
+      border-radius: 5px;
+      background: #262624;
+      color: #e0e0e0;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .cpi-editor-btn:hover {
+      border-color: #da7757;
+      color: #da7757;
+    }
+
+    .cpi-editor-btn--save {
+      background: #da7757;
+      border-color: #da7757;
+      color: #fff;
+    }
+
+    .cpi-editor-btn--save:hover {
+      background: #c4664a;
+      border-color: #c4664a;
+      color: #fff;
+    }
+
+    .cpi-editor-btn--close {
+      background: none;
+      border: none;
+      color: #999;
+      font-size: 20px;
+      cursor: pointer;
+      padding: 0 4px;
+      line-height: 1;
+    }
+
+    .cpi-editor-btn--close:hover {
+      color: #ff4444;
+    }
+
+    #cpi-editor-note {
+      color: #999;
+      font-size: 11px;
+      padding: 10px 16px 4px;
+      font-style: italic;
+    }
+
+    .cpi-editor-item {
+      padding: 10px 16px;
+      border-bottom: 1px solid #333;
+    }
+
+    .cpi-editor-item:last-child {
+      border-bottom: none;
+    }
+
+    .cpi-editor-item-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .cpi-editor-badge {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 22px;
+      height: 22px;
+      background: #da7757;
+      color: #fff;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 0 4px;
+      flex-shrink: 0;
+    }
+
+    .cpi-editor-title-input {
+      flex: 1;
+      background: #262624;
+      color: #e0e0e0;
+      border: 1px solid #555;
+      border-radius: 4px;
+      padding: 5px 8px;
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+    }
+
+    .cpi-editor-title-input:focus {
+      border-color: #da7757;
+    }
+
+    .cpi-editor-textarea {
+      width: 100%;
+      min-height: 120px;
+      background: #262624;
+      color: #e0e0e0;
+      border: 1px solid #555;
+      border-radius: 4px;
+      padding: 8px;
+      font-size: 12px;
+      font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+      line-height: 1.4;
+      resize: vertical;
+      outline: none;
+      box-sizing: border-box;
+    }
+
+    .cpi-editor-textarea:focus {
+      border-color: #da7757;
+    }
+
+    .cpi-gear-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 18px;
+      background: none;
+      border: none;
+      color: #e0e0e0;
+      cursor: pointer;
+      font-size: 13px;
+      padding: 0;
+      flex-shrink: 0;
+      transition: color 0.15s;
+    }
+
+    .cpi-gear-btn:hover {
+      color: #da7757;
+    }
   `;
   document.head.appendChild(styles);
 
@@ -625,6 +848,133 @@ docs/agent-briefs/{BRIEF_NAME}.md
   }
 
   // ============================================================
+  // EDITOR OVERLAY
+  // ============================================================
+
+  /**
+   * Open the full-screen prompt editor overlay.
+   * @param {function} onSave - callback invoked after saving (receives cleaned prompts array)
+   * @param {function} onReset - callback invoked after resetting to defaults
+   */
+  function showEditor(onSave, onReset) {
+    // Prevent duplicate overlays
+    if (document.getElementById('cpi-editor-overlay')) return;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'cpi-editor-overlay';
+
+    const editorPanel = document.createElement('div');
+    editorPanel.id = 'cpi-editor-panel';
+
+    // Top bar
+    const topbar = document.createElement('div');
+    topbar.id = 'cpi-editor-topbar';
+
+    const title = document.createElement('span');
+    title.id = 'cpi-editor-topbar-title';
+    title.textContent = 'Edit Prompts';
+
+    const btns = document.createElement('div');
+    btns.className = 'cpi-editor-topbar-btns';
+
+    const resetBtn = document.createElement('button');
+    resetBtn.className = 'cpi-editor-btn';
+    resetBtn.textContent = 'Reset to Defaults';
+
+    const saveBtn = document.createElement('button');
+    saveBtn.className = 'cpi-editor-btn cpi-editor-btn--save';
+    saveBtn.textContent = 'Save';
+
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'cpi-editor-btn--close';
+    closeBtn.textContent = '\u00D7';
+    closeBtn.title = 'Close without saving';
+
+    btns.appendChild(resetBtn);
+    btns.appendChild(saveBtn);
+    btns.appendChild(closeBtn);
+    topbar.appendChild(title);
+    topbar.appendChild(btns);
+    editorPanel.appendChild(topbar);
+
+    // Note
+    const note = document.createElement('div');
+    note.id = 'cpi-editor-note';
+    note.textContent = 'Paste anything \u2014 backticks are auto-removed on save.';
+    editorPanel.appendChild(note);
+
+    // Build an input row for each prompt
+    const inputs = []; // { titleInput, textareaInput, id }
+    activePrompts.forEach((p) => {
+      const item = document.createElement('div');
+      item.className = 'cpi-editor-item';
+
+      const hdr = document.createElement('div');
+      hdr.className = 'cpi-editor-item-header';
+
+      const badge = document.createElement('span');
+      badge.className = 'cpi-editor-badge';
+      badge.textContent = String(p.id);
+
+      const titleInput = document.createElement('input');
+      titleInput.className = 'cpi-editor-title-input';
+      titleInput.type = 'text';
+      titleInput.value = p.title;
+      titleInput.placeholder = 'Prompt title';
+
+      hdr.appendChild(badge);
+      hdr.appendChild(titleInput);
+      item.appendChild(hdr);
+
+      const textarea = document.createElement('textarea');
+      textarea.className = 'cpi-editor-textarea';
+      textarea.value = p.prompt;
+      textarea.placeholder = 'Enter prompt content...';
+      item.appendChild(textarea);
+
+      editorPanel.appendChild(item);
+      inputs.push({ id: p.id, titleInput, textarea });
+    });
+
+    overlay.appendChild(editorPanel);
+
+    // Close helper
+    function closeOverlay() {
+      overlay.remove();
+    }
+
+    // Close on overlay background click (not on panel itself)
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) closeOverlay();
+    });
+
+    closeBtn.addEventListener('click', closeOverlay);
+
+    // Save
+    saveBtn.addEventListener('click', () => {
+      const updated = inputs.map((inp) => ({
+        id: inp.id,
+        title: inp.titleInput.value,
+        prompt: inp.textarea.value
+      }));
+      const cleaned = saveCustomPrompts(updated);
+      activePrompts = cleaned;
+      closeOverlay();
+      if (onSave) onSave(cleaned);
+    });
+
+    // Reset to defaults
+    resetBtn.addEventListener('click', () => {
+      localStorage.removeItem(PROMPT_STORAGE_KEY);
+      activePrompts = PROMPTS.map((p) => ({ id: p.id, title: p.title, prompt: p.prompt }));
+      closeOverlay();
+      if (onReset) onReset();
+    });
+
+    document.body.appendChild(overlay);
+  }
+
+  // ============================================================
   // BUILD THE UI
   // ============================================================
 
@@ -672,7 +1022,14 @@ docs/agent-briefs/{BRIEF_NAME}.md
     zoomControls.appendChild(btnPlus);
     zoomControls.appendChild(btnSet);
 
+    // Gear button — opens prompt editor overlay
+    const gearBtn = document.createElement('button');
+    gearBtn.className = 'cpi-gear-btn';
+    gearBtn.textContent = '\u2699';
+    gearBtn.title = 'Edit prompts';
+
     header.appendChild(label);
+    header.appendChild(gearBtn);
     header.appendChild(zoomControls);
     panel.appendChild(header);
 
@@ -718,26 +1075,42 @@ docs/agent-briefs/{BRIEF_NAME}.md
       }
     });
 
-    // Prompt buttons
-    PROMPTS.forEach((p) => {
-      const btn = document.createElement('button');
-      btn.className = 'cpi-btn';
-      btn.title = `Click to inject: ${p.title}`;
-      btn.innerHTML = `
-        <span class="cpi-btn-num">${p.id}</span>
-        <span class="cpi-btn-title">${p.title}</span>
-      `;
-      btn.addEventListener('click', () => {
-        const ok = injectPrompt(p.prompt);
-        if (ok) {
-          btn.classList.add('cpi-flash');
-          setTimeout(() => btn.classList.remove('cpi-flash'), 400);
-        } else {
-          btn.style.borderColor = '#ff4444';
-          setTimeout(() => { btn.style.borderColor = '#333'; }, 800);
-        }
+    // Helper: populate grid with buttons from activePrompts
+    function rebuildGrid() {
+      grid.innerHTML = '';
+      activePrompts.forEach((p) => {
+        const btn = document.createElement('button');
+        btn.className = 'cpi-btn';
+        btn.title = `Click to inject: ${p.title}`;
+        btn.innerHTML = `
+          <span class="cpi-btn-num">${p.id}</span>
+          <span class="cpi-btn-title">${p.title}</span>
+        `;
+        btn.addEventListener('click', () => {
+          const ok = injectPrompt(p.prompt);
+          if (ok) {
+            btn.classList.add('cpi-flash');
+            setTimeout(() => btn.classList.remove('cpi-flash'), 400);
+          } else {
+            btn.style.borderColor = '#ff4444';
+            setTimeout(() => { btn.style.borderColor = '#333'; }, 800);
+          }
+        });
+        grid.appendChild(btn);
       });
-      grid.appendChild(btn);
+    }
+
+    rebuildGrid();
+
+    // Callback after editor save or reset: rebuild grid and flash header
+    function onEditorChange() {
+      rebuildGrid();
+      header.classList.add('cpi-flash');
+      setTimeout(() => header.classList.remove('cpi-flash'), 400);
+    }
+
+    gearBtn.addEventListener('click', () => {
+      showEditor(onEditorChange, onEditorChange);
     });
 
     panel.appendChild(grid);

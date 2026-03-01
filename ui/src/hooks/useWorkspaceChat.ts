@@ -386,7 +386,7 @@ export function useWorkspaceChat({
             };
             setTotalTokens(tokenData.total_tokens);
             setContextWindow(tokenData.context_window);
-            if (tokenData.model_id) setModelId(tokenData.model_id);
+            if (tokenData.model_id && typeof tokenData.model_id === 'string') setModelId(tokenData.model_id);
             setContextBudget(prev => ({
               ...prev,
               messageTokens: tokenData.total_tokens,
@@ -589,7 +589,8 @@ export function useWorkspaceChat({
                     },
                   ]);
                 } else if (eventType === "error" || eventType === "session_failed") {
-                  const errorContent = (event.content as string) || (event.error as string) || "Unknown error";
+                  const rawErr = event.content ?? event.error ?? "Unknown error";
+                  const errorContent = typeof rawErr === 'string' ? rawErr : JSON.stringify(rawErr);
                   setMessages((prev) => [
                     ...prev,
                     {
@@ -660,7 +661,8 @@ export function useWorkspaceChat({
           }
 
           case "session_failed": {
-            const sfData = data as { error: string };
+            const sfRawErr = (data as unknown as Record<string, unknown>).error ?? "Unknown error";
+            const sfErrStr = typeof sfRawErr === 'string' ? sfRawErr : JSON.stringify(sfRawErr);
             setIsLoading(false);
             sessionReadyRef.current = true;
             setMessages((prev) => [
@@ -668,7 +670,7 @@ export function useWorkspaceChat({
               {
                 id: `fail-${Date.now()}`,
                 role: "system",
-                content: `Session failed: ${sfData.error || "Unknown error"}`,
+                content: `Session failed: ${sfErrStr}`,
                 timestamp: new Date(),
               },
             ]);
@@ -700,13 +702,19 @@ export function useWorkspaceChat({
             // Mark session as ready so subsequent messages aren't queued
             // into a black hole waiting for a response_done that never comes.
             sessionReadyRef.current = true;
-            setLastError(data.content || "Unknown error");
-            onError?.(data.content);
+            // Ensure content is always a string — backend may send objects
+            // in edge cases (e.g. structured error details), which would
+            // crash React if rendered directly (error #185).
+            const safeContent = typeof data.content === 'string'
+              ? data.content
+              : (data.content ? JSON.stringify(data.content) : "Unknown error");
+            setLastError(safeContent);
+            onError?.(safeContent);
 
             // Check if this is a rate limit or billing error -- auto-log via API as fallback.
             // Guard: "Unknown message type: rate_limit_event" is a parse error,
             // NOT an actual rate limit — skip detection in that case.
-            const errorContent = (data.content || "").toLowerCase();
+            const errorContent = safeContent.toLowerCase();
             const isUnknownMsgType = errorContent.includes("unknown message type");
             const rateLimitPatterns = [
               "rate limit", "rate_limit", "ratelimit",
@@ -727,10 +735,10 @@ export function useWorkspaceChat({
                 id: generateId(),
                 role: "system",
                 content: isBillingError
-                  ? `API billing error: ${data.content}\n\nYour API credit balance may be depleted. Top up at console.anthropic.com or switch to 200K mode to use your subscription.`
+                  ? `API billing error: ${safeContent}\n\nYour API credit balance may be depleted. Top up at console.anthropic.com or switch to 200K mode to use your subscription.`
                   : isRateLimit
-                    ? `Rate limit hit! ${data.content}\n\nThis has been auto-logged to calibrate your usage meters.`
-                    : `Error: ${data.content}`,
+                    ? `Rate limit hit! ${safeContent}\n\nThis has been auto-logged to calibrate your usage meters.`
+                    : `Error: ${safeContent}`,
                 timestamp: new Date(),
               },
             ]);
@@ -978,6 +986,8 @@ export function useWorkspaceChat({
     setMessages([]);
     setTotalTokens(0);
     setContextBudget({ messageTokens: 0, summaryTokens: 0, messageCount: 0 });
+    setLastError(null);
+    setModelId(null);
     setAgentWaiting(false);
     setAgentWaitingQuestion(null);
     setWalkieTalkieLog([]);

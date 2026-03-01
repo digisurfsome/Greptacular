@@ -98,6 +98,18 @@ class BridgeSaveRequest(BaseModel):
     open_questions: Optional[str] = None
 
 
+class BenchmarkCheckpoint(BaseModel):
+    """A single checkpoint in a benchmark run."""
+    name: str
+    token_target: int
+    task: str = ""
+
+
+class BenchmarkStartRequest(BaseModel):
+    """Request to start benchmark mode with optional custom checkpoints."""
+    checkpoints: Optional[list[BenchmarkCheckpoint]] = None
+
+
 class TokenSnapshot(BaseModel):
     """A snapshot of token usage for the context gauge."""
     input_tokens: int = 0
@@ -125,6 +137,23 @@ _token_state = {
     "model_limit": 200000,
     "mode": "subscription",  # subscription | api
 }
+
+# Benchmark mode state
+_benchmark_state: dict = {
+    "active": False,
+    "checkpoints": [],  # List of {"name": str, "token_target": int, "task": str, "reached": bool, "reached_at_tokens": int | None}
+    "current_checkpoint_index": 0,
+}
+
+DEFAULT_BENCHMARK_CHECKPOINTS = [
+    {"name": "CP-1", "token_target": 10000, "task": "Email Notification Service"},
+    {"name": "CP-2", "token_target": 35000, "task": "Activity Feed Generator"},
+    {"name": "MR-1", "token_target": 50000, "task": "Comments (Memory Recall)"},
+    {"name": "CP-3", "token_target": 65000, "task": "Search & Filter Engine"},
+    {"name": "MR-2", "token_target": 75000, "task": "Labels (Memory Recall)"},
+    {"name": "CP-4", "token_target": 90000, "task": "Webhook Dispatcher"},
+    {"name": "MR-3", "token_target": 95000, "task": "Audit Log (Memory Recall)"},
+]
 
 # Active WebSocket connections for real-time updates
 _ws_connections: list[WebSocket] = []
@@ -584,6 +613,9 @@ async def record_tokens(snapshot: TokenSnapshot, project_name: Optional[str] = N
     usage_pct = (total / model_limit * 100) if model_limit > 0 else 0
     safety = _get_safety_status(usage_pct)
 
+    # Check benchmark checkpoints
+    await _check_benchmark_checkpoints(total)
+
     await _broadcast({
         "type": "token_update",
         "entry": entry,
@@ -645,6 +677,100 @@ def _get_safety_status(usage_pct: float) -> dict:
         return {"tier": 1, "label": "WARNING", "color": "orange", "message": "Approaching limit. Prepare for handoff if needed."}
     else:
         return {"tier": 0, "label": "OK", "color": "green", "message": "Operating normally."}
+
+
+# ============================================================================
+# Benchmark Mode
+# ============================================================================
+
+
+@router.post("/benchmark/start")
+async def start_benchmark(req: Optional[BenchmarkStartRequest] = None):
+    """Start benchmark mode with optional custom checkpoints.
+
+    If no checkpoints are provided, uses the default benchmark checkpoints
+    that cover a range of token targets from 10K to 95K.
+    """
+    if req and req.checkpoints:
+        checkpoints = [
+            {
+                "name": cp.name,
+                "token_target": cp.token_target,
+                "task": cp.task,
+                "reached": False,
+                "reached_at_tokens": None,
+            }
+            for cp in req.checkpoints
+        ]
+    else:
+        checkpoints = [
+            {**cp, "reached": False, "reached_at_tokens": None}
+            for cp in DEFAULT_BENCHMARK_CHECKPOINTS
+        ]
+
+    _benchmark_state["active"] = True
+    _benchmark_state["checkpoints"] = checkpoints
+    _benchmark_state["current_checkpoint_index"] = 0
+
+    logger.info("Benchmark mode started with %d checkpoints", len(checkpoints))
+
+    await _broadcast({
+        "type": "benchmark_started",
+        "total_checkpoints": len(checkpoints),
+    })
+
+    return {
+        "status": "ok",
+        "benchmark": _benchmark_state,
+    }
+
+
+@router.post("/benchmark/stop")
+async def stop_benchmark():
+    """Stop benchmark mode and return final state."""
+    _benchmark_state["active"] = False
+
+    logger.info("Benchmark mode stopped")
+
+    await _broadcast({"type": "benchmark_stopped"})
+
+    return {
+        "status": "ok",
+        "benchmark": _benchmark_state,
+    }
+
+
+@router.get("/benchmark/status")
+def get_benchmark_status():
+    """Get the current benchmark state including checkpoint progress."""
+    return {"benchmark": _benchmark_state}
+
+
+async def _check_benchmark_checkpoints(total_tokens: int) -> None:
+    """Check if any benchmark checkpoints have been reached and broadcast.
+
+    Only fires one checkpoint per call (the first unreached one whose
+    token_target has been met) to keep events sequential.
+    """
+    if not _benchmark_state["active"]:
+        return
+
+    checkpoints = _benchmark_state["checkpoints"]
+    for i, cp in enumerate(checkpoints):
+        if not cp["reached"] and total_tokens >= cp["token_target"]:
+            cp["reached"] = True
+            cp["reached_at_tokens"] = total_tokens
+            _benchmark_state["current_checkpoint_index"] = i + 1
+            await _broadcast({
+                "type": "benchmark_checkpoint",
+                "checkpoint": cp["name"],
+                "token_target": cp["token_target"],
+                "actual_tokens": total_tokens,
+                "task": cp.get("task", ""),
+                "index": i,
+                "total_checkpoints": len(checkpoints),
+            })
+            break  # Only fire one checkpoint at a time
 
 
 # ============================================================================
@@ -841,6 +967,9 @@ async def _record_token_usage(
     total = cum["input_tokens"] + cum["output_tokens"]
     usage_pct = (total / model_limit * 100) if model_limit > 0 else 0
     safety = _get_safety_status(usage_pct)
+
+    # Check benchmark checkpoints
+    await _check_benchmark_checkpoints(total)
 
     await _broadcast({
         "type": "token_update",

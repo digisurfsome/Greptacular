@@ -1869,3 +1869,504 @@ HEAD CHEFS (Opus, ~$2.70-3.75 each):
 **Total cost for a 20-feature app: ~$23** (vs. ~$130 with all-Opus)
 **Total time: ~45-90 minutes** (vs. 4-6 hours sequential)
 **Quality: Higher** (because upstream prevention > downstream detection)
+
+---
+
+## The Economics: Subscription vs. API vs. SaaS
+
+### The Three Cost Regimes
+
+The numbers above ($23 for a 20-feature app) are **raw API costs** — what you'd pay
+per-token through the Anthropic API with an API key. But there are actually three
+completely different economic regimes this system operates in, and understanding them
+is the difference between a sustainable business and the Cursor death spiral.
+
+```
+REGIME 1: SUBSCRIPTION (Current - You Right Now)
+─────────────────────────────────────────────────
+  Claude Max subscription: ~$100-200/month
+  What you get: Usage within 5-hour rolling windows
+  Marginal cost per swarm run: $0.00
+  The only "cost": TIME (staying within the window)
+
+  That $23 greenfield build? It costs you NOTHING extra.
+  The $28 clean room config? Zero marginal cost.
+  You're already paying the subscription.
+
+  CONSTRAINT: The 5-hour usage window
+  STRATEGY: Schedule heavy configs at night, auto-resume on window reset
+
+REGIME 2: API (SaaS Backend - Your Customers)
+──────────────────────────────────────────────
+  Anthropic API: Pay per token
+  Opus: ~$15/M in, $75/M out
+  Sonnet: ~$3/M in, $15/M out
+  Haiku: ~$0.25/M in, $1.25/M out
+
+  That $23 greenfield build is REAL money per customer.
+  At scale: 1000 customers × $23/project = $23,000 in API costs per wave.
+
+  CONSTRAINT: Raw token costs eat your margin
+  STRATEGY: Model tiering, prep cooks, context management = 70-80% savings
+
+REGIME 3: HYBRID (The Smart Play)
+─────────────────────────────────
+  Subscription for R&D + personal use
+  API for SaaS customers
+  Cached prompts for repeated system prompts (50% discount on input tokens)
+  Batch API for non-urgent jobs (50% discount, 24-hour SLA)
+
+  CONSTRAINT: Managing two billing models
+  STRATEGY: Use subscription to dial in formulas, API for production
+```
+
+### Subscription Mode: The $0 Marginal Cost Machine
+
+On the Claude Max subscription, the economics are ridiculous:
+
+```
+SUBSCRIPTION ECONOMICS (your current situation):
+
+  Monthly cost: ~$200 (Max plan)
+  Projects you can build per month: Limited only by the usage window
+
+  If you schedule efficiently (heavy work at night, light work during day):
+    - 8 hours/night × 30 nights = 240 hours of agent time
+    - Each greenfield build takes ~60-90 minutes
+    - That's potentially 160-240 projects per month
+    - Cost per project: $200/200 = ~$1.00 per project
+
+  Compare to API cost per project: ~$23
+  Subscription advantage: 23x cheaper per project
+
+  The "5-hour window" is the ONLY constraint.
+  Everything else is free.
+```
+
+**The night scheduling strategy:**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  OPTIMAL SUBSCRIPTION SCHEDULE                              │
+│                                                             │
+│  10 PM: Start Config 2 (Clean Room RE, ~2.5 hours)         │
+│    └─ Agents work through the night                         │
+│                                                             │
+│  12:30 AM: Config 2 completes or window pauses              │
+│    └─ System auto-checkpoints, saves state to features.db   │
+│    └─ Monitor loop: check window every 5 minutes            │
+│                                                             │
+│  Window reopens (variable):                                 │
+│    └─ System detects window open                            │
+│    └─ Resumes from checkpoint automatically                 │
+│    └─ Continues where it left off                           │
+│                                                             │
+│  6 AM: Heavy config done. Light work queued for daytime.    │
+│    └─ Config 7 (Test Suite, ~45 min) — light enough for day │
+│    └─ Config 12 (Docs, ~20 min) — trivial, run anytime     │
+│                                                             │
+│  The expensive configs (1,2,3,5,11) run at NIGHT            │
+│  The cheap configs (7,8,10,12) run during the DAY           │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**The auto-resume feature this requires:**
+
+```python
+# What needs to exist in the orchestrator:
+class WindowAwareOrchestrator:
+    """Orchestrator that survives rate limit pauses."""
+
+    async def run_with_window_awareness(self):
+        while not self.all_features_done():
+            try:
+                await self.run_next_batch()
+            except RateLimitError as e:
+                # Save checkpoint
+                self.save_state_to_db()
+                retry_after = e.retry_after or 300  # default 5 min
+
+                # Log for the user
+                self.emit_status("paused",
+                    f"Window limit reached. Auto-resuming in {retry_after}s. "
+                    f"Progress: {self.passing}/{self.total} features done.")
+
+                # Wait and retry
+                await asyncio.sleep(retry_after)
+
+                # Restore and continue
+                self.restore_state_from_db()
+                continue
+
+    def save_state_to_db(self):
+        """Checkpoint: which features are done, which are in-progress,
+        which agents were running, what phase we're in."""
+        # features.db already tracks feature status
+        # Just need to save orchestrator phase + agent assignments
+        state = {
+            "phase": self.current_phase,
+            "coding_agents_active": self.active_coding_features,
+            "testing_queue": self.testing_queue,
+            "review_queue": self.review_queue,
+            "completed_features": self.completed,
+        }
+        save_checkpoint(self.project_dir, state)
+```
+
+**This is partially built already.** The orchestrator already:
+- Tracks feature status in SQLite (survives restarts)
+- Has auto-retry logic for failed agents
+- Can resume from features.db state
+
+What's missing:
+- Rate limit detection → graceful pause (vs. crash)
+- Checkpoint save on pause
+- Auto-resume loop with backoff
+- UI indicator showing "Paused — window limit, resuming in X minutes"
+
+### The Cursor Cautionary Tale: Why This Matters
+
+Cursor's story is a masterclass in what NOT to do:
+
+```
+CURSOR'S ECONOMICS (before their own model):
+──────────────────────────────────────────────
+  Revenue per user:    $20/month
+  API cost per user:   $15-40/month (heavy users)
+  Margin per user:     -$0 to -$20/month (NEGATIVE)
+
+  They were literally LOSING MONEY on every active customer.
+
+  When Anthropic raised prices → Cursor had to go $20 → $40/month
+  Users revolted. Trust destroyed. Massive churn.
+
+  Root cause: Their business model was "resell Anthropic API at a loss."
+  That's not a business. That's a charity with a credit card.
+
+CURSOR'S FIX:
+  Built their own model → API costs drop dramatically
+  Now profitable per customer
+  But: took massive investment, years of ML work
+  And: their model isn't as good as Claude/GPT for many tasks
+```
+
+**How AutoForge avoids this:**
+
+```
+AUTOFORGE ECONOMICS (SaaS mode):
+────────────────────────────────
+  Two products, two models:
+
+  PRODUCT A: Self-hosted CLI tool ($0 - open source / freemium)
+    - User runs on their OWN subscription or API key
+    - AutoForge costs: $0 in API fees
+    - Revenue: npm package, support, templates
+    - This is the R&D lab + community builder
+    - Like Docker — free tool, paid services
+
+  PRODUCT B: Cloud SaaS (paid)
+    - AutoForge runs agents on YOUR API key (pass-through)
+    OR
+    - AutoForge runs agents on THEIR API key (managed)
+    - Revenue: subscription + per-project markup
+
+  The KEY difference from Cursor:
+    - Cursor: one user, one agent, continuous chat = high cost, low control
+    - AutoForge: many agents, BUT model-tiered and prep-cooked = LOW cost per project
+```
+
+### The Cost Advantage: Why AutoForge's System Pays for Itself
+
+You said it — "the software comes into play because you're using the system I built."
+Here's the math on WHY the system makes API mode viable:
+
+```
+NAIVE API USAGE (what Cursor/others do):
+────────────────────────────────────────
+  One Opus agent, full context, every task
+  20 features × 1 session each × ~$6.50/session = $130
+  No model tiering, no prep cooks, no context management
+  Every agent rediscovers the codebase independently
+  COST: $130 per project
+
+AUTOFORGE SYSTEM (what your software does):
+───────────────────────────────────────────
+  Tiered models: Opus only for architecture + foundation
+  Prep cooks: Haiku pre-chews context for $0.01
+  Context management: PreCompact preserves the right info
+  Tool scoping: Each agent only sees relevant tools
+  Batch mode: 3 features per session instead of 1
+  COST: $23 per project
+
+SAVINGS: $107 per project (82% reduction)
+AT SCALE: 1000 projects/month = $107,000/month saved
+
+THIS IS THE MOAT. The software IS the cost optimization.
+```
+
+**But it goes deeper.** The system doesn't just save on raw tokens.
+It saves on WASTE — the tokens that go to orientation, re-reading files,
+rediscovering patterns, conflicting implementations that get thrown away:
+
+```
+WHERE NAIVE APPROACHES WASTE TOKENS:
+─────────────────────────────────────
+  Orientation waste:   Each agent spends 15-25% of context reading the codebase
+                       AutoForge: Prep cooks do it ONCE for $0.02 total
+
+  Conflict waste:      Parallel agents make conflicting decisions
+                       AutoForge: Architect agent decides ONCE, all follow
+
+  Retry waste:         Bad code fails testing, gets rewritten
+                       AutoForge: Lint watcher catches in real-time for $0.01
+
+  Over-scoping waste:  Agent reads files it doesn't need
+                       AutoForge: Tool scoping limits what each agent can see
+
+  Compaction waste:    Agent forgets important context when window fills
+                       AutoForge: PreCompact hook preserves the right things
+
+ESTIMATED WASTE IN NAIVE APPROACH: 30-40% of tokens
+ESTIMATED WASTE IN AUTOFORGE: 3-5% of tokens
+```
+
+### The Three Business Models (Pick Two)
+
+```
+MODEL A: OPEN SOURCE CLI (Community + Ecosystem)
+────────────────────────────────────────────────
+  - npm install autoforge-ai (already exists)
+  - User provides their own API key or subscription
+  - Revenue: $0 direct, but builds community
+  - Monetize: Premium templates, enterprise support, consulting
+  - Like: Docker, VS Code, Terraform
+
+MODEL B: CLOUD SAAS (Managed Service)
+──────────────────────────────────────
+  - User pays monthly subscription to AutoForge
+  - AutoForge manages the API keys, compute, sandboxing
+  - Per-project pricing: $5/project (Config 12) to $50/project (Config 2)
+  - Your cost: $4-28 in API fees
+  - Margin: 20-80% depending on config
+  - Like: Vercel, Netlify, Railway
+
+MODEL C: ENTERPRISE (Self-hosted + Support)
+───────────────────────────────────────────
+  - Company runs AutoForge on their infrastructure
+  - Uses their own API keys (Anthropic, Vertex AI, Bedrock)
+  - Revenue: Per-seat license + support contract
+  - Premium features: SSO, audit logs, org-level controls (ALREADY BUILT)
+  - Like: GitLab, Confluence, Jira
+
+THE SMART PLAY: A + B
+  Open source CLI builds the community and proves the product.
+  Cloud SaaS captures the users who don't want to manage infrastructure.
+  Enterprise captures big companies who need on-prem.
+
+  But here's the Cursor lesson: MODEL B REQUIRES the cost optimization
+  that the system provides. Without model tiering, prep cooks, and context
+  management, you lose money on every customer. WITH the system, you have
+  60-80% margins even at competitive pricing.
+```
+
+### Price Points That Work (SaaS Mode)
+
+Based on the actual API costs and the system's efficiency:
+
+```
+CONFIG                    API COST    CHARGE    MARGIN
+─────────────────────────────────────────────────────
+Greenfield Build (25)      $23        $49        53%
+Clean Room RE (22)         $28        $59        53%
+Spaghetti Rescue (21)      $24        $49        51%
+Boilerplate Factory (14)   $11        $25        56%
+Code Migration (16)        $19        $39        51%
+Security Audit (12)         $9        $19        53%
+Test Suite Builder (10)     $5        $12        58%
+Performance Opt (6)         $4        $10        60%
+API Design (10)             $5        $12        58%
+Design System (7)           $5        $12        60%
+Legacy Modernization (14)  $19        $39        51%
+Documentation (7)           $4        $10        60%
+
+AVERAGE MARGIN: ~55%
+
+Compare to Cursor: They were at NEGATIVE margins selling API access.
+AutoForge has 55% margins because the SYSTEM reduces the API cost.
+```
+
+### Subscription Mode: The Night Shift Strategy (Detailed)
+
+For users on Claude Max subscription running AutoForge locally:
+
+```
+THE ECONOMICS OF SLEEPING:
+──────────────────────────
+  While you sleep (10 PM - 6 AM = 8 hours):
+    - Usage window: ~5 hours available
+    - Window may pause: system auto-resumes
+
+  What you can build in one night:
+    - 1× Greenfield Build (90 min) = complete 20-feature app
+    - 1× Test Suite (45 min) = comprehensive test coverage
+    - 1× Documentation (20 min) = full project docs
+    - Still have ~2.5 hours left
+
+  Over a month of nights:
+    - 30 nights × ~4 configs = ~120 project operations
+    - Cost: $200 subscription (you'd pay anyway)
+    - API equivalent: 120 × ~$15 avg = $1,800
+    - SAVINGS: $1,600/month vs API
+
+  The subscription is 9x cheaper than API for the same output.
+```
+
+**The auto-resume system design:**
+
+```
+STATE MACHINE: Window-Aware Orchestrator
+
+  ┌─────────┐    window     ┌──────────┐    all done    ┌──────────┐
+  │ RUNNING  │──── limit ──►│  PAUSED   │───────────────►│ COMPLETE │
+  │          │◄── resume ───│           │                │          │
+  └─────────┘               └──────────┘                └──────────┘
+       │                         │
+       │ agent crashes           │ window check loop
+       ▼                         ▼
+  ┌──────────┐              ┌──────────┐
+  │ RETRY    │              │ WAITING  │
+  │ (backoff)│              │ (polling │
+  └──────────┘              │  5 min)  │
+                            └──────────┘
+
+  CHECKPOINT DATA (saved to .autoforge/checkpoint.json):
+  {
+    "timestamp": "2026-03-01T22:45:00Z",
+    "phase": "implementation",
+    "features_complete": [1, 2, 3, 5, 7],
+    "features_in_progress": [4, 8],
+    "features_pending": [6, 9, 10, 11, 12],
+    "current_agents": [
+      {"type": "coding", "feature_id": 4, "turns_used": 87},
+      {"type": "coding", "feature_id": 8, "turns_used": 23}
+    ],
+    "testing_queue": [1, 2, 3],
+    "review_queue": [1, 2],
+    "artifacts": {
+      "architecture": ".autoforge/ARCHITECTURE.md",
+      "codebase_map": ".autoforge/codebase-map.md",
+      "style_guide": ".autoforge/style_guide.md"
+    }
+  }
+
+  On resume:
+  1. Load checkpoint
+  2. Skip completed features
+  3. In-progress features: restart from last commit (agent state lost, but code isn't)
+  4. Continue with pending features
+  5. Emit WebSocket update: "Resumed from checkpoint. 5/12 features complete."
+```
+
+**What the UI shows during a pause:**
+
+```
+┌───────────────────────────────────────────────────────┐
+│  ⏸️  Paused — Usage window limit reached               │
+│                                                       │
+│  Progress: ████████░░░░ 7/12 features complete        │
+│                                                       │
+│  Resuming automatically when window opens.            │
+│  Next check in: 4:32                                  │
+│                                                       │
+│  Completed: Auth, Database, API, Dashboard,           │
+│             User Profile, Settings, Navigation        │
+│  Pending:   Search, Notifications, Admin Panel,       │
+│             Reports, Export                            │
+│                                                       │
+│  [Resume Now] [Save & Exit] [View Progress]           │
+└───────────────────────────────────────────────────────┘
+```
+
+### The Anthropic Dependency Risk (The Cursor Lesson Applied)
+
+```
+WHAT HAPPENED TO CURSOR:
+────────────────────────
+  1. Built entire product on Anthropic API ($20/user, costs $15-40/user)
+  2. Anthropic raised prices
+  3. Cursor had to raise prices ($20 → $40)
+  4. Users furious, massive churn
+  5. Cursor built own model to decouple
+  6. Years of ML investment, inferior model for many tasks
+  7. Now profitable but at the cost of quality and trust
+
+HOW AUTOFORGE IS PROTECTED:
+───────────────────────────
+  1. CLI mode: User's own key/subscription — API cost is THEIR problem
+  2. Already supports multiple providers: Anthropic, Vertex, Ollama, GLM, Kimi, Custom
+  3. Model tiering means you're NOT all-in on the most expensive model
+  4. If Opus gets expensive: shift more work to Sonnet (already mapped out)
+  5. If Anthropic gets expensive: shift to Vertex (same models, Google pricing)
+  6. If ALL cloud gets expensive: Ollama support means local models work
+  7. The SYSTEM (orchestration, prep cooks, context management) works with ANY model
+
+  AUTOFORGE'S VALUE ISN'T THE MODEL. IT'S THE ORCHESTRATION.
+  The model is a commodity. The pipeline is the product.
+
+  Cursor's mistake: They were selling "access to Claude" at a loss.
+  AutoForge sells: "A software engineering team powered by whatever model you want."
+```
+
+### The Real Competitive Position
+
+```
+COMPETITOR          WHAT THEY SELL              THEIR EXPOSURE
+────────────────    ─────────────────────────   ──────────────────────
+Cursor              Better autocomplete         100% dependent on API pricing
+Windsurf            IDE with AI chat            100% dependent on API pricing
+Bolt.new            Instant app generation      100% dependent on API pricing
+v0 (Vercel)         UI component generation     100% dependent on API pricing
+Replit Agent         Cloud dev environment       100% dependent on API pricing
+
+AutoForge           Multi-agent orchestration   MODEL-AGNOSTIC
+                    with cost optimization      Works with any provider
+                    built INTO the system       System reduces cost 70-80%
+                                                CLI mode: user pays nothing extra
+                                                Supports local models (Ollama)
+
+The moat isn't "we use Claude" — everyone uses Claude.
+The moat is "we use Claude 70-80% more efficiently than everyone else,
+and we can switch models without rewriting the product."
+```
+
+### Subscription Arbitrage: The Hidden Business Model
+
+There's a business model hiding in the subscription economics:
+
+```
+THE ARBITRAGE:
+──────────────
+  Claude Max: $200/month flat
+  What you can produce: 120+ project operations per month
+  API equivalent cost: ~$1,800/month
+
+  If you could sell those project operations at even $10 each:
+  Revenue: 120 × $10 = $1,200/month
+  Cost: $200 subscription
+  Margin: 83%
+
+  THIS IS THE AGENCY/FREELANCER MODEL:
+  - Pay $200/month for Claude Max
+  - Use AutoForge to build client projects
+  - Charge clients $500-5000 per project
+  - AutoForge does the work overnight while you sleep
+  - You review in the morning, deliver to client
+
+  The subscription COST is $200/month.
+  The subscription VALUE (if productized) is $1,800+/month.
+  The Delta is 9x.
+```
+
+This is why the scheduling feature and auto-resume are so important.
+They turn the subscription from "a tool I use when I'm at my computer"
+into "a factory that runs 24/7 and I check in the morning."

@@ -1636,6 +1636,11 @@ export async function dunkstackGetTokenLog(): Promise<{ entries: Array<Record<st
   return fetchJSON('/dunkstack/tokens/log')
 }
 
+export async function dunkstackResetComms(projectName?: string): Promise<{ status: string; message: string }> {
+  const params = projectName ? `?project_name=${encodeURIComponent(projectName)}` : ''
+  return fetchJSON(`/dunkstack/comms/reset${params}`, { method: 'POST' })
+}
+
 export async function dunkstackReadBuildLog(): Promise<DunkStackCommsResponse> {
   return fetchJSON('/dunkstack/build-log')
 }

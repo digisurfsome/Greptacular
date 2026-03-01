@@ -55,6 +55,43 @@ def _ensure_agent_dir(project_name: Optional[str] = None):
     copy_universal_templates(agent)
 
 
+def _reset_comms_files(project_name: Optional[str] = None) -> None:
+    """Reset comms files to their template defaults for a fresh session.
+
+    Overwrites to_human.md, from_human.md, and control.md with clean templates
+    so that stale content from previous sessions doesn't bleed through.
+    """
+    agent = _agent_dir(project_name)
+    comms = agent / "comms"
+    comms.mkdir(parents=True, exist_ok=True)
+
+    # Reset to_human.md (agent -> human messages)
+    (comms / "to_human.md").write_text(
+        "# Agent Messages\n"
+        "> Append new messages at the bottom. Never delete previous entries.\n"
+        "> Format: ## [timestamp] Category - Brief Title\n\n"
+        "[No messages yet]\n",
+        encoding="utf-8",
+    )
+
+    # Reset from_human.md (human -> agent messages)
+    (comms / "from_human.md").write_text(
+        "# Human Messages\n"
+        "> Human writes messages here. Agent reads only, never modifies.\n"
+        "> Format: ## [timestamp] Message Title\n\n"
+        "[No messages yet]\n",
+        encoding="utf-8",
+    )
+
+    # Reset control.md to idle
+    (comms / "control.md").write_text(
+        "# Session Control\nmode: idle\nmessage: none\n",
+        encoding="utf-8",
+    )
+
+    logger.info("Reset comms files for %s", project_name or "default")
+
+
 # ============================================================================
 # Pydantic Models
 # ============================================================================
@@ -274,6 +311,21 @@ async def write_to_human(msg: CommsMessage, project_name: Optional[str] = None):
     })
 
     return {"status": "ok", "timestamp": timestamp}
+
+
+@router.post("/comms/reset")
+async def reset_comms(project_name: Optional[str] = None):
+    """Reset all comms files to clean templates for a fresh session.
+
+    Clears to_human.md, from_human.md, and control.md so stale content
+    from previous sessions doesn't bleed into new ones.
+    """
+    _ensure_agent_dir(project_name)
+    _reset_comms_files(project_name)
+
+    await _broadcast({"type": "comms_reset", "project_name": project_name})
+
+    return {"status": "ok", "message": "Comms files reset to clean state"}
 
 
 # ============================================================================
@@ -828,8 +880,9 @@ async def start_coding_agent(req: AgentStartRequest):
     if not project_dir or not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project not found")
 
-    # Ensure .agent/ directory exists
+    # Ensure .agent/ directory exists and reset comms for a clean session
     _ensure_agent_dir(req.project_name)
+    _reset_comms_files(req.project_name)
 
     # Create session (async - stops any existing session for this project)
     session = await create_coding_session(
@@ -1059,6 +1112,10 @@ async def dunkstack_websocket(ws: WebSocket):
                             await old_session.close()
                         except Exception as e:
                             logger.warning("Error closing old DunkStack session: %s", e)
+
+                    # Reset comms files for a clean session (fixes stale chat)
+                    _ensure_agent_dir(project_name)
+                    _reset_comms_files(project_name)
 
                     session_id = f"dunkstack-{id(ws)}-{datetime.now(timezone.utc).strftime('%H%M%S')}"
                     session = DunkStackChatSession(

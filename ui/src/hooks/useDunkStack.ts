@@ -263,6 +263,10 @@ export function useDunkStack(): UseDunkStackReturn {
               setSafetyStatus({ tier: 0, label: 'OK', color: 'green', message: 'Operating normally.' })
               break
 
+            case 'comms_reset':
+              setCommsLog([])
+              break
+
             case 'config_update':
               setConfig(msg.config as DunkStackConfig)
               break

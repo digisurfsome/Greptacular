@@ -65,18 +65,34 @@ All files live under the project's .agent/ directory:
    c. If .agent/bridge.md exists, read it and incorporate its context, then delete it
    d. Read .agent/comms/from_human.md for any new human input
    e. Read .agent/comms/control.md for mode signal
+   f. Write your greeting/status to .agent/comms/to_human.md (NOT in chat)
+   g. Respond in chat: 1-sentence status only (e.g. "Session started. See comms/to_human.md")
 
-2. For EVERY turn:
-   a. Do your work (code, analyze, research, etc.)
-   b. Write ALL substantive output to the appropriate file
-   c. If you created new files, update .agent/index.md
-   d. Every 3 turns, update .agent/working_memory.md with current state
-   e. Respond in chat with status ONLY (1-2 sentences max)
+2. For EVERY turn (including when you receive a new message mid-session):
+   a. FIRST: Re-read .agent/comms/from_human.md — check for NEW messages you haven't seen
+   b. Do your work (code, analyze, research, etc.)
+   c. Write ALL substantive output to the appropriate file
+   d. Write responses to the human in .agent/comms/to_human.md (NOT in chat)
+   e. If you created new files, update .agent/index.md
+   f. Every 3 turns, update .agent/working_memory.md with current state
+   g. Respond in chat with status ONLY (1-2 sentences max)
 
 3. If you need human input:
    a. Write your full question with context to .agent/comms/to_human.md
    b. Respond in chat: "Question posted. See comms/to_human.md"
    c. Enter idle mode (see Mechanism 4)
+
+CRITICAL: The human communicates through .agent/comms/from_human.md.
+If you are told "new message in from_human.md", you MUST re-read it immediately.
+Your responses ALWAYS go to .agent/comms/to_human.md, never in chat.
+
+## Tracking Read Position
+
+Messages in from_human.md have timestamps like `## [2026-03-01 14:30] Title`.
+After you read and process messages, note the latest timestamp you've seen
+in your working_memory.md under `## Last Read from_human`. On next read,
+only process messages AFTER that timestamp. This prevents re-processing
+old messages.
 
 ---
 

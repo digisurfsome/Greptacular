@@ -167,7 +167,11 @@ def read_from_human(project_name: Optional[str] = None):
 
 @router.post("/comms/from-human")
 async def write_from_human(msg: CommsMessage, project_name: Optional[str] = None):
-    """Append a message to from_human.md (human → agent communication)."""
+    """Append a message to from_human.md (human → agent communication).
+
+    Also forwards the message to any running DunkStack agent sessions so the
+    agent processes it immediately (instead of only seeing it on next startup).
+    """
     _ensure_agent_dir(project_name)
     path = _agent_dir(project_name) / "comms" / "from_human.md"
 
@@ -183,7 +187,7 @@ async def write_from_human(msg: CommsMessage, project_name: Optional[str] = None
 
     path.write_text(existing + entry, encoding="utf-8")
 
-    # Broadcast the new message to connected clients
+    # Broadcast the new message to UI clients
     await _broadcast({
         "type": "comms_update",
         "channel": "from_human",
@@ -192,7 +196,27 @@ async def write_from_human(msg: CommsMessage, project_name: Optional[str] = None
         "content": msg.content,
     })
 
-    return {"status": "ok", "timestamp": timestamp}
+    # Forward to any running agent sessions so they process it immediately.
+    # The agent receives a nudge telling it to re-read from_human.md and respond.
+    forwarded = False
+    if _agent_sessions:
+        nudge = (
+            f"New message from the human was posted to .agent/comms/from_human.md at {timestamp}. "
+            "Re-read .agent/comms/from_human.md now and respond to the latest message. "
+            "Write your response to .agent/comms/to_human.md (NOT in chat). "
+            "Chat reply: 1-sentence status only."
+        )
+        for session_id, session in list(_agent_sessions.items()):
+            try:
+                # Stream agent response events to all connected WS clients
+                async for event in session.send_message(nudge):
+                    await _broadcast(event)
+                forwarded = True
+                logger.info("Forwarded walkie-talkie message to agent session %s", session_id)
+            except Exception as e:
+                logger.warning("Failed to forward message to agent session %s: %s", session_id, e)
+
+    return {"status": "ok", "timestamp": timestamp, "forwarded_to_agent": forwarded}
 
 
 @router.post("/comms/to-human")
@@ -930,6 +954,15 @@ async def dunkstack_websocket(ws: WebSocket):
                             "model_id": model_id,
                             "context_mode": context_mode,
                         })
+
+                        # Auto-bootstrap: tell the agent to read its .agent/ files
+                        # This is what makes the walkie-talkie system work on startup
+                        try:
+                            async for event in session.bootstrap():
+                                await ws.send_json(event)
+                        except Exception as boot_err:
+                            logger.warning("DunkStack bootstrap failed (non-fatal): %s", boot_err)
+
                     except Exception as e:
                         logger.exception("Failed to start DunkStack agent session")
                         await ws.send_json({

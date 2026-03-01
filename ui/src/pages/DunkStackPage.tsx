@@ -122,14 +122,16 @@ export function DunkStackPage(): React.JSX.Element {
   // New project inline form state
   const [showNewProject, setShowNewProject] = useState(false)
   const [newProjectName, setNewProjectName] = useState('')
-  const [newProjectPath, setNewProjectPath] = useState('')
   const [newProjectError, setNewProjectError] = useState('')
 
   const handleCreateProject = useCallback(async () => {
-    const name = newProjectName.trim()
-    const path = newProjectPath.trim()
-    if (!name) { setNewProjectError('Name required'); return }
-    if (!path) { setNewProjectError('Path required'); return }
+    const raw = newProjectName.trim()
+    if (!raw) { setNewProjectError('Name required'); return }
+    // Auto-sanitize: lowercase, replace spaces/special chars with hyphens
+    const name = raw.toLowerCase().replace(/[^a-z0-9_-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')
+    if (!name) { setNewProjectError('Invalid name'); return }
+    // Auto-generate path on server
+    const path = `/home/user/${name}`
     setNewProjectError('')
     try {
       await createProject.mutateAsync({ name, path, specMethod: 'manual' })
@@ -137,12 +139,11 @@ export function DunkStackPage(): React.JSX.Element {
       localStorage.setItem('dunkstack-selected-project', name)
       setShowNewProject(false)
       setNewProjectName('')
-      setNewProjectPath('')
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
       setNewProjectError(msg)
     }
-  }, [newProjectName, newProjectPath, createProject, setSelectedProject])
+  }, [newProjectName, createProject, setSelectedProject])
   const [centerView, setCenterView] = useState<CenterView>('chat')
   const [standardsPanelOpen, setStandardsPanelOpen] = useState(true)
   const [productPanelOpen, setProductPanelOpen] = useState(false)
@@ -475,21 +476,18 @@ export function DunkStackPage(): React.JSX.Element {
                 <div className="space-y-1.5">
                   <input
                     type="text"
-                    placeholder="Project name"
+                    placeholder="Project name (e.g. my-app)"
                     value={newProjectName}
                     onChange={e => setNewProjectName(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && handleCreateProject()}
                     className="w-full px-2 py-1 text-xs border border-border rounded bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                     autoFocus
                   />
-                  <input
-                    type="text"
-                    placeholder="Absolute path (e.g. /home/user/my-app)"
-                    value={newProjectPath}
-                    onChange={e => setNewProjectPath(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && handleCreateProject()}
-                    className="w-full px-2 py-1 text-xs border border-border rounded bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
+                  {newProjectName.trim() && (
+                    <div className="text-[10px] text-muted-foreground px-0.5">
+                      /home/user/{newProjectName.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || '...'}
+                    </div>
+                  )}
                   {newProjectError && (
                     <div className="text-[10px] text-red-500 px-0.5">{newProjectError}</div>
                   )}
@@ -503,7 +501,7 @@ export function DunkStackPage(): React.JSX.Element {
                       {createProject.isPending ? 'Creating...' : 'Create'}
                     </button>
                     <button
-                      onClick={() => { setShowNewProject(false); setNewProjectError('') }}
+                      onClick={() => { setShowNewProject(false); setNewProjectError(''); setNewProjectName('') }}
                       className="px-2 py-1 text-xs rounded border border-border hover:bg-muted text-muted-foreground"
                     >
                       <X size={12} />

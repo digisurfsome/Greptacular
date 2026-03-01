@@ -255,8 +255,44 @@ After each feature, update your specs to reflect what was built, what changed, a
     },
     {
       id: 5,
-      title: 'Prompt 5 (Edit Me)',
-      prompt: `Replace this with your own prompt. Open the Tampermonkey script editor to change it.`
+      title: 'Context Efficiency Rules',
+      prompt: `## MANDATORY: Context Efficiency Rules
+You are working on the Greptacular codebase. Follow these rules strictly to preserve your context window for coding:
+### Step 1: Read Briefings (do this FIRST, before anything else)
+1. Read \`AGENT_BRIEFING.md\` at project root — master architecture overview
+2. Read \`docs/agent-briefs/{FEATURE_BRIEF}.md\` — specific to your task
+### Step 2: Read ONLY Files You Will Edit
+- Read ONLY the files listed in "Files You Will Modify" below
+- Do NOT read files "just to understand" — the briefings cover that
+- Do NOT read types.ts or api.ts in full — search for the specific interface/function you need
+- Maximum 5 files read directly by you
+### Step 3: Use Subagents for Everything Else
+- **Need to understand how another component works?** → Spawn an Explore subagent
+- **Need to find where something is imported?** → Spawn an Explore subagent
+- **Need to check what pattern a similar component uses?** → Spawn an Explore subagent
+- **Need to search for a string across the codebase?** → Spawn an Explore subagent
+- NEVER run Glob/Grep yourself unless it's a single targeted search for a specific file
+- The subagent's context is separate from yours — use this to your advantage
+### Step 4: Context Budget
+- Stop coding at 50% context usage
+- If you hit 45%, wrap up current work, commit, and save progress notes
+- Never start a new feature if you're above 40%
+---
+## Your Task
+{DESCRIBE THE SPECIFIC TASK — be detailed about what to build, not how}
+## Feature Brief to Read
+docs/agent-briefs/{BRIEF_NAME}.md
+## Files You Will Modify
+- {path/to/file1}
+- {path/to/file2}
+- {path/to/file3}
+## Files You Might Need to Reference (use subagent)
+- {path/to/reference1} — {why you might need it}
+- {path/to/reference2} — {why you might need it}
+## Acceptance Criteria
+- {What "done" looks like — specific, testable}
+- {Another criterion}
+- {Another criterion}`
     },
     { id: 6, title: 'Prompt 6', prompt: 'Replace with your prompt.' },
     { id: 7, title: 'Prompt 7', prompt: 'Replace with your prompt.' },

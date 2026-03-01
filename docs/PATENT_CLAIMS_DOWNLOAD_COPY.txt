@@ -1,0 +1,335 @@
+CLAIMS — Extracted from Provisional Patent Application
+======================================================
+
+Title: System and Method for Managing Artificial Intelligence Agent Context
+Windows Through Structured File-Based State Persistence, Output Redirection,
+and Multi-Agent Filesystem Communication
+
+
+INDEPENDENT CLAIMS
+-------------------
+
+Claim 1. A method for extending the effective utilization of artificial
+intelligence context windows, the method comprising:
+
+(a) configuring an AI agent to redirect all substantive output from an API
+response channel to persistent structured files on a filesystem, the API
+response channel being restricted to status messages not exceeding a
+configurable sentence limit;
+
+(b) maintaining a hierarchical directory of designated files comprising at
+minimum: a master index file, a working memory file for agent state, a bridge
+file for session continuity, and a bidirectional communication channel
+comprising separate files for human-to-agent and agent-to-human messages;
+
+(c) implementing a selective reading strategy wherein the agent reads a
+budgeted subset of its persistent files per operational turn, the budget being
+configurable in tokens, enabling access to all stored information while
+consuming minimal context window capacity;
+
+(d) monitoring context window utilization and triggering progressive
+interventions at configurable thresholds to prevent operation in a degraded
+performance range.
+
+
+Claim 2. A system for managing artificial intelligence agent sessions through
+file-based state persistence, the system comprising:
+
+(a) a file protocol module that maintains a structured directory of persistent
+files serving as the agent's authoritative state, independent of conversation
+history;
+
+(b) an output redirection module that intercepts agent output intended for
+conversational responses and writes said output to designated persistent files,
+replacing conversational output with abbreviated status references;
+
+(c) a bridge module that captures agent working state to a bridge file upon
+session termination and restores agent state from said bridge file upon session
+resumption, enabling session continuity at a fraction of the token cost of
+re-sending conversation history;
+
+(d) an idle engine module that maintains an active API session at near-zero
+token cost through a tiered holding pattern comprising at minimum a zero-cost
+wait state and a minimal-cost heartbeat operation;
+
+(e) a context safety module that monitors context window utilization and
+enforces configurable threshold-based interventions comprising at minimum a
+warning tier, a handoff preparation tier, and a hard stop tier.
+
+
+Claim 3. A computer-implemented method for reducing artificial intelligence
+API costs through structured file-based session management, the method
+comprising:
+
+(a) redirecting AI agent output from an API response channel to persistent
+files, wherein the API response channel carries only status messages of
+configurable brevity;
+
+(b) upon session termination, writing a bridge file containing complete agent
+working state at a cost of approximately 800-1,200 output tokens;
+
+(c) upon session resumption, reading the bridge file and a working memory file
+at a cost of approximately 1,400-1,700 input tokens, rather than re-sending
+accumulated conversation history;
+
+(d) maintaining active API sessions between tasks through a holding pattern
+consuming approximately 0-30 tokens per cycle, rather than terminating and
+restarting sessions at the cost of re-sending full conversation history;
+
+(e) whereby the combined effect of (a) through (d) increases effective context
+window utilization from approximately 50% to approximately 85% and reduces
+session resume costs by approximately three orders of magnitude.
+
+
+DEPENDENT CLAIMS
+-----------------
+
+Claim 4. The method of Claim 1, further comprising a compaction recovery
+protocol wherein, upon detection of a platform-initiated context compaction
+event, the agent recovers by re-reading its persistent file state rather than
+relying on the compacted conversation history, the persistent files serving as
+the authoritative source of truth.
+
+Claim 5. The method of Claim 1, wherein the bidirectional communication
+channel further comprises a control file containing mode signals selected from
+at least: idle, continue, and autopilot, enabling asynchronous operational
+mode changes without consuming context window capacity for mode-change
+messages.
+
+Claim 6. The method of Claim 1, further comprising drift detection patterns
+that monitor agent output for indicators of verbose conversational behavior
+and automatically redirect said output to the appropriate persistent file.
+
+Claim 7. The system of Claim 2, wherein the idle engine module implements a
+tiered holding strategy comprising:
+- a first tier (T0) of zero-cost wait pauses;
+- a second tier (T1) of heartbeat micro-reads consuming approximately 30
+  tokens per cycle;
+- a third tier (T2) of context summary operations consuming approximately
+  200 tokens; and
+- a fourth tier (T3) of proactive validation checks consuming approximately
+  500 tokens;
+wherein the system preferentially uses the lowest-cost tier that maintains
+session viability.
+
+Claim 8. The system of Claim 2, wherein the idle engine module further
+comprises a signal file mechanism that enables external systems to inject
+tasks into a holding agent by writing task content to a designated signal
+file, the agent detecting said content during a heartbeat cycle and exiting
+the holding pattern to execute the injected task.
+
+Claim 9. The system of Claim 2, further comprising a real-time context
+categorization module that classifies conversation content into prioritized
+category buckets as messages are exchanged, each category having a base
+priority weight, and wherein the categorized content is progressively
+pre-compacted at configurable utilization intervals.
+
+Claim 10. The method of Claim 9, wherein the priority scoring for categorized
+items is computed as:
+
+  score = base_weight(category) x recency_factor x mention_count x override_penalty
+
+wherein base_weight is determined by category type, recency_factor decays over
+time, mention_count increases for frequently referenced items, and
+override_penalty nullifies items superseded by later decisions.
+
+Claim 11. The method of Claim 1, wherein the hierarchical directory further
+comprises:
+- a knowledge subdirectory for persistent domain-specific knowledge files;
+- an output subdirectory for completed work products;
+- a progress subdirectory containing an append-only build log; and
+- a settings subdirectory containing a configuration file with adjustable
+  operational parameters.
+
+Claim 12. The method of Claim 1, wherein the configurable thresholds of
+step (d) comprise:
+- a first threshold (default 45% utilization) triggering a warning
+  notification;
+- a second threshold (default 47.5% utilization) triggering handoff
+  preparation; and
+- a third threshold (default 50% utilization) triggering a hard session stop;
+wherein said thresholds are adjustable by an end user through the settings
+configuration file.
+
+Claim 13. The method of Claim 3, further comprising generating an intelligent
+handoff package at the handoff preparation threshold, said handoff package
+being constructed from real-time categorized context items and comprising:
+active task description, decisions made, requirements with completion status,
+architectural decisions, code changes, open issues, pending ideas, and files
+to read first.
+
+Claim 14. The system of Claim 2, wherein the output redirection module
+enforces a hard rule that any agent response exceeding a configurable sentence
+limit (default: 3 sentences) must be written to a persistent file, with only
+a file reference returned in the conversational response.
+
+Claim 15. A method for preserving artificial intelligence agent context across
+session boundaries, the method comprising:
+
+(a) during an active session, maintaining all agent working state in
+persistent files rather than relying on conversation history accumulation;
+
+(b) upon detecting an imminent session termination, executing a bridge save
+sequence comprising writing current task state, progress, active context
+references, and next steps to a designated bridge file;
+
+(c) upon starting a new session, executing a bridge restore sequence
+comprising reading the bridge file, a working memory file, and a master index
+file, then deleting the bridge file;
+
+(d) whereby session continuity is achieved at a cost of approximately
+2,500-3,000 tokens per bridge cycle, compared to re-sending the full
+conversation history which may cost 100,000-1,000,000 tokens depending on
+session length.
+
+
+MULTI-AGENT FILESYSTEM COMMUNICATION CLAIMS
+---------------------------------------------
+
+Claim 16. A method for coordinating a plurality of artificial intelligence
+agents through filesystem-based message routing, the method comprising:
+
+(a) assigning each agent in a multi-agent system a designated mailbox
+directory on a shared filesystem, the mailbox comprising at minimum an inbox
+subdirectory for receiving messages and an outbox subdirectory for retaining
+copies of sent messages;
+
+(b) enabling inter-agent communication by a sending agent writing a
+structured message file to a receiving agent's inbox directory, the message
+file comprising at minimum a sender identifier, recipient identifier,
+timestamp, message type, and message body;
+
+(c) enabling message detection by each agent scanning its inbox directory
+at configurable intervals for new message files;
+
+(d) implementing hierarchy-independent addressing whereby any agent may
+write a message to any other agent's inbox directory regardless of
+organizational position, task assignment, or logical hierarchy;
+
+(e) enabling human operator participation as a first-class communication
+participant by granting the operator read access to all agent mailbox
+directories and write access to any agent's inbox directory, using the same
+message format as inter-agent messages.
+
+
+Claim 17. A system for multi-agent artificial intelligence coordination
+through a filesystem communication fabric, the system comprising:
+
+(a) a plurality of AI agents, each maintaining a private state directory
+for individual context window management through file-based state persistence
+as recited in Claim 2;
+
+(b) a shared communication directory on the filesystem comprising a mailbox
+directory for each agent, a broadcast directory for system-wide messages, and
+a coordination directory for shared state;
+
+(c) an agent registry file on the filesystem declaring the identity,
+capabilities, mailbox location, and current status of each active agent;
+
+(d) a message protocol wherein inter-agent messages are individual
+structured files with metadata headers enabling message ordering, threading,
+priority routing, and state tracking through filesystem operations;
+
+(e) whereby the filesystem serves simultaneously as the state persistence
+layer for individual agents (per Claims 1-15) and as the communication
+fabric between agents, requiring zero additional infrastructure beyond the
+filesystem.
+
+
+Claim 18. The method of Claim 16, further comprising guaranteed delivery
+semantics implemented through message file state transitions, wherein each
+message file transitions through defined states comprising at minimum:
+pending (deposited in inbox, not yet read), read (recipient has opened and
+parsed the message), and acknowledged (recipient has confirmed processing),
+said state transitions effected by updating a status field within the
+message file header.
+
+Claim 19. The method of Claim 16, further comprising crash recovery for
+inter-agent communications, wherein:
+
+(a) upon an agent crash, unread messages remain persisted in the crashed
+agent's inbox directory as files on the filesystem;
+
+(b) upon agent restart, the restarted agent scans its inbox directory for
+pending messages in addition to reading its bridge file for private state
+recovery;
+
+(c) whereby inter-agent communications survive agent crashes, system
+restarts, and session boundaries without message loss, by virtue of messages
+being persistent files rather than in-memory objects or ephemeral API
+payloads.
+
+Claim 20. The method of Claim 16, further comprising a broadcast
+communication mechanism wherein an agent writes a message file to a
+designated broadcast directory on the filesystem, said broadcast directory
+being monitored by all agents in the system, enabling one-to-many
+communication without the sending agent needing to enumerate or address
+each recipient individually.
+
+Claim 21. The method of Claim 16, wherein the human operator participation
+of step (e) further comprises:
+
+(a) operator observation of all inter-agent communications by reading inbox
+and outbox directories of any agent using standard filesystem tools;
+
+(b) operator injection of instructions to a specific agent by writing a
+message file to that agent's inbox directory with a designated operator
+sender identifier;
+
+(c) operator broadcast of instructions to all agents by writing to the
+broadcast directory;
+
+(d) operator modification of an agent's status file to change its
+availability, pause its operation, or redirect its task assignment;
+
+(e) whereby the operator maintains real-time observability and control over
+multi-agent coordination without requiring specialized monitoring tools,
+dashboards, or administrative APIs.
+
+Claim 22. The system of Claim 17, further comprising a message validation
+module that verifies incoming messages by:
+
+(a) confirming the sender identifier corresponds to an agent listed in the
+agent registry;
+
+(b) validating the message file conforms to the expected structured format;
+
+(c) rejecting messages from unknown or deregistered agents;
+
+(d) rate-limiting message processing from any single source to prevent
+communication flooding;
+
+(e) logging rejected messages for operator review.
+
+Claim 23. The method of Claim 16, further comprising cross-session
+multi-agent continuity, wherein an agent's bridge file (as recited in
+Claim 15) additionally captures:
+
+(a) a summary of pending inter-agent communications comprising messages
+sent but not yet acknowledged;
+
+(b) correlation identifiers of active conversation threads with other
+agents;
+
+(c) the current state of collaborative tasks involving multiple agents;
+
+(d) whereby upon session resume, the agent reconstructs both its private
+state and its position in all ongoing inter-agent conversations, enabling
+multi-agent projects that span multiple session boundaries.
+
+Claim 24. The method of Claim 16, wherein the structured message file
+further comprises:
+
+(a) a correlation identifier linking a response message to the original
+message being replied to;
+
+(b) a thread identifier grouping related messages into a conversation
+thread;
+
+(c) a priority field selected from at least: critical, high, normal, and
+low;
+
+(d) whereby agents can conduct multi-turn threaded conversations, prioritize
+urgent communications, and maintain conversational context across multiple
+message exchanges without consuming context window tokens for coordination
+overhead.

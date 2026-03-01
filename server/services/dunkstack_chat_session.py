@@ -55,6 +55,9 @@ def get_dunkstack_system_prompt(
 ) -> str:
     """Generate the system prompt for the DunkStack agent.
 
+    Loads the file-based operating protocol from .agent/system_prompt.md if it
+    exists in the working directory, then prepends the agent identity header.
+
     Args:
         working_directory: Absolute path to the agent's working directory.
         model: The model ID being used (e.g. "claude-opus-4-6").
@@ -72,7 +75,17 @@ def get_dunkstack_system_prompt(
     display_name = MODEL_DISPLAY_NAMES.get(model or "", model or "Claude")
     model_id_note = f" (model ID: {model})" if model else ""
 
-    return f"""You are an expert coding agent ({display_name}{model_id_note}, {context_tokens} token context).
+    # Load the file-based operating protocol if it exists
+    file_protocol = ""
+    protocol_path = Path(working_directory) / ".agent" / "system_prompt.md"
+    if protocol_path.is_file():
+        try:
+            file_protocol = protocol_path.read_text(encoding="utf-8")
+            logger.info("Loaded DunkStack file-based protocol from %s", protocol_path)
+        except Exception as e:
+            logger.warning("Failed to load file-based protocol: %s", e)
+
+    identity = f"""You are an expert coding agent ({display_name}{model_id_note}, {context_tokens} token context).
 Working directory: {working_directory}
 
 You are the DunkStack agent — a specialist coding assistant with deep expertise in the codebase you're working with.
@@ -88,6 +101,10 @@ You have a {context_tokens}-token context window. Be efficient:
 - Don't re-read files you've already read unless they may have changed.
 - Summarize large outputs rather than quoting them in full.
 - Focus on the task at hand — don't explore tangential code paths."""
+
+    if file_protocol:
+        return identity + "\n\n---\n\n" + file_protocol
+    return identity
 
 
 class DunkStackChatSession:
@@ -451,6 +468,29 @@ class DunkStackChatSession:
             "content": f"Agent ready. Model: **{self.model_id}** ({self.context_mode} context). Working directory: **{self.working_directory}**",
         }
         yield {"type": "response_done"}
+
+    async def bootstrap(self) -> AsyncGenerator[dict, None]:
+        """Send the DunkStack bootstrap message to the agent.
+
+        This tells the agent to read its .agent/ files (index, working memory,
+        bridge, comms, control) so it has full context before the user sends
+        any messages. Should be called immediately after start() completes.
+
+        Yields the same event types as send_message().
+        """
+        bootstrap_msg = (
+            "You are starting a new session. Follow your file-based operating protocol:\n"
+            "1. Read .agent/index.md (your file map)\n"
+            "2. Read .agent/working_memory.md (your current state)\n"
+            "3. If .agent/bridge.md has data, read and incorporate it\n"
+            "4. Read .agent/comms/from_human.md for human messages — respond to ANY unread messages\n"
+            "5. Read .agent/comms/control.md for mode signal\n"
+            "6. Write your response/greeting to .agent/comms/to_human.md (NOT in chat)\n"
+            "7. Respond in chat with a 1-sentence status ONLY\n\n"
+            "Begin now."
+        )
+        async for event in self.send_message(bootstrap_msg):
+            yield event
 
     async def send_message(self, user_message: str) -> AsyncGenerator[dict, None]:
         """Send a user message and stream the agent's response.

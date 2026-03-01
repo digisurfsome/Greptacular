@@ -2,7 +2,8 @@ CLAIMS — Extracted from Provisional Patent Application
 ======================================================
 
 Title: System and Method for Managing Artificial Intelligence Agent Context
-Windows Through Structured File-Based State Persistence and Output Redirection
+Windows Through Structured File-Based State Persistence, Output Redirection,
+and Multi-Agent Filesystem Communication
 
 
 INDEPENDENT CLAIMS
@@ -180,3 +181,155 @@ file, then deleting the bridge file;
 2,500-3,000 tokens per bridge cycle, compared to re-sending the full
 conversation history which may cost 100,000-1,000,000 tokens depending on
 session length.
+
+
+MULTI-AGENT FILESYSTEM COMMUNICATION CLAIMS
+---------------------------------------------
+
+Claim 16. A method for coordinating a plurality of artificial intelligence
+agents through filesystem-based message routing, the method comprising:
+
+(a) assigning each agent in a multi-agent system a designated mailbox
+directory on a shared filesystem, the mailbox comprising at minimum an inbox
+subdirectory for receiving messages and an outbox subdirectory for retaining
+copies of sent messages;
+
+(b) enabling inter-agent communication by a sending agent writing a
+structured message file to a receiving agent's inbox directory, the message
+file comprising at minimum a sender identifier, recipient identifier,
+timestamp, message type, and message body;
+
+(c) enabling message detection by each agent scanning its inbox directory
+at configurable intervals for new message files;
+
+(d) implementing hierarchy-independent addressing whereby any agent may
+write a message to any other agent's inbox directory regardless of
+organizational position, task assignment, or logical hierarchy;
+
+(e) enabling human operator participation as a first-class communication
+participant by granting the operator read access to all agent mailbox
+directories and write access to any agent's inbox directory, using the same
+message format as inter-agent messages.
+
+
+Claim 17. A system for multi-agent artificial intelligence coordination
+through a filesystem communication fabric, the system comprising:
+
+(a) a plurality of AI agents, each maintaining a private state directory
+for individual context window management through file-based state persistence
+as recited in Claim 2;
+
+(b) a shared communication directory on the filesystem comprising a mailbox
+directory for each agent, a broadcast directory for system-wide messages, and
+a coordination directory for shared state;
+
+(c) an agent registry file on the filesystem declaring the identity,
+capabilities, mailbox location, and current status of each active agent;
+
+(d) a message protocol wherein inter-agent messages are individual
+structured files with metadata headers enabling message ordering, threading,
+priority routing, and state tracking through filesystem operations;
+
+(e) whereby the filesystem serves simultaneously as the state persistence
+layer for individual agents (per Claims 1-15) and as the communication
+fabric between agents, requiring zero additional infrastructure beyond the
+filesystem.
+
+
+Claim 18. The method of Claim 16, further comprising guaranteed delivery
+semantics implemented through message file state transitions, wherein each
+message file transitions through defined states comprising at minimum:
+pending (deposited in inbox, not yet read), read (recipient has opened and
+parsed the message), and acknowledged (recipient has confirmed processing),
+said state transitions effected by updating a status field within the
+message file header.
+
+Claim 19. The method of Claim 16, further comprising crash recovery for
+inter-agent communications, wherein:
+
+(a) upon an agent crash, unread messages remain persisted in the crashed
+agent's inbox directory as files on the filesystem;
+
+(b) upon agent restart, the restarted agent scans its inbox directory for
+pending messages in addition to reading its bridge file for private state
+recovery;
+
+(c) whereby inter-agent communications survive agent crashes, system
+restarts, and session boundaries without message loss, by virtue of messages
+being persistent files rather than in-memory objects or ephemeral API
+payloads.
+
+Claim 20. The method of Claim 16, further comprising a broadcast
+communication mechanism wherein an agent writes a message file to a
+designated broadcast directory on the filesystem, said broadcast directory
+being monitored by all agents in the system, enabling one-to-many
+communication without the sending agent needing to enumerate or address
+each recipient individually.
+
+Claim 21. The method of Claim 16, wherein the human operator participation
+of step (e) further comprises:
+
+(a) operator observation of all inter-agent communications by reading inbox
+and outbox directories of any agent using standard filesystem tools;
+
+(b) operator injection of instructions to a specific agent by writing a
+message file to that agent's inbox directory with a designated operator
+sender identifier;
+
+(c) operator broadcast of instructions to all agents by writing to the
+broadcast directory;
+
+(d) operator modification of an agent's status file to change its
+availability, pause its operation, or redirect its task assignment;
+
+(e) whereby the operator maintains real-time observability and control over
+multi-agent coordination without requiring specialized monitoring tools,
+dashboards, or administrative APIs.
+
+Claim 22. The system of Claim 17, further comprising a message validation
+module that verifies incoming messages by:
+
+(a) confirming the sender identifier corresponds to an agent listed in the
+agent registry;
+
+(b) validating the message file conforms to the expected structured format;
+
+(c) rejecting messages from unknown or deregistered agents;
+
+(d) rate-limiting message processing from any single source to prevent
+communication flooding;
+
+(e) logging rejected messages for operator review.
+
+Claim 23. The method of Claim 16, further comprising cross-session
+multi-agent continuity, wherein an agent's bridge file (as recited in
+Claim 15) additionally captures:
+
+(a) a summary of pending inter-agent communications comprising messages
+sent but not yet acknowledged;
+
+(b) correlation identifiers of active conversation threads with other
+agents;
+
+(c) the current state of collaborative tasks involving multiple agents;
+
+(d) whereby upon session resume, the agent reconstructs both its private
+state and its position in all ongoing inter-agent conversations, enabling
+multi-agent projects that span multiple session boundaries.
+
+Claim 24. The method of Claim 16, wherein the structured message file
+further comprises:
+
+(a) a correlation identifier linking a response message to the original
+message being replied to;
+
+(b) a thread identifier grouping related messages into a conversation
+thread;
+
+(c) a priority field selected from at least: critical, high, normal, and
+low;
+
+(d) whereby agents can conduct multi-turn threaded conversations, prioritize
+urgent communications, and maintain conversational context across multiple
+message exchanges without consuming context window tokens for coordination
+overhead.

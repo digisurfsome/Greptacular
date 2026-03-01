@@ -7,7 +7,7 @@
 
 ## TITLE OF THE INVENTION
 
-**System and Method for Managing Artificial Intelligence Agent Context Windows Through Structured File-Based State Persistence and Output Redirection**
+**System and Method for Managing Artificial Intelligence Agent Context Windows Through Structured File-Based State Persistence, Output Redirection, and Multi-Agent Filesystem Communication**
 
 ---
 
@@ -45,7 +45,7 @@ None.
 
 ## FIELD OF THE INVENTION
 
-The present invention relates generally to artificial intelligence systems, and more specifically to methods and systems for managing context window utilization in large language model (LLM)-based AI agents through structured file-based state persistence, output redirection, and session continuity mechanisms.
+The present invention relates generally to artificial intelligence systems, and more specifically to methods and systems for managing context window utilization in large language model (LLM)-based AI agents through structured file-based state persistence, output redirection, session continuity mechanisms, and multi-agent coordination via filesystem-based message routing.
 
 ---
 
@@ -85,6 +85,24 @@ Existing approaches to context management include:
 
 None of these approaches address the core insight of the present invention: that **the agent's own conversational output is the primary driver of context window consumption**, and that redirecting this output from the conversational channel to structured persistent files fundamentally changes the utilization economics of the context window.
 
+### The Multi-Agent Coordination Problem
+
+As AI agent systems evolve from single-agent to multi-agent architectures — where multiple LLM-based agents collaborate on complex tasks — a second fundamental problem emerges: **inter-agent communication overhead**.
+
+Existing multi-agent frameworks (such as CrewAI, AutoGen, LangGraph, and similar systems) coordinate agents through one or more of the following mechanisms:
+
+- **API-Based Message Passing**: Agents communicate via API calls or function invocations. Each message consumes context window tokens in both the sending and receiving agent. Messages are ephemeral and lost on session restart.
+
+- **Shared Memory Objects**: Agents read and write to in-memory data structures (dictionaries, queues, state machines). These exist only during runtime and are destroyed when the process terminates, providing no crash recovery or persistence.
+
+- **Message Brokers**: External infrastructure (RabbitMQ, Kafka, Redis Pub/Sub) routes messages between agents. This introduces deployment complexity, requires additional infrastructure, and creates a single point of failure external to the agents themselves.
+
+- **Hierarchical Orchestration**: A central orchestrator agent dispatches tasks to worker agents and collects results. All communication passes through the orchestrator, creating a bottleneck and requiring the orchestrator to consume context window tokens proportional to the total communication volume.
+
+All of these approaches share common limitations: they consume context window capacity for coordination overhead, they lack persistence across crashes and session boundaries, they impose hierarchy constraints on communication topology, and they provide limited operator visibility into inter-agent communication. The human operator cannot easily observe, inject into, or modify communications between agents in real-time.
+
+The present invention extends the file-based architecture described above to solve this multi-agent coordination problem: because each agent already maintains its state on the filesystem, the filesystem itself becomes the natural communication fabric between agents — requiring no additional infrastructure, providing automatic persistence, enabling hierarchy-independent addressing, and giving the human operator full read/write access to all inter-agent communications.
+
 ---
 
 ## SUMMARY OF THE INVENTION
@@ -109,7 +127,15 @@ The present invention provides a system and method for managing AI agent context
 
 9. **Real-Time Context Categorization**: A method that categorizes conversation content into prioritized buckets (Decisions, Requirements, Architecture, Code Changes, Bugs, Ideas, Context, Fluff) in real-time as messages are exchanged, enabling intelligent pre-compaction at configurable intervals and producing handoff packages that preserve critical information while discarding low-value content.
 
-The combined effect of these mechanisms is that the effective utilizable capacity of a given context window increases from approximately 50% (conventional operation) to approximately 85% (file-based operation), representing a 70% increase in effective working capacity using the same model at the same cost. Session persistence costs are reduced by approximately 6,000x compared to conventional cold-start session resumption.
+10. **Multi-Agent Filesystem Communication Protocol**: A method and system for coordinating multiple AI agents through filesystem-based message routing, wherein each agent is assigned a designated mailbox directory on the shared filesystem. Agents communicate by writing message files to other agents' mailbox directories and reading from their own. The filesystem acts as a persistent, zero-infrastructure message bus that enables hierarchy-independent addressing (any agent can message any other agent regardless of organizational position), automatic crash recovery (messages survive agent restarts because they are files), full operator visibility (the human can read all inter-agent communications), and operator injection (the human can write messages to any specific agent's mailbox to redirect, correct, or instruct individual agents mid-task).
+
+11. **Agent Discovery and Registry Protocol**: A method whereby each agent registers its identity, capabilities, and mailbox location in a shared registry file on the filesystem. Other agents and the human operator can read this registry to discover available agents, their current status, and their communication endpoints, enabling dynamic swarm composition without hardcoded routing.
+
+12. **Filesystem-Based Message Routing with Guaranteed Delivery**: A message protocol wherein each inter-agent message is written as an individual file with structured metadata (sender, recipient, timestamp, message type, priority, correlation identifier), enabling message ordering, threading, priority routing, and audit trails through standard filesystem operations. Messages transition through states (pending, read, acknowledged) via file renaming or relocation, providing guaranteed delivery semantics without a message broker.
+
+The combined effect of mechanisms 1-9 is that the effective utilizable capacity of a given context window increases from approximately 50% (conventional operation) to approximately 85% (file-based operation), representing a 70% increase in effective working capacity using the same model at the same cost. Session persistence costs are reduced by approximately 6,000x compared to conventional cold-start session resumption.
+
+The additional effect of mechanisms 10-12 is that multiple AI agents can coordinate on complex tasks using the same filesystem architecture already established for single-agent state persistence, requiring zero additional infrastructure, providing automatic persistence across crashes and session boundaries, and enabling human operators to observe and intervene in inter-agent communications in real-time — capabilities that no existing multi-agent framework provides through a unified filesystem-based approach.
 
 ---
 
@@ -383,6 +409,232 @@ where:
 - File-based: ~850,000 usable tokens at 85% utilization
 - Difference: 350,000 additional working tokens — the equivalent of an entire additional context window
 
+### 12. Multi-Agent Filesystem Communication Architecture
+
+The present invention extends the single-agent file-based architecture described in Sections 1-11 to a multi-agent system wherein two or more AI agents coordinate through the filesystem as a shared communication fabric.
+
+#### 12.1 Architectural Principle
+
+In a multi-agent configuration, each agent maintains its own `.agent/` directory as described in Section 2 (for its own state management, output redirection, and context window management). Additionally, a shared communication layer is established on the same filesystem:
+
+```
+project/
+  .swarm/                           Shared multi-agent layer
+    registry.yml                    Agent discovery registry
+
+    mailboxes/                      Per-agent communication endpoints
+      agent-alpha/
+        inbox/                      Messages TO this agent
+          msg_001_from_beta.md      Individual message files
+          msg_002_from_human.md     Operator-injected message
+        outbox/                     Messages FROM this agent (copies)
+          msg_003_to_gamma.md
+        status.yml                  Agent's current status and capabilities
+
+      agent-beta/
+        inbox/
+        outbox/
+        status.yml
+
+      agent-gamma/
+        inbox/
+        outbox/
+        status.yml
+
+    broadcast/                      Messages to all agents
+      announcement_001.md
+
+    coordination/                   Shared coordination files
+      task_board.md                 Shared task registry
+      decisions_log.md              Cross-agent decision record
+      conflicts.md                  Conflict detection and resolution log
+
+  agent-alpha/
+    .agent/                         Agent Alpha's private state (per Section 2)
+
+  agent-beta/
+    .agent/                         Agent Beta's private state
+
+  agent-gamma/
+    .agent/                         Agent Gamma's private state
+```
+
+The critical innovation is that the **same filesystem** that each agent already uses for its own state persistence (as described in Sections 1-11) also serves as the inter-agent communication channel. No additional infrastructure — no message brokers, no API gateways, no shared databases — is required. The filesystem IS the message bus.
+
+#### 12.2 Separation of Concerns
+
+The architecture maintains a clear separation between:
+
+1. **Private Agent State** (`.agent/` directory per agent): Each agent's working memory, bridge files, knowledge, and output, as described in Sections 1-11. No other agent reads or writes to another agent's private `.agent/` directory.
+
+2. **Shared Communication State** (`.swarm/` directory): The inter-agent communication layer where all agents and the human operator have designated read/write access patterns. This is the novel addition for multi-agent coordination.
+
+This separation ensures that the single-agent context management benefits (output redirection, selective reading, bridge mechanism, etc.) are fully preserved even in a multi-agent configuration. Each agent manages its own context window using the single-agent protocol, and the multi-agent communication adds only minimal additional token overhead (reading one's inbox).
+
+### 13. Agent Mailbox System and Message Protocol
+
+#### 13.1 Mailbox Structure
+
+Each agent is assigned a mailbox directory within `.swarm/mailboxes/` consisting of:
+
+- **inbox/**: A directory where other agents (and the human operator) deposit message files intended for this agent. The agent reads from its own inbox at configurable intervals.
+- **outbox/**: A directory where the agent keeps copies of messages it has sent to other agents. This provides an audit trail and enables replay in case of delivery failure.
+- **status.yml**: A structured file declaring the agent's current state (idle, working, waiting, error), capabilities, current task, and availability for new work.
+
+#### 13.2 Message File Format
+
+Each inter-agent message is a structured file with the following format:
+
+```yaml
+---
+id: msg_20260301_143022_alpha_to_beta_001
+from: agent-alpha
+to: agent-beta
+timestamp: 2026-03-01T14:30:22Z
+type: request | response | inform | delegate | escalate | acknowledge
+priority: critical | high | normal | low
+correlation_id: null | <id of message being replied to>
+thread_id: null | <shared thread identifier>
+status: pending | read | acknowledged
+---
+
+[Message body in markdown format]
+
+The analysis of module X is complete. Key findings:
+
+1. The authentication layer has a race condition in session validation
+2. The database connection pool is undersized for the expected load
+3. Recommend implementing connection retry logic before proceeding
+
+Please review finding #1 before I proceed with the fix, as it may affect
+your work on the user session manager.
+```
+
+The structured header enables:
+- **Message ordering**: Timestamps provide natural ordering; filesystem creation time serves as backup
+- **Threading**: Correlation and thread IDs enable multi-turn conversations between agents
+- **Priority routing**: Agents can process high-priority messages first by reading file headers before full content
+- **Audit trails**: All messages are persistent files, creating a complete communication history
+- **State tracking**: Message status transitions (pending → read → acknowledged) are tracked through file metadata or header updates
+
+#### 13.3 Message Lifecycle
+
+Messages follow a defined lifecycle:
+
+1. **Composition**: Sending agent writes message file to its own outbox/ (local copy)
+2. **Delivery**: Sending agent copies the message file to the recipient's inbox/ directory
+3. **Detection**: Receiving agent detects new files in its inbox/ during its next mailbox check cycle
+4. **Reading**: Receiving agent reads the message, updating the status field to "read"
+5. **Processing**: Receiving agent acts on the message content
+6. **Acknowledgment**: If required by message type, receiving agent updates status to "acknowledged" or writes a response message back to the sender's inbox
+7. **Archival**: Processed messages may be moved to an archive/ subdirectory to keep the inbox clean while preserving history
+
+#### 13.4 Token Budget for Multi-Agent Communication
+
+The mailbox check operation is designed to be lightweight:
+
+- **Inbox scan**: List directory contents (~10-20 tokens for filesystem operation)
+- **Message triage**: Read only the YAML headers of new messages (~50 tokens per message) to determine priority
+- **Selective reading**: Read full content only for messages above the current priority threshold
+- **Total budget per mailbox check cycle**: Configurable, default 500 tokens
+- **Check frequency**: Configurable, default every 5 turns or upon explicit notification
+
+This ensures that multi-agent communication does not undermine the context window efficiency gains described in Sections 1-11.
+
+### 14. Hierarchy-Independent Message Routing
+
+#### 14.1 The Topology Problem in Existing Systems
+
+Conventional multi-agent frameworks impose communication topologies that constrain agent interaction:
+
+- **Star topology**: All communication passes through a central orchestrator. If Agent A needs information from Agent C, the message must route through the orchestrator, doubling the communication cost and creating a bottleneck.
+- **Chain topology**: Agents are organized in a pipeline. Agent A can only communicate with Agent B (its successor), not with Agent D (three steps away).
+- **Tree topology**: Agents are organized hierarchically. Communication follows the tree structure — siblings cannot communicate directly without routing through their parent.
+
+These topological constraints are artifacts of the communication mechanism (API calls, function invocations) rather than inherent requirements of the task being performed.
+
+#### 14.2 Flat Addressing via Filesystem
+
+The present invention implements flat addressing: **any agent can write a message to any other agent's inbox directory**, regardless of their organizational role, task assignment, or position in any logical hierarchy.
+
+The routing mechanism is trivially simple:
+1. Agent Alpha wants to send a message to Agent Gamma
+2. Agent Alpha writes a message file to `.swarm/mailboxes/agent-gamma/inbox/`
+3. Agent Gamma reads the file on its next mailbox check cycle
+
+No routing table, no orchestrator relay, no API endpoint discovery. The filesystem path IS the address. If you know the agent's name, you know its mailbox location.
+
+This enables communication patterns that are impossible or expensive in conventional systems:
+- **Peer-to-peer**: Any agent communicates directly with any other agent
+- **Broadcast**: An agent writes to `.swarm/broadcast/` to reach all agents simultaneously
+- **Selective multicast**: An agent writes the same message to multiple specific agents' inboxes
+- **Ad hoc collaboration**: Two agents can establish a direct communication thread without involving any orchestrator or modifying any routing configuration
+
+#### 14.3 The Operator as a First-Class Participant
+
+A distinctive feature of the filesystem-based approach is that the **human operator has the same communication primitives as the agents**. The operator can:
+
+1. **Read any agent's inbox or outbox**: Full visibility into all inter-agent communications by browsing the `.swarm/mailboxes/` directory with standard filesystem tools (file manager, terminal, text editor)
+
+2. **Write to any agent's inbox**: Inject instructions, corrections, or context to a specific agent by creating a message file in that agent's inbox directory. The message follows the same format as inter-agent messages, with `from: human-operator`
+
+3. **Read the broadcast channel**: See all announcements and system-wide communications
+
+4. **Write to the broadcast channel**: Send instructions to all agents simultaneously
+
+5. **Modify an agent's status**: Update an agent's `status.yml` to change its availability, pause it, or redirect its task assignment
+
+6. **Observe communication patterns**: By examining the outbox directories across agents, the operator can see the full communication graph — who is talking to whom, about what, and how frequently
+
+This capability is particularly valuable for:
+- **Debugging**: When a multi-agent system produces unexpected results, the operator can examine the exact communications that led to the outcome
+- **Steering**: The operator can redirect individual agents mid-task without stopping the entire swarm
+- **Conflict resolution**: When agents disagree (e.g., conflicting architectural decisions), the operator can observe the conflict in the communication files and inject a resolution
+- **Quality control**: The operator can monitor the quality and relevance of inter-agent communications and intervene when communication patterns become unproductive
+
+### 15. Crash Recovery and Session Boundary Handling in Multi-Agent Systems
+
+#### 15.1 The Crash Recovery Advantage
+
+Because all inter-agent messages are persistent files, the system provides automatic crash recovery without additional mechanisms:
+
+1. **Agent crashes**: If Agent Beta crashes mid-task, unread messages remain in its inbox. When Agent Beta restarts and reads its bridge file (per Section 5), it also scans its inbox for pending messages and resumes communication from where it left off.
+
+2. **System-wide restart**: If the entire system restarts, all agents recover via their individual bridge mechanisms AND resume inter-agent communications by scanning their inboxes. No messages are lost because they are files, not in-memory objects.
+
+3. **Partial swarm operation**: If one agent in a multi-agent swarm is unavailable, other agents can continue depositing messages in the unavailable agent's inbox. When it comes back online, it processes the accumulated messages. This is analogous to email — the sender doesn't need the recipient to be online at the time of sending.
+
+#### 15.2 Cross-Session Multi-Agent Continuity
+
+The bridge mechanism described in Section 5 extends naturally to multi-agent scenarios. When an agent writes its bridge file on session termination, it includes:
+
+- A summary of pending inter-agent communications (messages sent but not yet acknowledged)
+- The correlation IDs of active conversation threads with other agents
+- The current state of any collaborative tasks
+
+On session resume, the agent reads its bridge file and its inbox, reconstructing both its private state and its position in all ongoing inter-agent conversations. This enables multi-agent projects that span days, weeks, or months of elapsed time, with agents coming online and offline at different times while maintaining coherent collaboration.
+
+### 16. Security and Access Control in Multi-Agent Filesystem Communication
+
+#### 16.1 Access Control Model
+
+The filesystem-based communication architecture leverages standard filesystem permissions for access control:
+
+- **Agent isolation**: Each agent's private `.agent/` directory is readable/writable only by that agent's process
+- **Inbox write access**: An agent's inbox is writable by any authorized agent or the human operator, but is read-only for the owning agent (preventing self-messages that could cause loops)
+- **Outbox read access**: An agent's outbox is readable by authorized agents and the operator for audit purposes, writable only by the owning agent
+- **Broadcast access**: The broadcast directory is writable by any authorized agent or the operator, readable by all
+- **Registry access**: The registry file is append-writable by agents (for registration) and read-writable by the operator (for administration)
+
+#### 16.2 Message Validation
+
+Agents validate incoming messages before processing:
+- Verify the `from` field matches an agent listed in the registry
+- Verify the message format conforms to the expected schema
+- Reject messages from unknown or deregistered agents
+- Rate-limit processing of messages from any single source to prevent flooding
+- Log all rejected messages for operator review
+
 ---
 
 ## BRIEF DESCRIPTION OF THE DRAWINGS
@@ -406,6 +658,14 @@ where:
 **Figure 9**: Real-Time Context Categorization Flow — Shows message pairs being categorized into priority buckets in real-time, with progressive pre-compaction at 10% intervals.
 
 **Figure 10**: Cost Comparison — Table comparing session resume costs: cold start ($0.90 for 300K context) versus holding pattern ($0.00015 per cycle) versus wait pause ($0.00).
+
+**Figure 11**: Multi-Agent Filesystem Communication Architecture — Shows the shared `.swarm/` directory structure with per-agent mailbox directories (inbox, outbox, status), broadcast directory, coordination directory, and registry file. Shows arrows indicating message flow between agents through the filesystem.
+
+**Figure 12**: Message Routing Flow — Sequence diagram showing Agent Alpha composing a message, writing it to Agent Beta's inbox directory, Agent Beta detecting the new file during a mailbox check cycle, reading the message, and writing an acknowledgment response to Agent Alpha's inbox. Also shows the human operator injecting a message to Agent Gamma's inbox in parallel.
+
+**Figure 13**: Communication Topology Comparison — Side-by-side comparison of conventional multi-agent topologies (star through orchestrator, chain pipeline, tree hierarchy) versus the invented flat filesystem addressing where any agent can message any other agent directly. Shows how the filesystem-based approach eliminates routing bottlenecks and hierarchy constraints.
+
+**Figure 14**: Crash Recovery in Multi-Agent Communication — Shows Agent Beta crashing while messages are pending in its inbox, the messages persisting as files on the filesystem, and Agent Beta recovering by scanning its inbox upon restart alongside reading its bridge file for private state recovery.
 
 [NOTE TO INVENTOR: These figures should be created as simple diagrams before filing. Hand-drawn diagrams on plain white paper are acceptable for provisional applications. Each figure should be labeled and referenced in the text above.]
 
@@ -500,11 +760,93 @@ wherein said thresholds are adjustable by an end user through the settings confi
 
 (d) whereby session continuity is achieved at a cost of approximately 2,500-3,000 tokens per bridge cycle, compared to re-sending the full conversation history which may cost 100,000-1,000,000 tokens depending on session length.
 
+### Multi-Agent Filesystem Communication Claims
+
+**Claim 16.** A method for coordinating a plurality of artificial intelligence agents through filesystem-based message routing, the method comprising:
+
+(a) assigning each agent in a multi-agent system a designated mailbox directory on a shared filesystem, the mailbox comprising at minimum an inbox subdirectory for receiving messages and an outbox subdirectory for retaining copies of sent messages;
+
+(b) enabling inter-agent communication by a sending agent writing a structured message file to a receiving agent's inbox directory, the message file comprising at minimum a sender identifier, recipient identifier, timestamp, message type, and message body;
+
+(c) enabling message detection by each agent scanning its inbox directory at configurable intervals for new message files;
+
+(d) implementing hierarchy-independent addressing whereby any agent may write a message to any other agent's inbox directory regardless of organizational position, task assignment, or logical hierarchy;
+
+(e) enabling human operator participation as a first-class communication participant by granting the operator read access to all agent mailbox directories and write access to any agent's inbox directory, using the same message format as inter-agent messages.
+
+**Claim 17.** A system for multi-agent artificial intelligence coordination through a filesystem communication fabric, the system comprising:
+
+(a) a plurality of AI agents, each maintaining a private state directory for individual context window management through file-based state persistence as recited in Claim 2;
+
+(b) a shared communication directory on the filesystem comprising a mailbox directory for each agent, a broadcast directory for system-wide messages, and a coordination directory for shared state;
+
+(c) an agent registry file on the filesystem declaring the identity, capabilities, mailbox location, and current status of each active agent;
+
+(d) a message protocol wherein inter-agent messages are individual structured files with metadata headers enabling message ordering, threading, priority routing, and state tracking through filesystem operations;
+
+(e) whereby the filesystem serves simultaneously as the state persistence layer for individual agents (per Claims 1-15) and as the communication fabric between agents, requiring zero additional infrastructure beyond the filesystem.
+
+**Claim 18.** The method of Claim 16, further comprising guaranteed delivery semantics implemented through message file state transitions, wherein each message file transitions through defined states comprising at minimum: pending (deposited in inbox, not yet read), read (recipient has opened and parsed the message), and acknowledged (recipient has confirmed processing), said state transitions effected by updating a status field within the message file header.
+
+**Claim 19.** The method of Claim 16, further comprising crash recovery for inter-agent communications, wherein:
+
+(a) upon an agent crash, unread messages remain persisted in the crashed agent's inbox directory as files on the filesystem;
+
+(b) upon agent restart, the restarted agent scans its inbox directory for pending messages in addition to reading its bridge file for private state recovery;
+
+(c) whereby inter-agent communications survive agent crashes, system restarts, and session boundaries without message loss, by virtue of messages being persistent files rather than in-memory objects or ephemeral API payloads.
+
+**Claim 20.** The method of Claim 16, further comprising a broadcast communication mechanism wherein an agent writes a message file to a designated broadcast directory on the filesystem, said broadcast directory being monitored by all agents in the system, enabling one-to-many communication without the sending agent needing to enumerate or address each recipient individually.
+
+**Claim 21.** The method of Claim 16, wherein the human operator participation of step (e) further comprises:
+
+(a) operator observation of all inter-agent communications by reading inbox and outbox directories of any agent using standard filesystem tools;
+
+(b) operator injection of instructions to a specific agent by writing a message file to that agent's inbox directory with a designated operator sender identifier;
+
+(c) operator broadcast of instructions to all agents by writing to the broadcast directory;
+
+(d) operator modification of an agent's status file to change its availability, pause its operation, or redirect its task assignment;
+
+(e) whereby the operator maintains real-time observability and control over multi-agent coordination without requiring specialized monitoring tools, dashboards, or administrative APIs.
+
+**Claim 22.** The system of Claim 17, further comprising a message validation module that verifies incoming messages by:
+
+(a) confirming the sender identifier corresponds to an agent listed in the agent registry;
+
+(b) validating the message file conforms to the expected structured format;
+
+(c) rejecting messages from unknown or deregistered agents;
+
+(d) rate-limiting message processing from any single source to prevent communication flooding;
+
+(e) logging rejected messages for operator review.
+
+**Claim 23.** The method of Claim 16, further comprising cross-session multi-agent continuity, wherein an agent's bridge file (as recited in Claim 15) additionally captures:
+
+(a) a summary of pending inter-agent communications comprising messages sent but not yet acknowledged;
+
+(b) correlation identifiers of active conversation threads with other agents;
+
+(c) the current state of collaborative tasks involving multiple agents;
+
+(d) whereby upon session resume, the agent reconstructs both its private state and its position in all ongoing inter-agent conversations, enabling multi-agent projects that span multiple session boundaries.
+
+**Claim 24.** The method of Claim 16, wherein the structured message file further comprises:
+
+(a) a correlation identifier linking a response message to the original message being replied to;
+
+(b) a thread identifier grouping related messages into a conversation thread;
+
+(c) a priority field selected from at least: critical, high, normal, and low;
+
+(d) whereby agents can conduct multi-turn threaded conversations, prioritize urgent communications, and maintain conversational context across multiple message exchanges without consuming context window tokens for coordination overhead.
+
 ---
 
 ## ABSTRACT
 
-A system and method for managing artificial intelligence agent context windows through structured file-based state persistence and output redirection. The invention redirects substantive AI agent output from the conversational API response channel to persistent structured files on the filesystem, restricting conversational responses to brief status signals. A hierarchical file protocol provides the agent with persistent working memory, session continuity via a bridge mechanism, and bidirectional human-agent communication through designated files. A tiered context safety system monitors utilization and triggers progressive interventions at configurable thresholds. An idle engine maintains active sessions at near-zero cost through tiered holding patterns. Real-time context categorization enables intelligent handoff packages when session boundaries are reached. The combined effect increases effective context window utilization from approximately 50% to approximately 85%, reduces session resume costs by approximately three orders of magnitude, and renders platform-initiated context compaction events harmless by maintaining persistent files as the authoritative source of truth rather than conversation history.
+A system and method for managing artificial intelligence agent context windows through structured file-based state persistence, output redirection, and multi-agent filesystem communication. The invention redirects substantive AI agent output from the conversational API response channel to persistent structured files on the filesystem, restricting conversational responses to brief status signals. A hierarchical file protocol provides the agent with persistent working memory, session continuity via a bridge mechanism, and bidirectional human-agent communication through designated files. A tiered context safety system monitors utilization and triggers progressive interventions at configurable thresholds. An idle engine maintains active sessions at near-zero cost through tiered holding patterns. Real-time context categorization enables intelligent handoff packages when session boundaries are reached. The combined effect increases effective context window utilization from approximately 50% to approximately 85%, reduces session resume costs by approximately three orders of magnitude, and renders platform-initiated context compaction events harmless by maintaining persistent files as the authoritative source of truth rather than conversation history. In an extended embodiment, the filesystem-based architecture is further leveraged as a multi-agent communication fabric, wherein each agent is assigned a mailbox directory on the shared filesystem. Agents communicate by writing structured message files to other agents' mailbox directories, enabling hierarchy-independent addressing, automatic crash recovery through message persistence, guaranteed delivery semantics through file-based state transitions, and human operator participation as a first-class communication participant with full read/write access to all inter-agent communications. The unified filesystem approach serves simultaneously as the state persistence layer for individual agent context management and as the zero-infrastructure message bus for multi-agent coordination.
 
 ---
 
@@ -512,6 +854,7 @@ A system and method for managing artificial intelligence agent context windows t
 
 The following files constitute a working reference implementation of the described system:
 
+**Single-Agent State Management (Sections 1-11):**
 1. `.agent/system_prompt.md` — Core operating protocol with output redirection rules
 2. `.agent/index.md` — Master navigation index
 3. `.agent/working_memory.md` — Agent state file
@@ -521,6 +864,16 @@ The following files constitute a working reference implementation of the describ
 7. `.agent/comms/control.md` — Operating mode control signal
 8. `.agent/settings/config.yml` — Configurable operational parameters
 9. `.agent/progress/build_log.md` — Append-only build history
+
+**Multi-Agent Filesystem Communication (Sections 12-16):**
+10. `.swarm/registry.yml` — Agent discovery registry with identity, capabilities, and mailbox locations
+11. `.swarm/mailboxes/{agent-name}/inbox/` — Per-agent incoming message directory
+12. `.swarm/mailboxes/{agent-name}/outbox/` — Per-agent sent message archive
+13. `.swarm/mailboxes/{agent-name}/status.yml` — Per-agent status declaration
+14. `.swarm/broadcast/` — System-wide broadcast message directory
+15. `.swarm/coordination/task_board.md` — Shared task registry
+16. `.swarm/coordination/decisions_log.md` — Cross-agent decision record
+17. Example message file demonstrating the structured message format with YAML header
 
 [NOTE TO INVENTOR: Include printed copies of these files with the provisional application. They strengthen the filing by showing a working implementation.]
 

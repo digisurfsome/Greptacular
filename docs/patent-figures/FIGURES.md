@@ -1068,6 +1068,481 @@ TOTAL BRIDGE CYCLE COST COMPARISON
 
 ---
 
+---
+
+## FIGURE 11: Multi-Agent Filesystem Communication Architecture
+
+*Shows the shared `.swarm/` directory structure with per-agent mailbox directories, broadcast channel, coordination files, and the relationship between each agent's private `.agent/` state and the shared communication layer.*
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│                                                                                  │
+│                    MULTI-AGENT FILESYSTEM COMMUNICATION                          │
+│                           ARCHITECTURE OVERVIEW                                  │
+│                                                                                  │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐ │
+│  │                         SHARED FILESYSTEM                                   │ │
+│  │                                                                             │ │
+│  │  project/                                                                   │ │
+│  │  │                                                                          │ │
+│  │  ├── .swarm/                    ← SHARED COMMUNICATION LAYER (NEW)          │ │
+│  │  │   │                                                                      │ │
+│  │  │   ├── registry.yml           Agent discovery & capability registry       │ │
+│  │  │   │   ┌─────────────────────────────────────────────────────┐            │ │
+│  │  │   │   │ agents:                                             │            │ │
+│  │  │   │   │   - name: agent-alpha                               │            │ │
+│  │  │   │   │     role: architect                                 │            │ │
+│  │  │   │   │     status: working                                 │            │ │
+│  │  │   │   │     mailbox: .swarm/mailboxes/agent-alpha/          │            │ │
+│  │  │   │   │   - name: agent-beta                                │            │ │
+│  │  │   │   │     role: implementer                               │            │ │
+│  │  │   │   │     status: idle                                    │            │ │
+│  │  │   │   │     mailbox: .swarm/mailboxes/agent-beta/           │            │ │
+│  │  │   │   │   - name: agent-gamma                               │            │ │
+│  │  │   │   │     role: tester                                    │            │ │
+│  │  │   │   │     status: working                                 │            │ │
+│  │  │   │   │     mailbox: .swarm/mailboxes/agent-gamma/          │            │ │
+│  │  │   │   └─────────────────────────────────────────────────────┘            │ │
+│  │  │   │                                                                      │ │
+│  │  │   ├── mailboxes/             Per-agent communication endpoints           │ │
+│  │  │   │   │                                                                  │ │
+│  │  │   │   ├── agent-alpha/                                                   │ │
+│  │  │   │   │   ├── inbox/         ← Other agents & human write here           │ │
+│  │  │   │   │   │   ├── msg_001_from_beta.md                                   │ │
+│  │  │   │   │   │   └── msg_002_from_human.md   ← OPERATOR INJECTION          │ │
+│  │  │   │   │   ├── outbox/        ← Alpha's sent message copies               │ │
+│  │  │   │   │   │   └── msg_003_to_gamma.md                                    │ │
+│  │  │   │   │   └── status.yml     ← Alpha's current status                   │ │
+│  │  │   │   │                                                                  │ │
+│  │  │   │   ├── agent-beta/                                                    │ │
+│  │  │   │   │   ├── inbox/                                                     │ │
+│  │  │   │   │   ├── outbox/                                                    │ │
+│  │  │   │   │   └── status.yml                                                 │ │
+│  │  │   │   │                                                                  │ │
+│  │  │   │   └── agent-gamma/                                                   │ │
+│  │  │   │       ├── inbox/                                                     │ │
+│  │  │   │       ├── outbox/                                                    │ │
+│  │  │   │       └── status.yml                                                 │ │
+│  │  │   │                                                                      │ │
+│  │  │   ├── broadcast/             Messages to ALL agents                      │ │
+│  │  │   │   └── announcement_001.md                                            │ │
+│  │  │   │                                                                      │ │
+│  │  │   └── coordination/          Shared project state                        │ │
+│  │  │       ├── task_board.md      Shared task registry                        │ │
+│  │  │       ├── decisions_log.md   Cross-agent decisions                       │ │
+│  │  │       └── conflicts.md       Conflict detection log                      │ │
+│  │  │                                                                          │ │
+│  │  ├── agent-alpha/                                                           │ │
+│  │  │   └── .agent/               ← PRIVATE STATE (per Sections 1-11)         │ │
+│  │  │       ├── index.md                                                       │ │
+│  │  │       ├── working_memory.md                                              │ │
+│  │  │       ├── bridge.md                                                      │ │
+│  │  │       ├── comms/                                                         │ │
+│  │  │       └── ...                                                            │ │
+│  │  │                                                                          │ │
+│  │  ├── agent-beta/                                                            │ │
+│  │  │   └── .agent/               ← PRIVATE STATE                             │ │
+│  │  │                                                                          │ │
+│  │  └── agent-gamma/                                                           │ │
+│  │      └── .agent/               ← PRIVATE STATE                             │ │
+│  │                                                                             │ │
+│  └─────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                  │
+│  KEY ARCHITECTURAL PRINCIPLE:                                                    │
+│  ═══════════════════════════                                                     │
+│  The SAME filesystem serves TWO purposes:                                        │
+│  1. Individual agent state persistence (Sections 1-11, .agent/ dirs)             │
+│  2. Inter-agent communication fabric (Sections 12-16, .swarm/ dir)               │
+│  → ZERO additional infrastructure required                                       │
+│                                                                                  │
+│  ACCESS PATTERNS:                                                                │
+│  ════════════════                                                                │
+│  .agent/  → Private to each agent (no cross-agent access)                        │
+│  .swarm/  → Shared layer with per-directory access control:                      │
+│    inbox/   → Writable by others, readable by owner                              │
+│    outbox/  → Writable by owner, readable by others                              │
+│    status/  → Writable by owner, readable by all                                 │
+│    broadcast/ → Writable by any, readable by all                                 │
+│                                                                                  │
+└──────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## FIGURE 12: Message Routing Flow
+
+*Sequence diagram showing inter-agent message delivery through the filesystem, including operator injection. Demonstrates the complete lifecycle of a message from composition through acknowledgment.*
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│                                                                                  │
+│                        MESSAGE ROUTING FLOW                                      │
+│               (Filesystem-Based Inter-Agent Communication)                       │
+│                                                                                  │
+│                                                                                  │
+│  AGENT ALPHA          FILESYSTEM              AGENT BETA         HUMAN OPERATOR  │
+│  ════════════         ══════════              ══════════         ═══════════════  │
+│       │                    │                       │                    │         │
+│       │  1. COMPOSE        │                       │                    │         │
+│       │  ┌───────────┐     │                       │                    │         │
+│       │  │Write msg   │     │                       │                    │         │
+│       │  │to own      │     │                       │                    │         │
+│       │  │outbox/     │     │                       │                    │         │
+│       │  └─────┬─────┘     │                       │                    │         │
+│       │        │           │                       │                    │         │
+│       │  2. DELIVER        │                       │                    │         │
+│       │        │     ┌─────▼──────────────┐        │                    │         │
+│       │        └────→│ Copy msg file to   │        │                    │         │
+│       │              │ beta/inbox/        │        │                    │         │
+│       │              │ msg_001_from_      │        │                    │         │
+│       │              │ alpha.md           │        │                    │         │
+│       │              └─────┬──────────────┘        │                    │         │
+│       │                    │                       │                    │         │
+│       │              3. DETECT                     │                    │         │
+│       │                    │  ┌────────────────────┤                    │         │
+│       │                    │  │ Mailbox check      │                    │         │
+│       │                    │  │ cycle: scan        │                    │         │
+│       │                    │  │ inbox/ for new     │                    │         │
+│       │                    │  │ files              │                    │         │
+│       │                    │  └────────┬───────────┤                    │         │
+│       │                    │           │           │                    │         │
+│       │              4. READ           │           │                    │         │
+│       │                    │  ┌────────▼───────────┤                    │         │
+│       │                    │  │ Read YAML header   │                    │         │
+│       │                    │  │ (~50 tokens)       │                    │         │
+│       │                    │  │ Check priority     │                    │         │
+│       │                    │  │ Read full body     │                    │         │
+│       │                    │  │ Update status:     │                    │         │
+│       │                    │  │  pending → read    │                    │         │
+│       │                    │  └────────┬───────────┤                    │         │
+│       │                    │           │           │                    │         │
+│       │              5. PROCESS        │           │                    │         │
+│       │                    │  ┌────────▼───────────┤                    │         │
+│       │                    │  │ Act on message     │                    │         │
+│       │                    │  │ content            │                    │         │
+│       │                    │  └────────┬───────────┤                    │         │
+│       │                    │           │           │                    │         │
+│       │              6. ACKNOWLEDGE    │           │                    │         │
+│       │        ┌───────────┤  ┌────────▼───────────┤                    │         │
+│       │        │     ┌─────▼──▼────────────┐       │                    │         │
+│       │        │     │ Beta writes ack     │       │                    │         │
+│       │        │     │ response to         │       │                    │         │
+│       │        │     │ alpha/inbox/        │       │                    │         │
+│       │        │     │ msg_002_from_       │       │                    │         │
+│       │        │     │ beta.md             │       │                    │         │
+│       │  ┌─────▼─┐  └─────────────────────┘       │                    │         │
+│       │  │Alpha   │                                │                    │         │
+│       │  │reads   │                                │                    │         │
+│       │  │ack     │                                │                    │         │
+│       │  └────────┘                                │                    │         │
+│       │                    │                       │                    │         │
+│       │                    │                       │                    │         │
+│  ═══ OPERATOR INJECTION (PARALLEL) ═══════════════════════════════════           │
+│       │                    │                       │                    │         │
+│       │                    │                       │         7. INJECT  │         │
+│       │                    │                       │    ┌───────────┐   │         │
+│       │                    │                       │    │ Operator   │   │         │
+│       │                    │                       │    │ writes msg │   │         │
+│       │              ┌─────┤                       │    │ to gamma/  │   │         │
+│       │              │     │                       │    │ inbox/     │   │         │
+│       │              │     │    (To Agent Gamma)   │    └─────┬─────┘   │         │
+│       │              │     │                       │          │         │         │
+│       │              │     │  ┌──────────────────────────────▼────┐     │         │
+│       │              │     │  │ msg_003_from_human.md             │     │         │
+│       │              │     │  │ ┌──────────────────────────────┐  │     │         │
+│       │              │     │  │ │ from: human-operator         │  │     │         │
+│       │              │     │  │ │ to: agent-gamma              │  │     │         │
+│       │              │     │  │ │ type: redirect               │  │     │         │
+│       │              │     │  │ │ priority: critical           │  │     │         │
+│       │              │     │  │ │ ---                          │  │     │         │
+│       │              │     │  │ │ Stop current task. Focus on  │  │     │         │
+│       │              │     │  │ │ the auth bug that Alpha      │  │     │         │
+│       │              │     │  │ │ found in msg_001.            │  │     │         │
+│       │              │     │  │ └──────────────────────────────┘  │     │         │
+│       │              │     │  └───────────────────────────────────┘     │         │
+│       │              │     │                                           │         │
+│       │              │     │                                           │         │
+│       │                    │                                                     │
+│  ════════════════════════════════════════════════════════════════════════════     │
+│                                                                                  │
+│  TOKEN COSTS:                                                                    │
+│  ┌────────────────────────────┬──────────────────────┐                           │
+│  │ Operation                  │ Token Cost           │                           │
+│  ├────────────────────────────┼──────────────────────┤                           │
+│  │ Inbox scan (list dir)      │ ~10-20 tokens        │                           │
+│  │ Header triage (per msg)    │ ~50 tokens           │                           │
+│  │ Full message read          │ ~100-500 tokens      │                           │
+│  │ Total per check cycle      │ ~500 tokens (budget) │                           │
+│  │ Check frequency            │ Every 5 turns        │                           │
+│  └────────────────────────────┴──────────────────────┘                           │
+│                                                                                  │
+│  MESSAGE FILE STATE TRANSITIONS:                                                 │
+│  ┌─────────┐      ┌──────┐      ┌──────────────┐                                │
+│  │ PENDING │ ───→ │ READ │ ───→ │ ACKNOWLEDGED │                                │
+│  │(in inbox)│      │      │      │              │                                │
+│  └─────────┘      └──────┘      └──────────────┘                                │
+│     Written        Agent         Agent sends                                     │
+│     by sender      opens it      response/ack                                    │
+│                                                                                  │
+└──────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## FIGURE 13: Communication Topology Comparison
+
+*Side-by-side comparison of conventional multi-agent communication topologies (star, chain, tree) versus the invented flat filesystem addressing. Demonstrates how filesystem-based routing eliminates bottlenecks and hierarchy constraints.*
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│                                                                                  │
+│                    COMMUNICATION TOPOLOGY COMPARISON                             │
+│          Conventional Multi-Agent Systems vs. Invented Method                    │
+│                                                                                  │
+│                                                                                  │
+│  ═══ CONVENTIONAL TOPOLOGIES ════════════════════════════════════════════════    │
+│                                                                                  │
+│                                                                                  │
+│  1. STAR TOPOLOGY (Orchestrator-Centric)                                         │
+│                                                                                  │
+│         Agent A ──────┐                                                          │
+│                       │                                                          │
+│         Agent B ──────┤                                                          │
+│                       ▼                                                          │
+│                  ┌──────────┐                                                    │
+│                  │ORCHESTRA-│     All messages route through                     │
+│                  │  TOR     │     a single bottleneck.                           │
+│                  └──────────┘     Orchestrator context window                    │
+│                       ▲          consumes ALL communication.                     │
+│         Agent C ──────┤                                                          │
+│                       │          If A needs info from D,                          │
+│         Agent D ──────┘          message goes A→Orch→D→Orch→A                   │
+│                                  (4 hops, 4x token cost)                         │
+│                                                                                  │
+│                                                                                  │
+│  2. CHAIN TOPOLOGY (Pipeline)                                                    │
+│                                                                                  │
+│     Agent A ──→ Agent B ──→ Agent C ──→ Agent D                                 │
+│                                                                                  │
+│     Each agent can only talk to its                                               │
+│     immediate neighbors. A cannot reach                                          │
+│     D without passing through B and C.                                           │
+│     3 hops, 3x token cost, 3x latency.                                          │
+│                                                                                  │
+│                                                                                  │
+│  3. TREE TOPOLOGY (Hierarchical)                                                 │
+│                                                                                  │
+│                    Manager                                                        │
+│                   ╱       ╲                                                       │
+│              Lead A       Lead B                                                 │
+│             ╱     ╲           ╲                                                   │
+│         Worker 1  Worker 2   Worker 3                                            │
+│                                                                                  │
+│     Worker 1 cannot talk to Worker 3                                             │
+│     without routing through Lead A →                                             │
+│     Manager → Lead B → Worker 3.                                                 │
+│     Communication follows hierarchy,                                             │
+│     not task needs.                                                              │
+│                                                                                  │
+│                                                                                  │
+│  LIMITATIONS SHARED BY ALL CONVENTIONAL TOPOLOGIES:                              │
+│  ┌────────────────────────────────────────────────────────────────────┐           │
+│  │ ✗ Communication consumes context window tokens at every hop       │           │
+│  │ ✗ Messages are ephemeral (lost on crash/restart)                  │           │
+│  │ ✗ Topology constrains who can talk to whom                        │           │
+│  │ ✗ Operator cannot easily observe or inject into communications    │           │
+│  │ ✗ Requires infrastructure (API gateways, message brokers)         │           │
+│  └────────────────────────────────────────────────────────────────────┘           │
+│                                                                                  │
+│                                                                                  │
+│  ═══ INVENTED METHOD: FLAT FILESYSTEM ADDRESSING ════════════════════════════   │
+│                                                                                  │
+│                                                                                  │
+│                    Agent A ◄────────────────► Agent B                            │
+│                      ▲  ╲                    ╱  ▲                                │
+│                      │    ╲                ╱    │                                │
+│                      │      ╲            ╱      │                                │
+│                      │        ╲        ╱        │                                │
+│                      │          ╲    ╱          │                                │
+│                      │            ╲╱            │                                │
+│                      │            ╱╲            │                                │
+│                      │          ╱    ╲          │                                │
+│                      │        ╱        ╲        │                                │
+│                      │      ╱            ╲      │                                │
+│                      │    ╱                ╲    │                                │
+│                      ▼  ╱                    ╲  ▼                                │
+│                    Agent C ◄────────────────► Agent D                            │
+│                                                                                  │
+│                            ▲           ▲                                         │
+│                            │           │                                         │
+│                            ▼           ▼                                         │
+│                      ┌──────────────────────┐                                    │
+│                      │   HUMAN OPERATOR     │                                    │
+│                      │   (First-class       │                                    │
+│                      │    participant)       │                                    │
+│                      └──────────────────────┘                                    │
+│                                                                                  │
+│                                                                                  │
+│  HOW IT WORKS:                                                                   │
+│  ┌────────────────────────────────────────────────────────────────────┐           │
+│  │                                                                    │           │
+│  │  Agent A wants to message Agent D:                                │           │
+│  │                                                                    │           │
+│  │  1. A writes file to .swarm/mailboxes/agent-d/inbox/              │           │
+│  │  2. D reads it on next check cycle                                │           │
+│  │                                                                    │           │
+│  │  That's it. ONE hop. Direct. No routing. No orchestrator.         │           │
+│  │  The filesystem path IS the address.                              │           │
+│  │                                                                    │           │
+│  └────────────────────────────────────────────────────────────────────┘           │
+│                                                                                  │
+│                                                                                  │
+│  ADVANTAGES OF FLAT FILESYSTEM ADDRESSING:                                       │
+│  ┌────────────────────────────────────────────────────────────────────┐           │
+│  │ ✓ ANY agent messages ANY other agent (1 hop, direct)              │           │
+│  │ ✓ Messages persist as files (survive crashes/restarts)            │           │
+│  │ ✓ No topology constraints — communication follows task needs      │           │
+│  │ ✓ Operator reads/writes to any mailbox with standard tools        │           │
+│  │ ✓ Zero infrastructure — filesystem IS the message bus             │           │
+│  │ ✓ Automatic audit trail (messages are files with timestamps)      │           │
+│  │ ✓ Broadcast via shared directory (no enumeration needed)          │           │
+│  └────────────────────────────────────────────────────────────────────┘           │
+│                                                                                  │
+│                                                                                  │
+│  ROUTING COMPARISON TABLE:                                                       │
+│  ┌──────────────────┬──────────┬──────────┬───────────────┬────────────────┐     │
+│  │                  │ Star     │ Chain    │ Tree          │ FILESYSTEM     │     │
+│  │                  │ (Orch)   │ (Pipe)   │ (Hierarchy)   │ (INVENTED)     │     │
+│  ├──────────────────┼──────────┼──────────┼───────────────┼────────────────┤     │
+│  │ Hops (A→D)       │ 2        │ 3        │ 2-4           │ 1              │     │
+│  │ Token cost       │ 2x       │ 3x       │ 2-4x          │ 1x             │     │
+│  │ Bottleneck       │ Orch     │ Middle   │ Root          │ None           │     │
+│  │ Crash recovery   │ None     │ None     │ None          │ Automatic      │     │
+│  │ Operator access  │ Limited  │ Limited  │ Via root      │ Full/Direct    │     │
+│  │ Infrastructure   │ API/Msg  │ API      │ API           │ Filesystem     │     │
+│  │ Persistence      │ No       │ No       │ No            │ Yes (files)    │     │
+│  └──────────────────┴──────────┴──────────┴───────────────┴────────────────┘     │
+│                                                                                  │
+└──────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## FIGURE 14: Crash Recovery in Multi-Agent Communication
+
+*Shows the crash recovery scenario: Agent Beta crashes while messages are pending in its inbox, messages persist as files, and Agent Beta recovers upon restart by scanning both its bridge file and inbox.*
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│                                                                                  │
+│                  CRASH RECOVERY IN MULTI-AGENT COMMUNICATION                    │
+│                                                                                  │
+│                                                                                  │
+│  ═══ TIMELINE ══════════════════════════════════════════════════════════════     │
+│                                                                                  │
+│                                                                                  │
+│  T1: NORMAL OPERATION                                                            │
+│  ─────────────────────                                                           │
+│                                                                                  │
+│    Agent Alpha              Agent Beta              Agent Gamma                  │
+│    ┌──────────┐            ┌──────────┐            ┌──────────┐                 │
+│    │ Working  │ ──msg──→   │ Working  │   ←msg──   │ Working  │                 │
+│    │          │            │          │            │          │                 │
+│    └──────────┘            └──────────┘            └──────────┘                 │
+│                                                                                  │
+│    Beta's inbox: [msg_001_from_alpha.md (read)]                                  │
+│    Beta's .agent/working_memory.md: "Implementing auth module"                   │
+│                                                                                  │
+│                                                                                  │
+│  T2: CRASH EVENT                                                                 │
+│  ─────────────────                                                               │
+│                                                                                  │
+│    Agent Alpha              Agent Beta              Agent Gamma                  │
+│    ┌──────────┐            ┌──────────┐            ┌──────────┐                 │
+│    │ Working  │ ──msg──→   │ ╳╳╳╳╳╳╳╳│            │ Working  │                 │
+│    │          │            │ CRASHED  │ ←msg──     │          │                 │
+│    └──────────┘            │ ╳╳╳╳╳╳╳╳│            └──────────┘                 │
+│                            └──────────┘                                          │
+│                                                                                  │
+│    ┌─────────────────────────────────────────────────────────────────┐            │
+│    │  WHAT SURVIVES THE CRASH (all files on filesystem):            │            │
+│    │                                                                 │            │
+│    │  Beta's .agent/bridge.md          → Session state saved        │            │
+│    │  Beta's .agent/working_memory.md  → Task state preserved       │            │
+│    │  Beta's inbox/msg_001.md          → Already-read message       │            │
+│    │  Beta's inbox/msg_002_from_alpha  → NEW: unread, PENDING       │            │
+│    │  Beta's inbox/msg_003_from_gamma  → NEW: unread, PENDING       │            │
+│    │                                                                 │            │
+│    │  ★ NOTHING IS LOST — messages are files, not memory objects ★  │            │
+│    └─────────────────────────────────────────────────────────────────┘            │
+│                                                                                  │
+│    Meanwhile, Alpha and Gamma CONTINUE WORKING:                                  │
+│    - They don't know Beta crashed                                                │
+│    - They can keep depositing messages in Beta's inbox                            │
+│    - Their own work is unaffected                                                │
+│                                                                                  │
+│                                                                                  │
+│  T3: RECOVERY                                                                    │
+│  ─────────────                                                                   │
+│                                                                                  │
+│    Agent Beta restarts and executes dual recovery:                                │
+│                                                                                  │
+│    ┌─────────────────────────────────────────────────────────────────────────┐    │
+│    │                                                                         │    │
+│    │  STEP 1: PRIVATE STATE RECOVERY (per Section 5, Bridge Mechanism)      │    │
+│    │  ─────────────────────────────────────────────────────────────────      │    │
+│    │  1a. Read .agent/index.md          (~500 tokens)  → File map           │    │
+│    │  1b. Read .agent/working_memory.md (~400 tokens)  → Task state         │    │
+│    │  1c. Read .agent/bridge.md         (~500 tokens)  → Session state      │    │
+│    │  1d. Delete bridge.md                                                   │    │
+│    │                                                                         │    │
+│    │  STEP 2: COMMUNICATION RECOVERY (NEW - per Section 15)                 │    │
+│    │  ─────────────────────────────────────────────────────                  │    │
+│    │  2a. Scan inbox/ for all files                                         │    │
+│    │  2b. Identify PENDING messages:                                        │    │
+│    │      ├── msg_002_from_alpha.md  (status: pending)                      │    │
+│    │      └── msg_003_from_gamma.md  (status: pending)                      │    │
+│    │  2c. Read pending messages by priority                                 │    │
+│    │  2d. Process accumulated messages                                      │    │
+│    │  2e. Send acknowledgments where required                               │    │
+│    │                                                                         │    │
+│    │  RESULT: Beta resumes with FULL state + ALL missed communications      │    │
+│    │                                                                         │    │
+│    └─────────────────────────────────────────────────────────────────────────┘    │
+│                                                                                  │
+│    Agent Alpha              Agent Beta              Agent Gamma                  │
+│    ┌──────────┐            ┌──────────┐            ┌──────────┐                 │
+│    │ Working  │ ◄──ack──   │ Recovered│   ──ack──► │ Working  │                 │
+│    │          │            │ Working  │            │          │                 │
+│    └──────────┘            └──────────┘            └──────────┘                 │
+│                                                                                  │
+│                                                                                  │
+│  ═══ COMPARISON WITH CONVENTIONAL SYSTEMS ══════════════════════════════════     │
+│                                                                                  │
+│  ┌─────────────────────┬──────────────────────┬──────────────────────────┐       │
+│  │                     │ CONVENTIONAL          │ FILESYSTEM (INVENTED)    │       │
+│  ├─────────────────────┼──────────────────────┼──────────────────────────┤       │
+│  │ Messages after      │ LOST                 │ PRESERVED (files)        │       │
+│  │ crash               │ (in-memory only)     │                          │       │
+│  │                     │                      │                          │       │
+│  │ Recovery action     │ Re-send all messages │ Scan inbox directory     │       │
+│  │                     │ (if sender remembers)│ (automatic)              │       │
+│  │                     │                      │                          │       │
+│  │ Messages sent       │ LOST                 │ QUEUED in inbox          │       │
+│  │ during downtime     │ (sender gets error)  │ (async delivery)        │       │
+│  │                     │                      │                          │       │
+│  │ Other agents        │ BLOCKED              │ CONTINUE WORKING         │       │
+│  │ during crash        │ (waiting for reply)  │ (deposit messages)       │       │
+│  │                     │                      │                          │       │
+│  │ State consistency   │ Manual rebuild       │ Automatic (files = truth)│       │
+│  │ after recovery      │                      │                          │       │
+│  └─────────────────────┴──────────────────────┴──────────────────────────┘       │
+│                                                                                  │
+└──────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
 *END OF PATENT FIGURES*
 
-*All figures are original technical diagrams created for inclusion in the provisional patent application titled "System and Method for Managing Artificial Intelligence Agent Context Windows Through Structured File-Based State Persistence and Output Redirection" filed with the United States Patent and Trademark Office.*
+*All figures are original technical diagrams created for inclusion in the provisional patent application titled "System and Method for Managing Artificial Intelligence Agent Context Windows Through Structured File-Based State Persistence, Output Redirection, and Multi-Agent Filesystem Communication" filed with the United States Patent and Trademark Office.*

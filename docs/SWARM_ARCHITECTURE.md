@@ -940,6 +940,902 @@ Nothing is wasted.**
 
 ---
 
+## The Definitive Agent Lineups: 12 Configurations for 12 Use Cases
+
+The swarm isn't one fixed roster. It's a **configurable team** that reshapes itself
+depending on the job. A clean room reverse engineering job needs forensic analysts
+and standards architects. A spaghetti code rescue needs pattern detectives and
+refactoring specialists. A boilerplate factory needs template designers and
+parameterization experts.
+
+Below is the perfect lineup for each use case — the exact org chart, agent roles,
+model tiers, sequencing, and cost. This is what I'd build if I were designing
+each configuration as a `.claude/agents/` file with full CLI tooling.
+
+---
+
+### THE MANAGEMENT HIERARCHY (Universal Across All Configurations)
+
+Every configuration shares the same management spine. What changes is who reports
+to whom and how many workers each manager controls.
+
+```
+                    ┌──────────────────┐
+                    │   ORCHESTRATOR   │  (Python process, not an LLM)
+                    │   Spawns agents  │  Routes work, manages lifecycle
+                    │   Tracks state   │  Reads features.db, emits WebSocket
+                    └────────┬─────────┘
+                             │
+              ┌──────────────┼──────────────┐
+              │              │              │
+     ┌────────▼──────┐ ┌────▼────────┐ ┌──▼───────────┐
+     │ PLANNING LANE │ │ CODING LANE │ │ QUALITY LANE │
+     │               │ │             │ │              │
+     │ Architect     │ │ Coders x5   │ │ Testers x2   │
+     │ Initializer   │ │ Foundation  │ │ Reviewer      │
+     │ Scout         │ │ Integration │ │ QA Agent      │
+     │ Analyzer      │ │             │ │ Lint Watcher  │
+     │ Style Extract │ │             │ │ Security Scan │
+     └───────────────┘ └─────────────┘ └──────────────┘
+```
+
+**The three lanes run concurrently** (with sequencing within each lane):
+- **Planning Lane** runs first (Phase 0-1), produces artifacts that feed the other lanes
+- **Coding Lane** consumes planning artifacts, produces code
+- **Quality Lane** runs alongside coding, catches problems in near-real-time
+
+---
+
+### CONFIGURATION 1: Greenfield Feature Build (The Default)
+
+**Use case:** "I have an app idea. Build it from scratch."
+**This is the current AutoForge pipeline, optimized.**
+
+```
+PLANNING LANE (sequential):                   COST
+  [Haiku]  Spec Analyzer ─────────────────── $0.01
+  [Haiku]  Style Extractor ───────────────── $0.01
+  [Opus]   Architecture Planner ──────────── $2.70
+  [Opus]   Feature Decomposer ────────────── $3.75
+  [Haiku]  Feature Validator ─────────────── $0.01
+
+CODING LANE (parallel, after planning):
+  [Opus]   Foundation Agent (Feature #1) ─── $3.38
+  [Sonnet] Coder #1 ─────────── (x4 features) $1.64
+  [Sonnet] Coder #2 ─────────── (x4 features) $1.64
+  [Sonnet] Coder #3 ─────────── (x4 features) $1.64
+  [Sonnet] Coder #4 ─────────── (x4 features) $1.64
+  [Sonnet] Coder #5 ─────────── (x3 features) $1.23
+  [Sonnet] Integration Specialist ─────────── $0.90
+
+QUALITY LANE (concurrent with coding):
+  [Haiku]  Lint Watcher (continuous) ──────── $0.02
+  [Haiku]  Static Analysis (on commit) ────── $0.04
+  [Haiku]  Type Coherence (every N done) ──── $0.03
+  [Sonnet] Tester #1 (regression batches) ── $1.20
+  [Sonnet] Tester #2 (regression batches) ── $1.20
+  [Sonnet] Code Reviewer (batch review) ──── $1.08
+  [Sonnet] QA Agent (final sweep) ─────────── $0.41
+
+POLISH LANE (after all pass):
+  [Haiku]  Doc Generator ─────────────────── $0.02
+  [Sonnet] README Agent ──────────────────── $0.18
+  [Haiku]  Coverage Analyzer ─────────────── $0.01
+  [Haiku]  Performance Baseline ──────────── $0.01
+                                        ─────────
+                                 TOTAL: ~$23.00
+                                  TIME: ~60-90 min
+                                AGENTS: 25
+```
+
+---
+
+### CONFIGURATION 2: Clean Room Reverse Engineering
+
+**Use case:** "I have a competitor's product (or a legacy app). I need to understand
+exactly what it does and rebuild it from scratch with clean code and proper standards.
+No tainted code — clean room."
+
+**The key constraint:** The analysis team NEVER shares raw code with the build team.
+They share SPECIFICATIONS only. This is the legal firewall.
+
+```
+═══════════════════════════════════════════════════════════════
+  ANALYSIS TEAM (reads the original)     FIREWALL     BUILD TEAM (never sees original)
+═══════════════════════════════════════════════════════════════
+
+PHASE 0: Forensic Analysis                    │
+                                               │
+  [Opus]   Behavior Analyst ──────────────── $3.75  │
+  │  Reads the original app/codebase              │
+  │  Documents WHAT it does (not HOW)             │
+  │  Maps every user flow, screen, feature        │
+  │  Output: behavior-spec.md (functional only)   │
+  │                                                │
+  [Sonnet] API Reverse Engineer ──────────── $0.41  │
+  │  Maps all API endpoints, request/response     │
+  │  Documents data models (from observation)     │
+  │  Output: api-spec.md                          │
+  │                                                │
+  [Sonnet] UI/UX Documenter ─────────────── $0.41  │
+  │  Screenshots every screen, documents layout   │
+  │  Maps navigation flows, component inventory   │
+  │  Output: ui-spec.md (descriptions, not code)  │
+  │                                                │
+  [Haiku]  Data Model Extractor ──────────── $0.01  │
+  │  Infers database schema from UI + API         │
+  │  Documents entities, relationships, constraints│
+  │  Output: data-model-spec.md                   │
+  │                                                │
+  [Haiku]  Business Rules Extractor ──────── $0.01  │
+  │  Documents validation rules, calculations     │
+  │  Maps permissions, access control patterns    │
+  │  Output: business-rules-spec.md               │
+                                               │
+  ════════════ CLEAN ROOM WALL ════════════   │  SPECIFICATIONS ONLY CROSS THIS LINE
+                                               │  (no source code, no implementation)
+PHASE 1: Clean Architecture                   │
+                                               │
+  [Opus]   Clean Room Architect ──────────── $2.70
+  │  Reads ONLY the specs from Phase 0
+  │  Designs fresh architecture from scratch
+  │  Chooses modern stack, patterns, conventions
+  │  Output: ARCHITECTURE.md + tech decisions
+  │
+  [Opus]   Feature Decomposer ────────────── $3.75
+  │  Creates features from behavior-spec.md
+  │  Maps to clean architecture (not original)
+  │  Output: features.db with dependencies
+
+PHASE 2: Clean Implementation
+  (Same as Config 1 Coding Lane)
+  [Opus]   Foundation Agent ──────────────── $3.38
+  [Sonnet] Coders x5 ────────────────────── $8.10
+  [Sonnet] Integration Specialist ─────────── $0.90
+
+PHASE 3: Verification Against Spec
+  [Sonnet] Behavior Verifier ─────────────── $0.41
+  │  Checks rebuilt app against behavior-spec
+  │  Does the new version DO everything the old one did?
+  │  Does NOT compare code, only behavior
+  │
+  [Sonnet] Testers x2 ───────────────────── $2.40
+  [Sonnet] Reviewer ──────────────────────── $1.08
+  [Sonnet] QA Agent ──────────────────────── $0.41
+
+QUALITY WATCHERS (continuous):
+  [Haiku]  Lint + Type + Security ─────────── $0.09
+                                          ──────────
+                                   TOTAL: ~$28.00
+                                    TIME: ~2-3 hours
+                                  AGENTS: 22
+                              UNIQUE ROLES: 7 new agents
+```
+
+**The 7 NEW agent roles for clean room:**
+1. **Behavior Analyst** (Opus) — The forensic expert. Documents what, never how.
+2. **API Reverse Engineer** (Sonnet) — Maps the interface contract.
+3. **UI/UX Documenter** (Sonnet) — Visual inventory without code access.
+4. **Data Model Extractor** (Haiku) — Infers schema from observations.
+5. **Business Rules Extractor** (Haiku) — Documents the "why" behind behaviors.
+6. **Clean Room Architect** (Opus) — Designs from spec only, no original influence.
+7. **Behavior Verifier** (Sonnet) — Validates functional parity without code comparison.
+
+**CLI agent files this creates:**
+```
+.claude/agents/
+  behavior-analyst.md       # "You analyze software behavior. You NEVER output code."
+  api-reverse-engineer.md   # "You document API contracts from observation."
+  ui-documenter.md          # "You describe what users see, not how it's built."
+  clean-room-architect.md   # "You design from specifications. You have NEVER seen the original."
+  behavior-verifier.md      # "You verify functional parity. You compare behaviors, not code."
+```
+
+---
+
+### CONFIGURATION 3: Spaghetti Code Rescue
+
+**Use case:** "Someone vibe-coded this app. It works but it's a disaster. No tests,
+no types, inconsistent patterns, 47 different ways to fetch data. I want to keep the
+features but rebuild it properly."
+
+**The key insight:** You can't refactor spaghetti in place. You need to understand it
+first, extract the INTENT, then rebuild with standards. This is archaeology, not renovation.
+
+```
+PHASE 0: Archaeology (Understand the Mess)
+
+  [Opus]   Code Archaeologist ────────────── $3.75
+  │  Reads EVERY file. Maps the actual architecture (not intended).
+  │  Identifies: duplicate utilities, conflicting patterns, dead code,
+  │    circular dependencies, god objects, prop drilling chains
+  │  Creates a "state of the disaster" report
+  │  Output: .autoforge/archaeology-report.md
+  │  THIS IS THE MOST IMPORTANT AGENT — it sees the truth
+  │
+  [Sonnet] Pattern Detective ─────────────── $0.41
+  │  Catalogs every coding pattern used in the codebase
+  │  Groups them: "there are 4 ways data fetching is done"
+  │  Identifies which pattern is BEST and which are accidental
+  │  Output: .autoforge/pattern-inventory.md
+  │
+  [Haiku]  Dependency Mapper ─────────────── $0.01
+  │  Runs static analysis: import graph, dependency tree
+  │  Identifies circular imports, unused deps, version conflicts
+  │  Output: .autoforge/dependency-map.md
+  │
+  [Haiku]  Dead Code Detector ────────────── $0.01
+  │  Finds unreachable code, unused exports, orphaned files
+  │  Estimates how much can be deleted safely
+  │  Output: .autoforge/dead-code-report.md
+  │
+  [Sonnet] Feature Extractor ─────────────── $0.41
+  │  Reads the working app and reverse-engineers the feature list
+  │  "What does this app actually DO from a user's perspective?"
+  │  Maps features to files (which files implement which feature)
+  │  Output: features extracted into features.db
+
+PHASE 1: Standards Definition
+
+  [Opus]   Standards Architect ───────────── $2.70
+  │  Reads archaeology report + pattern inventory
+  │  Defines THE standard: one way to do each thing
+  │  Writes: coding standards, file organization, naming conventions,
+  │    data fetching pattern, state management pattern, error handling
+  │  Output: ARCHITECTURE.md + CODING_STANDARDS.md
+  │  This is the "law" — every subsequent agent follows this
+  │
+  [Haiku]  Migration Planner ─────────────── $0.01
+  │  Creates the refactoring dependency graph
+  │  "Shared utilities must be standardized BEFORE components that use them"
+  │  "Auth must be refactored BEFORE pages that depend on auth"
+  │  Output: migration ordering in features.db
+
+PHASE 2: Incremental Rebuild (NOT a full rewrite)
+
+  [Opus]   Foundation Refactorer ──────────── $3.38
+  │  Refactors the SHARED INFRASTRUCTURE first:
+  │    - API client (one pattern)
+  │    - Auth system (one pattern)
+  │    - State management (one pattern)
+  │    - Shared types/interfaces
+  │  Everything downstream depends on this being right
+  │
+  [Sonnet] Refactorer #1-5 (x5 parallel) ── $8.10
+  │  Each takes a feature (or feature group) and refactors it
+  │  Reads: CODING_STANDARDS.md + ARCHITECTURE.md
+  │  Replaces spaghetti with standardized patterns
+  │  Preserves behavior while changing structure
+  │  MUST maintain feature parity (regression tests run after each)
+  │
+  [Sonnet] Test Writer ───────────────────── $0.41
+  │  Writes tests BEFORE refactoring (if none exist)
+  │  These tests verify the CURRENT behavior
+  │  Refactoring agents run these tests to prove they didn't break anything
+  │  Output: test files for each feature
+
+PHASE 3: Verification
+
+  [Sonnet] Regression Testers x2 ─────────── $2.40
+  │  Run the full test suite after each refactoring batch
+  │  Catches behavioral regressions immediately
+  │
+  [Sonnet] Standards Compliance Checker ──── $0.41
+  │  After all refactoring: does the codebase follow the standards?
+  │  Catches agents who "fell back" to old patterns
+  │  Reports: "File X still uses the old data fetching pattern"
+  │
+  [Sonnet] Code Reviewer ────────────────── $1.08
+  [Sonnet] QA Agent ─────────────────────── $0.41
+
+QUALITY WATCHERS (continuous):
+  [Haiku]  Lint + Type + Dead Code ────────── $0.09
+                                          ──────────
+                                   TOTAL: ~$24.00
+                                    TIME: ~2-4 hours
+                                  AGENTS: 21
+                              UNIQUE ROLES: 7 new agents
+```
+
+**The 7 NEW agent roles for spaghetti rescue:**
+1. **Code Archaeologist** (Opus) — Sees the truth of the codebase without judgment.
+2. **Pattern Detective** (Sonnet) — Catalogs every pattern, picks the winner.
+3. **Dead Code Detector** (Haiku) — Identifies what can be deleted safely.
+4. **Feature Extractor** (Sonnet) — Reverse-engineers "what does this DO?"
+5. **Standards Architect** (Opus) — Writes the law that all refactoring follows.
+6. **Migration Planner** (Haiku) — Orders the refactoring for safety.
+7. **Standards Compliance Checker** (Sonnet) — Enforces the new standards post-refactoring.
+
+---
+
+### CONFIGURATION 4: Boilerplate Factory
+
+**Use case:** "I want to create reusable project templates — SaaS starter, e-commerce
+skeleton, blog platform, dashboard app — that anyone can spin up and customize."
+
+**The key insight:** A boilerplate isn't a finished app. It's a **parameterized skeleton**
+with clear extension points. The agents need to think about customizability, not just code.
+
+```
+PHASE 0: Template Design
+
+  [Opus]   Template Architect ────────────── $2.70
+  │  Designs the boilerplate structure:
+  │    - What's included vs what's left for the user
+  │    - Extension points (where users add their code)
+  │    - Configuration surface (what's customizable)
+  │    - File organization that scales
+  │  Output: TEMPLATE_ARCHITECTURE.md
+  │
+  [Sonnet] Stack Selector ───────────────── $0.41
+  │  For each boilerplate type, selects optimal tech stack
+  │  Documents WHY each choice (React vs Vue, Prisma vs Drizzle, etc.)
+  │  Ensures dependencies are stable, maintained, well-documented
+  │  Output: STACK_DECISIONS.md
+  │
+  [Haiku]  Convention Documenter ─────────── $0.01
+  │  Writes the conventions the template follows
+  │  This becomes the CLAUDE.md for projects spun up from this template
+  │  Output: template CLAUDE.md, CONTRIBUTING.md
+
+PHASE 1: Skeleton Implementation
+
+  [Opus]   Foundation Builder ────────────── $3.38
+  │  Builds the core skeleton:
+  │    - Auth system (configurable: email, OAuth, magic link)
+  │    - Database layer (configurable: Postgres, SQLite, etc.)
+  │    - API framework (configurable: REST, GraphQL, tRPC)
+  │    - Frontend shell (configurable: theme, layout)
+  │
+  [Sonnet] Feature Module Builder x3 ────── $1.23
+  │  Each builds one "optional module" for the template:
+  │    - Payments module (Stripe integration)
+  │    - Email module (transactional emails)
+  │    - File upload module (S3/local)
+  │    - Admin panel module
+  │  These are DROP-IN modules users can enable/disable
+  │
+  [Sonnet] Config System Builder ─────────── $0.41
+  │  Builds the template configuration system:
+  │    - CLI scaffolder ("create-my-app" style)
+  │    - Config file (template.config.ts)
+  │    - Feature flags for optional modules
+  │    - Environment variable templates
+
+PHASE 2: Documentation & DX
+
+  [Sonnet] DX Agent ──────────────────────── $0.41
+  │  Developer experience specialist:
+  │    - "Getting started in 5 minutes" guide
+  │    - Interactive CLI walkthrough
+  │    - VS Code settings, recommended extensions
+  │    - Hot reload, debug configurations
+  │
+  [Sonnet] README & Marketing ────────────── $0.41
+  │  Creates the public-facing template page:
+  │    - Feature comparison table
+  │    - Architecture diagram (mermaid)
+  │    - Screenshot placeholders with descriptions
+  │    - "Why this template" positioning
+  │
+  [Haiku]  Example App Builder ───────────── $0.01
+  │  Generates a small example app using the template
+  │  Proves the template actually works end-to-end
+
+PHASE 3: Quality
+
+  [Sonnet] Template Tester ───────────────── $0.41
+  │  Spins up the template with every configuration combination
+  │  Verifies each combination builds, lints, passes tests
+  │
+  [Haiku]  Lint + Type Watcher ───────────── $0.02
+  [Sonnet] Code Reviewer ────────────────── $1.08
+                                          ──────────
+                                   TOTAL: ~$10.50
+                                    TIME: ~30-60 min
+                                  AGENTS: 14
+                              UNIQUE ROLES: 6 new agents
+```
+
+---
+
+### CONFIGURATION 5: Code Migration (JS→TS, Class→Hooks, Python 2→3, etc.)
+
+**Use case:** "Migrate my entire codebase from X to Y without breaking anything."
+
+```
+PHASE 0: Migration Analysis
+
+  [Opus]   Migration Strategist ──────────── $2.70
+  │  Analyzes the full codebase, designs migration strategy
+  │  Decides: big bang vs incremental, what order, what coexistence
+  │  Identifies high-risk files (complex logic, many dependents)
+  │  Output: MIGRATION_PLAN.md with phases
+  │
+  [Haiku]  Compatibility Scanner ─────────── $0.01
+  │  Scans for migration blockers:
+  │    - Deprecated APIs, incompatible patterns
+  │    - Third-party dependencies that need updating
+  │    - Build system changes needed
+  │  Output: compatibility-report.md
+  │
+  [Sonnet] Test Baseline Agent ───────────── $0.41
+  │  Runs existing tests and records baseline results
+  │  If no tests: generates minimal regression tests first
+  │  These tests MUST pass after every migration step
+
+PHASE 1: Infrastructure Migration
+
+  [Opus]   Config Migrator ───────────────── $3.38
+  │  Migrates build tooling, configs, package.json, tsconfig, etc.
+  │  Everything downstream depends on the build system working
+  │
+  [Sonnet] Type Definition Agent ─────────── $0.41
+  │  (For JS→TS) Generates type definitions for all modules
+  │  (For other migrations) Generates the "bridge" layer
+
+PHASE 2: Incremental File Migration
+
+  [Sonnet] Migrator #1-5 (x5 parallel) ──── $8.10
+  │  Each migrates files according to the plan
+  │  Follows strict ordering (utilities → components → pages)
+  │  Runs tests after each file to catch regressions
+
+PHASE 3: Verification
+
+  [Sonnet] Migration Verifier ────────────── $0.41
+  │  Full sweep: are there ANY remaining un-migrated files?
+  │  Checks for leftover compatibility shims, TODOs, any/unknown types
+  │
+  [Haiku]  Lint + Type Watcher ───────────── $0.02
+  [Sonnet] Testers x2 ───────────────────── $2.40
+  [Sonnet] Reviewer ──────────────────────── $1.08
+                                          ──────────
+                                   TOTAL: ~$19.00
+                                    TIME: ~1-3 hours
+                                  AGENTS: 16
+```
+
+---
+
+### CONFIGURATION 6: Security Audit & Hardening
+
+**Use case:** "Audit my codebase for security vulnerabilities and fix them."
+
+```
+PHASE 0: Threat Assessment
+
+  [Opus]   Threat Modeler ───────────────── $2.70
+  │  Analyzes attack surface: auth, input handling, data flow
+  │  Creates STRIDE threat model for the application
+  │  Identifies crown jewels (what's most valuable to protect)
+  │  Output: THREAT_MODEL.md
+  │
+  [Sonnet] OWASP Scanner ───────────────── $0.41
+  │  Systematic check against OWASP Top 10:
+  │    - Injection (SQL, XSS, command)
+  │    - Broken auth/session management
+  │    - Sensitive data exposure
+  │    - Security misconfiguration
+  │  Output: owasp-findings.md with severity ratings
+  │
+  [Haiku]  Dependency Auditor ──────────── $0.01
+  │  Runs npm audit, pip-audit, cargo audit
+  │  Checks for known CVEs in dependencies
+  │  Output: dependency-vulnerabilities.md
+  │
+  [Haiku]  Secrets Scanner ────────────── $0.01
+  │  Scans for hardcoded secrets, API keys, tokens
+  │  Checks .env handling, git history for leaked secrets
+  │  Output: secrets-report.md
+
+PHASE 1: Prioritized Fixes
+
+  [Opus]   Security Architect ──────────── $3.38
+  │  Designs fixes for CRITICAL and HIGH findings
+  │  Architectural changes: input sanitization layer,
+  │    CSRF protection, rate limiting, auth hardening
+  │
+  [Sonnet] Fix Agent #1-3 (x3 parallel) ── $1.23
+  │  Each takes a batch of findings and implements fixes
+  │  Follows security architect's design
+  │
+  [Sonnet] Penetration Tester ──────────── $0.41
+  │  Writes and runs attack scenarios against the fixes
+  │  Verifies fixes actually prevent the vulnerability
+
+PHASE 2: Verification
+
+  [Sonnet] Security Reviewer ──────────── $0.41
+  │  Reviews all fixes for correctness and completeness
+  │  Checks for fix-induced regressions
+  │
+  [Haiku]  Compliance Checker ─────────── $0.01
+  │  Generates compliance report (OWASP, SOC2 relevant controls)
+                                          ──────────
+                                   TOTAL: ~$8.60
+                                    TIME: ~1-2 hours
+                                  AGENTS: 12
+```
+
+---
+
+### CONFIGURATION 7: Test Suite Builder
+
+**Use case:** "My app has zero tests. Build comprehensive test coverage from scratch."
+
+```
+  [Opus]   Test Strategist ──────────────── $2.70
+  │  Analyzes codebase, designs test strategy:
+  │    - What to unit test, integration test, e2e test
+  │    - Test priorities (critical paths first)
+  │    - Test infrastructure setup (Jest, Playwright, etc.)
+  │
+  [Haiku]  Test Infrastructure Agent ─────── $0.01
+  │  Sets up test framework, config files, CI integration
+  │
+  [Sonnet] Unit Test Writer x3 ──────────── $1.23
+  │  Each writes unit tests for assigned modules
+  │  Focus: pure functions, utilities, data transformations
+  │
+  [Sonnet] Integration Test Writer ──────── $0.41
+  │  Writes API integration tests, database tests
+  │  Focus: module boundaries, API contracts
+  │
+  [Sonnet] E2E Test Writer ─────────────── $0.41
+  │  Writes Playwright end-to-end tests
+  │  Focus: critical user flows (signup, checkout, etc.)
+  │
+  [Haiku]  Coverage Analyzer ───────────── $0.01
+  │  Runs coverage report, identifies gaps
+  │  Feeds gaps back to test writers for second pass
+  │
+  [Sonnet] Test Reviewer ──────────────── $0.41
+  │  Reviews test quality: are tests actually testing the right things?
+  │  Catches: tests that always pass, snapshot tests of irrelevant data
+                                          ──────────
+                                   TOTAL: ~$5.20
+                                    TIME: ~30-60 min
+                                  AGENTS: 10
+```
+
+---
+
+### CONFIGURATION 8: Performance Optimization
+
+**Use case:** "My app is slow. Find the bottlenecks and fix them."
+
+```
+  [Opus]   Performance Analyst ──────────── $2.70
+  │  Profiles the full application:
+  │    - Lighthouse audit (FCP, LCP, CLS, TTI)
+  │    - Bundle analysis (what's making it big)
+  │    - N+1 query detection (database)
+  │    - Memory leak patterns (React re-renders)
+  │  Creates prioritized fix list by IMPACT
+  │
+  [Sonnet] Bundle Optimizer ─────────────── $0.41
+  │  Code splitting, lazy loading, tree shaking
+  │  Dynamic imports for heavy dependencies
+  │
+  [Sonnet] Query Optimizer ──────────────── $0.41
+  │  Fixes N+1 queries, adds proper indexing
+  │  Implements caching (Redis, in-memory, HTTP)
+  │
+  [Sonnet] Render Optimizer ─────────────── $0.41
+  │  React: useMemo, useCallback, virtualization
+  │  Eliminates unnecessary re-renders
+  │  Implements proper suspense boundaries
+  │
+  [Haiku]  Asset Optimizer ──────────────── $0.01
+  │  Image optimization, font subsetting, CDN config
+  │  Static asset compression settings
+  │
+  [Sonnet] Benchmark Agent ─────────────── $0.41
+  │  Runs before/after benchmarks for every fix
+  │  Generates performance comparison report
+                                          ──────────
+                                   TOTAL: ~$4.40
+                                    TIME: ~30-45 min
+                                  AGENTS: 6
+```
+
+---
+
+### CONFIGURATION 9: API Design & Implementation
+
+**Use case:** "Design and build a production-quality API from a description."
+
+```
+  [Opus]   API Architect ────────────────── $2.70
+  │  Designs: endpoints, auth, pagination, error handling
+  │  Writes OpenAPI spec BEFORE any implementation
+  │  Defines: rate limiting, versioning strategy, CORS
+  │
+  [Haiku]  Schema Generator ─────────────── $0.01
+  │  Generates database models from API spec
+  │  Creates migration files
+  │
+  [Sonnet] Endpoint Builder x3 ──────────── $1.23
+  │  Each builds a group of endpoints following the spec
+  │
+  [Sonnet] Auth Builder ─────────────────── $0.41
+  │  Implements auth: JWT, API keys, OAuth
+  │  Rate limiting, CORS, security headers
+  │
+  [Sonnet] API Test Writer ─────────────── $0.41
+  │  Generates integration tests for every endpoint
+  │  Tests: happy path, validation, auth, error cases
+  │
+  [Haiku]  API Doc Generator ───────────── $0.01
+  │  Generates Swagger UI, Postman collection
+  │  Writes usage examples for each endpoint
+  │
+  [Sonnet] API Reviewer ────────────────── $0.41
+  │  Reviews for: consistency, REST conventions, security
+                                          ──────────
+                                   TOTAL: ~$5.20
+                                    TIME: ~30-60 min
+                                  AGENTS: 10
+```
+
+---
+
+### CONFIGURATION 10: Design System Builder
+
+**Use case:** "Create a reusable component library / design system."
+
+```
+  [Opus]   Design System Architect ──────── $2.70
+  │  Defines: token system, component API patterns,
+  │    composition model, theming approach
+  │  Output: DESIGN_SYSTEM.md with every decision
+  │
+  [Sonnet] Token Builder ────────────────── $0.41
+  │  Implements: colors, spacing, typography, shadows
+  │  CSS variables, Tailwind config, theme provider
+  │
+  [Sonnet] Primitive Builder ────────────── $0.41
+  │  Builds atomic components: Button, Input, Badge, etc.
+  │  Full prop API, variants, sizes, states
+  │
+  [Sonnet] Composite Builder ────────────── $0.41
+  │  Builds complex components: DataTable, Modal, Form, etc.
+  │  Uses primitives, demonstrates composition
+  │
+  [Sonnet] Documentation Agent ──────────── $0.41
+  │  Storybook stories for every component
+  │  Interactive prop playground, usage examples
+  │
+  [Haiku]  Accessibility Auditor ────────── $0.01
+  │  ARIA attributes, keyboard navigation, contrast ratios
+  │  Screen reader testing documentation
+  │
+  [Sonnet] Reviewer ─────────────────────── $0.41
+                                          ──────────
+                                   TOTAL: ~$4.80
+                                    TIME: ~30-45 min
+                                  AGENTS: 7
+```
+
+---
+
+### CONFIGURATION 11: Legacy Modernization
+
+**Use case:** "I have a working app on an old stack (jQuery, Angular.js, PHP).
+Migrate it to a modern stack while keeping it running the whole time."
+
+```
+PHASE 0: Strangler Fig Analysis
+
+  [Opus]   Modernization Strategist ─────── $2.70
+  │  Designs the strangler fig pattern:
+  │    - Which parts to modernize first (highest ROI)
+  │    - How old and new coexist during migration
+  │    - Bridge/adapter layer design
+  │    - Feature flag strategy for gradual rollout
+  │
+  [Sonnet] Route Mapper ─────────────────── $0.41
+  │  Maps every route/page in the legacy app
+  │  Prioritizes by usage and complexity
+  │
+  [Haiku]  Legacy Dependency Auditor ────── $0.01
+  │  Identifies deprecated dependencies
+  │  Finds modern replacements for each
+
+PHASE 1: Bridge Layer
+
+  [Opus]   Bridge Builder ───────────────── $3.38
+  │  Creates the adapter layer:
+  │    - Route-level switching (old vs new per page)
+  │    - Shared auth between old and new
+  │    - Shared state/data layer
+  │    - CSS isolation (old styles don't leak into new)
+
+PHASE 2: Page-by-Page Migration
+
+  [Sonnet] Migrator x5 (parallel) ──────── $8.10
+  │  Each migrates one page/feature at a time
+  │  Old page still works — new page hidden behind flag
+  │  Tests verify feature parity before switchover
+
+PHASE 3: Cleanup
+
+  [Sonnet] Legacy Remover ──────────────── $0.41
+  │  After all pages migrated: remove legacy code
+  │  Remove bridge layer, feature flags, old dependencies
+  │
+  [Haiku]  Lint + Type Watcher ─────────── $0.02
+  [Sonnet] Testers x2 ─────────────────── $2.40
+  [Sonnet] Reviewer ────────────────────── $1.08
+                                          ──────────
+                                   TOTAL: ~$18.50
+                                    TIME: ~2-3 hours
+                                  AGENTS: 14
+```
+
+---
+
+### CONFIGURATION 12: Documentation & Knowledge Base
+
+**Use case:** "Generate complete documentation for an existing, undocumented codebase."
+
+```
+  [Opus]   Documentation Strategist ─────── $2.70
+  │  Reads entire codebase, designs doc structure
+  │  Identifies: what needs public docs, internal docs, API docs
+  │  Creates documentation sitemap
+  │
+  [Sonnet] API Doc Writer ──────────────── $0.41
+  │  OpenAPI spec, endpoint documentation
+  │  Request/response examples, error codes
+  │
+  [Sonnet] Architecture Doc Writer ──────── $0.41
+  │  System architecture, data flow diagrams (mermaid)
+  │  Component interaction patterns
+  │
+  [Haiku]  Code Comment Generator ────────── $0.01
+  │  Adds JSDoc/docstrings to all exported functions
+  │  Type documentation for complex interfaces
+  │
+  [Sonnet] Tutorial Writer ─────────────── $0.41
+  │  Getting started guide, common tasks
+  │  Step-by-step walkthroughs for key workflows
+  │
+  [Haiku]  Diagram Generator ───────────── $0.01
+  │  Mermaid diagrams for: ERD, sequence, component tree
+  │
+  [Sonnet] Doc Reviewer ────────────────── $0.41
+  │  Verifies accuracy: do the docs match the code?
+  │  Checks for stale information, missing sections
+                                          ──────────
+                                   TOTAL: ~$4.40
+                                    TIME: ~20-30 min
+                                  AGENTS: 7
+```
+
+---
+
+## Master Comparison: All 12 Configurations
+
+| # | Configuration | Agents | Opus | Sonnet | Haiku | Cost | Time |
+|---|---------------|--------|------|--------|-------|------|------|
+| 1 | **Greenfield Build** | 25 | 3 | 12 | 10 | ~$23 | 60-90m |
+| 2 | **Clean Room RE** | 22 | 3 | 10 | 9 | ~$28 | 2-3h |
+| 3 | **Spaghetti Rescue** | 21 | 3 | 10 | 8 | ~$24 | 2-4h |
+| 4 | **Boilerplate Factory** | 14 | 2 | 7 | 5 | ~$11 | 30-60m |
+| 5 | **Code Migration** | 16 | 2 | 9 | 5 | ~$19 | 1-3h |
+| 6 | **Security Audit** | 12 | 2 | 5 | 5 | ~$9 | 1-2h |
+| 7 | **Test Suite Builder** | 10 | 1 | 6 | 3 | ~$5 | 30-60m |
+| 8 | **Performance Opt** | 6 | 1 | 4 | 1 | ~$4 | 30-45m |
+| 9 | **API Design** | 10 | 1 | 5 | 4 | ~$5 | 30-60m |
+| 10 | **Design System** | 7 | 1 | 4 | 2 | ~$5 | 30-45m |
+| 11 | **Legacy Modernization** | 14 | 2 | 8 | 4 | ~$19 | 2-3h |
+| 12 | **Documentation** | 7 | 1 | 4 | 2 | ~$4 | 20-30m |
+
+### The Pattern: Opus Only Where Decisions Propagate
+
+Across ALL 12 configurations, Opus is used for **exactly the same reason**:
+making decisions that affect everything downstream. Architecture, strategy,
+threat models, migration plans. Never for grunt work.
+
+```
+OPUS USAGE ACROSS ALL CONFIGS:
+  ✅ Architecture decisions (propagate to every feature)
+  ✅ Strategy/planning (propagate to every agent)
+  ✅ Foundation code (propagate to every file)
+  ✅ Threat modeling (propagate to every security fix)
+  ❌ Never for: file-by-file implementation
+  ❌ Never for: test writing
+  ❌ Never for: documentation generation
+  ❌ Never for: linting/scanning/watching
+```
+
+### Unique Agent Roles Across All Configurations: 47 Total
+
+```
+UNIVERSAL AGENTS (appear in most configs):
+  Architect/Planner, Coders x5, Testers x2, Reviewer, QA,
+  Lint Watcher, Foundation Agent
+
+FORENSIC AGENTS (configs 2, 3):
+  Behavior Analyst, Code Archaeologist, Pattern Detective,
+  API Reverse Engineer, UI/UX Documenter, Feature Extractor,
+  Dead Code Detector, Business Rules Extractor
+
+STANDARDS AGENTS (configs 3, 5):
+  Standards Architect, Standards Compliance Checker,
+  Migration Planner, Migration Strategist, Migration Verifier
+
+SECURITY AGENTS (config 6):
+  Threat Modeler, OWASP Scanner, Secrets Scanner,
+  Penetration Tester, Compliance Checker
+
+TEMPLATE AGENTS (config 4):
+  Template Architect, Stack Selector, Config System Builder,
+  DX Agent, Example App Builder, Template Tester
+
+OPTIMIZATION AGENTS (config 8):
+  Performance Analyst, Bundle Optimizer, Query Optimizer,
+  Render Optimizer, Asset Optimizer, Benchmark Agent
+
+DOCUMENTATION AGENTS (config 12):
+  Documentation Strategist, API Doc Writer, Architecture Doc Writer,
+  Code Comment Generator, Tutorial Writer, Diagram Generator
+```
+
+**Each of these becomes a `.claude/agents/*.md` file** in the CLI, or a
+**system prompt template in the database** in the SaaS version. The user selects
+a configuration, the orchestrator assembles the right team, and the swarm
+goes to work.
+
+---
+
+### How This Becomes the Product: Configuration Selection UI
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  🏗️  What would you like to build?                      │
+│                                                         │
+│  ┌───────────────┐  ┌───────────────┐  ┌─────────────┐ │
+│  │  New App      │  │  Rescue Code  │  │  Migrate     │ │
+│  │  from Spec    │  │  from Chaos   │  │  to Modern   │ │
+│  │               │  │               │  │  Stack       │ │
+│  │  25 agents    │  │  21 agents    │  │  16 agents   │ │
+│  │  ~$23, ~1hr   │  │  ~$24, ~3hr   │  │  ~$19, ~2hr  │ │
+│  └───────────────┘  └───────────────┘  └─────────────┘ │
+│                                                         │
+│  ┌───────────────┐  ┌───────────────┐  ┌─────────────┐ │
+│  │  Security     │  │  Build Tests  │  │  Make It     │ │
+│  │  Audit        │  │  from Scratch │  │  Faster      │ │
+│  │               │  │               │  │              │ │
+│  │  12 agents    │  │  10 agents    │  │  6 agents    │ │
+│  │  ~$9, ~1.5hr  │  │  ~$5, ~45min  │  │  ~$4, ~30min │ │
+│  └───────────────┘  └───────────────┘  └─────────────┘ │
+│                                                         │
+│  ┌───────────────┐  ┌───────────────┐  ┌─────────────┐ │
+│  │  Clean Room   │  │  Boilerplate  │  │  Design      │ │
+│  │  Reverse Eng  │  │  Factory      │  │  System      │ │
+│  │               │  │               │  │              │ │
+│  │  22 agents    │  │  14 agents    │  │  7 agents    │ │
+│  │  ~$28, ~2.5hr │  │  ~$11, ~45min │  │  ~$5, ~30min │ │
+│  └───────────────┘  └───────────────┘  └─────────────┘ │
+│                                                         │
+│  ┌───────────────┐  ┌───────────────┐  ┌─────────────┐ │
+│  │  Build API    │  │  Modernize    │  │  Generate    │ │
+│  │  from Spec    │  │  Legacy App   │  │  Full Docs   │ │
+│  │               │  │               │  │              │ │
+│  │  10 agents    │  │  14 agents    │  │  7 agents    │ │
+│  │  ~$5, ~45min  │  │  ~$19, ~2.5hr │  │  ~$4, ~20min │ │
+│  └───────────────┘  └───────────────┘  └─────────────┘ │
+└─────────────────────────────────────────────────────────┘
+```
+
+**This is the product.** The user picks a card. The swarm assembles.
+The agents go to work. The user watches on the kanban board.
+
+---
+
 ## Summary: The Optimal 25-Agent Swarm
 
 ```

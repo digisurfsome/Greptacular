@@ -31,11 +31,14 @@ import {
   Square,
   Loader2,
   Globe,
+  Plus,
+  Check,
+  X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ThemeSelector } from '@/components/ThemeSelector'
 import { useTheme } from '@/hooks/useTheme'
-import { useProjects } from '@/hooks/useProjects'
+import { useProjects, useCreateProject } from '@/hooks/useProjects'
 import { useDunkStack } from '@/hooks/useDunkStack'
 import { dunkstackUpdateModelPreset } from '@/lib/api'
 import { DunkStackContextGauge } from '@/components/dunkstack/DunkStackContextGauge'
@@ -108,12 +111,38 @@ export function DunkStackPage(): React.JSX.Element {
     loading,
   } = useDunkStack()
   const { data: projects } = useProjects()
+  const createProject = useCreateProject()
 
   const [rightPanel, setRightPanel] = useState<RightPanel>('safety')
   const [showGuide, setShowGuide] = useState(false)
   const [modelPresetIndex, setModelPresetIndex] = useState(getStoredModelPreset)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [selectedProject, setSelectedProject] = useState<string | null>(getStoredProject)
+
+  // New project inline form state
+  const [showNewProject, setShowNewProject] = useState(false)
+  const [newProjectName, setNewProjectName] = useState('')
+  const [newProjectPath, setNewProjectPath] = useState('')
+  const [newProjectError, setNewProjectError] = useState('')
+
+  const handleCreateProject = useCallback(async () => {
+    const name = newProjectName.trim()
+    const path = newProjectPath.trim()
+    if (!name) { setNewProjectError('Name required'); return }
+    if (!path) { setNewProjectError('Path required'); return }
+    setNewProjectError('')
+    try {
+      await createProject.mutateAsync({ name, path, specMethod: 'manual' })
+      setSelectedProject(name)
+      localStorage.setItem('dunkstack-selected-project', name)
+      setShowNewProject(false)
+      setNewProjectName('')
+      setNewProjectPath('')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      setNewProjectError(msg)
+    }
+  }, [newProjectName, newProjectPath, createProject, setSelectedProject])
   const [centerView, setCenterView] = useState<CenterView>('chat')
   const [standardsPanelOpen, setStandardsPanelOpen] = useState(true)
   const [productPanelOpen, setProductPanelOpen] = useState(false)
@@ -430,6 +459,58 @@ export function DunkStackPage(): React.JSX.Element {
               >
                 <ChevronLeft size={14} />
               </button>
+            </div>
+
+            {/* New Project button / form */}
+            <div className="px-2 py-1.5 border-b border-border shrink-0">
+              {!showNewProject ? (
+                <button
+                  onClick={() => setShowNewProject(true)}
+                  className="w-full flex items-center gap-1.5 px-2 py-1.5 text-xs font-semibold rounded border-2 border-dashed border-muted-foreground/30 hover:border-primary hover:bg-primary/5 text-muted-foreground hover:text-primary transition-colors"
+                >
+                  <Plus size={14} />
+                  New Project
+                </button>
+              ) : (
+                <div className="space-y-1.5">
+                  <input
+                    type="text"
+                    placeholder="Project name"
+                    value={newProjectName}
+                    onChange={e => setNewProjectName(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleCreateProject()}
+                    className="w-full px-2 py-1 text-xs border border-border rounded bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                    autoFocus
+                  />
+                  <input
+                    type="text"
+                    placeholder="Absolute path (e.g. /home/user/my-app)"
+                    value={newProjectPath}
+                    onChange={e => setNewProjectPath(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleCreateProject()}
+                    className="w-full px-2 py-1 text-xs border border-border rounded bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                  {newProjectError && (
+                    <div className="text-[10px] text-red-500 px-0.5">{newProjectError}</div>
+                  )}
+                  <div className="flex gap-1">
+                    <button
+                      onClick={handleCreateProject}
+                      disabled={createProject.isPending}
+                      className="flex-1 flex items-center justify-center gap-1 px-2 py-1 text-xs font-semibold rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                    >
+                      <Check size={12} />
+                      {createProject.isPending ? 'Creating...' : 'Create'}
+                    </button>
+                    <button
+                      onClick={() => { setShowNewProject(false); setNewProjectError('') }}
+                      className="px-2 py-1 text-xs rounded border border-border hover:bg-muted text-muted-foreground"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Project list */}

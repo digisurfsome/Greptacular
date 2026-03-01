@@ -100,32 +100,17 @@ The tangle is in the **PRD Maker integration**, not in the **DunkStack engine**.
 
 ### How to Measure Each Benefit
 
-**Benefit 1 — Cost reduction**:
-- Record total tokens billed for the DunkStack session (conversation tokens + tool-use tokens)
-- Estimate what the same task would cost with a standard chat-based agent (every turn includes full history)
-- The difference is the savings. Target: ~50% reduction
-- Note: tool-use tokens (file reads/writes) still cost money, so it won't be 70-80%. But conversation tokens compound every turn in a normal agent and stay flat in DunkStack
+> **Full benchmark protocol with exact test tasks, PRDs, scoring criteria, and step-by-step procedures: [`docs/DUNKSTACK_BENCHMARK_PROTOCOL.md`](./DUNKSTACK_BENCHMARK_PROTOCOL.md)**
 
-**Benefit 2 — Sharpness / quality retention**:
-- This is the hardest to measure objectively
-- Track output quality at intervals: early session (0-10K tokens), mid session (30-50K tokens), late session (70K+ tokens)
-- In a normal agent, quality visibly degrades past ~60-70% context usage. Look for: repeated code, forgotten requirements, conflicting decisions, asking about things already established
-- In DunkStack, the hypothesis is quality stays consistent because the agent's active context is always clean
-- Key insight: at 0-10K tokens, both systems look similar (neither has accumulated noise). The divergence should appear from 10K-30K onward, widening as the session progresses
-- Practical test: give both systems the same multi-feature PRD, compare the 5th feature's implementation quality against the 1st feature's
+**Summary of the benchmark approach:**
 
-**Benefit 3 — Longer effective context**:
-- This one is straightforward to track: count tokens
-- Monitor via the ContextGauge in the UI
-- See how far into a build the DunkStack agent can get before quality drops
-- Compare against a normal agent doing the same build — at what token count does each start struggling?
-- Target: DunkStack agent maintains quality 20-40% deeper into the context window
+**Sharpness → "Consistency Test"**: Give the agent 4 coding tasks of identical difficulty at 4 token checkpoints (10K, 35K, 65K, 90K). Each task has 8 specific requirements. Score each. If DunkStack stays at 7.5-8/8 while the control drops to 5-6.5/8 at CP-4, sharpness is proven.
 
-**Benefit 4 — Multi-agent communication**:
-- Tested in Phase 3 (three-agent team)
-- Success metric: can we see agents reading each other's file outputs and acting on them?
-- Check the build log and file modification timestamps
-- If Agent B reads a file Agent A wrote and produces correct follow-up work, the protocol works
+**Effective Context → "Memory Recall Test"**: The PRD embeds 6 technical constraints (UTC timestamps, request_id in responses, specific error format, snake_case tables, input validation, pagination). At 50K, 75K, and 95K tokens, ask for new features WITHOUT reminding the agent of the constraints. Count how many constraints it still follows. DunkStack should remember them (they're in working_memory.md). Normal agent will have them buried 95K tokens back.
+
+**Cost → Direct comparison**: Run the exact same build on both systems. Compare total tokens billed and USD cost. The ContextGauge already tracks this for DunkStack. Target: ~50% savings.
+
+**Multi-agent comms → Phase 3**: Three agents collaborating through shared files. Success = they read each other's output and produce correct follow-up work.
 
 **Success criteria for Phase 1**: The agent reads the PRD, builds features from it, communicates through files, and can resume after a session restart. If this works, Phase 2.
 
@@ -233,6 +218,7 @@ Alternatively, you can manually write the PRD to `{project_dir}/.agent/comms/fro
 
 | What | Where |
 |------|-------|
+| Benchmark protocol (exact tests) | `docs/DUNKSTACK_BENCHMARK_PROTOCOL.md` |
 | File system architecture | `docs/DUNKSTACK_FILE_SYSTEM_TRUTH.md` |
 | Full operator's manual | `DUNKSTACK_MANUAL.md` |
 | Backend session manager | `server/services/dunkstack_session.py` |

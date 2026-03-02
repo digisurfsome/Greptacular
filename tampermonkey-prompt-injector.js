@@ -10,7 +10,6 @@
 // @match        https://gemini.google.com/*
 // @grant        none
 // @run-at       document-idle
-// @inject-into  page
 // ==/UserScript==
 
 (function () {

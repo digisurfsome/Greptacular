@@ -10,6 +10,7 @@
 // @match        https://gemini.google.com/*
 // @grant        none
 // @run-at       document-idle
+// @inject-into  page
 // ==/UserScript==
 
 (function () {
@@ -4164,9 +4165,11 @@ Here is the PRD:
   // ===== SECTION: Init =====
 
   function waitForPage() {
+    console.log('[Phase Forge] Script loaded, waiting for page...');
     var check = setInterval(function() {
       if (document.body) {
         clearInterval(check);
+        console.log('[Phase Forge] Page ready, initializing...');
         init();
       }
     }, 200);

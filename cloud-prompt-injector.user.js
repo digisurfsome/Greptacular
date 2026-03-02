@@ -1,22 +1,20 @@
 // ==UserScript==
 // @name         Cloud Prompt Injector
 // @namespace    https://github.com/digisurfsome/Greptacular
-// @version      1.5
+// @version      1.6
 // @description  Floating sidebar with prompt buttons that inject into Claude/ChatGPT/Gemini chat input
 // @author       AutoForge
 // @match        https://claude.ai/*
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
 // @match        https://gemini.google.com/*
-// @grant        none
+// @grant        GM_info
 // @run-at       document-idle
 // ==/UserScript==
 
-console.log('[Prompt Injector v1.5] ALIVE');
-
 (function () {
   'use strict';
-  console.log('[Prompt Injector v1.5] IIFE started on', window.location.href);
+  console.log('[Prompt Injector v1.6] Script running in', GM_info.scriptHandler, 'on', window.location.href);
 
   // ============================================================
   // PROMPT DEFINITIONS — Edit these to change button content

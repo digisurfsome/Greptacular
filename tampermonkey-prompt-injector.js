@@ -255,8 +255,44 @@ After each feature, update your specs to reflect what was built, what changed, a
     },
     {
       id: 5,
-      title: 'Prompt 5 (Edit Me)',
-      prompt: `Replace this with your own prompt. Open the Tampermonkey script editor to change it.`
+      title: 'Context Efficiency Rules',
+      prompt: `## MANDATORY: Context Efficiency Rules
+You are working on the Greptacular codebase. Follow these rules strictly to preserve your context window for coding:
+### Step 1: Read Briefings (do this FIRST, before anything else)
+1. Read \`AGENT_BRIEFING.md\` at project root — master architecture overview
+2. Read \`docs/agent-briefs/{FEATURE_BRIEF}.md\` — specific to your task
+### Step 2: Read ONLY Files You Will Edit
+- Read ONLY the files listed in "Files You Will Modify" below
+- Do NOT read files "just to understand" — the briefings cover that
+- Do NOT read types.ts or api.ts in full — search for the specific interface/function you need
+- Maximum 5 files read directly by you
+### Step 3: Use Subagents for Everything Else
+- **Need to understand how another component works?** → Spawn an Explore subagent
+- **Need to find where something is imported?** → Spawn an Explore subagent
+- **Need to check what pattern a similar component uses?** → Spawn an Explore subagent
+- **Need to search for a string across the codebase?** → Spawn an Explore subagent
+- NEVER run Glob/Grep yourself unless it's a single targeted search for a specific file
+- The subagent's context is separate from yours — use this to your advantage
+### Step 4: Context Budget
+- Stop coding at 50% context usage
+- If you hit 45%, wrap up current work, commit, and save progress notes
+- Never start a new feature if you're above 40%
+---
+## Your Task
+{DESCRIBE THE SPECIFIC TASK — be detailed about what to build, not how}
+## Feature Brief to Read
+docs/agent-briefs/{BRIEF_NAME}.md
+## Files You Will Modify
+- {path/to/file1}
+- {path/to/file2}
+- {path/to/file3}
+## Files You Might Need to Reference (use subagent)
+- {path/to/reference1} — {why you might need it}
+- {path/to/reference2} — {why you might need it}
+## Acceptance Criteria
+- {What "done" looks like — specific, testable}
+- {Another criterion}
+- {Another criterion}`
     },
     { id: 6, title: 'Prompt 6', prompt: 'Replace with your prompt.' },
     { id: 7, title: 'Prompt 7', prompt: 'Replace with your prompt.' },
@@ -284,6 +320,41 @@ After each feature, update your specs to reflect what was built, what changed, a
   const ZOOM_STEP = 10;
   const ZOOM_MIN = 30;
   const ZOOM_MAX = 300;
+
+  // ============================================================
+  // PROMPT STORAGE
+  // ============================================================
+
+  const PROMPT_STORAGE_KEY = 'cpi-custom-prompts';
+
+  /** Load prompts from localStorage, falling back to hardcoded PROMPTS. */
+  function loadCustomPrompts() {
+    try {
+      const raw = localStorage.getItem(PROMPT_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch (_) {
+      // Corrupted data — fall back to defaults
+    }
+    return PROMPTS.map((p) => ({ id: p.id, title: p.title, prompt: p.prompt }));
+  }
+
+  /** Save prompts to localStorage (strips backticks from title and prompt). */
+  function saveCustomPrompts(prompts) {
+    const cleaned = prompts.map((p) => ({
+      id: p.id,
+      title: String(p.title).replace(/`/g, ''),
+      prompt: String(p.prompt).replace(/`/g, '')
+    }));
+    localStorage.setItem(PROMPT_STORAGE_KEY, JSON.stringify(cleaned));
+    return cleaned;
+  }
+
+  let activePrompts = loadCustomPrompts();
 
   function loadZoom() {
     const saved = localStorage.getItem(ZOOM_STORAGE_KEY);
@@ -494,6 +565,194 @@ After each feature, update your specs to reflect what was built, what changed, a
       0% { background: #da7757; border-color: #da7757; }
       100% { background: #262624; border-color: #333; }
     }
+
+    /* ---- Editor Overlay ---- */
+
+    #cpi-editor-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 100000;
+      background: rgba(0, 0, 0, 0.75);
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding-top: 3vh;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    #cpi-editor-panel {
+      background: #1e1e1c;
+      border: 1px solid #555;
+      border-radius: 10px;
+      width: 100%;
+      max-width: 700px;
+      max-height: 90vh;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #cpi-editor-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border-bottom: 1px solid #555;
+      background: #262624;
+      border-radius: 10px 10px 0 0;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+
+    #cpi-editor-topbar-title {
+      color: #e0e0e0;
+      font-size: 15px;
+      font-weight: 700;
+    }
+
+    .cpi-editor-topbar-btns {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .cpi-editor-btn {
+      padding: 5px 14px;
+      border: 1px solid #555;
+      border-radius: 5px;
+      background: #262624;
+      color: #e0e0e0;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .cpi-editor-btn:hover {
+      border-color: #da7757;
+      color: #da7757;
+    }
+
+    .cpi-editor-btn--save {
+      background: #da7757;
+      border-color: #da7757;
+      color: #fff;
+    }
+
+    .cpi-editor-btn--save:hover {
+      background: #c4664a;
+      border-color: #c4664a;
+      color: #fff;
+    }
+
+    .cpi-editor-btn--close {
+      background: none;
+      border: none;
+      color: #999;
+      font-size: 20px;
+      cursor: pointer;
+      padding: 0 4px;
+      line-height: 1;
+    }
+
+    .cpi-editor-btn--close:hover {
+      color: #ff4444;
+    }
+
+    #cpi-editor-note {
+      color: #999;
+      font-size: 11px;
+      padding: 10px 16px 4px;
+      font-style: italic;
+    }
+
+    .cpi-editor-item {
+      padding: 10px 16px;
+      border-bottom: 1px solid #333;
+    }
+
+    .cpi-editor-item:last-child {
+      border-bottom: none;
+    }
+
+    .cpi-editor-item-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .cpi-editor-badge {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 22px;
+      height: 22px;
+      background: #da7757;
+      color: #fff;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 0 4px;
+      flex-shrink: 0;
+    }
+
+    .cpi-editor-title-input {
+      flex: 1;
+      background: #262624;
+      color: #e0e0e0;
+      border: 1px solid #555;
+      border-radius: 4px;
+      padding: 5px 8px;
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+    }
+
+    .cpi-editor-title-input:focus {
+      border-color: #da7757;
+    }
+
+    .cpi-editor-textarea {
+      width: 100%;
+      min-height: 120px;
+      background: #262624;
+      color: #e0e0e0;
+      border: 1px solid #555;
+      border-radius: 4px;
+      padding: 8px;
+      font-size: 12px;
+      font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+      line-height: 1.4;
+      resize: vertical;
+      outline: none;
+      box-sizing: border-box;
+    }
+
+    .cpi-editor-textarea:focus {
+      border-color: #da7757;
+    }
+
+    .cpi-gear-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 18px;
+      background: none;
+      border: none;
+      color: #e0e0e0;
+      cursor: pointer;
+      font-size: 13px;
+      padding: 0;
+      flex-shrink: 0;
+      transition: color 0.15s;
+    }
+
+    .cpi-gear-btn:hover {
+      color: #da7757;
+    }
   `;
   document.head.appendChild(styles);
 
@@ -589,6 +848,133 @@ After each feature, update your specs to reflect what was built, what changed, a
   }
 
   // ============================================================
+  // EDITOR OVERLAY
+  // ============================================================
+
+  /**
+   * Open the full-screen prompt editor overlay.
+   * @param {function} onSave - callback invoked after saving (receives cleaned prompts array)
+   * @param {function} onReset - callback invoked after resetting to defaults
+   */
+  function showEditor(onSave, onReset) {
+    // Prevent duplicate overlays
+    if (document.getElementById('cpi-editor-overlay')) return;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'cpi-editor-overlay';
+
+    const editorPanel = document.createElement('div');
+    editorPanel.id = 'cpi-editor-panel';
+
+    // Top bar
+    const topbar = document.createElement('div');
+    topbar.id = 'cpi-editor-topbar';
+
+    const title = document.createElement('span');
+    title.id = 'cpi-editor-topbar-title';
+    title.textContent = 'Edit Prompts';
+
+    const btns = document.createElement('div');
+    btns.className = 'cpi-editor-topbar-btns';
+
+    const resetBtn = document.createElement('button');
+    resetBtn.className = 'cpi-editor-btn';
+    resetBtn.textContent = 'Reset to Defaults';
+
+    const saveBtn = document.createElement('button');
+    saveBtn.className = 'cpi-editor-btn cpi-editor-btn--save';
+    saveBtn.textContent = 'Save';
+
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'cpi-editor-btn--close';
+    closeBtn.textContent = '\u00D7';
+    closeBtn.title = 'Close without saving';
+
+    btns.appendChild(resetBtn);
+    btns.appendChild(saveBtn);
+    btns.appendChild(closeBtn);
+    topbar.appendChild(title);
+    topbar.appendChild(btns);
+    editorPanel.appendChild(topbar);
+
+    // Note
+    const note = document.createElement('div');
+    note.id = 'cpi-editor-note';
+    note.textContent = 'Paste anything \u2014 backticks are auto-removed on save.';
+    editorPanel.appendChild(note);
+
+    // Build an input row for each prompt
+    const inputs = []; // { titleInput, textareaInput, id }
+    activePrompts.forEach((p) => {
+      const item = document.createElement('div');
+      item.className = 'cpi-editor-item';
+
+      const hdr = document.createElement('div');
+      hdr.className = 'cpi-editor-item-header';
+
+      const badge = document.createElement('span');
+      badge.className = 'cpi-editor-badge';
+      badge.textContent = String(p.id);
+
+      const titleInput = document.createElement('input');
+      titleInput.className = 'cpi-editor-title-input';
+      titleInput.type = 'text';
+      titleInput.value = p.title;
+      titleInput.placeholder = 'Prompt title';
+
+      hdr.appendChild(badge);
+      hdr.appendChild(titleInput);
+      item.appendChild(hdr);
+
+      const textarea = document.createElement('textarea');
+      textarea.className = 'cpi-editor-textarea';
+      textarea.value = p.prompt;
+      textarea.placeholder = 'Enter prompt content...';
+      item.appendChild(textarea);
+
+      editorPanel.appendChild(item);
+      inputs.push({ id: p.id, titleInput, textarea });
+    });
+
+    overlay.appendChild(editorPanel);
+
+    // Close helper
+    function closeOverlay() {
+      overlay.remove();
+    }
+
+    // Close on overlay background click (not on panel itself)
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) closeOverlay();
+    });
+
+    closeBtn.addEventListener('click', closeOverlay);
+
+    // Save
+    saveBtn.addEventListener('click', () => {
+      const updated = inputs.map((inp) => ({
+        id: inp.id,
+        title: inp.titleInput.value,
+        prompt: inp.textarea.value
+      }));
+      const cleaned = saveCustomPrompts(updated);
+      activePrompts = cleaned;
+      closeOverlay();
+      if (onSave) onSave(cleaned);
+    });
+
+    // Reset to defaults
+    resetBtn.addEventListener('click', () => {
+      localStorage.removeItem(PROMPT_STORAGE_KEY);
+      activePrompts = PROMPTS.map((p) => ({ id: p.id, title: p.title, prompt: p.prompt }));
+      closeOverlay();
+      if (onReset) onReset();
+    });
+
+    document.body.appendChild(overlay);
+  }
+
+  // ============================================================
   // BUILD THE UI
   // ============================================================
 
@@ -636,7 +1022,14 @@ After each feature, update your specs to reflect what was built, what changed, a
     zoomControls.appendChild(btnPlus);
     zoomControls.appendChild(btnSet);
 
+    // Gear button — opens prompt editor overlay
+    const gearBtn = document.createElement('button');
+    gearBtn.className = 'cpi-gear-btn';
+    gearBtn.textContent = '\u2699';
+    gearBtn.title = 'Edit prompts';
+
     header.appendChild(label);
+    header.appendChild(gearBtn);
     header.appendChild(zoomControls);
     panel.appendChild(header);
 
@@ -682,26 +1075,42 @@ After each feature, update your specs to reflect what was built, what changed, a
       }
     });
 
-    // Prompt buttons
-    PROMPTS.forEach((p) => {
-      const btn = document.createElement('button');
-      btn.className = 'cpi-btn';
-      btn.title = `Click to inject: ${p.title}`;
-      btn.innerHTML = `
-        <span class="cpi-btn-num">${p.id}</span>
-        <span class="cpi-btn-title">${p.title}</span>
-      `;
-      btn.addEventListener('click', () => {
-        const ok = injectPrompt(p.prompt);
-        if (ok) {
-          btn.classList.add('cpi-flash');
-          setTimeout(() => btn.classList.remove('cpi-flash'), 400);
-        } else {
-          btn.style.borderColor = '#ff4444';
-          setTimeout(() => { btn.style.borderColor = '#333'; }, 800);
-        }
+    // Helper: populate grid with buttons from activePrompts
+    function rebuildGrid() {
+      grid.innerHTML = '';
+      activePrompts.forEach((p) => {
+        const btn = document.createElement('button');
+        btn.className = 'cpi-btn';
+        btn.title = `Click to inject: ${p.title}`;
+        btn.innerHTML = `
+          <span class="cpi-btn-num">${p.id}</span>
+          <span class="cpi-btn-title">${p.title}</span>
+        `;
+        btn.addEventListener('click', () => {
+          const ok = injectPrompt(p.prompt);
+          if (ok) {
+            btn.classList.add('cpi-flash');
+            setTimeout(() => btn.classList.remove('cpi-flash'), 400);
+          } else {
+            btn.style.borderColor = '#ff4444';
+            setTimeout(() => { btn.style.borderColor = '#333'; }, 800);
+          }
+        });
+        grid.appendChild(btn);
       });
-      grid.appendChild(btn);
+    }
+
+    rebuildGrid();
+
+    // Callback after editor save or reset: rebuild grid and flash header
+    function onEditorChange() {
+      rebuildGrid();
+      header.classList.add('cpi-flash');
+      setTimeout(() => header.classList.remove('cpi-flash'), 400);
+    }
+
+    gearBtn.addEventListener('click', () => {
+      showEditor(onEditorChange, onEditorChange);
     });
 
     panel.appendChild(grid);

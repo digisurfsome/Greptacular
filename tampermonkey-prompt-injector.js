@@ -15,27 +15,7 @@
 (function () {
   'use strict';
 
-  // ===== CONSTANTS & CONFIG =====
-  const STORAGE_KEYS = {
-    customPrompts: 'cpi-custom-prompts',
-    zoomLevel: 'cpi-zoom-level',
-    pfPanelOpen: 'pf-panel-open',
-    pfProjectName: 'pf-project-name',
-    pfRepoUrl: 'pf-repo-url',
-    pfPrdMode: 'pf-prd-mode',
-    pfPrd: 'pf-prd',
-    pfPrdStep: 'pf-prd-step',
-    pfPromptTemplates: 'pf-prompt-templates',
-    pfConfigModel: 'pf-config-model',
-    pfConfigCustomTokens: 'pf-config-custom-tokens',
-    pfConfigContextPct: 'pf-config-context-pct',
-    pfConfigRoles: 'pf-config-roles',
-    pfConfigLocked: 'pf-config-locked',
-    pfTestingScript: 'pf-shared-testing-script',
-    pfArchitecture: 'pf-shared-architecture',
-    pfPhases: 'pf-phases',
-    pfRunnerState: 'pf-runner-state'
-  };
+  // ===== SECTION: Constants & Config =====
 
   const MODEL_CONFIGS = {
     'claude-web':  { name: 'Claude Web',  maxTokens: 200000 },
@@ -45,1404 +25,4160 @@
   };
 
   const AGENT_ROLES = {
-    builder:   { name: 'Builder',   budget: 0.40, canDisable: false, default: true },
-    reviewer:  { name: 'Reviewer',  budget: 0.08, canDisable: true, default: false },
-    architect: { name: 'Architect', budget: 0.08, canDisable: true, default: false },
-    tester:    { name: 'Tester',    budget: 0.15, canDisable: true, default: false },
-    planner:   { name: 'Planner',   budget: 0.05, canDisable: true, default: false }
+    builder:    { label: 'Builder',    budgetPct: 0.40, canDisable: false, defaultOn: true },
+    reviewer:   { label: 'Reviewer',   budgetPct: 0.08, canDisable: true,  defaultOn: false },
+    architect:  { label: 'Architect',  budgetPct: 0.08, canDisable: true,  defaultOn: false },
+    tester:     { label: 'Tester',     budgetPct: 0.15, canDisable: true,  defaultOn: false },
+    planner:    { label: 'Planner',    budgetPct: 0.05, canDisable: true,  defaultOn: false }
   };
+
+  const OVERHEAD_PCT = 0.04;
+  const BUFFER_PCT = 0.20;
 
   const ROLE_DIRECTIVES = {
-    builder: `=== AGENT ROLE: BUILDER (Primary) ===\nYou are the primary coding agent for this phase.\n- Write all new code specified in the phase requirements\n- Follow the PRD and phase spec exactly\n- Create files, implement features, wire up imports\n- Write clean, working code — optimize later\n- Commit after each logical unit of work\n===`,
-    reviewer: `=== AGENT ROLE: REVIEWER ===\nAfter writing each file/component, review it before moving on:\n- Check for logic errors, missing edge cases\n- Verify naming consistency with existing code\n- Verify import paths are correct\n- Flag any pattern violations against the PRD\n- Fix issues immediately rather than noting them for later\n===`,
-    architect: `=== AGENT ROLE: ARCHITECT ===\nAfter completing code for this phase, create/update architecture documentation:\n- Create or update ARCHITECTURE.md with components added this phase\n- Maintain a COMPONENT_INDEX.md listing every file with: purpose, dependencies, exports\n- Document data flows between new and existing components\n===`,
-    tester: `=== AGENT ROLE: TESTER ===\nWhile building this phase, also verify the PREVIOUS phase works:\n- Run the shared testing script against previous phase's code\n- Verify all previous features still function correctly\n- Report any regressions found\n\n{{TESTING_SCRIPT}}\n===`,
-    planner: `=== AGENT ROLE: PLANNER ===\nBefore writing code, briefly scan the NEXT phase requirements:\n- Identify files that will need modification in the next phase\n- Note potential conflicts with current phase's work\n- Flag dependencies that current phase should prepare for\n- Write a 3-5 line briefing note at the end of your response\n===`
+    builder: `=== AGENT ROLE: BUILDER (Primary) ===
+You are the primary coding agent for this phase.
+- Write all new code specified in the phase requirements
+- Follow the PRD and phase spec exactly
+- Create files, implement features, wire up imports
+- Write clean, working code — optimize later
+- Commit after each logical unit of work
+===`,
+    reviewer: `=== AGENT ROLE: REVIEWER ===
+After writing each file/component, review it before moving on:
+- Check for logic errors, missing edge cases
+- Verify naming consistency with existing code
+- Verify import paths are correct
+- Flag any pattern violations against the PRD
+- Fix issues immediately rather than noting them for later
+===`,
+    architect: `=== AGENT ROLE: ARCHITECT ===
+After completing code for this phase, create/update architecture documentation:
+- Create or update ARCHITECTURE.md with components added this phase
+- Maintain a COMPONENT_INDEX.md listing every file with: purpose, dependencies, exports
+- Document data flows between new and existing components
+- This helps future agents understand the codebase in seconds instead of minutes
+===`,
+    tester: `=== AGENT ROLE: TESTER ===
+While building this phase, also verify the PREVIOUS phase works:
+- Run the shared testing script against previous phase's code
+- Verify all previous features still function correctly
+- Report any regressions found
+- If tests fail, note what needs fixing before proceeding
+
+{{TESTING_SCRIPT}}
+===`,
+    planner: `=== AGENT ROLE: PLANNER ===
+Before writing code, briefly scan the NEXT phase requirements:
+- Identify files that will need modification in the next phase
+- Note potential conflicts with current phase's work
+- Flag dependencies that current phase should prepare for
+- Write a 3-5 line briefing note at the end of your response
+- This is READ-ONLY analysis — do not write code for the next phase
+===`
   };
 
-  const DEFAULT_PROMPTS_TEMPLATES = {
-    questionnaireStart: `I'm going to describe an app I want to build. I'll provide details in a structured format. Please acknowledge each section as I provide it, and wait for me to say I'm ready before analyzing.\n\nHere are the basics:\n\n**Temporary Build Name:** (this is just for identification)\n**What is it?** (describe the app in 1-2 sentences)\n**Who is it for?** (target user/audience)\n**What problem does it solve?** (the core pain point)\n**Why would anyone care?** (the value proposition)\n**Core features:** (list the main things it does)\n**Basic user flow:** (how someone uses it step by step)\n\nPlease fill these out as best you can in the chat, then click NEXT in the Phase Forge panel when done.`,
-    questionnaireAnalyze: `Now analyze what I've provided against a complete PRD format. Rate the completeness as a percentage.\n\nA complete PRD needs:\n- App Identity (name, description, target user, problem statement)\n- Feature List (prioritized, MVP-scoped, max 5-8 core features)\n- Technical Stack recommendation\n- Data Model (entities, relationships)\n- User Flows (step by step for each core feature)\n- UI/Page descriptions (what screens exist, what's on each)\n- API Endpoints (if applicable)\n- Testing Requirements\n\nBased on what I've given you:\n1. Show what percentage complete the PRD is\n2. Show what you understood, organized by section\n3. For anything missing or unclear, ask targeted follow-up questions\n4. Group your questions by section\n\nIf you have enough for a complete PRD (80%+), generate it with the markers:\n=== PRD READY ===\n[full PRD content here]\n=== END PRD ===`,
-    followUp: `Based on what I just provided:\n1. Update your completeness percentage\n2. If now 80%+ complete: Generate the full PRD with === PRD READY === at the top and === END PRD === at the bottom\n3. If still incomplete: Ask the remaining targeted questions needed\n\nThe PRD must be detailed enough that a coding agent can build the entire app from it without asking any clarification questions.`,
-    rantStart: `I'm going to describe my app idea. It might be messy, stream of consciousness, out of order, or incomplete. That's fine.\n\nYour job: Listen. Absorb everything. Do NOT interrupt. Do NOT organize yet. Do NOT ask questions yet. Just acknowledge you received it.\n\nI'll click NEXT in the Phase Forge panel when I'm done explaining.`,
-    rantOrganize: `Now take everything I described and:\n\n1. Organize it into structured PRD sections:\n   - App Identity (name, description, target user, problem)\n   - Feature List (prioritized, MVP-scoped)\n   - Technical Stack\n   - Data Model\n   - User Flows\n   - UI/Page descriptions\n   - API Endpoints\n   - Testing Requirements\n\n2. Show me what you understood (organized by section above)\n3. Rate completeness as a percentage\n4. Ask targeted follow-up questions ONLY for the gaps\n\nIf already 80%+ complete, generate the full PRD with:\n=== PRD READY ===\n[content]\n=== END PRD ===`,
-    autoSplitPhases: `Here is a PRD for an application. Split it into sequential build phases.\n\nRules:\n- Each phase should be independently buildable\n- Phase 1 is always project setup + boilerplate\n- Later phases build on earlier ones\n- Each phase should take roughly equal effort\n- Output each phase in this EXACT format:\n\n--- PHASE 1: [Title] ---\n[Detailed requirements for this phase]\n\n--- PHASE 2: [Title] ---\n[Detailed requirements for this phase]\n\n[Continue for all phases]\n\nHere is the PRD:\n\n=== PRD ===\n{{CAPTURED_PRD}}\n=== END PRD ===`
+  // Default prompt templates for PRD builder steps
+  const DEFAULT_PROMPT_TEMPLATES = {
+    'questionnaire-step1': `I'm going to describe an app I want to build. I'll provide details in a structured format. Please acknowledge each section as I provide it, and wait for me to say I'm ready before analyzing.
+
+Here are the basics:
+
+**Temporary Build Name:** (this is just for identification — NOT the final product name, we'll pick that later)
+**What is it?** (describe the app in 1-2 sentences)
+**Who is it for?** (target user/audience)
+**What problem does it solve?** (the core pain point)
+**Why would anyone care?** (the value proposition)
+**Core features:** (list the main things it does)
+**Basic user flow:** (how someone uses it step by step)
+
+Please fill these out as best you can in the chat, then click NEXT in the Phase Forge panel when done.`,
+    'questionnaire-step2': `Now analyze what I've provided against a complete PRD format. Rate the completeness as a percentage.
+
+A complete PRD needs:
+- App Identity (name, description, target user, problem statement)
+- Feature List (prioritized, MVP-scoped, max 5-8 core features)
+- Technical Stack recommendation
+- Data Model (entities, relationships)
+- User Flows (step by step for each core feature)
+- UI/Page descriptions (what screens exist, what's on each)
+- API Endpoints (if applicable)
+- Testing Requirements
+
+Based on what I've given you:
+1. Show what percentage complete the PRD is
+2. Show what you understood, organized by section
+3. For anything missing or unclear, ask targeted follow-up questions
+4. Group your questions by section
+
+If you have enough for a complete PRD (80%+), generate it with the markers:
+=== PRD READY ===
+[full PRD content here]
+=== END PRD ===`,
+    'questionnaire-followup': `Based on what I just provided:
+1. Update your completeness percentage
+2. If now 80%+ complete: Generate the full PRD with === PRD READY === at the top and === END PRD === at the bottom
+3. If still incomplete: Ask the remaining targeted questions needed
+
+The PRD must be detailed enough that a coding agent can build the entire app from it without asking any clarification questions.`,
+    'rant-step1': `I'm going to describe my app idea. It might be messy, stream of consciousness, out of order, or incomplete. That's fine.
+
+Your job: Listen. Absorb everything. Do NOT interrupt. Do NOT organize yet. Do NOT ask questions yet. Just acknowledge you received it.
+
+I'll click NEXT in the Phase Forge panel when I'm done explaining.`,
+    'rant-step2': `Now take everything I described and:
+
+1. Organize it into structured PRD sections:
+   - App Identity (name, description, target user, problem)
+   - Feature List (prioritized, MVP-scoped)
+   - Technical Stack
+   - Data Model
+   - User Flows
+   - UI/Page descriptions
+   - API Endpoints
+   - Testing Requirements
+
+2. Show me what you understood (organized by section above)
+3. Rate completeness as a percentage
+4. Ask targeted follow-up questions ONLY for the gaps
+
+If already 80%+ complete, generate the full PRD with:
+=== PRD READY ===
+[content]
+=== END PRD ===`,
+    'auto-generate-phases': `Here is a PRD for an application. Split it into sequential build phases.
+
+Rules:
+- Each phase should be independently buildable
+- Phase 1 is always project setup + boilerplate
+- Later phases build on earlier ones
+- Each phase should take roughly equal effort
+- Output each phase in this EXACT format:
+
+--- PHASE 1: [Title] ---
+[Detailed requirements for this phase]
+
+--- PHASE 2: [Title] ---
+[Detailed requirements for this phase]
+
+[Continue for all phases]
+
+Here is the PRD:
+
+=== PRD ===
+{{CAPTURED_PRD}}
+=== END PRD ===`
   };
 
-  const ZOOM_MIN = 30, ZOOM_MAX = 300, ZOOM_STEP = 10, DEFAULT_ZOOM = 100;
-  const PANEL_WIDTH = 180;
-  const PF_WIDTH = 340;
+  const PHASE_REGEX = /---\s*PHASE\s*(\d+)\s*(?::\s*(.+?))?\s*---/gi;
+  const PRD_START_MARKER = '=== PRD READY ===';
+  const PRD_END_MARKER = '=== END PRD ===';
+  const PHASE_COMPLETE_MARKER = '=== PHASE COMPLETE ===';
 
-  // ===== DEFAULT PROMPTS =====
-  const PROMPTS = [];
-  for (let i = 1; i <= 20; i++) {
-    PROMPTS.push({ id: i, title: 'Prompt ' + i, prompt: 'Replace with your prompt.' });
-  }
+  // ===== SECTION: Storage Keys =====
 
-  // ===== STORAGE HELPERS =====
-  function lsGet(key, fallback) {
-    try { const v = localStorage.getItem(key); return v !== null ? v : fallback; } catch(e) { return fallback; }
-  }
-  function lsSet(key, val) { try { localStorage.setItem(key, val); } catch(e) {} }
-  function lsGetJSON(key, fallback) {
-    try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch(e) { return fallback; }
-  }
-  function lsSetJSON(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch(e) {} }
+  const STORAGE_KEYS = {
+    cpiPrompts:       'cpi-custom-prompts',
+    cpiZoom:          'cpi-zoom-level',
+    pfPanelOpen:      'pf-panel-open',
+    pfProjectName:    'pf-project-name',
+    pfRepoUrl:        'pf-repo-url',
+    pfPrdMode:        'pf-prd-mode',
+    pfPrd:            'pf-prd',
+    pfPrdStep:        'pf-prd-step',
+    pfPromptTemplates:'pf-prompt-templates',
+    pfConfigModel:    'pf-config-model',
+    pfConfigCustomTk: 'pf-config-custom-tokens',
+    pfConfigCtxPct:   'pf-config-context-pct',
+    pfConfigRoles:    'pf-config-roles',
+    pfConfigLocked:   'pf-config-locked',
+    pfTestingScript:  'pf-shared-testing-script',
+    pfArchitecture:   'pf-shared-architecture',
+    pfPhases:         'pf-phases',
+    pfRunnerState:    'pf-runner-state'
+  };
 
-  function loadCustomPrompts() {
-    const parsed = lsGetJSON(STORAGE_KEYS.customPrompts, null);
-    if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-    return PROMPTS.map(p => ({ id: p.id, title: p.title, prompt: p.prompt }));
-  }
-  function saveCustomPrompts(prompts) {
-    const cleaned = prompts.map(p => ({
-      id: p.id,
-      title: String(p.title).replace(/`/g, ''),
-      prompt: String(p.prompt).replace(/`/g, '')
-    }));
-    lsSetJSON(STORAGE_KEYS.customPrompts, cleaned);
-    return cleaned;
-  }
+  // ===== SECTION: Storage Helpers =====
 
-  function loadPromptTemplates() {
-    return lsGetJSON(STORAGE_KEYS.pfPromptTemplates, {});
-  }
-  function getPromptTemplate(key) {
-    const custom = loadPromptTemplates();
-    return custom[key] || DEFAULT_PROMPTS_TEMPLATES[key] || '';
-  }
-  function savePromptTemplate(key, text) {
-    const custom = loadPromptTemplates();
-    custom[key] = text;
-    lsSetJSON(STORAGE_KEYS.pfPromptTemplates, custom);
-  }
-  function resetPromptTemplate(key) {
-    const custom = loadPromptTemplates();
-    delete custom[key];
-    lsSetJSON(STORAGE_KEYS.pfPromptTemplates, custom);
+  function storeGet(key, fallback) {
+    try {
+      var raw = localStorage.getItem(key);
+      if (raw === null) return fallback;
+      return raw;
+    } catch (_e) {
+      return fallback;
+    }
   }
 
-  let activePrompts = loadCustomPrompts();
-  let currentZoom = parseInt(lsGet(STORAGE_KEYS.zoomLevel, DEFAULT_ZOOM), 10) || DEFAULT_ZOOM;
-  currentZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, currentZoom));
+  function storeSet(key, value) {
+    try {
+      localStorage.setItem(key, value);
+    } catch (_e) {
+      // quota exceeded or blocked
+    }
+  }
 
-  // ===== SITE DETECTION =====
+  function storeGetJSON(key, fallback) {
+    try {
+      var raw = localStorage.getItem(key);
+      if (raw === null) return fallback;
+      return JSON.parse(raw);
+    } catch (_e) {
+      return fallback;
+    }
+  }
+
+  function storeSetJSON(key, value) {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch (_e) {
+      // quota exceeded or blocked
+    }
+  }
+
+  function storeGetBool(key, fallback) {
+    var raw = storeGet(key, null);
+    if (raw === null) return fallback;
+    return raw === 'true';
+  }
+
+  function storeGetInt(key, fallback) {
+    var raw = storeGet(key, null);
+    if (raw === null) return fallback;
+    var n = parseInt(raw, 10);
+    return isNaN(n) ? fallback : n;
+  }
+
+  // ===== SECTION: Site Detection =====
+
   function detectSite() {
-    const h = location.hostname;
-    if (h.includes('claude.ai')) return 'claude';
-    if (h.includes('chatgpt.com') || h.includes('chat.openai.com')) return 'chatgpt';
-    if (h.includes('gemini.google.com')) return 'gemini';
+    var host = window.location.hostname;
+    if (host.includes('claude.ai')) return 'claude';
+    if (host.includes('chatgpt.com') || host.includes('chat.openai.com')) return 'chatgpt';
+    if (host.includes('gemini.google.com')) return 'gemini';
     return 'unknown';
   }
-  const CURRENT_SITE = detectSite();
 
-  // ===== DOM UTILITIES =====
+  var CURRENT_SITE = detectSite();
+
+  // Chat container selectors by site for MutationObserver
+  function getChatContainerSelector() {
+    switch (CURRENT_SITE) {
+      case 'claude':  return '[data-testid="conversation-turn-list"], main';
+      case 'chatgpt': return 'div.conversation, main';
+      case 'gemini':  return 'div[role="main"], main';
+      default:        return 'main';
+    }
+  }
+
+  // ===== SECTION: Prompt Templates Manager =====
+
+  function loadPromptTemplates() {
+    return storeGetJSON(STORAGE_KEYS.pfPromptTemplates, {});
+  }
+
+  function savePromptTemplate(key, text) {
+    var templates = loadPromptTemplates();
+    templates[key] = text;
+    storeSetJSON(STORAGE_KEYS.pfPromptTemplates, templates);
+  }
+
+  function getPromptTemplate(key) {
+    var custom = loadPromptTemplates();
+    if (custom[key] !== undefined) return custom[key];
+    return DEFAULT_PROMPT_TEMPLATES[key] || '';
+  }
+
+  function resetPromptTemplate(key) {
+    var templates = loadPromptTemplates();
+    delete templates[key];
+    storeSetJSON(STORAGE_KEYS.pfPromptTemplates, templates);
+  }
+
+  // ===== SECTION: Role Directive Templates =====
+
+  function getRoleDirective(roleKey) {
+    var custom = loadPromptTemplates();
+    var customKey = 'role-' + roleKey;
+    if (custom[customKey] !== undefined) return custom[customKey];
+    return ROLE_DIRECTIVES[roleKey] || '';
+  }
+
+  function saveRoleDirective(roleKey, text) {
+    savePromptTemplate('role-' + roleKey, text);
+  }
+
+  function resetRoleDirective(roleKey) {
+    resetPromptTemplate('role-' + roleKey);
+  }
+
+
+  // ===== SECTION: CSS Styles =====
+
+  var PANEL_WIDTH = 180;
+  var PF_PANEL_WIDTH = 340;
+
+  function injectStyles(currentZoom) {
+    var styles = document.createElement('style');
+    styles.id = 'pf-global-styles';
+    styles.textContent = `
+    /* ===== Prompt Injector Panel ===== */
+    #cpi-panel {
+      position: fixed;
+      top: 50%;
+      right: 16px;
+      transform: translateY(-50%) scale(${currentZoom / 100});
+      transform-origin: top right;
+      width: ${PANEL_WIDTH}px;
+      max-height: 85vh;
+      z-index: 99999;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      transition: opacity 0.2s;
+    }
+
+    /* ===== Zoom Pill Bar (Feature 1) ===== */
+    #cpi-zoom-pill {
+      display: flex;
+      width: 100%;
+      height: 36px;
+      background: #262624;
+      border: 1px solid #555;
+      border-radius: 18px;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    .cpi-zoom-pill-btn {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #262624;
+      color: #e0e0e0;
+      border: none;
+      cursor: pointer;
+      font-size: 20px;
+      font-weight: 700;
+      padding: 0;
+      line-height: 1;
+      transition: all 0.15s;
+      user-select: none;
+    }
+
+    .cpi-zoom-pill-btn:first-child {
+      border-right: 1px solid #555;
+    }
+
+    .cpi-zoom-pill-btn:hover {
+      background: #da7757;
+      color: #fff;
+    }
+
+    .cpi-zoom-pill-btn:active {
+      background: #c4664a;
+    }
+
+    #cpi-zoom-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 4px 0;
+      flex-shrink: 0;
+    }
+
+    #cpi-zoom-row label {
+      color: #999;
+      font-size: 10px;
+      white-space: nowrap;
+    }
+
+    #cpi-zoom-input {
+      width: 42px;
+      height: 20px;
+      background: #1e1e1c;
+      color: #e0e0e0;
+      border: 1px solid #555;
+      border-radius: 4px;
+      font-size: 11px;
+      text-align: center;
+      padding: 0 2px;
+      outline: none;
+      font-family: inherit;
+    }
+
+    #cpi-zoom-input:focus {
+      border-color: #da7757;
+    }
+
+    #cpi-zoom-set {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 20px;
+      background: #da7757;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 0 8px;
+      line-height: 1;
+      transition: all 0.15s;
+    }
+
+    #cpi-zoom-set:hover {
+      background: #c4664a;
+    }
+
+    #cpi-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #262624;
+      border: 1px solid #da7757;
+      border-radius: 6px;
+      padding: 3px 6px;
+      grid-column: 1 / -1;
+      gap: 4px;
+    }
+
+    #cpi-header-label {
+      color: #e0e0e0;
+      font-size: 9px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      user-select: none;
+      flex-shrink: 0;
+    }
+
+    #cpi-header-label:hover {
+      color: #da7757;
+    }
+
+    #cpi-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 3px;
+      overflow-y: auto;
+    }
+
+    #cpi-grid.cpi-hidden {
+      display: none;
+    }
+
+    .cpi-btn {
+      position: relative;
+      display: flex;
+      align-items: center;
+      width: 100%;
+      padding: 4px 5px;
+      padding-top: 6px;
+      min-height: 32px;
+      background: #262624;
+      color: #e0e0e0;
+      border: 1px solid #333;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      text-align: left;
+      transition: all 0.15s;
+      line-height: 1.3;
+    }
+
+    .cpi-btn:hover {
+      background: #30302e;
+      border-color: #da7757;
+      transform: translateX(-3px);
+    }
+
+    .cpi-btn:active {
+      transform: translateX(-1px);
+      background: #3a3a38;
+    }
+
+    .cpi-btn-num {
+      position: absolute;
+      top: 2px;
+      left: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 14px;
+      height: 14px;
+      background: #da7757;
+      color: #fff;
+      border-radius: 3px;
+      font-size: 7px;
+      font-weight: 700;
+      padding: 0 2px;
+    }
+
+    .cpi-btn-title {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 6px;
+      padding-left: 16px;
+      padding-right: 2px;
+    }
+
+    .cpi-flash {
+      animation: cpi-flash-anim 0.4s ease-out;
+    }
+
+    @keyframes cpi-flash-anim {
+      0% { background: #da7757; border-color: #da7757; }
+      100% { background: #262624; border-color: #333; }
+    }
+
+    /* ---- Editor Overlay ---- */
+    #cpi-editor-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 100000;
+      background: rgba(0, 0, 0, 0.75);
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding-top: 3vh;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    #cpi-editor-panel {
+      background: #1e1e1c;
+      border: 1px solid #555;
+      border-radius: 10px;
+      width: 100%;
+      max-width: 700px;
+      max-height: 90vh;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #cpi-editor-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border-bottom: 1px solid #555;
+      background: #262624;
+      border-radius: 10px 10px 0 0;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+
+    #cpi-editor-topbar-title {
+      color: #e0e0e0;
+      font-size: 15px;
+      font-weight: 700;
+    }
+
+    .cpi-editor-topbar-btns {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .cpi-editor-btn {
+      padding: 5px 14px;
+      border: 1px solid #555;
+      border-radius: 5px;
+      background: #262624;
+      color: #e0e0e0;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .cpi-editor-btn:hover {
+      border-color: #da7757;
+      color: #da7757;
+    }
+
+    .cpi-editor-btn--save {
+      background: #da7757;
+      border-color: #da7757;
+      color: #fff;
+    }
+
+    .cpi-editor-btn--save:hover {
+      background: #c4664a;
+      border-color: #c4664a;
+      color: #fff;
+    }
+
+    .cpi-editor-btn--close {
+      background: none;
+      border: none;
+      color: #999;
+      font-size: 20px;
+      cursor: pointer;
+      padding: 0 4px;
+      line-height: 1;
+    }
+
+    .cpi-editor-btn--close:hover {
+      color: #ff4444;
+    }
+
+    #cpi-editor-note {
+      color: #999;
+      font-size: 11px;
+      padding: 10px 16px 4px;
+      font-style: italic;
+    }
+
+    .cpi-editor-item {
+      padding: 10px 16px;
+      border-bottom: 1px solid #333;
+    }
+
+    .cpi-editor-item:last-child {
+      border-bottom: none;
+    }
+
+    .cpi-editor-item-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .cpi-editor-badge {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 22px;
+      height: 22px;
+      background: #da7757;
+      color: #fff;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 0 4px;
+      flex-shrink: 0;
+    }
+
+    .cpi-editor-title-input {
+      flex: 1;
+      background: #262624;
+      color: #e0e0e0;
+      border: 1px solid #555;
+      border-radius: 4px;
+      padding: 5px 8px;
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+    }
+
+    .cpi-editor-title-input:focus {
+      border-color: #da7757;
+    }
+
+    .cpi-editor-textarea {
+      width: 100%;
+      min-height: 120px;
+      background: #262624;
+      color: #e0e0e0;
+      border: 1px solid #555;
+      border-radius: 4px;
+      padding: 8px;
+      font-size: 12px;
+      font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+      line-height: 1.4;
+      resize: vertical;
+      outline: none;
+      box-sizing: border-box;
+    }
+
+    .cpi-editor-textarea:focus {
+      border-color: #da7757;
+    }
+
+    .cpi-gear-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 18px;
+      background: none;
+      border: none;
+      color: #e0e0e0;
+      cursor: pointer;
+      font-size: 13px;
+      padding: 0;
+      flex-shrink: 0;
+      transition: color 0.15s;
+    }
+
+    .cpi-gear-btn:hover {
+      color: #da7757;
+    }
+
+    /* ===== Phase Forge Panel (Feature 2) ===== */
+    #pf-panel {
+      position: fixed;
+      right: 0;
+      top: 0;
+      width: ${PF_PANEL_WIDTH}px;
+      height: 100vh;
+      background: #1e1e1c;
+      border-left: 2px solid #da7757;
+      z-index: 99998;
+      overflow-y: auto;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      color: #e0e0e0;
+      display: flex;
+      flex-direction: column;
+      transition: transform 0.3s ease;
+    }
+
+    #pf-panel.pf-closed {
+      transform: translateX(100%);
+    }
+
+    #pf-toggle-btn {
+      position: fixed;
+      top: 50%;
+      transform: translateY(-50%);
+      right: 16px;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: #da7757;
+      color: #fff;
+      font-weight: 700;
+      font-size: 14px;
+      border: none;
+      cursor: pointer;
+      z-index: 99999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      transition: right 0.3s ease, background 0.15s;
+      user-select: none;
+    }
+
+    #pf-toggle-btn:hover {
+      background: #c4664a;
+    }
+
+    #pf-toggle-btn.pf-open {
+      right: ${PF_PANEL_WIDTH + 16}px;
+    }
+
+    /* Panel Header */
+    .pf-panel-header {
+      padding: 12px 16px;
+      border-bottom: 1px solid #333;
+      background: #262624;
+      flex-shrink: 0;
+    }
+
+    .pf-panel-header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .pf-panel-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #da7757;
+      white-space: nowrap;
+    }
+
+    .pf-project-input {
+      flex: 1;
+      min-width: 0;
+      background: #1e1e1c;
+      color: #e0e0e0;
+      border: 1px solid #555;
+      border-radius: 4px;
+      padding: 4px 8px;
+      font-size: 12px;
+      font-family: inherit;
+      outline: none;
+    }
+
+    .pf-project-input:focus {
+      border-color: #da7757;
+    }
+
+    .pf-status-text {
+      color: #999;
+      font-size: 11px;
+      margin-top: 4px;
+    }
+
+    /* Section Styles */
+    .pf-section {
+      border-bottom: 1px solid #333;
+    }
+
+    .pf-section-header {
+      display: flex;
+      align-items: center;
+      padding: 10px 16px;
+      cursor: pointer;
+      user-select: none;
+      gap: 8px;
+      transition: background 0.15s;
+    }
+
+    .pf-section-header:hover {
+      background: #262624;
+    }
+
+    .pf-section-arrow {
+      color: #999;
+      font-size: 10px;
+      width: 14px;
+      flex-shrink: 0;
+      text-align: center;
+    }
+
+    .pf-section-icon {
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+
+    .pf-section-title {
+      font-size: 13px;
+      font-weight: 600;
+      flex: 1;
+    }
+
+    .pf-section-lock {
+      color: #666;
+      font-size: 12px;
+    }
+
+    .pf-section-body {
+      padding: 0 16px 12px;
+      display: none;
+    }
+
+    .pf-section.pf-expanded > .pf-section-body {
+      display: block;
+    }
+
+    .pf-section.pf-locked .pf-section-header {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .pf-section.pf-locked .pf-section-body {
+      display: none !important;
+    }
+
+    /* Common Form Elements */
+    .pf-label {
+      display: block;
+      color: #999;
+      font-size: 11px;
+      margin-bottom: 4px;
+      margin-top: 10px;
+    }
+
+    .pf-label:first-child {
+      margin-top: 0;
+    }
+
+    .pf-input {
+      width: 100%;
+      background: #262624;
+      color: #e0e0e0;
+      border: 1px solid #555;
+      border-radius: 4px;
+      padding: 6px 8px;
+      font-size: 12px;
+      font-family: inherit;
+      outline: none;
+      box-sizing: border-box;
+    }
+
+    .pf-input:focus {
+      border-color: #da7757;
+    }
+
+    .pf-textarea {
+      width: 100%;
+      min-height: 80px;
+      background: #262624;
+      color: #e0e0e0;
+      border: 1px solid #555;
+      border-radius: 4px;
+      padding: 8px;
+      font-size: 12px;
+      font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+      line-height: 1.4;
+      resize: vertical;
+      outline: none;
+      box-sizing: border-box;
+    }
+
+    .pf-textarea:focus {
+      border-color: #da7757;
+    }
+
+    .pf-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px 14px;
+      background: #da7757;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+      font-family: inherit;
+    }
+
+    .pf-btn:hover {
+      background: #c4664a;
+    }
+
+    .pf-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .pf-btn-secondary {
+      background: #262624;
+      border: 1px solid #555;
+      color: #e0e0e0;
+    }
+
+    .pf-btn-secondary:hover {
+      border-color: #da7757;
+      color: #da7757;
+      background: #262624;
+    }
+
+    .pf-btn-small {
+      padding: 3px 8px;
+      font-size: 10px;
+    }
+
+    .pf-btn-danger {
+      background: #ff4444;
+    }
+
+    .pf-btn-danger:hover {
+      background: #cc3333;
+    }
+
+    .pf-btn-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+      flex-wrap: wrap;
+    }
+
+    .pf-status {
+      font-size: 11px;
+      margin-top: 6px;
+    }
+
+    .pf-status-green {
+      color: #4ade80;
+    }
+
+    .pf-status-yellow {
+      color: #fbbf24;
+    }
+
+    .pf-status-red {
+      color: #ff4444;
+    }
+
+    .pf-status-gray {
+      color: #999;
+    }
+
+    .pf-checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 8px;
+      font-size: 12px;
+      color: #e0e0e0;
+    }
+
+    .pf-checkbox-row input[type="checkbox"] {
+      accent-color: #da7757;
+    }
+
+    .pf-helper-toggle {
+      color: #999;
+      font-size: 11px;
+      cursor: pointer;
+      user-select: none;
+      margin-bottom: 6px;
+      display: block;
+    }
+
+    .pf-helper-toggle:hover {
+      color: #da7757;
+    }
+
+    .pf-helper-content {
+      color: #999;
+      font-size: 11px;
+      line-height: 1.5;
+      margin-bottom: 10px;
+      padding: 8px;
+      background: #262624;
+      border-radius: 4px;
+      border: 1px solid #333;
+      display: none;
+    }
+
+    .pf-helper-content.pf-visible {
+      display: block;
+    }
+
+    /* Three-way pill toggle */
+    .pf-pill-toggle {
+      display: flex;
+      border: 1px solid #555;
+      border-radius: 6px;
+      overflow: hidden;
+      margin-bottom: 10px;
+    }
+
+    .pf-pill-option {
+      flex: 1;
+      padding: 6px 4px;
+      background: #262624;
+      color: #999;
+      border: none;
+      font-size: 10px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.15s;
+      font-family: inherit;
+      border-right: 1px solid #555;
+    }
+
+    .pf-pill-option:last-child {
+      border-right: none;
+    }
+
+    .pf-pill-option.pf-active {
+      background: #da7757;
+      color: #fff;
+    }
+
+    .pf-pill-option:hover:not(.pf-active) {
+      background: #333;
+      color: #e0e0e0;
+    }
+
+    /* Pencil edit button */
+    .pf-pencil-btn {
+      background: none;
+      border: none;
+      color: #666;
+      cursor: pointer;
+      font-size: 12px;
+      padding: 0 4px;
+      transition: color 0.15s;
+      flex-shrink: 0;
+    }
+
+    .pf-pencil-btn:hover {
+      color: #da7757;
+    }
+
+    /* Template editor inline */
+    .pf-template-editor {
+      margin-top: 6px;
+      display: none;
+    }
+
+    .pf-template-editor.pf-visible {
+      display: block;
+    }
+
+    .pf-template-editor textarea {
+      width: 100%;
+      min-height: 100px;
+      background: #262624;
+      color: #e0e0e0;
+      border: 1px solid #555;
+      border-radius: 4px;
+      padding: 6px;
+      font-size: 11px;
+      font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+      line-height: 1.4;
+      resize: vertical;
+      outline: none;
+      box-sizing: border-box;
+    }
+
+    .pf-template-editor textarea:focus {
+      border-color: #da7757;
+    }
+
+    /* Preview snippet */
+    .pf-preview {
+      background: #262624;
+      border: 1px solid #333;
+      border-radius: 4px;
+      padding: 8px;
+      margin-top: 8px;
+      font-size: 11px;
+      color: #999;
+      font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+      max-height: 80px;
+      overflow: hidden;
+      cursor: pointer;
+      position: relative;
+    }
+
+    .pf-preview.pf-expanded {
+      max-height: none;
+    }
+
+    .pf-preview-fade {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 24px;
+      background: linear-gradient(transparent, #262624);
+      pointer-events: none;
+    }
+
+    .pf-preview.pf-expanded .pf-preview-fade {
+      display: none;
+    }
+
+    /* Slider */
+    .pf-range {
+      width: 100%;
+      accent-color: #da7757;
+      margin-top: 4px;
+    }
+
+    .pf-range-label {
+      display: flex;
+      justify-content: space-between;
+      color: #999;
+      font-size: 10px;
+      margin-top: 2px;
+    }
+
+    /* Token budget display */
+    .pf-budget {
+      background: #262624;
+      border: 1px solid #333;
+      border-radius: 4px;
+      padding: 8px;
+      margin-top: 10px;
+      font-size: 11px;
+      font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+      line-height: 1.6;
+      color: #e0e0e0;
+    }
+
+    .pf-budget-line {
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .pf-budget-line-label {
+      color: #999;
+    }
+
+    .pf-budget-line-value {
+      color: #e0e0e0;
+    }
+
+    .pf-budget-line-free {
+      color: #4ade80;
+    }
+
+    .pf-budget-line-warn {
+      color: #ff4444;
+    }
+
+    /* Role toggle row */
+    .pf-role-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 0;
+      font-size: 12px;
+    }
+
+    .pf-role-label {
+      flex: 1;
+    }
+
+    .pf-role-pct {
+      color: #666;
+      font-size: 10px;
+      width: 32px;
+      text-align: right;
+    }
+
+    /* Phase list */
+    .pf-phase-item {
+      background: #262624;
+      border: 1px solid #333;
+      border-radius: 4px;
+      margin-top: 6px;
+      overflow: hidden;
+    }
+
+    .pf-phase-item:first-child {
+      margin-top: 0;
+    }
+
+    .pf-phase-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 10px;
+      cursor: pointer;
+      user-select: none;
+      font-size: 12px;
+      transition: background 0.15s;
+    }
+
+    .pf-phase-header:hover {
+      background: #333;
+    }
+
+    .pf-phase-status-icon {
+      font-size: 14px;
+      flex-shrink: 0;
+      width: 18px;
+      text-align: center;
+    }
+
+    .pf-phase-title {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .pf-phase-counter {
+      color: #666;
+      font-size: 10px;
+      flex-shrink: 0;
+    }
+
+    .pf-phase-edit-btn {
+      background: none;
+      border: none;
+      color: #666;
+      cursor: pointer;
+      font-size: 11px;
+      padding: 0 4px;
+      transition: color 0.15s;
+      flex-shrink: 0;
+    }
+
+    .pf-phase-edit-btn:hover {
+      color: #da7757;
+    }
+
+    .pf-phase-body {
+      padding: 0 10px 8px;
+      font-size: 11px;
+      color: #999;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-break: break-word;
+      display: none;
+      border-top: 1px solid #333;
+    }
+
+    .pf-phase-item.pf-expanded .pf-phase-body {
+      display: block;
+    }
+
+    /* Progress bar */
+    .pf-progress-bar {
+      width: 100%;
+      height: 18px;
+      background: #262624;
+      border: 1px solid #555;
+      border-radius: 9px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .pf-progress-fill {
+      height: 100%;
+      background: #da7757;
+      transition: width 0.3s ease;
+      border-radius: 9px;
+    }
+
+    .pf-progress-text {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: 600;
+      color: #e0e0e0;
+    }
+
+    /* Runner controls */
+    .pf-runner-controls {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .pf-runner-btn {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      padding: 8px 6px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid #555;
+      background: #262624;
+      color: #e0e0e0;
+      transition: all 0.15s;
+      font-family: inherit;
+    }
+
+    .pf-runner-btn:hover {
+      border-color: #da7757;
+      color: #da7757;
+    }
+
+    .pf-runner-btn.pf-runner-start {
+      background: #da7757;
+      border-color: #da7757;
+      color: #fff;
+    }
+
+    .pf-runner-btn.pf-runner-start:hover {
+      background: #c4664a;
+    }
+
+    .pf-runner-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .pf-runner-option {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 8px;
+      font-size: 11px;
+      color: #e0e0e0;
+    }
+
+    .pf-runner-option input[type="checkbox"] {
+      accent-color: #da7757;
+    }
+
+    .pf-runner-option input[type="number"] {
+      width: 40px;
+      background: #262624;
+      color: #e0e0e0;
+      border: 1px solid #555;
+      border-radius: 4px;
+      padding: 2px 4px;
+      font-size: 11px;
+      text-align: center;
+      outline: none;
+      font-family: inherit;
+    }
+
+    .pf-runner-option input[type="number"]:focus {
+      border-color: #da7757;
+    }
+
+    /* Modal overlay for phase import */
+    .pf-modal-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 100001;
+      background: rgba(0, 0, 0, 0.75);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    .pf-modal {
+      background: #1e1e1c;
+      border: 1px solid #555;
+      border-radius: 10px;
+      width: 90%;
+      max-width: 600px;
+      max-height: 80vh;
+      overflow-y: auto;
+      padding: 20px;
+    }
+
+    .pf-modal-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #e0e0e0;
+      margin-bottom: 12px;
+    }
+
+    .pf-modal textarea {
+      width: 100%;
+      min-height: 250px;
+      background: #262624;
+      color: #e0e0e0;
+      border: 1px solid #555;
+      border-radius: 4px;
+      padding: 10px;
+      font-size: 12px;
+      font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+      line-height: 1.4;
+      resize: vertical;
+      outline: none;
+      box-sizing: border-box;
+    }
+
+    .pf-modal textarea:focus {
+      border-color: #da7757;
+    }
+
+    .pf-config-locked-overlay {
+      opacity: 0.5;
+      pointer-events: none;
+    }
+
+    .pf-step-label-row {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-top: 6px;
+      margin-bottom: 2px;
+    }
+
+    .pf-step-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #e0e0e0;
+    }
+
+    .pf-divider {
+      height: 1px;
+      background: #333;
+      margin: 10px 0;
+    }
+
+    .pf-select {
+      width: 100%;
+      background: #262624;
+      color: #e0e0e0;
+      border: 1px solid #555;
+      border-radius: 4px;
+      padding: 6px 8px;
+      font-size: 12px;
+      font-family: inherit;
+      outline: none;
+      box-sizing: border-box;
+    }
+
+    .pf-select:focus {
+      border-color: #da7757;
+    }
+    `;
+    document.head.appendChild(styles);
+  }
+
+
+  // ===== SECTION: DOM Utilities =====
+
   function getEditor() {
-    let el = document.querySelector('.ProseMirror[contenteditable="true"]');
-    if (el) return { el, type: 'prosemirror' };
+    // Claude.ai — ProseMirror contenteditable
+    var el = document.querySelector('.ProseMirror[contenteditable="true"]');
+    if (el) return { el: el, type: 'prosemirror' };
+
     el = document.querySelector('div[data-placeholder][contenteditable="true"]');
-    if (el) return { el, type: 'prosemirror' };
+    if (el) return { el: el, type: 'prosemirror' };
+
+    // ChatGPT — also contenteditable (ProseMirror)
     el = document.querySelector('#prompt-textarea');
-    if (el) return { el, type: 'prosemirror' };
+    if (el) return { el: el, type: 'prosemirror' };
+
+    // Gemini — contenteditable rich text
     el = document.querySelector('.ql-editor[contenteditable="true"]');
-    if (el) return { el, type: 'prosemirror' };
+    if (el) return { el: el, type: 'prosemirror' };
+
+    // Generic contenteditable fallback
     el = document.querySelector('div[contenteditable="true"]');
-    if (el) return { el, type: 'prosemirror' };
+    if (el) return { el: el, type: 'prosemirror' };
+
+    // Plain textarea fallback
     el = document.querySelector('textarea');
-    if (el) return { el, type: 'textarea' };
+    if (el) return { el: el, type: 'textarea' };
+
     return null;
   }
 
   function injectPrompt(text) {
-    const editor = getEditor();
-    if (!editor) return false;
-    const { el, type } = editor;
+    var editor = getEditor();
+    if (!editor) {
+      console.warn('[Phase Forge] No chat input found on this page.');
+      return false;
+    }
+
+    var el = editor.el;
+    var type = editor.type;
+
     if (type === 'textarea') {
-      const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
-      setter.call(el, text + '\n\n');
+      var nativeSetter = Object.getOwnPropertyDescriptor(
+        window.HTMLTextAreaElement.prototype, 'value'
+      ).set;
+      nativeSetter.call(el, text + '\n\n');
       el.dispatchEvent(new Event('input', { bubbles: true }));
       el.focus();
       return true;
     }
+
+    // ProseMirror / contenteditable approach
     el.focus();
-    const sel = window.getSelection();
-    const range = document.createRange();
+
+    var sel = window.getSelection();
+    var range = document.createRange();
     range.selectNodeContents(el);
     sel.removeAllRanges();
     sel.addRange(range);
-    const success = document.execCommand('insertText', false, text + '\n\n');
+
+    var success = document.execCommand('insertText', false, text + '\n\n');
+
     if (!success) {
-      const cd = new DataTransfer();
-      cd.setData('text/plain', text + '\n\n');
-      el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: cd, bubbles: true, cancelable: true }));
+      var clipboardData = new DataTransfer();
+      clipboardData.setData('text/plain', text + '\n\n');
+      el.dispatchEvent(new ClipboardEvent('paste', {
+        clipboardData: clipboardData,
+        bubbles: true,
+        cancelable: true
+      }));
     }
+
     return true;
   }
 
   function findSendButton() {
-    const selectors = [
+    // Try known selectors in priority order
+    var selectors = [
       'button[aria-label="Send Message"]',
       'button[data-testid="send-button"]',
       'button[aria-label="Send"]',
-      'button[data-testid="send-message-button"]'
+      'button[aria-label="Send message"]'
     ];
-    for (const s of selectors) {
-      const btn = document.querySelector(s);
+
+    for (var i = 0; i < selectors.length; i++) {
+      var btn = document.querySelector(selectors[i]);
       if (btn && !btn.disabled) return btn;
     }
-    const editor = getEditor();
+
+    // Fallback: find button near the editor that contains an SVG
+    var editor = getEditor();
     if (editor) {
-      let container = editor.el.closest('form') || editor.el.parentElement;
-      for (let i = 0; i < 5 && container; i++) {
-        const btns = container.querySelectorAll('button');
-        for (const b of btns) {
-          if (!b.disabled && b.querySelector('svg')) return b;
+      var container = editor.el.closest('form') || editor.el.parentElement;
+      if (container) {
+        var buttons = container.querySelectorAll('button');
+        for (var j = 0; j < buttons.length; j++) {
+          if (buttons[j].querySelector('svg') && !buttons[j].disabled) {
+            return buttons[j];
+          }
         }
-        container = container.parentElement;
       }
     }
+
     return null;
   }
 
   function clickSendButton() {
-    const btn = findSendButton();
-    if (btn) { btn.click(); return true; }
+    var btn = findSendButton();
+    if (btn) {
+      btn.click();
+      return true;
+    }
     return false;
   }
 
-  function getChatContainer() {
-    const selectors = [
-      '[data-testid="conversation-turn-list"]',
-      'div.conversation',
-      'div[role="main"]',
-      'main'
-    ];
-    for (const s of selectors) {
-      const el = document.querySelector(s);
-      if (el) return el;
-    }
-    return document.body;
-  }
+  // ===== SECTION: Completion Detection Engine =====
 
-  // ===== PLACEHOLDER REPLACEMENT =====
-  function replacePlaceholders(text) {
-    const prd = lsGet(STORAGE_KEYS.pfPrd, '');
-    const testing = lsGet(STORAGE_KEYS.pfTestingScript, '');
-    const arch = lsGet(STORAGE_KEYS.pfArchitecture, '');
-    const repo = lsGet(STORAGE_KEYS.pfRepoUrl, '');
-    const phases = lsGetJSON(STORAGE_KEYS.pfPhases, []);
-    const runner = lsGetJSON(STORAGE_KEYS.pfRunnerState, {});
-    return text
-      .replace(/\{\{TESTING_SCRIPT\}\}/g, testing)
-      .replace(/\{\{ARCHITECTURE_DOC\}\}/g, arch)
-      .replace(/\{\{CAPTURED_PRD\}\}/g, prd)
-      .replace(/\{\{REPO_URL\}\}/g, repo)
-      .replace(/\{\{PHASE_NUMBER\}\}/g, String((runner.currentPhaseIndex || 0) + 1))
-      .replace(/\{\{TOTAL_PHASES\}\}/g, String(phases.length));
-  }
+  var completionEngine = {
+    observer: null,
+    lastMutationTime: 0,
+    pollInterval: null,
+    callback: null,
+    watching: false,
 
-  // ===== COMPLETION DETECTION ENGINE =====
-  let completionObserver = null;
-  let lastMutationTime = 0;
-  let completionCheckInterval = null;
-  let onCompletionCallback = null;
+    start: function(onComplete) {
+      this.stop();
+      this.callback = onComplete;
+      this.watching = true;
+      this.lastMutationTime = Date.now();
 
-  function startCompletionWatcher(callback) {
-    stopCompletionWatcher();
-    onCompletionCallback = callback;
-    lastMutationTime = Date.now();
-    const container = getChatContainer();
-    completionObserver = new MutationObserver(() => { lastMutationTime = Date.now(); });
-    completionObserver.observe(container, { childList: true, subtree: true, characterData: true });
-    completionCheckInterval = setInterval(() => {
-      const idle = Date.now() - lastMutationTime > 4000;
-      const sendReady = !!findSendButton();
-      if (idle && sendReady && onCompletionCallback) {
-        const cb = onCompletionCallback;
-        stopCompletionWatcher();
-        cb();
+      var self = this;
+
+      // Find chat container
+      var selectorStr = getChatContainerSelector();
+      var selectors = selectorStr.split(', ');
+      var chatContainer = null;
+      for (var i = 0; i < selectors.length; i++) {
+        chatContainer = document.querySelector(selectors[i].trim());
+        if (chatContainer) break;
       }
-    }, 1000);
-  }
 
-  function stopCompletionWatcher() {
-    if (completionObserver) { completionObserver.disconnect(); completionObserver = null; }
-    if (completionCheckInterval) { clearInterval(completionCheckInterval); completionCheckInterval = null; }
-    onCompletionCallback = null;
-  }
+      if (!chatContainer) {
+        chatContainer = document.body;
+      }
 
-  function getLastResponseText() {
-    const container = getChatContainer();
-    const msgs = container.querySelectorAll('[data-testid*="message"], .message, .response-container, [class*="response"], [class*="message"]');
-    if (msgs.length > 0) return msgs[msgs.length - 1].textContent || '';
-    const children = container.children;
-    if (children.length > 0) return children[children.length - 1].textContent || '';
-    return '';
-  }
+      this.observer = new MutationObserver(function() {
+        self.lastMutationTime = Date.now();
+      });
 
-  // ===== PRD AUTO-CAPTURE =====
-  let prdObserver = null;
+      this.observer.observe(chatContainer, {
+        childList: true,
+        subtree: true,
+        characterData: true
+      });
 
-  function startPrdWatcher(onCapture) {
-    stopPrdWatcher();
-    const container = getChatContainer();
-    prdObserver = new MutationObserver(() => {
-      const text = container.textContent || '';
-      const startMark = '=== PRD READY ===';
-      const endMark = '=== END PRD ===';
-      const si = text.indexOf(startMark);
-      const ei = text.indexOf(endMark);
-      if (si !== -1 && ei !== -1 && ei > si) {
-        const prd = text.substring(si + startMark.length, ei).trim();
-        if (prd.length > 50) {
-          lsSet(STORAGE_KEYS.pfPrd, prd);
-          stopPrdWatcher();
-          if (onCapture) onCapture(prd);
+      // Poll every 1 second to check idle state
+      this.pollInterval = setInterval(function() {
+        if (!self.watching) return;
+
+        var now = Date.now();
+        var idleMs = now - self.lastMutationTime;
+
+        // 4s idle + send button available = response complete
+        if (idleMs > 4000) {
+          var sendBtn = findSendButton();
+          if (sendBtn) {
+            self.stop();
+            if (self.callback) self.callback();
+          }
+        }
+      }, 1000);
+    },
+
+    stop: function() {
+      this.watching = false;
+      if (this.observer) {
+        this.observer.disconnect();
+        this.observer = null;
+      }
+      if (this.pollInterval) {
+        clearInterval(this.pollInterval);
+        this.pollInterval = null;
+      }
+    }
+  };
+
+  // ===== SECTION: PRD Auto-Capture via MutationObserver =====
+
+  var prdCaptureObserver = null;
+
+  function startPrdCapture(onCaptured) {
+    stopPrdCapture();
+
+    var selectorStr = getChatContainerSelector();
+    var selectors = selectorStr.split(', ');
+    var chatContainer = null;
+    for (var i = 0; i < selectors.length; i++) {
+      chatContainer = document.querySelector(selectors[i].trim());
+      if (chatContainer) break;
+    }
+    if (!chatContainer) chatContainer = document.body;
+
+    prdCaptureObserver = new MutationObserver(function() {
+      var allText = chatContainer.innerText || '';
+      var startIdx = allText.lastIndexOf(PRD_START_MARKER);
+      var endIdx = allText.lastIndexOf(PRD_END_MARKER);
+
+      if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+        var prdContent = allText.substring(startIdx + PRD_START_MARKER.length, endIdx).trim();
+        if (prdContent.length > 10) {
+          storeSet(STORAGE_KEYS.pfPrd, prdContent);
+          stopPrdCapture();
+          if (onCaptured) onCaptured(prdContent);
         }
       }
     });
-    prdObserver.observe(container, { childList: true, subtree: true, characterData: true });
+
+    prdCaptureObserver.observe(chatContainer, {
+      childList: true,
+      subtree: true,
+      characterData: true
+    });
   }
 
-  function stopPrdWatcher() {
-    if (prdObserver) { prdObserver.disconnect(); prdObserver = null; }
+  function stopPrdCapture() {
+    if (prdCaptureObserver) {
+      prdCaptureObserver.disconnect();
+      prdCaptureObserver = null;
+    }
   }
 
-  // ===== PHASE AUTO-CAPTURE =====
-  function parsePhasesFromText(text) {
-    const regex = /---\s*PHASE\s*(\d+)\s*(?::\s*(.+?))?\s*---/gi;
-    const phases = [];
-    let match;
-    const matches = [];
+  // ===== SECTION: Phase Auto-Capture via MutationObserver =====
+
+  var phaseCaptureObserver = null;
+
+  function startPhaseCapture(onCaptured) {
+    stopPhaseCapture();
+
+    var selectorStr = getChatContainerSelector();
+    var selectors = selectorStr.split(', ');
+    var chatContainer = null;
+    for (var i = 0; i < selectors.length; i++) {
+      chatContainer = document.querySelector(selectors[i].trim());
+      if (chatContainer) break;
+    }
+    if (!chatContainer) chatContainer = document.body;
+
+    phaseCaptureObserver = new MutationObserver(function() {
+      var allText = chatContainer.innerText || '';
+      var phases = parsePhases(allText);
+      if (phases.length > 0) {
+        stopPhaseCapture();
+        if (onCaptured) onCaptured(phases);
+      }
+    });
+
+    phaseCaptureObserver.observe(chatContainer, {
+      childList: true,
+      subtree: true,
+      characterData: true
+    });
+  }
+
+  function stopPhaseCapture() {
+    if (phaseCaptureObserver) {
+      phaseCaptureObserver.disconnect();
+      phaseCaptureObserver = null;
+    }
+  }
+
+  // ===== SECTION: Phase Parsing =====
+
+  function parsePhases(text) {
+    var phases = [];
+    var regex = /---\s*PHASE\s*(\d+)\s*(?::\s*(.+?))?\s*---/gi;
+    var matches = [];
+    var match;
+
     while ((match = regex.exec(text)) !== null) {
-      matches.push({ index: match.index, num: parseInt(match[1],10), title: (match[2] || 'Phase ' + match[1]).trim(), fullMatch: match[0] });
+      matches.push({
+        index: match.index,
+        endIndex: match.index + match[0].length,
+        num: parseInt(match[1], 10),
+        title: (match[2] || '').trim()
+      });
     }
-    for (let i = 0; i < matches.length; i++) {
-      const start = matches[i].index + matches[i].fullMatch.length;
-      const end = i + 1 < matches.length ? matches[i + 1].index : text.length;
-      const content = text.substring(start, end).trim();
-      phases.push({ id: matches[i].num, title: matches[i].title, content, status: 'pending' });
+
+    for (var i = 0; i < matches.length; i++) {
+      var startIdx = matches[i].endIndex;
+      var endIdx = (i + 1 < matches.length) ? matches[i + 1].index : text.length;
+      var content = text.substring(startIdx, endIdx).trim();
+
+      phases.push({
+        id: matches[i].num,
+        title: matches[i].title || ('Phase ' + matches[i].num),
+        content: content,
+        status: 'pending'
+      });
     }
+
     return phases;
   }
 
-  let phaseObserver = null;
-  function startPhaseWatcher(onCapture) {
-    stopPhaseWatcher();
-    const container = getChatContainer();
-    phaseObserver = new MutationObserver(() => {
-      const text = container.textContent || '';
-      const phases = parsePhasesFromText(text);
-      if (phases.length >= 2) {
-        stopPhaseWatcher();
-        if (onCapture) onCapture(phases);
+
+  // ===== SECTION: Prompt Injector (existing, improved) =====
+
+  var PROMPTS = [
+    {
+      id: 1,
+      title: 'Martin Style Prompt',
+      prompt: "**Role:** You are an expert Design System Architect and Senior Frontend Engineer. You specialize in \"Atomic Design\" principles and creating abstract, reusable component libraries.\n\n**Objective:** I will provide an image. Your task is to ignore the specific content, text, and business context of the image. Instead, extract the underlying Visual Design Language (the \"Visual DNA\"). I need a generic, reusable style guide that I can apply to any type of application, not just the one shown in the image.\n\n**Strict Constraints (Read Carefully):**\n1. Do not mention specific text found in the image (e.g., do not say \"The 'Revenue' title uses 16px\"; say \"Section Headers use 16px\").\n2. Do not mention specific business logic (e.g., do not say \"The 'Sales Card' has a shadow\"; say \"The 'Primary Data Container' has a shadow\").\n3. Generalize all findings into reusable tokens and classes.\n\n**Output Requirements:** Please generate a Technical Design System Report in Markdown covering:\n\n#### 1. Abstract Color Tokens (Global Variables)\nExtract the palette but name them by function, not content:\n- **Brand/Primary:** (The main interaction color)\n- **Surface/Backgrounds:** (Main background, Secondary background/sidebar, Card background)\n- **Text Hierarchy:** (Primary, Secondary/Muted, Tertiary)\n- **Borders/Dividers:** (Line colors)\n- **Status Colors:** (If present: Success, Error, Warning)\n\n#### 2. Global Typography System\n- Identify the font family (or closest Google Font)\n- Define the abstract hierarchy:\n  - **Display/Hero:** (Largest text styles)\n  - **Headings:** (H1, H2, H3 equivalents)\n  - **Body:** (Regular and Bold variants)\n  - **Microcopy:** (Labels, captions, small text)\n- Detail: Include specific weights (400, 500, 600, 700) and approximate line-heights\n\n#### 3. Universal Component Patterns (Molecules)\n- **Surfaces/Cards:** Analyze the container style. What is the border radius? Is there a border stroke? Is there a box shadow? (Provide CSS values)\n- **Interactables (Buttons/Links):** Analyze the primary and secondary button styles (padding, radius, color, hover effects)\n- **Form Inputs:** Analyze the style of text fields (background color, border color, corner radius)\n- **Iconography:** Describe the visual style of icons used (e.g., \"Thin stroke, 1.5px, rounded corners\" or \"Solid filled, sharp edges\")\n\n#### 4. Layout & Spacing Physics\n- **Spacing Scale:** Determine the base unit of the design (e.g., 4px, 8px, or 10px)\n- **Density:** Is the design \"Cozy\" (lots of whitespace/padding) or \"Compact\" (data-dense)?\n- **Radius Consistency:** What is the rule for rounded corners? (e.g., \"4px for small elements, 12px for containers\")\n\n#### 5. Tailwind CSS Theme Extension\nBased on the abstract analysis, write a tailwind.config.js theme object. Do not include content-specific names."
+    },
+    {
+      id: 2,
+      title: 'Martin App Idea Prompt',
+      prompt: "**Role:** You are a product strategist and startup advisor who helps people turn vague app ideas into clear, buildable MVPs.\n\n**Objective:** I'm going to describe an app idea. It might be rough, incomplete, or just a general concept. Your job is to help me clarify it and output a structured specification I can use to build it.\n\n**Your Process:**\n1. If my idea is unclear, ask me 2-3 quick clarifying questions first\n2. Once you understand, output the structured format below\n3. Keep it MVP-focused — only essential features, nothing fancy\n\n**Output Format (Follow Exactly):**\n\n## SECTION 1: APP IDENTITY\n\n**App Name:** [Suggest a short, memorable name]\n\n**One-Line Description:** [What it does in one sentence — be specific]\n\n**Target User:** [Who is this for? Be specific about their situation]\n\n**Core Problem It Solves:** [What pain point does this eliminate?]\n\n---\n\n## SECTION 2: FEATURES\n\n**Core Features (3-5 max):**\n1. [Feature 1 — specific and actionable]\n2. [Feature 2]\n3. [Feature 3]\n4. [Feature 4 — if needed]\n5. [Feature 5 — if needed]\n\n**What Users Can Do:**\n- [Main action 1]\n- [Main action 2]\n- [Main action 3]\n\n**Rules:**\n- Maximum 5 features — this is an MVP\n- Each feature should be one clear thing\n- Focus on what makes this app unique and useful"
+    },
+    {
+      id: 3,
+      title: 'Martin Build Prompt Rules',
+      prompt: "Critical Rules (25 Rules)\nTechnical (1-7)\nNO database calls in components - use service layer only\nNO unprotected routes for authenticated features\nNO inline styles - Tailwind only\nNO any types - define TypeScript interfaces\nALL database writes include createdAt/updatedAt timestamps\nALL user data scoped to the authenticated user\nWrap app in ErrorBoundary component\nUI/UX (8-25)\nNO alert(), confirm(), prompt() - use Modal/ConfirmModal/Toast\nALL destructive actions require ConfirmModal\nALL async operations show loading state\nALL empty lists use EmptyState component with icon and CTA\nALL success/error actions show Toast feedback\nALL saved items have Detail View separate from Edit View\nALL forms validate before submission\nALL buttons show loading state during async actions\nALL avatars have fallback for failed images\nALL pages set document title via usePageTitle hook\nALL forms autofocus first input\nALL lists have search/filter when > 5 items expected\nALL error states have retry action\nALL dates formatted as relative time\nALL long text truncated with ellipsis\nALL detail pages have back navigation\nUse Lucide React for all icons\nZero console errors in production"
+    },
+    {
+      id: 4,
+      title: 'Agent OS',
+      prompt: "# Agent OS Integration Guide for Claude Code (claude.ai/code)\n## What is Agent OS?\nAgent OS is a spec-driven development system that provides structured context to AI coding agents through a 3-layer model:\n1. Standards Layer — Your team's coding conventions, patterns, and best practices\n2. Product Layer — The vision, roadmap, and use cases you're building\n3. Specs Layer — Detailed specifications for upcoming features\n\nCore Philosophy: Your coding standards become executable specifications that guide AI agents to build your way, every time.\n\n## How to Use Agent OS in Claude Code Web\nStore your Agent OS files in your repository under .claude/ directory with standards/, product/, and specs/ subdirectories.\n\nWhen starting a session, reference these files explicitly."
+    },
+    {
+      id: 5,
+      title: 'Context Efficiency Rules',
+      prompt: "## MANDATORY: Context Efficiency Rules\nYou are working on a codebase. Follow these rules strictly to preserve your context window for coding:\n### Step 1: Read Briefings (do this FIRST)\n1. Read AGENT_BRIEFING.md at project root\n2. Read docs/agent-briefs/{FEATURE_BRIEF}.md\n### Step 2: Read ONLY Files You Will Edit\n- Maximum 5 files read directly by you\n### Step 3: Use Subagents for Everything Else\n### Step 4: Context Budget\n- Stop coding at 50% context usage\n- If you hit 45%, wrap up current work, commit, and save progress notes\n- Never start a new feature if you're above 40%"
+    },
+    { id: 6, title: 'Prompt 6', prompt: 'Replace with your prompt.' },
+    { id: 7, title: 'Prompt 7', prompt: 'Replace with your prompt.' },
+    { id: 8, title: 'Prompt 8', prompt: 'Replace with your prompt.' },
+    { id: 9, title: 'Prompt 9', prompt: 'Replace with your prompt.' },
+    { id: 10, title: 'Prompt 10', prompt: 'Replace with your prompt.' },
+    { id: 11, title: 'Prompt 11', prompt: 'Replace with your prompt.' },
+    { id: 12, title: 'Prompt 12', prompt: 'Replace with your prompt.' },
+    { id: 13, title: 'Prompt 13', prompt: 'Replace with your prompt.' },
+    { id: 14, title: 'Prompt 14', prompt: 'Replace with your prompt.' },
+    { id: 15, title: 'Prompt 15', prompt: 'Replace with your prompt.' },
+    { id: 16, title: 'Prompt 16', prompt: 'Replace with your prompt.' },
+    { id: 17, title: 'Prompt 17', prompt: 'Replace with your prompt.' },
+    { id: 18, title: 'Prompt 18', prompt: 'Replace with your prompt.' },
+    { id: 19, title: 'Prompt 19', prompt: 'Replace with your prompt.' },
+    { id: 20, title: 'Prompt 20', prompt: 'Replace with your prompt.' }
+  ];
+
+  // ===== SECTION: Prompt Injector Storage =====
+
+  var PROMPT_STORAGE_KEY = STORAGE_KEYS.cpiPrompts;
+  var ZOOM_STORAGE_KEY = STORAGE_KEYS.cpiZoom;
+  var DEFAULT_ZOOM = 100;
+  var ZOOM_STEP = 10;
+  var ZOOM_MIN = 30;
+  var ZOOM_MAX = 300;
+
+  function loadCustomPrompts() {
+    try {
+      var raw = localStorage.getItem(PROMPT_STORAGE_KEY);
+      if (raw) {
+        var parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
       }
+    } catch (_e) {
+      // Corrupted data — fall back to defaults
+    }
+    return PROMPTS.map(function(p) { return { id: p.id, title: p.title, prompt: p.prompt }; });
+  }
+
+  function saveCustomPrompts(prompts) {
+    var cleaned = prompts.map(function(p) {
+      return {
+        id: p.id,
+        title: String(p.title).replace(/`/g, ''),
+        prompt: String(p.prompt).replace(/`/g, '')
+      };
     });
-    phaseObserver.observe(container, { childList: true, subtree: true, characterData: true });
-  }
-  function stopPhaseWatcher() {
-    if (phaseObserver) { phaseObserver.disconnect(); phaseObserver = null; }
+    localStorage.setItem(PROMPT_STORAGE_KEY, JSON.stringify(cleaned));
+    return cleaned;
   }
 
-  // ===== CSS STYLES =====
-  const pfStyles = document.createElement('style');
-  pfStyles.textContent = `
-    #cpi-panel {
-      position: fixed; top: 50%; right: 16px;
-      transform: translateY(-50%) scale(${currentZoom / 100});
-      transform-origin: top right; width: ${PANEL_WIDTH}px;
-      max-height: 85vh; z-index: 99999;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      display: flex; flex-direction: column; gap: 4px; transition: opacity 0.2s;
-    }
-    #cpi-zoom-pill { display: flex; width: 100%; height: 36px; border-radius: 6px; overflow: hidden; border: 1px solid #555; }
-    .cpi-zoom-pill-btn { flex: 1; background: #262624; color: #e0e0e0; border: none; cursor: pointer; font-size: 18px; font-weight: 700; transition: all 0.15s; }
-    .cpi-zoom-pill-btn:first-child { border-right: 1px solid #555; }
-    .cpi-zoom-pill-btn:hover { background: #da7757; color: #fff; }
-    #cpi-zoom-row { display: flex; align-items: center; gap: 4px; padding: 4px 0; }
-    #cpi-zoom-row label { color: #999; font-size: 10px; white-space: nowrap; }
-    #cpi-zoom-input { width: 40px; height: 22px; background: #1e1e1c; color: #e0e0e0; border: 1px solid #555; border-radius: 3px; font-size: 10px; text-align: center; outline: none; }
-    #cpi-zoom-input:focus { border-color: #da7757; }
-    #cpi-zoom-set { height: 22px; background: #da7757; color: #fff; border: none; border-radius: 3px; cursor: pointer; font-size: 9px; font-weight: 700; padding: 0 8px; }
-    #cpi-zoom-set:hover { background: #c4664a; }
-    #cpi-header { display: flex; align-items: center; justify-content: space-between; background: #262624; border: 1px solid #da7757; border-radius: 6px; padding: 3px 6px; gap: 4px; }
-    #cpi-header-label { color: #e0e0e0; font-size: 9px; font-weight: 600; cursor: pointer; white-space: nowrap; user-select: none; }
-    #cpi-header-label:hover { color: #da7757; }
-    #cpi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; overflow-y: auto; }
-    #cpi-grid.cpi-hidden { display: none; }
-    .cpi-btn { position: relative; display: flex; align-items: center; width: 100%; padding: 4px 5px; padding-top: 6px; min-height: 32px; background: #262624; color: #e0e0e0; border: 1px solid #333; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; text-align: left; transition: all 0.15s; line-height: 1.3; }
-    .cpi-btn:hover { background: #30302e; border-color: #da7757; transform: translateX(-3px); }
-    .cpi-btn:active { transform: translateX(-1px); background: #3a3a38; }
-    .cpi-btn-num { position: absolute; top: 2px; left: 4px; display: flex; align-items: center; justify-content: center; min-width: 14px; height: 14px; background: #da7757; color: #fff; border-radius: 3px; font-size: 7px; font-weight: 700; padding: 0 2px; }
-    .cpi-btn-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 6px; padding-left: 16px; padding-right: 2px; }
-    .cpi-flash { animation: cpi-flash-anim 0.4s ease-out; }
-    @keyframes cpi-flash-anim { 0% { background: #da7757; border-color: #da7757; } 100% { background: #262624; border-color: #333; } }
-    .cpi-gear-btn { display: flex; align-items: center; justify-content: center; width: 18px; height: 18px; background: none; border: none; color: #e0e0e0; cursor: pointer; font-size: 13px; padding: 0; transition: color 0.15s; }
-    .cpi-gear-btn:hover { color: #da7757; }
+  var activePrompts = loadCustomPrompts();
 
-    /* Editor Overlay */
-    #cpi-editor-overlay { position: fixed; inset: 0; z-index: 100000; background: rgba(0,0,0,0.75); display: flex; align-items: flex-start; justify-content: center; padding-top: 3vh; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-    #cpi-editor-panel { background: #1e1e1c; border: 1px solid #555; border-radius: 10px; width: 100%; max-width: 700px; max-height: 90vh; overflow-y: auto; display: flex; flex-direction: column; }
-    #cpi-editor-topbar { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid #555; background: #262624; border-radius: 10px 10px 0 0; position: sticky; top: 0; z-index: 1; }
-    #cpi-editor-topbar-title { color: #e0e0e0; font-size: 15px; font-weight: 700; }
-    .cpi-editor-topbar-btns { display: flex; gap: 8px; align-items: center; }
-    .cpi-editor-btn { padding: 5px 14px; border: 1px solid #555; border-radius: 5px; background: #262624; color: #e0e0e0; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s; }
-    .cpi-editor-btn:hover { border-color: #da7757; color: #da7757; }
-    .cpi-editor-btn--save { background: #da7757; border-color: #da7757; color: #fff; }
-    .cpi-editor-btn--save:hover { background: #c4664a; }
-    .cpi-editor-btn--close { background: none; border: none; color: #999; font-size: 20px; cursor: pointer; padding: 0 4px; line-height: 1; }
-    .cpi-editor-btn--close:hover { color: #ff4444; }
-    #cpi-editor-note { color: #999; font-size: 11px; padding: 10px 16px 4px; font-style: italic; }
-    .cpi-editor-item { padding: 10px 16px; border-bottom: 1px solid #333; }
-    .cpi-editor-item:last-child { border-bottom: none; }
-    .cpi-editor-item-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-    .cpi-editor-badge { display: flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; background: #da7757; color: #fff; border-radius: 4px; font-size: 11px; font-weight: 700; padding: 0 4px; }
-    .cpi-editor-title-input { flex: 1; background: #262624; color: #e0e0e0; border: 1px solid #555; border-radius: 4px; padding: 5px 8px; font-size: 13px; outline: none; }
-    .cpi-editor-title-input:focus { border-color: #da7757; }
-    .cpi-editor-textarea { width: 100%; min-height: 120px; background: #262624; color: #e0e0e0; border: 1px solid #555; border-radius: 4px; padding: 8px; font-size: 12px; font-family: 'SF Mono','Fira Code','Consolas',monospace; line-height: 1.4; resize: vertical; outline: none; box-sizing: border-box; }
-    .cpi-editor-textarea:focus { border-color: #da7757; }
-
-    /* Phase Forge Panel */
-    #pf-toggle-btn { position: fixed; top: 50%; right: 16px; transform: translateY(-50%); width: 44px; height: 44px; border-radius: 50%; background: #da7757; color: #fff; border: 2px solid #c4664a; cursor: pointer; font-size: 14px; font-weight: 800; z-index: 99998; display: flex; align-items: center; justify-content: center; transition: right 0.3s; box-shadow: 0 2px 8px rgba(0,0,0,0.4); }
-    #pf-toggle-btn:hover { background: #c4664a; }
-    #pf-panel { position: fixed; top: 0; right: 0; width: ${PF_WIDTH}px; height: 100vh; background: #1e1e1c; border-left: 2px solid #da7757; z-index: 99997; overflow-y: auto; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: none; transition: transform 0.3s; }
-    #pf-panel.pf-open { display: block; }
-    .pf-header { padding: 16px; border-bottom: 1px solid #333; display: flex; align-items: center; justify-content: space-between; }
-    .pf-header-title { color: #da7757; font-size: 16px; font-weight: 800; letter-spacing: 1px; }
-    .pf-header-status { color: #999; font-size: 11px; margin-top: 4px; }
-    .pf-project-input { background: #262624; color: #e0e0e0; border: 1px solid #555; border-radius: 4px; padding: 4px 8px; font-size: 12px; width: 120px; outline: none; }
-    .pf-project-input:focus { border-color: #da7757; }
-
-    /* PF Sections */
-    .pf-section { border-bottom: 1px solid #333; }
-    .pf-section-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; cursor: pointer; user-select: none; transition: background 0.15s; }
-    .pf-section-header:hover { background: #262624; }
-    .pf-section-title { color: #e0e0e0; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
-    .pf-section-arrow { color: #999; font-size: 10px; transition: transform 0.2s; }
-    .pf-section-lock { color: #666; font-size: 11px; }
-    .pf-section-body { padding: 12px 16px; display: none; }
-    .pf-section-body.pf-expanded { display: block; }
-    .pf-section.pf-locked .pf-section-header { opacity: 0.5; cursor: not-allowed; }
-    .pf-section.pf-locked .pf-section-body { display: none !important; }
-
-    /* PF Common Elements */
-    .pf-btn { padding: 6px 12px; border-radius: 4px; border: 1px solid #555; background: #262624; color: #e0e0e0; font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.15s; }
-    .pf-btn:hover { border-color: #da7757; color: #da7757; }
-    .pf-btn-primary { background: #da7757; border-color: #da7757; color: #fff; }
-    .pf-btn-primary:hover { background: #c4664a; color: #fff; }
-    .pf-btn-sm { padding: 3px 8px; font-size: 10px; }
-    .pf-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-    .pf-label { color: #999; font-size: 11px; margin-bottom: 4px; display: block; }
-    .pf-input { width: 100%; background: #262624; color: #e0e0e0; border: 1px solid #555; border-radius: 4px; padding: 6px 8px; font-size: 12px; outline: none; box-sizing: border-box; }
-    .pf-input:focus { border-color: #da7757; }
-    .pf-textarea { width: 100%; min-height: 80px; background: #262624; color: #e0e0e0; border: 1px solid #555; border-radius: 4px; padding: 8px; font-size: 11px; font-family: 'SF Mono','Fira Code','Consolas',monospace; line-height: 1.4; resize: vertical; outline: none; box-sizing: border-box; }
-    .pf-textarea:focus { border-color: #da7757; }
-    .pf-status { font-size: 11px; padding: 4px 0; }
-    .pf-status-ok { color: #4ade80; }
-    .pf-status-warn { color: #fbbf24; }
-    .pf-status-err { color: #ff4444; }
-    .pf-status-info { color: #999; }
-    .pf-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
-    .pf-spacer { height: 8px; }
-    .pf-divider { height: 1px; background: #333; margin: 8px 0; }
-    .pf-helper-text { color: #999; font-size: 11px; line-height: 1.5; margin-bottom: 8px; }
-    .pf-helper-toggle { color: #da7757; font-size: 11px; cursor: pointer; margin-bottom: 6px; display: inline-block; }
-    .pf-helper-toggle:hover { text-decoration: underline; }
-    .pf-checkbox-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
-    .pf-checkbox-row input[type="checkbox"] { accent-color: #da7757; }
-    .pf-checkbox-row label { color: #e0e0e0; font-size: 12px; cursor: pointer; }
-
-    /* Pill Toggle */
-    .pf-pill-toggle { display: flex; border: 1px solid #555; border-radius: 6px; overflow: hidden; margin-bottom: 10px; }
-    .pf-pill-opt { flex: 1; padding: 6px 4px; text-align: center; font-size: 10px; font-weight: 600; color: #999; background: #1e1e1c; border: none; cursor: pointer; transition: all 0.15s; }
-    .pf-pill-opt.pf-pill-active { background: #da7757; color: #fff; }
-    .pf-pill-opt:not(:last-child) { border-right: 1px solid #555; }
-
-    /* Phase List */
-    .pf-phase-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid #333; border-radius: 4px; margin-bottom: 4px; cursor: pointer; transition: all 0.15s; }
-    .pf-phase-item:hover { border-color: #555; background: #262624; }
-    .pf-phase-icon { font-size: 14px; flex-shrink: 0; }
-    .pf-phase-title { color: #e0e0e0; font-size: 11px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .pf-phase-num { color: #999; font-size: 10px; flex-shrink: 0; }
-    .pf-phase-content { padding: 8px; background: #262624; border: 1px solid #333; border-radius: 4px; margin: 4px 0 8px; font-size: 11px; color: #e0e0e0; line-height: 1.5; max-height: 200px; overflow-y: auto; white-space: pre-wrap; display: none; }
-    .pf-phase-content.pf-show { display: block; }
-
-    /* Progress Bar */
-    .pf-progress-bar { width: 100%; height: 8px; background: #333; border-radius: 4px; overflow: hidden; margin-bottom: 6px; }
-    .pf-progress-fill { height: 100%; background: #da7757; border-radius: 4px; transition: width 0.3s; }
-    .pf-progress-text { color: #999; font-size: 11px; margin-bottom: 8px; }
-
-    /* Token Budget */
-    .pf-budget { font-family: 'SF Mono','Fira Code','Consolas',monospace; font-size: 11px; color: #e0e0e0; line-height: 1.6; padding: 8px; background: #262624; border-radius: 4px; border: 1px solid #333; margin-top: 8px; }
-    .pf-budget-free { color: #4ade80; }
-    .pf-budget-warn { color: #fbbf24; }
-
-    /* Pencil edit button for prompt templates */
-    .pf-edit-prompt-btn { background: none; border: none; color: #666; font-size: 12px; cursor: pointer; padding: 2px 4px; transition: color 0.15s; }
-    .pf-edit-prompt-btn:hover { color: #da7757; }
-
-    /* Range slider */
-    .pf-range { width: 100%; accent-color: #da7757; }
-
-    /* Modal overlay */
-    .pf-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 100001; display: flex; align-items: center; justify-content: center; }
-    .pf-modal { background: #1e1e1c; border: 1px solid #555; border-radius: 10px; width: 90%; max-width: 600px; max-height: 80vh; overflow-y: auto; padding: 20px; }
-    .pf-modal-title { color: #e0e0e0; font-size: 15px; font-weight: 700; margin-bottom: 12px; }
-  `;
-  document.head.appendChild(pfStyles);
-
-  // ===== HELPER: Create DOM Elements =====
-  function el(tag, attrs, children) {
-    const e = document.createElement(tag);
-    if (attrs) {
-      for (const [k, v] of Object.entries(attrs)) {
-        if (k === 'text') e.textContent = v;
-        else if (k === 'html') e.innerHTML = v;
-        else if (k === 'style' && typeof v === 'object') Object.assign(e.style, v);
-        else if (k === 'className') e.className = v;
-        else if (k === 'onclick') e.addEventListener('click', v);
-        else if (k === 'onchange') e.addEventListener('change', v);
-        else if (k === 'oninput') e.addEventListener('input', v);
-        else if (k === 'onkeydown') e.addEventListener('keydown', v);
-        else e.setAttribute(k, v);
+  function loadZoom() {
+    var saved = localStorage.getItem(ZOOM_STORAGE_KEY);
+    if (saved !== null) {
+      var num = parseInt(saved, 10);
+      if (!isNaN(num) && num >= ZOOM_MIN && num <= ZOOM_MAX) {
+        return num;
       }
     }
-    if (children) {
-      (Array.isArray(children) ? children : [children]).forEach(c => {
-        if (typeof c === 'string') e.appendChild(document.createTextNode(c));
-        else if (c) e.appendChild(c);
-      });
-    }
-    return e;
+    return DEFAULT_ZOOM;
   }
 
-  // ===== EDITOR OVERLAY (Prompt Injector) =====
+  var currentZoom = loadZoom();
+
+  function applyZoom(panel, zoom) {
+    var scale = zoom / 100;
+    panel.style.transform = 'translateY(-50%) scale(' + scale + ')';
+  }
+
+  function clampZoom(value) {
+    return Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, value));
+  }
+
+  // ===== SECTION: Editor Overlay =====
+
   function showEditor(onSave, onReset) {
     if (document.getElementById('cpi-editor-overlay')) return;
-    const overlay = el('div', { id: 'cpi-editor-overlay' });
-    const panel = el('div', { id: 'cpi-editor-panel' });
-    const topbar = el('div', { id: 'cpi-editor-topbar' });
-    const title = el('span', { id: 'cpi-editor-topbar-title', text: 'Edit Prompts' });
-    const btns = el('div', { className: 'cpi-editor-topbar-btns' });
-    const resetBtn = el('button', { className: 'cpi-editor-btn', text: 'Reset to Defaults' });
-    const saveBtn = el('button', { className: 'cpi-editor-btn cpi-editor-btn--save', text: 'Save' });
-    const closeBtn = el('button', { className: 'cpi-editor-btn--close', text: '\u00D7', title: 'Close without saving' });
-    btns.appendChild(resetBtn); btns.appendChild(saveBtn); btns.appendChild(closeBtn);
-    topbar.appendChild(title); topbar.appendChild(btns);
-    panel.appendChild(topbar);
-    panel.appendChild(el('div', { id: 'cpi-editor-note', text: 'Paste anything \u2014 backticks are auto-removed on save.' }));
-    const inputs = [];
-    activePrompts.forEach(p => {
-      const item = el('div', { className: 'cpi-editor-item' });
-      const hdr = el('div', { className: 'cpi-editor-item-header' });
-      const badge = el('span', { className: 'cpi-editor-badge', text: String(p.id) });
-      const titleInput = el('input', { className: 'cpi-editor-title-input', type: 'text', value: p.title, placeholder: 'Prompt title' });
-      hdr.appendChild(badge); hdr.appendChild(titleInput);
+
+    var overlay = document.createElement('div');
+    overlay.id = 'cpi-editor-overlay';
+
+    var editorPanel = document.createElement('div');
+    editorPanel.id = 'cpi-editor-panel';
+
+    var topbar = document.createElement('div');
+    topbar.id = 'cpi-editor-topbar';
+
+    var title = document.createElement('span');
+    title.id = 'cpi-editor-topbar-title';
+    title.textContent = 'Edit Prompts';
+
+    var btns = document.createElement('div');
+    btns.className = 'cpi-editor-topbar-btns';
+
+    var resetBtn = document.createElement('button');
+    resetBtn.className = 'cpi-editor-btn';
+    resetBtn.textContent = 'Reset to Defaults';
+
+    var saveBtn = document.createElement('button');
+    saveBtn.className = 'cpi-editor-btn cpi-editor-btn--save';
+    saveBtn.textContent = 'Save';
+
+    var closeBtn = document.createElement('button');
+    closeBtn.className = 'cpi-editor-btn--close';
+    closeBtn.textContent = '\u00D7';
+    closeBtn.title = 'Close without saving';
+
+    btns.appendChild(resetBtn);
+    btns.appendChild(saveBtn);
+    btns.appendChild(closeBtn);
+    topbar.appendChild(title);
+    topbar.appendChild(btns);
+    editorPanel.appendChild(topbar);
+
+    var note = document.createElement('div');
+    note.id = 'cpi-editor-note';
+    note.textContent = 'Paste anything \u2014 backticks are auto-removed on save.';
+    editorPanel.appendChild(note);
+
+    var inputs = [];
+    activePrompts.forEach(function(p) {
+      var item = document.createElement('div');
+      item.className = 'cpi-editor-item';
+
+      var hdr = document.createElement('div');
+      hdr.className = 'cpi-editor-item-header';
+
+      var badge = document.createElement('span');
+      badge.className = 'cpi-editor-badge';
+      badge.textContent = String(p.id);
+
+      var titleInput = document.createElement('input');
+      titleInput.className = 'cpi-editor-title-input';
+      titleInput.type = 'text';
+      titleInput.value = p.title;
+      titleInput.placeholder = 'Prompt title';
+
+      hdr.appendChild(badge);
+      hdr.appendChild(titleInput);
       item.appendChild(hdr);
-      const textarea = el('textarea', { className: 'cpi-editor-textarea', placeholder: 'Enter prompt content...' });
+
+      var textarea = document.createElement('textarea');
+      textarea.className = 'cpi-editor-textarea';
       textarea.value = p.prompt;
+      textarea.placeholder = 'Enter prompt content...';
       item.appendChild(textarea);
-      panel.appendChild(item);
-      inputs.push({ id: p.id, titleInput, textarea });
+
+      editorPanel.appendChild(item);
+      inputs.push({ id: p.id, titleInput: titleInput, textarea: textarea });
     });
-    overlay.appendChild(panel);
-    function close() { overlay.remove(); }
-    overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
-    closeBtn.addEventListener('click', close);
-    saveBtn.addEventListener('click', () => {
-      const updated = inputs.map(inp => ({ id: inp.id, title: inp.titleInput.value, prompt: inp.textarea.value }));
-      const cleaned = saveCustomPrompts(updated);
+
+    overlay.appendChild(editorPanel);
+
+    function closeOverlay() {
+      overlay.remove();
+    }
+
+    overlay.addEventListener('click', function(e) {
+      if (e.target === overlay) closeOverlay();
+    });
+
+    closeBtn.addEventListener('click', closeOverlay);
+
+    saveBtn.addEventListener('click', function() {
+      var updated = inputs.map(function(inp) {
+        return { id: inp.id, title: inp.titleInput.value, prompt: inp.textarea.value };
+      });
+      var cleaned = saveCustomPrompts(updated);
       activePrompts = cleaned;
-      close();
+      closeOverlay();
       if (onSave) onSave(cleaned);
     });
-    resetBtn.addEventListener('click', () => {
-      localStorage.removeItem(STORAGE_KEYS.customPrompts);
-      activePrompts = PROMPTS.map(p => ({ id: p.id, title: p.title, prompt: p.prompt }));
-      close();
+
+    resetBtn.addEventListener('click', function() {
+      localStorage.removeItem(PROMPT_STORAGE_KEY);
+      activePrompts = PROMPTS.map(function(p) { return { id: p.id, title: p.title, prompt: p.prompt }; });
+      closeOverlay();
       if (onReset) onReset();
     });
+
     document.body.appendChild(overlay);
   }
 
-  // ===== PROMPT INJECTOR PANEL =====
-  function buildPromptInjector() {
-    const panel = el('div', { id: 'cpi-panel' });
 
-    // Zoom pill
-    const pill = el('div', { id: 'cpi-zoom-pill' });
-    const btnMinus = el('button', { className: 'cpi-zoom-pill-btn', text: '\u2212', title: 'Zoom out' });
-    const btnPlus = el('button', { className: 'cpi-zoom-pill-btn', text: '+', title: 'Zoom in' });
-    pill.appendChild(btnMinus); pill.appendChild(btnPlus);
-    panel.appendChild(pill);
+  // ===== SECTION: Build Prompt Injector Panel =====
 
-    // Zoom row
-    const zoomRow = el('div', { id: 'cpi-zoom-row' });
-    zoomRow.appendChild(el('label', { text: 'Zoom:' }));
-    const zoomInput = el('input', { id: 'cpi-zoom-input', type: 'text', value: String(currentZoom), title: 'Zoom %' });
+  function buildPromptInjectorPanel() {
+    var panel = document.createElement('div');
+    panel.id = 'cpi-panel';
+
+    // --- Feature 1: Zoom Pill Bar ---
+    var zoomPill = document.createElement('div');
+    zoomPill.id = 'cpi-zoom-pill';
+
+    var btnMinus = document.createElement('button');
+    btnMinus.className = 'cpi-zoom-pill-btn';
+    btnMinus.textContent = '\u2212';
+    btnMinus.title = 'Zoom out';
+
+    var btnPlus = document.createElement('button');
+    btnPlus.className = 'cpi-zoom-pill-btn';
+    btnPlus.textContent = '+';
+    btnPlus.title = 'Zoom in';
+
+    zoomPill.appendChild(btnMinus);
+    zoomPill.appendChild(btnPlus);
+    panel.appendChild(zoomPill);
+
+    // Zoom input row below pill
+    var zoomRow = document.createElement('div');
+    zoomRow.id = 'cpi-zoom-row';
+
+    var zoomLabel = document.createElement('label');
+    zoomLabel.textContent = 'Zoom:';
+
+    var zoomInput = document.createElement('input');
+    zoomInput.id = 'cpi-zoom-input';
+    zoomInput.type = 'text';
+    zoomInput.value = String(currentZoom);
+    zoomInput.title = 'Current zoom %';
+
+    var btnSet = document.createElement('button');
+    btnSet.id = 'cpi-zoom-set';
+    btnSet.textContent = 'Set';
+    btnSet.title = 'Save zoom';
+
+    zoomRow.appendChild(zoomLabel);
     zoomRow.appendChild(zoomInput);
-    const zoomSet = el('button', { id: 'cpi-zoom-set', text: 'Set', title: 'Save zoom' });
-    zoomRow.appendChild(zoomSet);
+    zoomRow.appendChild(btnSet);
     panel.appendChild(zoomRow);
 
-    // Header
-    const header = el('div', { id: 'cpi-header' });
-    const label = el('span', { id: 'cpi-header-label', text: 'Prompt Injector', title: 'Show/Hide buttons' });
-    const gearBtn = el('button', { className: 'cpi-gear-btn', text: '\u2699', title: 'Edit prompts' });
-    header.appendChild(label); header.appendChild(gearBtn);
+    // Header bar
+    var header = document.createElement('div');
+    header.id = 'cpi-header';
+
+    var label = document.createElement('span');
+    label.id = 'cpi-header-label';
+    label.textContent = 'Prompt Injector';
+    label.title = 'Show/Hide prompt buttons';
+
+    var gearBtn = document.createElement('button');
+    gearBtn.className = 'cpi-gear-btn';
+    gearBtn.textContent = '\u2699';
+    gearBtn.title = 'Edit prompts';
+
+    header.appendChild(label);
+    header.appendChild(gearBtn);
     panel.appendChild(header);
 
-    // Grid
-    const grid = el('div', { id: 'cpi-grid' });
+    // Grid container for 2-column button layout
+    var grid = document.createElement('div');
+    grid.id = 'cpi-grid';
 
-    function applyZoom(zoom) {
-      panel.style.transform = 'translateY(-50%) scale(' + (zoom / 100) + ')';
-    }
-    function clamp(v) { return Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, v)); }
+    // Toggle grid visibility
+    label.addEventListener('click', function() {
+      grid.classList.toggle('cpi-hidden');
+    });
 
-    label.addEventListener('click', () => grid.classList.toggle('cpi-hidden'));
-    btnMinus.addEventListener('click', () => { currentZoom = clamp(currentZoom - ZOOM_STEP); zoomInput.value = currentZoom; applyZoom(currentZoom); });
-    btnPlus.addEventListener('click', () => { currentZoom = clamp(currentZoom + ZOOM_STEP); zoomInput.value = currentZoom; applyZoom(currentZoom); });
-    zoomSet.addEventListener('click', () => { const v = parseInt(zoomInput.value, 10); if (!isNaN(v)) { currentZoom = clamp(v); zoomInput.value = currentZoom; applyZoom(currentZoom); } lsSet(STORAGE_KEYS.zoomLevel, currentZoom); });
-    zoomInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); zoomSet.click(); } });
+    // Zoom controls
+    btnMinus.addEventListener('click', function() {
+      currentZoom = clampZoom(currentZoom - ZOOM_STEP);
+      zoomInput.value = String(currentZoom);
+      applyZoom(panel, currentZoom);
+    });
 
+    btnPlus.addEventListener('click', function() {
+      currentZoom = clampZoom(currentZoom + ZOOM_STEP);
+      zoomInput.value = String(currentZoom);
+      applyZoom(panel, currentZoom);
+    });
+
+    btnSet.addEventListener('click', function() {
+      var parsed = parseInt(zoomInput.value, 10);
+      if (!isNaN(parsed)) {
+        currentZoom = clampZoom(parsed);
+        zoomInput.value = String(currentZoom);
+        applyZoom(panel, currentZoom);
+      }
+      localStorage.setItem(ZOOM_STORAGE_KEY, String(currentZoom));
+    });
+
+    zoomInput.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        btnSet.click();
+      }
+    });
+
+    // Build grid buttons
     function rebuildGrid() {
       while (grid.firstChild) grid.removeChild(grid.firstChild);
-      activePrompts.forEach(p => {
-        const btn = el('button', { className: 'cpi-btn', title: 'Inject: ' + p.title });
-        btn.appendChild(el('span', { className: 'cpi-btn-num', text: String(p.id) }));
-        btn.appendChild(el('span', { className: 'cpi-btn-title', text: p.title }));
-        btn.addEventListener('click', () => {
-          if (injectPrompt(p.prompt)) { btn.classList.add('cpi-flash'); setTimeout(() => btn.classList.remove('cpi-flash'), 400); }
-          else { btn.style.borderColor = '#ff4444'; setTimeout(() => btn.style.borderColor = '#333', 800); }
+      activePrompts.forEach(function(p) {
+        var btn = document.createElement('button');
+        btn.className = 'cpi-btn';
+        btn.title = 'Click to inject: ' + p.title;
+
+        var numSpan = document.createElement('span');
+        numSpan.className = 'cpi-btn-num';
+        numSpan.textContent = String(p.id);
+
+        var titleSpan = document.createElement('span');
+        titleSpan.className = 'cpi-btn-title';
+        titleSpan.textContent = p.title;
+
+        btn.appendChild(numSpan);
+        btn.appendChild(titleSpan);
+
+        btn.addEventListener('click', function() {
+          var ok = injectPrompt(p.prompt);
+          if (ok) {
+            btn.classList.add('cpi-flash');
+            setTimeout(function() { btn.classList.remove('cpi-flash'); }, 400);
+          } else {
+            btn.style.borderColor = '#ff4444';
+            setTimeout(function() { btn.style.borderColor = '#333'; }, 800);
+          }
         });
         grid.appendChild(btn);
       });
     }
+
     rebuildGrid();
 
-    function onEditorChange() { rebuildGrid(); header.classList.add('cpi-flash'); setTimeout(() => header.classList.remove('cpi-flash'), 400); }
-    gearBtn.addEventListener('click', () => showEditor(onEditorChange, onEditorChange));
+    function onEditorChange() {
+      rebuildGrid();
+      header.classList.add('cpi-flash');
+      setTimeout(function() { header.classList.remove('cpi-flash'); }, 400);
+    }
+
+    gearBtn.addEventListener('click', function() {
+      showEditor(onEditorChange, onEditorChange);
+    });
 
     panel.appendChild(grid);
     document.body.appendChild(panel);
-    applyZoom(currentZoom);
+    applyZoom(panel, currentZoom);
+
+    return panel;
   }
 
-  // ===== PHASE FORGE: Section Builders =====
 
-  // Helper: create a collapsible section
-  function createSection(titleText, icon, locked, id) {
-    const section = el('div', { className: 'pf-section' + (locked ? ' pf-locked' : ''), id: 'pf-section-' + id });
-    const header = el('div', { className: 'pf-section-header' });
-    const arrow = el('span', { className: 'pf-section-arrow', text: '\u25B6' });
-    const lockIcon = el('span', { className: 'pf-section-lock', text: locked ? ' \uD83D\uDD12' : '' });
-    const titleEl = el('span', { className: 'pf-section-title' }, [arrow, document.createTextNode(' ' + icon + ' ' + titleText), lockIcon]);
-    header.appendChild(titleEl);
-    const body = el('div', { className: 'pf-section-body' });
-    header.addEventListener('click', () => {
-      if (section.classList.contains('pf-locked')) return;
-      const expanded = body.classList.toggle('pf-expanded');
-      arrow.textContent = expanded ? '\u25BC' : '\u25B6';
-    });
-    section.appendChild(header);
-    section.appendChild(body);
-    section._body = body;
-    section._lockIcon = lockIcon;
-    section._arrow = arrow;
-    section.unlock = function() { section.classList.remove('pf-locked'); lockIcon.textContent = ''; };
-    section.lock = function() { section.classList.add('pf-locked'); lockIcon.textContent = ' \uD83D\uDD12'; body.classList.remove('pf-expanded'); arrow.textContent = '\u25B6'; };
-    return section;
+  // ===== SECTION: Phase Forge State =====
+
+  var pfState = {
+    panelOpen: storeGetBool(STORAGE_KEYS.pfPanelOpen, false),
+    projectName: storeGet(STORAGE_KEYS.pfProjectName, 'My Project'),
+    repoUrl: storeGet(STORAGE_KEYS.pfRepoUrl, ''),
+    repoSkipped: false,
+    prdMode: storeGet(STORAGE_KEYS.pfPrdMode, 'have-prd'),
+    prd: storeGet(STORAGE_KEYS.pfPrd, ''),
+    prdStep: storeGetInt(STORAGE_KEYS.pfPrdStep, 0),
+    configModel: storeGet(STORAGE_KEYS.pfConfigModel, 'claude-web'),
+    configCustomTokens: storeGetInt(STORAGE_KEYS.pfConfigCustomTk, 200000),
+    configCtxPct: storeGetInt(STORAGE_KEYS.pfConfigCtxPct, 50),
+    configRoles: storeGetJSON(STORAGE_KEYS.pfConfigRoles, ['builder']),
+    configLocked: storeGetBool(STORAGE_KEYS.pfConfigLocked, false),
+    testingScript: storeGet(STORAGE_KEYS.pfTestingScript, ''),
+    architecture: storeGet(STORAGE_KEYS.pfArchitecture, ''),
+    phases: storeGetJSON(STORAGE_KEYS.pfPhases, []),
+    runnerState: storeGetJSON(STORAGE_KEYS.pfRunnerState, {
+      currentPhaseIndex: 0,
+      status: 'idle',
+      autoRetry: true,
+      delayBetweenPhases: 3
+    })
+  };
+
+  // Section unlock logic
+  function isRepoComplete() {
+    return pfState.repoUrl.trim().length > 0 || pfState.repoSkipped;
   }
 
-  // Helper: editable prompt template
-  function createEditablePrompt(key, label) {
-    const wrap = el('div', { style: { marginBottom: '8px' } });
-    const row = el('div', { style: { display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' } });
-    row.appendChild(el('span', { className: 'pf-label', text: label, style: { marginBottom: '0' } }));
-    const editBtn = el('button', { className: 'pf-edit-prompt-btn', text: '\u270F\uFE0F', title: 'Edit prompt template' });
-    row.appendChild(editBtn);
-    wrap.appendChild(row);
-    const editArea = el('div', { style: { display: 'none' } });
-    const textarea = el('textarea', { className: 'pf-textarea', style: { minHeight: '100px' } });
-    textarea.value = getPromptTemplate(key);
-    editArea.appendChild(textarea);
-    const btnRow = el('div', { style: { display: 'flex', gap: '4px', marginTop: '4px' } });
-    const saveBtn = el('button', { className: 'pf-btn pf-btn-sm pf-btn-primary', text: 'Save' });
-    const resetBtn = el('button', { className: 'pf-btn pf-btn-sm', text: 'Reset' });
-    const cancelBtn = el('button', { className: 'pf-btn pf-btn-sm', text: 'Cancel' });
-    btnRow.appendChild(saveBtn); btnRow.appendChild(resetBtn); btnRow.appendChild(cancelBtn);
-    editArea.appendChild(btnRow);
-    wrap.appendChild(editArea);
-    let open = false;
-    editBtn.addEventListener('click', () => { open = !open; editArea.style.display = open ? 'block' : 'none'; textarea.value = getPromptTemplate(key); });
-    saveBtn.addEventListener('click', () => { savePromptTemplate(key, textarea.value); editArea.style.display = 'none'; open = false; });
-    resetBtn.addEventListener('click', () => { resetPromptTemplate(key); textarea.value = DEFAULT_PROMPTS_TEMPLATES[key] || ''; });
-    cancelBtn.addEventListener('click', () => { editArea.style.display = 'none'; open = false; });
-    return wrap;
+  function isPrdCaptured() {
+    return pfState.prd.trim().length > 0;
   }
 
-  // ===== SECTION 1: GitHub Repository =====
-  function buildRepoSection(onComplete) {
-    const section = createSection('Project Repository', '\uD83D\uDCC1', false, 'repo');
-    const body = section._body;
-
-    const helperToggle = el('span', { className: 'pf-helper-toggle', text: "\u25B6 Don't have a repo yet?" });
-    const helperContent = el('div', { style: { display: 'none' } });
-    helperContent.appendChild(el('p', { className: 'pf-helper-text', text: "GitHub is a free website where developers store their code \u2014 think of it like Google Drive for code. It's the industry standard used by virtually every developer and company worldwide. Your code stays private and secure (only you can see it unless you share it). Setting one up takes about 2 minutes." }));
-    const steps = el('div', { className: 'pf-helper-text' });
-    steps.appendChild(el('div', { text: '1. Go to github.com and create a free account (or sign in)' }));
-    steps.appendChild(el('div', { text: '2. Click the "+" button \u2192 "New repository"' }));
-    steps.appendChild(el('div', { text: '3. Give it a name (your project name works)' }));
-    steps.appendChild(el('div', { text: '4. Select "Private" (keeps code visible only to you)' }));
-    steps.appendChild(el('div', { text: '5. Click "Create repository"' }));
-    steps.appendChild(el('div', { text: '6. Copy the URL from your browser and paste below' }));
-    helperContent.appendChild(steps);
-    helperToggle.addEventListener('click', () => {
-      const showing = helperContent.style.display !== 'none';
-      helperContent.style.display = showing ? 'none' : 'block';
-      helperToggle.textContent = (showing ? '\u25B6' : '\u25BC') + " Don't have a repo yet?";
-    });
-    body.appendChild(helperToggle);
-    body.appendChild(helperContent);
-
-    body.appendChild(el('label', { className: 'pf-label', text: 'Repo URL:' }));
-    const repoInput = el('input', { className: 'pf-input', type: 'text', placeholder: 'https://github.com/you/your-repo', value: lsGet(STORAGE_KEYS.pfRepoUrl, '') });
-    body.appendChild(repoInput);
-    body.appendChild(el('div', { className: 'pf-spacer' }));
-
-    const btnRow = el('div', { className: 'pf-row' });
-    const saveBtn = el('button', { className: 'pf-btn pf-btn-primary', text: 'Save Repo' });
-    btnRow.appendChild(saveBtn);
-    body.appendChild(btnRow);
-
-    const skipRow = el('div', { className: 'pf-checkbox-row' });
-    const skipCb = el('input', { type: 'checkbox', id: 'pf-repo-skip' });
-    skipRow.appendChild(skipCb);
-    skipRow.appendChild(el('label', { for: 'pf-repo-skip', text: "Skip \u2014 I'll set this up later" }));
-    body.appendChild(skipRow);
-
-    const status = el('div', { className: 'pf-status pf-status-info', text: '' });
-    body.appendChild(status);
-
-    function updateStatus() {
-      const url = lsGet(STORAGE_KEYS.pfRepoUrl, '');
-      if (url) { status.textContent = '\u2713 Repo saved'; status.className = 'pf-status pf-status-ok'; }
-      else { status.textContent = ''; status.className = 'pf-status pf-status-info'; }
-    }
-    updateStatus();
-
-    saveBtn.addEventListener('click', () => {
-      const url = repoInput.value.trim();
-      if (!url) { status.textContent = 'Please enter a URL'; status.className = 'pf-status pf-status-err'; return; }
-      lsSet(STORAGE_KEYS.pfRepoUrl, url);
-      updateStatus();
-      if (onComplete) onComplete();
-    });
-
-    skipCb.addEventListener('change', () => { if (skipCb.checked && onComplete) onComplete(); });
-
-    // Auto-unlock next if already has repo
-    if (lsGet(STORAGE_KEYS.pfRepoUrl, '')) { setTimeout(() => { if (onComplete) onComplete(); }, 0); }
-
-    return section;
+  function isConfigLocked() {
+    return pfState.configLocked;
   }
 
-  // ===== SECTION 2: PRD Builder =====
-  function buildPrdSection(onComplete) {
-    const section = createSection('PRD Builder', '\uD83D\uDCDD', true, 'prd');
-    const body = section._body;
-
-    // Mode toggle
-    const modeToggle = el('div', { className: 'pf-pill-toggle' });
-    const modes = [
-      { key: 'have-prd', label: 'I Have a PRD' },
-      { key: 'questionnaire', label: 'Questionnaire' },
-      { key: 'rant', label: 'Rant Mode' }
-    ];
-    let currentMode = lsGet(STORAGE_KEYS.pfPrdMode, 'questionnaire');
-    const modeButtons = [];
-    const modeContainers = {};
-
-    modes.forEach(m => {
-      const btn = el('button', { className: 'pf-pill-opt' + (currentMode === m.key ? ' pf-pill-active' : ''), text: m.label });
-      btn.addEventListener('click', () => {
-        currentMode = m.key;
-        lsSet(STORAGE_KEYS.pfPrdMode, currentMode);
-        modeButtons.forEach(b => b.classList.remove('pf-pill-active'));
-        btn.classList.add('pf-pill-active');
-        Object.values(modeContainers).forEach(c => c.style.display = 'none');
-        if (modeContainers[m.key]) modeContainers[m.key].style.display = 'block';
-      });
-      modeButtons.push(btn);
-      modeToggle.appendChild(btn);
-    });
-    body.appendChild(modeToggle);
-
-    // PRD status area (shared)
-    const prdStatus = el('div', { className: 'pf-status pf-status-info' });
-    const prdPreview = el('div', { style: { fontSize: '11px', color: '#999', padding: '6px 8px', background: '#262624', borderRadius: '4px', marginTop: '6px', display: 'none', maxHeight: '100px', overflowY: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word' } });
-    const clearPrdBtn = el('button', { className: 'pf-btn pf-btn-sm', text: 'Clear PRD', style: { display: 'none', marginTop: '6px' } });
-
-    function updatePrdStatus() {
-      const prd = lsGet(STORAGE_KEYS.pfPrd, '');
-      if (prd) {
-        prdStatus.textContent = '\u2713 PRD Captured';
-        prdStatus.className = 'pf-status pf-status-ok';
-        prdPreview.textContent = prd.substring(0, 200) + (prd.length > 200 ? '...' : '');
-        prdPreview.style.display = 'block';
-        clearPrdBtn.style.display = 'inline-block';
-      } else {
-        prdStatus.textContent = '';
-        prdStatus.className = 'pf-status pf-status-info';
-        prdPreview.style.display = 'none';
-        clearPrdBtn.style.display = 'none';
-      }
-    }
-
-    clearPrdBtn.addEventListener('click', () => {
-      localStorage.removeItem(STORAGE_KEYS.pfPrd);
-      lsSet(STORAGE_KEYS.pfPrdStep, '1');
-      updatePrdStatus();
-    });
-
-    function onPrdCaptured(prd) {
-      updatePrdStatus();
-      if (onComplete) onComplete();
-    }
-
-    // === "I Have a PRD" mode ===
-    const havePrdContainer = el('div', { style: { display: currentMode === 'have-prd' ? 'block' : 'none' } });
-    modeContainers['have-prd'] = havePrdContainer;
-    havePrdContainer.appendChild(el('label', { className: 'pf-label', text: 'Paste your PRD here:' }));
-    const prdTextarea = el('textarea', { className: 'pf-textarea', style: { minHeight: '150px' }, placeholder: 'Paste your complete PRD here...' });
-    havePrdContainer.appendChild(prdTextarea);
-    havePrdContainer.appendChild(el('div', { className: 'pf-spacer' }));
-    const savePrdBtn = el('button', { className: 'pf-btn pf-btn-primary', text: 'Save PRD' });
-    savePrdBtn.addEventListener('click', () => {
-      const text = prdTextarea.value.trim();
-      if (!text) return;
-      lsSet(STORAGE_KEYS.pfPrd, text);
-      onPrdCaptured(text);
-    });
-    havePrdContainer.appendChild(savePrdBtn);
-    body.appendChild(havePrdContainer);
-
-    // === Questionnaire mode ===
-    const qContainer = el('div', { style: { display: currentMode === 'questionnaire' ? 'block' : 'none' } });
-    modeContainers['questionnaire'] = qContainer;
-    let qStep = parseInt(lsGet(STORAGE_KEYS.pfPrdStep, '1'), 10) || 1;
-    const qStepLabel = el('div', { className: 'pf-status pf-status-info', text: 'Step ' + qStep });
-    qContainer.appendChild(qStepLabel);
-
-    qContainer.appendChild(createEditablePrompt('questionnaireStart', 'Step 1 prompt'));
-    qContainer.appendChild(createEditablePrompt('questionnaireAnalyze', 'Step 2 prompt'));
-    qContainer.appendChild(createEditablePrompt('followUp', 'Follow-up prompt'));
-
-    const qStartBtn = el('button', { className: 'pf-btn pf-btn-primary', text: qStep === 1 ? 'Start' : 'NEXT', style: { marginTop: '6px' } });
-    qStartBtn.addEventListener('click', () => {
-      let prompt;
-      if (qStep === 1) prompt = getPromptTemplate('questionnaireStart');
-      else if (qStep === 2) prompt = getPromptTemplate('questionnaireAnalyze');
-      else prompt = getPromptTemplate('followUp');
-      injectPrompt(replacePlaceholders(prompt));
-      setTimeout(clickSendButton, 500);
-      qStep++;
-      lsSet(STORAGE_KEYS.pfPrdStep, String(qStep));
-      qStepLabel.textContent = 'Step ' + qStep + ' \u2014 Waiting for response...';
-      qStartBtn.textContent = 'NEXT';
-      startPrdWatcher(onPrdCaptured);
-    });
-    qContainer.appendChild(qStartBtn);
-    body.appendChild(qContainer);
-
-    // === Rant mode ===
-    const rContainer = el('div', { style: { display: currentMode === 'rant' ? 'block' : 'none' } });
-    modeContainers['rant'] = rContainer;
-    let rStep = 1;
-    const rStepLabel = el('div', { className: 'pf-status pf-status-info', text: 'Describe your idea freely' });
-    rContainer.appendChild(rStepLabel);
-
-    rContainer.appendChild(createEditablePrompt('rantStart', 'Rant intro prompt'));
-    rContainer.appendChild(createEditablePrompt('rantOrganize', 'Organization prompt'));
-
-    const rStartBtn = el('button', { className: 'pf-btn pf-btn-primary', text: 'Start', style: { marginTop: '6px' } });
-    rStartBtn.addEventListener('click', () => {
-      let prompt;
-      if (rStep === 1) prompt = getPromptTemplate('rantStart');
-      else if (rStep === 2) prompt = getPromptTemplate('rantOrganize');
-      else prompt = getPromptTemplate('followUp');
-      injectPrompt(replacePlaceholders(prompt));
-      setTimeout(clickSendButton, 500);
-      rStep++;
-      rStepLabel.textContent = rStep === 2 ? 'Done ranting? Click NEXT to organize' : 'Step ' + rStep + ' \u2014 Waiting...';
-      rStartBtn.textContent = 'NEXT';
-      startPrdWatcher(onPrdCaptured);
-    });
-    rContainer.appendChild(rStartBtn);
-    body.appendChild(rContainer);
-
-    // Shared status
-    body.appendChild(el('div', { className: 'pf-divider' }));
-    body.appendChild(prdStatus);
-    body.appendChild(prdPreview);
-    body.appendChild(clearPrdBtn);
-
-    updatePrdStatus();
-    if (lsGet(STORAGE_KEYS.pfPrd, '')) { setTimeout(() => { if (onComplete) onComplete(); }, 0); }
-
-    return section;
+  function hasPhases() {
+    return pfState.phases.length > 0;
   }
 
-  // ===== SECTION 3: Build Configurator =====
-  function buildConfigSection(onComplete) {
-    const section = createSection('Build Configurator', '\u2699\uFE0F', true, 'config');
-    const body = section._body;
-    const isLocked = lsGet(STORAGE_KEYS.pfConfigLocked, '') === 'true';
+  // UI refresh callbacks — set later
+  var refreshCallbacks = [];
+  function triggerRefresh() {
+    refreshCallbacks.forEach(function(fn) { fn(); });
+  }
 
-    // Model selector
-    body.appendChild(el('label', { className: 'pf-label', text: 'AI Model:' }));
-    const modelSelect = el('select', { className: 'pf-input', style: { marginBottom: '8px' } });
-    const savedModel = lsGet(STORAGE_KEYS.pfConfigModel, 'claude-web');
-    Object.entries(MODEL_CONFIGS).forEach(([key, cfg]) => {
-      const opt = el('option', { value: key, text: cfg.name });
-      if (key === savedModel) opt.selected = true;
-      modelSelect.appendChild(opt);
+
+  // ===== SECTION: Placeholder Replacement =====
+
+  function replacePlaceholders(text) {
+    return text
+      .replace(/\{\{TESTING_SCRIPT\}\}/g, pfState.testingScript || '')
+      .replace(/\{\{ARCHITECTURE_DOC\}\}/g, pfState.architecture || '')
+      .replace(/\{\{CAPTURED_PRD\}\}/g, pfState.prd || '')
+      .replace(/\{\{REPO_URL\}\}/g, pfState.repoUrl || '')
+      .replace(/\{\{PHASE_NUMBER\}\}/g, function() {
+        var idx = pfState.runnerState.currentPhaseIndex;
+        if (pfState.phases[idx]) return String(pfState.phases[idx].id);
+        return '?';
+      })
+      .replace(/\{\{TOTAL_PHASES\}\}/g, String(pfState.phases.length));
+  }
+
+
+  // ===== SECTION: Build Phase Prompt =====
+
+  function buildPhasePrompt(phaseIndex) {
+    var phase = pfState.phases[phaseIndex];
+    if (!phase) return '';
+
+    var parts = [];
+
+    // Agent role directives
+    pfState.configRoles.forEach(function(roleKey) {
+      var directive = getRoleDirective(roleKey);
+      if (directive) parts.push(directive);
     });
-    body.appendChild(modelSelect);
-
-    // Custom tokens (shown only when custom selected)
-    const customTokenRow = el('div', { style: { display: savedModel === 'custom' ? 'flex' : 'none', gap: '8px', alignItems: 'center', marginBottom: '8px' } });
-    customTokenRow.appendChild(el('label', { className: 'pf-label', text: 'Max Tokens:', style: { marginBottom: '0' } }));
-    const customTokenInput = el('input', { className: 'pf-input', type: 'number', value: lsGet(STORAGE_KEYS.pfConfigCustomTokens, '200000'), style: { width: '100px' } });
-    customTokenRow.appendChild(customTokenInput);
-    body.appendChild(customTokenRow);
-    modelSelect.addEventListener('change', () => { customTokenRow.style.display = modelSelect.value === 'custom' ? 'flex' : 'none'; updateBudget(); });
-
-    // Context % slider
-    body.appendChild(el('div', { className: 'pf-divider' }));
-    const ctxPct = parseInt(lsGet(STORAGE_KEYS.pfConfigContextPct, '50'), 10) || 50;
-    const ctxLabel = el('label', { className: 'pf-label', text: 'Context Budget: ' + ctxPct + '%' });
-    body.appendChild(ctxLabel);
-    const ctxSlider = el('input', { className: 'pf-range', type: 'range', min: '35', max: '65', step: '5', value: String(ctxPct) });
-    ctxSlider.addEventListener('input', () => { ctxLabel.textContent = 'Context Budget: ' + ctxSlider.value + '%'; updateBudget(); });
-    body.appendChild(ctxSlider);
-
-    // Agent roles
-    body.appendChild(el('div', { className: 'pf-divider' }));
-    body.appendChild(el('label', { className: 'pf-label', text: 'Agent Roles:' }));
-    const savedRoles = lsGetJSON(STORAGE_KEYS.pfConfigRoles, ['builder']);
-    const roleCheckboxes = {};
-    Object.entries(AGENT_ROLES).forEach(([key, role]) => {
-      const row = el('div', { className: 'pf-checkbox-row' });
-      const cb = el('input', { type: 'checkbox', id: 'pf-role-' + key });
-      cb.checked = !role.canDisable || savedRoles.includes(key);
-      cb.disabled = !role.canDisable;
-      cb.addEventListener('change', updateBudget);
-      row.appendChild(cb);
-      row.appendChild(el('label', { for: 'pf-role-' + key, text: role.name + ' (' + Math.round(role.budget * 100) + '%)' }));
-      body.appendChild(row);
-      roleCheckboxes[key] = cb;
-    });
-
-    // Agent role directive templates (editable)
-    body.appendChild(el('div', { className: 'pf-divider' }));
-    body.appendChild(el('label', { className: 'pf-label', text: 'Role Directives:' }));
-    Object.keys(AGENT_ROLES).forEach(key => {
-      body.appendChild(createEditablePrompt('role_' + key, AGENT_ROLES[key].name + ' directive'));
-    });
-
-    // Token budget display
-    const budgetDisplay = el('div', { className: 'pf-budget' });
-    body.appendChild(budgetDisplay);
-
-    function getMaxTokens() {
-      const m = modelSelect.value;
-      if (m === 'custom') return parseInt(customTokenInput.value, 10) || 200000;
-      return MODEL_CONFIGS[m] ? MODEL_CONFIGS[m].maxTokens : 200000;
-    }
-
-    function updateBudget() {
-      const maxT = getMaxTokens();
-      const pct = parseInt(ctxSlider.value, 10) / 100;
-      const available = Math.round(maxT * pct);
-      const overhead = Math.round(available * 0.04);
-      const buffer = Math.round(available * 0.20);
-      let roleCost = 0;
-      const activeRoles = [];
-      Object.entries(AGENT_ROLES).forEach(([key, role]) => {
-        if (roleCheckboxes[key].checked) { roleCost += Math.round(available * role.budget); activeRoles.push(key); }
-      });
-      const free = available - roleCost - overhead - buffer;
-      let lines = 'Available: ' + available.toLocaleString() + ' tokens (' + (maxT/1000) + 'K \u00D7 ' + Math.round(pct*100) + '%)\n';
-      Object.entries(AGENT_ROLES).forEach(([key, role]) => {
-        if (roleCheckboxes[key].checked) lines += '\u251C\u2500\u2500 ' + role.name + ': ' + Math.round(available * role.budget).toLocaleString() + ' (' + Math.round(role.budget*100) + '%)\n';
-      });
-      lines += '\u251C\u2500\u2500 Buffer: ' + buffer.toLocaleString() + ' (20%)\n';
-      lines += '\u251C\u2500\u2500 Overhead: ' + overhead.toLocaleString() + ' (4%)\n';
-      lines += '\u2514\u2500\u2500 Free: ' + free.toLocaleString() + ' (' + Math.round(free/available*100) + '%)';
-      budgetDisplay.textContent = lines;
-      budgetDisplay.className = 'pf-budget' + (free < 0 ? ' pf-budget-warn' : '');
-    }
-    customTokenInput.addEventListener('input', updateBudget);
-    updateBudget();
 
     // Shared assets
-    body.appendChild(el('div', { className: 'pf-divider' }));
-    body.appendChild(el('label', { className: 'pf-label', text: 'Testing Script (injected as {{TESTING_SCRIPT}}):' }));
-    const testTA = el('textarea', { className: 'pf-textarea', placeholder: 'Paste your testing script here...' });
-    testTA.value = lsGet(STORAGE_KEYS.pfTestingScript, '');
-    body.appendChild(testTA);
-    body.appendChild(el('div', { className: 'pf-spacer' }));
-    body.appendChild(el('label', { className: 'pf-label', text: 'Architecture Doc (injected as {{ARCHITECTURE_DOC}}):' }));
-    const archTA = el('textarea', { className: 'pf-textarea', placeholder: 'Paste architecture notes here...' });
-    archTA.value = lsGet(STORAGE_KEYS.pfArchitecture, '');
-    body.appendChild(archTA);
+    if (pfState.testingScript.trim()) {
+      parts.push('=== SHARED ASSETS: TESTING SCRIPT ===');
+      parts.push(pfState.testingScript);
+    }
+    if (pfState.architecture.trim()) {
+      parts.push('=== SHARED ASSETS: ARCHITECTURE DOC ===');
+      parts.push(pfState.architecture);
+    }
 
-    // Lock button
-    body.appendChild(el('div', { className: 'pf-spacer' }));
-    const lockBtn = el('button', { className: 'pf-btn pf-btn-primary', text: isLocked ? 'Edit Config' : 'Lock Configuration', style: { width: '100%' } });
-    lockBtn.addEventListener('click', () => {
-      const nowLocked = lsGet(STORAGE_KEYS.pfConfigLocked, '') === 'true';
-      if (nowLocked) {
-        lsSet(STORAGE_KEYS.pfConfigLocked, 'false');
-        lockBtn.textContent = 'Lock Configuration';
-      } else {
-        // Save everything
-        lsSet(STORAGE_KEYS.pfConfigModel, modelSelect.value);
-        lsSet(STORAGE_KEYS.pfConfigCustomTokens, customTokenInput.value);
-        lsSet(STORAGE_KEYS.pfConfigContextPct, ctxSlider.value);
-        const roles = [];
-        Object.entries(roleCheckboxes).forEach(([k, cb]) => { if (cb.checked) roles.push(k); });
-        lsSetJSON(STORAGE_KEYS.pfConfigRoles, roles);
-        lsSet(STORAGE_KEYS.pfTestingScript, testTA.value);
-        lsSet(STORAGE_KEYS.pfArchitecture, archTA.value);
-        lsSet(STORAGE_KEYS.pfConfigLocked, 'true');
-        lockBtn.textContent = 'Edit Config';
-        if (onComplete) onComplete();
-      }
-    });
-    body.appendChild(lockBtn);
+    // Repo URL
+    if (pfState.repoUrl.trim()) {
+      parts.push('=== PROJECT REPO ===');
+      parts.push(pfState.repoUrl);
+    }
 
-    if (isLocked) { setTimeout(() => { if (onComplete) onComplete(); }, 0); }
-    return section;
+    // Phase content
+    parts.push('=== PHASE ' + phase.id + ' of ' + pfState.phases.length + ' ===');
+    parts.push(phase.title);
+    parts.push('');
+    parts.push(phase.content);
+
+    // Completion instruction
+    parts.push('');
+    parts.push('=== INSTRUCTIONS ===');
+    parts.push('When you are completely finished with this phase, end your response with:');
+    parts.push(PHASE_COMPLETE_MARKER);
+
+    var fullPrompt = parts.join('\n\n');
+    return replacePlaceholders(fullPrompt);
   }
 
-  // ===== SECTION 4: Phase Manager =====
-  function buildPhaseSection(onPhasesReady) {
-    const section = createSection('Phase Manager', '\uD83D\uDCCB', true, 'phases');
-    const body = section._body;
-    let phases = lsGetJSON(STORAGE_KEYS.pfPhases, []);
-    let expandedId = null;
 
-    const phaseListEl = el('div', { style: { marginBottom: '8px' } });
-    const totalLabel = el('div', { className: 'pf-label', text: 'Phases (' + phases.length + ' total)' });
-    body.appendChild(totalLabel);
-    body.appendChild(phaseListEl);
+  // ===== SECTION: Phase Runner Engine =====
 
-    function statusIcon(s) {
-      if (s === 'complete') return '\u2705';
-      if (s === 'running') return '\uD83D\uDD04';
-      if (s === 'failed') return '\u274C';
-      return '\u2B1C';
-    }
+  var runnerEngine = {
+    running: false,
+    paused: false,
+    retryTimeout: null,
+    delayTimeout: null,
 
-    function renderPhases() {
-      while (phaseListEl.firstChild) phaseListEl.removeChild(phaseListEl.firstChild);
-      totalLabel.textContent = 'Phases (' + phases.length + ' total)';
-      phases.forEach((p, idx) => {
-        const item = el('div', { className: 'pf-phase-item' });
-        item.appendChild(el('span', { className: 'pf-phase-icon', text: statusIcon(p.status) }));
-        item.appendChild(el('span', { className: 'pf-phase-title', text: 'Phase ' + p.id + ': ' + p.title }));
-        const editBtn = el('button', { className: 'pf-edit-prompt-btn', text: '\u270F\uFE0F', title: 'Edit phase' });
-        item.appendChild(editBtn);
+    start: function() {
+      if (this.running) return;
+      this.running = true;
+      this.paused = false;
 
-        const contentDiv = el('div', { className: 'pf-phase-content' + (expandedId === p.id ? ' pf-show' : '') });
-        contentDiv.textContent = p.content;
+      pfState.runnerState.status = 'running';
+      storeSetJSON(STORAGE_KEYS.pfRunnerState, pfState.runnerState);
+      triggerRefresh();
 
-        item.addEventListener('click', (e) => {
-          if (e.target === editBtn || editBtn.contains(e.target)) return;
-          expandedId = expandedId === p.id ? null : p.id;
-          renderPhases();
-        });
+      this.runCurrentPhase();
+    },
 
-        editBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          showPhaseEditor(idx);
-        });
-
-        phaseListEl.appendChild(item);
-        phaseListEl.appendChild(contentDiv);
-      });
-      lsSetJSON(STORAGE_KEYS.pfPhases, phases);
-      if (phases.length > 0 && onPhasesReady) onPhasesReady();
-    }
-
-    function showPhaseEditor(idx) {
-      const existing = document.querySelector('.pf-modal-overlay');
-      if (existing) existing.remove();
-      const overlay = el('div', { className: 'pf-modal-overlay' });
-      const modal = el('div', { className: 'pf-modal' });
-      modal.appendChild(el('div', { className: 'pf-modal-title', text: 'Edit Phase ' + phases[idx].id }));
-      modal.appendChild(el('label', { className: 'pf-label', text: 'Title:' }));
-      const titleInput = el('input', { className: 'pf-input', value: phases[idx].title, style: { marginBottom: '8px' } });
-      modal.appendChild(titleInput);
-      modal.appendChild(el('label', { className: 'pf-label', text: 'Content:' }));
-      const contentTA = el('textarea', { className: 'pf-textarea', style: { minHeight: '200px' } });
-      contentTA.value = phases[idx].content;
-      modal.appendChild(contentTA);
-      const btnRow = el('div', { className: 'pf-row', style: { marginTop: '12px' } });
-      const saveBtn = el('button', { className: 'pf-btn pf-btn-primary', text: 'Save' });
-      const cancelBtn = el('button', { className: 'pf-btn', text: 'Cancel' });
-      btnRow.appendChild(saveBtn); btnRow.appendChild(cancelBtn);
-      modal.appendChild(btnRow);
-      overlay.appendChild(modal);
-      overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-      cancelBtn.addEventListener('click', () => overlay.remove());
-      saveBtn.addEventListener('click', () => {
-        phases[idx].title = titleInput.value;
-        phases[idx].content = contentTA.value;
-        overlay.remove();
-        renderPhases();
-      });
-      document.body.appendChild(overlay);
-    }
-
-    // Import button
-    const btnRow = el('div', { className: 'pf-row', style: { flexWrap: 'wrap' } });
-    const importBtn = el('button', { className: 'pf-btn', text: 'Import Phases' });
-    importBtn.addEventListener('click', () => {
-      const existing = document.querySelector('.pf-modal-overlay');
-      if (existing) existing.remove();
-      const overlay = el('div', { className: 'pf-modal-overlay' });
-      const modal = el('div', { className: 'pf-modal' });
-      modal.appendChild(el('div', { className: 'pf-modal-title', text: 'Import Phases' }));
-      modal.appendChild(el('p', { className: 'pf-helper-text', text: 'Paste phases with markers like: --- PHASE 1: Title ---' }));
-      const importTA = el('textarea', { className: 'pf-textarea', style: { minHeight: '250px' }, placeholder: '--- PHASE 1: Project Setup ---\nSet up the project...\n\n--- PHASE 2: Database ---\nCreate models...' });
-      modal.appendChild(importTA);
-      const row = el('div', { className: 'pf-row', style: { marginTop: '12px' } });
-      const parseBtn = el('button', { className: 'pf-btn pf-btn-primary', text: 'Parse & Import' });
-      const cancelBtn = el('button', { className: 'pf-btn', text: 'Cancel' });
-      row.appendChild(parseBtn); row.appendChild(cancelBtn);
-      modal.appendChild(row);
-      overlay.appendChild(modal);
-      overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-      cancelBtn.addEventListener('click', () => overlay.remove());
-      parseBtn.addEventListener('click', () => {
-        const parsed = parsePhasesFromText(importTA.value);
-        if (parsed.length === 0) { importTA.style.borderColor = '#ff4444'; return; }
-        phases = parsed;
-        overlay.remove();
-        renderPhases();
-      });
-      document.body.appendChild(overlay);
-    });
-    btnRow.appendChild(importBtn);
-
-    // Auto-generate button
-    const autoBtn = el('button', { className: 'pf-btn', text: 'Auto-Generate' });
-    autoBtn.addEventListener('click', () => {
-      const prd = lsGet(STORAGE_KEYS.pfPrd, '');
-      if (!prd) { autoBtn.textContent = 'No PRD!'; setTimeout(() => { autoBtn.textContent = 'Auto-Generate'; }, 2000); return; }
-      const prompt = replacePlaceholders(getPromptTemplate('autoSplitPhases'));
-      injectPrompt(prompt);
-      setTimeout(clickSendButton, 500);
-      autoBtn.textContent = 'Waiting...';
-      autoBtn.disabled = true;
-      startPhaseWatcher((parsed) => {
-        phases = parsed;
-        autoBtn.textContent = 'Auto-Generate';
-        autoBtn.disabled = false;
-        renderPhases();
-      });
-    });
-    btnRow.appendChild(autoBtn);
-    body.appendChild(btnRow);
-
-    body.appendChild(createEditablePrompt('autoSplitPhases', 'Auto-split prompt'));
-
-    // Clear all
-    const clearBtn = el('button', { className: 'pf-btn pf-btn-sm', text: 'Clear All Phases', style: { marginTop: '8px' } });
-    clearBtn.addEventListener('click', () => { phases = []; renderPhases(); });
-    body.appendChild(clearBtn);
-
-    renderPhases();
-    return section;
-  }
-
-  // ===== SECTION 5: Phase Runner =====
-  function buildRunnerSection() {
-    const section = createSection('Phase Runner', '\uD83D\uDE80', true, 'runner');
-    const body = section._body;
-
-    const state = lsGetJSON(STORAGE_KEYS.pfRunnerState, {
-      currentPhaseIndex: 0, status: 'idle', autoRetry: true, delayBetweenPhases: 3
-    });
-
-    // Progress bar
-    const progressBar = el('div', { className: 'pf-progress-bar' });
-    const progressFill = el('div', { className: 'pf-progress-fill', style: { width: '0%' } });
-    progressBar.appendChild(progressFill);
-    body.appendChild(progressBar);
-    const progressText = el('div', { className: 'pf-progress-text', text: 'Ready' });
-    body.appendChild(progressText);
-    const statusText = el('div', { className: 'pf-status pf-status-info', text: 'Status: ' + state.status });
-    body.appendChild(statusText);
-
-    // Controls
-    const controls = el('div', { className: 'pf-row', style: { marginTop: '8px' } });
-    const startBtn = el('button', { className: 'pf-btn pf-btn-primary', text: '\u25B6 Start' });
-    const pauseBtn = el('button', { className: 'pf-btn', text: '\u23F8 Pause' });
-    const stopBtn = el('button', { className: 'pf-btn', text: '\u23F9 Stop' });
-    controls.appendChild(startBtn); controls.appendChild(pauseBtn); controls.appendChild(stopBtn);
-    body.appendChild(controls);
-
-    // Settings
-    body.appendChild(el('div', { className: 'pf-spacer' }));
-    const retryRow = el('div', { className: 'pf-checkbox-row' });
-    const retryCb = el('input', { type: 'checkbox', id: 'pf-auto-retry' });
-    retryCb.checked = state.autoRetry !== false;
-    retryRow.appendChild(retryCb);
-    retryRow.appendChild(el('label', { for: 'pf-auto-retry', text: 'Auto-retry on error' }));
-    body.appendChild(retryRow);
-
-    const delayRow = el('div', { className: 'pf-row' });
-    delayRow.appendChild(el('label', { className: 'pf-label', text: 'Delay between phases:', style: { marginBottom: '0' } }));
-    const delayInput = el('input', { className: 'pf-input', type: 'number', value: String(state.delayBetweenPhases || 3), style: { width: '50px' }, min: '1', max: '60' });
-    delayRow.appendChild(delayInput);
-    delayRow.appendChild(el('span', { className: 'pf-label', text: 'sec', style: { marginBottom: '0' } }));
-    body.appendChild(delayRow);
-
-    function saveState() {
-      lsSetJSON(STORAGE_KEYS.pfRunnerState, state);
-    }
-
-    function updateUI() {
-      const phases = lsGetJSON(STORAGE_KEYS.pfPhases, []);
-      const completed = phases.filter(p => p.status === 'complete').length;
-      const total = phases.length;
-      const pct = total > 0 ? Math.round(completed / total * 100) : 0;
-      progressFill.style.width = pct + '%';
-      progressText.textContent = completed + '/' + total + ' (' + pct + '%)';
-      statusText.textContent = 'Status: ' + state.status;
-      statusText.className = 'pf-status ' + (state.status === 'complete' ? 'pf-status-ok' : state.status === 'running' ? 'pf-status-warn' : 'pf-status-info');
-    }
-
-    function buildPhasePrompt(phase, phaseIdx, phases) {
-      let prompt = '';
-      // Agent directives
-      const roles = lsGetJSON(STORAGE_KEYS.pfConfigRoles, ['builder']);
-      roles.forEach(r => {
-        const customKey = 'role_' + r;
-        const directive = getPromptTemplate(customKey) || ROLE_DIRECTIVES[r] || '';
-        if (directive) prompt += replacePlaceholders(directive) + '\n\n';
-      });
-      // Shared assets
-      const testing = lsGet(STORAGE_KEYS.pfTestingScript, '');
-      const arch = lsGet(STORAGE_KEYS.pfArchitecture, '');
-      const repo = lsGet(STORAGE_KEYS.pfRepoUrl, '');
-      if (testing || arch || repo) {
-        prompt += '=== SHARED ASSETS ===\n';
-        if (testing) prompt += 'Testing Script:\n' + testing + '\n\n';
-        if (arch) prompt += 'Architecture Doc:\n' + arch + '\n\n';
-        if (repo) prompt += 'Repository: ' + repo + '\n\n';
+    pause: function() {
+      this.paused = true;
+      pfState.runnerState.status = 'paused';
+      storeSetJSON(STORAGE_KEYS.pfRunnerState, pfState.runnerState);
+      completionEngine.stop();
+      if (this.delayTimeout) {
+        clearTimeout(this.delayTimeout);
+        this.delayTimeout = null;
       }
-      // Phase content
-      prompt += '=== PHASE ' + (phaseIdx + 1) + ' of ' + phases.length + ' ===\n';
-      prompt += phase.title + '\n\n';
-      prompt += phase.content + '\n\n';
-      prompt += '=== INSTRUCTIONS ===\nWhen you are completely finished with this phase, end your response with:\n=== PHASE COMPLETE ===';
-      return prompt;
-    }
+      if (this.retryTimeout) {
+        clearTimeout(this.retryTimeout);
+        this.retryTimeout = null;
+      }
+      triggerRefresh();
+    },
 
-    function runPhase() {
-      const phases = lsGetJSON(STORAGE_KEYS.pfPhases, []);
-      if (state.currentPhaseIndex >= phases.length) {
-        state.status = 'complete';
-        saveState();
-        updateUI();
-        statusText.textContent = 'Build Complete!';
-        statusText.className = 'pf-status pf-status-ok';
+    stop: function() {
+      this.running = false;
+      this.paused = false;
+      pfState.runnerState.status = 'stopped';
+      storeSetJSON(STORAGE_KEYS.pfRunnerState, pfState.runnerState);
+      completionEngine.stop();
+      if (this.delayTimeout) {
+        clearTimeout(this.delayTimeout);
+        this.delayTimeout = null;
+      }
+      if (this.retryTimeout) {
+        clearTimeout(this.retryTimeout);
+        this.retryTimeout = null;
+      }
+      triggerRefresh();
+    },
+
+    resume: function() {
+      if (!this.paused) return;
+      this.paused = false;
+      this.running = true;
+      pfState.runnerState.status = 'running';
+      storeSetJSON(STORAGE_KEYS.pfRunnerState, pfState.runnerState);
+      triggerRefresh();
+      this.runCurrentPhase();
+    },
+
+    runCurrentPhase: function() {
+      if (!this.running || this.paused) return;
+
+      var idx = pfState.runnerState.currentPhaseIndex;
+      if (idx >= pfState.phases.length) {
+        this.onAllComplete();
         return;
       }
-      if (state.status !== 'running') return;
 
-      const phase = phases[state.currentPhaseIndex];
+      var phase = pfState.phases[idx];
       phase.status = 'running';
-      lsSetJSON(STORAGE_KEYS.pfPhases, phases);
-      updateUI();
+      storeSetJSON(STORAGE_KEYS.pfPhases, pfState.phases);
+      triggerRefresh();
 
-      const prompt = buildPhasePrompt(phase, state.currentPhaseIndex, phases);
-      injectPrompt(prompt);
-      setTimeout(() => {
-        clickSendButton();
-        startCompletionWatcher(() => {
-          const response = getLastResponseText();
-          const phases2 = lsGetJSON(STORAGE_KEYS.pfPhases, []);
-          if (response.includes('=== PHASE COMPLETE ===')) {
-            phases2[state.currentPhaseIndex].status = 'complete';
-            lsSetJSON(STORAGE_KEYS.pfPhases, phases2);
-            state.currentPhaseIndex++;
-            saveState();
-            updateUI();
-            if (state.status === 'paused') {
-              statusText.textContent = 'Paused after Phase ' + state.currentPhaseIndex;
-              return;
-            }
-            if (state.currentPhaseIndex >= phases2.length) {
-              state.status = 'complete';
-              saveState();
-              updateUI();
-              return;
-            }
-            const delay = parseInt(delayInput.value, 10) || 3;
-            statusText.textContent = 'Waiting ' + delay + 's before next phase...';
-            setTimeout(runPhase, delay * 1000);
-          } else {
-            // Check for errors
-            const hasError = /rate limit|try again|something went wrong|error/i.test(response);
-            if (hasError && retryCb.checked) {
-              phases2[state.currentPhaseIndex].status = 'pending';
-              lsSetJSON(STORAGE_KEYS.pfPhases, phases2);
-              statusText.textContent = 'Error detected. Retrying in 30s...';
-              statusText.className = 'pf-status pf-status-err';
-              setTimeout(runPhase, 30000);
-            } else if (hasError) {
-              phases2[state.currentPhaseIndex].status = 'failed';
-              lsSetJSON(STORAGE_KEYS.pfPhases, phases2);
-              state.status = 'stopped';
-              saveState();
-              updateUI();
-              statusText.textContent = 'Phase failed. Stopped.';
-              statusText.className = 'pf-status pf-status-err';
-            } else {
-              // No marker but no error — treat as complete anyway
-              phases2[state.currentPhaseIndex].status = 'complete';
-              lsSetJSON(STORAGE_KEYS.pfPhases, phases2);
-              state.currentPhaseIndex++;
-              saveState();
-              updateUI();
-              if (state.currentPhaseIndex < phases2.length && state.status === 'running') {
-                const delay = parseInt(delayInput.value, 10) || 3;
-                setTimeout(runPhase, delay * 1000);
-              }
-            }
-          }
+      var prompt = buildPhasePrompt(idx);
+      var injected = injectPrompt(prompt);
+
+      if (!injected) {
+        phase.status = 'failed';
+        storeSetJSON(STORAGE_KEYS.pfPhases, pfState.phases);
+        pfState.runnerState.status = 'stopped';
+        storeSetJSON(STORAGE_KEYS.pfRunnerState, pfState.runnerState);
+        this.running = false;
+        triggerRefresh();
+        return;
+      }
+
+      // Wait 500ms then click send
+      var self = this;
+      setTimeout(function() {
+        var sent = clickSendButton();
+        if (!sent) {
+          // Try again after 1s
+          setTimeout(function() {
+            clickSendButton();
+          }, 1000);
+        }
+
+        // Start watching for completion
+        completionEngine.start(function() {
+          self.onPhaseResponseComplete();
         });
       }, 500);
+    },
+
+    onPhaseResponseComplete: function() {
+      if (!this.running || this.paused) return;
+
+      var idx = pfState.runnerState.currentPhaseIndex;
+      var phase = pfState.phases[idx];
+
+      // Check chat for phase complete marker or errors
+      var chatText = document.body.innerText || '';
+      var lastChunkStart = Math.max(0, chatText.length - 5000);
+      var recentText = chatText.substring(lastChunkStart);
+
+      if (recentText.indexOf(PHASE_COMPLETE_MARKER) !== -1) {
+        phase.status = 'complete';
+        storeSetJSON(STORAGE_KEYS.pfPhases, pfState.phases);
+
+        pfState.runnerState.currentPhaseIndex = idx + 1;
+        storeSetJSON(STORAGE_KEYS.pfRunnerState, pfState.runnerState);
+        triggerRefresh();
+
+        if (pfState.runnerState.currentPhaseIndex >= pfState.phases.length) {
+          this.onAllComplete();
+        } else if (this.paused) {
+          // Stay paused
+        } else {
+          // Delay then next phase
+          var self = this;
+          var delay = (pfState.runnerState.delayBetweenPhases || 3) * 1000;
+          this.delayTimeout = setTimeout(function() {
+            self.runCurrentPhase();
+          }, delay);
+        }
+      } else {
+        // Check for error indicators
+        var lowerRecent = recentText.toLowerCase();
+        var hasError = lowerRecent.indexOf('rate limit') !== -1 ||
+                       lowerRecent.indexOf('try again') !== -1 ||
+                       lowerRecent.indexOf('something went wrong') !== -1 ||
+                       lowerRecent.indexOf('error') !== -1;
+
+        if (hasError && pfState.runnerState.autoRetry) {
+          // Auto-retry after 30 seconds
+          phase.status = 'failed';
+          storeSetJSON(STORAGE_KEYS.pfPhases, pfState.phases);
+          triggerRefresh();
+
+          var self = this;
+          this.retryTimeout = setTimeout(function() {
+            phase.status = 'pending';
+            storeSetJSON(STORAGE_KEYS.pfPhases, pfState.phases);
+            triggerRefresh();
+            self.runCurrentPhase();
+          }, 30000);
+        } else if (hasError) {
+          phase.status = 'failed';
+          storeSetJSON(STORAGE_KEYS.pfPhases, pfState.phases);
+          pfState.runnerState.status = 'stopped';
+          storeSetJSON(STORAGE_KEYS.pfRunnerState, pfState.runnerState);
+          this.running = false;
+          triggerRefresh();
+        } else {
+          // No explicit marker but no error — mark complete anyway
+          phase.status = 'complete';
+          storeSetJSON(STORAGE_KEYS.pfPhases, pfState.phases);
+
+          pfState.runnerState.currentPhaseIndex = idx + 1;
+          storeSetJSON(STORAGE_KEYS.pfRunnerState, pfState.runnerState);
+          triggerRefresh();
+
+          if (pfState.runnerState.currentPhaseIndex >= pfState.phases.length) {
+            this.onAllComplete();
+          } else if (!this.paused) {
+            var self = this;
+            var delay = (pfState.runnerState.delayBetweenPhases || 3) * 1000;
+            this.delayTimeout = setTimeout(function() {
+              self.runCurrentPhase();
+            }, delay);
+          }
+        }
+      }
+    },
+
+    onAllComplete: function() {
+      this.running = false;
+      pfState.runnerState.status = 'complete';
+      storeSetJSON(STORAGE_KEYS.pfRunnerState, pfState.runnerState);
+      triggerRefresh();
     }
+  };
 
-    startBtn.addEventListener('click', () => {
-      state.status = 'running';
-      state.autoRetry = retryCb.checked;
-      state.delayBetweenPhases = parseInt(delayInput.value, 10) || 3;
-      saveState();
-      updateUI();
-      runPhase();
-    });
 
-    pauseBtn.addEventListener('click', () => {
-      if (state.status === 'running') {
-        state.status = 'paused';
-        saveState();
-        updateUI();
+  // ===== SECTION: DOM Helper Utilities =====
+
+  function createEl(tag, attrs, children) {
+    var el = document.createElement(tag);
+    if (attrs) {
+      Object.keys(attrs).forEach(function(key) {
+        if (key === 'className') {
+          el.className = attrs[key];
+        } else if (key === 'textContent') {
+          el.textContent = attrs[key];
+        } else if (key.indexOf('on') === 0) {
+          el.addEventListener(key.substring(2).toLowerCase(), attrs[key]);
+        } else {
+          el.setAttribute(key, attrs[key]);
+        }
+      });
+    }
+    if (children) {
+      if (!Array.isArray(children)) children = [children];
+      children.forEach(function(child) {
+        if (typeof child === 'string') {
+          el.appendChild(document.createTextNode(child));
+        } else if (child) {
+          el.appendChild(child);
+        }
+      });
+    }
+    return el;
+  }
+
+  // Create a pencil edit button with inline template editor
+  function createTemplateEditor(templateKey, labelText) {
+    var container = document.createElement('div');
+
+    var row = document.createElement('div');
+    row.className = 'pf-step-label-row';
+
+    var lbl = document.createElement('span');
+    lbl.className = 'pf-step-label';
+    lbl.textContent = labelText;
+
+    var pencilBtn = document.createElement('button');
+    pencilBtn.className = 'pf-pencil-btn';
+    pencilBtn.textContent = '\u270F';
+    pencilBtn.title = 'Edit prompt template';
+
+    row.appendChild(lbl);
+    row.appendChild(pencilBtn);
+    container.appendChild(row);
+
+    var editorDiv = document.createElement('div');
+    editorDiv.className = 'pf-template-editor';
+
+    var ta = document.createElement('textarea');
+    ta.value = getPromptTemplate(templateKey);
+
+    var btnRow = document.createElement('div');
+    btnRow.className = 'pf-btn-row';
+
+    var saveBtn = document.createElement('button');
+    saveBtn.className = 'pf-btn pf-btn-small';
+    saveBtn.textContent = 'Save';
+
+    var resetBtn = document.createElement('button');
+    resetBtn.className = 'pf-btn pf-btn-secondary pf-btn-small';
+    resetBtn.textContent = 'Reset to Default';
+
+    btnRow.appendChild(saveBtn);
+    btnRow.appendChild(resetBtn);
+
+    editorDiv.appendChild(ta);
+    editorDiv.appendChild(btnRow);
+    container.appendChild(editorDiv);
+
+    pencilBtn.addEventListener('click', function() {
+      editorDiv.classList.toggle('pf-visible');
+      if (editorDiv.classList.contains('pf-visible')) {
+        ta.value = getPromptTemplate(templateKey);
       }
     });
 
-    stopBtn.addEventListener('click', () => {
-      state.status = 'stopped';
-      stopCompletionWatcher();
-      saveState();
-      updateUI();
+    saveBtn.addEventListener('click', function() {
+      savePromptTemplate(templateKey, ta.value);
+      editorDiv.classList.remove('pf-visible');
     });
 
-    // Resume check
-    if (state.status === 'running') {
-      statusText.textContent = 'Runner was interrupted. Click Start to resume from Phase ' + (state.currentPhaseIndex + 1);
-      state.status = 'paused';
-      saveState();
-    }
+    resetBtn.addEventListener('click', function() {
+      resetPromptTemplate(templateKey);
+      ta.value = DEFAULT_PROMPT_TEMPLATES[templateKey] || '';
+      editorDiv.classList.remove('pf-visible');
+    });
 
-    updateUI();
-    return section;
+    return container;
   }
 
-  // ===== PHASE FORGE PANEL ASSEMBLY =====
+  // Create a role directive editor
+  function createRoleDirectiveEditor(roleKey, labelText) {
+    var container = document.createElement('div');
+
+    var row = document.createElement('div');
+    row.className = 'pf-step-label-row';
+
+    var lbl = document.createElement('span');
+    lbl.className = 'pf-step-label';
+    lbl.textContent = labelText;
+
+    var pencilBtn = document.createElement('button');
+    pencilBtn.className = 'pf-pencil-btn';
+    pencilBtn.textContent = '\u270F';
+    pencilBtn.title = 'Edit role directive';
+
+    row.appendChild(lbl);
+    row.appendChild(pencilBtn);
+    container.appendChild(row);
+
+    var editorDiv = document.createElement('div');
+    editorDiv.className = 'pf-template-editor';
+
+    var ta = document.createElement('textarea');
+    ta.value = getRoleDirective(roleKey);
+    ta.style.minHeight = '120px';
+
+    var btnRow = document.createElement('div');
+    btnRow.className = 'pf-btn-row';
+
+    var saveBtn = document.createElement('button');
+    saveBtn.className = 'pf-btn pf-btn-small';
+    saveBtn.textContent = 'Save';
+
+    var resetBtn = document.createElement('button');
+    resetBtn.className = 'pf-btn pf-btn-secondary pf-btn-small';
+    resetBtn.textContent = 'Reset to Default';
+
+    btnRow.appendChild(saveBtn);
+    btnRow.appendChild(resetBtn);
+
+    editorDiv.appendChild(ta);
+    editorDiv.appendChild(btnRow);
+    container.appendChild(editorDiv);
+
+    pencilBtn.addEventListener('click', function() {
+      editorDiv.classList.toggle('pf-visible');
+      if (editorDiv.classList.contains('pf-visible')) {
+        ta.value = getRoleDirective(roleKey);
+      }
+    });
+
+    saveBtn.addEventListener('click', function() {
+      saveRoleDirective(roleKey, ta.value);
+      editorDiv.classList.remove('pf-visible');
+    });
+
+    resetBtn.addEventListener('click', function() {
+      resetRoleDirective(roleKey);
+      ta.value = ROLE_DIRECTIVES[roleKey] || '';
+      editorDiv.classList.remove('pf-visible');
+    });
+
+    return container;
+  }
+
+
+  // ===== SECTION: Phase Forge Panel UI =====
+
   function buildPhaseForgePanel() {
-    // Toggle button
-    const toggleBtn = el('button', { id: 'pf-toggle-btn', text: 'PF', title: 'Toggle Phase Forge panel' });
+    // --- Toggle Button ---
+    var toggleBtn = document.createElement('button');
+    toggleBtn.id = 'pf-toggle-btn';
+    toggleBtn.textContent = 'PF';
+    toggleBtn.title = 'Toggle Phase Forge panel';
+    if (pfState.panelOpen) toggleBtn.classList.add('pf-open');
     document.body.appendChild(toggleBtn);
 
-    // Panel
-    const panel = el('div', { id: 'pf-panel' });
-    const isOpen = lsGet(STORAGE_KEYS.pfPanelOpen, 'false') === 'true';
-    if (isOpen) panel.classList.add('pf-open');
+    // --- Panel ---
+    var panel = document.createElement('div');
+    panel.id = 'pf-panel';
+    if (!pfState.panelOpen) panel.classList.add('pf-closed');
 
-    // Header
-    const header = el('div', { className: 'pf-header' });
-    const headerLeft = el('div');
-    headerLeft.appendChild(el('div', { className: 'pf-header-title', html: '\u26A1 PHASE FORGE' }));
-    const headerStatus = el('div', { className: 'pf-header-status', text: 'Status: Ready' });
-    headerLeft.appendChild(headerStatus);
-    header.appendChild(headerLeft);
+    // --- Panel Header ---
+    var headerDiv = document.createElement('div');
+    headerDiv.className = 'pf-panel-header';
 
-    // Project name input
-    const projectInput = el('input', { className: 'pf-project-input', type: 'text', placeholder: 'Project name', value: lsGet(STORAGE_KEYS.pfProjectName, '') });
-    projectInput.addEventListener('change', () => lsSet(STORAGE_KEYS.pfProjectName, projectInput.value));
-    header.appendChild(projectInput);
-    panel.appendChild(header);
+    var headerRow = document.createElement('div');
+    headerRow.className = 'pf-panel-header-row';
 
-    // Build sections with unlock chain
-    let configSection, phaseSection, runnerSection;
+    var titleSpan = document.createElement('span');
+    titleSpan.className = 'pf-panel-title';
+    titleSpan.textContent = '\u26A1 PHASE FORGE';
 
-    const repoSection = buildRepoSection(() => { prdSection.unlock(); });
-    const prdSection = buildPrdSection(() => { configSection.unlock(); });
-    configSection = buildConfigSection(() => { phaseSection.unlock(); });
-    phaseSection = buildPhaseSection(() => { runnerSection.unlock(); });
-    runnerSection = buildRunnerSection();
+    var projectInput = document.createElement('input');
+    projectInput.className = 'pf-project-input';
+    projectInput.type = 'text';
+    projectInput.value = pfState.projectName;
+    projectInput.placeholder = 'Project name';
+    projectInput.addEventListener('change', function() {
+      pfState.projectName = projectInput.value;
+      storeSet(STORAGE_KEYS.pfProjectName, pfState.projectName);
+    });
 
-    panel.appendChild(repoSection);
-    panel.appendChild(prdSection);
-    panel.appendChild(configSection);
-    panel.appendChild(phaseSection);
-    panel.appendChild(runnerSection);
+    headerRow.appendChild(titleSpan);
+    headerRow.appendChild(projectInput);
+    headerDiv.appendChild(headerRow);
+
+    var statusLine = document.createElement('div');
+    statusLine.className = 'pf-status-text';
+    statusLine.textContent = 'Status: Ready';
+
+    function updateGlobalStatus() {
+      var rs = pfState.runnerState;
+      if (rs.status === 'running') {
+        statusLine.textContent = 'Status: Running Phase ' + (rs.currentPhaseIndex + 1) + '...';
+        statusLine.style.color = '#fbbf24';
+      } else if (rs.status === 'paused') {
+        statusLine.textContent = 'Status: Paused at Phase ' + (rs.currentPhaseIndex + 1);
+        statusLine.style.color = '#fbbf24';
+      } else if (rs.status === 'complete') {
+        statusLine.textContent = 'Status: Build Complete!';
+        statusLine.style.color = '#4ade80';
+      } else if (rs.status === 'stopped') {
+        statusLine.textContent = 'Status: Stopped';
+        statusLine.style.color = '#ff4444';
+      } else {
+        statusLine.textContent = 'Status: Ready';
+        statusLine.style.color = '#999';
+      }
+    }
+    updateGlobalStatus();
+
+    headerDiv.appendChild(statusLine);
+    panel.appendChild(headerDiv);
+
+    // Toggle panel
+    toggleBtn.addEventListener('click', function() {
+      pfState.panelOpen = !pfState.panelOpen;
+      storeSet(STORAGE_KEYS.pfPanelOpen, String(pfState.panelOpen));
+      if (pfState.panelOpen) {
+        panel.classList.remove('pf-closed');
+        toggleBtn.classList.add('pf-open');
+      } else {
+        panel.classList.add('pf-closed');
+        toggleBtn.classList.remove('pf-open');
+      }
+    });
+
+
+    // ===== Section Builder Helper =====
+    function buildSection(icon, title, isLocked, buildBody) {
+      var section = document.createElement('div');
+      section.className = 'pf-section';
+      if (isLocked) section.classList.add('pf-locked');
+
+      var sectionHeader = document.createElement('div');
+      sectionHeader.className = 'pf-section-header';
+
+      var arrow = document.createElement('span');
+      arrow.className = 'pf-section-arrow';
+      arrow.textContent = '\u25B6';
+
+      var iconSpan = document.createElement('span');
+      iconSpan.className = 'pf-section-icon';
+      iconSpan.textContent = icon;
+
+      var titleSpan = document.createElement('span');
+      titleSpan.className = 'pf-section-title';
+      titleSpan.textContent = title;
+
+      var lockSpan = document.createElement('span');
+      lockSpan.className = 'pf-section-lock';
+      if (isLocked) lockSpan.textContent = '\uD83D\uDD12';
+
+      sectionHeader.appendChild(arrow);
+      sectionHeader.appendChild(iconSpan);
+      sectionHeader.appendChild(titleSpan);
+      sectionHeader.appendChild(lockSpan);
+
+      var body = document.createElement('div');
+      body.className = 'pf-section-body';
+
+      sectionHeader.addEventListener('click', function() {
+        if (section.classList.contains('pf-locked')) return;
+        section.classList.toggle('pf-expanded');
+        arrow.textContent = section.classList.contains('pf-expanded') ? '\u25BC' : '\u25B6';
+      });
+
+      section.appendChild(sectionHeader);
+      section.appendChild(body);
+
+      // Let buildBody populate the body
+      buildBody(body);
+
+      return {
+        el: section,
+        setLocked: function(locked) {
+          if (locked) {
+            section.classList.add('pf-locked');
+            section.classList.remove('pf-expanded');
+            arrow.textContent = '\u25B6';
+            lockSpan.textContent = '\uD83D\uDD12';
+          } else {
+            section.classList.remove('pf-locked');
+            lockSpan.textContent = '';
+          }
+        },
+        body: body,
+        expand: function() {
+          if (!section.classList.contains('pf-locked')) {
+            section.classList.add('pf-expanded');
+            arrow.textContent = '\u25BC';
+          }
+        },
+        collapse: function() {
+          section.classList.remove('pf-expanded');
+          arrow.textContent = '\u25B6';
+        }
+      };
+    }
+
+
+    // ===== Section 1: GitHub Repository =====
+    var repoStatusEl = null;
+
+    var sec1 = buildSection('\uD83D\uDCC1', 'Project Repository', false, function(body) {
+
+      // Collapsible helper
+      var helperToggle = document.createElement('span');
+      helperToggle.className = 'pf-helper-toggle';
+      helperToggle.textContent = "Don't have a repo yet? \u25BC";
+      body.appendChild(helperToggle);
+
+      var helperContent = document.createElement('div');
+      helperContent.className = 'pf-helper-content';
+
+      var lines = [
+        'GitHub is a free website where developers store their code \u2014 think of it like Google Drive for code.',
+        'It\'s the industry standard used by virtually every developer and company worldwide.',
+        'Your code stays private and secure (only you can see it unless you share it).',
+        'Setting one up takes 2 minutes.',
+        '',
+        '1. Go to github.com \u2014 create a free account (or sign in)',
+        '2. Click "+" \u2192 "New repository"',
+        '3. Name it (your project name)',
+        '4. Select "Private"',
+        '5. Click "Create repository"',
+        '6. Copy the URL and paste below'
+      ];
+
+      lines.forEach(function(line) {
+        var p = document.createElement('div');
+        p.textContent = line;
+        if (line === '') p.style.height = '6px';
+        helperContent.appendChild(p);
+      });
+
+      body.appendChild(helperContent);
+
+      var helperVisible = false;
+      helperToggle.addEventListener('click', function() {
+        helperVisible = !helperVisible;
+        if (helperVisible) {
+          helperContent.classList.add('pf-visible');
+          helperToggle.textContent = "Don't have a repo yet? \u25B2";
+        } else {
+          helperContent.classList.remove('pf-visible');
+          helperToggle.textContent = "Don't have a repo yet? \u25BC";
+        }
+      });
+
+      // Repo URL input
+      var urlLabel = document.createElement('label');
+      urlLabel.className = 'pf-label';
+      urlLabel.textContent = 'Repo URL:';
+      body.appendChild(urlLabel);
+
+      var urlInput = document.createElement('input');
+      urlInput.className = 'pf-input';
+      urlInput.type = 'text';
+      urlInput.value = pfState.repoUrl;
+      urlInput.placeholder = 'https://github.com/user/repo';
+      body.appendChild(urlInput);
+
+      var repoBtnRow = document.createElement('div');
+      repoBtnRow.className = 'pf-btn-row';
+
+      var saveRepoBtn = document.createElement('button');
+      saveRepoBtn.className = 'pf-btn';
+      saveRepoBtn.textContent = 'Save Repo';
+
+      repoBtnRow.appendChild(saveRepoBtn);
+      body.appendChild(repoBtnRow);
+
+      // Skip checkbox
+      var skipRow = document.createElement('label');
+      skipRow.className = 'pf-checkbox-row';
+
+      var skipCheck = document.createElement('input');
+      skipCheck.type = 'checkbox';
+      skipCheck.checked = pfState.repoSkipped;
+
+      var skipText = document.createTextNode("Skip \u2014 I'll set this up later");
+
+      skipRow.appendChild(skipCheck);
+      skipRow.appendChild(skipText);
+      body.appendChild(skipRow);
+
+      // Status
+      repoStatusEl = document.createElement('div');
+      repoStatusEl.className = 'pf-status';
+      body.appendChild(repoStatusEl);
+
+      function updateRepoStatus() {
+        if (pfState.repoUrl.trim().length > 0) {
+          repoStatusEl.textContent = '\u2713 Repo saved';
+          repoStatusEl.className = 'pf-status pf-status-green';
+        } else if (pfState.repoSkipped) {
+          repoStatusEl.textContent = 'Skipped';
+          repoStatusEl.className = 'pf-status pf-status-gray';
+        } else {
+          repoStatusEl.textContent = 'Not set';
+          repoStatusEl.className = 'pf-status pf-status-gray';
+        }
+      }
+      updateRepoStatus();
+
+      saveRepoBtn.addEventListener('click', function() {
+        var url = urlInput.value.trim();
+        if (url.length === 0) {
+          repoStatusEl.textContent = 'Please enter a URL';
+          repoStatusEl.className = 'pf-status pf-status-red';
+          return;
+        }
+        pfState.repoUrl = url;
+        storeSet(STORAGE_KEYS.pfRepoUrl, pfState.repoUrl);
+        updateRepoStatus();
+        updateSectionLocks();
+      });
+
+      skipCheck.addEventListener('change', function() {
+        pfState.repoSkipped = skipCheck.checked;
+        updateRepoStatus();
+        updateSectionLocks();
+      });
+    });
+
+    panel.appendChild(sec1.el);
+
+
+    // ===== Section 2: PRD Builder =====
+    var prdStatusEl = null;
+    var prdPreviewEl = null;
+    var prdNextBtn = null;
+    var prdBodyRef = null;
+
+    var sec2 = buildSection('\uD83D\uDCDD', 'PRD Builder', !isRepoComplete(), function(body) {
+      prdBodyRef = body;
+
+      // Three-way pill toggle
+      var pillToggle = document.createElement('div');
+      pillToggle.className = 'pf-pill-toggle';
+
+      var modes = [
+        { key: 'have-prd', label: 'I Have a PRD' },
+        { key: 'questionnaire', label: 'Questionnaire' },
+        { key: 'rant', label: 'Rant Mode' }
+      ];
+
+      var pillBtns = [];
+      modes.forEach(function(mode) {
+        var btn = document.createElement('button');
+        btn.className = 'pf-pill-option';
+        if (pfState.prdMode === mode.key) btn.classList.add('pf-active');
+        btn.textContent = mode.label;
+        btn.addEventListener('click', function() {
+          pfState.prdMode = mode.key;
+          storeSet(STORAGE_KEYS.pfPrdMode, mode.key);
+          pillBtns.forEach(function(b) { b.classList.remove('pf-active'); });
+          btn.classList.add('pf-active');
+          renderPrdMode();
+        });
+        pillToggle.appendChild(btn);
+        pillBtns.push(btn);
+      });
+
+      body.appendChild(pillToggle);
+
+      // Dynamic content container
+      var prdContent = document.createElement('div');
+      prdContent.id = 'pf-prd-content';
+      body.appendChild(prdContent);
+
+      // Status
+      prdStatusEl = document.createElement('div');
+      prdStatusEl.className = 'pf-status';
+      body.appendChild(prdStatusEl);
+
+      // Preview
+      prdPreviewEl = document.createElement('div');
+      prdPreviewEl.style.display = 'none';
+      body.appendChild(prdPreviewEl);
+
+      function updatePrdStatus() {
+        if (isPrdCaptured()) {
+          prdStatusEl.textContent = 'PRD Captured \u2713';
+          prdStatusEl.className = 'pf-status pf-status-green';
+
+          // Show preview
+          prdPreviewEl.style.display = 'block';
+          while (prdPreviewEl.firstChild) prdPreviewEl.removeChild(prdPreviewEl.firstChild);
+
+          var preview = document.createElement('div');
+          preview.className = 'pf-preview';
+          var previewText = pfState.prd.substring(0, 200);
+          if (pfState.prd.length > 200) previewText += '...';
+          preview.textContent = previewText;
+
+          var fade = document.createElement('div');
+          fade.className = 'pf-preview-fade';
+          preview.appendChild(fade);
+
+          preview.addEventListener('click', function() {
+            preview.classList.toggle('pf-expanded');
+            if (preview.classList.contains('pf-expanded')) {
+              preview.textContent = pfState.prd;
+            } else {
+              preview.textContent = previewText;
+              var fade2 = document.createElement('div');
+              fade2.className = 'pf-preview-fade';
+              preview.appendChild(fade2);
+            }
+          });
+
+          prdPreviewEl.appendChild(preview);
+
+          var clearBtn = document.createElement('button');
+          clearBtn.className = 'pf-btn pf-btn-danger pf-btn-small';
+          clearBtn.textContent = 'Clear PRD';
+          clearBtn.style.marginTop = '6px';
+          clearBtn.addEventListener('click', function() {
+            pfState.prd = '';
+            storeSet(STORAGE_KEYS.pfPrd, '');
+            pfState.prdStep = 0;
+            storeSet(STORAGE_KEYS.pfPrdStep, '0');
+            updatePrdStatus();
+            renderPrdMode();
+            updateSectionLocks();
+          });
+          prdPreviewEl.appendChild(clearBtn);
+        } else {
+          prdStatusEl.className = 'pf-status pf-status-gray';
+          prdPreviewEl.style.display = 'none';
+          // Status text set by mode renderer
+        }
+      }
+
+      function renderPrdMode() {
+        while (prdContent.firstChild) prdContent.removeChild(prdContent.firstChild);
+
+        if (pfState.prdMode === 'have-prd') {
+          renderHavePrd(prdContent, updatePrdStatus);
+        } else if (pfState.prdMode === 'questionnaire') {
+          renderQuestionnaire(prdContent, updatePrdStatus);
+        } else if (pfState.prdMode === 'rant') {
+          renderRant(prdContent, updatePrdStatus);
+        }
+
+        updatePrdStatus();
+      }
+
+      // "I Have a PRD" mode
+      function renderHavePrd(container, refreshStatus) {
+        if (isPrdCaptured()) {
+          prdStatusEl.textContent = 'PRD Captured \u2713';
+          return;
+        }
+
+        var lbl = document.createElement('label');
+        lbl.className = 'pf-label';
+        lbl.textContent = 'Paste your PRD here:';
+        container.appendChild(lbl);
+
+        var ta = document.createElement('textarea');
+        ta.className = 'pf-textarea';
+        ta.placeholder = 'Paste your complete PRD...';
+        ta.style.minHeight = '120px';
+        container.appendChild(ta);
+
+        var btnRow = document.createElement('div');
+        btnRow.className = 'pf-btn-row';
+
+        var saveBtn = document.createElement('button');
+        saveBtn.className = 'pf-btn';
+        saveBtn.textContent = 'Save PRD';
+        saveBtn.addEventListener('click', function() {
+          var text = ta.value.trim();
+          if (text.length === 0) {
+            prdStatusEl.textContent = 'Please paste your PRD first';
+            prdStatusEl.className = 'pf-status pf-status-red';
+            return;
+          }
+          pfState.prd = text;
+          storeSet(STORAGE_KEYS.pfPrd, text);
+          refreshStatus();
+          renderPrdMode();
+          updateSectionLocks();
+        });
+
+        btnRow.appendChild(saveBtn);
+        container.appendChild(btnRow);
+
+        prdStatusEl.textContent = 'Paste your PRD and click Save';
+      }
+
+      // Questionnaire mode
+      function renderQuestionnaire(container, refreshStatus) {
+        if (isPrdCaptured()) {
+          prdStatusEl.textContent = 'PRD Captured \u2713';
+          return;
+        }
+
+        var step = pfState.prdStep;
+
+        if (step === 0) {
+          // Step 0: show Start button
+          container.appendChild(createTemplateEditor('questionnaire-step1', 'Step 1 Prompt'));
+
+          var startBtn = document.createElement('button');
+          startBtn.className = 'pf-btn';
+          startBtn.textContent = 'Start Questionnaire';
+          startBtn.style.marginTop = '8px';
+          startBtn.addEventListener('click', function() {
+            var prompt = getPromptTemplate('questionnaire-step1');
+            injectPrompt(prompt);
+            setTimeout(function() { clickSendButton(); }, 500);
+            pfState.prdStep = 1;
+            storeSet(STORAGE_KEYS.pfPrdStep, '1');
+            startPrdCapture(function(captured) {
+              pfState.prd = captured;
+              refreshStatus();
+              renderPrdMode();
+              updateSectionLocks();
+            });
+            renderPrdMode();
+          });
+          container.appendChild(startBtn);
+
+          prdStatusEl.textContent = 'Click Start to begin';
+        } else if (step === 1) {
+          // Step 1: user fills out, clicks NEXT
+          container.appendChild(createTemplateEditor('questionnaire-step2', 'Step 2 Prompt'));
+
+          prdStatusEl.textContent = 'Step 1 \u2014 Fill out questionnaire';
+
+          var nextBtn = document.createElement('button');
+          nextBtn.className = 'pf-btn';
+          nextBtn.textContent = 'NEXT \u2192';
+          nextBtn.style.marginTop = '8px';
+          nextBtn.addEventListener('click', function() {
+            var prompt = getPromptTemplate('questionnaire-step2');
+            injectPrompt(prompt);
+            setTimeout(function() { clickSendButton(); }, 500);
+            pfState.prdStep = 2;
+            storeSet(STORAGE_KEYS.pfPrdStep, '2');
+            renderPrdMode();
+          });
+          container.appendChild(nextBtn);
+        } else {
+          // Step 2+: show follow-up NEXT button
+          container.appendChild(createTemplateEditor('questionnaire-followup', 'Follow-up Prompt'));
+
+          prdStatusEl.textContent = 'Step ' + step + ' \u2014 Analyzing completeness';
+
+          var nextBtn2 = document.createElement('button');
+          nextBtn2.className = 'pf-btn';
+          nextBtn2.textContent = 'NEXT \u2192';
+          nextBtn2.style.marginTop = '8px';
+          nextBtn2.addEventListener('click', function() {
+            var prompt = getPromptTemplate('questionnaire-followup');
+            injectPrompt(prompt);
+            setTimeout(function() { clickSendButton(); }, 500);
+            pfState.prdStep = step + 1;
+            storeSet(STORAGE_KEYS.pfPrdStep, String(pfState.prdStep));
+            renderPrdMode();
+          });
+          container.appendChild(nextBtn2);
+        }
+      }
+
+      // Rant mode
+      function renderRant(container, refreshStatus) {
+        if (isPrdCaptured()) {
+          prdStatusEl.textContent = 'PRD Captured \u2713';
+          return;
+        }
+
+        var step = pfState.prdStep;
+
+        if (step === 0) {
+          container.appendChild(createTemplateEditor('rant-step1', 'Step 1 Prompt'));
+
+          var startBtn = document.createElement('button');
+          startBtn.className = 'pf-btn';
+          startBtn.textContent = 'Start Rant Mode';
+          startBtn.style.marginTop = '8px';
+          startBtn.addEventListener('click', function() {
+            var prompt = getPromptTemplate('rant-step1');
+            injectPrompt(prompt);
+            setTimeout(function() { clickSendButton(); }, 500);
+            pfState.prdStep = 1;
+            storeSet(STORAGE_KEYS.pfPrdStep, '1');
+            startPrdCapture(function(captured) {
+              pfState.prd = captured;
+              refreshStatus();
+              renderPrdMode();
+              updateSectionLocks();
+            });
+            renderPrdMode();
+          });
+          container.appendChild(startBtn);
+
+          prdStatusEl.textContent = 'Click Start to begin';
+        } else if (step === 1) {
+          container.appendChild(createTemplateEditor('rant-step2', 'Step 2 Prompt'));
+
+          prdStatusEl.textContent = 'Step 1 \u2014 Describe your idea freely';
+
+          var nextBtn = document.createElement('button');
+          nextBtn.className = 'pf-btn';
+          nextBtn.textContent = 'NEXT \u2192';
+          nextBtn.style.marginTop = '8px';
+          nextBtn.addEventListener('click', function() {
+            var prompt = getPromptTemplate('rant-step2');
+            injectPrompt(prompt);
+            setTimeout(function() { clickSendButton(); }, 500);
+            pfState.prdStep = 2;
+            storeSet(STORAGE_KEYS.pfPrdStep, '2');
+            renderPrdMode();
+          });
+          container.appendChild(nextBtn);
+        } else {
+          // Same follow-up loop as questionnaire
+          container.appendChild(createTemplateEditor('questionnaire-followup', 'Follow-up Prompt'));
+
+          prdStatusEl.textContent = 'Step ' + step + ' \u2014 Analyzing completeness';
+
+          var nextBtn2 = document.createElement('button');
+          nextBtn2.className = 'pf-btn';
+          nextBtn2.textContent = 'NEXT \u2192';
+          nextBtn2.style.marginTop = '8px';
+          nextBtn2.addEventListener('click', function() {
+            var prompt = getPromptTemplate('questionnaire-followup');
+            injectPrompt(prompt);
+            setTimeout(function() { clickSendButton(); }, 500);
+            pfState.prdStep = step + 1;
+            storeSet(STORAGE_KEYS.pfPrdStep, String(pfState.prdStep));
+            renderPrdMode();
+          });
+          container.appendChild(nextBtn2);
+        }
+      }
+
+      renderPrdMode();
+    });
+
+    panel.appendChild(sec2.el);
+
+
+    // ===== Section 3: Build Configurator =====
+    var budgetDisplayEl = null;
+    var configBodyRef = null;
+    var configLockedOverlay = null;
+
+    var sec3 = buildSection('\u2699\uFE0F', 'Build Configurator', !isPrdCaptured(), function(body) {
+      configBodyRef = body;
+
+      // Model selector
+      var modelLabel = document.createElement('label');
+      modelLabel.className = 'pf-label';
+      modelLabel.textContent = 'AI Model:';
+      body.appendChild(modelLabel);
+
+      var modelSelect = document.createElement('select');
+      modelSelect.className = 'pf-select';
+      Object.keys(MODEL_CONFIGS).forEach(function(key) {
+        var opt = document.createElement('option');
+        opt.value = key;
+        opt.textContent = MODEL_CONFIGS[key].name;
+        if (pfState.configModel === key) opt.selected = true;
+        modelSelect.appendChild(opt);
+      });
+      body.appendChild(modelSelect);
+
+      // Custom tokens input (only visible when "custom" selected)
+      var customTokenDiv = document.createElement('div');
+      customTokenDiv.style.display = pfState.configModel === 'custom' ? 'block' : 'none';
+
+      var customTokenLabel = document.createElement('label');
+      customTokenLabel.className = 'pf-label';
+      customTokenLabel.textContent = 'Custom token limit:';
+      customTokenDiv.appendChild(customTokenLabel);
+
+      var customTokenInput = document.createElement('input');
+      customTokenInput.className = 'pf-input';
+      customTokenInput.type = 'number';
+      customTokenInput.value = String(pfState.configCustomTokens);
+      customTokenInput.min = '1000';
+      customTokenInput.step = '1000';
+      customTokenDiv.appendChild(customTokenInput);
+      body.appendChild(customTokenDiv);
+
+      modelSelect.addEventListener('change', function() {
+        pfState.configModel = modelSelect.value;
+        storeSet(STORAGE_KEYS.pfConfigModel, pfState.configModel);
+        customTokenDiv.style.display = pfState.configModel === 'custom' ? 'block' : 'none';
+        updateBudget();
+      });
+
+      customTokenInput.addEventListener('change', function() {
+        pfState.configCustomTokens = parseInt(customTokenInput.value, 10) || 200000;
+        storeSet(STORAGE_KEYS.pfConfigCustomTk, String(pfState.configCustomTokens));
+        updateBudget();
+      });
+
+      // Context window percentage slider
+      var ctxDiv = document.createElement('div');
+      ctxDiv.style.marginTop = '10px';
+
+      var ctxLabel = document.createElement('label');
+      ctxLabel.className = 'pf-label';
+      ctxLabel.textContent = 'Context Budget: ' + pfState.configCtxPct + '%';
+      ctxDiv.appendChild(ctxLabel);
+
+      var ctxSlider = document.createElement('input');
+      ctxSlider.className = 'pf-range';
+      ctxSlider.type = 'range';
+      ctxSlider.min = '35';
+      ctxSlider.max = '65';
+      ctxSlider.step = '5';
+      ctxSlider.value = String(pfState.configCtxPct);
+      ctxDiv.appendChild(ctxSlider);
+
+      var ctxRange = document.createElement('div');
+      ctxRange.className = 'pf-range-label';
+      var ctxMin = document.createElement('span');
+      ctxMin.textContent = '35%';
+      var ctxMax = document.createElement('span');
+      ctxMax.textContent = '65%';
+      ctxRange.appendChild(ctxMin);
+      ctxRange.appendChild(ctxMax);
+      ctxDiv.appendChild(ctxRange);
+
+      body.appendChild(ctxDiv);
+
+      ctxSlider.addEventListener('input', function() {
+        pfState.configCtxPct = parseInt(ctxSlider.value, 10);
+        storeSet(STORAGE_KEYS.pfConfigCtxPct, String(pfState.configCtxPct));
+        ctxLabel.textContent = 'Context Budget: ' + pfState.configCtxPct + '%';
+        updateBudget();
+      });
+
+      // Agent role toggles
+      var rolesLabel = document.createElement('label');
+      rolesLabel.className = 'pf-label';
+      rolesLabel.textContent = 'Agent Roles:';
+      rolesLabel.style.marginTop = '10px';
+      body.appendChild(rolesLabel);
+
+      var roleCheckboxes = {};
+
+      Object.keys(AGENT_ROLES).forEach(function(key) {
+        var role = AGENT_ROLES[key];
+        var row = document.createElement('div');
+        row.className = 'pf-role-row';
+
+        var cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = pfState.configRoles.indexOf(key) !== -1;
+        if (!role.canDisable) {
+          cb.checked = true;
+          cb.disabled = true;
+        }
+        cb.style.accentColor = '#da7757';
+
+        var lbl = document.createElement('span');
+        lbl.className = 'pf-role-label';
+        lbl.textContent = role.label;
+
+        var pct = document.createElement('span');
+        pct.className = 'pf-role-pct';
+        pct.textContent = Math.round(role.budgetPct * 100) + '%';
+
+        row.appendChild(cb);
+        row.appendChild(lbl);
+        row.appendChild(pct);
+
+        // Add pencil editor for this role
+        var directiveEditor = createRoleDirectiveEditor(key, '');
+        directiveEditor.style.display = 'inline';
+        directiveEditor.style.marginLeft = '4px';
+        // Extract just the pencil button
+        row.appendChild(directiveEditor.querySelector('.pf-pencil-btn'));
+
+        body.appendChild(row);
+
+        // Append the template editor below the row
+        var editorBlock = directiveEditor.querySelector('.pf-template-editor');
+        if (editorBlock) {
+          body.appendChild(editorBlock);
+        }
+
+        roleCheckboxes[key] = cb;
+
+        cb.addEventListener('change', function() {
+          if (!role.canDisable) {
+            cb.checked = true;
+            return;
+          }
+          if (cb.checked) {
+            if (pfState.configRoles.indexOf(key) === -1) {
+              pfState.configRoles.push(key);
+            }
+          } else {
+            pfState.configRoles = pfState.configRoles.filter(function(r) { return r !== key; });
+          }
+          storeSetJSON(STORAGE_KEYS.pfConfigRoles, pfState.configRoles);
+          updateBudget();
+        });
+      });
+
+      // Token budget display
+      budgetDisplayEl = document.createElement('div');
+      budgetDisplayEl.className = 'pf-budget';
+      body.appendChild(budgetDisplayEl);
+
+      function updateBudget() {
+        var modelKey = pfState.configModel;
+        var maxTokens = MODEL_CONFIGS[modelKey] ? MODEL_CONFIGS[modelKey].maxTokens : 200000;
+        if (modelKey === 'custom') {
+          maxTokens = pfState.configCustomTokens || 200000;
+        }
+
+        var available = Math.floor(maxTokens * (pfState.configCtxPct / 100));
+        var overhead = Math.floor(available * OVERHEAD_PCT);
+        var buffer = Math.floor(available * BUFFER_PCT);
+
+        var roleCost = 0;
+        var roleLines = [];
+
+        pfState.configRoles.forEach(function(rKey) {
+          var role = AGENT_ROLES[rKey];
+          if (role) {
+            var cost = Math.floor(available * role.budgetPct);
+            roleCost += cost;
+            roleLines.push({ label: role.label, value: cost, pct: Math.round(role.budgetPct * 100) });
+          }
+        });
+
+        var free = available - roleCost - overhead - buffer;
+
+        // Build display
+        while (budgetDisplayEl.firstChild) budgetDisplayEl.removeChild(budgetDisplayEl.firstChild);
+
+        var headerLine = document.createElement('div');
+        headerLine.className = 'pf-budget-line';
+        var hl = document.createElement('span');
+        hl.textContent = 'Available:';
+        hl.style.fontWeight = '600';
+        var hv = document.createElement('span');
+        hv.textContent = available.toLocaleString() + ' tokens (' + (maxTokens / 1000) + 'K \u00D7 ' + pfState.configCtxPct + '%)';
+        hv.style.fontWeight = '600';
+        headerLine.appendChild(hl);
+        headerLine.appendChild(hv);
+        budgetDisplayEl.appendChild(headerLine);
+
+        roleLines.forEach(function(rl) {
+          var line = document.createElement('div');
+          line.className = 'pf-budget-line';
+          var ll = document.createElement('span');
+          ll.className = 'pf-budget-line-label';
+          ll.textContent = '\u251C\u2500\u2500 ' + rl.label + ':';
+          var lv = document.createElement('span');
+          lv.className = 'pf-budget-line-value';
+          lv.textContent = rl.value.toLocaleString() + ' (' + rl.pct + '%)';
+          line.appendChild(ll);
+          line.appendChild(lv);
+          budgetDisplayEl.appendChild(line);
+        });
+
+        var bufferLine = document.createElement('div');
+        bufferLine.className = 'pf-budget-line';
+        var bl = document.createElement('span');
+        bl.className = 'pf-budget-line-label';
+        bl.textContent = '\u251C\u2500\u2500 Buffer:';
+        var bv = document.createElement('span');
+        bv.className = 'pf-budget-line-value';
+        bv.textContent = buffer.toLocaleString() + ' (20%)';
+        bufferLine.appendChild(bl);
+        bufferLine.appendChild(bv);
+        budgetDisplayEl.appendChild(bufferLine);
+
+        var ohLine = document.createElement('div');
+        ohLine.className = 'pf-budget-line';
+        var ol = document.createElement('span');
+        ol.className = 'pf-budget-line-label';
+        ol.textContent = '\u251C\u2500\u2500 Overhead:';
+        var ov = document.createElement('span');
+        ov.className = 'pf-budget-line-value';
+        ov.textContent = overhead.toLocaleString() + ' (4%)';
+        ohLine.appendChild(ol);
+        ohLine.appendChild(ov);
+        budgetDisplayEl.appendChild(ohLine);
+
+        var freeLine = document.createElement('div');
+        freeLine.className = 'pf-budget-line';
+        var fl = document.createElement('span');
+        fl.className = 'pf-budget-line-label';
+        fl.textContent = '\u2514\u2500\u2500 Free:';
+        var fv = document.createElement('span');
+        fv.className = free >= 0 ? 'pf-budget-line-free' : 'pf-budget-line-warn';
+        fv.textContent = free.toLocaleString() + ' (' + Math.round((free / available) * 100) + '%)';
+        freeLine.appendChild(fl);
+        freeLine.appendChild(fv);
+        budgetDisplayEl.appendChild(freeLine);
+      }
+
+      updateBudget();
+
+      // Shared assets
+      var divider = document.createElement('div');
+      divider.className = 'pf-divider';
+      body.appendChild(divider);
+
+      var tsLabel = document.createElement('label');
+      tsLabel.className = 'pf-label';
+      tsLabel.textContent = 'Testing Script (injected as {{TESTING_SCRIPT}}):';
+      body.appendChild(tsLabel);
+
+      var tsTextarea = document.createElement('textarea');
+      tsTextarea.className = 'pf-textarea';
+      tsTextarea.value = pfState.testingScript;
+      tsTextarea.placeholder = 'Paste your testing script here. It will be appended to every phase prompt.';
+      tsTextarea.addEventListener('change', function() {
+        pfState.testingScript = tsTextarea.value;
+        storeSet(STORAGE_KEYS.pfTestingScript, pfState.testingScript);
+      });
+      body.appendChild(tsTextarea);
+
+      var archLabel = document.createElement('label');
+      archLabel.className = 'pf-label';
+      archLabel.textContent = 'Architecture Doc (injected as {{ARCHITECTURE_DOC}}):';
+      body.appendChild(archLabel);
+
+      var archTextarea = document.createElement('textarea');
+      archTextarea.className = 'pf-textarea';
+      archTextarea.value = pfState.architecture;
+      archTextarea.placeholder = 'This grows each phase. Paste initial architecture notes here.';
+      archTextarea.addEventListener('change', function() {
+        pfState.architecture = archTextarea.value;
+        storeSet(STORAGE_KEYS.pfArchitecture, pfState.architecture);
+      });
+      body.appendChild(archTextarea);
+
+      // Lock configuration button
+      var divider2 = document.createElement('div');
+      divider2.className = 'pf-divider';
+      body.appendChild(divider2);
+
+      var lockConfigBtn = document.createElement('button');
+      lockConfigBtn.className = 'pf-btn';
+      lockConfigBtn.textContent = pfState.configLocked ? 'Edit Config' : 'Lock Configuration';
+
+      var editConfigBtn = document.createElement('button');
+      editConfigBtn.className = 'pf-btn pf-btn-secondary';
+      editConfigBtn.textContent = 'Edit Config';
+      editConfigBtn.style.display = pfState.configLocked ? 'inline-flex' : 'none';
+
+      // Config locked overlay
+      configLockedOverlay = document.createElement('div');
+      configLockedOverlay.id = 'pf-config-locked-overlay';
+
+      function applyConfigLock() {
+        if (pfState.configLocked) {
+          // Gray out form elements
+          var inputs = body.querySelectorAll('select, input, textarea, .pf-range');
+          inputs.forEach(function(inp) {
+            if (inp !== editConfigBtn && inp !== lockConfigBtn) {
+              inp.disabled = true;
+              inp.style.opacity = '0.5';
+            }
+          });
+          lockConfigBtn.style.display = 'none';
+          editConfigBtn.style.display = 'inline-flex';
+        } else {
+          var inputs = body.querySelectorAll('select, input, textarea, .pf-range');
+          inputs.forEach(function(inp) {
+            if (inp !== editConfigBtn && inp !== lockConfigBtn) {
+              // Restore disabled state only for builder checkbox
+              if (inp.type === 'checkbox' && inp.disabled) {
+                // Keep builder always disabled
+              } else {
+                inp.disabled = false;
+                inp.style.opacity = '1';
+              }
+            }
+          });
+          lockConfigBtn.style.display = 'inline-flex';
+          editConfigBtn.style.display = 'none';
+        }
+      }
+
+      lockConfigBtn.addEventListener('click', function() {
+        pfState.configLocked = true;
+        storeSet(STORAGE_KEYS.pfConfigLocked, 'true');
+        applyConfigLock();
+        updateSectionLocks();
+      });
+
+      editConfigBtn.addEventListener('click', function() {
+        pfState.configLocked = false;
+        storeSet(STORAGE_KEYS.pfConfigLocked, 'false');
+        applyConfigLock();
+        updateSectionLocks();
+      });
+
+      var btnRow = document.createElement('div');
+      btnRow.className = 'pf-btn-row';
+      btnRow.appendChild(lockConfigBtn);
+      btnRow.appendChild(editConfigBtn);
+      body.appendChild(btnRow);
+
+      // Apply initial lock state
+      if (pfState.configLocked) {
+        // Defer to allow DOM to be ready
+        setTimeout(applyConfigLock, 50);
+      }
+    });
+
+    panel.appendChild(sec3.el);
+
+
+    // ===== Section 4: Phase Manager =====
+    var phaseListEl = null;
+    var phaseCountEl = null;
+
+    var sec4 = buildSection('\uD83D\uDCCB', 'Phase Manager', !isConfigLocked(), function(body) {
+
+      // Phase count header
+      phaseCountEl = document.createElement('div');
+      phaseCountEl.style.fontSize = '12px';
+      phaseCountEl.style.fontWeight = '600';
+      phaseCountEl.style.marginBottom = '8px';
+      body.appendChild(phaseCountEl);
+
+      // Phase list container
+      phaseListEl = document.createElement('div');
+      phaseListEl.id = 'pf-phase-list';
+      body.appendChild(phaseListEl);
+
+      function renderPhaseList() {
+        while (phaseListEl.firstChild) phaseListEl.removeChild(phaseListEl.firstChild);
+        phaseCountEl.textContent = 'Phases (' + pfState.phases.length + ' total)';
+
+        pfState.phases.forEach(function(phase, idx) {
+          var item = document.createElement('div');
+          item.className = 'pf-phase-item';
+
+          var header = document.createElement('div');
+          header.className = 'pf-phase-header';
+
+          var statusIcon = document.createElement('span');
+          statusIcon.className = 'pf-phase-status-icon';
+          if (phase.status === 'complete') {
+            statusIcon.textContent = '\u2705';
+          } else if (phase.status === 'running') {
+            statusIcon.textContent = '\uD83D\uDD04';
+          } else if (phase.status === 'failed') {
+            statusIcon.textContent = '\u274C';
+          } else {
+            statusIcon.textContent = '\u2B1C';
+          }
+
+          var titleSpan = document.createElement('span');
+          titleSpan.className = 'pf-phase-title';
+          titleSpan.textContent = 'Phase ' + phase.id + ': ' + phase.title;
+
+          var counter = document.createElement('span');
+          counter.className = 'pf-phase-counter';
+          counter.textContent = '[' + (idx + 1) + '/' + pfState.phases.length + ']';
+
+          var editBtn = document.createElement('button');
+          editBtn.className = 'pf-phase-edit-btn';
+          editBtn.textContent = '\u270F';
+          editBtn.title = 'Edit phase';
+
+          header.appendChild(statusIcon);
+          header.appendChild(titleSpan);
+          header.appendChild(counter);
+          header.appendChild(editBtn);
+
+          var bodyDiv = document.createElement('div');
+          bodyDiv.className = 'pf-phase-body';
+          bodyDiv.textContent = phase.content;
+
+          header.addEventListener('click', function(e) {
+            if (e.target === editBtn) return;
+            item.classList.toggle('pf-expanded');
+          });
+
+          editBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            showPhaseEditModal(idx, renderPhaseList);
+          });
+
+          item.appendChild(header);
+          item.appendChild(bodyDiv);
+          phaseListEl.appendChild(item);
+        });
+      }
+
+      renderPhaseList();
+
+      // Buttons
+      var btnRow = document.createElement('div');
+      btnRow.className = 'pf-btn-row';
+
+      var importBtn = document.createElement('button');
+      importBtn.className = 'pf-btn pf-btn-secondary';
+      importBtn.textContent = 'Import Phases';
+      importBtn.addEventListener('click', function() {
+        showPhaseImportModal(function(phases) {
+          pfState.phases = phases;
+          storeSetJSON(STORAGE_KEYS.pfPhases, pfState.phases);
+          renderPhaseList();
+          updateSectionLocks();
+          triggerRefresh();
+        });
+      });
+
+      var autoGenBtn = document.createElement('button');
+      autoGenBtn.className = 'pf-btn';
+      autoGenBtn.textContent = 'Auto-Generate';
+      autoGenBtn.addEventListener('click', function() {
+        if (!isPrdCaptured()) {
+          alert('Capture a PRD first before auto-generating phases.');
+          return;
+        }
+        var prompt = getPromptTemplate('auto-generate-phases');
+        prompt = replacePlaceholders(prompt);
+        injectPrompt(prompt);
+        setTimeout(function() { clickSendButton(); }, 500);
+
+        // Start watching for phase markers in response
+        startPhaseCapture(function(phases) {
+          pfState.phases = phases;
+          storeSetJSON(STORAGE_KEYS.pfPhases, pfState.phases);
+          renderPhaseList();
+          updateSectionLocks();
+          triggerRefresh();
+        });
+      });
+
+      btnRow.appendChild(importBtn);
+      btnRow.appendChild(autoGenBtn);
+      body.appendChild(btnRow);
+
+      // Auto-generate template editor
+      body.appendChild(createTemplateEditor('auto-generate-phases', 'Auto-Generate Prompt'));
+
+      // Clear all phases button
+      var clearRow = document.createElement('div');
+      clearRow.className = 'pf-btn-row';
+      clearRow.style.marginTop = '4px';
+
+      var clearBtn = document.createElement('button');
+      clearBtn.className = 'pf-btn pf-btn-danger pf-btn-small';
+      clearBtn.textContent = 'Clear All Phases';
+      clearBtn.addEventListener('click', function() {
+        if (!confirm('Clear all phases? This cannot be undone.')) return;
+        pfState.phases = [];
+        storeSetJSON(STORAGE_KEYS.pfPhases, pfState.phases);
+        pfState.runnerState.currentPhaseIndex = 0;
+        pfState.runnerState.status = 'idle';
+        storeSetJSON(STORAGE_KEYS.pfRunnerState, pfState.runnerState);
+        renderPhaseList();
+        updateSectionLocks();
+        triggerRefresh();
+      });
+
+      clearRow.appendChild(clearBtn);
+      body.appendChild(clearRow);
+
+      // Register refresh callback to re-render phases
+      refreshCallbacks.push(function() {
+        renderPhaseList();
+      });
+    });
+
+    panel.appendChild(sec4.el);
+
+
+    // ===== Section 5: Phase Runner =====
+    var runnerStatusEl = null;
+    var progressFillEl = null;
+    var progressTextEl = null;
+    var startBtnRef = null;
+    var pauseBtnRef = null;
+    var stopBtnRef = null;
+
+    var sec5 = buildSection('\u25B6\uFE0F', 'Phase Runner', !hasPhases(), function(body) {
+
+      // Progress bar
+      var progressBar = document.createElement('div');
+      progressBar.className = 'pf-progress-bar';
+
+      progressFillEl = document.createElement('div');
+      progressFillEl.className = 'pf-progress-fill';
+
+      progressTextEl = document.createElement('div');
+      progressTextEl.className = 'pf-progress-text';
+
+      progressBar.appendChild(progressFillEl);
+      progressBar.appendChild(progressTextEl);
+      body.appendChild(progressBar);
+
+      // Status text
+      runnerStatusEl = document.createElement('div');
+      runnerStatusEl.className = 'pf-status';
+      runnerStatusEl.style.marginTop = '6px';
+      body.appendChild(runnerStatusEl);
+
+      // Control buttons
+      var controls = document.createElement('div');
+      controls.className = 'pf-runner-controls';
+
+      startBtnRef = document.createElement('button');
+      startBtnRef.className = 'pf-runner-btn pf-runner-start';
+      startBtnRef.textContent = '\u25B6 Start';
+
+      pauseBtnRef = document.createElement('button');
+      pauseBtnRef.className = 'pf-runner-btn';
+      pauseBtnRef.textContent = '\u23F8 Pause';
+
+      stopBtnRef = document.createElement('button');
+      stopBtnRef.className = 'pf-runner-btn';
+      stopBtnRef.textContent = '\u23F9 Stop';
+
+      controls.appendChild(startBtnRef);
+      controls.appendChild(pauseBtnRef);
+      controls.appendChild(stopBtnRef);
+      body.appendChild(controls);
+
+      // Auto-retry toggle
+      var retryRow = document.createElement('div');
+      retryRow.className = 'pf-runner-option';
+
+      var retryCheck = document.createElement('input');
+      retryCheck.type = 'checkbox';
+      retryCheck.checked = pfState.runnerState.autoRetry;
+
+      var retryLabel = document.createTextNode('Auto-retry on error');
+
+      retryRow.appendChild(retryCheck);
+      retryRow.appendChild(retryLabel);
+      body.appendChild(retryRow);
+
+      retryCheck.addEventListener('change', function() {
+        pfState.runnerState.autoRetry = retryCheck.checked;
+        storeSetJSON(STORAGE_KEYS.pfRunnerState, pfState.runnerState);
+      });
+
+      // Delay between phases
+      var delayRow = document.createElement('div');
+      delayRow.className = 'pf-runner-option';
+
+      var delayLabel1 = document.createTextNode('Delay between phases: ');
+
+      var delayInput = document.createElement('input');
+      delayInput.type = 'number';
+      delayInput.min = '1';
+      delayInput.max = '60';
+      delayInput.value = String(pfState.runnerState.delayBetweenPhases || 3);
+
+      var delayLabel2 = document.createTextNode(' seconds');
+
+      delayRow.appendChild(delayLabel1);
+      delayRow.appendChild(delayInput);
+      delayRow.appendChild(delayLabel2);
+      body.appendChild(delayRow);
+
+      delayInput.addEventListener('change', function() {
+        pfState.runnerState.delayBetweenPhases = parseInt(delayInput.value, 10) || 3;
+        storeSetJSON(STORAGE_KEYS.pfRunnerState, pfState.runnerState);
+      });
+
+      // Button event handlers
+      startBtnRef.addEventListener('click', function() {
+        if (pfState.runnerState.status === 'paused') {
+          runnerEngine.resume();
+        } else {
+          // Reset to beginning if complete or stopped
+          if (pfState.runnerState.status === 'complete' || pfState.runnerState.status === 'stopped') {
+            // Find first non-complete phase
+            var startIdx = 0;
+            for (var i = 0; i < pfState.phases.length; i++) {
+              if (pfState.phases[i].status !== 'complete') {
+                startIdx = i;
+                break;
+              }
+              if (i === pfState.phases.length - 1) {
+                // All complete, restart from beginning
+                startIdx = 0;
+                pfState.phases.forEach(function(p) { p.status = 'pending'; });
+                storeSetJSON(STORAGE_KEYS.pfPhases, pfState.phases);
+              }
+            }
+            pfState.runnerState.currentPhaseIndex = startIdx;
+            storeSetJSON(STORAGE_KEYS.pfRunnerState, pfState.runnerState);
+          }
+          runnerEngine.start();
+        }
+      });
+
+      pauseBtnRef.addEventListener('click', function() {
+        runnerEngine.pause();
+      });
+
+      stopBtnRef.addEventListener('click', function() {
+        runnerEngine.stop();
+      });
+
+      function updateRunnerUI() {
+        var rs = pfState.runnerState;
+        var completed = 0;
+        pfState.phases.forEach(function(p) {
+          if (p.status === 'complete') completed++;
+        });
+        var total = pfState.phases.length;
+        var pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+        progressFillEl.style.width = pct + '%';
+        progressTextEl.textContent = completed + '/' + total + ' (' + pct + '%)';
+
+        var isRunning = rs.status === 'running';
+        var isPaused = rs.status === 'paused';
+
+        startBtnRef.disabled = isRunning;
+        pauseBtnRef.disabled = !isRunning;
+        stopBtnRef.disabled = !isRunning && !isPaused;
+
+        if (isPaused) {
+          startBtnRef.disabled = false;
+          startBtnRef.textContent = '\u25B6 Resume';
+        } else {
+          startBtnRef.textContent = '\u25B6 Start';
+        }
+
+        if (rs.status === 'running') {
+          runnerStatusEl.textContent = 'Running Phase ' + (rs.currentPhaseIndex + 1) + '...';
+          runnerStatusEl.className = 'pf-status pf-status-yellow';
+        } else if (rs.status === 'paused') {
+          runnerStatusEl.textContent = 'Paused after Phase ' + rs.currentPhaseIndex;
+          runnerStatusEl.className = 'pf-status pf-status-yellow';
+        } else if (rs.status === 'complete') {
+          runnerStatusEl.textContent = 'Build Complete!';
+          runnerStatusEl.className = 'pf-status pf-status-green';
+        } else if (rs.status === 'stopped') {
+          runnerStatusEl.textContent = 'Stopped';
+          runnerStatusEl.className = 'pf-status pf-status-red';
+        } else {
+          runnerStatusEl.textContent = 'Idle';
+          runnerStatusEl.className = 'pf-status pf-status-gray';
+        }
+
+        updateGlobalStatus();
+      }
+
+      updateRunnerUI();
+
+      // Register refresh callback
+      refreshCallbacks.push(updateRunnerUI);
+    });
+
+    panel.appendChild(sec5.el);
+
+
+    // ===== Section Lock Management =====
+    function updateSectionLocks() {
+      sec2.setLocked(!isRepoComplete());
+      sec3.setLocked(!isPrdCaptured());
+      sec4.setLocked(!isConfigLocked());
+      sec5.setLocked(!hasPhases());
+    }
+
+    updateSectionLocks();
+
+    // Check for interrupted runner on load
+    if (pfState.runnerState.status === 'running') {
+      pfState.runnerState.status = 'paused';
+      storeSetJSON(STORAGE_KEYS.pfRunnerState, pfState.runnerState);
+      // Auto-expand runner section
+      sec5.expand();
+    }
 
     document.body.appendChild(panel);
 
-    // Toggle behavior
-    function updateTogglePosition() {
-      const open = panel.classList.contains('pf-open');
-      toggleBtn.style.right = open ? (PF_WIDTH + 16) + 'px' : '16px';
-      lsSet(STORAGE_KEYS.pfPanelOpen, open ? 'true' : 'false');
-    }
-
-    toggleBtn.addEventListener('click', () => {
-      panel.classList.toggle('pf-open');
-      updateTogglePosition();
-    });
-
-    updateTogglePosition();
-
-    // Move prompt injector left when PF panel is open
-    function adjustPromptInjector() {
-      const cpiPanel = document.getElementById('cpi-panel');
-      if (!cpiPanel) return;
-      const open = panel.classList.contains('pf-open');
-      cpiPanel.style.right = open ? (PF_WIDTH + 24) + 'px' : '16px';
-    }
-    toggleBtn.addEventListener('click', adjustPromptInjector);
-    adjustPromptInjector();
+    return { panel: panel, toggleBtn: toggleBtn, updateSectionLocks: updateSectionLocks };
   }
 
-  // ===== INIT =====
+
+  // ===== SECTION: Phase Import Modal =====
+
+  function showPhaseImportModal(onImport) {
+    var overlay = document.createElement('div');
+    overlay.className = 'pf-modal-overlay';
+
+    var modal = document.createElement('div');
+    modal.className = 'pf-modal';
+
+    var title = document.createElement('div');
+    title.className = 'pf-modal-title';
+    title.textContent = 'Import Phases';
+    modal.appendChild(title);
+
+    var instructions = document.createElement('div');
+    instructions.style.cssText = 'color:#999;font-size:11px;margin-bottom:10px;line-height:1.5;';
+    instructions.textContent = 'Paste a document with phases separated by "--- PHASE N: Title ---" markers. Each section between markers becomes a phase.';
+    modal.appendChild(instructions);
+
+    var ta = document.createElement('textarea');
+    ta.placeholder = '--- PHASE 1: Project Setup ---\nSet up the project...\n\n--- PHASE 2: Database ---\nCreate models...';
+    modal.appendChild(ta);
+
+    var btnRow = document.createElement('div');
+    btnRow.className = 'pf-btn-row';
+    btnRow.style.marginTop = '12px';
+
+    var importBtn = document.createElement('button');
+    importBtn.className = 'pf-btn';
+    importBtn.textContent = 'Import';
+
+    var cancelBtn = document.createElement('button');
+    cancelBtn.className = 'pf-btn pf-btn-secondary';
+    cancelBtn.textContent = 'Cancel';
+
+    btnRow.appendChild(importBtn);
+    btnRow.appendChild(cancelBtn);
+    modal.appendChild(btnRow);
+
+    var errorEl = document.createElement('div');
+    errorEl.className = 'pf-status pf-status-red';
+    errorEl.style.marginTop = '8px';
+    modal.appendChild(errorEl);
+
+    overlay.appendChild(modal);
+
+    importBtn.addEventListener('click', function() {
+      var text = ta.value.trim();
+      if (!text) {
+        errorEl.textContent = 'Please paste phase content first.';
+        return;
+      }
+      var phases = parsePhases(text);
+      if (phases.length === 0) {
+        errorEl.textContent = 'No phases found. Use "--- PHASE N: Title ---" format.';
+        return;
+      }
+      overlay.remove();
+      if (onImport) onImport(phases);
+    });
+
+    cancelBtn.addEventListener('click', function() {
+      overlay.remove();
+    });
+
+    overlay.addEventListener('click', function(e) {
+      if (e.target === overlay) overlay.remove();
+    });
+
+    document.body.appendChild(overlay);
+  }
+
+
+  // ===== SECTION: Phase Edit Modal =====
+
+  function showPhaseEditModal(phaseIndex, onSave) {
+    var phase = pfState.phases[phaseIndex];
+    if (!phase) return;
+
+    var overlay = document.createElement('div');
+    overlay.className = 'pf-modal-overlay';
+
+    var modal = document.createElement('div');
+    modal.className = 'pf-modal';
+
+    var title = document.createElement('div');
+    title.className = 'pf-modal-title';
+    title.textContent = 'Edit Phase ' + phase.id;
+    modal.appendChild(title);
+
+    var titleLabel = document.createElement('label');
+    titleLabel.className = 'pf-label';
+    titleLabel.textContent = 'Phase Title:';
+    modal.appendChild(titleLabel);
+
+    var titleInput = document.createElement('input');
+    titleInput.className = 'pf-input';
+    titleInput.value = phase.title;
+    modal.appendChild(titleInput);
+
+    var contentLabel = document.createElement('label');
+    contentLabel.className = 'pf-label';
+    contentLabel.textContent = 'Phase Content:';
+    modal.appendChild(contentLabel);
+
+    var ta = document.createElement('textarea');
+    ta.value = phase.content;
+    ta.style.minHeight = '200px';
+    modal.appendChild(ta);
+
+    var btnRow = document.createElement('div');
+    btnRow.className = 'pf-btn-row';
+    btnRow.style.marginTop = '12px';
+
+    var saveBtn = document.createElement('button');
+    saveBtn.className = 'pf-btn';
+    saveBtn.textContent = 'Save';
+
+    var cancelBtn = document.createElement('button');
+    cancelBtn.className = 'pf-btn pf-btn-secondary';
+    cancelBtn.textContent = 'Cancel';
+
+    btnRow.appendChild(saveBtn);
+    btnRow.appendChild(cancelBtn);
+    modal.appendChild(btnRow);
+
+    overlay.appendChild(modal);
+
+    saveBtn.addEventListener('click', function() {
+      phase.title = titleInput.value.trim() || phase.title;
+      phase.content = ta.value;
+      storeSetJSON(STORAGE_KEYS.pfPhases, pfState.phases);
+      overlay.remove();
+      if (onSave) onSave();
+    });
+
+    cancelBtn.addEventListener('click', function() {
+      overlay.remove();
+    });
+
+    overlay.addEventListener('click', function(e) {
+      if (e.target === overlay) overlay.remove();
+    });
+
+    document.body.appendChild(overlay);
+  }
+
+
+  // ===== SECTION: Init =====
+
   function waitForPage() {
-    const check = setInterval(() => {
+    var check = setInterval(function() {
       if (document.body) {
         clearInterval(check);
-        buildPromptInjector();
-        buildPhaseForgePanel();
+        init();
       }
     }, 200);
+  }
+
+  function init() {
+    // Inject all styles
+    injectStyles(currentZoom);
+
+    // Build both panels
+    buildPromptInjectorPanel();
+    buildPhaseForgePanel();
   }
 
   waitForPage();

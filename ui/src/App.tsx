@@ -264,20 +264,20 @@ function App() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
+      {/* Header — wraps controls on narrow screens */}
       <header className="sticky top-0 z-50 bg-card/80 backdrop-blur-md text-foreground border-b-2 border-border">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 py-3 md:py-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             {/* Logo and Title */}
-            <div className="flex items-center gap-3">
-              <img src="/logo.png" alt="AutoForge" className="h-9 w-9 rounded-full" />
-              <h1 className="font-display text-2xl font-semibold tracking-tight uppercase">
+            <div className="flex items-center gap-2 md:gap-3">
+              <img src="/logo.png" alt="AutoForge" className="h-7 w-7 md:h-9 md:w-9 rounded-full" />
+              <h1 className="font-display text-lg md:text-2xl font-semibold tracking-tight uppercase">
                 AutoForge
               </h1>
             </div>
 
-            {/* Controls */}
-            <div className="flex items-center gap-4">
+            {/* Controls — wraps to second row on mobile */}
+            <div className="flex flex-wrap items-center gap-2 md:gap-4">
               <ProjectSelector
                 projects={projects ?? []}
                 selectedProject={selectedProject}
@@ -321,10 +321,10 @@ function App() {
                     <RotateCcw size={18} />
                   </Button>
 
-                  {/* Ollama Mode Indicator */}
+                  {/* Ollama Mode Indicator — hidden on small screens */}
                   {settings?.ollama_mode && (
                     <div
-                      className="flex items-center gap-1.5 px-2 py-1 bg-card rounded border-2 border-border shadow-sm"
+                      className="hidden md:flex items-center gap-1.5 px-2 py-1 bg-card rounded border-2 border-border shadow-sm"
                       title="Using Ollama local models"
                     >
                       <img src="/ollama.png" alt="Ollama" className="w-5 h-5" />
@@ -332,10 +332,11 @@ function App() {
                     </div>
                   )}
 
-                  {/* GLM Mode Badge */}
+                  {/* GLM Mode Badge — hidden on small screens */}
                   {settings?.glm_mode && (
                     <Badge
                       variant="default"
+                      className="hidden md:inline-flex"
                       title="Using GLM API"
                     >
                       GLM
@@ -345,18 +346,20 @@ function App() {
                 </>
               )}
 
-              {/* Build timestamp - always visible proof the UI was rebuilt */}
+              {/* Build timestamp — hidden on mobile, diagnostic only */}
               <span
-                className="text-xs text-amber-400 font-mono font-bold select-all border border-amber-400/50 px-2 py-0.5 rounded"
+                className="hidden lg:inline text-xs text-amber-400 font-mono font-bold select-all border border-amber-400/50 px-2 py-0.5 rounded"
                 title={`UI built: ${__BUILD_TIME__}`}
               >
                 Build: {__BUILD_TIME__}
               </span>
 
-              {/* Git Activity Widget */}
-              <GitActivityWidget
-                workingDirectory={selectedProjectData?.path ?? null}
-              />
+              {/* Git Activity Widget — hidden on small screens */}
+              <div className="hidden md:block">
+                <GitActivityWidget
+                  workingDirectory={selectedProjectData?.path ?? null}
+                />
+              </div>
 
               {/* DunkStack link */}
               <Button

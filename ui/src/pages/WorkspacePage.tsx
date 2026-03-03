@@ -295,8 +295,8 @@ export function WorkspacePage(): React.JSX.Element {
 
   return (
     <div className="h-screen flex flex-col bg-background">
-      {/* Breadcrumb navigation bar */}
-      <div className="flex items-center h-10 px-3 border-b border-border bg-card shrink-0">
+      {/* Breadcrumb navigation bar — wraps on narrow screens */}
+      <div className="flex flex-wrap items-center min-h-10 px-3 py-1 border-b border-border bg-card shrink-0 gap-y-1">
         <nav className="flex items-center gap-1 text-sm" aria-label="Breadcrumb">
           <Button
             variant="ghost"
@@ -313,15 +313,19 @@ export function WorkspacePage(): React.JSX.Element {
           </span>
         </nav>
 
-        <div className="ml-auto flex items-center gap-1">
-          {/* Git Activity Widget — compact commit tracker */}
-          <GitActivityWidget
-            workingDirectory={workingDirectory}
-          />
-          <div className="w-px h-5 bg-border mx-1" />
-          {/* CI Pipeline Status — non-intrusive blinking indicator */}
-          <CIStatusWidget workingDirectory={workingDirectory} />
-          <div className="w-px h-5 bg-border mx-1" />
+        <div className="ml-auto flex flex-wrap items-center gap-1">
+          {/* Git Activity Widget — hidden on small screens to save space */}
+          <div className="hidden md:flex items-center">
+            <GitActivityWidget
+              workingDirectory={workingDirectory}
+            />
+            <div className="w-px h-5 bg-border mx-1" />
+          </div>
+          {/* CI Pipeline Status — hidden on small screens */}
+          <div className="hidden md:flex items-center">
+            <CIStatusWidget workingDirectory={workingDirectory} />
+            <div className="w-px h-5 bg-border mx-1" />
+          </div>
           <Button
             variant={splitView ? 'default' : 'ghost'}
             size="sm"
@@ -333,7 +337,7 @@ export function WorkspacePage(): React.JSX.Element {
             title="Three-panel mode: Research + PRD Builder + Coder"
           >
             <Columns2 size={14} />
-            <span className="text-[10px]">Split</span>
+            <span className="hidden sm:inline text-[10px]">Split</span>
           </Button>
           <Button
             variant={showSwarm ? 'default' : 'ghost'}
@@ -346,7 +350,7 @@ export function WorkspacePage(): React.JSX.Element {
             title="Swarm: concurrent autonomous agents with shared workspace"
           >
             <Network size={14} />
-            <span className="text-[10px]">Swarm</span>
+            <span className="hidden sm:inline text-[10px]">Swarm</span>
           </Button>
           {splitView && (
             <Button
@@ -360,11 +364,12 @@ export function WorkspacePage(): React.JSX.Element {
               title="Auto-forward: when PRD Builder finishes, auto-send to Coder"
             >
               <Zap size={14} />
-              <span className="text-[10px]">Auto</span>
+              <span className="hidden sm:inline text-[10px]">Auto</span>
             </Button>
           )}
+          {/* Split-view panel focus buttons — hidden on mobile, advanced controls */}
           {splitView && (
-            <>
+            <div className="hidden md:flex items-center">
               <div className="w-px h-5 bg-border mx-1" />
               <Button
                 variant="ghost"
@@ -402,7 +407,7 @@ export function WorkspacePage(): React.JSX.Element {
               >
                 All
               </Button>
-            </>
+            </div>
           )}
           <Button
             variant="ghost"
@@ -412,7 +417,7 @@ export function WorkspacePage(): React.JSX.Element {
             title="Agent Role Library — blueprints for terminal agent roles"
           >
             <Bot size={14} />
-            <span className="text-[10px]">Roles</span>
+            <span className="hidden sm:inline text-[10px]">Roles</span>
           </Button>
           <Button
             variant="ghost"
@@ -422,7 +427,7 @@ export function WorkspacePage(): React.JSX.Element {
             title="Multi-session Dashboard — run Claude, Codex, and Gemini side by side"
           >
             <LayoutDashboard size={14} />
-            <span className="text-[10px]">Dashboard</span>
+            <span className="hidden sm:inline text-[10px]">Dashboard</span>
           </Button>
           <Button
             variant="ghost"
@@ -432,7 +437,7 @@ export function WorkspacePage(): React.JSX.Element {
             title="User guide & notes"
           >
             <BookOpen size={14} />
-            <span className="text-[10px]">Guide</span>
+            <span className="hidden sm:inline text-[10px]">Guide</span>
           </Button>
           <Button
             variant="ghost"

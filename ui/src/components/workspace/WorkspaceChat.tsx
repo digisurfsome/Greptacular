@@ -325,10 +325,13 @@ export function WorkspaceChat({
     clearMessages,
   } = useWorkspaceChat({ onError: handleError })
 
-  // Notify parent when streaming state changes (for sidebar activity indicator)
+  // Notify parent when streaming state changes (for sidebar activity indicator).
+  // Intentionally omit onStreamingChange from deps to avoid re-render loops
+  // when the parent passes an unstable callback reference (inline arrow).
   useEffect(() => {
     onStreamingChange?.(isLoading)
-  }, [isLoading, onStreamingChange])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading])
 
   // Notify parent when background session ID changes (for pane persistence).
   // Intentionally omit onSessionAttached from deps to avoid re-render loops
@@ -536,17 +539,22 @@ export function WorkspaceChat({
     }
   }, [liveMessages.length, isUserScrolledUp])
 
-  // Detect response completion (isLoading true→false) for auto-forward
+  // Detect response completion (isLoading true→false) for auto-forward.
+  // Intentionally omit onResponseComplete from deps to avoid re-render loops
+  // when the parent passes an unstable callback reference.
   const prevLoadingRef = useRef(false)
+  const onResponseCompleteRef = useRef(onResponseComplete)
+  onResponseCompleteRef.current = onResponseComplete
   useEffect(() => {
-    if (prevLoadingRef.current && !isLoading && onResponseComplete) {
+    if (prevLoadingRef.current && !isLoading && onResponseCompleteRef.current) {
       const lastMessage = liveMessages[liveMessages.length - 1]
       if (lastMessage?.role === 'assistant' && lastMessage.content) {
-        onResponseComplete(lastMessage.content)
+        onResponseCompleteRef.current(lastMessage.content)
       }
     }
     prevLoadingRef.current = isLoading
-  }, [isLoading, liveMessages, onResponseComplete])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading, liveMessages])
 
   // Token log auto-mode: show panel when streaming starts
   useEffect(() => {

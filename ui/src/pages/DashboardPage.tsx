@@ -236,6 +236,10 @@ export function DashboardPage(): React.JSX.Element {
     const pane = panesRef.current.find(p => p.id === paneId)
     if (!pane?.conversationId) return
     setStreamingIds(ids => {
+      const has = ids.has(pane.conversationId!)
+      // Return same reference if membership is already correct (prevents re-render loop)
+      if (isStreaming && has) return ids
+      if (!isStreaming && !has) return ids
       const next = new Set(ids)
       if (isStreaming) next.add(pane.conversationId!)
       else next.delete(pane.conversationId!)

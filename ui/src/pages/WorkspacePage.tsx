@@ -514,6 +514,9 @@ export function WorkspacePage(): React.JSX.Element {
                 onStreamingChange={(streaming) => {
                   if (activeConversationId != null) {
                     setStreamingIds(prev => {
+                      const has = prev.has(activeConversationId)
+                      if (streaming && has) return prev
+                      if (!streaming && !has) return prev
                       const next = new Set(prev)
                       if (streaming) next.add(activeConversationId)
                       else next.delete(activeConversationId)
@@ -601,6 +604,9 @@ export function WorkspacePage(): React.JSX.Element {
                   onStreamingChange={(streaming) => {
                     if (prdConversationId != null) {
                       setStreamingIds(prev => {
+                        const has = prev.has(prdConversationId)
+                        if (streaming && has) return prev
+                        if (!streaming && !has) return prev
                         const next = new Set(prev)
                         if (streaming) next.add(prdConversationId)
                         else next.delete(prdConversationId)
@@ -643,6 +649,9 @@ export function WorkspacePage(): React.JSX.Element {
                 onStreamingChange={(streaming) => {
                   if (coderConversationId != null) {
                     setStreamingIds(prev => {
+                      const has = prev.has(coderConversationId)
+                      if (streaming && has) return prev
+                      if (!streaming && !has) return prev
                       const next = new Set(prev)
                       if (streaming) next.add(coderConversationId)
                       else next.delete(coderConversationId)
@@ -671,6 +680,9 @@ export function WorkspacePage(): React.JSX.Element {
               onStreamingChange={(streaming) => {
                 if (activeConversationId != null) {
                   setStreamingIds(prev => {
+                    const has = prev.has(activeConversationId)
+                    if (streaming && has) return prev
+                    if (!streaming && !has) return prev
                     const next = new Set(prev)
                     if (streaming) next.add(activeConversationId)
                     else next.delete(activeConversationId)

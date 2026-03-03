@@ -1306,7 +1306,11 @@ async def workspace_chat_websocket(websocket: WebSocket):
                         continue
 
                     # Extract optional attachments and library file IDs.
-                    attachments = message.get("attachments") or None
+                    raw_attachments = message.get("attachments") or None
+                    attachments = None
+                    if raw_attachments:
+                        from ..schemas import ImageAttachment
+                        attachments = [ImageAttachment(**att) for att in raw_attachments]
                     library_file_ids = message.get("library_file_ids")
                     if library_file_ids and not isinstance(library_file_ids, list):
                         library_file_ids = None

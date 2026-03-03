@@ -180,6 +180,17 @@ class CodexBridge:
         if thread_id:
             self.thread_id = thread_id
 
+        # Detect auth / HTTP errors returned as content text (the Codex MCP
+        # server sometimes surfaces API errors as successful tool results
+        # rather than JSON-RPC errors).
+        text_lower = text.lower()
+        if ("401" in text_lower or "403" in text_lower) and (
+            "unauthorized" in text_lower
+            or "authentication" in text_lower
+            or "forbidden" in text_lower
+        ):
+            raise RuntimeError(text)
+
         return text
 
     async def send_streaming(self, prompt: str) -> AsyncGenerator[dict, None]:

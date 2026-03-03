@@ -851,6 +851,12 @@ class WorkspaceChatSession:
             self._is_alternative_api = is_alternative_api
             self._force_sub = force_sub
 
+            # Prevent "nested session" detection when the server was launched
+            # from inside a Claude Code session (e.g. via `claude` CLI).  The
+            # CLAUDECODE env var leaks into subprocess spawns and causes the
+            # child `claude` process to refuse to start.
+            os.environ.pop("CLAUDECODE", None)
+
             # Primary: pass effort= directly to ClaudeAgentOptions (SDK ≥0.1.36).
             # Falls back to the settings-file-only approach for older SDK versions.
             try:
@@ -1103,12 +1109,48 @@ class WorkspaceChatSession:
                         self._gemini_bridge.session_id = conv["provider_thread_id"]
                         self._provider_thread_id = conv["provider_thread_id"]
 
+                await self._gemini_bridge.start()
+
                 self._resolved_model_id = provider_model or "gemini-default"
                 logger.info("Gemini bridge started for session %s (model=%s)", self.session_id, provider_model)
 
         except Exception as e:
             logger.exception("Failed to start %s bridge", self.provider)
-            yield {"type": "error", "content": f"Failed to initialize {provider_display}: {str(e)}"}
+            err_lower = str(e).lower()
+
+            # Provide provider-specific auth guidance
+            if self.provider == "gemini" and ("not installed" in err_lower or "not found" in err_lower or "path" in err_lower):
+                hint = (
+                    f"**Gemini CLI not found.**\n\n"
+                    f"Install it with:\n```\nnpm install -g @google/gemini-cli\n```\n"
+                    f"Then authenticate:\n```\ngemini\n```\n"
+                    f"(Follow the Google login prompt on first run.)"
+                )
+            elif self.provider == "gemini" and ("auth" in err_lower or "api_key" in err_lower or "credential" in err_lower):
+                hint = (
+                    f"**Gemini authentication required.**\n\n"
+                    f"Option 1 — Subscription (free tier):\n```\ngemini\n```\n"
+                    f"(Follow the Google login prompt.)\n\n"
+                    f"Option 2 — API key:\n"
+                    f"Set `GEMINI_API_KEY` in your environment or `~/.autoforge/.env`."
+                )
+            elif self.provider == "codex" and ("401" in err_lower or "unauthorized" in err_lower or "auth" in err_lower):
+                hint = (
+                    f"**Codex authentication required.**\n\n"
+                    f"Option 1 — ChatGPT subscription:\n```\ncodex\n```\n"
+                    f"(Follow the login prompt.)\n\n"
+                    f"Option 2 — API key:\n"
+                    f"Set `OPENAI_API_KEY` in your environment or `~/.autoforge/.env`."
+                )
+            elif self.provider == "codex" and ("not found" in err_lower or "not installed" in err_lower or "path" in err_lower):
+                hint = (
+                    f"**Codex CLI not found.**\n\n"
+                    f"Install it with:\n```\nnpm install -g @openai/codex\n```"
+                )
+            else:
+                hint = f"Failed to initialize {provider_display}: {str(e)}"
+
+            yield {"type": "error", "content": hint}
             yield {"type": "response_done"}
             return
 
@@ -1160,7 +1202,21 @@ class WorkspaceChatSession:
                     logger.debug("Alt provider event: %s", event_type)
         except Exception as e:
             logger.exception("Error querying %s", self.provider)
-            yield {"type": "error", "content": f"{self.provider} error: {str(e)}"}
+            err_lower = str(e).lower()
+            # Detect auth errors and give provider-specific guidance
+            if self.provider == "codex" and ("401" in err_lower or "unauthorized" in err_lower):
+                yield {
+                    "type": "error",
+                    "content": (
+                        "**Codex authentication required.**\n\n"
+                        "Option 1 — ChatGPT subscription:\n"
+                        "Run `codex` in a terminal and follow the login prompt.\n\n"
+                        "Option 2 — API key:\n"
+                        "Set `OPENAI_API_KEY` in `~/.autoforge/.env`."
+                    ),
+                }
+            else:
+                yield {"type": "error", "content": f"{self.provider} error: {str(e)}"}
             return
 
         # Persist assistant message in DB
@@ -1316,8 +1372,17 @@ class WorkspaceChatSession:
                     yield chunk
             yield {"type": "response_done"}
         except Exception as e:
-            logger.exception("Error during workspace %s query", self.provider)
             error_str = str(e).lower()
+
+            # Silently skip SDK event types that we don't recognise but that are
+            # harmless (e.g. "Unknown message type: rate_limit_event").  These are
+            # informational events from the Claude SDK, not real errors.
+            if "unknown message type" in error_str:
+                logger.debug("Ignoring SDK parse noise: %s", e)
+                yield {"type": "response_done"}
+                return
+
+            logger.exception("Error during workspace %s query", self.provider)
 
             # Detect auth errors — attempt mid-session fallback to API key billing.
             # If fallback succeeds, retry the message transparently.
@@ -1524,6 +1589,14 @@ class WorkspaceChatSession:
                     logger.error(f"Timeout (300s) waiting for next token from {self.model}")
                     yield {"type": "error", "content": f"Response stream from {self.model} timed out after 5 minutes of silence."}
                 return
+            except Exception as e:
+                # Catch "Unknown message type: rate_limit_event" which is a parse noise
+                # from the CLI in the 1M beta. Skip it so it doesn't crash the session.
+                err_str = str(e)
+                if "unknown message type: rate_limit_event" in err_str.lower():
+                    logger.warning("Caught and suppressed rate_limit_event parse noise from Claude CLI")
+                    continue
+                raise e
             first_token_received = True
             msg_type = type(msg).__name__
 

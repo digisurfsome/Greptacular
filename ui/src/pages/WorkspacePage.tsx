@@ -40,6 +40,7 @@ import {
   Zap,
   Network,
   LayoutDashboard,
+  Menu,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -71,6 +72,7 @@ export function WorkspacePage(): React.JSX.Element {
   const [activeConversationId, setActiveConversationId] = useState<number | null>(null)
   const [workingDirectory, setWorkingDirectory] = useState<string | null>(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const [libraryCollapsed, setLibraryCollapsed] = useState(false)
   const [showKeyboardHelp, setShowKeyboardHelp] = useState(false)
   const [showUserGuide, setShowUserGuide] = useState(false)
@@ -200,6 +202,7 @@ export function WorkspacePage(): React.JSX.Element {
 
   const handleSelectConversation = useCallback((id: number) => {
     setActiveConversationId(id)
+    setMobileSidebarOpen(false)
   }, [])
 
   const handleConversationCreated = useCallback((id: number) => {
@@ -298,6 +301,16 @@ export function WorkspacePage(): React.JSX.Element {
       {/* Breadcrumb navigation bar — wraps on narrow screens */}
       <div className="flex flex-wrap items-center min-h-10 px-3 py-1 border-b border-border bg-card shrink-0 gap-y-1">
         <nav className="flex items-center gap-1 text-sm" aria-label="Breadcrumb">
+          {/* Mobile sidebar toggle -- only visible below md breakpoint */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="md:hidden h-7 px-2 text-muted-foreground hover:text-foreground"
+            onClick={() => setMobileSidebarOpen(v => !v)}
+            title="Toggle sidebar"
+          >
+            <Menu size={16} />
+          </Button>
           <Button
             variant="ghost"
             size="sm"
@@ -462,21 +475,46 @@ export function WorkspacePage(): React.JSX.Element {
 
       {/* Main content area: sidebar | chat(s) | library */}
       <div className="flex flex-1 overflow-hidden">
-        <WorkspaceSidebar
-          activeConversationId={activeConversationId}
-          streamingIds={streamingIds}
-          collapsed={sidebarCollapsed}
-          onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
-          onNewChat={handleNewChat}
-          onSelectConversation={handleSelectConversation}
-          onDeleteConversation={handleDeleteConversation}
-          selectedWorkingDirectory={workingDirectory}
-          onWorkingDirectoryChange={handleRepoSelect}
-          modelPresetIndex={modelPresetIndex}
-          onModelPresetChange={handleModelPresetChange}
-          effortLevel={pendingEffort}
-          onEffortChange={setPendingEffort}
-        />
+        {/* Mobile backdrop -- darkens the screen when the sidebar drawer is open */}
+        {mobileSidebarOpen && (
+          <div
+            className="fixed inset-0 bg-black/40 z-40 md:hidden"
+            onClick={() => setMobileSidebarOpen(false)}
+          />
+        )}
+
+        {/* Sidebar: fixed overlay on mobile, normal column on desktop */}
+        <div
+          className={`
+            shrink-0 transition-all duration-200
+            md:relative md:flex md:flex-col
+            ${mobileSidebarOpen
+              ? 'fixed inset-y-0 left-0 z-50 flex flex-col bg-card shadow-xl w-72'
+              : 'hidden md:flex'
+            }
+            ${sidebarCollapsed && !mobileSidebarOpen ? 'md:w-0 md:overflow-hidden' : ''}
+          `}
+        >
+          <WorkspaceSidebar
+            activeConversationId={activeConversationId}
+            streamingIds={streamingIds}
+            collapsed={sidebarCollapsed && !mobileSidebarOpen}
+            onToggleCollapse={() => {
+              setSidebarCollapsed(!sidebarCollapsed)
+              // On mobile, also close the drawer when collapsing via the sidebar button
+              setMobileSidebarOpen(false)
+            }}
+            onNewChat={handleNewChat}
+            onSelectConversation={handleSelectConversation}
+            onDeleteConversation={handleDeleteConversation}
+            selectedWorkingDirectory={workingDirectory}
+            onWorkingDirectoryChange={handleRepoSelect}
+            modelPresetIndex={modelPresetIndex}
+            onModelPresetChange={handleModelPresetChange}
+            effortLevel={pendingEffort}
+            onEffortChange={setPendingEffort}
+          />
+        </div>
 
         {splitView ? (
           /* Three-panel split view with accordion collapse */
@@ -693,9 +731,9 @@ export function WorkspacePage(): React.JSX.Element {
           </div>
         )}
 
-        {/* Swarm panel (slides in from right, before library) */}
+        {/* Swarm panel (slides in from right, before library) -- hidden on mobile */}
         {showSwarm && (
-          <div className="w-80 border-l border-border shrink-0">
+          <div className="hidden md:block w-80 border-l border-border shrink-0">
             <SwarmPanel
               workingDirectory={workingDirectory}
               onClose={() => setShowSwarm(false)}
@@ -703,12 +741,15 @@ export function WorkspacePage(): React.JSX.Element {
           </div>
         )}
 
-        <WorkspaceLibrary
-          conversationId={activeConversationId}
-          collapsed={libraryCollapsed}
-          onToggleCollapse={() => setLibraryCollapsed(!libraryCollapsed)}
-          walkieTalkieLog={walkieTalkieLog}
-        />
+        {/* Library panel -- hidden on mobile to give chat full width */}
+        <div className="hidden md:flex">
+          <WorkspaceLibrary
+            conversationId={activeConversationId}
+            collapsed={libraryCollapsed}
+            onToggleCollapse={() => setLibraryCollapsed(!libraryCollapsed)}
+            walkieTalkieLog={walkieTalkieLog}
+          />
+        </div>
       </div>
 
       {/* Keyboard shortcuts help modal */}

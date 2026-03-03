@@ -382,7 +382,7 @@ export function WorkspaceSidebar({
 
   return (
     <div
-      className={`flex flex-col border-r border-border bg-card transition-all duration-200 ${
+      className={`flex flex-col border-r border-border bg-card transition-all duration-200 h-full ${
         collapsed ? 'w-0 overflow-hidden' : 'w-72'
       }`}
     >

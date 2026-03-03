@@ -2,6 +2,28 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## OWNER CONTEXT — READ FIRST
+
+The owner is NOT a coder. Explain everything in plain language. Move fast, don't over-explain.
+
+### Two Directories
+- **Dev repo**: `c:\Users\lober\GitHub\Greptacular - AutoForge Build\Greptacular` — where code changes are made
+- **Live install**: `C:\Users\lober\Greptacular` — where AutoForge actually runs (port 8888)
+
+### Deploy Chain (MUST do after every commit that changes server or UI code)
+1. `cd ui && npm run build` (in dev repo)
+2. `git push origin main`
+3. `cd C:\Users\lober\Greptacular && git pull origin main --no-edit`
+4. Kill python processes, restart `start_ui.bat` from live dir
+5. User does Ctrl+Shift+R in browser to confirm timestamp updated
+
+### Working Style
+- Commit directly to `main` (not branches) for speed
+- Owner checks timestamp in AutoForge UI to confirm changes took effect
+- Auto-allow all tools — no permission prompts (configured in ~/.claude/settings.json)
+- If session crashes, check memory files and this CLAUDE.md to recover context
+- The goal: get AutoForge fully working with Claude, Codex, and Gemini (all on subscriptions)
+
 ## EMERGENCY: UI Broken? Run This
 
 If the UI is showing weird panels, stuck spinners, or anything that shouldn't be there:

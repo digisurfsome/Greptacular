@@ -34,6 +34,7 @@ import {
   Plus,
   Check,
   X,
+  Menu,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ThemeSelector } from '@/components/ThemeSelector'
@@ -117,6 +118,7 @@ export function DunkStackPage(): React.JSX.Element {
   const [showGuide, setShowGuide] = useState(false)
   const [modelPresetIndex, setModelPresetIndex] = useState(getStoredModelPreset)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const [selectedProject, setSelectedProject] = useState<string | null>(getStoredProject)
 
   // New project inline form state
@@ -245,9 +247,20 @@ export function DunkStackPage(): React.JSX.Element {
   return (
     <div className="h-screen flex flex-col bg-background">
       {/* Breadcrumb navigation bar */}
-      <div className="flex items-center h-10 px-3 border-b border-border bg-card shrink-0">
+      <div className="flex items-center h-10 px-2 md:px-3 border-b border-border bg-card shrink-0 overflow-x-auto">
+        {/* Mobile: hamburger toggle for sidebar */}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="md:hidden shrink-0 p-1.5"
+          onClick={() => setMobileSidebarOpen(prev => !prev)}
+          title="Toggle project sidebar"
+        >
+          <Menu size={16} />
+        </Button>
+
         {/* Left: back button + page title */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <Button
             variant="ghost"
             size="sm"
@@ -255,17 +268,17 @@ export function DunkStackPage(): React.JSX.Element {
             onClick={() => { window.location.hash = '' }}
           >
             <ArrowLeft size={14} />
-            AutoForge
+            <span className="hidden sm:inline">AutoForge</span>
           </Button>
-          <span className="text-muted-foreground/30">/</span>
+          <span className="text-muted-foreground/30 hidden sm:inline">/</span>
           <div className="flex items-center gap-1.5">
             <Layers size={14} className="text-primary" />
             <span className="text-sm font-bold text-foreground tracking-tight">DunkStack</span>
           </div>
         </div>
 
-        {/* Model preset pills */}
-        <div className="flex items-center gap-1 ml-4">
+        {/* Model preset pills — hidden on mobile */}
+        <div className="hidden md:flex items-center gap-1 ml-4">
           <Cpu size={13} className="text-muted-foreground mr-1" />
           {MODEL_PRESETS.map((preset, idx) => (
             <button
@@ -284,68 +297,71 @@ export function DunkStackPage(): React.JSX.Element {
         </div>
 
         {/* Center spacer */}
-        <div className="flex-1" />
+        <div className="flex-1 min-w-2" />
 
         {/* Right: controls */}
-        <div className="flex items-center gap-2">
-          {/* Safety panel toggle */}
-          <Button
-            variant={rightPanel === 'safety' ? 'default' : 'ghost'}
-            size="sm"
-            className="gap-1.5 text-xs"
-            onClick={() => handleToggleRightPanel('safety')}
-            title="Toggle Safety Panel"
-          >
-            <Shield size={14} />
-            <span className="hidden sm:inline">Safety</span>
-          </Button>
+        <div className="flex items-center gap-1 md:gap-2 shrink-0">
+          {/* Right panel toggles — hidden on mobile (panels are hidden too) */}
+          <div className="hidden md:flex items-center gap-2">
+            {/* Safety panel toggle */}
+            <Button
+              variant={rightPanel === 'safety' ? 'default' : 'ghost'}
+              size="sm"
+              className="gap-1.5 text-xs"
+              onClick={() => handleToggleRightPanel('safety')}
+              title="Toggle Safety Panel"
+            >
+              <Shield size={14} />
+              <span className="hidden sm:inline">Safety</span>
+            </Button>
 
-          {/* File viewer toggle */}
-          <Button
-            variant={rightPanel === 'files' ? 'default' : 'ghost'}
-            size="sm"
-            className="gap-1.5 text-xs"
-            onClick={() => handleToggleRightPanel('files')}
-            title="Toggle File Viewer"
-          >
-            <FileText size={14} />
-            <span className="hidden sm:inline">Files</span>
-          </Button>
+            {/* File viewer toggle */}
+            <Button
+              variant={rightPanel === 'files' ? 'default' : 'ghost'}
+              size="sm"
+              className="gap-1.5 text-xs"
+              onClick={() => handleToggleRightPanel('files')}
+              title="Toggle File Viewer"
+            >
+              <FileText size={14} />
+              <span className="hidden sm:inline">Files</span>
+            </Button>
 
-          {/* Live Preview toggle */}
-          <Button
-            variant={rightPanel === 'preview' ? 'default' : 'ghost'}
-            size="sm"
-            className="gap-1.5 text-xs"
-            onClick={() => handleToggleRightPanel('preview')}
-            title="Toggle Live Preview"
-          >
-            <Globe size={14} />
-            <span className="hidden sm:inline">Preview</span>
-          </Button>
+            {/* Live Preview toggle */}
+            <Button
+              variant={rightPanel === 'preview' ? 'default' : 'ghost'}
+              size="sm"
+              className="gap-1.5 text-xs"
+              onClick={() => handleToggleRightPanel('preview')}
+              title="Toggle Live Preview"
+            >
+              <Globe size={14} />
+              <span className="hidden sm:inline">Preview</span>
+            </Button>
 
-          {/* Agent OS toggle */}
-          <Button
-            variant={isAgentOSView ? 'default' : 'ghost'}
-            size="sm"
-            className="gap-1.5 text-xs"
-            onClick={() => {
-              if (isAgentOSView) {
-                setCenterView('chat')
-                setRightPanel('safety')
-              } else {
-                setCenterView('agent-os-intake')
-                setRightPanel('agent-os')
-              }
-            }}
-            title="Toggle Agent OS PRD Creator"
-          >
-            <Sparkles size={14} />
-            <span className="hidden sm:inline">Agent OS</span>
-          </Button>
+            {/* Agent OS toggle */}
+            <Button
+              variant={isAgentOSView ? 'default' : 'ghost'}
+              size="sm"
+              className="gap-1.5 text-xs"
+              onClick={() => {
+                if (isAgentOSView) {
+                  setCenterView('chat')
+                  setRightPanel('safety')
+                } else {
+                  setCenterView('agent-os-intake')
+                  setRightPanel('agent-os')
+                }
+              }}
+              title="Toggle Agent OS PRD Creator"
+            >
+              <Sparkles size={14} />
+              <span className="hidden sm:inline">Agent OS</span>
+            </Button>
 
-          {/* Separator */}
-          <div className="w-px h-5 bg-border mx-1" />
+            {/* Separator */}
+            <div className="w-px h-5 bg-border mx-1" />
+          </div>
 
           {/* Guide */}
           <Button
@@ -357,12 +373,14 @@ export function DunkStackPage(): React.JSX.Element {
             <BookOpen size={14} />
           </Button>
 
-          {/* Theme Selector */}
-          <ThemeSelector
-            themes={themes}
-            currentTheme={theme}
-            onThemeChange={setTheme}
-          />
+          {/* Theme Selector — hidden on small mobile */}
+          <div className="hidden sm:block">
+            <ThemeSelector
+              themes={themes}
+              currentTheme={theme}
+              onThemeChange={setTheme}
+            />
+          </div>
 
           {/* Dark Mode Toggle */}
           <Button
@@ -393,11 +411,11 @@ export function DunkStackPage(): React.JSX.Element {
 
       {/* Agent Control Bar */}
       {selectedProject && (
-        <div className="flex items-center h-9 px-3 border-b border-border bg-card/80 shrink-0 gap-3">
+        <div className="flex items-center h-9 px-2 md:px-3 border-b border-border bg-card/80 shrink-0 gap-2 md:gap-3 overflow-x-auto">
           <Button
             variant={isAgentRunning ? 'destructive' : 'default'}
             size="sm"
-            className="gap-1.5 text-xs h-7"
+            className="gap-1.5 text-xs h-7 shrink-0"
             onClick={handleToggleAgent}
             disabled={agentStarting || !selectedProject}
           >
@@ -408,58 +426,87 @@ export function DunkStackPage(): React.JSX.Element {
             ) : (
               <Play size={13} />
             )}
-            {agentStarting ? 'Starting...' : isAgentRunning ? 'Stop Agent' : 'Start Agent'}
+            <span className="hidden sm:inline">
+              {agentStarting ? 'Starting...' : isAgentRunning ? 'Stop Agent' : 'Start Agent'}
+            </span>
           </Button>
 
-          <div className="flex items-center gap-1.5">
-            <span className={`w-2 h-2 rounded-full ${
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className={`w-2 h-2 rounded-full shrink-0 ${
               isAgentRunning ? 'bg-emerald-500 animate-pulse' :
               agentStarting ? 'bg-amber-500 animate-pulse' :
               agentStatus?.status === 'error' ? 'bg-red-500' :
               'bg-zinc-400'
             }`} />
-            <span className="text-[11px] text-muted-foreground">
-              {agentStarting ? 'Starting agent...' :
-               isAgentRunning ? `Running · ${agentStatus?.model_id ?? ''} · ${agentStatus?.billing ?? ''}` :
-               agentStatus?.status === 'error' ? `Error: ${agentStatus.error}` :
-               'Agent idle'}
+            <span className="text-[11px] text-muted-foreground truncate">
+              {agentStarting ? 'Starting...' :
+               isAgentRunning ? `Running · ${agentStatus?.model_id ?? ''}` :
+               agentStatus?.status === 'error' ? `Error` :
+               'Idle'}
             </span>
           </div>
 
-          <div className="flex-1" />
+          <div className="flex-1 min-w-1" />
 
-          <span className="text-[10px] text-muted-foreground">
+          <span className="text-[10px] text-muted-foreground shrink-0 hidden sm:block">
             {selectedProject}
           </span>
         </div>
       )}
 
+      {/* Mobile sidebar backdrop overlay */}
+      {mobileSidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          onClick={() => setMobileSidebarOpen(false)}
+        />
+      )}
+
       {/* Main content area */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Left sidebar: project list */}
-        {sidebarCollapsed ? (
+        {/* Left sidebar: project list
+            - On mobile (<md): fixed overlay drawer controlled by mobileSidebarOpen
+            - On desktop (md+): inline with collapse toggle */}
+        {sidebarCollapsed && !mobileSidebarOpen ? (
           <button
             onClick={() => setSidebarCollapsed(false)}
-            className="shrink-0 w-8 flex items-center justify-center border-r border-border bg-card/40 hover:bg-card transition-colors"
+            className="hidden md:flex shrink-0 w-8 items-center justify-center border-r border-border bg-card/40 hover:bg-card transition-colors"
             title="Expand project sidebar"
           >
             <ChevronRight size={14} className="text-muted-foreground" />
           </button>
         ) : (
-          <div className="w-64 shrink-0 border-r border-border bg-card/60 flex flex-col overflow-hidden">
+          <div className={`
+            ${mobileSidebarOpen
+              ? 'fixed inset-y-0 left-0 z-50 w-72 shadow-xl'
+              : 'hidden md:flex w-64'
+            }
+            shrink-0 border-r border-border bg-card/60 flex flex-col overflow-hidden
+          `}>
             {/* Sidebar header */}
             <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">
               <div className="flex items-center gap-1.5">
                 <FolderOpen size={14} className="text-primary" />
                 <span className="text-xs font-bold text-foreground">Projects</span>
               </div>
-              <button
-                onClick={() => setSidebarCollapsed(true)}
-                className="p-1 rounded hover:bg-muted text-muted-foreground"
-                title="Collapse sidebar"
-              >
-                <ChevronLeft size={14} />
-              </button>
+              <div className="flex items-center gap-1">
+                {/* Close button on mobile */}
+                <button
+                  onClick={() => setMobileSidebarOpen(false)}
+                  className="md:hidden p-1 rounded hover:bg-muted text-muted-foreground"
+                  title="Close sidebar"
+                >
+                  <X size={14} />
+                </button>
+                {/* Collapse button on desktop */}
+                <button
+                  onClick={() => setSidebarCollapsed(true)}
+                  className="hidden md:block p-1 rounded hover:bg-muted text-muted-foreground"
+                  title="Collapse sidebar"
+                >
+                  <ChevronLeft size={14} />
+                </button>
+              </div>
             </div>
 
             {/* New Project button / form */}
@@ -521,7 +568,11 @@ export function DunkStackPage(): React.JSX.Element {
                 projects.map(proj => (
                   <button
                     key={proj.name}
-                    onClick={() => handleSelectProject(proj.name)}
+                    onClick={() => {
+                      handleSelectProject(proj.name)
+                      // Auto-close sidebar on mobile after selection
+                      setMobileSidebarOpen(false)
+                    }}
                     className={`w-full text-left px-3 py-2 transition-colors ${
                       selectedProject === proj.name
                         ? 'bg-primary/10 border-l-2 border-primary'
@@ -596,21 +647,21 @@ export function DunkStackPage(): React.JSX.Element {
           )}
         </div>
 
-        {/* Right panel */}
+        {/* Right panel — hidden on mobile */}
         {rightPanel && (
           <>
           {/* Drag handle for resizable preview panel */}
           {rightPanel === 'preview' && (
             <div
               onMouseDown={handleRightPanelDragStart}
-              className="w-1.5 shrink-0 cursor-col-resize bg-border/50 hover:bg-primary/30 transition-colors flex items-center justify-center"
+              className="hidden md:flex w-1.5 shrink-0 cursor-col-resize bg-border/50 hover:bg-primary/30 transition-colors items-center justify-center"
             >
               <div className="h-8 w-0.5 rounded-full bg-muted-foreground/30" />
             </div>
           )}
           <div
-            className={`shrink-0 border-l border-border bg-card/60 ${
-              rightPanel !== 'preview' ? 'w-[320px]' : ''
+            className={`hidden md:flex md:flex-col shrink-0 border-l border-border bg-card/60 ${
+              rightPanel !== 'preview' ? 'w-full md:w-[320px]' : ''
             } ${rightPanel === 'preview' ? 'overflow-hidden' : 'overflow-y-auto'}`}
             style={rightPanel === 'preview' ? { width: previewHalf ? '50vw' : `${previewWidth}px` } : undefined}
           >

@@ -52,10 +52,11 @@ const STORAGE_KEY = 'dunkstack-guide-notes'
 const PANEL_POS_KEY = 'dunkstack-guide-position'
 const PANEL_SIZE_KEY = 'dunkstack-guide-size'
 
-const MIN_WIDTH = 420
+/** Responsive minimums: clamp to viewport on small screens. */
+const MIN_WIDTH = typeof window !== 'undefined' ? Math.min(420, window.innerWidth - 16) : 420
 const MIN_HEIGHT = 340
-const DEFAULT_WIDTH = 720
-const DEFAULT_HEIGHT = 560
+const DEFAULT_WIDTH = typeof window !== 'undefined' ? Math.min(720, window.innerWidth - 16) : 720
+const DEFAULT_HEIGHT = typeof window !== 'undefined' ? Math.min(560, window.innerHeight - 80) : 560
 
 // ============================================================================
 // Helpers
@@ -567,7 +568,7 @@ function NotesTab(): React.JSX.Element {
   return (
     <div className="flex h-full">
       {/* Notes sidebar list */}
-      <div className="w-[200px] shrink-0 border-r border-border/50 flex flex-col bg-card/30">
+      <div className="w-[140px] sm:w-[200px] shrink-0 border-r border-border/50 flex flex-col bg-card/30">
         {/* Header + create button */}
         <div className="flex items-center justify-between px-3 py-2 border-b border-border/50">
           <span className="text-xs font-bold text-foreground">Notes</span>
@@ -915,7 +916,7 @@ export function DunkStackGuidePanel({ onClose }: DunkStackGuidePanelProps): Reac
   return (
     <div
       ref={panelRef}
-      className="fixed z-50 flex flex-col bg-card border-2 border-border rounded-xl shadow-2xl overflow-hidden"
+      className="fixed z-50 flex flex-col bg-card border-2 border-border rounded-xl shadow-2xl overflow-hidden max-w-[calc(100vw-1rem)] max-h-[calc(100vh-1rem)]"
       style={panelStyle}
     >
       {/* Resize handles */}

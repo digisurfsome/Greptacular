@@ -351,8 +351,8 @@ export function DunkStackAgentView({
 
   return (
     <div ref={containerRef} className="flex h-full w-full overflow-hidden">
-      {/* ── Column 1: API Chat (thin sliver) ── */}
-      <div className="flex flex-col min-w-0 overflow-hidden" style={{ width: cols.col1 }}>
+      {/* ── Column 1: API Chat — hidden on mobile ── */}
+      <div className="hidden md:flex flex-col min-w-0 overflow-hidden" style={{ width: cols.col1 }}>
         {/* Header */}
         <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-border bg-card shrink-0">
           <MessageSquare size={12} className="text-primary shrink-0" />
@@ -416,16 +416,16 @@ export function DunkStackAgentView({
         </div>
       </div>
 
-      {/* Splitter 1 */}
+      {/* Splitter 1 — hidden on mobile */}
       <div
         onMouseDown={cols.onMouseDown1}
-        className="w-1 shrink-0 cursor-col-resize bg-border/50 hover:bg-primary/30 transition-colors flex items-center justify-center"
+        className="hidden md:flex w-1 shrink-0 cursor-col-resize bg-border/50 hover:bg-primary/30 transition-colors items-center justify-center"
       >
         <div className="h-8 w-0.5 rounded-full bg-muted-foreground/30" />
       </div>
 
-      {/* ── Column 2: Agent Event Log ── */}
-      <div className="flex flex-col min-w-0 overflow-hidden" style={{ width: cols.col2 }}>
+      {/* ── Column 2: Agent Event Log — hidden on mobile ── */}
+      <div className="hidden md:flex flex-col min-w-0 overflow-hidden" style={{ width: cols.col2 }}>
         {/* Header */}
         <div className="flex items-center justify-between px-2 py-1.5 border-b border-border bg-card shrink-0">
           <div className="flex items-center gap-1.5">
@@ -460,16 +460,21 @@ export function DunkStackAgentView({
         </div>
       </div>
 
-      {/* Splitter 2 */}
+      {/* Splitter 2 — hidden on mobile */}
       <div
         onMouseDown={cols.onMouseDown2}
-        className="w-1 shrink-0 cursor-col-resize bg-border/50 hover:bg-primary/30 transition-colors flex items-center justify-center"
+        className="hidden md:flex w-1 shrink-0 cursor-col-resize bg-border/50 hover:bg-primary/30 transition-colors items-center justify-center"
       >
         <div className="h-8 w-0.5 rounded-full bg-muted-foreground/30" />
       </div>
 
-      {/* ── Column 3: Walkie-Talkie (Comms Chat) ── */}
-      <div className="flex flex-col min-w-0 overflow-hidden" style={{ width: cols.col3 }}>
+      {/* ── Column 3: Walkie-Talkie (Comms Chat) ──
+           On mobile: min-w-full forces 100% width (overrides inline %).
+           On desktop: min-w-0 lets the splitter-based width work. */}
+      <div
+        className="flex flex-col min-w-full md:min-w-0 overflow-hidden"
+        style={{ width: cols.col3 }}
+      >
         <DunkStackCommsChat
           commsLog={commsLog}
           onSendMessage={onSendMessage}

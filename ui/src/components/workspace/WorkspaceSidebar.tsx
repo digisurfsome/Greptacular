@@ -19,10 +19,12 @@ import {
   ChevronDown,
   X,
   CheckSquare,
+  FolderPlus,
 } from 'lucide-react'
 import {
   useWorkspaceConversations,
   useCreateWorkspaceConversation,
+  useUpdateWorkspaceConversation,
   useDeleteWorkspaceConversation,
   useBulkDeleteWorkspaceConversations,
   useTogglePin,
@@ -175,6 +177,10 @@ export function WorkspaceSidebar({
   const [selectMode, setSelectMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
 
+  // Inline edit popover: which conversation is currently being edited (repo/folder)
+  const [editingConvId, setEditingConvId] = useState<number | null>(null)
+  const editPopoverRef = useRef<HTMLDivElement>(null)
+
   // New-chat creation form state: toggled by the "New Chat" button.
   // The inline form includes name, folder, repo toggle, model, and effort.
   const [showNewChatForm, setShowNewChatForm] = useState(false)
@@ -196,6 +202,7 @@ export function WorkspaceSidebar({
   }, [bgSessions])
 
   const createConversationMut = useCreateWorkspaceConversation()
+  const updateConversationMut = useUpdateWorkspaceConversation()
   const deleteMutation = useDeleteWorkspaceConversation()
   const { data: categories = [] } = useWorkspaceCategories()
   const createCategoryMut = useCreateCategory()
@@ -213,6 +220,24 @@ export function WorkspaceSidebar({
       return () => clearTimeout(timer)
     }
   }, [showNewChatForm])
+
+  // Close the edit popover when clicking outside of it
+  useEffect(() => {
+    if (editingConvId === null) return
+    const handleClickOutside = (e: MouseEvent) => {
+      if (editPopoverRef.current && !editPopoverRef.current.contains(e.target as Node)) {
+        setEditingConvId(null)
+      }
+    }
+    // Use a short delay so the opening click doesn't immediately close the popover
+    const timer = setTimeout(() => {
+      document.addEventListener('mousedown', handleClickOutside)
+    }, 0)
+    return () => {
+      clearTimeout(timer)
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [editingConvId])
 
   /** Create the named conversation and select it. */
   const handleCreateNamedChat = useCallback(() => {
@@ -815,8 +840,19 @@ export function WorkspaceSidebar({
                           </div>
                         )}
 
-                        {!selectMode && isHovered && (
+                        {!selectMode && (isHovered || editingConvId === conv.id) && (
                           <div className="flex items-center gap-0.5 flex-shrink-0">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setEditingConvId(editingConvId === conv.id ? null : conv.id)
+                              }}
+                              className={`p-1 rounded text-muted-foreground ${editingConvId === conv.id ? 'bg-accent text-foreground' : 'hover:bg-accent'}`}
+                              title="Assign folder or repo"
+                            >
+                              <FolderPlus size={12} />
+                            </button>
                             <button
                               type="button"
                               onClick={(e) => { e.stopPropagation(); handleTogglePin(conv.id, !conv.pinned) }}
@@ -836,6 +872,58 @@ export function WorkspaceSidebar({
                           </div>
                         )}
                       </div>
+
+                      {/* Inline edit popover — folder + repo assignment */}
+                      {editingConvId === conv.id && (
+                        <div
+                          ref={editPopoverRef}
+                          className="mt-1 p-2 rounded-lg border border-border bg-card shadow-md animate-in slide-in-from-top-1 duration-100"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {/* Folder / Category selector */}
+                          <div className="mb-1.5">
+                            <span className="text-[10px] text-muted-foreground mb-0.5 block">Move to Folder</span>
+                            <select
+                              value={conv.category || ''}
+                              onChange={(e) => {
+                                updateConversationMut.mutate({
+                                  conversationId: conv.id,
+                                  category: e.target.value || 'Uncategorized',
+                                })
+                              }}
+                              className="w-full text-xs bg-input border border-border rounded px-2 py-1.5 outline-none ring-ring focus:ring-1 text-foreground"
+                            >
+                              <option value="">No folder</option>
+                              {categories.map((cat) => (
+                                <option key={cat.id} value={cat.name}>{cat.name}</option>
+                              ))}
+                            </select>
+                          </div>
+
+                          {/* Repo selector */}
+                          <div className="mb-1.5">
+                            <span className="text-[10px] text-muted-foreground mb-0.5 block">Attach Repository</span>
+                            <RepoSelector
+                              onSelect={(path) => {
+                                updateConversationMut.mutate({
+                                  conversationId: conv.id,
+                                  working_directory: path,
+                                })
+                              }}
+                              selectedPath={conv.working_directory ?? null}
+                            />
+                          </div>
+
+                          {/* Done button */}
+                          <button
+                            type="button"
+                            onClick={() => setEditingConvId(null)}
+                            className="w-full text-xs font-medium text-center py-1 rounded bg-muted hover:bg-accent text-foreground transition-colors"
+                          >
+                            Done
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )
                 })}

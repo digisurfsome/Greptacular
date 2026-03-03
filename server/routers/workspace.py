@@ -82,6 +82,7 @@ class ConversationUpdateRequest(BaseModel):
     """Request body for updating a workspace conversation."""
     title: Optional[str] = None
     category: Optional[str] = None
+    working_directory: Optional[str] = None
     pinned: Optional[bool] = None
     tags: Optional[str] = None
     context_mode: Optional[str] = None
@@ -190,6 +191,7 @@ async def update_conversation(conversation_id: int, body: ConversationUpdateRequ
         conversation_id,
         title=body.title,
         category=body.category,
+        working_directory=body.working_directory,
         pinned=body.pinned,
         tags=body.tags,
         context_mode=body.context_mode,

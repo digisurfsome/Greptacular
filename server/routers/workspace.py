@@ -456,30 +456,25 @@ async def get_usage_overview():
     return db.get_usage_summary()
 
 
-@router.get("/usage/{period}")
-async def get_usage_period(period: str):
-    """Get usage for a specific period (daily, weekly, monthly)."""
-    if period not in ("daily", "weekly", "monthly"):
-        raise HTTPException(status_code=400, detail="Period must be daily, weekly, or monthly")
-
-    from ..services import workspace_database as db
-    return db.get_usage_by_period(period)
-
-
-@router.get("/conversations/{conversation_id}/cost")
-async def get_conversation_cost(conversation_id: int):
-    """Get cost zone breakdown for a conversation."""
+@router.get("/usage/calibration")
+async def get_calibration():
+    """Get calibrated limits based on historical rate limit events."""
     from ..services import workspace_database as db
 
-    # Look up the conversation's model to use correct pricing
-    conv = db.get_conversation(conversation_id)
-    if not conv:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+    try:
+        return db.get_calibrated_limits()
+    except Exception as e:
+        logger.warning("Failed to get calibrated limits: %s", e)
+        # Return empty calibration data so the UI degrades gracefully
+        empty = {"estimated_limit": None, "safe_limit": None, "sample_count": 0, "last_hit": None, "confidence": "none"}
+        return {"daily": empty, "weekly": empty, "monthly": empty}
 
-    model = conv.get("model", "opus") or "opus"
-    result = db.get_conversation_cost_zones(conversation_id, model=model)
 
-    return result
+@router.get("/usage/rate-limits")
+async def get_rate_limits():
+    """Get rate limit event history."""
+    from ..services import workspace_database as db
+    return db.get_rate_limit_history()
 
 
 @router.post("/usage/rate-limit")
@@ -506,25 +501,30 @@ async def log_rate_limit(event_type: str, notes: str | None = None):
     return result
 
 
-@router.get("/usage/rate-limits")
-async def get_rate_limits():
-    """Get rate limit event history."""
+@router.get("/usage/{period}")
+async def get_usage_period(period: str):
+    """Get usage for a specific period (daily, weekly, monthly)."""
+    if period not in ("daily", "weekly", "monthly"):
+        raise HTTPException(status_code=400, detail="Period must be daily, weekly, or monthly")
+
     from ..services import workspace_database as db
-    return db.get_rate_limit_history()
+    return db.get_usage_by_period(period)
 
 
-@router.get("/usage/calibration")
-async def get_calibration():
-    """Get calibrated limits based on historical rate limit events."""
+@router.get("/conversations/{conversation_id}/cost")
+async def get_conversation_cost(conversation_id: int):
+    """Get cost zone breakdown for a conversation."""
     from ..services import workspace_database as db
 
-    try:
-        return db.get_calibrated_limits()
-    except Exception as e:
-        logger.warning("Failed to get calibrated limits: %s", e)
-        # Return empty calibration data so the UI degrades gracefully
-        empty = {"estimated_limit": None, "safe_limit": None, "sample_count": 0, "last_hit": None, "confidence": "none"}
-        return {"daily": empty, "weekly": empty, "monthly": empty}
+    # Look up the conversation's model to use correct pricing
+    conv = db.get_conversation(conversation_id)
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    model = conv.get("model", "opus") or "opus"
+    result = db.get_conversation_cost_zones(conversation_id, model=model)
+
+    return result
 
 
 @router.get("/usage/premium")

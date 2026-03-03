@@ -800,10 +800,21 @@ export function WorkspaceSidebar({
                       {isFailedBg && !showActivity && !isWaitingInput && (
                         <div className="absolute left-0 top-1 bottom-1 w-0.5 rounded-full bg-red-400 z-10" />
                       )}
-                      <button
-                        type="button"
+                      <div
+                        role="button"
+                        tabIndex={0}
                         onClick={() => selectMode ? handleToggleSelect(conv.id) : onSelectConversation(conv.id, conv.provider)}
-                        className={`w-full flex items-center gap-2 px-2 py-2 rounded-lg border text-left transition-colors overflow-hidden ${
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault()
+                            if (selectMode) {
+                              handleToggleSelect(conv.id)
+                            } else {
+                              onSelectConversation(conv.id, conv.provider)
+                            }
+                          }
+                        }}
+                        className={`w-full flex items-center gap-2 px-2 py-2 rounded-lg border text-left transition-colors overflow-hidden cursor-pointer ${
                           selectMode && selectedIds.has(conv.id)
                             ? 'bg-destructive/10 text-foreground border-destructive/30'
                             : isActive
@@ -887,7 +898,7 @@ export function WorkspaceSidebar({
                             </button>
                           </div>
                         )}
-                      </button>
+                      </div>
                     </div>
                   )
                 })}

@@ -31,6 +31,7 @@ export function useBackgroundSessions() {
       if (!res.ok) throw new Error('Failed to fetch sessions');
       return res.json();
     },
-    refetchInterval: 5000, // Poll every 5 seconds
+    refetchInterval: 30_000, // Poll every 30 seconds (matches conversation polling)
+    staleTime: 25_000, // Consider fresh for 25 seconds
   });
 }

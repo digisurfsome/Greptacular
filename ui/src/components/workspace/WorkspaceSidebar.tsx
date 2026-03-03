@@ -41,17 +41,7 @@ import { ConversationSearch } from './ConversationSearch'
 import { CategoryManager } from './CategoryManager'
 import { RepoSelector } from './RepoSelector'
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubTrigger,
-  DropdownMenuSubContent,
-} from '@/components/ui/dropdown-menu'
+// Dropdown menu imports removed — new-chat flow uses inline form instead
 import { parseUtcTimestamp } from '@/lib/utils'
 import type { WorkspaceConversation, WorkspaceCategory, WorkspaceProvider, EffortLevel } from '@/lib/types'
 import type { WorkspaceProviderDef } from '@/lib/api'
@@ -154,7 +144,9 @@ export function WorkspaceSidebar({
   streamingIds,
   collapsed,
   onToggleCollapse,
-  onNewChat,
+  // onNewChat is kept in the interface for backward compatibility but no longer
+  // used internally — new-chat creation goes through the inline form instead.
+  onNewChat: _onNewChat,
   onSelectConversation,
   onDeleteConversation,
   selectedWorkingDirectory,
@@ -165,6 +157,7 @@ export function WorkspaceSidebar({
   onEffortChange,
   activeProvider = 'claude',
 }: WorkspaceSidebarProps): React.JSX.Element {
+  void _onNewChat // suppress unused-variable lint warning
   // Fetch provider definitions from backend
   const { data: providers } = useWorkspaceProviders()
 
@@ -182,10 +175,12 @@ export function WorkspaceSidebar({
   const [selectMode, setSelectMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
 
-  // Naming form state: when a category is selected from the dropdown,
-  // show an inline form to name the new chat before creating it.
-  const [namingCategory, setNamingCategory] = useState<string | null>(null)
+  // New-chat creation form state: toggled by the "New Chat" button.
+  // The inline form includes name, folder, repo toggle, model, and effort.
+  const [showNewChatForm, setShowNewChatForm] = useState(false)
   const [newChatName, setNewChatName] = useState('')
+  const [newChatCategory, setNewChatCategory] = useState('')
+  const [attachRepo, setAttachRepo] = useState(false)
   const namingInputRef = useRef<HTMLInputElement>(null)
 
   const { data: conversations, isLoading } = useWorkspaceConversations()
@@ -210,24 +205,18 @@ export function WorkspaceSidebar({
   const cycleModelBadgeMut = useCycleModelBadge()
   const bulkDeleteMutation = useBulkDeleteWorkspaceConversations()
 
-  // Focus the naming input when it appears
+  // Focus the naming input when the form appears
   useEffect(() => {
-    if (namingCategory !== null) {
+    if (showNewChatForm) {
       // Small delay to allow DOM render
       const timer = setTimeout(() => namingInputRef.current?.focus(), 50)
       return () => clearTimeout(timer)
     }
-  }, [namingCategory])
-
-  /** Open the naming form for a specific category. */
-  const handleOpenNamingForm = useCallback((categoryName: string) => {
-    setNamingCategory(categoryName)
-    setNewChatName('')
-  }, [])
+  }, [showNewChatForm])
 
   /** Create the named conversation and select it. */
   const handleCreateNamedChat = useCallback(() => {
-    if (!namingCategory) return
+    if (!showNewChatForm) return
     const title = newChatName.trim() || undefined
     const safeIdx = Math.min(modelPresetIndex, SIDEBAR_MODEL_PRESETS.length - 1)
     const preset = SIDEBAR_MODEL_PRESETS[safeIdx]
@@ -236,7 +225,7 @@ export function WorkspaceSidebar({
     const effort = (isClaudeProvider && preset.context === '1m') ? effortLevel : 'high'
     createConversationMut.mutate({
       title,
-      category: namingCategory,
+      category: newChatCategory || undefined,
       model: preset.model,
       context_mode: preset.context,
       effort,
@@ -244,20 +233,27 @@ export function WorkspaceSidebar({
     }, {
       onSuccess: (newConv) => {
         onSelectConversation(newConv.id, newConv.provider)
-        setNamingCategory(null)
+        setShowNewChatForm(false)
         setNewChatName('')
+        setNewChatCategory('')
+        setAttachRepo(false)
       },
       onError: (err) => {
         console.error('Failed to create conversation:', err)
-        setNamingCategory(null)
+        setShowNewChatForm(false)
+        setNewChatName('')
+        setNewChatCategory('')
+        setAttachRepo(false)
       },
     })
-  }, [namingCategory, newChatName, createConversationMut, onSelectConversation, modelPresetIndex, effortLevel, SIDEBAR_MODEL_PRESETS, isClaudeProvider, activeProvider])
+  }, [showNewChatForm, newChatName, newChatCategory, createConversationMut, onSelectConversation, modelPresetIndex, effortLevel, SIDEBAR_MODEL_PRESETS, isClaudeProvider, activeProvider])
 
   /** Cancel the naming form. */
   const handleCancelNaming = useCallback(() => {
-    setNamingCategory(null)
+    setShowNewChatForm(false)
     setNewChatName('')
+    setNewChatCategory('')
+    setAttachRepo(false)
   }, [])
 
   /** Filter conversations by search term (case-insensitive substring). */
@@ -394,120 +390,24 @@ export function WorkspaceSidebar({
         </div>
       </div>
 
-      {/* New Chat button with model selection dropdown + category dropdown */}
-      <div className="px-3 py-2 flex gap-1">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button className="flex-1">
-              <Plus size={16} />
-              New Chat
-              <ChevronDown size={12} className="ml-1 opacity-60" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-56">
-            <DropdownMenuLabel className="text-xs">
-              {activeProvider === 'claude' ? 'Select model' : `${activeProvider.charAt(0).toUpperCase() + activeProvider.slice(1)} models`}
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {SIDEBAR_MODEL_PRESETS.map((preset) => {
-              // Color coding: provider-specific dot colors
-              const dotColor = activeProvider === 'codex'
-                ? 'bg-emerald-500'
-                : activeProvider === 'gemini'
-                  ? 'bg-violet-500'
-                  : preset.model === 'sonnet'
-                    ? 'bg-violet-500'
-                    : preset.context === '1m'
-                      ? 'bg-blue-500'
-                      : 'bg-zinc-500'
-
-              // Claude Opus 1M: show effort sub-menu (effort only works on Claude Opus)
-              if (isClaudeProvider && preset.context === '1m' && preset.model === 'opus') {
-                return (
-                  <DropdownMenuSub key={preset.label}>
-                    <DropdownMenuSubTrigger className="gap-2 text-xs">
-                      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dotColor}`} />
-                      <span className="font-medium">{preset.label}</span>
-                      <span className="ml-auto text-[10px] text-muted-foreground">API key</span>
-                    </DropdownMenuSubTrigger>
-                    <DropdownMenuSubContent className="w-56">
-                      <DropdownMenuLabel className="text-[10px]">Thinking Effort</DropdownMenuLabel>
-                      <DropdownMenuSeparator />
-                      {EFFORT_PRESETS.map((ep) => (
-                        <DropdownMenuItem
-                          key={ep.key}
-                          onClick={() => onNewChat(preset.model, preset.context, ep.key, activeProvider)}
-                          className="gap-2 text-xs"
-                        >
-                          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                            ep.key === 'low' ? 'bg-emerald-500' : ep.key === 'medium' ? 'bg-blue-500' : 'bg-orange-500'
-                          }`} />
-                          <div className="flex flex-col gap-0">
-                            <span className="font-semibold">{ep.label}</span>
-                            <span className="text-[10px] text-muted-foreground leading-tight">{ep.useCases}</span>
-                          </div>
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuSubContent>
-                  </DropdownMenuSub>
-                )
-              }
-
-              // Non-Claude models or Claude 200K: direct click, no effort choice
-              return (
-                <DropdownMenuItem
-                  key={preset.label}
-                  onClick={() => onNewChat(preset.model, preset.context, 'high', activeProvider)}
-                  className="gap-2 text-xs"
-                >
-                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dotColor}`} />
-                  <span className="font-medium">{preset.label}</span>
-                  {isClaudeProvider && (
-                    <span className="ml-auto text-[10px] text-muted-foreground">
-                      {preset.context === '200k' ? 'Subscription' : 'API key'}
-                    </span>
-                  )}
-                </DropdownMenuItem>
-              )
-            })}
-          </DropdownMenuContent>
-        </DropdownMenu>
-        {categories.length > 0 && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button size="icon" variant="outline" className="shrink-0 w-8" title="New chat in category...">
-                <ChevronDown size={14} />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuLabel className="text-xs">New chat in category</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {categories.map((cat) => (
-                <DropdownMenuItem
-                  key={cat.id}
-                  onClick={() => handleOpenNamingForm(cat.name)}
-                  className="gap-2 text-xs"
-                >
-                  {cat.color && (
-                    <span
-                      className="w-2 h-2 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: cat.color }}
-                    />
-                  )}
-                  {cat.name}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
+      {/* New Chat button — opens the creation form */}
+      <div className="px-3 py-2">
+        <Button
+          className="w-full"
+          onClick={() => setShowNewChatForm(prev => !prev)}
+        >
+          <Plus size={16} />
+          New Chat
+          <ChevronDown size={12} className={`ml-1 opacity-60 transition-transform ${showNewChatForm ? 'rotate-180' : ''}`} />
+        </Button>
       </div>
 
-      {/* Naming form: slides in when a category is selected from the dropdown */}
-      {namingCategory !== null && (
+      {/* New-chat creation form — slides in when the button is toggled */}
+      {showNewChatForm && (
         <div className="px-3 py-2 border-b border-border bg-muted/50 animate-in slide-in-from-top-2 duration-150">
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              New chat in {namingCategory}
+              New Conversation
             </span>
             <button
               type="button"
@@ -518,6 +418,8 @@ export function WorkspaceSidebar({
               <X size={12} />
             </button>
           </div>
+
+          {/* Name (optional) */}
           <input
             ref={namingInputRef}
             type="text"
@@ -531,19 +433,51 @@ export function WorkspaceSidebar({
                 handleCancelNaming()
               }
             }}
-            placeholder="Name"
+            placeholder="Name (optional)"
             className="w-full text-xs bg-input border border-border rounded px-2 py-1.5 outline-none ring-ring focus:ring-1 text-foreground placeholder:text-muted-foreground mb-1.5"
             aria-label="Chat name"
           />
-          {/* Repo selector — pick a repo before starting the chat */}
+
+          {/* Folder / Category selector */}
           <div className="mb-1.5">
-            <span className="text-[10px] text-muted-foreground mb-0.5 block">Repository</span>
-            <RepoSelector
-              onSelect={(path) => onWorkingDirectoryChange?.(path)}
-              selectedPath={selectedWorkingDirectory ?? null}
-            />
+            <span className="text-[10px] text-muted-foreground mb-0.5 block">Folder</span>
+            <select
+              value={newChatCategory}
+              onChange={(e) => setNewChatCategory(e.target.value)}
+              className="w-full text-xs bg-input border border-border rounded px-2 py-1.5 outline-none ring-ring focus:ring-1 text-foreground"
+            >
+              <option value="">No folder</option>
+              {categories.map((cat) => (
+                <option key={cat.id} value={cat.name}>{cat.name}</option>
+              ))}
+            </select>
           </div>
-          {/* Model preset pill — pick model + context before starting */}
+
+          {/* Attach Repo toggle */}
+          <div className="mb-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-muted-foreground">Attach Repository</span>
+              <button
+                type="button"
+                onClick={() => setAttachRepo(!attachRepo)}
+                className={`relative w-7 h-4 rounded-full transition-colors ${attachRepo ? 'bg-primary' : 'bg-muted-foreground/30'}`}
+                role="switch"
+                aria-checked={attachRepo}
+              >
+                <span className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white transition-transform ${attachRepo ? 'translate-x-3' : ''}`} />
+              </button>
+            </div>
+            {attachRepo && (
+              <div className="mt-1">
+                <RepoSelector
+                  onSelect={(path) => onWorkingDirectoryChange?.(path)}
+                  selectedPath={selectedWorkingDirectory ?? null}
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Model preset pills — pick model + context before starting */}
           <div className="mb-1.5">
             <span className="text-[10px] text-muted-foreground mb-0.5 block">Model</span>
             <div className="flex rounded-full border border-border overflow-hidden shadow-sm" role="radiogroup" aria-label="Model selection">
@@ -578,6 +512,7 @@ export function WorkspaceSidebar({
               })}
             </div>
           </div>
+
           {/* Effort level selector — only shown for Claude provider, active for Opus 1M */}
           {isClaudeProvider && (() => {
             const selectedPreset = SIDEBAR_MODEL_PRESETS[modelPresetIndex]
@@ -621,6 +556,8 @@ export function WorkspaceSidebar({
               </div>
             )
           })()}
+
+          {/* Start Chat button */}
           <Button
             size="sm"
             className="w-full h-7 text-xs"

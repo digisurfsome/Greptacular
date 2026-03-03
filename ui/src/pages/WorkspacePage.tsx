@@ -20,7 +20,6 @@ import { WorkspaceChat } from '../components/workspace/WorkspaceChat'
 import { WorkspaceLibrary } from '../components/workspace/WorkspaceLibrary'
 import { WorkspaceKeyboardHelp } from '../components/workspace/WorkspaceKeyboardHelp'
 import { WorkspaceUserGuide } from '../components/workspace/WorkspaceUserGuide'
-import { RepoSelector } from '../components/workspace/RepoSelector'
 import { PassoffEditor, type PassoffSection } from '../components/workspace/PassoffEditor'
 import { SwarmPanel } from '../components/workspace/SwarmPanel'
 import { CIStatusWidget } from '../components/workspace/CIStatusWidget'
@@ -312,11 +311,6 @@ export function WorkspacePage(): React.JSX.Element {
           <span className="text-xs font-semibold text-foreground">
             Workspace
           </span>
-          <ChevronRight size={12} className="text-muted-foreground" />
-          <RepoSelector
-            onSelect={handleRepoSelect}
-            selectedPath={workingDirectory}
-          />
         </nav>
 
         <div className="ml-auto flex items-center gap-1">

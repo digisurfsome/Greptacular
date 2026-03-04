@@ -32,9 +32,9 @@ import {
   Loader2,
   Globe,
   Plus,
-  Check,
   X,
   Menu,
+  ChevronDown,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ThemeSelector } from '@/components/ThemeSelector'
@@ -60,6 +60,7 @@ import {
   useAutoResolveGaps,
 } from '@/hooks/useAgentOS'
 import { DunkStackPreviewPanel } from '@/components/dunkstack/DunkStackPreviewPanel'
+import { RepoSelector } from '@/components/workspace/RepoSelector'
 
 type RightPanel = 'safety' | 'files' | 'agent-os' | 'preview' | null
 type CenterView = 'chat' | 'agent-os-intake' | 'agent-os-workflow'
@@ -70,6 +71,8 @@ const MODEL_PRESETS: ModelPreset[] = [
   { model: 'opus', context: '200k', label: 'Opus 4.6 \u00b7 200K', limit: 200000, color: 'bg-zinc-700' },
   { model: 'opus', context: '1m', label: 'Opus 4.6 \u00b7 1M', limit: 1000000, color: 'bg-blue-600' },
   { model: 'sonnet', context: '1m', label: 'Sonnet 4.6 \u00b7 1M', limit: 1000000, color: 'bg-violet-600' },
+  { model: 'sonnet', context: '200k', label: 'Sonnet 4.6 \u00b7 200K', limit: 200000, color: 'bg-violet-500' },
+  { model: 'haiku', context: '200k', label: 'Haiku 3.5 \u00b7 200K', limit: 200000, color: 'bg-emerald-600' },
 ]
 
 function getStoredModelPreset(): number {
@@ -125,6 +128,10 @@ export function DunkStackPage(): React.JSX.Element {
   const [showNewProject, setShowNewProject] = useState(false)
   const [newProjectName, setNewProjectName] = useState('')
   const [newProjectError, setNewProjectError] = useState('')
+  const [attachRepo, setAttachRepo] = useState(false)
+  const [newProjectRepo, setNewProjectRepo] = useState<string | null>(null)
+  const [formModelPresetIndex, setFormModelPresetIndex] = useState(0)
+  const namingInputRef = useRef<HTMLInputElement>(null)
 
   const handleCreateProject = useCallback(async () => {
     const raw = newProjectName.trim()
@@ -132,20 +139,48 @@ export function DunkStackPage(): React.JSX.Element {
     // Auto-sanitize: lowercase, replace spaces/special chars with hyphens
     const name = raw.toLowerCase().replace(/[^a-z0-9_-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')
     if (!name) { setNewProjectError('Invalid name'); return }
-    // Auto-generate path on server
-    const path = `/home/user/${name}`
+    // Use the attached repo path if provided, otherwise auto-generate
+    const path = newProjectRepo || `/home/user/${name}`
     setNewProjectError('')
     try {
       await createProject.mutateAsync({ name, path, specMethod: 'manual' })
       setSelectedProject(name)
       localStorage.setItem('dunkstack-selected-project', name)
+      // Apply the form's model preset to the page-level state
+      setModelPresetIndex(formModelPresetIndex)
+      localStorage.setItem('dunkstack-model-preset', String(formModelPresetIndex))
+      const preset = MODEL_PRESETS[formModelPresetIndex]
+      const modelId = preset.model === 'opus' ? 'claude-opus-4-6' : 'claude-sonnet-4-6'
+      try { await dunkstackUpdateModelPreset(modelId, preset.limit) } catch { /* best-effort */ }
+      // Reset form
       setShowNewProject(false)
       setNewProjectName('')
+      setAttachRepo(false)
+      setNewProjectRepo(null)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
       setNewProjectError(msg)
     }
-  }, [newProjectName, createProject, setSelectedProject])
+  }, [newProjectName, newProjectRepo, formModelPresetIndex, createProject, setSelectedProject])
+
+  // Focus the naming input when the form appears
+  useEffect(() => {
+    if (showNewProject) {
+      const timer = setTimeout(() => namingInputRef.current?.focus(), 50)
+      return () => clearTimeout(timer)
+    }
+  }, [showNewProject])
+
+  /** Cancel the new project form and reset all fields. */
+  const handleCancelNewProject = useCallback(() => {
+    setShowNewProject(false)
+    setNewProjectName('')
+    setNewProjectError('')
+    setAttachRepo(false)
+    setNewProjectRepo(null)
+    setFormModelPresetIndex(0)
+  }, [])
+
   const [centerView, setCenterView] = useState<CenterView>('chat')
   const [standardsPanelOpen, setStandardsPanelOpen] = useState(true)
   const [productPanelOpen, setProductPanelOpen] = useState(false)
@@ -182,21 +217,6 @@ export function DunkStackPage(): React.JSX.Element {
   const { data: gapsData } = useGaps(isAgentOSView && selectedProject ? selectedProject : '')
   const resolveGap = useResolveGap(selectedProject || '')
   const autoResolveGaps = useAutoResolveGaps(selectedProject || '')
-
-  /** Switch model preset: persist to localStorage and push config to backend.
-   *  Uses the dedicated model-preset endpoint which auto-derives billing mode:
-   *  200K = subscription (free), 1M = API key (paid). */
-  const handleModelPresetChange = useCallback(async (index: number) => {
-    setModelPresetIndex(index)
-    localStorage.setItem('dunkstack-model-preset', String(index))
-    const preset = MODEL_PRESETS[index]
-    const modelId = preset.model === 'opus' ? 'claude-opus-4-6' : 'claude-sonnet-4-6'
-    try {
-      await dunkstackUpdateModelPreset(modelId, preset.limit)
-    } catch {
-      // Config update is best-effort; the UI still reflects the choice
-    }
-  }, [])
 
   /** Select a project and persist choice. */
   const handleSelectProject = useCallback((name: string) => {
@@ -277,24 +297,18 @@ export function DunkStackPage(): React.JSX.Element {
           </div>
         </div>
 
-        {/* Model preset pills — hidden on mobile */}
-        <div className="hidden md:flex items-center gap-1 ml-4">
-          <Cpu size={13} className="text-muted-foreground mr-1" />
-          {MODEL_PRESETS.map((preset, idx) => (
-            <button
-              key={`${preset.model}-${preset.context}`}
-              onClick={() => handleModelPresetChange(idx)}
-              className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold transition-colors ${
-                idx === modelPresetIndex
-                  ? `${preset.color} text-white shadow-sm`
-                  : 'bg-muted/50 text-muted-foreground hover:bg-muted'
-              }`}
-              title={`Switch to ${preset.label}`}
+        {/* Model indicator — read-only, shows current project's model preset */}
+        {selectedProject && (
+          <div className="hidden md:flex items-center gap-1.5 ml-4">
+            <Cpu size={13} className="text-muted-foreground" />
+            <span
+              className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${MODEL_PRESETS[modelPresetIndex].color} text-white shadow-sm`}
+              title={`Current model: ${MODEL_PRESETS[modelPresetIndex].label}`}
             >
-              {preset.label}
-            </button>
-          ))}
-        </div>
+              {MODEL_PRESETS[modelPresetIndex].label}
+            </span>
+          </div>
+        )}
 
         {/* Center spacer */}
         <div className="flex-1 min-w-2" />
@@ -509,54 +523,133 @@ export function DunkStackPage(): React.JSX.Element {
               </div>
             </div>
 
-            {/* New Project button / form */}
-            <div className="px-2 py-1.5 border-b border-border shrink-0">
-              {!showNewProject ? (
-                <button
-                  onClick={() => setShowNewProject(true)}
-                  className="w-full flex items-center gap-1.5 px-2 py-1.5 text-xs font-semibold rounded border-2 border-dashed border-muted-foreground/30 hover:border-primary hover:bg-primary/5 text-muted-foreground hover:text-primary transition-colors"
-                >
-                  <Plus size={14} />
-                  New Project
-                </button>
-              ) : (
-                <div className="space-y-1.5">
-                  <input
-                    type="text"
-                    placeholder="Project name (e.g. my-app)"
-                    value={newProjectName}
-                    onChange={e => setNewProjectName(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && handleCreateProject()}
-                    className="w-full px-2 py-1 text-xs border border-border rounded bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                    autoFocus
-                  />
-                  {newProjectName.trim() && (
-                    <div className="text-[10px] text-muted-foreground px-0.5">
-                      /home/user/{newProjectName.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || '...'}
-                    </div>
-                  )}
-                  {newProjectError && (
-                    <div className="text-[10px] text-red-500 px-0.5">{newProjectError}</div>
-                  )}
-                  <div className="flex gap-1">
+            {/* New Project toggle button */}
+            <div className="px-3 py-2">
+              <Button
+                className="w-full"
+                onClick={() => setShowNewProject(prev => !prev)}
+              >
+                <Plus size={16} />
+                New Project
+                <ChevronDown size={12} className={`ml-1 opacity-60 transition-transform ${showNewProject ? 'rotate-180' : ''}`} />
+              </Button>
+            </div>
+
+            {/* New Project creation form — slides in when the button is toggled */}
+            {showNewProject && (
+              <div className="px-3 py-2 border-b border-border bg-muted/50 animate-in slide-in-from-top-2 duration-150">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    New Project
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleCancelNewProject}
+                    className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground"
+                    title="Cancel"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+
+                {/* Name */}
+                <input
+                  ref={namingInputRef}
+                  type="text"
+                  value={newProjectName}
+                  onChange={(e) => setNewProjectName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      handleCreateProject()
+                    } else if (e.key === 'Escape') {
+                      handleCancelNewProject()
+                    }
+                  }}
+                  placeholder="Project name (e.g. my-app)"
+                  className="w-full text-xs bg-input border border-border rounded px-2 py-1.5 outline-none ring-ring focus:ring-1 text-foreground placeholder:text-muted-foreground mb-1.5"
+                  aria-label="Project name"
+                />
+
+                {/* Path preview */}
+                {newProjectName.trim() && !newProjectRepo && (
+                  <div className="text-[10px] text-muted-foreground px-0.5 mb-1.5">
+                    /home/user/{newProjectName.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || '...'}
+                  </div>
+                )}
+
+                {newProjectError && (
+                  <div className="text-[10px] text-red-500 px-0.5 mb-1.5">{newProjectError}</div>
+                )}
+
+                {/* Attach Repo toggle */}
+                <div className="mb-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-muted-foreground">Attach Repository</span>
                     <button
-                      onClick={handleCreateProject}
-                      disabled={createProject.isPending}
-                      className="flex-1 flex items-center justify-center gap-1 px-2 py-1 text-xs font-semibold rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                      type="button"
+                      onClick={() => setAttachRepo(!attachRepo)}
+                      className={`relative w-7 h-4 rounded-full transition-colors ${attachRepo ? 'bg-primary' : 'bg-muted-foreground/30'}`}
+                      role="switch"
+                      aria-checked={attachRepo}
                     >
-                      <Check size={12} />
-                      {createProject.isPending ? 'Creating...' : 'Create'}
-                    </button>
-                    <button
-                      onClick={() => { setShowNewProject(false); setNewProjectError(''); setNewProjectName('') }}
-                      className="px-2 py-1 text-xs rounded border border-border hover:bg-muted text-muted-foreground"
-                    >
-                      <X size={12} />
+                      <span className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white transition-transform ${attachRepo ? 'translate-x-3' : ''}`} />
                     </button>
                   </div>
+                  {attachRepo && (
+                    <div className="mt-1">
+                      <RepoSelector
+                        onSelect={(path) => setNewProjectRepo(path || null)}
+                        selectedPath={newProjectRepo}
+                      />
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+
+                {/* Model preset pills */}
+                <div className="mb-1.5">
+                  <span className="text-[10px] text-muted-foreground mb-0.5 block">Model</span>
+                  <div className="flex flex-wrap gap-1" role="radiogroup" aria-label="Model selection">
+                    {MODEL_PRESETS.map((preset, idx) => {
+                      const isActive = formModelPresetIndex === idx
+                      const activeColor = preset.model === 'haiku'
+                        ? 'bg-emerald-600 text-white shadow-inner'
+                        : preset.model === 'sonnet'
+                          ? 'bg-violet-500 text-white shadow-inner'
+                          : preset.context === '1m'
+                            ? 'bg-blue-600 text-white shadow-inner'
+                            : 'bg-zinc-600 text-white shadow-inner'
+                      return (
+                        <button
+                          key={`${preset.model}-${preset.context}`}
+                          type="button"
+                          role="radio"
+                          aria-checked={isActive}
+                          onClick={() => setFormModelPresetIndex(idx)}
+                          className={`px-2 py-1 rounded-full text-[10px] font-semibold whitespace-nowrap transition-all duration-150 border ${
+                            isActive
+                              ? `${activeColor} border-transparent`
+                              : 'bg-card text-muted-foreground hover:bg-muted hover:text-foreground border-border'
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* Create button */}
+                <Button
+                  size="sm"
+                  className="w-full h-7 text-xs"
+                  onClick={handleCreateProject}
+                  disabled={createProject.isPending}
+                >
+                  {createProject.isPending ? 'Creating...' : 'Create Project'}
+                </Button>
+              </div>
+            )}
 
             {/* Project list */}
             <div className="flex-1 overflow-y-auto py-1">

@@ -41,6 +41,7 @@ from .routers import (
     execution_router,
     execution_websocket,
     expand_project_router,
+    factory_router,
     features_router,
     filesystem_router,
     notifications_router,
@@ -205,6 +206,7 @@ app.include_router(yt_processing_router)
 app.include_router(captures_router)
 app.include_router(execution_router)
 app.include_router(yt_batch_router)
+app.include_router(factory_router)
 
 
 # ============================================================================

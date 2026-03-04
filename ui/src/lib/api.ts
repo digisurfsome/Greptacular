@@ -2264,3 +2264,94 @@ export async function batchProcessVideos(batchId: string): Promise<{ batch_id: s
 export async function getBatchStatus(batchId: string): Promise<YTBatchStatusResponse> {
   return fetchJSON(`/yt-lab/batch-status/${encodeURIComponent(batchId)}`)
 }
+
+// ============================================================================
+// Factory Mode API
+// ============================================================================
+
+export interface FactoryStartRequest {
+  mode?: string
+  model?: string
+  yolo_mode?: boolean
+  auto_commit?: boolean
+  rate_limit_strategy?: string
+  start_phase?: number
+}
+
+export interface FactorySettingsRequest {
+  handoff_threshold?: number
+  handoff_template?: string
+}
+
+export interface FactoryResponse {
+  success: boolean
+  message: string
+  data?: Record<string, unknown>
+}
+
+export async function factoryStart(projectName: string, req: FactoryStartRequest = {}): Promise<FactoryResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/factory/start`, {
+    method: 'POST',
+    body: JSON.stringify(req),
+  })
+}
+
+export async function factoryStop(projectName: string): Promise<FactoryResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/factory/stop`, {
+    method: 'POST',
+  })
+}
+
+export async function factoryStatus(projectName: string): Promise<FactoryResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/factory/status`)
+}
+
+export async function factoryUpdateSettings(projectName: string, req: FactorySettingsRequest): Promise<FactoryResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/factory/settings`, {
+    method: 'PUT',
+    body: JSON.stringify(req),
+  })
+}
+
+export async function factoryGetHandoffs(projectName: string): Promise<FactoryResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/factory/handoffs`)
+}
+
+// Phase PRD Document API
+// Manages per-phase PRD documents (1.md, 2.md, etc.) used by factory mode
+
+export async function factoryListPhaseDocuments(projectName: string): Promise<FactoryResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/factory/phases/documents`)
+}
+
+export async function factoryGetPhaseDocument(projectName: string, phaseNum: number): Promise<FactoryResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/factory/phases/documents/${phaseNum}`)
+}
+
+export async function factoryUpdatePhaseDocument(projectName: string, phaseNum: number, content: string): Promise<FactoryResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/factory/phases/documents/${phaseNum}`, {
+    method: 'PUT',
+    body: JSON.stringify({ content }),
+  })
+}
+
+export async function factoryDeletePhaseDocument(projectName: string, phaseNum: number): Promise<FactoryResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/factory/phases/documents/${phaseNum}`, {
+    method: 'DELETE',
+  })
+}
+
+/** Upload .md/.txt files as phase PRDs. Uses raw fetch (FormData sets its own Content-Type). */
+export async function factoryUploadPhaseDocuments(projectName: string, files: File[]): Promise<FactoryResponse> {
+  const formData = new FormData()
+  files.forEach(f => formData.append('files', f))
+  const res = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectName)}/factory/phases/documents/upload`, {
+    method: 'POST',
+    body: formData,
+  })
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: 'Upload failed' }))
+    throw new Error(error.detail || `HTTP ${res.status}`)
+  }
+  return res.json()
+}

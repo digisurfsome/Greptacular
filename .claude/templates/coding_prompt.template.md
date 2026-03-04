@@ -426,3 +426,9 @@ This allows you to fully test email-dependent flows without needing external ema
 ---
 
 Begin by running Step 1 (Get Your Bearings).
+
+## Factory Mode (Auto-Handoff Protocol)
+
+> **This section is active when Factory Mode is enabled.**
+
+{factory_instructions}

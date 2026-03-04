@@ -1196,5 +1196,89 @@ def ask_user(
     return "Questions presented to the user. Their response will arrive as your next message."
 
 
+@mcp.tool()
+def factory_write_handoff(
+    completed_summary: Annotated[str, Field(min_length=1, description="What you accomplished this session")],
+    next_phase_summary: Annotated[str, Field(min_length=1, description="What the next agent should work on")],
+    features_completed: Annotated[list[int] | None, Field(description="List of feature IDs you completed")] = None,
+    files_created: Annotated[list[str] | None, Field(description="List of new files you created")] = None,
+    files_modified: Annotated[list[str] | None, Field(description="List of existing files you modified")] = None,
+    priority_tasks: Annotated[list[str] | None, Field(description="Ordered list of tasks for the next agent")] = None,
+    feature_ids_to_work: Annotated[list[int] | None, Field(description="Feature IDs for the next agent to implement")] = None,
+    notes: Annotated[str | None, Field(description="Any important context for the next agent")] = None,
+    current_bugs: Annotated[list[dict] | None, Field(description="List of known bugs [{file, line, description, severity}]")] = None,
+    dev_server_url: Annotated[str | None, Field(description="URL of the running dev server (if any)")] = None,
+    dev_server_status: Annotated[str | None, Field(description="Status of dev server (running/stopped/was_running)")] = None,
+    context_usage_percent: Annotated[int | None, Field(description="Your estimated context usage percentage")] = None,
+    context_reason: Annotated[str | None, Field(description="Why you're handing off (approaching_budget, rate_limited, completed, etc.)")] = None,
+) -> str:
+    """Write a handoff file for the next agent session.
+
+    Call this when you are approaching your context budget or when you have
+    completed all assigned work for this phase. The handoff file tells AutoForge
+    what you accomplished, what's left to do, and any issues the next agent
+    should know about. AutoForge will automatically read this file and start
+    the next agent session.
+
+    Args:
+        completed_summary: What you accomplished this session
+        next_phase_summary: What the next agent should work on
+        features_completed: List of feature IDs you completed
+        files_created: List of new files you created
+        files_modified: List of existing files you modified
+        priority_tasks: Ordered list of tasks for the next agent
+        feature_ids_to_work: Feature IDs for the next agent to implement
+        notes: Any important context for the next agent
+        current_bugs: List of known bugs [{file, line, description, severity}]
+        dev_server_url: URL of the running dev server (if any)
+        dev_server_status: Status of dev server (running/stopped/was_running)
+        context_usage_percent: Your estimated context usage percentage
+        context_reason: Why you're handing off (approaching_budget, rate_limited, completed, etc.)
+
+    Returns:
+        JSON with status, path, and confirmation message.
+    """
+    from datetime import datetime, timezone
+
+    handoff_data = {
+        "version": 1,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "completed": {
+            "summary": completed_summary,
+            "features_completed": features_completed or [],
+            "files_created": files_created or [],
+            "files_modified": files_modified or [],
+        },
+        "next_phase": {
+            "summary": next_phase_summary,
+            "priority_tasks": priority_tasks or [],
+            "feature_ids_to_work": feature_ids_to_work or [],
+            "notes": notes or "",
+        },
+        "current_bugs": current_bugs or [],
+        "dev_server": {
+            "url": dev_server_url,
+            "status": dev_server_status or "unknown",
+        },
+        "context_usage": {
+            "estimated_percent": context_usage_percent,
+            "reason": context_reason or "approaching_budget",
+        },
+    }
+
+    try:
+        handoff_path = PROJECT_DIR / ".autoforge" / "handoff.json"
+        handoff_path.parent.mkdir(parents=True, exist_ok=True)
+        handoff_path.write_text(json.dumps(handoff_data, indent=2), encoding="utf-8")
+
+        return json.dumps({
+            "status": "written",
+            "path": str(handoff_path),
+            "message": "Handoff file written. AutoForge will read this when your session ends and auto-start the next agent."
+        })
+    except Exception as e:
+        return json.dumps({"error": f"Failed to write handoff file: {str(e)}"})
+
+
 if __name__ == "__main__":
     mcp.run()

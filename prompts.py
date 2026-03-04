@@ -300,10 +300,37 @@ def _strip_browser_testing_sections(prompt: str) -> str:
     return prompt
 
 
+def _load_factory_instructions(project_dir: Path | None) -> str:
+    """Load factory instructions from .autoforge/factory_prompt.md if it exists.
+
+    The factory controller writes this file before starting each phase so the
+    agent receives context-budget and handoff protocol instructions. When the
+    file does not exist (normal non-factory mode), returns an empty string.
+
+    Args:
+        project_dir: The project directory to check.
+
+    Returns:
+        The factory instructions content, or empty string.
+    """
+    if not project_dir:
+        return ""
+
+    factory_prompt_path = project_dir / ".autoforge" / "factory_prompt.md"
+    if factory_prompt_path.exists():
+        try:
+            return factory_prompt_path.read_text(encoding="utf-8")
+        except (OSError, PermissionError):
+            return ""
+    return ""
+
+
 def get_coding_prompt(project_dir: Path | None = None, yolo_mode: bool = False) -> str:
     """Load the coding agent prompt (project-specific if available).
 
     If the project uses a boilerplate, injects context about pre-built features.
+    If the project is running in factory mode, fills the {factory_instructions}
+    placeholder with the rendered handoff protocol from .autoforge/factory_prompt.md.
 
     Args:
         project_dir: Optional project directory for project-specific prompts
@@ -318,6 +345,12 @@ def get_coding_prompt(project_dir: Path | None = None, yolo_mode: bool = False) 
 
     if yolo_mode:
         prompt = _strip_browser_testing_sections(prompt)
+
+    # Fill the {factory_instructions} placeholder. In factory mode the file
+    # exists and contains the rendered handoff template; otherwise it is
+    # replaced with an empty string so the section is inert.
+    factory_instructions = _load_factory_instructions(project_dir)
+    prompt = prompt.replace("{factory_instructions}", factory_instructions)
 
     boilerplate_ctx = _get_boilerplate_context(project_dir)
     if boilerplate_ctx:

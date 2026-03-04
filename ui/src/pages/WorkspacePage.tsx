@@ -28,6 +28,7 @@ import { useWorkspaceKeyboardShortcuts } from '../hooks/useWorkspaceKeyboardShor
 import { exportConversationMarkdown, getSettings } from '../lib/api'
 import type { WalkieTalkieLogEntry } from '../lib/types'
 import { CountdownTimerBar } from '../components/workspace/CountdownTimerBar'
+import { FactoryPanel } from '../components/factory/FactoryPanel'
 import {
   ArrowLeft,
   ChevronRight,
@@ -41,6 +42,7 @@ import {
   Network,
   LayoutDashboard,
   Menu,
+  Factory,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -78,6 +80,7 @@ export function WorkspacePage(): React.JSX.Element {
   const [showUserGuide, setShowUserGuide] = useState(false)
   const [splitView, setSplitView] = useState(false)
   const [showSwarm, setShowSwarm] = useState(false)
+  const [showFactory, setShowFactory] = useState(false)
 
   // Three-panel state (split view)
   const [prdConversationId, setPrdConversationId] = useState<number | null>(null)
@@ -374,6 +377,19 @@ export function WorkspacePage(): React.JSX.Element {
             <Network size={14} />
             <span className="hidden sm:inline text-[10px]">Swarm</span>
           </Button>
+          <Button
+            variant={showFactory ? 'default' : 'ghost'}
+            size="sm"
+            className={`h-7 px-2 gap-1.5 ${showFactory
+              ? 'bg-amber-600 text-white hover:bg-amber-700'
+              : 'text-muted-foreground hover:text-foreground'
+            }`}
+            onClick={() => setShowFactory(v => !v)}
+            title="Factory Mode: autonomous phased feature pipeline"
+          >
+            <Factory size={14} />
+            <span className="hidden sm:inline text-[10px]">Factory</span>
+          </Button>
           {splitView && (
             <Button
               variant={autoForward ? 'default' : 'ghost'}
@@ -481,6 +497,17 @@ export function WorkspacePage(): React.JSX.Element {
         onKeepGoing={() => setTimerActive(false)}
         onTimeout={() => setTimerActive(false)}
       />
+
+      {/* Factory Mode panel -- collapsible, between timer and main content */}
+      {showFactory && (
+        <div className="px-3 py-2 border-b border-border bg-card/50 shrink-0">
+          <FactoryPanel
+            projectName={workingDirectory}
+            model={pendingModel}
+            yoloMode={false}
+          />
+        </div>
+      )}
 
       {/* Main content area: sidebar | chat(s) | library */}
       <div className="flex flex-1 overflow-hidden">

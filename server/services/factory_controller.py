@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Awaitable, Literal, Optional
 
+from server.services import rate_limit_logger
 from server.services.handoff_watcher import HandoffWatcher
 
 logger = logging.getLogger(__name__)
@@ -710,6 +711,16 @@ class FactoryController:
             "session_number": len(self.state.history) + 1,
         })
 
+        # Log session completion for rate limit analytics
+        context_usage = handoff_data.get("context_usage", {})
+        rate_limit_logger.log_session_complete(
+            tokens_input=context_usage.get("tokens_input", 0),
+            tokens_output=context_usage.get("tokens_output", 0),
+            duration_seconds=context_usage.get("duration_seconds", 0),
+            project=self.project_name,
+            model=self.state.model,
+        )
+
         self.state.save(self.project_dir)
 
         # Git auto-commit after phase completion (if enabled)
@@ -841,6 +852,13 @@ class FactoryController:
         cooldown = self.DEFAULT_RATE_LIMIT_COOLDOWN
         resumes_at = datetime.now(timezone.utc).timestamp() + cooldown
 
+        # Log the rate limit hit for analytics
+        rate_limit_logger.log_rate_limit_hit(
+            retry_after_seconds=cooldown,
+            project=self.project_name,
+            model=self.state.model,
+        )
+
         self.state.status = "waiting_rate_limit"
         self.state.rate_limit = {
             "active": True,
@@ -867,6 +885,11 @@ class FactoryController:
         try:
             await asyncio.sleep(cooldown)
             if self.state.status == "waiting_rate_limit":
+                # Log that the cooldown has ended
+                rate_limit_logger.log_rate_limit_cleared(
+                    cooldown_actual_seconds=cooldown,
+                )
+
                 self.state.rate_limit["active"] = False
                 self.state.status = "running"
                 self.state.save(self.project_dir)

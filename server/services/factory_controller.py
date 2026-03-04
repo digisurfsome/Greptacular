@@ -11,6 +11,7 @@ survives server restarts.
 import asyncio
 import json
 import logging
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Awaitable, Literal, Optional
@@ -320,6 +321,7 @@ class FactoryController:
             if phase.get("status") == "completed":
                 features_completed += len(feature_ids)
 
+        is_continuous = self._is_continuous_mode()
         return {
             "mode": self.state.mode,
             "status": self.state.status,
@@ -335,6 +337,8 @@ class FactoryController:
             "auto_commit": self.state.auto_commit,
             "handoff_threshold": self.state.handoff_threshold,
             "handoff_template": self.state.handoff_template,
+            "continuous": is_continuous,
+            "session_count": len(self.state.history),
         }
 
     async def update_settings(
@@ -357,7 +361,7 @@ class FactoryController:
     def get_rendered_handoff_instructions(self, phase_num: int = 1, phase_total: int = 1, feature_list: str = "") -> str:
         """Render the handoff template with current threshold values."""
         levels = self.state.get_threshold_levels()
-        return self.state.handoff_template.format(
+        rendered = self.state.handoff_template.format(
             warning_pct=levels["warning_pct"],
             handoff_pct=levels["handoff_pct"],
             stop_pct=levels["stop_pct"],
@@ -365,6 +369,21 @@ class FactoryController:
             phase_total=phase_total,
             feature_list=feature_list or "All pending features",
         )
+        # In continuous (phaseless) mode, strip the Phase Scope section
+        if self._is_continuous_mode():
+            lines = rendered.split("\n")
+            filtered = []
+            skip = False
+            for line in lines:
+                if line.strip().startswith("### Phase Scope"):
+                    skip = True
+                    continue
+                if skip and line.strip().startswith("### "):
+                    skip = False  # Next section
+                if not skip:
+                    filtered.append(line)
+            rendered = "\n".join(filtered)
+        return rendered
 
     def _get_previous_handoff_summary(self, current_phase: int) -> str | None:
         """Read the most recent handoff archive to pass context to the next agent."""
@@ -402,6 +421,50 @@ class FactoryController:
         """Remove the factory prompt file so non-factory runs stay clean."""
         factory_prompt_path = self.project_dir / ".autoforge" / "factory_prompt.md"
         factory_prompt_path.unlink(missing_ok=True)
+
+    async def _git_auto_commit(self, phase_num: int, handoff_data: dict) -> None:
+        """Auto-commit all changes after a phase completes."""
+        try:
+            summary = handoff_data.get("completed", {}).get("summary", "")
+            commit_msg = f"factory: phase {phase_num} complete"
+            if summary:
+                commit_msg += f" — {summary[:80]}"
+
+            # Run git add + commit in the project directory
+            result = subprocess.run(
+                ["git", "add", "-A"],
+                cwd=str(self.project_dir),
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if result.returncode != 0:
+                logger.warning(f"[{self.project_name}] git add failed: {result.stderr}")
+                return
+
+            result = subprocess.run(
+                ["git", "commit", "-m", commit_msg],
+                cwd=str(self.project_dir),
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if result.returncode == 0:
+                logger.info(f"[{self.project_name}] Auto-committed phase {phase_num}")
+                await self._broadcast({
+                    "type": "factory_git_commit",
+                    "phase": phase_num,
+                    "message": commit_msg,
+                })
+            elif "nothing to commit" in result.stdout:
+                logger.info(f"[{self.project_name}] Nothing to commit for phase {phase_num}")
+            else:
+                logger.warning(f"[{self.project_name}] git commit failed: {result.stderr}")
+
+        except subprocess.TimeoutExpired:
+            logger.error(f"[{self.project_name}] Git auto-commit timed out for phase {phase_num}")
+        except Exception as e:
+            logger.error(f"[{self.project_name}] Git auto-commit failed: {e}")
 
     # ── Internal methods ──────────────────────────────────────────
 
@@ -475,35 +538,69 @@ class FactoryController:
 
         return success, msg
 
+    def _is_continuous_mode(self) -> bool:
+        """Check if factory is in phaseless continuous mode (no phase boundaries)."""
+        return (
+            len(self.state.phases) == 1
+            and self.state.phases[0].get("continuous", False)
+        )
+
     async def _handle_handoff(self, handoff_data: dict) -> None:
         """Called by HandoffWatcher when a valid handoff file is found."""
         current_phase = self.state.current_phase
+        is_continuous = self._is_continuous_mode()
 
-        # Update phase status
-        for phase in self.state.phases:
-            if phase["number"] == current_phase:
-                phase["status"] = "completed"
-                phase["completed_at"] = datetime.now(timezone.utc).isoformat()
-                break
+        # In continuous mode, don't mark the phase completed — just log the handoff
+        if not is_continuous:
+            for phase in self.state.phases:
+                if phase["number"] == current_phase:
+                    phase["status"] = "completed"
+                    phase["completed_at"] = datetime.now(timezone.utc).isoformat()
+                    break
 
-        # Add to history
+        # Add to history (always, even in continuous mode)
         self.state.history.append({
             "phase": current_phase,
-            "status": "completed",
+            "status": "handoff" if is_continuous else "completed",
             "completed_at": datetime.now(timezone.utc).isoformat(),
             "handoff_summary": handoff_data.get("completed", {}).get("summary", ""),
+            "session_number": len(self.state.history) + 1,
         })
 
         self.state.save(self.project_dir)
 
+        # Git auto-commit after phase completion (if enabled)
+        if self.state.auto_commit:
+            await self._git_auto_commit(current_phase, handoff_data)
+
         await self._broadcast({
             "type": "handoff_detected",
             "from_phase": current_phase,
-            "to_phase": current_phase + 1,
+            "to_phase": current_phase if is_continuous else current_phase + 1,
             "summary": handoff_data.get("completed", {}).get("summary", ""),
+            "continuous": is_continuous,
+            "session_number": len(self.state.history),
         })
 
-        # Check if there are more phases
+        # Check for rate limit in handoff data
+        context_info = handoff_data.get("context_usage", {})
+        if context_info.get("reason") == "rate_limited":
+            next_target = current_phase if is_continuous else current_phase + 1
+            await self._handle_rate_limit(next_target)
+            return
+
+        # ── Continuous mode: restart same phase ──
+        if is_continuous:
+            if self.state.mode == "continuous":
+                session_num = len(self.state.history) + 1
+                logger.info(f"[{self.project_name}] Continuous mode — starting session {session_num} in {self.PHASE_TRANSITION_DELAY}s")
+                await asyncio.sleep(self.PHASE_TRANSITION_DELAY)
+                if self.state.status != "running":
+                    return
+                await self._start_phase(current_phase)
+            return
+
+        # ── Phased mode: advance to next phase ──
         next_phase = current_phase + 1
         if next_phase > self.state.total_phases:
             # All phases complete
@@ -515,12 +612,6 @@ class FactoryController:
                 "type": "factory_complete",
                 "total_phases": self.state.total_phases,
             })
-            return
-
-        # Check for rate limit in handoff data
-        context_info = handoff_data.get("context_usage", {})
-        if context_info.get("reason") == "rate_limited":
-            await self._handle_rate_limit(next_phase)
             return
 
         # Auto-start next phase after a short delay
@@ -549,8 +640,10 @@ class FactoryController:
 
     async def _handle_exit_no_handoff(self, status: str) -> None:
         """Called when agent exits without a handoff file."""
+        current_phase = self.state.current_phase
+        is_continuous = self._is_continuous_mode()
+
         if status == "crashed":
-            current_phase = self.state.current_phase
             retries = self._phase_retry_count.get(current_phase, 0)
 
             if retries < self.MAX_PHASE_RETRIES:
@@ -574,6 +667,20 @@ class FactoryController:
                     "phase": current_phase,
                     "message": f"Phase {current_phase} failed after {self.MAX_PHASE_RETRIES} retries",
                 })
+        elif is_continuous and self.state.mode == "continuous" and self.state.status == "running":
+            # Continuous mode — agent exited cleanly (maybe context limit hit
+            # without writing handoff). Restart it.
+            logger.info(f"[{self.project_name}] Continuous mode — agent exited without handoff, restarting")
+            self.state.history.append({
+                "phase": current_phase,
+                "status": "restarted",
+                "completed_at": datetime.now(timezone.utc).isoformat(),
+                "handoff_summary": "Agent exited without writing handoff — auto-restarted",
+            })
+            self.state.save(self.project_dir)
+            await asyncio.sleep(self.PHASE_TRANSITION_DELAY)
+            if self.state.status == "running":
+                await self._start_phase(current_phase)
         else:
             # Agent stopped cleanly without handoff — it's done with everything
             logger.info(f"[{self.project_name}] Agent stopped without handoff — factory complete")
@@ -636,35 +743,43 @@ class FactoryController:
         return self.state.phases if self.state.phases else []
 
     async def _generate_default_phases(self) -> list[dict]:
-        """Generate a simple single-phase plan from all pending features."""
-        # Read features from the database
+        """Generate a phase plan from features, or a single continuous phase if none exist."""
+        # Read features from the database (if it exists)
         features_db = self.project_dir / ".autoforge" / "features.db"
-        if not features_db.exists():
-            return []
+        feature_ids: list[int] = []
 
-        try:
-            from sqlalchemy import create_engine
-            from sqlalchemy.orm import Session as SASession
-            from api.database import Feature
+        if features_db.exists():
+            try:
+                from sqlalchemy import create_engine
+                from sqlalchemy.orm import Session as SASession
+                from api.database import Feature
 
-            engine = create_engine(f"sqlite:///{features_db}", echo=False)
-            with SASession(engine) as session:
-                features = session.query(Feature).all()
-                if not features:
-                    return []
+                engine = create_engine(f"sqlite:///{features_db}", echo=False)
+                with SASession(engine) as session:
+                    features = session.query(Feature).all()
+                    feature_ids = [f.id for f in features]
+            except Exception as e:
+                logger.error(f"Failed to read features: {e}")
 
-                # Simple: one phase with all features
-                feature_ids = [f.id for f in features]
-                return [{
-                    "number": 1,
-                    "name": "All Features",
-                    "status": "queued",
-                    "features": feature_ids,
-                    "description": f"Implement all {len(feature_ids)} features",
-                }]
-        except Exception as e:
-            logger.error(f"Failed to generate default phases: {e}")
-            return []
+        if feature_ids:
+            return [{
+                "number": 1,
+                "name": "All Features",
+                "status": "queued",
+                "features": feature_ids,
+                "description": f"Implement all {len(feature_ids)} features",
+            }]
+
+        # No features — phaseless continuous mode (bug fixes, edits, etc.)
+        logger.info(f"[{self.project_name}] No features found — starting in continuous (phaseless) mode")
+        return [{
+            "number": 1,
+            "name": "Continuous",
+            "status": "queued",
+            "features": [],
+            "continuous": True,
+            "description": "Continuous factory mode — no phase boundaries",
+        }]
 
 
 # ── Global registry ──────────────────────────────────────────────

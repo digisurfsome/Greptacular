@@ -11,7 +11,7 @@
  * Status polling handled by useFactoryStatus (5s interval).
  */
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Factory,
   Play,
@@ -20,11 +20,15 @@ import {
   ChevronRight,
   Clock,
   Loader2,
+  CheckCircle2,
+  AlertTriangle,
+  SkipForward,
 } from 'lucide-react'
 import {
   useFactoryStatus,
   useFactoryStart,
   useFactoryStop,
+  useFactoryResume,
 } from '../../hooks/useFactory'
 import { FactorySettings } from './FactorySettings'
 import { PhasePRDManager } from './PhasePRDManager'
@@ -48,6 +52,8 @@ interface FactoryStatusData {
   rate_limit?: { resumes_at?: string }
   handoff_threshold?: number
   handoff_template?: string
+  continuous?: boolean
+  session_count?: number
 }
 
 interface FactoryPanelProps {
@@ -76,17 +82,60 @@ function getPhaseClasses(phase: FactoryPhase, isCurrent: boolean): string {
   }
 }
 
+/** Live countdown timer component for rate limit wait. */
+function RateLimitCountdown({ resumesAt, onResume }: { resumesAt: string; onResume: () => void }) {
+  const [remaining, setRemaining] = useState('')
+
+  useEffect(() => {
+    const target = new Date(resumesAt).getTime()
+
+    const tick = () => {
+      const diff = target - Date.now()
+      if (diff <= 0) {
+        setRemaining('Resuming...')
+        return
+      }
+      const hrs = Math.floor(diff / 3600000)
+      const mins = Math.floor((diff % 3600000) / 60000)
+      const secs = Math.floor((diff % 60000) / 1000)
+      setRemaining(hrs > 0 ? `${hrs}h ${mins}m ${secs}s` : `${mins}m ${secs}s`)
+    }
+
+    tick()
+    const interval = setInterval(tick, 1000)
+    return () => clearInterval(interval)
+  }, [resumesAt])
+
+  return (
+    <div className="flex items-center gap-2">
+      <Clock className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
+      <span className="text-amber-600 dark:text-amber-400 font-mono font-bold">{remaining}</span>
+      <button
+        onClick={onResume}
+        className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold bg-amber-500/15 hover:bg-amber-500/25 text-amber-600 dark:text-amber-400 border border-amber-500/30 rounded transition-colors"
+        title="Skip rate limit wait and resume now"
+      >
+        <SkipForward className="w-3 h-3" />
+        Resume Now
+      </button>
+    </div>
+  )
+}
+
 export function FactoryPanel({ projectName, model, yoloMode }: FactoryPanelProps): React.JSX.Element {
   const [showSettings, setShowSettings] = useState(false)
-  const { data: statusResponse } = useFactoryStatus(projectName)
+  const { data: statusResponse, isError, error } = useFactoryStatus(projectName)
   const startFactory = useFactoryStart(projectName)
   const stopFactory = useFactoryStop(projectName)
+  const resumeFactory = useFactoryResume(projectName)
 
   // Parse the status data from the generic FactoryResponse wrapper
   const status = statusResponse?.data as FactoryStatusData | undefined
   const isRunning = status?.status === 'running'
   const isWaiting = status?.status === 'waiting_rate_limit'
   const isCompleted = status?.status === 'completed'
+  const isContinuous = status?.continuous ?? false
+  const sessionCount = status?.session_count ?? 0
   const phases = status?.phases ?? []
   const currentPhase = status?.current_phase ?? 0
   const totalPhases = status?.total_phases ?? 0
@@ -101,6 +150,10 @@ export function FactoryPanel({ projectName, model, yoloMode }: FactoryPanelProps
 
   const handleStop = () => {
     stopFactory.mutate()
+  }
+
+  const handleResume = () => {
+    resumeFactory.mutate()
   }
 
   return (
@@ -141,7 +194,7 @@ export function FactoryPanel({ projectName, model, yoloMode }: FactoryPanelProps
             <Settings className="w-3.5 h-3.5" />
           </button>
 
-          {!isRunning ? (
+          {!isRunning && !isWaiting ? (
             <button
               onClick={handleStart}
               disabled={!projectName || startFactory.isPending}
@@ -171,14 +224,33 @@ export function FactoryPanel({ projectName, model, yoloMode }: FactoryPanelProps
         </div>
       </div>
 
-      {/* Phase Pipeline -- horizontal scrollable strip */}
-      {phases.length > 0 && (
+      {/* Error banner */}
+      {(isError || startFactory.isError || stopFactory.isError) && (
+        <div className="px-3 py-2 bg-destructive/10 border-b border-destructive/20 flex items-center gap-2 text-xs text-destructive">
+          <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+          <span className="truncate">
+            {startFactory.isError
+              ? `Start failed: ${startFactory.error?.message}`
+              : stopFactory.isError
+                ? `Stop failed: ${stopFactory.error?.message}`
+                : `Status error: ${(error as Error)?.message ?? 'Unknown'}`}
+          </span>
+        </div>
+      )}
+
+      {/* Phase Pipeline -- horizontal scrollable strip (hidden in continuous mode) */}
+      {!isContinuous && phases.length > 0 && (
         <div className="px-3 py-2">
           <div className="flex items-center gap-1 overflow-x-auto pb-1">
             {phases.map((phase, i) => (
               <div key={phase.number} className="flex items-center gap-1">
                 <div className={getPhaseClasses(phase, phase.number === currentPhase)}>
-                  <div className="font-bold">P{phase.number}</div>
+                  <div className="flex items-center gap-1 font-bold">
+                    {phase.status === 'completed' && (
+                      <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                    )}
+                    P{phase.number}
+                  </div>
                   <div className="text-[10px] opacity-70 truncate max-w-[80px]">
                     {phase.name || `Phase ${phase.number}`}
                   </div>
@@ -195,15 +267,20 @@ export function FactoryPanel({ projectName, model, yoloMode }: FactoryPanelProps
         </div>
       )}
 
-      {/* Phase PRD Documents */}
-      <div className="px-3 py-2 border-t border-border/50">
-        <PhasePRDManager projectName={projectName} currentPhase={currentPhase} />
-      </div>
+      {/* Phase PRD Documents (hidden in continuous mode) */}
+      {!isContinuous && (
+        <div className="px-3 py-2 border-t border-border/50">
+          <PhasePRDManager projectName={projectName} currentPhase={currentPhase} />
+        </div>
+      )}
 
-      {/* Status bar -- only visible while running or rate-limited */}
-      {(isRunning || isWaiting) && (
+      {/* Status bar -- visible while running, rate-limited, or completed */}
+      {(isRunning || isWaiting || isCompleted) && (
         <div className="px-3 py-1.5 bg-muted/20 border-t border-border/50 text-[11px] text-muted-foreground flex items-center gap-3">
-          {isRunning && (
+          {isRunning && isContinuous && (
+            <span>Session {sessionCount + 1} running</span>
+          )}
+          {isRunning && !isContinuous && (
             <>
               <span>Phase {currentPhase}/{totalPhases}</span>
               <span className="text-border">|</span>
@@ -213,13 +290,20 @@ export function FactoryPanel({ projectName, model, yoloMode }: FactoryPanelProps
             </>
           )}
           {isWaiting && status?.rate_limit?.resumes_at && (
-            <>
-              <Clock className="w-3 h-3 text-amber-500" />
-              <span>
-                Resumes at{' '}
-                {new Date(status.rate_limit.resumes_at).toLocaleTimeString()}
-              </span>
-            </>
+            <RateLimitCountdown
+              resumesAt={status.rate_limit.resumes_at}
+              onResume={handleResume}
+            />
+          )}
+          {isCompleted && isContinuous && (
+            <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+              Completed after {sessionCount} sessions
+            </span>
+          )}
+          {isCompleted && !isContinuous && (
+            <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+              All {totalPhases} phases completed
+            </span>
           )}
         </div>
       )}

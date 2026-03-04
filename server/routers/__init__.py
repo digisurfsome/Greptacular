@@ -17,6 +17,7 @@ from .execution import execution_websocket
 from .execution import router as execution_router
 from .expand_project import router as expand_project_router
 from .factory import router as factory_router
+from .factory import presets_router as factory_presets_router
 from .features import router as features_router
 from .filesystem import router as filesystem_router
 from .notifications import router as notifications_router
@@ -62,4 +63,5 @@ __all__ = [
     "execution_router",
     "execution_websocket",
     "factory_router",
+    "factory_presets_router",
 ]

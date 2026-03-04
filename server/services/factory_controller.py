@@ -23,6 +23,125 @@ logger = logging.getLogger(__name__)
 # Root directory of the AutoForge project (for process_manager)
 ROOT_DIR = Path(__file__).parent.parent.parent
 
+# ── Factory Mode Presets ─────────────────────────────────────────
+# Each preset has a name, description, and a base prompt that gets
+# injected into the agent's context alongside the user's objective.
+
+FACTORY_PRESETS: dict[str, dict[str, str]] = {
+    "qa_sweep": {
+        "name": "QA Sweep",
+        "description": "Test every button and function, document and fix all bugs",
+        "prompt": """## QA Sweep Mode
+
+You are running a comprehensive quality assurance sweep of this project.
+
+### Your Process
+1. First, explore the project to understand its structure and features
+2. Create a detailed checklist of EVERY user-facing feature and function
+3. Test each item systematically — buttons, forms, navigation, edge cases
+4. Document bugs as you find them with clear reproduction steps
+5. Fix each bug immediately after documenting it
+6. Mark items as tested/fixed in your checklist
+7. If you run out of context, pass the checklist to the next agent with clear status
+
+### What to Test
+- All buttons and interactive elements
+- Form validation and submission
+- Navigation and routing
+- Error states and edge cases
+- Responsive layout (if applicable)
+- Console errors and warnings
+- API calls and error handling
+
+### Checklist Tracking
+Maintain a running checklist in your handoff notes. Mark each item:
+- [ ] Not tested yet
+- [x] Tested, working
+- [!] Bug found and fixed
+- [?] Bug found, needs more investigation
+""",
+    },
+    "bug_fix": {
+        "name": "Bug Fix",
+        "description": "Investigate and fix specific bugs or errors",
+        "prompt": """## Bug Fix Mode
+
+You are in bug-fixing mode. Your goal is to find, diagnose, and fix bugs.
+
+### Your Process
+1. Read the objective carefully to understand what needs fixing
+2. Investigate the root cause — read logs, trace code paths, reproduce the issue
+3. Fix the underlying problem (not just symptoms)
+4. Verify the fix works and doesn't break anything else
+5. Run lint/type-check to confirm code compiles clean
+6. If multiple bugs, track them in a checklist and work through systematically
+
+### Principles
+- Fix root causes, not symptoms
+- Don't introduce new bugs while fixing old ones
+- Keep fixes minimal — don't refactor unrelated code
+- Test your fix before moving on
+""",
+    },
+    "add_feature": {
+        "name": "Add Feature",
+        "description": "Design and implement a new feature from scratch",
+        "prompt": """## Add Feature Mode
+
+You are implementing a new feature for this project.
+
+### Your Process
+1. Read the objective to understand what needs to be built
+2. Explore the existing codebase to understand patterns and conventions
+3. Plan the implementation — what files to create/modify, what components
+4. Implement incrementally — get the basics working first, then refine
+5. Follow existing code patterns and conventions
+6. Run lint/type-check after each significant change
+7. If the feature is too large for one session, break it into logical chunks and hand off
+
+### Principles
+- Match existing code style and patterns
+- Keep it simple — don't over-engineer
+- Make it work first, then make it clean
+- Commit logical chunks of progress
+""",
+    },
+    "refactor": {
+        "name": "Refactor",
+        "description": "Clean up spaghetti code and improve code quality",
+        "prompt": """## Refactor Mode
+
+You are cleaning up and improving the codebase quality.
+
+### Your Process
+1. Analyze the codebase for code quality issues
+2. Identify patterns: duplicated code, unclear naming, missing types, dead code
+3. Create a prioritized refactoring plan
+4. Work through the plan systematically — one area at a time
+5. Run lint/type-check after each change to ensure nothing breaks
+6. Track your progress in a checklist for handoff
+
+### Priorities
+1. Remove dead/unreachable code
+2. Fix type errors and add missing types
+3. Extract duplicated code into shared functions
+4. Improve unclear variable/function names
+5. Split oversized files into logical modules
+6. Add error handling where missing
+
+### Principles
+- Never break working functionality
+- One refactor at a time — commit between changes
+- Test after each significant change
+""",
+    },
+    "custom": {
+        "name": "Custom",
+        "description": "Write your own objective from scratch",
+        "prompt": "",
+    },
+}
+
 # Default handoff instructions template — user can edit this via UI
 DEFAULT_HANDOFF_TEMPLATE = """## Context Budget & Handoff Protocol
 
@@ -79,6 +198,8 @@ class FactoryState:
         rate_limit: Optional[dict] = None,
         history: Optional[list] = None,
         phases: Optional[list] = None,
+        factory_preset: str = "custom",
+        objective: str = "",
     ):
         self.mode = mode
         self.status = status
@@ -94,6 +215,8 @@ class FactoryState:
         self.rate_limit = rate_limit or {"active": False, "detected_at": None, "resumes_at": None, "queued_phase": None}
         self.history = history or []
         self.phases = phases or []
+        self.factory_preset = factory_preset
+        self.objective = objective
 
     def to_dict(self) -> dict:
         return {
@@ -112,6 +235,8 @@ class FactoryState:
             "rate_limit": self.rate_limit,
             "history": self.history,
             "phases": self.phases,
+            "factory_preset": self.factory_preset,
+            "objective": self.objective,
         }
 
     @classmethod
@@ -131,6 +256,8 @@ class FactoryState:
             rate_limit=data.get("rate_limit"),
             history=data.get("history"),
             phases=data.get("phases"),
+            factory_preset=data.get("factory_preset", "custom"),
+            objective=data.get("objective", ""),
         )
 
     @classmethod
@@ -218,6 +345,8 @@ class FactoryController:
         auto_commit: bool = True,
         rate_limit_strategy: str = "wait",
         start_phase: int = 1,
+        factory_preset: str = "custom",
+        objective: str = "",
     ) -> tuple[bool, str]:
         """Start factory mode for the project."""
         if self.state.status == "running":
@@ -238,6 +367,8 @@ class FactoryController:
         self.state.yolo_mode = yolo_mode
         self.state.auto_commit = auto_commit
         self.state.rate_limit_strategy = rate_limit_strategy
+        self.state.factory_preset = factory_preset
+        self.state.objective = objective
         self.state.phases = phases
         self.state.total_phases = len(phases)
         self.state.started_at = datetime.now(timezone.utc).isoformat()
@@ -339,6 +470,8 @@ class FactoryController:
             "handoff_template": self.state.handoff_template,
             "continuous": is_continuous,
             "session_count": len(self.state.history),
+            "factory_preset": self.state.factory_preset,
+            "objective": self.state.objective,
         }
 
     async def update_settings(
@@ -509,6 +642,16 @@ class FactoryController:
                     logger.info(f"[{self.project_name}] Injected phase {phase_num} PRD ({len(prd_content)} chars)")
             except Exception as e:
                 logger.warning(f"[{self.project_name}] Failed to read phase PRD {phase_prd_path}: {e}")
+
+        # Inject preset mode prompt + user objective (for continuous/phaseless mode)
+        if self._is_continuous_mode():
+            preset = FACTORY_PRESETS.get(self.state.factory_preset, {})
+            preset_prompt = preset.get("prompt", "")
+            if preset_prompt:
+                rendered_instructions += f"\n\n{preset_prompt}"
+            if self.state.objective:
+                rendered_instructions += f"\n\n## Your Objective\n\n{self.state.objective}"
+                rendered_instructions += "\n\nWork through this objective systematically. If you can't finish in one session, write a detailed handoff with your progress so the next agent can continue exactly where you left off."
 
         # Include the previous handoff summary so the new agent has context
         prev_handoff = self._get_previous_handoff_summary(phase_num)

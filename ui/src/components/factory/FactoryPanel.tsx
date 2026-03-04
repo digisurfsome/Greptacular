@@ -29,6 +29,7 @@ import {
   useFactoryStart,
   useFactoryStop,
   useFactoryResume,
+  useFactoryPresets,
 } from '../../hooks/useFactory'
 import { FactorySettings } from './FactorySettings'
 import { PhasePRDManager } from './PhasePRDManager'
@@ -54,6 +55,8 @@ interface FactoryStatusData {
   handoff_template?: string
   continuous?: boolean
   session_count?: number
+  factory_preset?: string
+  objective?: string
 }
 
 interface FactoryPanelProps {
@@ -122,29 +125,56 @@ function RateLimitCountdown({ resumesAt, onResume }: { resumesAt: string; onResu
   )
 }
 
+/** Preset pill labels and icons for the mode selector. */
+const PRESET_ICONS: Record<string, string> = {
+  qa_sweep: '\u{1F50D}',
+  bug_fix: '\u{1F41B}',
+  add_feature: '\u{2728}',
+  refactor: '\u{1F9F9}',
+  custom: '\u{270F}\u{FE0F}',
+}
+
 export function FactoryPanel({ projectName, model, yoloMode }: FactoryPanelProps): React.JSX.Element {
   const [showSettings, setShowSettings] = useState(false)
+  const [selectedPreset, setSelectedPreset] = useState('custom')
+  const [objective, setObjective] = useState('')
   const { data: statusResponse, isError, error } = useFactoryStatus(projectName)
   const startFactory = useFactoryStart(projectName)
   const stopFactory = useFactoryStop(projectName)
   const resumeFactory = useFactoryResume(projectName)
+  const { data: presetsData } = useFactoryPresets()
+
+  const presets = presetsData?.presets ?? {}
 
   // Parse the status data from the generic FactoryResponse wrapper
   const status = statusResponse?.data as FactoryStatusData | undefined
   const isRunning = status?.status === 'running'
   const isWaiting = status?.status === 'waiting_rate_limit'
   const isCompleted = status?.status === 'completed'
+  const isActive = isRunning || isWaiting
   const isContinuous = status?.continuous ?? false
   const sessionCount = status?.session_count ?? 0
   const phases = status?.phases ?? []
   const currentPhase = status?.current_phase ?? 0
   const totalPhases = status?.total_phases ?? 0
 
+  // When a preset is selected, pre-fill its base prompt into the objective
+  const handlePresetSelect = (key: string) => {
+    setSelectedPreset(key)
+    const preset = presets[key]
+    if (preset && key !== 'custom') {
+      // Keep any user-added text after the preset prompt
+      setObjective(preset.prompt)
+    }
+  }
+
   const handleStart = () => {
     startFactory.mutate({
       mode: 'continuous',
       model: model || 'claude-opus-4-6',
       yolo_mode: yoloMode || false,
+      factory_preset: selectedPreset,
+      objective: objective,
     })
   }
 
@@ -235,6 +265,58 @@ export function FactoryPanel({ projectName, model, yoloMode }: FactoryPanelProps
                 ? `Stop failed: ${stopFactory.error?.message}`
                 : `Status error: ${(error as Error)?.message ?? 'Unknown'}`}
           </span>
+        </div>
+      )}
+
+      {/* Objective & Mode Selector — shown when factory is idle (not running) */}
+      {!isActive && !isCompleted && (
+        <div className="px-3 py-2.5 border-b border-border/50 space-y-2">
+          {/* Mode preset pills */}
+          <div className="flex items-center gap-1 flex-wrap">
+            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mr-1">Mode:</span>
+            {Object.entries(presets).map(([key, preset]) => (
+              <button
+                key={key}
+                onClick={() => handlePresetSelect(key)}
+                className={`px-2 py-0.5 text-[11px] font-medium rounded-full border transition-all ${
+                  selectedPreset === key
+                    ? 'bg-primary/15 border-primary/40 text-primary ring-1 ring-primary/20'
+                    : 'bg-muted/40 border-border text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+              >
+                {PRESET_ICONS[key] || ''} {preset.name}
+              </button>
+            ))}
+          </div>
+
+          {/* Objective textarea */}
+          <textarea
+            value={objective}
+            onChange={(e) => setObjective(e.target.value)}
+            placeholder={selectedPreset === 'custom'
+              ? 'Describe what the agent should do...\n\nExample: Fix the login page — the submit button does nothing when clicked. Check the form handler and API endpoint.'
+              : 'Add specific details to the preset prompt above, or edit freely...'}
+            rows={4}
+            className="w-full px-2.5 py-2 text-xs bg-background border border-border rounded-lg resize-y placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-ring/40 font-mono"
+          />
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-muted-foreground">
+              {objective.length > 0 ? `${objective.length} chars` : 'The agent will work on this until done'}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Active objective display — shown while running */}
+      {isActive && isContinuous && status?.objective && (
+        <div className="px-3 py-2 border-b border-border/50">
+          <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">
+            Objective {status?.factory_preset && status.factory_preset !== 'custom' ? `(${presets[status.factory_preset as string]?.name || status.factory_preset})` : ''}
+          </div>
+          <div className="text-xs text-foreground/80 line-clamp-3 font-mono whitespace-pre-wrap">
+            {(status.objective as string).slice(0, 200)}
+            {(status.objective as string).length > 200 ? '...' : ''}
+          </div>
         </div>
       )}
 

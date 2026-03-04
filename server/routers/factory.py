@@ -9,7 +9,7 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 from registry import get_project_dir
-from server.services.factory_controller import get_factory_controller, get_existing_controller
+from server.services.factory_controller import get_factory_controller, get_existing_controller, FACTORY_PRESETS
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +23,8 @@ class FactoryStartRequest(BaseModel):
     auto_commit: bool = True
     rate_limit_strategy: str = "wait"  # "wait" or "stop"
     start_phase: int = 1
+    factory_preset: str = "custom"
+    objective: str = ""
 
 
 class FactorySettingsRequest(BaseModel):
@@ -56,6 +58,8 @@ async def factory_start(project_name: str, req: FactoryStartRequest) -> FactoryR
         auto_commit=req.auto_commit,
         rate_limit_strategy=req.rate_limit_strategy,
         start_phase=req.start_phase,
+        factory_preset=req.factory_preset,
+        objective=req.objective,
     )
     return FactoryResponse(success=success, message=msg)
 
@@ -88,6 +92,33 @@ async def factory_update_settings(project_name: str, req: FactorySettingsRequest
         handoff_template=req.handoff_template,
     )
     return FactoryResponse(success=True, message="Settings updated", data=result)
+
+
+@router.post("/resume")
+async def factory_resume(project_name: str) -> FactoryResponse:
+    """Skip rate limit wait and resume immediately."""
+    project_dir = _resolve_project(project_name)
+    controller = get_factory_controller(project_name, project_dir)
+
+    if controller.state.status != "waiting_rate_limit":
+        return FactoryResponse(success=False, message="Factory is not waiting for rate limit")
+
+    # Cancel the rate limit timer
+    if controller._rate_limit_timer and not controller._rate_limit_timer.done():
+        controller._rate_limit_timer.cancel()
+
+    queued_phase = controller.state.rate_limit.get("queued_phase")
+    if not queued_phase:
+        return FactoryResponse(success=False, message="No queued phase to resume")
+
+    controller.state.rate_limit["active"] = False
+    controller.state.status = "running"
+    controller.state.save(project_dir)
+
+    import asyncio
+    asyncio.create_task(controller._start_phase(queued_phase))
+
+    return FactoryResponse(success=True, message=f"Resuming phase {queued_phase}")
 
 
 @router.get("/handoffs")
@@ -269,3 +300,19 @@ async def upload_phase_documents(
         message=f"Uploaded {len(uploaded)} phase documents",
         data={"uploaded": uploaded},
     )
+
+
+# ── Factory Presets (no project context needed) ──────────────────
+
+presets_router = APIRouter(prefix="/api/factory", tags=["factory"])
+
+
+@presets_router.get("/presets")
+async def factory_get_presets():
+    """Return available factory mode presets."""
+    return {
+        "presets": {
+            key: {"name": val["name"], "description": val["description"], "prompt": val["prompt"]}
+            for key, val in FACTORY_PRESETS.items()
+        }
+    }

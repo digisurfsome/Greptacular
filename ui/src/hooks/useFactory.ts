@@ -9,9 +9,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   factoryStart,
   factoryStop,
+  factoryResume,
   factoryStatus,
   factoryUpdateSettings,
   factoryGetHandoffs,
+  factoryGetPresets,
   factoryListPhaseDocuments,
   factoryGetPhaseDocument,
   factoryUpdatePhaseDocument,
@@ -65,6 +67,19 @@ export function useFactoryStop(projectName: string | null) {
 }
 
 /**
+ * Resume factory (skip rate limit wait).
+ */
+export function useFactoryResume(projectName: string | null) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => factoryResume(projectName!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['factory-status', projectName] })
+    },
+  })
+}
+
+/**
  * Update factory settings (handoff threshold, template, etc.).
  */
 export function useFactorySettings(projectName: string | null) {
@@ -85,6 +100,17 @@ export function useFactoryHandoffs(projectName: string | null) {
     queryKey: ['factory-handoffs', projectName],
     queryFn: () => factoryGetHandoffs(projectName!),
     enabled: !!projectName,
+  })
+}
+
+/**
+ * Fetch factory mode presets (global, not project-specific).
+ */
+export function useFactoryPresets() {
+  return useQuery({
+    queryKey: ['factory-presets'],
+    queryFn: () => factoryGetPresets(),
+    staleTime: Infinity, // Presets don't change at runtime
   })
 }
 

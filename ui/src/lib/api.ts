@@ -2276,6 +2276,18 @@ export interface FactoryStartRequest {
   auto_commit?: boolean
   rate_limit_strategy?: string
   start_phase?: number
+  factory_preset?: string
+  objective?: string
+}
+
+export interface FactoryPreset {
+  name: string
+  description: string
+  prompt: string
+}
+
+export async function factoryGetPresets(): Promise<{ presets: Record<string, FactoryPreset> }> {
+  return fetchJSON('/factory/presets')
 }
 
 export interface FactorySettingsRequest {
@@ -2310,6 +2322,12 @@ export async function factoryUpdateSettings(projectName: string, req: FactorySet
   return fetchJSON(`/projects/${encodeURIComponent(projectName)}/factory/settings`, {
     method: 'PUT',
     body: JSON.stringify(req),
+  })
+}
+
+export async function factoryResume(projectName: string): Promise<FactoryResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/factory/resume`, {
+    method: 'POST',
   })
 }
 

@@ -301,12 +301,21 @@ export function WorkspacePage(): React.JSX.Element {
       {/* Breadcrumb navigation bar — wraps on narrow screens */}
       <div className="flex flex-wrap items-center min-h-10 px-3 py-1 border-b border-border bg-card shrink-0 gap-y-1">
         <nav className="flex items-center gap-1 text-sm" aria-label="Breadcrumb">
-          {/* Mobile sidebar toggle -- only visible below md breakpoint */}
+          {/* Sidebar toggle -- visible on mobile always, visible on desktop when sidebar is collapsed */}
           <Button
             variant="ghost"
             size="sm"
-            className="md:hidden h-7 px-2 text-muted-foreground hover:text-foreground"
-            onClick={() => setMobileSidebarOpen(v => !v)}
+            className={`h-7 px-2 text-muted-foreground hover:text-foreground ${sidebarCollapsed ? '' : 'md:hidden'}`}
+            onClick={() => {
+              // On mobile (below md), toggle the mobile drawer overlay
+              // On desktop (md+), toggle the sidebar collapse state
+              const isMobile = window.innerWidth < 768
+              if (isMobile) {
+                setMobileSidebarOpen(v => !v)
+              } else {
+                setSidebarCollapsed(v => !v)
+              }
+            }}
             title="Toggle sidebar"
           >
             <Menu size={16} />

@@ -316,6 +316,7 @@ export function WorkspaceChat({
     walkieTalkieLog,
     addWalkieTalkieEntry,
     tokenLog,
+    clearTokenLog,
     modelId,
     attachedSessionId,
     start,
@@ -939,6 +940,7 @@ export function WorkspaceChat({
           entries={tokenLog}
           conversationId={conversationId ?? activeConversationId}
           onClose={handleTokenLogClose}
+          onClear={clearTokenLog}
         />
       )}
 

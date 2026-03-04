@@ -50,6 +50,8 @@ interface UseWorkspaceChatReturn {
   addWalkieTalkieEntry: (sender: 'user' | 'agent' | 'system', content: string) => void;
   /** Real-time token processing log entries received via WebSocket. */
   tokenLog: TokenLogEntry[];
+  /** Clear the local token log entries array. */
+  clearTokenLog: () => void;
   /** The background session ID this viewer is attached to (null if none). */
   attachedSessionId: string | null;
   disconnect: () => void;
@@ -1074,6 +1076,7 @@ export function useWorkspaceChat({
     sendMessage,
     sendWalkieTalkie,
     tokenLog,
+    clearTokenLog: useCallback(() => setTokenLog([]), []),
     attachedSessionId,
     disconnect,
     clearMessages,

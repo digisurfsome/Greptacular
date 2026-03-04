@@ -366,6 +366,38 @@ class FactoryController:
             feature_list=feature_list or "All pending features",
         )
 
+    def _get_previous_handoff_summary(self, current_phase: int) -> str | None:
+        """Read the most recent handoff archive to pass context to the next agent."""
+        if current_phase <= 1:
+            return None
+        history_dir = self.project_dir / ".autoforge" / "handoff_history"
+        if not history_dir.exists():
+            return None
+        # Find the latest handoff file
+        files = sorted(history_dir.glob("handoff-*.json"), reverse=True)
+        for f in files:
+            try:
+                data = json.loads(f.read_text(encoding="utf-8"))
+                parts = []
+                completed = data.get("completed", {})
+                if completed.get("summary"):
+                    parts.append(f"**Completed:** {completed['summary']}")
+                next_phase = data.get("next_phase", {})
+                if next_phase.get("summary"):
+                    parts.append(f"**Next:** {next_phase['summary']}")
+                if next_phase.get("priority_tasks"):
+                    tasks = "\n".join(f"- {t}" for t in next_phase["priority_tasks"])
+                    parts.append(f"**Priority tasks:**\n{tasks}")
+                bugs = data.get("current_bugs", [])
+                if bugs:
+                    bug_lines = "\n".join(f"- {b.get('description', str(b))}" for b in bugs)
+                    parts.append(f"**Known bugs:**\n{bug_lines}")
+                if parts:
+                    return "\n\n".join(parts)
+            except Exception:
+                continue
+        return None
+
     def _cleanup_factory_prompt(self) -> None:
         """Remove the factory prompt file so non-factory runs stay clean."""
         factory_prompt_path = self.project_dir / ".autoforge" / "factory_prompt.md"
@@ -403,6 +435,23 @@ class FactoryController:
             phase_total=self.state.total_phases,
             feature_list=feature_list,
         )
+
+        # Append phase PRD content if a document exists for this phase number
+        phase_prd_path = self.project_dir / ".autoforge" / "phases" / f"{phase_num}.md"
+        if phase_prd_path.exists():
+            try:
+                prd_content = phase_prd_path.read_text(encoding="utf-8").strip()
+                if prd_content:
+                    rendered_instructions += f"\n\n### Phase {phase_num} PRD\n\n{prd_content}"
+                    logger.info(f"[{self.project_name}] Injected phase {phase_num} PRD ({len(prd_content)} chars)")
+            except Exception as e:
+                logger.warning(f"[{self.project_name}] Failed to read phase PRD {phase_prd_path}: {e}")
+
+        # Include the previous handoff summary so the new agent has context
+        prev_handoff = self._get_previous_handoff_summary(phase_num)
+        if prev_handoff:
+            rendered_instructions += f"\n\n### Previous Agent Handoff Notes\n\n{prev_handoff}"
+
         factory_prompt_path = self.project_dir / ".autoforge" / "factory_prompt.md"
         factory_prompt_path.parent.mkdir(parents=True, exist_ok=True)
         factory_prompt_path.write_text(rendered_instructions, encoding="utf-8")

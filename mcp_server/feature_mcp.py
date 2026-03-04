@@ -23,6 +23,9 @@ Tools:
 - feature_get_blocked: Get features blocked by dependencies (with limit)
 - feature_get_graph: Get the dependency graph
 - feature_split: Split a large feature into two parts at a step boundary
+- preview_start: Start the project dev server for visual verification
+- preview_stop: Stop the project dev server
+- preview_status: Get dev server status (running/stopped + URL)
 
 Note: Feature selection (which feature to work on) is handled by the
 orchestrator, not by agents. Agents receive pre-assigned feature IDs.
@@ -1278,6 +1281,226 @@ def factory_write_handoff(
         })
     except Exception as e:
         return json.dumps({"error": f"Failed to write handoff file: {str(e)}"})
+
+
+# ── Preview / Dev Server MCP Tools ──────────────────────────────────────────
+# Lightweight dev server management so agents can start a preview server,
+# screenshot pages, and verify their own UI work.  Subprocess is managed
+# inside this MCP process — no REST round-trip to the FastAPI server.
+
+import re as _re
+import shlex as _shlex
+import subprocess as _subprocess
+import threading as _threading
+import time as _time
+
+_preview_process: _subprocess.Popen | None = None
+_preview_url: str | None = None
+_preview_lock = _threading.Lock()
+
+_URL_PATTERNS = [
+    r'https?://(?:localhost|127\.0\.0\.1):\d+(?:/[^\s]*)?',
+    r'https?://\[::1\]:\d+(?:/[^\s]*)?',
+    r'https?://0\.0\.0\.0:\d+(?:/[^\s]*)?',
+]
+
+
+def _detect_url(line: str) -> str | None:
+    for pat in _URL_PATTERNS:
+        m = _re.search(pat, line)
+        if m:
+            return m.group(0)
+    return None
+
+
+def _get_dev_command() -> str | None:
+    """Read the effective dev command from project config (same logic as project_config.py)."""
+    config_path = PROJECT_DIR / ".autoforge" / "config.json"
+    if not config_path.exists():
+        config_path = PROJECT_DIR / ".autocoder" / "config.json"
+    if config_path.exists():
+        try:
+            data = json.loads(config_path.read_text(encoding="utf-8"))
+            cmd = data.get("dev_command")
+            if isinstance(cmd, str) and cmd.strip():
+                return cmd.strip()
+        except Exception:
+            pass
+    # Auto-detect: check for common patterns
+    if (PROJECT_DIR / "package.json").exists():
+        return "npm run dev"
+    if (PROJECT_DIR / "manage.py").exists():
+        return "python manage.py runserver"
+    return None
+
+
+@mcp.tool()
+def preview_start(
+    command: Annotated[str | None, Field(description="Dev server command (e.g. 'npm run dev'). Leave empty to auto-detect.")] = None,
+) -> str:
+    """Start the project's dev server so you can preview your work.
+
+    Once the server is running, use Playwright MCP tools (screenshot, etc.)
+    to verify your UI changes visually.
+
+    Args:
+        command: Dev server command. Defaults to auto-detected command.
+
+    Returns:
+        JSON with status, url (if detected), and message.
+    """
+    global _preview_process, _preview_url
+
+    with _preview_lock:
+        # Already running?
+        if _preview_process is not None and _preview_process.poll() is None:
+            return json.dumps({
+                "status": "already_running",
+                "url": _preview_url,
+                "message": f"Dev server already running (PID {_preview_process.pid}). URL: {_preview_url or 'detecting...'}",
+            })
+
+        cmd = command or _get_dev_command()
+        if not cmd:
+            return json.dumps({
+                "error": "No dev command available. Pass a command or configure one in .autoforge/config.json"
+            })
+
+        argv = _shlex.split(cmd, posix=(sys.platform != "win32"))
+        if not argv:
+            return json.dumps({"error": "Empty command"})
+
+        # Windows: use .cmd shims for Node package managers
+        base = Path(argv[0]).name.lower()
+        if sys.platform == "win32" and base in {"npm", "pnpm", "yarn", "npx"} and not argv[0].lower().endswith(".cmd"):
+            argv[0] = argv[0] + ".cmd"
+
+        try:
+            popen_kwargs: dict = {
+                "stdin": _subprocess.DEVNULL,
+                "stdout": _subprocess.PIPE,
+                "stderr": _subprocess.STDOUT,
+                "cwd": str(PROJECT_DIR),
+            }
+            if sys.platform == "win32":
+                popen_kwargs["creationflags"] = _subprocess.CREATE_NO_WINDOW
+
+            _preview_process = _subprocess.Popen(argv, **popen_kwargs)
+            _preview_url = None
+
+            # Read output in background thread to detect URL
+            def _reader():
+                global _preview_url
+                proc = _preview_process
+                if not proc or not proc.stdout:
+                    return
+                try:
+                    for raw_line in proc.stdout:
+                        decoded = raw_line.decode("utf-8", errors="replace").rstrip()
+                        if not _preview_url:
+                            url = _detect_url(decoded)
+                            if url:
+                                _preview_url = url
+                except Exception:
+                    pass
+
+            t = _threading.Thread(target=_reader, daemon=True)
+            t.start()
+
+            # Wait briefly for URL detection
+            for _ in range(40):  # 4 seconds max
+                _time.sleep(0.1)
+                if _preview_url:
+                    break
+
+            return json.dumps({
+                "status": "started",
+                "pid": _preview_process.pid,
+                "url": _preview_url,
+                "command": cmd,
+                "message": f"Dev server started (PID {_preview_process.pid}). URL: {_preview_url or 'still starting...'}",
+            })
+
+        except FileNotFoundError:
+            _preview_process = None
+            return json.dumps({"error": f"Command not found: {argv[0]}"})
+        except Exception as e:
+            _preview_process = None
+            return json.dumps({"error": f"Failed to start dev server: {e}"})
+
+
+@mcp.tool()
+def preview_stop() -> str:
+    """Stop the project's dev server.
+
+    Returns:
+        JSON with status and message.
+    """
+    global _preview_process, _preview_url
+
+    with _preview_lock:
+        if _preview_process is None or _preview_process.poll() is not None:
+            _preview_process = None
+            _preview_url = None
+            return json.dumps({"status": "not_running", "message": "Dev server is not running."})
+
+        try:
+            import psutil
+            proc = psutil.Process(_preview_process.pid)
+            children = proc.children(recursive=True)
+            for child in children:
+                try:
+                    child.terminate()
+                except Exception:
+                    pass
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except psutil.TimeoutExpired:
+                for child in children:
+                    try:
+                        child.kill()
+                    except Exception:
+                        pass
+                proc.kill()
+        except Exception:
+            try:
+                _preview_process.terminate()
+                _preview_process.wait(timeout=3)
+            except Exception:
+                try:
+                    _preview_process.kill()
+                except Exception:
+                    pass
+
+        pid = _preview_process.pid
+        _preview_process = None
+        _preview_url = None
+        return json.dumps({"status": "stopped", "message": f"Dev server stopped (was PID {pid})."})
+
+
+@mcp.tool()
+def preview_status() -> str:
+    """Get the current status of the dev server.
+
+    Returns:
+        JSON with status (running/stopped), url, and pid.
+    """
+    global _preview_process, _preview_url
+
+    with _preview_lock:
+        if _preview_process is not None and _preview_process.poll() is None:
+            return json.dumps({
+                "status": "running",
+                "pid": _preview_process.pid,
+                "url": _preview_url,
+            })
+        else:
+            # Clean up if process died
+            if _preview_process is not None:
+                _preview_process = None
+                _preview_url = None
+            return json.dumps({"status": "stopped", "pid": None, "url": None})
 
 
 if __name__ == "__main__":

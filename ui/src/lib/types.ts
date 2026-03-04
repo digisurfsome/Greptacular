@@ -395,7 +395,7 @@ export interface OrchestratorStatus {
 }
 
 // WebSocket message types
-export type WSMessageType = 'progress' | 'feature_update' | 'log' | 'agent_status' | 'pong' | 'dev_log' | 'dev_server_status' | 'agent_update' | 'orchestrator_update' | 'agent_message' | 'agent_phase'
+export type WSMessageType = 'progress' | 'feature_update' | 'log' | 'agent_status' | 'pong' | 'dev_log' | 'dev_server_status' | 'agent_update' | 'orchestrator_update' | 'agent_message' | 'agent_phase' | 'factory_started' | 'factory_stopped' | 'factory_complete' | 'factory_error' | 'factory_status' | 'phase_update' | 'handoff_detected' | 'rate_limit_wait'
 
 export interface WSProgressMessage {
   type: 'progress'
@@ -485,6 +485,11 @@ export interface WSAgentPhaseMessage {
   timestamp: string
 }
 
+export interface WSFactoryEventMessage {
+  type: 'factory_started' | 'factory_stopped' | 'factory_complete' | 'factory_error' | 'factory_status' | 'phase_update' | 'handoff_detected' | 'rate_limit_wait'
+  [key: string]: unknown
+}
+
 export type WSMessage =
   | WSProgressMessage
   | WSFeatureUpdateMessage
@@ -497,6 +502,7 @@ export type WSMessage =
   | WSOrchestratorUpdateMessage
   | WSAgentMessageMessage
   | WSAgentPhaseMessage
+  | WSFactoryEventMessage
 
 // ============================================================================
 // Spec Chat Types

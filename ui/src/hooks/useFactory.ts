@@ -22,15 +22,20 @@ import {
 } from '../lib/api'
 
 /**
- * Poll factory status every 5 seconds while a project is selected.
+ * Poll factory status. Polls every 2s when factory is active (running/waiting),
+ * every 5s when idle or completed.
  */
 export function useFactoryStatus(projectName: string | null) {
-  return useQuery({
+  const query = useQuery({
     queryKey: ['factory-status', projectName],
     queryFn: () => factoryStatus(projectName!),
     enabled: !!projectName,
-    refetchInterval: 5000,
+    refetchInterval: (query) => {
+      const status = (query.state.data as { data?: { status?: string } } | undefined)?.data?.status
+      return status === 'running' || status === 'waiting_rate_limit' ? 2000 : 5000
+    },
   })
+  return query
 }
 
 /**

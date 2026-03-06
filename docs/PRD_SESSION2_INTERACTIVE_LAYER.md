@@ -1,4 +1,4 @@
-# PRD Session 2: Interactive Layer (Approval Gates, Checkpoints, All UI Panels)
+# PRD Session 2: Interactive Layer (Portable Widget Pattern)
 
 **Status:** Draft
 **Date:** 2026-03-06
@@ -27,22 +27,175 @@ This PRD follows the Agent OS 3-layer model. The coding agent MUST read all thre
   - React Query (TanStack) for all API data fetching in UI
   - Tailwind CSS v4 with neobrutalism design tokens (see `ui/src/styles/globals.css`)
 
-### Architecture Standards
+### Architecture Standards — PORTABLE WIDGET PATTERN (CRITICAL)
 
-- **Architecture Type:** Monolithic Python backend + React SPA
-- **Folder Structure:**
-  ```
-  api/database.py          — SQLAlchemy models (Session 1 added ActionLog, VerificationResult, ActionLogSummary)
-  server/routers/          — FastAPI route handlers (Session 1 added actions.py, verifications.py)
-  server/services/         — Business logic services (Session 1 added log_compaction.py)
-  security.py              — Bash command validation + allowlist hierarchy
-  mcp_server/feature_mcp.py — MCP tools (Session 1 extended mark_passing/mark_failing)
-  commit_utils.py          — Commit message parsing (added in Session 1)
-  ui/src/components/       — React components (this session adds new panels)
-  ui/src/hooks/            — React Query hooks (this session adds new hooks)
-  ui/src/lib/api.ts        — REST API client (this session adds new endpoints)
-  ui/src/lib/types.ts      — TypeScript interfaces (this session adds new types)
-  ```
+This session follows a **portable widget architecture**. Every orchestration panel is a props-driven widget that can be dropped into ANY page — DunkStack, Workspace, or a future standalone app. Read this section carefully before writing any component.
+
+#### Folder Structure
+```
+api/database.py                — SQLAlchemy models (Session 1 added ActionLog, VerificationResult, ActionLogSummary)
+server/routers/                — FastAPI route handlers (Session 1 added actions.py, verifications.py)
+server/services/               — Business logic services (Session 1 added log_compaction.py)
+security.py                    — Bash command validation + allowlist hierarchy
+mcp_server/feature_mcp.py     — MCP tools (Session 1 extended mark_passing/mark_failing)
+commit_utils.py                — Commit message parsing (added in Session 1)
+
+# UI — PORTABLE WIDGET STRUCTURE (NEW)
+ui/src/components/orchestrator/           — ⭐ ALL shared orchestration widgets live here
+  ├── ApprovalBanner.tsx                  — Approval request banner (props-driven)
+  ├── ApprovalHistory.tsx                 — Approval audit trail table (props-driven)
+  ├── CheckpointTimeline.tsx              — Checkpoint list with rollback (props-driven)
+  ├── CheckpointDetail.tsx                — Checkpoint diff view (props-driven)
+  ├── ActionLogPanel.tsx                  — Action log table (props-driven)
+  ├── ActionLogSummary.tsx                — Action log stats card (props-driven)
+  ├── VerificationHistory.tsx             — Per-feature test results (props-driven)
+  ├── FailuresList.tsx                    — Cross-feature failures (props-driven)
+  ├── CommitsPanel.tsx                    — Commit history with parsing (props-driven)
+  └── index.ts                            — Barrel export for all widgets
+
+ui/src/hooks/
+  ├── useOrchestratorSession.ts           — ⭐ Shared state hook (THE key abstraction)
+  ├── useApprovals.ts                     — React Query: approval requests
+  ├── useCheckpoints.ts                   — React Query: checkpoints
+  ├── useActionLog.ts                     — React Query: action log + summary
+  ├── useVerificationHistory.ts           — React Query: verification results
+  ├── useCommits.ts                       — React Query: parsed commits
+  └── index.ts                            — Barrel export
+
+ui/src/lib/api.ts              — REST API client (add new endpoint functions)
+ui/src/lib/types.ts            — TypeScript interfaces (add new types)
+```
+
+#### The Portable Widget Rule (MANDATORY)
+
+Every panel component in `components/orchestrator/` MUST follow this pattern:
+
+```tsx
+// ❌ DON'T — hardwired to a specific page/context
+function ApprovalBanner() {
+  const { pendingApprovals, approveCommand } = useDunkStack();
+  return <div>...</div>;
+}
+
+// ✅ DO — portable, props-driven
+interface ApprovalBannerProps {
+  approvals: ApprovalRequest[];
+  onApprove: (id: number) => void;
+  onDeny: (id: number, reason?: string) => void;
+  isLoading?: boolean;
+}
+function ApprovalBanner({ approvals, onApprove, onDeny, isLoading }: ApprovalBannerProps) {
+  return <div>...</div>;
+}
+```
+
+**Rules:**
+1. **NO page-specific hooks inside widgets.** No `useDunkStack()`, no `useWorkspace()`, no page-specific context. Data comes in via props, actions go out via callback props.
+2. **Widgets live in `components/orchestrator/`.** NOT in `components/dunkstack/` or any page-specific folder.
+3. **Each widget has a clearly typed Props interface** exported alongside the component.
+4. **Widgets can use shared UI primitives** (Button, Modal, Toast, Skeleton, EmptyState) — those are app-wide, not page-specific.
+5. **Widgets can use shared utility hooks** like `usePageTitle` or formatting utils — those are app-wide too.
+
+#### The Shared State Hook: `useOrchestratorSession`
+
+Create ONE hook that manages all orchestration state for a session:
+
+```tsx
+// ui/src/hooks/useOrchestratorSession.ts
+
+interface UseOrchestratorSessionReturn {
+  // Approvals
+  pendingApprovals: ApprovalRequest[];
+  approvalHistory: ApprovalRequest[];
+  approveRequest: (id: number) => Promise<void>;
+  denyRequest: (id: number, reason?: string) => Promise<void>;
+  approvalsLoading: boolean;
+
+  // Checkpoints
+  checkpoints: Checkpoint[];
+  createCheckpoint: (label: string) => Promise<void>;
+  rollbackToCheckpoint: (id: number) => Promise<RollbackPreview>;
+  confirmRollback: (id: number) => Promise<void>;
+  checkpointsLoading: boolean;
+
+  // Action Log
+  actionLog: PaginatedResult<ActionLogEntry>;
+  actionLogSummary: ActionLogSummary | null;
+  actionLogFilters: ActionLogFilters;
+  setActionLogFilters: (filters: ActionLogFilters) => void;
+  actionLogLoading: boolean;
+
+  // Verifications
+  getVerificationHistory: (featureId: number) => VerificationResult[];
+  recentFailures: VerificationResult[];
+  verificationsLoading: boolean;
+
+  // Commits
+  commits: Commit[];
+  commitFeatureFilter: number | null;
+  setCommitFeatureFilter: (featureId: number | null) => void;
+  commitsLoading: boolean;
+}
+
+function useOrchestratorSession(projectName: string): UseOrchestratorSessionReturn {
+  // Composes the individual React Query hooks internally
+  // This is the ONLY place that calls useApprovals, useCheckpoints, etc.
+  // Pages call this hook, then pass slices of its return value to widgets as props
+}
+```
+
+#### How Pages Wire It Up
+
+Each page becomes a thin shell — layout + wiring, not logic:
+
+```tsx
+// Example: DunkStackPage.tsx (thin shell)
+function DunkStackPage({ projectName }: { projectName: string }) {
+  const orchestrator = useOrchestratorSession(projectName);
+
+  return (
+    <div className="flex flex-col gap-6">
+      {/* Approval banner at top */}
+      <ApprovalBanner
+        approvals={orchestrator.pendingApprovals}
+        onApprove={orchestrator.approveRequest}
+        onDeny={orchestrator.denyRequest}
+        isLoading={orchestrator.approvalsLoading}
+      />
+
+      {/* Main content grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <CheckpointTimeline
+          checkpoints={orchestrator.checkpoints}
+          onRollback={orchestrator.rollbackToCheckpoint}
+          onConfirmRollback={orchestrator.confirmRollback}
+          onCreateCheckpoint={orchestrator.createCheckpoint}
+          isLoading={orchestrator.checkpointsLoading}
+        />
+        <ActionLogPanel
+          entries={orchestrator.actionLog}
+          summary={orchestrator.actionLogSummary}
+          filters={orchestrator.actionLogFilters}
+          onFiltersChange={orchestrator.setActionLogFilters}
+          isLoading={orchestrator.actionLogLoading}
+        />
+      </div>
+
+      {/* More widgets... */}
+    </div>
+  );
+}
+
+// Later: WorkspacePage.tsx can do the EXACT same thing
+function WorkspacePage({ projectName }: { projectName: string }) {
+  const orchestrator = useOrchestratorSession(projectName);
+  // Same widgets, different layout. Zero code duplication.
+}
+```
+
+#### What Does NOT Follow This Pattern
+- **Settings extensions** (Feature 6) — these go directly into the existing `SettingsModal.tsx` since settings are app-wide singletons, not per-page widgets.
+- **Backend code** — all backend code (models, routers, security hooks) is unchanged from the original PRD. The portable pattern only affects frontend component architecture.
 
 ### Quality Standards
 
@@ -62,9 +215,11 @@ These rules apply to ALL UI components created in this session. The coding agent
 
 #### File Structure Rules
 - One component per file
-- Group related components in feature folders
+- Group related components in feature folders (orchestration widgets in `components/orchestrator/`)
 - Create TypeScript interfaces for ALL data types in `types/index.ts`
+- Export Props interfaces alongside components for consumer type safety
 - Add custom hooks for reusable logic
+- Barrel exports (`index.ts`) in `components/orchestrator/` and `hooks/`
 
 #### UI Component Rules (REQUIRED — Use Existing or Create)
 - **Modal.tsx** — Base modal with overlay, close button, title, content slots
@@ -76,7 +231,7 @@ These rules apply to ALL UI components created in this session. The coding agent
 - **Button.tsx** — With loading state support (spinner inside, disable on loading)
 - **Avatar.tsx** — User avatar with initials fallback on image failure
 
-Check if these already exist in `ui/src/components/ui/` before creating. Use existing versions. Only create if missing.
+Check if these already exist in `ui/src/components/ui/` before creating. Use existing versions. Only create if missing. These are app-wide primitives — widgets in `components/orchestrator/` should import and use them.
 
 #### BANNED — DO NOT USE
 - `alert()` — Use Toast
@@ -87,6 +242,7 @@ Check if these already exist in `ui/src/components/ui/` before creating. Use exi
 - Browser default dialogs of any kind
 - Inline styles — Tailwind only
 - `any` types — define TypeScript interfaces
+- **Page-specific hooks inside portable widgets** — Use props instead
 
 #### Page Pattern Rules (for user data)
 Every data type MUST have:
@@ -166,6 +322,7 @@ CREATE ─── save ────────►┘                       ┘
 17. ALL error states have retry action
 18. Use Lucide React for all icons
 19. Zero console errors in production
+20. **ALL orchestration widgets are props-driven — NO page-specific hooks inside widgets**
 
 #### Animations (MANDATORY)
 - Modals: fade backdrop + scale content (`transition-all duration-200 ease-out`)
@@ -244,6 +401,11 @@ useEffect(() => {
 
 Session 1 built the data layer (action logs, verification results, commit parsing, log compaction). This session adds the interactive surfaces: operators can approve dangerous commands in real-time, create/rollback checkpoints, and see all the Session 1 data through polished UI panels.
 
+**Key architectural decision:** All UI panels are built as **portable, props-driven widgets** in a shared `components/orchestrator/` folder. A single `useOrchestratorSession` hook manages all orchestration state. Pages (DunkStack, Workspace, future apps) are thin shells that call the hook and wire props to widgets. This means:
+- Build once, use everywhere — same panels work in DunkStack, Workspace, and future standalone apps
+- When we break apps into separate software later, the `components/orchestrator/` folder copies cleanly with zero refactoring
+- No "rebuild in 2 weeks" when the modular phase system ships
+
 ### Target Users
 
 - **AutoForge operators** — people running agents who need real-time control and historical visibility
@@ -256,15 +418,81 @@ Session 1 built the data layer (action logs, verification results, commit parsin
 4. Operator views a checkpoint timeline and can rollback to a known-good state
 5. Operator configures log retention settings from the Settings modal
 6. Operator searches commits filtered by feature ID to track what changed for a specific feature
+7. **Same orchestration panels are reusable across DunkStack, Workspace, and future pages without code duplication**
 
 ### Roadmap
 
 - **Session 1 (completed):** Database models, API routes, capture hooks, compaction service
-- **Session 2 (this PRD):** Approval gates, checkpoints, all UI panels, settings
+- **Session 2 (this PRD):** Approval gates, checkpoints, all UI panels as portable widgets, settings
 
 ---
 
 ## SPECS LAYER
+
+### Feature 0: Shared State Hook — `useOrchestratorSession` (BUILD FIRST)
+
+#### Overview
+The central abstraction that makes the portable widget pattern work. This hook composes all individual React Query hooks and provides a single interface that pages call. Pages pass slices of the return value down to widgets as props.
+
+#### Requirements
+
+1. Create `ui/src/hooks/useOrchestratorSession.ts`
+2. Return type `UseOrchestratorSessionReturn` with all orchestration state grouped by domain:
+
+```ts
+interface UseOrchestratorSessionReturn {
+  // Approvals
+  pendingApprovals: ApprovalRequest[];
+  approvalHistory: ApprovalRequest[];
+  approveRequest: (id: number) => Promise<void>;
+  denyRequest: (id: number, reason?: string) => Promise<void>;
+  approvalsLoading: boolean;
+
+  // Checkpoints
+  checkpoints: Checkpoint[];
+  createCheckpoint: (label: string) => Promise<void>;
+  rollbackToCheckpoint: (id: number) => Promise<RollbackPreview>;
+  confirmRollback: (id: number) => Promise<void>;
+  checkpointsLoading: boolean;
+
+  // Action Log
+  actionLog: PaginatedResult<ActionLogEntry>;
+  actionLogSummary: ActionLogSummary | null;
+  actionLogFilters: ActionLogFilters;
+  setActionLogFilters: (filters: ActionLogFilters) => void;
+  actionLogLoading: boolean;
+
+  // Verifications
+  getVerificationHistory: (featureId: number) => VerificationResult[];
+  recentFailures: VerificationResult[];
+  verificationsLoading: boolean;
+
+  // Commits
+  commits: Commit[];
+  commitFeatureFilter: number | null;
+  setCommitFeatureFilter: (featureId: number | null) => void;
+  commitsLoading: boolean;
+}
+```
+
+3. Internally compose: `useApprovals()`, `useCheckpoints()`, `useActionLog()`, `useVerificationHistory()`, `useCommits()`
+4. Each individual hook is a thin React Query wrapper calling the API functions from `api.ts`
+5. The individual hooks are NOT exported for direct page use — pages use `useOrchestratorSession` only
+
+#### Acceptance Criteria
+- [ ] Hook exists and returns all orchestration state
+- [ ] Individual React Query hooks exist for each domain
+- [ ] All types defined in `types/index.ts`
+- [ ] All API functions exist in `api.ts`
+- [ ] `npm run build` passes
+
+#### Technical Notes
+- The hook takes `projectName: string` as its only parameter
+- Use React Query's `useQuery` / `useMutation` patterns consistently
+- Approval polling: 2-second interval via `refetchInterval: 2000` for pending approvals
+- Other data: standard stale-while-revalidate caching
+
+---
 
 ### Feature 1: Approval Gates (Human-in-the-Loop)
 
@@ -273,7 +501,7 @@ When an agent attempts a command from `DANGEROUS_COMMANDS` (sudo, kubectl, aws, 
 
 #### Requirements
 
-**Backend:**
+**Backend (unchanged from original PRD):**
 
 1. New SQLAlchemy model `ApprovalRequest` in `api/database.py`
    - Fields: `id`, `agent_id` (str), `project_name` (str), `command` (str), `reason` (str, optional), `status` (str: "pending" | "approved" | "denied" | "expired"), `requested_at` (datetime), `resolved_at` (datetime, nullable), `resolved_by` (str, nullable)
@@ -300,26 +528,38 @@ When an agent attempts a command from `DANGEROUS_COMMANDS` (sudo, kubectl, aws, 
 
 6. Feature toggle: `APPROVAL_GATES_ENABLED` in settings (default: false). When disabled, dangerous commands stay hard-blocked as today.
 
-**Frontend:**
+**Frontend (PORTABLE WIDGET PATTERN):**
 
-7. New component `ui/src/components/ApprovalBanner.tsx`:
-   - Fixed banner at top of `AgentMissionControl.tsx` when pending approvals exist
+7. New component `ui/src/components/orchestrator/ApprovalBanner.tsx`:
+   ```tsx
+   interface ApprovalBannerProps {
+     approvals: ApprovalRequest[];
+     onApprove: (id: number) => Promise<void>;
+     onDeny: (id: number, reason?: string) => Promise<void>;
+     isLoading?: boolean;
+   }
+   ```
+   - Fixed banner when pending approvals exist
    - Shows: command (truncated), requesting agent, time ago
    - Two buttons: "Approve" (green) and "Deny" (red)
    - Approve/Deny buttons show loading state during API call
    - Toast on success ("Command approved" / "Command denied")
-   - Auto-dismiss banner when resolved
+   - Auto-dismiss when resolved
 
-8. New component `ui/src/components/ApprovalHistory.tsx`:
-   - Table in project detail view showing all past approval decisions
+8. New component `ui/src/components/orchestrator/ApprovalHistory.tsx`:
+   ```tsx
+   interface ApprovalHistoryProps {
+     approvals: ApprovalRequest[];
+     isLoading?: boolean;
+   }
+   ```
+   - Table showing all past approval decisions
    - Columns: Command, Agent, Status (badge), Requested, Resolved, Resolved By
    - Status badges: pending=yellow, approved=green, denied=red, expired=gray
    - Search/filter by status
    - EmptyState when no approvals
 
 9. Audio notification (optional): play a chime sound when approval request arrives. Toggle in settings.
-
-10. React Query hook `useApprovals(projectName)` with 2-second polling for pending requests
 
 #### Acceptance Criteria
 - [ ] ApprovalRequest model exists with all fields
@@ -328,8 +568,9 @@ When an agent attempts a command from `DANGEROUS_COMMANDS` (sudo, kubectl, aws, 
 - [ ] Security hook pauses agent on dangerous command, resumes on approval
 - [ ] Denial returns clear message to agent
 - [ ] Expiry after 5 minutes works
-- [ ] Banner appears in UI with approve/deny buttons
-- [ ] History table shows all decisions
+- [ ] `ApprovalBanner` is props-driven, lives in `components/orchestrator/`
+- [ ] `ApprovalHistory` is props-driven, lives in `components/orchestrator/`
+- [ ] Neither widget imports any page-specific hook
 - [ ] Feature toggle works (disabled = hard-block as before)
 - [ ] Toast feedback on approve/deny
 - [ ] Loading states on buttons
@@ -349,7 +590,7 @@ Snapshot git SHA + feature status at key moments. Support rollback to a checkpoi
 
 #### Requirements
 
-**Backend:**
+**Backend (unchanged from original PRD):**
 
 1. New SQLAlchemy model `Checkpoint` in `api/database.py`
    - Fields: `id`, `session_id` (str, nullable), `label` (str), `git_sha` (str), `feature_snapshot` (text — JSON blob of all feature statuses), `created_at` (datetime)
@@ -376,21 +617,35 @@ Snapshot git SHA + feature status at key moments. Support rollback to a checkpoi
    - Queries all features → serialize to JSON
    - Inserts `Checkpoint` record
 
-**Frontend:**
+**Frontend (PORTABLE WIDGET PATTERN):**
 
-6. New component `ui/src/components/CheckpointTimeline.tsx`:
-   - Vertical timeline in project detail view
+6. New component `ui/src/components/orchestrator/CheckpointTimeline.tsx`:
+   ```tsx
+   interface CheckpointTimelineProps {
+     checkpoints: Checkpoint[];
+     onRollback: (id: number) => Promise<RollbackPreview>;
+     onConfirmRollback: (id: number) => Promise<void>;
+     onCreateCheckpoint: (label: string) => Promise<void>;
+     isLoading?: boolean;
+   }
+   ```
+   - Vertical timeline
    - Each entry: label, short SHA (linked), feature counts (passing/total), relative timestamp
    - "Rollback" button on each checkpoint
    - Click "Rollback" → ConfirmModal showing what will change (features that flip status)
-   - On confirm → API call → Toast on success → refresh feature list
+   - On confirm → callback → Toast on success → parent refreshes
+   - "Create Checkpoint" button at top with label input
 
-7. New component `ui/src/components/CheckpointDetail.tsx`:
+7. New component `ui/src/components/orchestrator/CheckpointDetail.tsx`:
+   ```tsx
+   interface CheckpointDetailProps {
+     checkpoint: Checkpoint;
+     currentFeatures: Feature[];
+   }
+   ```
    - Expanded view showing full feature snapshot
    - Table: Feature ID, Name, Status at checkpoint vs current status
    - Highlight differences
-
-8. React Query hook `useCheckpoints(projectName)` with standard caching
 
 #### Acceptance Criteria
 - [ ] Checkpoint model exists with all fields
@@ -399,8 +654,9 @@ Snapshot git SHA + feature status at key moments. Support rollback to a checkpoi
 - [ ] API endpoints for list, create, detail, rollback
 - [ ] Rollback creates branch + resets feature statuses
 - [ ] Rollback requires confirmation
-- [ ] Timeline UI shows checkpoints with relative timestamps
-- [ ] Rollback flow: button → ConfirmModal → loading → Toast
+- [ ] `CheckpointTimeline` is props-driven, lives in `components/orchestrator/`
+- [ ] `CheckpointDetail` is props-driven, lives in `components/orchestrator/`
+- [ ] Neither widget imports any page-specific hook
 - [ ] EmptyState when no checkpoints
 - [ ] `ruff check .`, `mypy .`, `npm run build` all pass
 
@@ -419,25 +675,34 @@ UI to browse the action log data created by Session 1.
 
 #### Requirements
 
-1. New component `ui/src/components/ActionLogPanel.tsx`:
-   - Tab/panel in project detail view
+1. New component `ui/src/components/orchestrator/ActionLogPanel.tsx`:
+   ```tsx
+   interface ActionLogPanelProps {
+     entries: PaginatedResult<ActionLogEntry>;
+     filters: ActionLogFilters;
+     onFiltersChange: (filters: ActionLogFilters) => void;
+     isLoading?: boolean;
+   }
+   ```
    - Table columns: Timestamp (relative), Tool Name, Input Preview (truncated), Status (badge), Duration
    - Status badges: success=green, error=red
-   - Click row to expand full input/output in a slide-out or accordion
+   - Click row to expand full input/output in accordion
    - Filters: session dropdown, tool name dropdown, status toggle
    - Search by tool name or input content
    - Pagination (20 per page)
    - EmptyState: "No actions recorded yet" with explanation
 
-2. New component `ui/src/components/ActionLogSummary.tsx`:
-   - Summary card at top: total calls, error rate %, avg duration, most-used tool
-   - Pulled from `/api/projects/{name}/actions/summary`
+2. New component `ui/src/components/orchestrator/ActionLogSummary.tsx`:
+   ```tsx
+   interface ActionLogSummaryProps {
+     summary: ActionLogSummary | null;
+     isLoading?: boolean;
+   }
+   ```
+   - Summary card: total calls, error rate %, avg duration, most-used tool
+   - Skeleton while loading
 
-3. React Query hooks:
-   - `useActionLog(projectName, filters)` — paginated action log
-   - `useActionLogSummary(projectName)` — summary stats
-
-4. TypeScript types in `types/index.ts`:
+3. TypeScript types in `types/index.ts`:
    ```ts
    interface ActionLogEntry {
      id: number;
@@ -459,11 +724,31 @@ UI to browse the action log data created by Session 1.
      avg_duration_ms: number;
      tools: { tool_name: string; count: number; error_count: number; avg_duration_ms: number }[];
    }
+
+   interface ActionLogFilters {
+     session_id?: string;
+     tool_name?: string;
+     status?: 'success' | 'error';
+     search?: string;
+     page: number;
+     limit: number;
+   }
+
+   interface PaginatedResult<T> {
+     items: T[];
+     total: number;
+     page: number;
+     limit: number;
+     has_more: boolean;
+   }
    ```
 
-5. Add API functions to `ui/src/lib/api.ts`
+4. Add API functions to `ui/src/lib/api.ts`
 
 #### Acceptance Criteria
+- [ ] `ActionLogPanel` is props-driven, lives in `components/orchestrator/`
+- [ ] `ActionLogSummary` is props-driven, lives in `components/orchestrator/`
+- [ ] Neither widget imports any page-specific hook
 - [ ] Table renders action log entries with all columns
 - [ ] Filters work: session, tool name, status
 - [ ] Pagination works
@@ -484,27 +769,36 @@ UI to browse verification results created by Session 1.
 
 #### Requirements
 
-1. New component `ui/src/components/VerificationHistory.tsx`:
-   - Section in feature detail panel
+1. New component `ui/src/components/orchestrator/VerificationHistory.tsx`:
+   ```tsx
+   interface VerificationHistoryProps {
+     results: VerificationResult[];
+     isLoading?: boolean;
+   }
+   ```
    - List of verification runs: test type (badge), pass/fail (badge), timestamp, duration
    - Click to expand output (code block, scrollable, max-height)
    - EmptyState: "No verification results yet"
 
-2. New component `ui/src/components/FailuresList.tsx`:
+2. New component `ui/src/components/orchestrator/FailuresList.tsx`:
+   ```tsx
+   interface FailuresListProps {
+     failures: VerificationResult[];
+     onNavigateToFeature?: (featureId: number) => void;
+     isLoading?: boolean;
+   }
+   ```
    - Cross-feature view: all recent failures
    - Table: Feature Name, Test Type, Timestamp, link to feature detail
    - Filter by test type
    - EmptyState: "All clear — no recent failures" (with check icon)
 
-3. React Query hooks:
-   - `useVerificationHistory(projectName, featureId)` — per-feature
-   - `useRecentFailures(projectName)` — cross-feature failures
-
-4. TypeScript types in `types/index.ts`:
+3. TypeScript types in `types/index.ts`:
    ```ts
    interface VerificationResult {
      id: number;
      feature_id: number;
+     feature_name?: string;  // joined from features table for display
      session_id: string | null;
      agent_index: number;
      test_type: 'lint' | 'typecheck' | 'e2e' | 'manual';
@@ -515,9 +809,12 @@ UI to browse verification results created by Session 1.
    }
    ```
 
-5. Add API functions to `ui/src/lib/api.ts`
+4. Add API functions to `ui/src/lib/api.ts`
 
 #### Acceptance Criteria
+- [ ] `VerificationHistory` is props-driven, lives in `components/orchestrator/`
+- [ ] `FailuresList` is props-driven, lives in `components/orchestrator/`
+- [ ] Neither widget imports any page-specific hook
 - [ ] Per-feature verification list renders correctly
 - [ ] Pass/fail badges with correct colors
 - [ ] Output expandable in code block
@@ -536,17 +833,23 @@ UI to view agent commits filtered by feature.
 
 #### Requirements
 
-1. New component `ui/src/components/CommitsPanel.tsx`:
-   - In project detail view
+1. New component `ui/src/components/orchestrator/CommitsPanel.tsx`:
+   ```tsx
+   interface CommitsPanelProps {
+     commits: Commit[];
+     featureFilter: number | null;
+     onFeatureFilterChange: (featureId: number | null) => void;
+     features?: { id: number; name: string }[];  // for filter dropdown
+     isLoading?: boolean;
+   }
+   ```
    - List of commits: SHA (short), message, relative timestamp
    - Commit messages parsed: type badge (feat/fix/test/refactor/chore), scope, description
    - Non-conforming messages shown without badge (no error, just no badge)
-   - Filter by feature ID dropdown
+   - Filter by feature ID dropdown (populated from `features` prop)
    - EmptyState: "No commits yet"
 
-2. React Query hook: `useCommits(projectName, featureId?)`
-
-3. TypeScript types:
+2. TypeScript types:
    ```ts
    interface Commit {
      sha: string;
@@ -560,9 +863,11 @@ UI to view agent commits filtered by feature.
    }
    ```
 
-4. Add API function to `ui/src/lib/api.ts`
+3. Add API function to `ui/src/lib/api.ts`
 
 #### Acceptance Criteria
+- [ ] `CommitsPanel` is props-driven, lives in `components/orchestrator/`
+- [ ] Widget does NOT import any page-specific hook
 - [ ] Commits list renders with parsed badges
 - [ ] Feature filter works
 - [ ] Non-conforming messages handled gracefully
@@ -575,7 +880,7 @@ UI to view agent commits filtered by feature.
 ### Feature 6: Settings Extensions
 
 #### Overview
-Add retention config and approval gate toggle to existing Settings modal.
+Add retention config and approval gate toggle to existing Settings modal. This is the ONE feature that does NOT follow the portable widget pattern — settings are app-wide singletons.
 
 #### Requirements
 
@@ -596,6 +901,96 @@ Add retention config and approval gate toggle to existing Settings modal.
 - [ ] Settings persist across server restarts
 - [ ] Approval gate toggle controls whether approval flow is active
 - [ ] `ruff check .`, `mypy .`, `npm run build` all pass
+
+---
+
+### Feature 7: Page Wiring (DunkStack Integration)
+
+#### Overview
+Wire all portable widgets into the existing DunkStack page as a thin shell demonstration. This proves the pattern works and gives operators immediate access to all panels.
+
+#### Requirements
+
+1. In the DunkStack page component:
+   - Import `useOrchestratorSession` from hooks
+   - Import all widgets from `components/orchestrator/`
+   - Call `useOrchestratorSession(projectName)`
+   - Pass props from the hook return value to each widget
+   - The page is ONLY layout + wiring — no business logic
+
+2. Layout:
+   - `ApprovalBanner` at top (conditionally shown when pending approvals exist)
+   - Tab or accordion sections for: Action Log, Checkpoints, Verifications, Commits
+   - `ApprovalHistory` in its own tab
+   - Responsive grid layout
+
+3. Example wiring (the page component should look approximately like this):
+   ```tsx
+   function DunkStackPage({ projectName }: { projectName: string }) {
+     const orch = useOrchestratorSession(projectName);
+
+     return (
+       <div className="flex flex-col gap-6 p-4 lg:p-8">
+         <ApprovalBanner
+           approvals={orch.pendingApprovals}
+           onApprove={orch.approveRequest}
+           onDeny={orch.denyRequest}
+           isLoading={orch.approvalsLoading}
+         />
+
+         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+           <ActionLogSummary
+             summary={orch.actionLogSummary}
+             isLoading={orch.actionLogLoading}
+           />
+           {/* more summary cards... */}
+         </div>
+
+         <Tabs>
+           <Tab label="Action Log">
+             <ActionLogPanel
+               entries={orch.actionLog}
+               filters={orch.actionLogFilters}
+               onFiltersChange={orch.setActionLogFilters}
+               isLoading={orch.actionLogLoading}
+             />
+           </Tab>
+           <Tab label="Checkpoints">
+             <CheckpointTimeline
+               checkpoints={orch.checkpoints}
+               onRollback={orch.rollbackToCheckpoint}
+               onConfirmRollback={orch.confirmRollback}
+               onCreateCheckpoint={orch.createCheckpoint}
+               isLoading={orch.checkpointsLoading}
+             />
+           </Tab>
+           <Tab label="Commits">
+             <CommitsPanel
+               commits={orch.commits}
+               featureFilter={orch.commitFeatureFilter}
+               onFeatureFilterChange={orch.setCommitFeatureFilter}
+               isLoading={orch.commitsLoading}
+             />
+           </Tab>
+           <Tab label="Approvals">
+             <ApprovalHistory
+               approvals={orch.approvalHistory}
+               isLoading={orch.approvalsLoading}
+             />
+           </Tab>
+         </Tabs>
+       </div>
+     );
+   }
+   ```
+
+#### Acceptance Criteria
+- [ ] DunkStack page imports and renders all orchestration widgets
+- [ ] DunkStack page has ZERO business logic — only layout + props wiring
+- [ ] All widgets receive data via props from `useOrchestratorSession`
+- [ ] Layout is responsive
+- [ ] Future pages (Workspace) can copy this pattern trivially
+- [ ] `npm run build` passes
 
 ---
 
@@ -637,18 +1032,33 @@ CREATE INDEX idx_checkpoint_project ON checkpoints(created_at DESC);
 3. **Approval backend** — Router, security hook integration, WebSocket event, polling loop
 4. **Checkpoint backend** — Router, auto-checkpoint hooks, MCP tool, rollback logic
 5. **Settings extensions** — Add new fields to settings model and config
-6. **TypeScript types** — Add all new interfaces to `types/index.ts`
+6. **TypeScript types** — Add ALL new interfaces to `types/index.ts` (including Props interfaces)
 7. **API client** — Add all new endpoint functions to `api.ts`
-8. **React Query hooks** — Create hooks for approvals, checkpoints, action log, verifications, commits
-9. **UI panels** — Build all components:
-   - ApprovalBanner + ApprovalHistory
-   - CheckpointTimeline + CheckpointDetail
-   - ActionLogPanel + ActionLogSummary
-   - VerificationHistory + FailuresList
-   - CommitsPanel
-   - Settings extensions
-10. **Wire into app** — Add panels to project detail view, banner to mission control
-11. **Validation** — `ruff check .`, `mypy .`, `cd ui && npm run build`
+8. **Individual React Query hooks** — `useApprovals`, `useCheckpoints`, `useActionLog`, `useVerificationHistory`, `useCommits`
+9. **`useOrchestratorSession` hook** — Compose all individual hooks into the shared state hook
+10. **Portable widgets** — Build all components in `components/orchestrator/`:
+    - `ApprovalBanner` + `ApprovalHistory`
+    - `CheckpointTimeline` + `CheckpointDetail`
+    - `ActionLogPanel` + `ActionLogSummary`
+    - `VerificationHistory` + `FailuresList`
+    - `CommitsPanel`
+    - `index.ts` barrel export
+11. **Settings UI** — Extend `SettingsModal.tsx` with new section
+12. **Page wiring** — Wire widgets into DunkStack page as thin shell
+13. **Validation** — `ruff check .`, `mypy .`, `cd ui && npm run build`
+
+---
+
+## Portability Verification Checklist
+
+Before marking this session complete, verify the portable widget pattern:
+
+- [ ] `grep -r "useDunkStack" ui/src/components/orchestrator/` returns ZERO results
+- [ ] `grep -r "useWorkspace" ui/src/components/orchestrator/` returns ZERO results
+- [ ] Every component in `components/orchestrator/` has an exported Props interface
+- [ ] `components/orchestrator/index.ts` barrel-exports all widgets and their Props types
+- [ ] `useOrchestratorSession` is the ONLY hook that pages need to call
+- [ ] DunkStack page component has zero business logic — just `useOrchestratorSession()` + JSX with props
 
 ---
 
@@ -663,6 +1073,9 @@ CREATE INDEX idx_checkpoint_project ON checkpoints(created_at DESC);
 - [ ] Failures list shows cross-feature view of recent failures
 - [ ] Commits panel shows parsed messages with feature filter
 - [ ] Settings modal has retention config and approval gate toggle
+- [ ] **ALL orchestration widgets are portable — props-driven, in `components/orchestrator/`, no page-specific hooks**
+- [ ] **`useOrchestratorSession` hook composes all state for any page to consume**
+- [ ] **DunkStack page is a thin shell (layout + wiring only)**
 - [ ] All Martin's building rules followed: Toasts, ConfirmModals, EmptyStates, Skeletons, loading buttons, relative dates, truncation, back navigation, search/filter, hover states, animations, accessibility
 - [ ] All lint/type checks pass
 - [ ] Zero console errors
@@ -677,3 +1090,4 @@ CREATE INDEX idx_checkpoint_project ON checkpoints(created_at DESC);
 - Screenshot capture from Playwright
 - Cross-project queries
 - Approval chain (single approve/deny is sufficient)
+- Workspace page wiring (future session — but the widgets are ready for it)

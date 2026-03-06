@@ -14,7 +14,7 @@ import logging
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Awaitable, Literal, Optional
+from typing import Awaitable, Callable, Literal, Optional
 
 from server.services.handoff_watcher import HandoffWatcher
 
@@ -895,6 +895,7 @@ class FactoryController:
             try:
                 from sqlalchemy import create_engine
                 from sqlalchemy.orm import Session as SASession
+
                 from api.database import Feature
 
                 engine = create_engine(f"sqlite:///{features_db}", echo=False)

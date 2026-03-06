@@ -29,12 +29,14 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .routers import (
+    actions_router,
     agent_os_router,
     agent_router,
     assistant_chat_router,
     boilerplate_router,
     captures_router,
     ci_status_router,
+    commits_router,
     design_guide_router,
     devserver_router,
     dunkstack_router,
@@ -54,6 +56,7 @@ from .routers import (
     styles_router,
     swarm_router,
     terminal_router,
+    verifications_router,
     workspace_router,
     yt_batch_router,
     yt_ingestion_router,
@@ -186,6 +189,26 @@ async def lifespan(app: FastAPI):
     scheduler = get_scheduler()
     await scheduler.start()
 
+    # Run log compaction on startup (non-blocking — errors are logged, not raised)
+    from .services.log_compaction import run_compaction_all_projects
+    try:
+        await run_compaction_all_projects()
+    except Exception as e:
+        _startup_logger.warning("Log compaction on startup failed: %s", e)
+
+    # Schedule daily log compaction at 3 AM UTC via APScheduler
+    try:
+        from apscheduler.triggers.cron import CronTrigger
+        scheduler.scheduler.add_job(
+            run_compaction_all_projects,
+            CronTrigger(hour=3, minute=0),
+            id="log_compaction_daily",
+            replace_existing=True,
+        )
+        _startup_logger.info("Scheduled daily log compaction at 03:00 UTC")
+    except Exception as e:
+        _startup_logger.warning("Failed to schedule daily log compaction: %s", e)
+
     # Recover any factory sessions that were running before server restart
     await _recover_factory_sessions()
 
@@ -303,6 +326,9 @@ app.include_router(execution_router)
 app.include_router(yt_batch_router)
 app.include_router(factory_router)
 app.include_router(factory_presets_router)
+app.include_router(actions_router)
+app.include_router(commits_router)
+app.include_router(verifications_router)
 
 
 # ============================================================================

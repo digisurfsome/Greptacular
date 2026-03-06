@@ -45,7 +45,7 @@ from sqlalchemy import text
 # Add parent directory to path so we can import from api module
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from api.database import Feature, atomic_transaction, create_database
+from api.database import Feature, VerificationResult, atomic_transaction, create_database
 from api.dependency_resolver import (
     MAX_DEPENDENCIES_PER_FEATURE,
     compute_scheduling_scores,
@@ -135,6 +135,43 @@ def get_session():
     if _session_maker is None:
         raise RuntimeError("Database not initialized")
     return _session_maker()
+
+
+# Maximum output size for verification records (10KB)
+_MAX_VERIFICATION_OUTPUT = 10240
+
+
+def _record_verification(session, feature_id: int, passed: bool, output: str, test_type: str) -> None:
+    """Record a VerificationResult for a feature.
+
+    Creates a new verification record in the database. Output is truncated
+    to 10KB to prevent oversized entries.
+
+    Args:
+        session: Active SQLAlchemy session (will be committed by caller).
+        feature_id: The feature this verification belongs to.
+        passed: Whether the verification passed.
+        output: Raw test output text.
+        test_type: Type of verification (lint/typecheck/e2e/manual).
+    """
+    try:
+        truncated_output = output[:_MAX_VERIFICATION_OUTPUT] if output else ""
+        record = VerificationResult(
+            feature_id=feature_id,
+            session_id=os.environ.get("AUTOFORGE_SESSION_ID"),
+            agent_index=int(os.environ.get("AUTOFORGE_AGENT_INDEX", "0")),
+            test_type=test_type,
+            passed=passed,
+            output=truncated_output,
+        )
+        session.add(record)
+        session.commit()
+    except Exception:
+        # Don't let verification recording failure break the main operation
+        try:
+            session.rollback()
+        except Exception:
+            pass
 
 
 @mcp.tool()
@@ -235,15 +272,21 @@ def feature_get_summary(
 
 @mcp.tool()
 def feature_mark_passing(
-    feature_id: Annotated[int, Field(description="The ID of the feature to mark as passing", ge=1)]
+    feature_id: Annotated[int, Field(description="The ID of the feature to mark as passing", ge=1)],
+    verification_output: Annotated[str, Field(description="Test/verification output text (optional)", default="")] = "",
+    test_type: Annotated[str, Field(description="Type of test: lint/typecheck/e2e/manual (optional)", default="manual")] = "manual",
 ) -> str:
     """Mark a feature as passing after successful implementation.
 
     Updates the feature's passes field to true and clears the in_progress flag.
     Use this after you have implemented the feature and verified it works correctly.
 
+    Optionally records a VerificationResult if verification_output is provided.
+
     Args:
         feature_id: The ID of the feature to mark as passing
+        verification_output: Optional test output text to record
+        test_type: Type of verification (lint/typecheck/e2e/manual)
 
     Returns:
         JSON with success confirmation: {success, feature_id, name}
@@ -267,6 +310,10 @@ def feature_mark_passing(
                 return json.dumps({"error": f"Feature with ID {feature_id} is already passing"})
             return json.dumps({"error": "Failed to mark feature passing for unknown reason"})
 
+        # Record verification result if output was provided
+        if verification_output:
+            _record_verification(session, feature_id, True, verification_output, test_type)
+
         # Get the feature name for the response
         feature = session.query(Feature).filter(Feature.id == feature_id).first()
         return json.dumps({"success": True, "feature_id": feature_id, "name": feature.name})
@@ -279,13 +326,17 @@ def feature_mark_passing(
 
 @mcp.tool()
 def feature_mark_failing(
-    feature_id: Annotated[int, Field(description="The ID of the feature to mark as failing", ge=1)]
+    feature_id: Annotated[int, Field(description="The ID of the feature to mark as failing", ge=1)],
+    verification_output: Annotated[str, Field(description="Test/verification output text (optional)", default="")] = "",
+    test_type: Annotated[str, Field(description="Type of test: lint/typecheck/e2e/manual (optional)", default="manual")] = "manual",
 ) -> str:
     """Mark a feature as failing after finding a regression.
 
     Updates the feature's passes field to false and clears the in_progress flag.
     Use this when a testing agent discovers that a previously-passing feature
     no longer works correctly (regression detected).
+
+    Optionally records a VerificationResult if verification_output is provided.
 
     After marking as failing, you should:
     1. Investigate the root cause
@@ -295,6 +346,8 @@ def feature_mark_failing(
 
     Args:
         feature_id: The ID of the feature to mark as failing
+        verification_output: Optional test output text to record
+        test_type: Type of verification (lint/typecheck/e2e/manual)
 
     Returns:
         JSON with the updated feature details, or error if not found.
@@ -314,6 +367,10 @@ def feature_mark_failing(
             WHERE id = :id
         """), {"id": feature_id})
         session.commit()
+
+        # Record verification result if output was provided
+        if verification_output:
+            _record_verification(session, feature_id, False, verification_output, test_type)
 
         # Refresh to get updated state
         session.refresh(feature)

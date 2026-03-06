@@ -156,6 +156,65 @@ class Schedule(Base):
         return bool(self.days_of_week & day_bit)
 
 
+class ActionLog(Base):
+    """Structured log of agent tool calls for observability and debugging."""
+
+    __tablename__ = "action_log"
+
+    __table_args__ = (
+        Index('idx_action_log_session', 'session_id', 'created_at'),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(String, nullable=False)
+    agent_index = Column(Integer, default=0)
+    turn_number = Column(Integer)
+    tool_name = Column(String, nullable=False)
+    tool_input_summary = Column(Text)  # Truncated to 500 chars at write time
+    result_summary = Column(Text)  # Truncated to 1000 chars at write time
+    duration_ms = Column(Integer)
+    status = Column(String, nullable=False, default='success')  # success/error
+    created_at = Column(DateTime, nullable=False, default=_utc_now)
+
+
+class VerificationResult(Base):
+    """Historical test/verification results for features across sessions."""
+
+    __tablename__ = "verification_results"
+
+    __table_args__ = (
+        Index('idx_verification_feature', 'feature_id', 'created_at'),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    feature_id = Column(Integer, ForeignKey('features.id'), nullable=False)
+    session_id = Column(String)
+    agent_index = Column(Integer, default=0)
+    test_type = Column(String, nullable=False)  # lint/typecheck/e2e/manual
+    passed = Column(Boolean, nullable=False)
+    output = Column(Text)  # Truncated to 10KB at write time
+    duration_ms = Column(Integer)
+    created_at = Column(DateTime, nullable=False, default=_utc_now)
+
+
+class ActionLogSummary(Base):
+    """Aggregated action log data for compacted (old) entries."""
+
+    __tablename__ = "action_log_summary"
+
+    __table_args__ = (
+        Index('idx_action_log_summary_unique', 'date', 'session_id', 'tool_name', unique=True),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    date = Column(String, nullable=False)  # YYYY-MM-DD
+    session_id = Column(String)
+    tool_name = Column(String, nullable=False)
+    call_count = Column(Integer, nullable=False, default=0)
+    error_count = Column(Integer, nullable=False, default=0)
+    avg_duration_ms = Column(Integer)
+
+
 class ScheduleOverride(Base):
     """Persisted manual override for a schedule window."""
 
@@ -355,6 +414,23 @@ def _migrate_add_schedules_tables(engine) -> None:
                 conn.commit()
 
 
+def _migrate_add_observability_tables(engine) -> None:
+    """Create action_log, verification_results, and action_log_summary tables if they don't exist."""
+    from sqlalchemy import inspect
+
+    inspector = inspect(engine)
+    existing_tables = inspector.get_table_names()
+
+    if "action_log" not in existing_tables:
+        ActionLog.__table__.create(bind=engine)  # type: ignore[attr-defined]
+
+    if "verification_results" not in existing_tables:
+        VerificationResult.__table__.create(bind=engine)  # type: ignore[attr-defined]
+
+    if "action_log_summary" not in existing_tables:
+        ActionLogSummary.__table__.create(bind=engine)  # type: ignore[attr-defined]
+
+
 def _configure_sqlite_immediate_transactions(engine) -> None:
     """Configure engine for IMMEDIATE transactions via event hooks.
 
@@ -448,6 +524,9 @@ def create_database(project_dir: Path) -> tuple:
 
     # Migrate to add schedules tables
     _migrate_add_schedules_tables(engine)
+
+    # Migrate to add observability tables (action_log, verification_results, action_log_summary)
+    _migrate_add_observability_tables(engine)
 
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

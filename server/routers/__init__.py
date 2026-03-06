@@ -5,6 +5,8 @@ API Routers
 FastAPI routers for different API endpoints.
 """
 
+from .actions import commits_router
+from .actions import router as actions_router
 from .agent import router as agent_router
 from .agent_os import router as agent_os_router
 from .assistant_chat import router as assistant_chat_router
@@ -29,12 +31,15 @@ from .settings import router as settings_router
 from .spec_creation import router as spec_creation_router
 from .swarm import router as swarm_router
 from .terminal import router as terminal_router
+from .verifications import router as verifications_router
 from .workspace import router as workspace_router
 from .yt_batch import router as yt_batch_router
 from .yt_ingestion import router as yt_ingestion_router
 from .yt_processing import router as yt_processing_router
 
 __all__ = [
+    "actions_router",
+    "commits_router",
     "ci_status_router",
     "projects_router",
     "features_router",
@@ -64,4 +69,5 @@ __all__ = [
     "execution_websocket",
     "factory_router",
     "factory_presets_router",
+    "verifications_router",
 ]

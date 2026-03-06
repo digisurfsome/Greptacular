@@ -1121,31 +1121,31 @@ class WorkspaceChatSession:
             # Provide provider-specific auth guidance
             if self.provider == "gemini" and ("not installed" in err_lower or "not found" in err_lower or "path" in err_lower):
                 hint = (
-                    f"**Gemini CLI not found.**\n\n"
-                    f"Install it with:\n```\nnpm install -g @google/gemini-cli\n```\n"
-                    f"Then authenticate:\n```\ngemini\n```\n"
-                    f"(Follow the Google login prompt on first run.)"
+                    "**Gemini CLI not found.**\n\n"
+                    "Install it with:\n```\nnpm install -g @google/gemini-cli\n```\n"
+                    "Then authenticate:\n```\ngemini\n```\n"
+                    "(Follow the Google login prompt on first run.)"
                 )
             elif self.provider == "gemini" and ("auth" in err_lower or "api_key" in err_lower or "credential" in err_lower):
                 hint = (
-                    f"**Gemini authentication required.**\n\n"
-                    f"Option 1 — Subscription (free tier):\n```\ngemini\n```\n"
-                    f"(Follow the Google login prompt.)\n\n"
-                    f"Option 2 — API key:\n"
-                    f"Set `GEMINI_API_KEY` in your environment or `~/.autoforge/.env`."
+                    "**Gemini authentication required.**\n\n"
+                    "Option 1 — Subscription (free tier):\n```\ngemini\n```\n"
+                    "(Follow the Google login prompt.)\n\n"
+                    "Option 2 — API key:\n"
+                    "Set `GEMINI_API_KEY` in your environment or `~/.autoforge/.env`."
                 )
             elif self.provider == "codex" and ("401" in err_lower or "unauthorized" in err_lower or "auth" in err_lower):
                 hint = (
-                    f"**Codex authentication required.**\n\n"
-                    f"Option 1 — ChatGPT subscription:\n```\ncodex\n```\n"
-                    f"(Follow the login prompt.)\n\n"
-                    f"Option 2 — API key:\n"
-                    f"Set `OPENAI_API_KEY` in your environment or `~/.autoforge/.env`."
+                    "**Codex authentication required.**\n\n"
+                    "Option 1 — ChatGPT subscription:\n```\ncodex\n```\n"
+                    "(Follow the login prompt.)\n\n"
+                    "Option 2 — API key:\n"
+                    "Set `OPENAI_API_KEY` in your environment or `~/.autoforge/.env`."
                 )
             elif self.provider == "codex" and ("not found" in err_lower or "not installed" in err_lower or "path" in err_lower):
                 hint = (
-                    f"**Codex CLI not found.**\n\n"
-                    f"Install it with:\n```\nnpm install -g @openai/codex\n```"
+                    "**Codex CLI not found.**\n\n"
+                    "Install it with:\n```\nnpm install -g @openai/codex\n```"
                 )
             else:
                 hint = f"Failed to initialize {provider_display}: {str(e)}"

@@ -9,7 +9,7 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 from registry import get_project_dir
-from server.services.factory_controller import get_factory_controller, get_existing_controller, FACTORY_PRESETS
+from server.services.factory_controller import FACTORY_PRESETS, get_factory_controller
 
 logger = logging.getLogger(__name__)
 

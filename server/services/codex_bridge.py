@@ -53,6 +53,7 @@ class CodexBridge:
         self._request_id: int = 0
         self._pending: dict[int, asyncio.Future] = {}
         self._reader_task: Optional[asyncio.Task] = None
+        self._stderr_task: Optional[asyncio.Task] = None
         self._initialized: bool = False
 
     async def start(self) -> None:
@@ -63,9 +64,18 @@ class CodexBridge:
                 logger.warning("Codex MCP server process exited (code=%s), restarting", self._process.returncode)
                 self._process = None
                 self._initialized = False
+                self.thread_id = None  # BUG 4 fix: clear stale thread_id
                 if self._reader_task and not self._reader_task.done():
                     self._reader_task.cancel()
                 self._reader_task = None
+                if self._stderr_task and not self._stderr_task.done():
+                    self._stderr_task.cancel()
+                self._stderr_task = None
+                # BUG 3 fix: clear pending futures before restart to avoid race
+                for fut in self._pending.values():
+                    if not fut.done():
+                        fut.set_exception(RuntimeError("Codex MCP server restarting"))
+                self._pending.clear()
             else:
                 return
 
@@ -101,15 +111,16 @@ class CodexBridge:
             env=env,
         )
 
-        # Start background reader task for stdout
+        # Start background reader tasks for stdout and stderr
         self._reader_task = asyncio.create_task(self._read_stdout())
+        self._stderr_task = asyncio.create_task(self._drain_stderr())
 
         # MCP initialize handshake
         result = await self._send_request("initialize", {
             "protocolVersion": "2024-11-05",
             "capabilities": {},
             "clientInfo": {"name": "autoforge-workspace", "version": "1.0.0"},
-        })
+        }, timeout=30)
         logger.info("Codex MCP initialized: %s", result)
 
         # Send initialized notification (required by MCP protocol)
@@ -125,6 +136,14 @@ class CodexBridge:
             except asyncio.CancelledError:
                 pass
             self._reader_task = None
+
+        if self._stderr_task:
+            self._stderr_task.cancel()
+            try:
+                await self._stderr_task
+            except asyncio.CancelledError:
+                pass
+            self._stderr_task = None
 
         if self._process:
             try:
@@ -207,7 +226,20 @@ class CodexBridge:
 
     # --- Internal MCP JSON-RPC plumbing ---
 
-    async def _send_request(self, method: str, params: dict) -> dict:
+    async def _drain_stderr(self) -> None:
+        """Background task: drain stderr to prevent pipe buffer deadlock (BUG 1)."""
+        try:
+            while self._process and self._process.stderr:
+                line = await self._process.stderr.readline()
+                if not line:
+                    break
+                logger.debug("Codex stderr: %s", line.decode(errors="replace").strip())
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.debug("Codex stderr drain error: %s", e)
+
+    async def _send_request(self, method: str, params: dict, timeout: int = 600) -> dict:
         """Send a JSON-RPC request and wait for the response."""
         if not self._process or not self._process.stdin:
             raise RuntimeError("Codex MCP server not running")
@@ -230,7 +262,7 @@ class CodexBridge:
         await self._process.stdin.drain()
 
         try:
-            return await asyncio.wait_for(future, timeout=600)  # 10 min timeout
+            return await asyncio.wait_for(future, timeout=timeout)
         except asyncio.TimeoutError:
             self._pending.pop(req_id, None)
             raise RuntimeError(f"Codex MCP request timed out: {method}")

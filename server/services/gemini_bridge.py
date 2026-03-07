@@ -154,10 +154,22 @@ class GeminiBridge:
             self.cwd, self.session_id, self.model,
         )
 
+        # Kill any lingering process from a previous concurrent call (BUG 6)
+        if self._current_process and self._current_process.returncode is None:
+            try:
+                self._current_process.terminate()
+                await asyncio.wait_for(self._current_process.wait(), timeout=5)
+            except (asyncio.TimeoutError, ProcessLookupError):
+                try:
+                    self._current_process.kill()
+                except ProcessLookupError:
+                    pass
+            self._current_process = None
+
         # Spawn process
         process = await asyncio.create_subprocess_exec(
             *cmd,
-            stdin=asyncio.subprocess.PIPE,
+            stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=self.cwd,
@@ -169,7 +181,15 @@ class GeminiBridge:
             accumulated_text: list[str] = []
 
             while process.stdout:
-                line = await process.stdout.readline()
+                try:
+                    line = await asyncio.wait_for(
+                        process.stdout.readline(),
+                        timeout=600,  # 10 min max per line (BUG 8)
+                    )
+                except asyncio.TimeoutError:
+                    logger.error("Gemini CLI stdout read timed out after 600s")
+                    yield {"type": "error", "content": "Gemini CLI response timed out"}
+                    break
                 if not line:
                     break
 

@@ -9,7 +9,7 @@
     },
     {
       "name": "autoforge-backend",
-      "runtimeExecutable": "python",
+      "runtimeExecutable": "venv/Scripts/python.exe",
       "runtimeArgs": ["start_ui.py", "--port", "8889"],
       "port": 8889
     }

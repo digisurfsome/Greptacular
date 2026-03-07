@@ -766,11 +766,13 @@ WORKSPACE_PROVIDERS: dict[str, dict[str, Any]] = {
         "auth_env_var": "OPENAI_API_KEY",
         "supports_subscription": True,
         "models": [
+            {"id": "gpt-5.4", "name": "GPT-5.4"},
+            {"id": "gpt-5.4-pro", "name": "GPT-5.4 Pro"},
+            {"id": "gpt-5.3", "name": "GPT-5.3"},
             {"id": "o3", "name": "o3"},
             {"id": "o4-mini", "name": "o4-mini"},
-            {"id": "gpt-5-codex", "name": "GPT-5 Codex"},
         ],
-        "default_model": "o3",
+        "default_model": "gpt-5.4",
     },
     "gemini": {
         "name": "Google Gemini",
@@ -780,11 +782,11 @@ WORKSPACE_PROVIDERS: dict[str, dict[str, Any]] = {
         "auth_env_var": "GEMINI_API_KEY",
         "supports_subscription": True,
         "models": [
-            {"id": "pro", "name": "Gemini Pro"},
-            {"id": "flash", "name": "Gemini Flash"},
-            {"id": "flash-lite", "name": "Gemini Flash Lite"},
+            {"id": "gemini-3.1-pro", "name": "Gemini 3.1 Pro"},
+            {"id": "gemini-3.1-flash", "name": "Gemini 3.1 Flash"},
+            {"id": "gemini-3.1-flash-lite", "name": "Gemini 3.1 Flash Lite"},
         ],
-        "default_model": "pro",
+        "default_model": "gemini-3.1-pro",
     },
 }
 

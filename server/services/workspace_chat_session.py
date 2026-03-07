@@ -1181,6 +1181,20 @@ class WorkspaceChatSession:
         """
         from . import workspace_database as db
 
+        # BUG 10: Drain walkie-talkie queue — not supported for alt providers.
+        dropped: list[str] = []
+        while True:
+            try:
+                msg = self.walkie_talkie_queue.get_nowait()
+                dropped.append(msg)
+            except asyncio.QueueEmpty:
+                break
+        if dropped:
+            logger.warning(
+                "Dropped %d walkie-talkie message(s) for %s provider (not supported)",
+                len(dropped), self.provider,
+            )
+
         bridge = self._codex_bridge if self.provider == "codex" else self._gemini_bridge
         if not bridge:
             yield {"type": "error", "content": f"{self.provider} bridge not initialized"}
@@ -1300,51 +1314,62 @@ class WorkspaceChatSession:
         # Uses dynamic token-budget loading: summary first, then recent messages
         # up to the remaining budget (no fixed message cap or per-message truncation).
         message_to_send = user_message
+        # Skip history injection when the alt provider already has an active
+        # session — Codex uses threadId and Gemini uses --resume, so injecting
+        # history text would duplicate what the provider already knows (BUG 5).
+        provider_has_session = (
+            (self.provider == "codex" and self._codex_bridge and self._codex_bridge.thread_id)
+            or (self.provider == "gemini" and self._gemini_bridge and self._gemini_bridge.session_id)
+        )
         if not self._history_loaded:
             self._history_loaded = True
-            from . import workspace_database as db
+            # Skip history injection when the alt provider already has an active
+            # session — Codex uses threadId and Gemini uses --resume, so injecting
+            # history text would duplicate what the provider already knows (BUG 5).
+            if provider_has_session:
+                logger.info("Skipping history injection — %s has active session", self.provider)
+            else:
+                from . import workspace_database as db
 
-            # Load the latest summary first
-            latest_summary = db.get_latest_summary(self.conversation_id)
-            summary_context = ""
-            summary_tokens = 0
-            if latest_summary:
-                summary_context = latest_summary["summary"]
-                summary_tokens = latest_summary.get("token_estimate", len(summary_context) // 4)
+                # Load the latest summary first
+                latest_summary = db.get_latest_summary(self.conversation_id)
+                summary_context = ""
+                summary_tokens = 0
+                if latest_summary:
+                    summary_context = latest_summary["summary"]
+                    summary_tokens = latest_summary.get("token_estimate", len(summary_context) // 4)
 
-            # Calculate remaining budget for messages (reserve space for summary).
-            # Configurable via cost dashboard to avoid pushing input into
-            # long-context premium pricing (above 200K: 2× input & 1.5× output).
-            MESSAGE_TOKEN_BUDGET = self.cost_settings["history_budget"]
-            remaining_budget = MESSAGE_TOKEN_BUDGET - summary_tokens
+                # Calculate remaining budget for messages (reserve space for summary).
+                MESSAGE_TOKEN_BUDGET = self.cost_settings["history_budget"]
+                remaining_budget = MESSAGE_TOKEN_BUDGET - summary_tokens
 
-            # Load messages dynamically up to the budget
-            history_messages, loaded_tokens = db.get_messages_for_context(
-                self.conversation_id,
-                token_budget=remaining_budget,
-            )
-            # Exclude the current message we just added (it's the last one chronologically)
-            if history_messages and history_messages[-1]["content"] == user_message:
-                history_messages = history_messages[:-1]
-
-            if summary_context or history_messages:
-                history_lines: list[str] = []
-                if summary_context:
-                    history_lines.append("[Conversation summary:]")
-                    history_lines.append(summary_context)
-                    history_lines.append("")
-                if history_messages:
-                    history_lines.append("[Recent conversation history:]")
-                    for msg in history_messages:
-                        role = "User" if msg["role"] == "user" else "Assistant"
-                        history_lines.append(f"{role}: {msg['content']}")
-                history_lines.append("[End of history. Continue the conversation:]")
-                history_lines.append(f"User: {user_message}")
-                message_to_send = "\n".join(history_lines)
-                logger.info(
-                    f"Loaded context: summary={bool(summary_context)}, "
-                    f"messages={len(history_messages)}, tokens={loaded_tokens + summary_tokens}"
+                # Load messages dynamically up to the budget
+                history_messages, loaded_tokens = db.get_messages_for_context(
+                    self.conversation_id,
+                    token_budget=remaining_budget,
                 )
+                # Exclude the current message we just added (it's the last one chronologically)
+                if history_messages and history_messages[-1]["content"] == user_message:
+                    history_messages = history_messages[:-1]
+
+                if summary_context or history_messages:
+                    history_lines: list[str] = []
+                    if summary_context:
+                        history_lines.append("[Conversation summary:]")
+                        history_lines.append(summary_context)
+                        history_lines.append("")
+                    if history_messages:
+                        history_lines.append("[Recent conversation history:]")
+                        for msg in history_messages:
+                            role = "User" if msg["role"] == "user" else "Assistant"
+                            history_lines.append(f"{role}: {msg['content']}")
+                    history_lines.append("[End of history. Continue the conversation:]")
+                    history_lines.append(f"User: {user_message}")
+                    message_to_send = "\n".join(history_lines)
+                    logger.info(
+                        f"Loaded context: summary={bool(summary_context)}, "
+                        f"messages={len(history_messages)}, tokens={loaded_tokens + summary_tokens}"
+                    )
 
         # Per-message library file attachment: if the caller provided file IDs,
         # inline their content into THIS message only (not auto-injected).
@@ -1365,6 +1390,16 @@ class WorkspaceChatSession:
 
         try:
             if self.provider in ("codex", "gemini"):
+                # BUG 9: Warn if image attachments were provided (not supported)
+                if attachments:
+                    yield {
+                        "type": "text",
+                        "content": (
+                            f"*Note: Image attachments are not supported with "
+                            f"{self.provider}. Only the text portion of your "
+                            f"message was sent.*\n\n"
+                        ),
+                    }
                 async for chunk in self._query_alt_provider(message_to_send):
                     yield chunk
             else:

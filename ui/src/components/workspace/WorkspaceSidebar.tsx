@@ -697,17 +697,26 @@ export function WorkspaceSidebar({
                         const ctx = conv.context_mode ?? '1m'
                         const convProvider = conv.provider ?? 'claude'
 
-                        // Non-Claude providers: static badge showing model ID
+                        // Non-Claude providers: static badge showing abbreviated model label
                         if (convProvider !== 'claude') {
                           const badgeColor = convProvider === 'codex'
                             ? 'bg-emerald-600 text-white border-emerald-400'
                             : 'bg-violet-600 text-white border-violet-400'
+                          // Abbreviate long model IDs for the tiny badge
+                          const SHORT_MODEL: Record<string, string> = {
+                            'gpt-5.4': '5.4', 'gpt-5.4-pro': '5.4P', 'gpt-5.3': '5.3',
+                            'gpt-5-codex': '5C', 'o3': 'o3', 'o4-mini': 'o4m',
+                            'gemini-3.1-pro': '3.1P', 'gemini-3.1-flash': '3.1F',
+                            'gemini-3.1-flash-lite': '3.1L',
+                            'pro': 'Pro', 'flash': 'Flsh', 'flash-lite': 'Lite',
+                          }
+                          const badgeLabel = SHORT_MODEL[model] ?? model
                           return (
                             <span
                               className={`absolute -top-1 -right-1 z-10 text-[9px] font-mono font-extrabold px-1.5 py-0.5 rounded-md border shadow-sm ${badgeColor}`}
                               title={`${convProvider}: ${model}`}
                             >
-                              {model}
+                              {badgeLabel}
                             </span>
                           )
                         }

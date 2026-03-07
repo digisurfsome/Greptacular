@@ -755,6 +755,7 @@ WORKSPACE_PROVIDERS: dict[str, dict[str, Any]] = {
         "models": [
             {"id": "opus", "name": "Claude Opus"},
             {"id": "sonnet", "name": "Claude Sonnet"},
+            {"id": "haiku", "name": "Claude Haiku"},
         ],
         "default_model": "opus",
     },
@@ -767,7 +768,7 @@ WORKSPACE_PROVIDERS: dict[str, dict[str, Any]] = {
         "supports_subscription": True,
         "models": [
             {"id": "gpt-5.3-codex", "name": "GPT-5.3 Codex"},
-            {"id": "gpt-5.4", "name": "GPT-5.4"},
+            {"id": "gpt-5.4", "name": "GPT-5.4", "supports_1m": True},
             {"id": "gpt-5.4-pro", "name": "GPT-5.4 Pro"},
             {"id": "gpt-image-1", "name": "GPT Image 1"},
             {"id": "o3", "name": "o3"},
@@ -783,10 +784,10 @@ WORKSPACE_PROVIDERS: dict[str, dict[str, Any]] = {
         "auth_env_var": "GEMINI_API_KEY",
         "supports_subscription": True,
         "models": [
-            {"id": "gemini-3.1-pro", "name": "Gemini 3.1 Pro"},
-            {"id": "gemini-3-flash", "name": "Gemini 3 Flash"},
+            {"id": "gemini-3.1-pro", "name": "Gemini 3.1 Pro", "supports_1m": True},
+            {"id": "gemini-3-flash", "name": "Gemini 3 Flash", "supports_1m": True},
             {"id": "gemini-3.1-flash-lite", "name": "Gemini 3.1 Flash Lite"},
-            {"id": "gemini-3-pro", "name": "Gemini 3 Pro"},
+            {"id": "gemini-3-pro", "name": "Gemini 3 Pro", "supports_1m": True},
             {"id": "nano-banana-2", "name": "Nano Banana 2"},
             {"id": "nano-banana-pro", "name": "Nano Banana Pro"},
         ],

@@ -2,9 +2,19 @@
 
 ## What You're Testing
 
-AutoForge has a **Playwright MCP browser system** that lets AI agents browse the web, take screenshots, interact with UI elements, and test applications they build. This is NOT a UI you push buttons on — the **agent uses it internally** via MCP tools. Your job is to trigger every code path and find every bug.
+AutoForge has **3 separate browser systems**. Your job is to find every bug across all of them.
 
-## How the System Works (Read This First)
+### The 3 Browser Systems
+
+| System | Status | What It Does |
+|--------|--------|-------------|
+| **1. Playwright MCP** | FULLY WORKING | Coding/testing agents use it to browse the web, test apps, take screenshots via MCP tools |
+| **2. Docker/noVNC (YT Strategy Lab)** | Infrastructure done, agent loop is PLACEHOLDER | Visual browser in Docker container streamed via noVNC — `_execute_step()` just sleeps 2s |
+| **3. Computer Use QA Module** | PLACEHOLDER | Standalone budget-controlled QA — immediately returns "skipped, API pending" |
+
+**Systems 2 and 3 have complete infrastructure but no actual AI agent actions** — they're waiting for Claude Computer Use API support in the SDK. Test their infrastructure (Docker, WebSocket, state machine, UI) even though the agent loop is simulated.
+
+## How System 1 Works (Playwright MCP — The Main One)
 
 ### Architecture Overview
 
@@ -17,6 +27,52 @@ Agent (Claude) → MCP Tool Call → Playwright MCP Server → Browser Instance 
                                               - viewport size (1280x720)
                                               - isolated mode (for parallel agents)
 ```
+
+## How System 2 Works (Docker/noVNC Computer Use)
+
+```
+UI (YTStrategyLabPage) → startExecution API → computer_use_agent.py
+       |                                              |
+       v                                              v
+ExecutionViewer                             DockerManager.start_container()
+(BrowserView + StepTracker + AgentLog)                |
+       |                                              v
+       v                                   Docker container (X11+noVNC)
+noVNC iframe ← WebSocket events                       |
+                                                      v
+                                           CaptureManager (ffmpeg)
+                                                      |
+                                                      v
+                                           _execute_step() [PLACEHOLDER — sleeps 2s]
+```
+
+### System 2 Key Files
+
+| File | What It Does |
+|------|-------------|
+| `server/services/computer_use_agent.py` | State machine: idle→running→paused/takeover→completed. `_execute_step()` is placeholder (lines 380-407) |
+| `server/services/docker_manager.py` | Docker container lifecycle, noVNC on port 6080, graceful fallback when Docker unavailable |
+| `server/services/screen_recorder.py` | ffmpeg x11grab screenshots, clips, full session recording |
+| `server/services/screenshot_analyzer.py` | AI vision analysis with Claude Haiku |
+| `server/routers/execution.py` | REST: start/pause/resume/stop/inject/takeover/jump + WebSocket |
+| `server/routers/captures.py` | Capture file endpoints (list, retrieve, manual trigger, recording control) |
+| `docker/computer-use/Dockerfile` | Ubuntu 24.04, Xvfb, x11vnc, noVNC, Chromium, Fluxbox |
+| `ui/src/components/yt-lab/ExecutionViewer.tsx` | Main viewer: sidebar + BrowserView |
+| `ui/src/components/yt-lab/BrowserView.tsx` | noVNC iframe wrapper |
+| `ui/src/components/yt-lab/ExecutionTopBar.tsx` | Control bar (pause/resume/stop/takeover) |
+| `ui/src/components/yt-lab/CaptureGallery.tsx` | Screenshot/clip grid with lightbox |
+| `ui/src/hooks/useExecutionWebSocket.ts` | WebSocket for execution events |
+
+### System 3 Key Files
+
+| File | What It Does |
+|------|-------------|
+| `computer_use.py` | Budget tracking ($1-$10), session runner — immediately returns "skipped" |
+| `.claude/templates/computer_use_prompt.template.md` | Prompt template for CU sessions |
+
+## Known Bug (FIXED): Headless Default Mismatch
+
+`schemas.py` defaulted to `True` (headless) while `client.py` defaulted to `False` (visible). This has been fixed — both now default to `False` (visible).
 
 ### Key Files
 
@@ -429,11 +485,124 @@ Read through `client.py` and look for:
 
 ---
 
+---
+
+### PHASE 9: Docker/noVNC Computer Use (System 2) — Infrastructure Testing
+
+Even though the agent loop is a placeholder, test the infrastructure:
+
+**Test 9.1: Execution Start (Docker Available)**
+- Call `POST /api/execution/start` with valid project
+- Expected: Docker container starts, noVNC URL returned
+- Check: Container named `autoforge-cu-{session_id[:12]}` is running
+
+**Test 9.2: Execution Start (No Docker)**
+- Try starting execution when Docker daemon isn't running
+- Expected: Graceful degradation — mock URLs returned, warning logged
+- Check: `docker_manager.py` fallback path works without crash
+
+**Test 9.3: WebSocket Event Stream**
+- Connect to `/ws/execution/{session_id}`
+- Expected: Receives `status_change`, `agent_thinking`, `step_change` events
+- Check: `useExecutionWebSocket.ts` handles all event types
+
+**Test 9.4: Pause/Resume/Stop Controls**
+- Start execution, then pause, resume, stop
+- Expected: State machine transitions correctly: running→paused→running→stopped
+- Check: WebSocket broadcasts correct status events
+
+**Test 9.5: Takeover Mode**
+- Enable takeover mode via `POST /{id}/takeover`
+- Expected: `BrowserView.tsx` switches from `view_only=true` to `view_only=false` in noVNC iframe
+- Check: "YOU ARE IN CONTROL" banner appears
+
+**Test 9.6: Message Injection**
+- Send message via `POST /{id}/inject`
+- Expected: Message appears in agent log, broadcast via WebSocket
+
+**Test 9.7: Step Jump**
+- Jump to a specific step via `POST /{id}/jump`
+- Expected: Agent moves to that step
+
+**Test 9.8: BrowserView Component**
+- Load `ExecutionViewer` in the YT Lab page
+- Expected: No console errors, status overlays render correctly for each state (idle, completed, error, loading, paused)
+
+**Test 9.9: CaptureGallery Component**
+- Check capture gallery renders with mock/empty data
+- Expected: No crashes, empty state handled
+- Check: Lightbox modal works for screenshots, video player works for clips
+
+**Test 9.10: Session Cleanup**
+- Stop execution
+- Expected: Docker container removed, session cleared from registry
+- Check: No orphaned containers (`docker ps -a | grep autoforge-cu`)
+
+**Test 9.11: Concurrent Sessions**
+- Start 2+ execution sessions simultaneously
+- Expected: Each gets its own container, WebSocket, state machine
+- Check: Events don't cross-contaminate between sessions
+
+---
+
+### PHASE 10: Computer Use QA Module (System 3) — Placeholder Verification
+
+**Test 10.1: Module Returns "Skipped"**
+- Call `run_computer_use_session()` from `computer_use.py`
+- Expected: Immediately returns status "skipped" with "API pending" message
+- Check: No crash, clean exit
+
+**Test 10.2: Budget Tracking**
+- Create `ComputerUseBudget(max_budget=5.0)`
+- Expected: Budget tracking works (even though nothing spends it)
+- Check: Spending more than max raises error
+
+**Test 10.3: Settings Integration**
+- Check `computer_use_enabled` and `computer_use_budget` in settings
+- Expected: Settings save/load correctly
+- Check: `computer_use_enabled` defaults to `False`
+
+**Test 10.4: Report Output**
+- After running session, check for `{project_dir}/.autoforge/computer-use-report.json`
+- Expected: Report file created with "skipped" status
+
+---
+
+### PHASE 11: Static Code Analysis — Cross-System Consistency
+
+**Test 11.1: Tool Permission Alignment**
+- In `client.py`, verify every tool in `PLAYWRIGHT_TOOLS` (line 257) is also in `permissions_list` (line 401-404)
+- Expected: Perfect alignment — no tool allowed but not permitted, or vice versa
+
+**Test 11.2: Agent Type Exclusions**
+- Verify reviewer agents are excluded from browser in BOTH allowed_tools AND permissions
+- Check lines 368-369 and 401-404
+
+**Test 11.3: YOLO Mode Exclusion**
+- Verify YOLO mode excludes Playwright from BOTH allowed_tools, permissions, AND mcp_servers
+- Check: No MCP server started, no tools listed
+
+**Test 11.4: Env Var Parsing**
+- `get_playwright_headless()`: What happens if env var is "yes", "1", "TRUE", "True", empty string?
+- `get_playwright_browser()`: What if env var is empty? Spaces? Invalid value?
+- Expected: All edge cases handled gracefully
+
+**Test 11.5: Schema Default Consistency**
+- Verify `schemas.py` `playwright_headless` default matches `client.py` `DEFAULT_PLAYWRIGHT_HEADLESS`
+- Both should be `False` (visible browser)
+- Also check `settings.py` `_parse_bool` default matches
+
+**Test 11.6: Execution Router Import Safety**
+- Check `server/main.py` imports `execution_router` and `captures_router`
+- Expected: No import errors even if Docker is unavailable
+
+---
+
 ## Definition of Done — When You've Found Everything
 
 You can stop testing when:
 
-1. All 8 phases above have been exercised (or confirmed impossible to test in this environment)
+1. All 11 phases have been exercised (or confirmed impossible to test in this environment)
 2. Every Playwright MCP tool (all 19) has been verified to not crash the MCP server
 3. Configuration switches (headless, browser type, YOLO, isolated) all work correctly
 4. Parallel mode doesn't create cross-contamination or orphan processes
@@ -442,6 +611,9 @@ You can stop testing when:
 7. No uncaught exceptions in browser console
 8. Context compaction correctly summarizes screenshot data
 9. The commented-out `browser_run_code` is still safely disabled
+10. Docker/noVNC system handles Docker-unavailable gracefully (System 2)
+11. Computer Use QA module returns "skipped" cleanly (System 3)
+12. All defaults are consistent across schemas.py, settings.py, and client.py
 
 ## Bugs Found — Log Template
 

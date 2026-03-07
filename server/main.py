@@ -32,9 +32,11 @@ from .routers import (
     actions_router,
     agent_os_router,
     agent_router,
+    approvals_router,
     assistant_chat_router,
     boilerplate_router,
     captures_router,
+    checkpoints_router,
     ci_status_router,
     commits_router,
     design_guide_router,
@@ -329,6 +331,8 @@ app.include_router(factory_presets_router)
 app.include_router(actions_router)
 app.include_router(commits_router)
 app.include_router(verifications_router)
+app.include_router(approvals_router)
+app.include_router(checkpoints_router)
 
 
 # ============================================================================

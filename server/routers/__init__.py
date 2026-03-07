@@ -9,8 +9,10 @@ from .actions import commits_router
 from .actions import router as actions_router
 from .agent import router as agent_router
 from .agent_os import router as agent_os_router
+from .approvals import router as approvals_router
 from .assistant_chat import router as assistant_chat_router
 from .captures import router as captures_router
+from .checkpoints import router as checkpoints_router
 from .ci_status import router as ci_status_router
 from .design_guide import router as design_guide_router
 from .devserver import router as devserver_router
@@ -39,6 +41,8 @@ from .yt_processing import router as yt_processing_router
 
 __all__ = [
     "actions_router",
+    "approvals_router",
+    "checkpoints_router",
     "commits_router",
     "ci_status_router",
     "projects_router",

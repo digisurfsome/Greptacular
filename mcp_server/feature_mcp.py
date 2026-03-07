@@ -23,6 +23,7 @@ Tools:
 - feature_get_blocked: Get features blocked by dependencies (with limit)
 - feature_get_graph: Get the dependency graph
 - feature_split: Split a large feature into two parts at a step boundary
+- checkpoint_create: Create a manual checkpoint with git SHA + feature snapshot
 - preview_start: Start the project dev server for visual verification
 - preview_stop: Stop the project dev server
 - preview_status: Get dev server status (running/stopped + URL)
@@ -32,7 +33,9 @@ orchestrator, not by agents. Agents receive pre-assigned feature IDs.
 """
 
 import json
+import logging
 import os
+import subprocess
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -45,7 +48,9 @@ from sqlalchemy import text
 # Add parent directory to path so we can import from api module
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from api.database import Feature, VerificationResult, atomic_transaction, create_database
+from api.database import Checkpoint, Feature, VerificationResult, atomic_transaction, create_database
+
+logger = logging.getLogger(__name__)
 from api.dependency_resolver import (
     MAX_DEPENDENCIES_PER_FEATURE,
     compute_scheduling_scores,
@@ -172,6 +177,75 @@ def _record_verification(session, feature_id: int, passed: bool, output: str, te
             session.rollback()
         except Exception:
             pass
+
+
+def _create_checkpoint_internal(label: str, session=None) -> dict | None:
+    """Create a checkpoint with the current git SHA and feature snapshot.
+
+    This is a best-effort operation — errors are logged but never
+    propagated to the caller, so it won't break feature operations.
+
+    Args:
+        label: Human-readable label for the checkpoint.
+        session: Optional active SQLAlchemy session.
+
+    Returns:
+        Checkpoint dict on success, None on failure.
+    """
+    try:
+        # Get current git SHA
+        git_sha = "unknown"
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=str(PROJECT_DIR),
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode == 0:
+                git_sha = result.stdout.strip()
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+            pass
+
+        def _do_create(db):
+            features = db.query(Feature).all()
+            snapshot = json.dumps([
+                {
+                    "id": f.id,
+                    "name": f.name,
+                    "passes": bool(f.passes) if f.passes is not None else False,
+                    "in_progress": bool(f.in_progress) if f.in_progress is not None else False,
+                }
+                for f in features
+            ])
+            checkpoint = Checkpoint(
+                session_id=os.environ.get("AUTOFORGE_SESSION_ID"),
+                label=label,
+                git_sha=git_sha,
+                feature_snapshot=snapshot,
+            )
+            db.add(checkpoint)
+            db.commit()
+            db.refresh(checkpoint)
+            return checkpoint.to_dict()
+
+        if session is not None:
+            return _do_create(session)
+
+        # Create our own session
+        db = get_session()
+        try:
+            return _do_create(db)
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
+
+    except Exception as e:
+        logger.warning("Failed to create checkpoint '%s': %s", label, e)
+        return None
 
 
 @mcp.tool()
@@ -316,7 +390,12 @@ def feature_mark_passing(
 
         # Get the feature name for the response
         feature = session.query(Feature).filter(Feature.id == feature_id).first()
-        return json.dumps({"success": True, "feature_id": feature_id, "name": feature.name})
+        feature_name = feature.name if feature else f"feature-{feature_id}"
+
+        # Auto-create checkpoint on feature completion (best-effort, non-blocking)
+        _create_checkpoint_internal(f"feature-{feature_id}-complete")
+
+        return json.dumps({"success": True, "feature_id": feature_id, "name": feature_name})
     except Exception as e:
         session.rollback()
         return json.dumps({"error": f"Failed to mark feature passing: {str(e)}"})
@@ -1389,6 +1468,31 @@ def _get_dev_command() -> str | None:
     if (PROJECT_DIR / "manage.py").exists():
         return "python manage.py runserver"
     return None
+
+
+@mcp.tool()
+def checkpoint_create(
+    label: Annotated[str, Field(min_length=1, max_length=255, description="Human-readable label for this checkpoint")],
+) -> str:
+    """Create a manual checkpoint with the current git SHA and feature status snapshot.
+
+    Checkpoints record the project state at a point in time, enabling
+    rollback if something goes wrong. Each checkpoint stores:
+    - The current git commit SHA
+    - A JSON snapshot of all feature statuses (id, name, passes, in_progress)
+
+    Use descriptive labels like 'before-refactor' or 'all-auth-features-done'.
+
+    Args:
+        label: A descriptive label for this checkpoint.
+
+    Returns:
+        JSON with the created checkpoint details, or error message.
+    """
+    result = _create_checkpoint_internal(label)
+    if result is None:
+        return json.dumps({"error": "Failed to create checkpoint"})
+    return json.dumps({"success": True, "checkpoint": result})
 
 
 @mcp.tool()

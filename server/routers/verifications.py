@@ -19,28 +19,30 @@ from ..utils.validation import validate_project_name
 # Lazy imports to avoid circular dependencies
 _create_database = None
 _VerificationResult = None
+_Feature = None
 
 logger = logging.getLogger(__name__)
 
 
 def _get_db_classes():
     """Lazy import of database classes."""
-    global _create_database, _VerificationResult
+    global _create_database, _VerificationResult, _Feature
     if _create_database is None:
         import sys
         root = Path(__file__).parent.parent.parent
         if str(root) not in sys.path:
             sys.path.insert(0, str(root))
-        from api.database import VerificationResult, create_database
+        from api.database import Feature, VerificationResult, create_database
         _create_database = create_database
         _VerificationResult = VerificationResult
-    return _create_database, _VerificationResult
+        _Feature = Feature
+    return _create_database, _VerificationResult, _Feature
 
 
 @contextmanager
 def _get_db_session(project_dir: Path):
     """Context manager for database sessions."""
-    create_database, _ = _get_db_classes()
+    create_database, _, _ = _get_db_classes()
     _, SessionLocal = create_database(project_dir)
     session = SessionLocal()
     try:
@@ -63,9 +65,9 @@ def _resolve_project(project_name: str) -> Path:
     return project_dir
 
 
-def _verification_to_dict(v) -> dict:
+def _verification_to_dict(v, feature_name: Optional[str] = None) -> dict:
     """Convert a VerificationResult model to a serializable dict."""
-    return {
+    d = {
         "id": v.id,
         "feature_id": v.feature_id,
         "session_id": v.session_id,
@@ -76,6 +78,9 @@ def _verification_to_dict(v) -> dict:
         "duration_ms": v.duration_ms,
         "created_at": v.created_at.isoformat() if v.created_at else None,
     }
+    if feature_name is not None:
+        d["feature_name"] = feature_name
+    return d
 
 
 router = APIRouter(prefix="/api/projects/{project_name}", tags=["verifications"])
@@ -93,15 +98,19 @@ async def get_feature_verifications(
     useful for tracking a feature's test history across sessions.
     """
     project_dir = _resolve_project(project_name)
-    _, VerificationResult = _get_db_classes()
+    _, VerificationResult, Feature = _get_db_classes()
 
     with _get_db_session(project_dir) as db:
+        # Get feature name
+        feature = db.query(Feature).filter(Feature.id == feature_id).first()
+        fname = feature.name if feature else None
+
         results = db.query(VerificationResult).filter(
             VerificationResult.feature_id == feature_id
         ).order_by(VerificationResult.created_at.desc()).limit(limit).all()
 
         return {
-            "verifications": [_verification_to_dict(v) for v in results],
+            "verifications": [_verification_to_dict(v, feature_name=fname) for v in results],
             "feature_id": feature_id,
         }
 
@@ -118,14 +127,16 @@ async def get_all_verifications(
     Use passed=true or passed=false to filter for passing or failing results.
     """
     project_dir = _resolve_project(project_name)
-    _, VerificationResult = _get_db_classes()
+    _, VerificationResult, Feature = _get_db_classes()
 
     with _get_db_session(project_dir) as db:
-        query = db.query(VerificationResult).order_by(VerificationResult.created_at.desc())
+        query = db.query(VerificationResult, Feature.name).outerjoin(
+            Feature, VerificationResult.feature_id == Feature.id
+        ).order_by(VerificationResult.created_at.desc())
         if passed is not None:
             query = query.filter(VerificationResult.passed == passed)
         results = query.limit(limit).all()
 
         return {
-            "verifications": [_verification_to_dict(v) for v in results],
+            "verifications": [_verification_to_dict(v, feature_name=fname) for v, fname in results],
         }

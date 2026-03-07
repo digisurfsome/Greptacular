@@ -83,10 +83,10 @@ type ModelPreset = { model: string; context: string; label: string; limit: numbe
 
 const MODEL_PRESETS: ModelPreset[] = [
   { model: 'opus', context: '200k', label: 'Opus 4.6 \u00b7 200K', limit: 200000, color: 'bg-zinc-700' },
-  { model: 'opus', context: '1m', label: 'Opus 4.6 \u00b7 1M', limit: 1000000, color: 'bg-blue-600' },
-  { model: 'sonnet', context: '1m', label: 'Sonnet 4.6 \u00b7 1M', limit: 1000000, color: 'bg-violet-600' },
   { model: 'sonnet', context: '200k', label: 'Sonnet 4.6 \u00b7 200K', limit: 200000, color: 'bg-violet-500' },
   { model: 'haiku', context: '200k', label: 'Haiku 3.5 \u00b7 200K', limit: 200000, color: 'bg-emerald-600' },
+  { model: 'opus', context: '1m', label: 'Opus 4.6 \u00b7 1M', limit: 1000000, color: 'bg-blue-600' },
+  { model: 'sonnet', context: '1m', label: 'Sonnet 4.6 \u00b7 1M', limit: 1000000, color: 'bg-violet-600' },
 ]
 
 function getStoredModelPreset(): number {

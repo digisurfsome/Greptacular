@@ -57,18 +57,19 @@ interface ModelPreset {
 
 /** Claude-only fallback presets (used when providers haven't loaded yet). */
 const CLAUDE_MODEL_PRESETS: ModelPreset[] = [
+  { model: 'opus', context: '200k', label: 'Opus 4.6 · 200K' },
+  { model: 'sonnet', context: '200k', label: 'Sonnet 4.6 · 200K' },
   { model: 'opus', context: '1m', label: 'Opus 4.6 · 1M' },
   { model: 'sonnet', context: '1m', label: 'Sonnet 4.6 · 1M' },
-  { model: 'opus', context: '200k', label: 'Opus 4.6 · 200K' },
 ]
 
 /** Build model presets from a provider definition. Claude gets context modes; others don't. */
 function buildPresetsForProvider(providerId: string, providerDef: WorkspaceProviderDef): ModelPreset[] {
   if (providerId === 'claude') {
-    // Claude models get 1M + 200K context variants
+    // Claude models: 200K (subscription) first, then 1M (API key) variants
     return [
+      ...providerDef.models.map(m => ({ model: m.id, context: '200k' as const, label: `${m.name} · 200K` })),
       ...providerDef.models.map(m => ({ model: m.id, context: '1m' as const, label: `${m.name} · 1M` })),
-      { model: providerDef.models[0]?.id ?? 'opus', context: '200k' as const, label: `${providerDef.models[0]?.name ?? 'Opus'} · 200K` },
     ]
   }
   // Non-Claude: single context mode, no 200K variant

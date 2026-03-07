@@ -31,7 +31,7 @@ class WorkspaceConversationSummary(BaseModel):
     working_directory: Optional[str]
     pinned: bool = False
     tags: str = ""
-    context_mode: str = "1m"
+    context_mode: str = "200k"
     model: str = "opus"
     effort: str = "high"
     provider: str = "claude"
@@ -57,7 +57,7 @@ class WorkspaceConversationDetail(BaseModel):
     working_directory: Optional[str]
     pinned: bool = False
     tags: str = ""
-    context_mode: str = "1m"
+    context_mode: str = "200k"
     model: str = "opus"
     effort: str = "high"
     provider: str = "claude"
@@ -72,7 +72,7 @@ class ConversationCreateRequest(BaseModel):
     title: Optional[str] = None
     category: str = "general"
     working_directory: Optional[str] = None
-    context_mode: str = "1m"
+    context_mode: str = "200k"
     model: str = "opus"
     effort: str = "high"
     provider: str = "claude"

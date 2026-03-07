@@ -8,8 +8,8 @@ from typing import List, Optional
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
-from registry import get_project_dir
-from server.services.factory_controller import get_factory_controller, get_existing_controller, FACTORY_PRESETS
+from registry import get_project_path
+from server.services.factory_controller import FACTORY_PRESETS, get_factory_controller
 
 logger = logging.getLogger(__name__)
 
@@ -40,10 +40,10 @@ class FactoryResponse(BaseModel):
 
 def _resolve_project(project_name: str) -> Path:
     """Resolve project name to directory path."""
-    project_dir = get_project_dir(project_name)
+    project_dir = get_project_path(project_name)
     if not project_dir:
         raise HTTPException(status_code=404, detail=f"Project '{project_name}' not found")
-    return Path(project_dir)
+    return project_dir
 
 
 @router.post("/start")

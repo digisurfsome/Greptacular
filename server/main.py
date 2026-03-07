@@ -41,8 +41,8 @@ from .routers import (
     execution_router,
     execution_websocket,
     expand_project_router,
-    factory_router,
     factory_presets_router,
+    factory_router,
     features_router,
     filesystem_router,
     notifications_router,
@@ -98,8 +98,8 @@ async def _recover_factory_sessions() -> None:
         from registry import list_registered_projects
 
         projects = list_registered_projects()
-        for project_name, project_dir_str in projects:
-            project_dir = Path(project_dir_str)
+        for project_name, project_info in projects.items():
+            project_dir = Path(project_info["path"])
             state_path = project_dir / ".autoforge" / "factory_state.json"
             if not state_path.exists():
                 continue

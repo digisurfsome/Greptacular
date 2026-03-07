@@ -30,6 +30,8 @@ interface WorkspaceChatHeaderProps {
   onToggleSettings?: () => void
   /** Whether the settings panel is currently open. */
   settingsOpen?: boolean
+  /** Provider for this conversation (claude, codex, gemini). */
+  provider?: string
 }
 
 /** Default categories used as fallbacks when no custom categories exist. */
@@ -101,6 +103,7 @@ export function WorkspaceChatHeader({
   agentWaiting = false,
   onToggleSettings,
   settingsOpen = false,
+  provider,
 }: WorkspaceChatHeaderProps): React.JSX.Element {
   // --- Title editing state ---
   const [isEditing, setIsEditing] = useState(false)
@@ -506,6 +509,20 @@ export function WorkspaceChatHeader({
             View PR
           </a>
         )}
+        {/* Provider badge */}
+        {provider && (() => {
+          const providerColors: Record<string, string> = {
+            claude: 'bg-blue-600/15 text-blue-600',
+            codex: 'bg-emerald-600/15 text-emerald-600',
+            gemini: 'bg-violet-600/15 text-violet-600',
+          }
+          const colorClass = providerColors[provider] ?? 'bg-muted text-muted-foreground'
+          return (
+            <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium ${colorClass}`}>
+              {provider.charAt(0).toUpperCase() + provider.slice(1)}
+            </span>
+          )
+        })()}
         {/* Walkie-talkie settings gear */}
         <button
           type="button"

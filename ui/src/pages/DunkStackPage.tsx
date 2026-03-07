@@ -46,7 +46,6 @@ import { DunkStackContextGauge } from '@/components/dunkstack/DunkStackContextGa
 import { DunkStackAgentView } from '@/components/dunkstack/DunkStackAgentView'
 import { DunkStackSafetyPanel } from '@/components/dunkstack/DunkStackSafetyPanel'
 import { DunkStackGuidePanel } from '@/components/dunkstack/DunkStackGuidePanel'
-import { DunkStackAgentPanel } from '@/components/dunkstack/DunkStackAgentPanel'
 import { IntakeDock } from '@/components/appbuilder/IntakeDock'
 import { AgentOSChat } from '@/components/appbuilder/AgentOSChat'
 import { StandardsPanel } from '@/components/appbuilder/StandardsPanel'

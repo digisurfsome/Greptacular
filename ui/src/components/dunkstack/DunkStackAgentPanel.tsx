@@ -15,7 +15,6 @@ import {
   dunkstackStartAgent,
   dunkstackStopAgent,
   dunkstackGetAgentStatus,
-  dunkstackGetAgentOutput,
 } from '@/lib/api'
 
 interface DunkStackAgentPanelProps {
@@ -81,9 +80,10 @@ export function DunkStackAgentPanel({
 
   // Poll agent status on mount + periodically
   useEffect(() => {
+    if (!projectName) return
     async function checkStatus() {
       try {
-        const status = await dunkstackGetAgentStatus()
+        const status = await dunkstackGetAgentStatus(projectName!)
         setAgentStatus(status.status)
       } catch {
         // Server may not be running
@@ -94,30 +94,7 @@ export function DunkStackAgentPanel({
     const interval = setInterval(checkStatus, 5000)
 
     return () => clearInterval(interval)
-  }, [])
-
-  // Load existing output on mount
-  useEffect(() => {
-    async function loadOutput() {
-      try {
-        const result = await dunkstackGetAgentOutput(500)
-        if (result.lines.length > 0) {
-          setOutputLines(result.lines)
-          // Extract chat messages from existing output
-          const msgs: Array<{ from: 'agent' | 'you'; text: string }> = []
-          for (const line of result.lines) {
-            if (isAgentChatLine(line)) {
-              msgs.push({ from: 'agent', text: line })
-            }
-          }
-          if (msgs.length > 0) setChatMessages(msgs)
-        }
-      } catch {
-        // Ignore
-      }
-    }
-    loadOutput()
-  }, [])
+  }, [projectName])
 
   // Listen for agent_output and agent_status messages on the DunkStack WebSocket
   useEffect(() => {
@@ -185,9 +162,10 @@ export function DunkStackAgentPanel({
   }, [projectName])
 
   const handleStop = useCallback(async () => {
+    if (!projectName) return
     setStopping(true)
     try {
-      await dunkstackStopAgent()
+      await dunkstackStopAgent(projectName)
       setAgentStatus('stopped')
     } catch (e: unknown) {
       setOutputLines((prev: string[]) => [...prev, `[Error] Failed to stop agent: ${e}`])

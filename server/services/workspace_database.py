@@ -65,7 +65,7 @@ class WorkspaceConversation(Base):
     working_directory = Column(Text, nullable=True)  # Optional cwd for the conversation
     pinned = Column(Integer, nullable=False, default=0)  # Boolean as int for SQLite
     tags = Column(String(500), nullable=True)  # comma-separated tags
-    context_mode = Column(String(10), nullable=True, default="1m")  # "1m" or "200k"
+    context_mode = Column(String(10), nullable=True, default="200k")  # "1m" or "200k"
     model = Column(String(20), nullable=True, default="opus")  # "opus" or "sonnet"
     effort = Column(String(10), nullable=True, default="high")  # "low", "medium", "high"
     branch_name = Column(String(200), nullable=True)  # Git branch for this conversation
@@ -563,7 +563,7 @@ def create_conversation(
             title=title,
             category=category,
             working_directory=working_directory,
-            context_mode=context_mode or "1m",
+            context_mode=context_mode or "200k",
             model=model or "opus",
             effort=effort or "high",
             provider=provider or "claude",
@@ -625,7 +625,7 @@ def get_conversations(category: Optional[str] = None) -> list[dict]:
                 "working_directory": row.WorkspaceConversation.working_directory,
                 "pinned": bool(row.WorkspaceConversation.pinned),
                 "tags": row.WorkspaceConversation.tags or "",
-                "context_mode": row.WorkspaceConversation.context_mode or "1m",
+                "context_mode": row.WorkspaceConversation.context_mode or "200k",
                 "model": row.WorkspaceConversation.model or "opus",
                 "effort": row.WorkspaceConversation.effort or "high",
                 "provider": row.WorkspaceConversation.provider or "claude",
@@ -670,7 +670,7 @@ def get_conversation(conversation_id: int) -> Optional[dict]:
             "working_directory": conversation.working_directory,
             "pinned": bool(conversation.pinned),
             "tags": conversation.tags or "",
-            "context_mode": conversation.context_mode or "1m",
+            "context_mode": conversation.context_mode or "200k",
             "model": conversation.model or "opus",
             "effort": conversation.effort or "high",
             "provider": conversation.provider or "claude",
@@ -851,7 +851,7 @@ def update_conversation(
             "working_directory": conversation.working_directory,
             "pinned": bool(conversation.pinned),
             "tags": conversation.tags or "",
-            "context_mode": conversation.context_mode or "1m",
+            "context_mode": conversation.context_mode or "200k",
             "model": conversation.model or "opus",
             "effort": conversation.effort or "high",
             "provider": conversation.provider or "claude",
@@ -1506,7 +1506,7 @@ def fork_conversation(
             category=source.category,
             pinned=0,
             tags=source.tags,
-            context_mode=source.context_mode or "1m",
+            context_mode=source.context_mode or "200k",
             model=source.model or "opus",
             effort=source.effort or "high",
             working_directory=source.working_directory,
@@ -1557,7 +1557,7 @@ def fork_conversation(
             "category": new_conv.category,
             "pinned": bool(new_conv.pinned),
             "tags": new_conv.tags or "",
-            "context_mode": new_conv.context_mode or "1m",
+            "context_mode": new_conv.context_mode or "200k",
             "model": new_conv.model or "opus",
             "effort": new_conv.effort or "high",
             "working_directory": new_conv.working_directory,

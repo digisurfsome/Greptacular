@@ -57,22 +57,32 @@ interface ModelPreset {
 
 /** Claude-only fallback presets (used when providers haven't loaded yet). */
 const CLAUDE_MODEL_PRESETS: ModelPreset[] = [
+  { model: 'opus', context: '200k', label: 'Opus 4.6 · 200K' },
+  { model: 'sonnet', context: '200k', label: 'Sonnet 4.6 · 200K' },
+  { model: 'haiku', context: '200k', label: 'Haiku · 200K' },
   { model: 'opus', context: '1m', label: 'Opus 4.6 · 1M' },
   { model: 'sonnet', context: '1m', label: 'Sonnet 4.6 · 1M' },
-  { model: 'opus', context: '200k', label: 'Opus 4.6 · 200K' },
 ]
 
-/** Build model presets from a provider definition. Claude gets context modes; others don't. */
+/** Build model presets from a provider definition. Claude gets context modes; others use supports_1m. */
 function buildPresetsForProvider(providerId: string, providerDef: WorkspaceProviderDef): ModelPreset[] {
   if (providerId === 'claude') {
-    // Claude models get 1M + 200K context variants
-    return [
-      ...providerDef.models.map(m => ({ model: m.id, context: '1m' as const, label: `${m.name} · 1M` })),
-      { model: providerDef.models[0]?.id ?? 'opus', context: '200k' as const, label: `${providerDef.models[0]?.name ?? 'Opus'} · 200K` },
-    ]
+    // Claude: 200K (subscription) variants for all, plus 1M (API key) for models that support it
+    const presets200k = providerDef.models.map(m => ({ model: m.id, context: '200k' as const, label: `${m.name} · 200K` }))
+    const presets1m = providerDef.models
+      .filter(m => m.id !== 'haiku') // Haiku doesn't support 1M context beta
+      .map(m => ({ model: m.id, context: '1m' as const, label: `${m.name} · 1M` }))
+    return [...presets200k, ...presets1m]
   }
-  // Non-Claude: single context mode, no 200K variant
-  return providerDef.models.map(m => ({ model: m.id, context: '1m' as const, label: m.name }))
+  // Non-Claude: base preset for each model, plus 1M variant for models that support it
+  const presets: ModelPreset[] = []
+  for (const m of providerDef.models) {
+    presets.push({ model: m.id, context: '200k' as const, label: m.name })
+    if (m.supports_1m) {
+      presets.push({ model: m.id, context: '1m' as const, label: `${m.name} · 1M` })
+    }
+  }
+  return presets
 }
 
 /** Effort level presets with Anthropic's recommended use cases. */
@@ -547,7 +557,7 @@ export function WorkspaceSidebar({
           {/* Model preset pills — pick model + context before starting */}
           <div className="mb-1.5">
             <span className="text-[10px] text-muted-foreground mb-0.5 block">Model</span>
-            <div className="flex rounded-full border border-border overflow-hidden shadow-sm" role="radiogroup" aria-label="Model selection">
+            <div className="flex flex-wrap gap-1" role="radiogroup" aria-label="Model selection">
               {newChatModelPresets.map((preset, idx) => {
                 const isActive = modelPresetIndex === idx
                 // Provider-specific active colors
@@ -557,9 +567,11 @@ export function WorkspaceSidebar({
                     ? 'bg-violet-600 text-white shadow-inner'
                     : preset.model === 'sonnet'
                       ? 'bg-violet-500 text-white shadow-inner'
-                      : preset.context === '1m'
-                        ? 'bg-primary text-primary-foreground shadow-inner'
-                        : 'bg-zinc-600 text-white shadow-inner'
+                      : preset.model === 'haiku'
+                        ? 'bg-emerald-600 text-white shadow-inner'
+                        : preset.context === '1m'
+                          ? 'bg-primary text-primary-foreground shadow-inner'
+                          : 'bg-zinc-600 text-white shadow-inner'
                 return (
                   <button
                     key={preset.label}
@@ -567,11 +579,11 @@ export function WorkspaceSidebar({
                     role="radio"
                     aria-checked={isActive}
                     onClick={() => onModelPresetChange?.(idx)}
-                    className={`flex-1 px-1.5 py-1 text-[10px] font-semibold whitespace-nowrap transition-all duration-150 ${
+                    className={`px-2 py-0.5 text-[9px] font-semibold whitespace-nowrap rounded-full border border-border transition-all duration-150 ${
                       isActive
                         ? activeColor
                         : 'bg-card text-muted-foreground hover:bg-muted hover:text-foreground'
-                    } ${idx === 0 ? 'rounded-l-full' : ''} ${idx === newChatModelPresets.length - 1 ? 'rounded-r-full' : 'border-r border-border'}`}
+                    }`}
                   >
                     {preset.label}
                   </button>

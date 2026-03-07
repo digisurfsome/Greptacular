@@ -253,19 +253,28 @@ export function WorkspaceChat({
   type ModelPreset = { model: string; context: '1m' | '200k'; label: string }
   const MODEL_PRESETS: ModelPreset[] = useMemo(() => {
     const CLAUDE_FALLBACK: ModelPreset[] = [
+      { model: 'opus', context: '200k', label: 'Opus 4.6 · 200K' },
+      { model: 'sonnet', context: '200k', label: 'Sonnet 4.6 · 200K' },
+      { model: 'haiku', context: '200k', label: 'Haiku · 200K' },
       { model: 'opus', context: '1m', label: 'Opus 4.6 · 1M' },
       { model: 'sonnet', context: '1m', label: 'Sonnet 4.6 · 1M' },
-      { model: 'opus', context: '200k', label: 'Opus 4.6 · 200K' },
     ]
     if (!wsProviders || !wsProviders[effectiveProvider]) return CLAUDE_FALLBACK
     const pDef = wsProviders[effectiveProvider]
     if (effectiveProvider === 'claude') {
       return [
-        ...pDef.models.map((m: { id: string; name: string }) => ({ model: m.id, context: '1m' as const, label: `${m.name} · 1M` })),
-        { model: pDef.models[0]?.id ?? 'opus', context: '200k' as const, label: `${pDef.models[0]?.name ?? 'Opus'} · 200K` },
+        ...pDef.models.map((m: { id: string; name: string }) => ({ model: m.id, context: '200k' as const, label: `${m.name} · 200K` })),
+        ...pDef.models.filter((m: { id: string; name: string }) => m.id !== 'haiku').map((m: { id: string; name: string }) => ({ model: m.id, context: '1m' as const, label: `${m.name} · 1M` })),
       ]
     }
-    return pDef.models.map((m: { id: string; name: string }) => ({ model: m.id, context: '1m' as const, label: m.name }))
+    // Non-Claude: base + optional 1M
+    return pDef.models.flatMap((m: { id: string; name: string; supports_1m?: boolean }) => {
+      const base: ModelPreset[] = [{ model: m.id, context: '200k' as const, label: m.name }]
+      if (m.supports_1m) {
+        base.push({ model: m.id, context: '1m' as const, label: `${m.name} · 1M` })
+      }
+      return base
+    })
   }, [wsProviders, effectiveProvider])
 
   // Keep sessionContextMode in sync when fixedContextMode changes (split-view)

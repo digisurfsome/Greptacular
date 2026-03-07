@@ -18,6 +18,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from .schemas import AGENT_MASCOTS
 from .services.chat_constants import ROOT_DIR
 from .services.dev_server_manager import get_devserver_manager
+from .services.factory_controller import get_existing_controller
 from .services.process_manager import get_manager
 from .utils.project_helpers import get_project_path as _get_project_path
 from .utils.validation import is_valid_project_name as validate_project_name
@@ -839,6 +840,21 @@ async def project_websocket(websocket: WebSocket, project_name: str):
     devserver_manager.add_output_callback(on_dev_output)
     devserver_manager.add_status_callback(on_dev_status_change)
 
+    # Register factory controller WS callback (if factory is active for this project)
+    factory_controller = get_existing_controller(project_name)
+    factory_ws_callback = None
+
+    if factory_controller:
+        async def on_factory_event(event: dict):
+            """Forward factory events to this WebSocket client."""
+            try:
+                await websocket.send_json(event)
+            except Exception:
+                pass  # Connection may be closed
+
+        factory_ws_callback = on_factory_event
+        factory_controller.add_ws_callback(factory_ws_callback)
+
     # Start progress polling task
     poll_task = asyncio.create_task(poll_progress(websocket, project_name, project_dir))
 
@@ -855,6 +871,17 @@ async def project_websocket(websocket: WebSocket, project_name: str):
             "status": devserver_manager.status,
             "url": devserver_manager.detected_url,
         })
+
+        # Send initial factory status (if factory controller exists)
+        if factory_controller:
+            try:
+                factory_status = await factory_controller.get_status()
+                await websocket.send_json({
+                    "type": "factory_status",
+                    **factory_status,
+                })
+            except Exception:
+                pass
 
         # Send initial progress
         count_passing_tests = _get_count_passing_tests()
@@ -901,6 +928,10 @@ async def project_websocket(websocket: WebSocket, project_name: str):
         # Unregister dev server callbacks
         devserver_manager.remove_output_callback(on_dev_output)
         devserver_manager.remove_status_callback(on_dev_status_change)
+
+        # Unregister factory callbacks
+        if factory_controller and factory_ws_callback:
+            factory_controller.remove_ws_callback(factory_ws_callback)
 
         # Disconnect from manager
         await manager.disconnect(websocket, project_name)

@@ -44,26 +44,26 @@ const AUTOSAVE_DELAY_MS = 500
 const PREVIEW_CHAR_LIMIT = 80
 
 const TAB_IDS = [
-  'general',
-  'shortcuts',
+  'overview',
   'sidebar',
   'chat',
-  'library',
-  'advanced',
-  'walkietalkie',
+  'panels',
+  'splitswarm',
+  'shortcuts',
+  'reference',
   'notes',
 ] as const
 
 type TabId = (typeof TAB_IDS)[number]
 
 const TAB_LABELS: Record<TabId, string> = {
-  general: 'General',
-  shortcuts: 'Shortcuts',
+  overview: 'Overview',
   sidebar: 'Sidebar',
   chat: 'Chat',
-  library: 'Library & Repos',
-  advanced: 'Advanced',
-  walkietalkie: 'Walkie-Talkie',
+  panels: 'Panels',
+  splitswarm: 'Split & Swarm',
+  shortcuts: 'Shortcuts',
+  reference: 'Reference',
   notes: 'Notes',
 }
 
@@ -197,21 +197,55 @@ function Kbd({ children }: { children: React.ReactNode }): React.JSX.Element {
 // Tab content sections
 // ---------------------------------------------------------------------------
 
-function GeneralTab(): React.JSX.Element {
+// ---------------------------------------------------------------------------
+// Section heading helper
+// ---------------------------------------------------------------------------
+
+function SectionHeading({ children }: { children: React.ReactNode }): React.JSX.Element {
+  return <p className="font-semibold text-foreground text-[11px] pt-1">{children}</p>
+}
+
+// ---------------------------------------------------------------------------
+// Overview Tab  (Manual Sections 1-2: Page Layout + Navigation Bar)
+// ---------------------------------------------------------------------------
+
+function OverviewTab(): React.JSX.Element {
   return (
     <div className="space-y-2 text-xs text-muted-foreground">
-      <p className="font-semibold text-foreground text-[11px]">Three-panel layout</p>
+      <SectionHeading>Page Layout</SectionHeading>
+      <p>The Workspace is a full-screen three-column layout with a thin navigation bar across the top.</p>
       <ul className="list-disc pl-4 space-y-1">
-        <li><span className="text-foreground font-medium">Sidebar</span> &mdash; conversation list, search, categories</li>
-        <li><span className="text-foreground font-medium">Chat</span> &mdash; active conversation with message history</li>
-        <li><span className="text-foreground font-medium">Library &amp; Repos</span> &mdash; file uploads, GitHub repo browser</li>
+        <li><span className="text-foreground font-medium">Left &mdash; Sidebar</span> (272px, collapsible): conversations, search, categories</li>
+        <li><span className="text-foreground font-medium">Center &mdash; Chat Area</span> (flexible): active conversation or Split View panels</li>
+        <li><span className="text-foreground font-medium">Right &mdash; Library</span> (288px, collapsible): file library, repos, walkie-talkie log</li>
+      </ul>
+      <p>
+        Optional panels: <span className="text-foreground font-medium">Swarm</span> (320px, between chat and library),{' '}
+        <span className="text-foreground font-medium">Token Log</span> (320px, left of chat), and{' '}
+        <span className="text-foreground font-medium">Countdown Timer Bar</span> (conditional, below nav).
+      </p>
+
+      <SectionHeading>Navigation Bar</SectionHeading>
+      <ul className="list-disc pl-4 space-y-1">
+        <li><span className="text-foreground font-medium">Back to AutoForge</span> &mdash; returns to the main dashboard</li>
+        <li><span className="text-foreground font-medium">Git Activity (G)</span> &mdash; blinking badge showing recent commits; click to see last 10</li>
+        <li><span className="text-foreground font-medium">CI Status</span> &mdash; pipeline indicator (idle/running/passed/failed); auto-merge countdown when CI passes</li>
+        <li><span className="text-foreground font-medium">Split</span> &mdash; toggles three-panel Research / PRD / Coder layout</li>
+        <li><span className="text-foreground font-medium">Swarm</span> &mdash; toggles the concurrent agent pipeline panel</li>
+        <li><span className="text-foreground font-medium">Roles</span> &mdash; navigates to the Agent Role Library</li>
+        <li><span className="text-foreground font-medium">Dashboard</span> &mdash; navigates to the Multi-session Dashboard</li>
+        <li><span className="text-foreground font-medium">Guide</span> &mdash; opens this panel</li>
+        <li><span className="text-foreground font-medium">Keyboard icon</span> &mdash; shows keyboard shortcuts (or press <Kbd>?</Kbd>)</li>
       </ul>
 
-      <p className="font-semibold text-foreground text-[11px] pt-1">Context window</p>
-      <p>
-        Up to <span className="text-foreground font-medium">1M tokens</span> of context.
-        The budget bar shows how your context is allocated:
-      </p>
+      <SectionHeading>Split View extras (visible when Split is on)</SectionHeading>
+      <ul className="list-disc pl-4 space-y-1">
+        <li><span className="text-foreground font-medium">R / P / C / All</span> &mdash; quick-focus a single panel or show all three</li>
+        <li><span className="text-foreground font-medium">Auto</span> &mdash; auto-forward PRD output to the Coder panel</li>
+      </ul>
+
+      <SectionHeading>Context Window</SectionHeading>
+      <p>Up to <span className="text-foreground font-medium">1M tokens</span> of context. The budget bar shows allocation:</p>
       <ul className="list-disc pl-4 space-y-1">
         <li><span className="font-medium text-foreground/80">Dark</span> &mdash; conversation summaries</li>
         <li><span className="font-medium text-foreground/80">Medium</span> &mdash; recent messages</li>
@@ -219,13 +253,230 @@ function GeneralTab(): React.JSX.Element {
         <li><span className="font-medium text-green-600 dark:text-green-400">Green</span> &mdash; repo files</li>
       </ul>
       <p>
-        The bar turns <span className="text-orange-500 font-medium">orange at 80%</span> and{' '}
-        <span className="text-destructive font-medium">red at 90%</span> to warn you before
-        hitting the limit.
+        Turns <span className="text-orange-500 font-medium">orange at 80%</span> and{' '}
+        <span className="text-destructive font-medium">red at 90%</span>.
       </p>
     </div>
   )
 }
+
+// ---------------------------------------------------------------------------
+// Sidebar Tab  (Manual Sections 3-5: New Chat, Conversations, Categories)
+// ---------------------------------------------------------------------------
+
+function SidebarTab(): React.JSX.Element {
+  return (
+    <div className="space-y-2 text-xs text-muted-foreground">
+      <SectionHeading>New Chat Form</SectionHeading>
+      <p>Click <span className="text-foreground font-medium">+ New Chat</span> to expand the creation form:</p>
+      <ul className="list-disc pl-4 space-y-1">
+        <li><span className="text-foreground font-medium">Name</span> &mdash; optional; auto-focused, <Kbd>Enter</Kbd> to submit, <Kbd>Esc</Kbd> to cancel</li>
+        <li><span className="text-foreground font-medium">Folder</span> &mdash; assign to a category</li>
+        <li><span className="text-foreground font-medium">Attach Repository</span> &mdash; toggle on to pick a GitHub repo (clones it and sets working dir)</li>
+        <li><span className="text-foreground font-medium">Model pills</span> &mdash; Opus 1M, Sonnet 1M, Opus 200K (colors: blue, violet, zinc). Other providers show their own models.</li>
+        <li><span className="text-foreground font-medium">Thinking Effort</span> &mdash; Low / Medium / High (only active on Opus 1M)</li>
+      </ul>
+
+      <SectionHeading>Search</SectionHeading>
+      <ul className="list-disc pl-4 space-y-1">
+        <li>Under 3 characters &mdash; client-side title filter</li>
+        <li>3+ characters &mdash; server-side full-text search with excerpts (300ms debounce)</li>
+      </ul>
+
+      <SectionHeading>Conversation List</SectionHeading>
+      <ul className="list-disc pl-4 space-y-1">
+        <li>Grouped by category with collapsible headers and count badges</li>
+        <li>Pinned items appear in a special group at the top</li>
+        <li><span className="text-foreground font-medium">Model badge</span> (top-right of row) &mdash; click to cycle through model/context combos</li>
+        <li>
+          Activity indicators:{' '}
+          <span className="text-cyan-500 font-medium">cyan pulse</span> = streaming,{' '}
+          <span className="text-yellow-500 font-medium">yellow</span> = waiting,{' '}
+          <span className="text-green-500 font-medium">green dot</span> = completed,{' '}
+          <span className="text-red-500 font-medium">red</span> = failed
+        </li>
+        <li>Hover actions: <span className="text-foreground font-medium">Folder</span> (move + attach repo), <span className="text-foreground font-medium">Pin</span>, <span className="text-foreground font-medium">Delete</span></li>
+      </ul>
+
+      <SectionHeading>Select Mode</SectionHeading>
+      <p>Click the checkbox icon in the header to enter select mode. Check conversations, then use <span className="text-foreground font-medium">All/None</span> toggle or <span className="text-destructive font-medium">Delete (N)</span> for bulk operations.</p>
+
+      <SectionHeading>Category Management</SectionHeading>
+      <p>
+        Click <span className="text-foreground font-medium">Manage Categories</span> at the bottom of the sidebar.
+        Create, rename, reorder (up/down arrows), change colors, or delete categories.
+      </p>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Chat Tab  (Manual Sections 6-9: Header, Extensions, Content, Input)
+// ---------------------------------------------------------------------------
+
+function ChatTab(): React.JSX.Element {
+  return (
+    <div className="space-y-2 text-xs text-muted-foreground">
+      <SectionHeading>Chat Header</SectionHeading>
+      <ul className="list-disc pl-4 space-y-1">
+        <li><span className="text-foreground font-medium">Title</span> &mdash; click to edit inline; pencil icon on hover</li>
+        <li><span className="text-foreground font-medium">Category dropdown</span> &mdash; re-categorize the conversation</li>
+        <li><span className="text-foreground font-medium">Tags</span> &mdash; colored chips; click + to add, X to remove</li>
+        <li><span className="text-foreground font-medium">Git branch</span> &mdash; shows current branch; rename non-protected branches via pencil icon</li>
+        <li><span className="text-foreground font-medium">Repo / PR badges</span> &mdash; open GitHub repo or pull request in a new tab</li>
+        <li>
+          <span className="text-foreground font-medium">Connection dot</span>:{' '}
+          <span className="text-green-500">green</span> = connected,{' '}
+          <span className="text-yellow-500">yellow</span> = connecting,{' '}
+          <span className="text-red-500">red</span> = disconnected
+        </li>
+      </ul>
+
+      <SectionHeading>Header Extensions</SectionHeading>
+      <ul className="list-disc pl-4 space-y-1">
+        <li><span className="text-foreground font-medium">Active Model badge</span> &mdash; shows model, context, and API cost</li>
+        <li><span className="text-foreground font-medium">Token Log toggle</span> &mdash; Auto (show during streaming) | On | Off</li>
+        <li><span className="text-foreground font-medium">Three-dot menu (&hellip;)</span>:</li>
+      </ul>
+      <ul className="list-disc pl-8 space-y-1">
+        <li><span className="text-foreground font-medium">Fork Chat</span> &mdash; branch from any message into a new conversation</li>
+        <li><span className="text-foreground font-medium">Inject from Chat</span> &mdash; pull messages from another conversation (two-step picker)</li>
+        <li><span className="text-foreground font-medium">Export as Markdown</span> &mdash; download conversation as <code className="text-[10px] bg-muted px-1 rounded">.md</code></li>
+      </ul>
+
+      <SectionHeading>Walkie-Talkie</SectionHeading>
+      <ul className="list-disc pl-4 space-y-1">
+        <li><span className="text-foreground font-medium">Settings gear</span> &mdash; opens panel with check frequency, wait timeout, and auto-reply toggle</li>
+        <li><span className="text-foreground font-medium">Live/Waiting indicator</span> &mdash; pulsing amber dot when agent is active</li>
+        <li><span className="text-foreground font-medium">WT input bar</span> &mdash; send messages to a running agent mid-session</li>
+      </ul>
+
+      <SectionHeading>Chat Content</SectionHeading>
+      <ul className="list-disc pl-4 space-y-1">
+        <li>Messages display with user/assistant/system roles</li>
+        <li>Auto-summary pin appears after 50 messages</li>
+        <li>Disconnection banner with retry link if WebSocket drops</li>
+        <li>Usage dashboard (expandable) for session cost tracking</li>
+        <li>Countdown timer bar when agent waits for input</li>
+      </ul>
+
+      <SectionHeading>Composing Messages</SectionHeading>
+      <ul className="list-disc pl-4 space-y-1">
+        <li><Kbd>Enter</Kbd> to send, <Kbd>Shift+Enter</Kbd> for a new line</li>
+        <li>Drag-and-drop files or images onto the input area</li>
+        <li><span className="text-foreground font-medium">Paperclip</span> &mdash; attach files, <span className="text-foreground font-medium">Image+</span> &mdash; attach images</li>
+        <li><span className="text-foreground font-medium">BookOpen</span> &mdash; pick library files to include as context</li>
+        <li><Kbd>{mod}+V</Kbd> to paste images from clipboard</li>
+        <li>Drafts are auto-saved while you type</li>
+      </ul>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Panels Tab  (Manual Sections 10, 14: Library/Repos/WT + Token Log)
+// ---------------------------------------------------------------------------
+
+function PanelsTab(): React.JSX.Element {
+  return (
+    <div className="space-y-2 text-xs text-muted-foreground">
+      <SectionHeading>Right Panel &mdash; Library</SectionHeading>
+      <p>Three tabs at the top: <span className="text-foreground font-medium">Library</span>, <span className="text-foreground font-medium">Repos</span>, <span className="text-foreground font-medium">WT</span>. Collapse with the <code className="text-[10px] bg-muted px-1 rounded">&gt;&gt;</code> button.</p>
+
+      <p className="font-semibold text-foreground text-[11px] pt-0.5">Library tab</p>
+      <ul className="list-disc pl-4 space-y-1">
+        <li><span className="text-foreground font-medium">Upload / Paste</span> buttons to add files</li>
+        <li>Hierarchical folder browser &mdash; click folders to navigate, click files to preview</li>
+      </ul>
+
+      <p className="font-semibold text-foreground text-[11px] pt-0.5">Repos tab</p>
+      <ul className="list-disc pl-4 space-y-1">
+        <li><span className="text-foreground font-medium">Connect Repository</span> to link a GitHub repo</li>
+        <li>Expandable file browser per repo; click files to preview content</li>
+      </ul>
+
+      <p className="font-semibold text-foreground text-[11px] pt-0.5">Walkie-Talkie (WT) tab</p>
+      <ul className="list-disc pl-4 space-y-1">
+        <li>Chronological log of all WT messages (user, agent, system)</li>
+        <li>Color-coded: amber (you), primary (agent), gray (system)</li>
+        <li>Auto-scrolls to latest entry</li>
+      </ul>
+
+      <SectionHeading>Library Modals</SectionHeading>
+      <ul className="list-disc pl-4 space-y-1">
+        <li><span className="text-foreground font-medium">Library Picker</span> &mdash; browse and multi-select files to attach to a message (BookOpen button in chat input)</li>
+        <li><span className="text-foreground font-medium">Save to Library</span> &mdash; save an assistant response as a library file (filename, folder, tags)</li>
+      </ul>
+
+      <SectionHeading>Token Log Panel (left side)</SectionHeading>
+      <p>A 320px panel to the left of chat, controlled by the 3-state toggle (Auto/On/Off).</p>
+      <ul className="list-disc pl-4 space-y-1">
+        <li>
+          Event types:{' '}
+          <span className="text-cyan-500 font-medium">assistant_turn</span>,{' '}
+          <span className="text-yellow-500 font-medium">tool_call</span>,{' '}
+          <span className="text-orange-500 font-medium">tool_result</span>,{' '}
+          <span className="text-green-500 font-medium">result_summary</span>
+        </li>
+        <li>Each entry shows token counts, cost, duration, cumulative cost</li>
+        <li>Header buttons: Download (JSON), Clear, Close</li>
+        <li>Summary section with total cost, tokens, and cache info</li>
+      </ul>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Split & Swarm Tab  (Manual Sections 11-13: Split View, Passoff, Swarm)
+// ---------------------------------------------------------------------------
+
+function SplitSwarmTab(): React.JSX.Element {
+  return (
+    <div className="space-y-2 text-xs text-muted-foreground">
+      <SectionHeading>Split View &mdash; Three-Panel Layout</SectionHeading>
+      <p>Activate via the <span className="text-foreground font-medium">Split</span> button in the nav bar. Replaces the single chat with three resizable, independently collapsible panels.</p>
+
+      <ul className="list-disc pl-4 space-y-1">
+        <li>
+          <span className="text-emerald-500 font-medium">Research</span> (left) &mdash; 200K context, emerald accents.
+          Has a <span className="text-foreground font-medium">Copy to Passoff</span> button on assistant messages.
+        </li>
+        <li>
+          <span className="text-violet-500 font-medium">PRD Builder</span> (center) &mdash; 1M context for Opus, violet accents.
+          Two tabs: <span className="text-foreground font-medium">Chat</span> and <span className="text-foreground font-medium">Passoff</span> (structured editor).
+        </li>
+        <li>
+          <span className="text-cyan-500 font-medium">Coder</span> (right) &mdash; 1M context for Opus, cyan accents.
+          Receives auto-forwarded content from PRD Builder.
+        </li>
+      </ul>
+      <p>Collapsed panels appear as thin vertical bars with rotated labels &mdash; click to expand.</p>
+
+      <SectionHeading>Passoff Editor</SectionHeading>
+      <p>Located in the PRD Builder&apos;s <span className="text-foreground font-medium">Passoff</span> tab.</p>
+      <ul className="list-disc pl-4 space-y-1">
+        <li><span className="text-foreground font-medium">Preamble</span> &mdash; free-form context text at the top</li>
+        <li><span className="text-foreground font-medium">Section cards</span> &mdash; title + content, drag-and-drop reorder, collapse/expand</li>
+        <li><span className="text-foreground font-medium">+ Add Section</span> to add new sections</li>
+        <li><span className="text-foreground font-medium">Send to Execute</span> (violet button) &mdash; builds markdown from all sections and injects it into the PRD Chat</li>
+      </ul>
+
+      <SectionHeading>Swarm Panel</SectionHeading>
+      <p>Toggle via <span className="text-foreground font-medium">Swarm</span> button. A 320px panel for managing concurrent autonomous agents.</p>
+      <ul className="list-disc pl-4 space-y-1">
+        <li><span className="text-foreground font-medium">Task Input</span> &mdash; describe the task before starting the swarm</li>
+        <li><span className="text-foreground font-medium">Pipeline Stages</span> &mdash; cards showing Research, Plan, Implement, Test, Review stages with status badges</li>
+        <li><span className="text-foreground font-medium">Shared Files</span> &mdash; files generated by the swarm, clickable for preview</li>
+        <li>Per-stage walkie-talkie injection to send guidance to individual agents</li>
+        <li>Status badge in header: RUNNING / COMPLETED / FAILED / STOPPED</li>
+      </ul>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Shortcuts Tab  (Manual Section 15: Keyboard Shortcuts)
+// ---------------------------------------------------------------------------
 
 function ShortcutsTab(): React.JSX.Element {
   const shortcuts = [
@@ -233,11 +484,14 @@ function ShortcutsTab(): React.JSX.Element {
     { key: `${mod}+B`, desc: 'Toggle sidebar' },
     { key: `${mod}+L`, desc: 'Toggle library panel' },
     { key: `${mod}+F`, desc: 'Focus search' },
-    { key: `${mod}+E`, desc: 'Export chat as Markdown' },
+    { key: `${mod}+E`, desc: 'Export current chat as Markdown' },
     { key: '/', desc: 'Focus chat input' },
-    { key: '?', desc: 'Shortcuts help modal' },
+    { key: '1', desc: 'Toggle Research panel (Split View)' },
+    { key: '2', desc: 'Toggle PRD Builder panel (Split View)' },
+    { key: '3', desc: 'Toggle Coder panel (Split View)' },
+    { key: '?', desc: 'Show keyboard shortcuts modal' },
     { key: 'Enter', desc: 'Send message' },
-    { key: 'Shift+Enter', desc: 'New line' },
+    { key: 'Shift+Enter', desc: 'New line in input' },
     { key: 'Esc', desc: 'Close modals' },
   ]
 
@@ -263,167 +517,66 @@ function ShortcutsTab(): React.JSX.Element {
   )
 }
 
-function SidebarTab(): React.JSX.Element {
-  return (
-    <div className="space-y-2 text-xs text-muted-foreground">
-      <p>
-        <span className="text-foreground font-medium">+ New Chat</span> button at the top
-        creates a fresh conversation.
-      </p>
-
-      <p className="font-semibold text-foreground text-[11px] pt-1">Search</p>
-      <ul className="list-disc pl-4 space-y-1">
-        <li>Under 3 characters &mdash; local filter across visible titles</li>
-        <li>3+ characters &mdash; server-side full-text search across all messages</li>
-      </ul>
-
-      <p className="font-semibold text-foreground text-[11px] pt-1">Categories</p>
-      <p>
-        Conversations are grouped by category with colored dots. Hover a
-        conversation to reveal <span className="text-foreground font-medium">pin</span> and{' '}
-        <span className="text-foreground font-medium">delete</span> actions.
-      </p>
-      <p>
-        Use the <span className="text-foreground font-medium">Manage Categories</span> gear
-        button at the bottom to create, rename, reorder, or remove categories.
-      </p>
-    </div>
-  )
-}
-
-function ChatTab(): React.JSX.Element {
-  return (
-    <div className="space-y-2 text-xs text-muted-foreground">
-      <p className="font-semibold text-foreground text-[11px]">Header</p>
-      <ul className="list-disc pl-4 space-y-1">
-        <li>Click the title to <span className="text-foreground font-medium">edit inline</span></li>
-        <li>Category dropdown to re-categorize the conversation</li>
-        <li>
-          Connection dot:{' '}
-          <span className="text-green-500">green</span> = connected,{' '}
-          <span className="text-yellow-500">yellow</span> = connecting,{' '}
-          <span className="text-red-500">red</span> = disconnected
-        </li>
-      </ul>
-
-      <p className="font-semibold text-foreground text-[11px] pt-1">Three-dot menu</p>
-      <ul className="list-disc pl-4 space-y-1">
-        <li><span className="text-foreground font-medium">Fork Chat</span> &mdash; branch from any message</li>
-        <li><span className="text-foreground font-medium">Inject from Chat</span> &mdash; pull messages from another conversation</li>
-        <li><span className="text-foreground font-medium">Export as Markdown</span> &mdash; download full conversation</li>
-      </ul>
-
-      <p className="font-semibold text-foreground text-[11px] pt-1">Composing</p>
-      <ul className="list-disc pl-4 space-y-1">
-        <li><Kbd>Enter</Kbd> to send, <Kbd>Shift+Enter</Kbd> for a new line</li>
-        <li>Drafts are auto-saved while you type</li>
-        <li>After 50 messages an automatic summary is generated</li>
-      </ul>
-    </div>
-  )
-}
-
-function LibraryTab(): React.JSX.Element {
-  return (
-    <div className="space-y-2 text-xs text-muted-foreground">
-      <p className="font-semibold text-foreground text-[11px]">Files</p>
-      <ul className="list-disc pl-4 space-y-1">
-        <li><span className="text-foreground font-medium">Upload</span> / <span className="text-foreground font-medium">Paste</span> buttons to add files</li>
-        <li>Toggle switch to inject individual files into context</li>
-        <li>Scope selector: <span className="text-foreground font-medium">Global</span> (all chats) vs <span className="text-foreground font-medium">This Chat</span></li>
-      </ul>
-
-      <p className="font-semibold text-foreground text-[11px] pt-1">Repos</p>
-      <ul className="list-disc pl-4 space-y-1">
-        <li>Connect a GitHub repository</li>
-        <li>Browse the file tree and select files to inject</li>
-        <li>Sync to pull the latest changes</li>
-        <li>Disconnect when no longer needed</li>
-      </ul>
-    </div>
-  )
-}
-
-function AdvancedTab(): React.JSX.Element {
-  return (
-    <div className="space-y-2 text-xs text-muted-foreground">
-      <p className="font-semibold text-foreground text-[11px]">Fork conversation</p>
-      <p>
-        Create a branch from any message. The new conversation inherits all
-        messages up to the fork point. Useful for exploring alternative
-        directions without losing history.
-      </p>
-
-      <p className="font-semibold text-foreground text-[11px] pt-1">Inject from Chat</p>
-      <p>
-        Pull messages from another conversation into the current one.
-        Useful for combining insights across separate threads.
-      </p>
-
-      <p className="font-semibold text-foreground text-[11px] pt-1">Export as Markdown</p>
-      <p>
-        Downloads the full conversation as a <code className="text-[10px] bg-muted px-1 rounded">.md</code> file.
-      </p>
-
-      <p className="font-semibold text-foreground text-[11px] pt-1">How context works</p>
-      <ul className="list-disc pl-4 space-y-1">
-        <li><span className="text-foreground font-medium">Summaries</span> &mdash; older messages are summarized to save space</li>
-        <li><span className="text-foreground font-medium">Recent messages</span> &mdash; kept verbatim, up to ~400K tokens</li>
-        <li><span className="text-foreground font-medium">Library files</span> &mdash; injected when toggled on</li>
-        <li><span className="text-foreground font-medium">Repo files</span> &mdash; selected files from connected repos</li>
-      </ul>
-    </div>
-  )
-}
-
 // ---------------------------------------------------------------------------
-// Walkie-Talkie Tab
+// Reference Tab  (Manual Sections 16-18: Modals, Errors, Persistence)
 // ---------------------------------------------------------------------------
 
-function WalkieTalkieTab(): React.JSX.Element {
+function ReferenceTab(): React.JSX.Element {
   return (
     <div className="space-y-2 text-xs text-muted-foreground">
-      <p className="font-semibold text-foreground text-[11px]">How it works</p>
-      <p>
-        The workspace uses <span className="text-foreground font-medium">persistent WebSocket connections</span> instead
-        of per-message API calls. Messages stream in real-time &mdash; you see tokens as they are generated, not
-        after the full response is ready.
-      </p>
-      <ul className="list-disc pl-4 space-y-1">
-        <li>
-          Connection status indicator:{' '}
-          <span className="text-green-500 font-medium">green</span> (connected),{' '}
-          <span className="text-yellow-500 font-medium">yellow</span> (connecting),{' '}
-          <span className="text-red-500 font-medium">red</span> (disconnected)
-        </li>
-        <li>Auto-reconnect with exponential backoff if the connection drops</li>
+      <SectionHeading>All Modals</SectionHeading>
+      <ul className="list-disc pl-4 space-y-0.5">
+        <li><span className="text-foreground font-medium">Keyboard Shortcuts</span> &mdash; <Kbd>?</Kbd> or keyboard icon</li>
+        <li><span className="text-foreground font-medium">User Guide &amp; Notes</span> &mdash; Guide button in nav bar</li>
+        <li><span className="text-foreground font-medium">Category Manager</span> &mdash; Manage Categories in sidebar</li>
+        <li><span className="text-foreground font-medium">Fork Chat</span> &mdash; &hellip; menu &gt; Fork Chat</li>
+        <li><span className="text-foreground font-medium">Inject from Chat</span> &mdash; &hellip; menu &gt; Inject from Chat</li>
+        <li><span className="text-foreground font-medium">File Upload / Paste</span> &mdash; Upload/Paste in Library tab</li>
+        <li><span className="text-foreground font-medium">Repo Connector</span> &mdash; Connect Repository in Repos tab</li>
+        <li><span className="text-foreground font-medium">Library Picker</span> &mdash; BookOpen in chat input</li>
+        <li><span className="text-foreground font-medium">Save to Library</span> &mdash; Save to Library on assistant messages</li>
       </ul>
 
-      <p className="font-semibold text-foreground text-[11px] pt-1">Cost benefits</p>
-      <p>
-        Think of a WebSocket like a <span className="text-foreground font-medium">walkie-talkie</span> &mdash;
-        an open channel with no per-message cost overhead. Traditional API calls are like
-        phone calls where each one costs individually. With WebSockets, context is managed
-        server-side and is not re-sent with every request.
-      </p>
-
-      <p className="font-semibold text-foreground text-[11px] pt-1">Features enabled by WebSocket architecture</p>
+      <SectionHeading>Error States</SectionHeading>
       <ul className="list-disc pl-4 space-y-1">
-        <li>Real-time streaming responses (token by token)</li>
-        <li>Live context budget tracking</li>
-        <li>Connection health monitoring</li>
-        <li>Auto-summary triggers at 50 messages</li>
-        <li>Inject from other conversations</li>
-        <li>Fork conversations from any point</li>
-        <li>Library/repo file context injection</li>
+        <li><span className="text-foreground font-medium">No working directory</span> &mdash; Git/CI widgets hidden; Swarm shows a warning</li>
+        <li><span className="text-foreground font-medium">WebSocket failure</span> &mdash; red dot + disconnection banner with retry link</li>
+        <li><span className="text-foreground font-medium">Empty library</span> &mdash; folder browser shows empty state</li>
+        <li><span className="text-foreground font-medium">No conversations</span> &mdash; sidebar shows empty prompt</li>
+        <li><span className="text-foreground font-medium">Streaming interrupted</span> &mdash; conversation preserved; reconnect shows prior messages</li>
       </ul>
 
-      <p className="font-semibold text-foreground text-[11px] pt-1">Setup</p>
-      <p>
-        No special setup needed &mdash; the WebSocket connects automatically when you open a
-        conversation. The connection dot in the chat header shows your status. If disconnected,
-        messages queue and send when reconnected.
-      </p>
+      <SectionHeading>Data Persistence</SectionHeading>
+      <table className="w-full text-[10px] mt-1">
+        <thead>
+          <tr className="border-b border-border">
+            <th className="text-left py-0.5 pr-2 font-medium">Data</th>
+            <th className="text-left py-0.5 font-medium">Where</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr className="border-b border-border/50">
+            <td className="py-1 pr-2">Panel states, model selection, drafts</td>
+            <td className="py-1">localStorage (per-browser)</td>
+          </tr>
+          <tr className="border-b border-border/50">
+            <td className="py-1 pr-2">Guide position, size, notes</td>
+            <td className="py-1">localStorage (per-browser)</td>
+          </tr>
+          <tr className="border-b border-border/50">
+            <td className="py-1 pr-2">Walkie-talkie settings</td>
+            <td className="py-1">Server (Settings API)</td>
+          </tr>
+          <tr className="border-b border-border/50">
+            <td className="py-1 pr-2">Conversations, messages, categories</td>
+            <td className="py-1">Server (SQLite)</td>
+          </tr>
+          <tr className="border-b border-border/50">
+            <td className="py-1 pr-2">Library files &amp; folders</td>
+            <td className="py-1">Server (SQLite + filesystem)</td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   )
 }
@@ -913,20 +1066,20 @@ function NoteEditView({ note, showSaved, onBack, onUpdate, onDelete }: NoteEditV
 
 function TabContent({ tab }: { tab: TabId }): React.JSX.Element {
   switch (tab) {
-    case 'general':
-      return <GeneralTab />
-    case 'shortcuts':
-      return <ShortcutsTab />
+    case 'overview':
+      return <OverviewTab />
     case 'sidebar':
       return <SidebarTab />
     case 'chat':
       return <ChatTab />
-    case 'library':
-      return <LibraryTab />
-    case 'advanced':
-      return <AdvancedTab />
-    case 'walkietalkie':
-      return <WalkieTalkieTab />
+    case 'panels':
+      return <PanelsTab />
+    case 'splitswarm':
+      return <SplitSwarmTab />
+    case 'shortcuts':
+      return <ShortcutsTab />
+    case 'reference':
+      return <ReferenceTab />
     case 'notes':
       return <NotesTab />
   }
@@ -948,7 +1101,7 @@ export function WorkspaceUserGuide({
 }: WorkspaceUserGuideProps): React.JSX.Element | null {
   // ---- State ----
 
-  const [activeTab, setActiveTab] = useState<TabId>('general')
+  const [activeTab, setActiveTab] = useState<TabId>('overview')
   const [minimized, setMinimized] = useState(false)
 
   // Position and size, initialized from localStorage or centered on screen

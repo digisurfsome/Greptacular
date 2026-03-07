@@ -1,6 +1,6 @@
 declare const __BUILD_TIME__: string
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useQueryClient, useQuery } from '@tanstack/react-query'
 import { useProjects, useFeatures, useAgentStatus, useSettings } from './hooks/useProjects'
 import { useProjectWebSocket } from './hooks/useWebSocket'
@@ -31,7 +31,7 @@ import { ResetProjectModal } from './components/ResetProjectModal'
 import { ProjectSetupRequired } from './components/ProjectSetupRequired'
 import { GitActivityWidget } from './components/GitActivityWidget'
 import { getDependencyGraph, startAgent } from './lib/api'
-import { Loader2, Settings, Moon, Sun, RotateCcw, BookOpen, MessageSquare, Layers, LayoutDashboard, FlaskConical } from 'lucide-react'
+import { Loader2, Settings, Moon, Sun, RotateCcw, BookOpen, MessageSquare, Layers, LayoutDashboard, FlaskConical, Monitor } from 'lucide-react'
 import type { Feature } from './lib/types'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -112,6 +112,19 @@ function App() {
 
   // Celebrate when all features are complete
   useCelebration(features, selectedProject)
+
+  // Auto-open Agent Monitor window when parallel agents start
+  const monitorWindowRef = useRef<Window | null>(null)
+  useEffect(() => {
+    // When orchestrator starts scheduling agents (parallel mode), open monitor
+    if (wsState.orchestratorStatus?.state === 'spawning' && wsState.activeAgents.length > 0) {
+      // Only open if we haven't already opened one (or if it was closed)
+      if (!monitorWindowRef.current || monitorWindowRef.current.closed) {
+        const monitorUrl = `${window.location.origin}${window.location.pathname}#/monitor`
+        monitorWindowRef.current = window.open(monitorUrl, 'autoforge-monitor', 'width=1200,height=800')
+      }
+    }
+  }, [wsState.orchestratorStatus?.state, wsState.activeAgents.length])
 
   // Persist selected project to localStorage
   const handleSelectProject = useCallback((project: string | null) => {
@@ -264,20 +277,20 @@ function App() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
+      {/* Header — wraps controls on narrow screens */}
       <header className="sticky top-0 z-50 bg-card/80 backdrop-blur-md text-foreground border-b-2 border-border">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 py-3 md:py-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             {/* Logo and Title */}
-            <div className="flex items-center gap-3">
-              <img src="/logo.png" alt="AutoForge" className="h-9 w-9 rounded-full" />
-              <h1 className="font-display text-2xl font-semibold tracking-tight uppercase">
+            <div className="flex items-center gap-2 md:gap-3">
+              <img src="/logo.png" alt="AutoForge" className="h-7 w-7 md:h-9 md:w-9 rounded-full" />
+              <h1 className="font-display text-lg md:text-2xl font-semibold tracking-tight uppercase">
                 AutoForge
               </h1>
             </div>
 
-            {/* Controls */}
-            <div className="flex items-center gap-4">
+            {/* Controls — wraps to second row on mobile */}
+            <div className="flex flex-wrap items-center gap-2 md:gap-4">
               <ProjectSelector
                 projects={projects ?? []}
                 selectedProject={selectedProject}
@@ -321,10 +334,10 @@ function App() {
                     <RotateCcw size={18} />
                   </Button>
 
-                  {/* Ollama Mode Indicator */}
+                  {/* Ollama Mode Indicator — hidden on small screens */}
                   {settings?.ollama_mode && (
                     <div
-                      className="flex items-center gap-1.5 px-2 py-1 bg-card rounded border-2 border-border shadow-sm"
+                      className="hidden md:flex items-center gap-1.5 px-2 py-1 bg-card rounded border-2 border-border shadow-sm"
                       title="Using Ollama local models"
                     >
                       <img src="/ollama.png" alt="Ollama" className="w-5 h-5" />
@@ -332,10 +345,11 @@ function App() {
                     </div>
                   )}
 
-                  {/* GLM Mode Badge */}
+                  {/* GLM Mode Badge — hidden on small screens */}
                   {settings?.glm_mode && (
                     <Badge
                       variant="default"
+                      className="hidden md:inline-flex"
                       title="Using GLM API"
                     >
                       GLM
@@ -345,18 +359,20 @@ function App() {
                 </>
               )}
 
-              {/* Build timestamp - always visible proof the UI was rebuilt */}
+              {/* Build timestamp — hidden on mobile, diagnostic only */}
               <span
-                className="text-xs text-amber-400 font-mono font-bold select-all border border-amber-400/50 px-2 py-0.5 rounded"
+                className="hidden lg:inline text-xs text-amber-400 font-mono font-bold select-all border border-amber-400/50 px-2 py-0.5 rounded"
                 title={`UI built: ${__BUILD_TIME__}`}
               >
                 Build: {__BUILD_TIME__}
               </span>
 
-              {/* Git Activity Widget */}
-              <GitActivityWidget
-                workingDirectory={selectedProjectData?.path ?? null}
-              />
+              {/* Git Activity Widget — hidden on small screens */}
+              <div className="hidden md:block">
+                <GitActivityWidget
+                  workingDirectory={selectedProjectData?.path ?? null}
+                />
+              </div>
 
               {/* DunkStack link */}
               <Button
@@ -404,6 +420,21 @@ function App() {
               >
                 <FlaskConical size={16} />
                 <span className="hidden sm:inline text-xs">YT Lab</span>
+              </Button>
+
+              {/* Agent Monitor link — opens in new window */}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => {
+                  const monitorUrl = `${window.location.origin}${window.location.pathname}#/monitor`
+                  monitorWindowRef.current = window.open(monitorUrl, 'autoforge-monitor', 'width=1200,height=800')
+                }}
+                title="Open Agent Monitor in a new window"
+              >
+                <Monitor size={16} />
+                <span className="hidden sm:inline text-xs">Monitor</span>
               </Button>
 
               {/* Docs link */}

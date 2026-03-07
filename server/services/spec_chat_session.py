@@ -403,6 +403,10 @@ class SpecChatSession:
         async for msg in self.client.receive_response():
             msg_type = type(msg).__name__
 
+            # Skip SDK informational events (e.g. rate_limit_event)
+            if msg_type in ("RateLimitEvent", "rate_limit_event"):
+                continue
+
             if msg_type == "AssistantMessage" and hasattr(msg, "content"):
                 # Process content blocks in the assistant message
                 for block in msg.content:

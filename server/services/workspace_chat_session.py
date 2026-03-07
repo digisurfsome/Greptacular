@@ -214,6 +214,14 @@ class WorkspaceChatSession:
         # the human-readable tool name instead of the opaque UUID.
         self._tool_use_id_to_name: dict[str, str] = {}
 
+        # Saved state from start() needed for mid-session auth fallback.
+        # When subscription OAuth expires during a query, these allow
+        # _fallback_to_api_key() to recreate the client with API key billing.
+        self._shared_opts: Optional[dict[str, Any]] = None
+        self._effort: str = "high"
+        self._is_alternative_api: bool = False
+        self._force_sub: bool = False
+
         # Backup of original .claude/settings.json in the working directory,
         # restored on close() to avoid clobbering user's project settings.
         self._original_project_settings: Optional[str] = None  # None = file didn't exist
@@ -286,6 +294,133 @@ class WorkspaceChatSession:
                     logger.debug("Removed temporary .claude/settings.json at %s", self._project_settings_path)
             except Exception as e:
                 logger.warning("Failed to restore .claude/settings.json: %s", e)
+
+    async def _fallback_to_api_key(self) -> bool:
+        """Tear down the current client and recreate with API key billing.
+
+        Called mid-session when subscription OAuth expires during a query.
+        Returns True if the fallback succeeded (new client is ready).
+        """
+        if not self._shared_opts:
+            logger.warning("Cannot fall back to API key: no saved shared_opts from start()")
+            return False
+
+        logger.warning(
+            "Subscription auth expired mid-session. Falling back to API key billing."
+        )
+
+        # Tear down the expired client
+        if self.client and self._client_entered:
+            try:
+                await self.client.__aexit__(None, None, None)
+            except Exception:
+                pass
+            self._client_entered = False
+            self.client = None
+
+        try:
+            from registry import get_effective_sdk_env
+
+            # Re-create SDK env with API key billing
+            sdk_env = get_effective_sdk_env(force_subscription=False)
+            self._force_sub = False
+
+            # Re-inject effort level env var
+            if self._effort in ("low", "medium", "high"):
+                sdk_env["CLAUDE_CODE_EFFORT_LEVEL"] = self._effort
+
+            # Update shared options: new env + enable 1M context beta
+            self._shared_opts["env"] = sdk_env
+            if not self._is_alternative_api:
+                self._shared_opts["betas"] = ["context-1m-2025-08-07"]
+
+            logger.info(
+                "Recreating client with API key (betas=%s)",
+                self._shared_opts.get("betas"),
+            )
+
+            # Re-create the client
+            try:
+                self.client = ClaudeSDKClient(
+                    options=ClaudeAgentOptions(effort=self._effort, **self._shared_opts)
+                )
+            except TypeError:
+                self.client = ClaudeSDKClient(
+                    options=ClaudeAgentOptions(**self._shared_opts)
+                )
+
+            await asyncio.wait_for(self.client.__aenter__(), timeout=60)
+            self._client_entered = True
+            logger.info("Workspace client recreated with API key billing (mid-session fallback)")
+            return True
+
+        except Exception:
+            logger.exception("API key fallback also failed during mid-session recovery")
+            self._client_entered = False
+            self.client = None
+            return False
+
+    async def _fallback_to_subscription(self) -> bool:
+        """Tear down the current client and recreate with subscription OAuth.
+
+        Called when API key billing fails (e.g. credit balance too low) and the
+        user may have refreshed their OAuth token via ``claude login``.
+        Returns True if the new client started successfully.
+        """
+        if not self._shared_opts:
+            logger.warning("Cannot fall back to subscription: no saved shared_opts from start()")
+            return False
+
+        logger.warning(
+            "API key billing failed mid-session. Attempting subscription OAuth."
+        )
+
+        # Tear down the current client
+        if self.client and self._client_entered:
+            try:
+                await self.client.__aexit__(None, None, None)
+            except Exception:
+                pass
+            self._client_entered = False
+            self.client = None
+
+        try:
+            from registry import get_effective_sdk_env
+
+            # Re-create SDK env with subscription auth (clears API key)
+            sdk_env = get_effective_sdk_env(force_subscription=True)
+            self._force_sub = True
+
+            # Re-inject effort level env var
+            if self._effort in ("low", "medium", "high"):
+                sdk_env["CLAUDE_CODE_EFFORT_LEVEL"] = self._effort
+
+            # Update shared options: subscription = no 1M beta
+            self._shared_opts["env"] = sdk_env
+            self._shared_opts["betas"] = []
+
+            logger.info("Recreating client with subscription OAuth")
+
+            # Re-create the client
+            try:
+                self.client = ClaudeSDKClient(
+                    options=ClaudeAgentOptions(effort=self._effort, **self._shared_opts)
+                )
+            except TypeError:
+                self.client = ClaudeSDKClient(
+                    options=ClaudeAgentOptions(**self._shared_opts)
+                )
+
+            await asyncio.wait_for(self.client.__aenter__(), timeout=60)
+            self._client_entered = True
+            logger.info("Workspace client recreated with subscription OAuth (mid-session fallback)")
+            return True
+
+        except Exception:
+            logger.exception("Subscription fallback also failed during mid-session recovery")
+            self._client_entered = False
+            self.client = None
+            return False
 
     async def queue_walkie_talkie_message(self, content: str) -> None:
         """Queue a walkie-talkie message for the running agent to receive.
@@ -487,6 +622,7 @@ class WorkspaceChatSession:
                 sdk_env.get("ANTHROPIC_DEFAULT_SONNET_MODEL")
                 or os.getenv("ANTHROPIC_DEFAULT_SONNET_MODEL", "claude-sonnet-4-6")
             ),
+            "haiku": "claude-haiku-4-5",
         }
         model = MODEL_MAP.get(self.model or "", MODEL_MAP["opus"])
         self._resolved_model_id = model  # Store for UI display
@@ -710,6 +846,18 @@ class WorkspaceChatSession:
                 ),
             )
 
+            # Save state for mid-session auth fallback
+            self._shared_opts = shared_opts
+            self._effort = effort
+            self._is_alternative_api = is_alternative_api
+            self._force_sub = force_sub
+
+            # Prevent "nested session" detection when the server was launched
+            # from inside a Claude Code session (e.g. via `claude` CLI).  The
+            # CLAUDECODE env var leaks into subprocess spawns and causes the
+            # child `claude` process to refuse to start.
+            os.environ.pop("CLAUDECODE", None)
+
             # Primary: pass effort= directly to ClaudeAgentOptions (SDK ≥0.1.36).
             # Falls back to the settings-file-only approach for older SDK versions.
             try:
@@ -745,28 +893,111 @@ class WorkspaceChatSession:
                 is_alternative_api, self.working_directory,
             )
             logger.info("Entering workspace Claude client context...")
+            _sub_auth_failed = False
             try:
                 await asyncio.wait_for(self.client.__aenter__(), timeout=60)
+                self._client_entered = True
+                logger.info("Workspace Claude client ready")
             except asyncio.TimeoutError:
-                logger.error(
-                    "Timeout (60s) waiting for Claude CLI to start (context_mode=%s, model=%s). "
-                    "This often means subscription OAuth credentials are missing or expired. "
-                    "Check ~/.claude/.credentials.json or switch to API key billing (1M mode).",
-                    self.context_mode, self.model,
+                if force_sub:
+                    logger.warning(
+                        "Subscription auth timed out (context_mode=%s, model=%s). "
+                        "Will fall back to API key billing.",
+                        self.context_mode, self.model,
+                    )
+                    _sub_auth_failed = True
+                else:
+                    logger.error(
+                        "Timeout (60s) waiting for Claude CLI to start (context_mode=%s, model=%s).",
+                        self.context_mode, self.model,
+                    )
+                    yield {
+                        "type": "error",
+                        "content": (
+                            "The Claude CLI did not start within 60 seconds. "
+                            "The model may be overloaded — try again or switch models."
+                        ),
+                    }
+                    yield {"type": "response_done"}
+                    return
+            except Exception as _enter_err:
+                _err_lower = str(_enter_err).lower()
+                _auth_hints = ["401", "auth", "oauth", "expired", "credential", "token has expired"]
+                if any(h in _err_lower for h in _auth_hints):
+                    logger.warning(
+                        "Auth failed (%s). Will fall back to API key billing.",
+                        _enter_err,
+                    )
+                    _sub_auth_failed = True
+                else:
+                    raise  # Re-raise for the outer except to handle
+
+            # ----------------------------------------------------------
+            # Fallback: if subscription auth failed, retry with API key.
+            # Same pattern used by yt_processor.py / yt_discovery.py.
+            # ----------------------------------------------------------
+            if _sub_auth_failed:
+                # Tear down the failed client
+                try:
+                    await self.client.__aexit__(None, None, None)
+                except Exception:
+                    pass
+                self.client = None
+
+                # Re-create SDK env with API key billing
+                sdk_env = get_effective_sdk_env(force_subscription=False)
+                force_sub = False
+                self._force_sub = False
+
+                # Re-inject effort level env var
+                if effort in ("low", "medium", "high"):
+                    sdk_env["CLAUDE_CODE_EFFORT_LEVEL"] = effort
+
+                # Update shared options: new env + enable 1M context beta
+                shared_opts["env"] = sdk_env
+                if not is_alternative_api:
+                    shared_opts["betas"] = ["context-1m-2025-08-07"]
+
+                logger.info(
+                    "Retrying with API key billing (betas=%s)",
+                    shared_opts.get("betas"),
                 )
-                yield {
-                    "type": "error",
-                    "content": (
-                        "The Claude CLI did not start within 60 seconds. "
-                        "If using subscription (200K) mode, ensure you're logged in "
-                        "(run `claude login` in a terminal). "
-                        "Or switch to 1M API mode which uses your API key."
-                    ),
-                }
-                yield {"type": "response_done"}
-                return
-            self._client_entered = True
-            logger.info("Workspace Claude client ready")
+
+                # Re-create the client
+                try:
+                    self.client = ClaudeSDKClient(
+                        options=ClaudeAgentOptions(effort=effort, **shared_opts)
+                    )
+                except TypeError:
+                    self.client = ClaudeSDKClient(
+                        options=ClaudeAgentOptions(**shared_opts)
+                    )
+
+                try:
+                    await asyncio.wait_for(self.client.__aenter__(), timeout=60)
+                    self._client_entered = True
+                    logger.info("Workspace Claude client ready (API key fallback)")
+                    yield {
+                        "type": "text",
+                        "content": (
+                            "Subscription auth unavailable -- using API key billing for this session. "
+                            "To use free subscription billing, run `claude login` in a terminal."
+                        ),
+                    }
+                except Exception as _retry_err:
+                    logger.exception("API key fallback also failed")
+                    yield {
+                        "type": "error",
+                        "content": (
+                            f"Failed to initialize workspace: {str(_retry_err)}\n\n"
+                            "Neither subscription auth nor API key auth succeeded. "
+                            "Set ANTHROPIC_API_KEY in ~/.autoforge/.env or save it in Settings, "
+                            "or run `claude login` in a terminal to refresh subscription credentials."
+                        ),
+                    }
+                    yield {"type": "response_done"}
+                    return
+
         except Exception as e:
             logger.exception("Failed to create workspace Claude client")
             yield {"type": "error", "content": f"Failed to initialize workspace: {str(e)}"}
@@ -879,12 +1110,48 @@ class WorkspaceChatSession:
                         self._gemini_bridge.session_id = conv["provider_thread_id"]
                         self._provider_thread_id = conv["provider_thread_id"]
 
+                await self._gemini_bridge.start()
+
                 self._resolved_model_id = provider_model or "gemini-default"
                 logger.info("Gemini bridge started for session %s (model=%s)", self.session_id, provider_model)
 
         except Exception as e:
             logger.exception("Failed to start %s bridge", self.provider)
-            yield {"type": "error", "content": f"Failed to initialize {provider_display}: {str(e)}"}
+            err_lower = str(e).lower()
+
+            # Provide provider-specific auth guidance
+            if self.provider == "gemini" and ("not installed" in err_lower or "not found" in err_lower or "path" in err_lower):
+                hint = (
+                    "**Gemini CLI not found.**\n\n"
+                    "Install it with:\n```\nnpm install -g @google/gemini-cli\n```\n"
+                    "Then authenticate:\n```\ngemini\n```\n"
+                    "(Follow the Google login prompt on first run.)"
+                )
+            elif self.provider == "gemini" and ("auth" in err_lower or "api_key" in err_lower or "credential" in err_lower):
+                hint = (
+                    "**Gemini authentication required.**\n\n"
+                    "Option 1 — Subscription (free tier):\n```\ngemini\n```\n"
+                    "(Follow the Google login prompt.)\n\n"
+                    "Option 2 — API key:\n"
+                    "Set `GEMINI_API_KEY` in your environment or `~/.autoforge/.env`."
+                )
+            elif self.provider == "codex" and ("401" in err_lower or "unauthorized" in err_lower or "auth" in err_lower):
+                hint = (
+                    "**Codex authentication required.**\n\n"
+                    "Option 1 — ChatGPT subscription:\n```\ncodex\n```\n"
+                    "(Follow the login prompt.)\n\n"
+                    "Option 2 — API key:\n"
+                    "Set `OPENAI_API_KEY` in your environment or `~/.autoforge/.env`."
+                )
+            elif self.provider == "codex" and ("not found" in err_lower or "not installed" in err_lower or "path" in err_lower):
+                hint = (
+                    "**Codex CLI not found.**\n\n"
+                    "Install it with:\n```\nnpm install -g @openai/codex\n```"
+                )
+            else:
+                hint = f"Failed to initialize {provider_display}: {str(e)}"
+
+            yield {"type": "error", "content": hint}
             yield {"type": "response_done"}
             return
 
@@ -915,6 +1182,20 @@ class WorkspaceChatSession:
         """
         from . import workspace_database as db
 
+        # BUG 10: Drain walkie-talkie queue — not supported for alt providers.
+        dropped: list[str] = []
+        while True:
+            try:
+                msg = self.walkie_talkie_queue.get_nowait()
+                dropped.append(msg)
+            except asyncio.QueueEmpty:
+                break
+        if dropped:
+            logger.warning(
+                "Dropped %d walkie-talkie message(s) for %s provider (not supported)",
+                len(dropped), self.provider,
+            )
+
         bridge = self._codex_bridge if self.provider == "codex" else self._gemini_bridge
         if not bridge:
             yield {"type": "error", "content": f"{self.provider} bridge not initialized"}
@@ -936,7 +1217,21 @@ class WorkspaceChatSession:
                     logger.debug("Alt provider event: %s", event_type)
         except Exception as e:
             logger.exception("Error querying %s", self.provider)
-            yield {"type": "error", "content": f"{self.provider} error: {str(e)}"}
+            err_lower = str(e).lower()
+            # Detect auth errors and give provider-specific guidance
+            if self.provider == "codex" and ("401" in err_lower or "unauthorized" in err_lower):
+                yield {
+                    "type": "error",
+                    "content": (
+                        "**Codex authentication required.**\n\n"
+                        "Option 1 — ChatGPT subscription:\n"
+                        "Run `codex` in a terminal and follow the login prompt.\n\n"
+                        "Option 2 — API key:\n"
+                        "Set `OPENAI_API_KEY` in `~/.autoforge/.env`."
+                    ),
+                }
+            else:
+                yield {"type": "error", "content": f"{self.provider} error: {str(e)}"}
             return
 
         # Persist assistant message in DB
@@ -1020,51 +1315,62 @@ class WorkspaceChatSession:
         # Uses dynamic token-budget loading: summary first, then recent messages
         # up to the remaining budget (no fixed message cap or per-message truncation).
         message_to_send = user_message
+        # Skip history injection when the alt provider already has an active
+        # session — Codex uses threadId and Gemini uses --resume, so injecting
+        # history text would duplicate what the provider already knows (BUG 5).
+        provider_has_session = (
+            (self.provider == "codex" and self._codex_bridge and self._codex_bridge.thread_id)
+            or (self.provider == "gemini" and self._gemini_bridge and self._gemini_bridge.session_id)
+        )
         if not self._history_loaded:
             self._history_loaded = True
-            from . import workspace_database as db
+            # Skip history injection when the alt provider already has an active
+            # session — Codex uses threadId and Gemini uses --resume, so injecting
+            # history text would duplicate what the provider already knows (BUG 5).
+            if provider_has_session:
+                logger.info("Skipping history injection — %s has active session", self.provider)
+            else:
+                from . import workspace_database as db
 
-            # Load the latest summary first
-            latest_summary = db.get_latest_summary(self.conversation_id)
-            summary_context = ""
-            summary_tokens = 0
-            if latest_summary:
-                summary_context = latest_summary["summary"]
-                summary_tokens = latest_summary.get("token_estimate", len(summary_context) // 4)
+                # Load the latest summary first
+                latest_summary = db.get_latest_summary(self.conversation_id)
+                summary_context = ""
+                summary_tokens = 0
+                if latest_summary:
+                    summary_context = latest_summary["summary"]
+                    summary_tokens = latest_summary.get("token_estimate", len(summary_context) // 4)
 
-            # Calculate remaining budget for messages (reserve space for summary).
-            # Configurable via cost dashboard to avoid pushing input into
-            # long-context premium pricing (above 200K: 2× input & 1.5× output).
-            MESSAGE_TOKEN_BUDGET = self.cost_settings["history_budget"]
-            remaining_budget = MESSAGE_TOKEN_BUDGET - summary_tokens
+                # Calculate remaining budget for messages (reserve space for summary).
+                MESSAGE_TOKEN_BUDGET = self.cost_settings["history_budget"]
+                remaining_budget = MESSAGE_TOKEN_BUDGET - summary_tokens
 
-            # Load messages dynamically up to the budget
-            history_messages, loaded_tokens = db.get_messages_for_context(
-                self.conversation_id,
-                token_budget=remaining_budget,
-            )
-            # Exclude the current message we just added (it's the last one chronologically)
-            if history_messages and history_messages[-1]["content"] == user_message:
-                history_messages = history_messages[:-1]
-
-            if summary_context or history_messages:
-                history_lines: list[str] = []
-                if summary_context:
-                    history_lines.append("[Conversation summary:]")
-                    history_lines.append(summary_context)
-                    history_lines.append("")
-                if history_messages:
-                    history_lines.append("[Recent conversation history:]")
-                    for msg in history_messages:
-                        role = "User" if msg["role"] == "user" else "Assistant"
-                        history_lines.append(f"{role}: {msg['content']}")
-                history_lines.append("[End of history. Continue the conversation:]")
-                history_lines.append(f"User: {user_message}")
-                message_to_send = "\n".join(history_lines)
-                logger.info(
-                    f"Loaded context: summary={bool(summary_context)}, "
-                    f"messages={len(history_messages)}, tokens={loaded_tokens + summary_tokens}"
+                # Load messages dynamically up to the budget
+                history_messages, loaded_tokens = db.get_messages_for_context(
+                    self.conversation_id,
+                    token_budget=remaining_budget,
                 )
+                # Exclude the current message we just added (it's the last one chronologically)
+                if history_messages and history_messages[-1]["content"] == user_message:
+                    history_messages = history_messages[:-1]
+
+                if summary_context or history_messages:
+                    history_lines: list[str] = []
+                    if summary_context:
+                        history_lines.append("[Conversation summary:]")
+                        history_lines.append(summary_context)
+                        history_lines.append("")
+                    if history_messages:
+                        history_lines.append("[Recent conversation history:]")
+                        for msg in history_messages:
+                            role = "User" if msg["role"] == "user" else "Assistant"
+                            history_lines.append(f"{role}: {msg['content']}")
+                    history_lines.append("[End of history. Continue the conversation:]")
+                    history_lines.append(f"User: {user_message}")
+                    message_to_send = "\n".join(history_lines)
+                    logger.info(
+                        f"Loaded context: summary={bool(summary_context)}, "
+                        f"messages={len(history_messages)}, tokens={loaded_tokens + summary_tokens}"
+                    )
 
         # Per-message library file attachment: if the caller provided file IDs,
         # inline their content into THIS message only (not auto-injected).
@@ -1085,6 +1391,16 @@ class WorkspaceChatSession:
 
         try:
             if self.provider in ("codex", "gemini"):
+                # BUG 9: Warn if image attachments were provided (not supported)
+                if attachments:
+                    yield {
+                        "type": "text",
+                        "content": (
+                            f"*Note: Image attachments are not supported with "
+                            f"{self.provider}. Only the text portion of your "
+                            f"message was sent.*\n\n"
+                        ),
+                    }
                 async for chunk in self._query_alt_provider(message_to_send):
                     yield chunk
             else:
@@ -1092,11 +1408,95 @@ class WorkspaceChatSession:
                     yield chunk
             yield {"type": "response_done"}
         except Exception as e:
-            logger.exception("Error during workspace %s query", self.provider)
             error_str = str(e).lower()
-            yield {"type": "error", "content": f"Error: {str(e)}"}
 
-            # Auto-detect rate limit / billing errors and log them for calibration
+            # Silently skip SDK event types that we don't recognise but that are
+            # harmless (e.g. "Unknown message type: rate_limit_event").  These are
+            # informational events from the Claude SDK, not real errors.
+            if "unknown message type" in error_str:
+                logger.debug("Ignoring SDK parse noise: %s", e)
+                yield {"type": "response_done"}
+                return
+
+            logger.exception("Error during workspace %s query", self.provider)
+
+            # Detect auth errors — attempt mid-session fallback to API key billing.
+            # If fallback succeeds, retry the message transparently.
+            # NOTE: This triggers regardless of billing mode (_force_sub). Even in
+            # 1M/API-key mode, the SDK may use OAuth if no API key is configured.
+            _auth_hints = ["401", "authentication_error", "oauth", "token has expired", "credential"]
+            if any(h in error_str for h in _auth_hints):
+                logger.warning("Auth error during query — attempting API key fallback")
+                fallback_ok = await self._fallback_to_api_key()
+                if fallback_ok:
+                    yield {
+                        "type": "text",
+                        "content": (
+                            "Subscription auth expired — switched to API key billing. "
+                            "To use free subscription billing, run `claude login` in a terminal.\n\n"
+                        ),
+                    }
+                    # Retry the message with the new API-key-backed client
+                    try:
+                        async for chunk in self._query_claude(message_to_send, attachments=attachments):
+                            yield chunk
+                        yield {"type": "response_done"}
+                        return  # Retry succeeded — skip the error path below
+                    except Exception as retry_err:
+                        logger.exception("Retry after API key fallback also failed")
+                        # API key failed too (e.g. credit balance too low).
+                        # Last resort: try subscription OAuth in case the user
+                        # just ran `claude login` to refresh their token.
+                        sub_ok = await self._fallback_to_subscription()
+                        if sub_ok:
+                            yield {
+                                "type": "text",
+                                "content": (
+                                    "API key billing failed — retrying with subscription auth.\n\n"
+                                ),
+                            }
+                            try:
+                                async for chunk in self._query_claude(message_to_send, attachments=attachments):
+                                    yield chunk
+                                yield {"type": "response_done"}
+                                return
+                            except Exception as sub_retry_err:
+                                logger.exception("Subscription retry also failed")
+                                yield {
+                                    "type": "error",
+                                    "content": (
+                                        f"All auth methods failed: {sub_retry_err}\n\n"
+                                        "Run `claude login` in a terminal to refresh subscription, "
+                                        "or add API credits at console.anthropic.com."
+                                    ),
+                                }
+                        else:
+                            yield {
+                                "type": "error",
+                                "content": (
+                                    f"API key billing failed: {retry_err}\n\n"
+                                    "Run `claude login` in a terminal to refresh subscription, "
+                                    "or add API credits at console.anthropic.com."
+                                ),
+                            }
+                else:
+                    yield {
+                        "type": "error",
+                        "content": (
+                            f"Authentication error: {str(e)}\n\n"
+                            "Could not fall back to API key billing automatically. "
+                            "Set ANTHROPIC_API_KEY in ~/.autoforge/.env or save it in Settings, "
+                            "or run `claude login` in a terminal to refresh subscription credentials."
+                        ),
+                    }
+            else:
+                yield {"type": "error", "content": f"Error: {str(e)}"}
+
+            # Auto-detect rate limit / billing errors and log them for calibration.
+            # Guard: skip detection if the error is about an unknown SDK message
+            # type — e.g. "Unknown message type: rate_limit_event" is a parse
+            # error, NOT an actual rate limit.
+            _is_unknown_msg_type = "unknown message type" in error_str
             rate_limit_patterns = [
                 "rate limit", "rate_limit", "ratelimit",
                 "usage limit", "usage_limit",
@@ -1107,7 +1507,7 @@ class WorkspaceChatSession:
                 "credit balance", "balance too low",
                 "insufficient credit", "billing",
             ]
-            if any(p in error_str for p in rate_limit_patterns):
+            if not _is_unknown_msg_type and any(p in error_str for p in rate_limit_patterns):
                 try:
                     from . import workspace_database as db
                     usage = db.get_usage_by_period("daily")
@@ -1225,6 +1625,14 @@ class WorkspaceChatSession:
                     logger.error(f"Timeout (300s) waiting for next token from {self.model}")
                     yield {"type": "error", "content": f"Response stream from {self.model} timed out after 5 minutes of silence."}
                 return
+            except Exception as e:
+                # Catch "Unknown message type: rate_limit_event" which is a parse noise
+                # from the CLI in the 1M beta. Skip it so it doesn't crash the session.
+                err_str = str(e)
+                if "unknown message type: rate_limit_event" in err_str.lower():
+                    logger.warning("Caught and suppressed rate_limit_event parse noise from Claude CLI")
+                    continue
+                raise e
             first_token_received = True
             msg_type = type(msg).__name__
 
@@ -1241,6 +1649,27 @@ class WorkspaceChatSession:
                         if text:
                             full_response += text
                             turn_text_length += len(text)
+
+                            # Detect auth errors streamed as text by the CLI.
+                            # When OAuth expires mid-query, the CLI reports
+                            # "Failed to authenticate. API Error: 401 ..."
+                            # as a text response instead of raising an exception.
+                            # Catch this early so send_message() can trigger the
+                            # API-key fallback transparently.
+                            if len(full_response) < 500:
+                                _resp_lower = full_response.lower()
+                                if (
+                                    "failed to authenticate" in _resp_lower
+                                    or (
+                                        "authentication_error" in _resp_lower
+                                        and "401" in _resp_lower
+                                    )
+                                    or "oauth token has expired" in _resp_lower
+                                ):
+                                    raise RuntimeError(
+                                        f"SDK authentication error: {full_response}"
+                                    )
+
                             yield {"type": "text", "content": text}
 
                             # Detect agent-initiated wait signal: [WAITING]...[/WAITING]
@@ -1340,6 +1769,12 @@ class WorkspaceChatSession:
                             except Exception as e:
                                 logger.warning("Failed to log tool_result: %s", e)
 
+            # Silently skip SDK event types we don't need to surface.
+            # The Claude SDK may emit informational events (e.g. rate_limit_event)
+            # that are not errors and don't need UI handling.
+            elif msg_type in ("RateLimitEvent", "rate_limit_event"):
+                logger.debug("Skipping SDK event type: %s", msg_type)
+
             # Handle ResultMessage — the SDK's final summary with actual API usage
             elif msg_type == "ResultMessage":
                 usage = getattr(msg, "usage", None) or {}
@@ -1349,6 +1784,20 @@ class WorkspaceChatSession:
                 duration_api_ms = getattr(msg, "duration_api_ms", None)
                 is_error = getattr(msg, "is_error", False)
                 result_model = getattr(msg, "model", self.model)
+
+                # If the result is an error and the response looks like an auth
+                # failure, raise so send_message() can attempt the fallback.
+                if is_error and full_response:
+                    _resp_lower = full_response.lower()
+                    _auth_patterns = [
+                        "failed to authenticate",
+                        "authentication_error",
+                        "oauth token has expired",
+                    ]
+                    if any(p in _resp_lower for p in _auth_patterns):
+                        raise RuntimeError(
+                            f"SDK authentication error: {full_response}"
+                        )
 
                 # Extract token counts from usage dict
                 api_input = usage.get("input_tokens") if isinstance(usage, dict) else None

@@ -442,6 +442,13 @@ export function DiscoveryPanel({
                 className="min-h-16 text-sm"
                 disabled={isDiscovering}
               />
+              <p className={`text-xs mt-1 text-right tabular-nums ${
+                userContext.length > 100_000 ? 'text-red-500 font-medium' :
+                userContext.length > 90_000 ? 'text-yellow-500 font-medium' :
+                'text-muted-foreground'
+              }`}>
+                {userContext.length.toLocaleString()} / 100,000
+              </p>
             </div>
 
             <div className="space-y-1.5">

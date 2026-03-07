@@ -128,7 +128,7 @@ async def get_settings():
         glm_mode=glm_mode,
         ollama_mode=ollama_mode,
         testing_agent_ratio=_parse_int(all_settings.get("testing_agent_ratio"), 1),
-        playwright_headless=_parse_bool(all_settings.get("playwright_headless"), default=True),
+        playwright_headless=_parse_bool(all_settings.get("playwright_headless"), default=False),
         batch_size=_parse_int(all_settings.get("batch_size"), 3),
         api_provider=api_provider,
         api_base_url=all_settings.get("api_base_url"),
@@ -152,6 +152,12 @@ async def get_settings():
         comm_check_frequency=all_settings.get("comm_check_frequency", "per_feature"),
         comm_wait_timeout=_parse_int(all_settings.get("comm_wait_timeout"), 120),
         comm_auto_reply=_parse_bool(all_settings.get("comm_auto_reply"), default=True),
+        # Session 2: Orchestration completion settings
+        approval_gates_enabled=_parse_bool(all_settings.get("approval_gates_enabled"), default=False),
+        action_log_retention_days=_parse_int(all_settings.get("action_log_retention_days"), 30),
+        verification_log_retention_days=_parse_int(all_settings.get("verification_log_retention_days"), 30),
+        debug_log_retention_days=_parse_int(all_settings.get("debug_log_retention_days"), 7),
+        approval_audio_enabled=_parse_bool(all_settings.get("approval_audio_enabled"), default=False),
     )
 
 
@@ -240,6 +246,22 @@ async def update_settings(update: SettingsUpdate):
     if update.comm_auto_reply is not None:
         set_setting("comm_auto_reply", "true" if update.comm_auto_reply else "false")
 
+    # Session 2: Orchestration completion settings
+    if update.approval_gates_enabled is not None:
+        set_setting("approval_gates_enabled", "true" if update.approval_gates_enabled else "false")
+
+    if update.action_log_retention_days is not None:
+        set_setting("action_log_retention_days", str(update.action_log_retention_days))
+
+    if update.verification_log_retention_days is not None:
+        set_setting("verification_log_retention_days", str(update.verification_log_retention_days))
+
+    if update.debug_log_retention_days is not None:
+        set_setting("debug_log_retention_days", str(update.debug_log_retention_days))
+
+    if update.approval_audio_enabled is not None:
+        set_setting("approval_audio_enabled", "true" if update.approval_audio_enabled else "false")
+
     # Return updated settings
     all_settings = get_all_settings()
     api_provider = all_settings.get("api_provider", "claude")
@@ -257,7 +279,7 @@ async def update_settings(update: SettingsUpdate):
         glm_mode=glm_mode,
         ollama_mode=ollama_mode,
         testing_agent_ratio=_parse_int(all_settings.get("testing_agent_ratio"), 1),
-        playwright_headless=_parse_bool(all_settings.get("playwright_headless"), default=True),
+        playwright_headless=_parse_bool(all_settings.get("playwright_headless"), default=False),
         batch_size=_parse_int(all_settings.get("batch_size"), 3),
         api_provider=api_provider,
         api_base_url=all_settings.get("api_base_url"),
@@ -281,4 +303,10 @@ async def update_settings(update: SettingsUpdate):
         comm_check_frequency=all_settings.get("comm_check_frequency", "per_feature"),
         comm_wait_timeout=_parse_int(all_settings.get("comm_wait_timeout"), 120),
         comm_auto_reply=_parse_bool(all_settings.get("comm_auto_reply"), default=True),
+        # Session 2: Orchestration completion settings
+        approval_gates_enabled=_parse_bool(all_settings.get("approval_gates_enabled"), default=False),
+        action_log_retention_days=_parse_int(all_settings.get("action_log_retention_days"), 30),
+        verification_log_retention_days=_parse_int(all_settings.get("verification_log_retention_days"), 30),
+        debug_log_retention_days=_parse_int(all_settings.get("debug_log_retention_days"), 7),
+        approval_audio_enabled=_parse_bool(all_settings.get("approval_audio_enabled"), default=False),
     )

@@ -61,6 +61,7 @@ class ProjectConfig(TypedDict):
     detected_command: str | None
     custom_command: str | None
     effective_command: str | None
+    dev_dir: str | None
 
 
 # =============================================================================
@@ -300,7 +301,51 @@ def detect_project_type(project_dir: Path) -> str | None:
         logger.debug("Detected go project in %s", project_dir)
         return "go"
 
+    # Check common UI subdirectories for Node.js projects
+    for subdir in ("ui", "client", "frontend", "web", "app"):
+        subdir_path = project_dir / subdir
+        sub_pkg = _parse_package_json(subdir_path)
+        if sub_pkg is not None:
+            scripts = sub_pkg.get("scripts", {})
+            if isinstance(scripts, dict):
+                if "dev" in scripts:
+                    logger.debug("Detected nodejs-vite project in %s/%s", project_dir, subdir)
+                    return "nodejs-vite"
+                if "start" in scripts:
+                    logger.debug("Detected nodejs-cra project in %s/%s", project_dir, subdir)
+                    return "nodejs-cra"
+
     logger.debug("No known project type detected in %s", project_dir)
+    return None
+
+
+def detect_dev_dir(project_dir: Path) -> str | None:
+    """
+    Detect the subdirectory where the dev server should run.
+
+    If the root package.json has a dev/start script, returns None (run from root).
+    Otherwise checks common subdirectories for a package.json with dev/start scripts.
+
+    Returns:
+        Subdirectory name (e.g. "ui") or None if root is correct.
+    """
+    project_dir = Path(project_dir).resolve()
+
+    # If root has a dev script, no subdirectory needed
+    root_pkg = _parse_package_json(project_dir)
+    if root_pkg is not None:
+        scripts = root_pkg.get("scripts", {})
+        if isinstance(scripts, dict) and ("dev" in scripts or "start" in scripts):
+            return None
+
+    # Check common subdirectories
+    for subdir in ("ui", "client", "frontend", "web", "app"):
+        sub_pkg = _parse_package_json(project_dir / subdir)
+        if sub_pkg is not None:
+            scripts = sub_pkg.get("scripts", {})
+            if isinstance(scripts, dict) and ("dev" in scripts or "start" in scripts):
+                return subdir
+
     return None
 
 
@@ -329,6 +374,51 @@ def get_default_dev_command(project_dir: Path) -> str | None:
         return None
 
     return PROJECT_TYPE_COMMANDS.get(project_type)
+
+
+def get_dev_dir(project_dir: Path) -> str | None:
+    """
+    Get the effective dev directory for a project.
+
+    Returns the custom dev_dir if configured, otherwise auto-detects.
+    """
+    project_dir = Path(project_dir).resolve()
+    config = _load_config(project_dir)
+    custom_dir = config.get("dev_dir")
+
+    if custom_dir and isinstance(custom_dir, str):
+        return custom_dir
+
+    return detect_dev_dir(project_dir)
+
+
+def set_dev_dir(project_dir: Path, dev_dir: str | None) -> None:
+    """
+    Save or clear a custom dev_dir for a project.
+
+    Args:
+        project_dir: Path to the project directory.
+        dev_dir: Subdirectory name (e.g. "ui") or None to clear.
+    """
+    project_dir = _validate_project_dir(project_dir)
+    config = _load_config(project_dir)
+
+    if dev_dir is None:
+        config.pop("dev_dir", None)
+    else:
+        if not isinstance(dev_dir, str) or not dev_dir.strip():
+            raise ValueError("dev_dir must be a non-empty string")
+        # Security: prevent path traversal
+        if ".." in dev_dir or dev_dir.startswith("/") or dev_dir.startswith("\\"):
+            raise ValueError("dev_dir must be a simple subdirectory name (no path traversal)")
+        # Validate the directory exists
+        target = project_dir / dev_dir
+        if not target.is_dir():
+            raise ValueError(f"Directory does not exist: {target}")
+        config["dev_dir"] = dev_dir.strip()
+
+    _save_config(project_dir, config)
+    logger.info("Set dev_dir for %s: %s", project_dir.name, dev_dir)
 
 
 def get_dev_command(project_dir: Path) -> str | None:
@@ -467,9 +557,13 @@ def get_project_config(project_dir: Path) -> ProjectConfig:
     # Determine effective command
     effective_command = custom_command if custom_command else detected_command
 
+    # Get dev_dir
+    dev_dir = get_dev_dir(project_dir)
+
     return ProjectConfig(
         detected_type=detected_type,
         detected_command=detected_command,
         custom_command=custom_command,
         effective_command=effective_command,
+        dev_dir=dev_dir,
     )

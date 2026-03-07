@@ -78,6 +78,15 @@ import type {
   YTBatchVideoInput,
   YTBatchIngestResponse,
   YTBatchStatusResponse,
+  ApprovalRequest,
+  Checkpoint,
+  RollbackPreview,
+  ActionLogEntry,
+  ActionLogSummary,
+  ActionLogFilters,
+  PaginatedResult,
+  VerificationResult,
+  Commit,
 } from './types'
 
 const API_BASE = '/api'
@@ -697,7 +706,7 @@ export interface WorkspaceProviderDef {
   install_command: string
   auth_env_var: string
   supports_subscription: boolean
-  models: { id: string; name: string }[]
+  models: { id: string; name: string; supports_1m?: boolean }[]
   default_model: string
 }
 
@@ -727,7 +736,7 @@ export async function createWorkspaceConversation(
 
 export async function updateWorkspaceConversation(
   conversationId: number,
-  update: { title?: string; category?: string; pinned?: boolean; tags?: string; context_mode?: string; model?: string; effort?: string }
+  update: { title?: string; category?: string; working_directory?: string; pinned?: boolean; tags?: string; context_mode?: string; model?: string; effort?: string }
 ): Promise<WorkspaceConversation> {
   return fetchJSON(`/workspace/conversations/${conversationId}`, {
     method: 'PATCH',
@@ -1636,29 +1645,56 @@ export async function dunkstackGetTokenLog(): Promise<{ entries: Array<Record<st
   return fetchJSON('/dunkstack/tokens/log')
 }
 
+export async function dunkstackResetComms(projectName?: string): Promise<{ status: string; message: string }> {
+  const params = projectName ? `?project_name=${encodeURIComponent(projectName)}` : ''
+  return fetchJSON(`/dunkstack/comms/reset${params}`, { method: 'POST' })
+}
+
 export async function dunkstackReadBuildLog(): Promise<DunkStackCommsResponse> {
   return fetchJSON('/dunkstack/build-log')
 }
 
-// -- DunkStack Agent Control --
+// -- Coding Agent --
 
-export async function dunkstackStartAgent(projectName?: string, model?: string): Promise<{ status: string; pid?: number; model?: string; billing_mode?: string }> {
+export interface DunkStackAgentStatus {
+  status: string
+  project_name?: string
+  model_id?: string
+  context_window?: number
+  billing?: string
+  created_at?: string
+  error?: string | null
+}
+
+export async function dunkstackStartAgent(
+  projectName: string,
+  modelId: string = 'claude-opus-4-6',
+  contextWindow: number = 200000,
+): Promise<DunkStackAgentStatus & { startup_events?: Array<Record<string, unknown>>; response_events?: Array<Record<string, unknown>> }> {
   return fetchJSON('/dunkstack/agent/start', {
     method: 'POST',
-    body: JSON.stringify({ project_name: projectName, model }),
+    body: JSON.stringify({ project_name: projectName, model_id: modelId, context_window: contextWindow }),
   })
 }
 
-export async function dunkstackStopAgent(): Promise<{ status: string; pid?: number }> {
-  return fetchJSON('/dunkstack/agent/stop', { method: 'POST' })
+export async function dunkstackStopAgent(projectName: string): Promise<{ status: string }> {
+  return fetchJSON(`/dunkstack/agent/stop?project_name=${encodeURIComponent(projectName)}`, {
+    method: 'POST',
+  })
 }
 
-export async function dunkstackGetAgentStatus(): Promise<{ status: string; pid?: number; model_limit?: number; mode?: string }> {
-  return fetchJSON('/dunkstack/agent/status')
+export async function dunkstackGetAgentStatus(projectName: string): Promise<DunkStackAgentStatus> {
+  return fetchJSON(`/dunkstack/agent/status?project_name=${encodeURIComponent(projectName)}`)
 }
 
-export async function dunkstackGetAgentOutput(tail: number = 100): Promise<{ lines: string[]; total: number }> {
-  return fetchJSON(`/dunkstack/agent/output?tail=${tail}`)
+export async function dunkstackSendToAgent(
+  projectName: string,
+  message: string,
+): Promise<{ status: string; events: Array<Record<string, unknown>> }> {
+  return fetchJSON(`/dunkstack/agent/send?project_name=${encodeURIComponent(projectName)}`, {
+    method: 'POST',
+    body: JSON.stringify({ message }),
+  })
 }
 
 // ============================================================================
@@ -2219,7 +2255,7 @@ export async function stopSessionRecording(
 
 export async function batchIngestVideos(
   videos: YTBatchVideoInput[],
-  model: string = 'claude-sonnet-4-6',
+  model: string = 'claude-opus-4-6',
 ): Promise<YTBatchIngestResponse> {
   return fetchJSON('/yt-lab/batch-ingest', {
     method: 'POST',
@@ -2236,4 +2272,257 @@ export async function batchProcessVideos(batchId: string): Promise<{ batch_id: s
 
 export async function getBatchStatus(batchId: string): Promise<YTBatchStatusResponse> {
   return fetchJSON(`/yt-lab/batch-status/${encodeURIComponent(batchId)}`)
+}
+
+// ============================================================================
+// Factory Mode API
+// ============================================================================
+
+export interface FactoryStartRequest {
+  mode?: string
+  model?: string
+  yolo_mode?: boolean
+  auto_commit?: boolean
+  rate_limit_strategy?: string
+  start_phase?: number
+  factory_preset?: string
+  objective?: string
+}
+
+export interface FactoryPreset {
+  name: string
+  description: string
+  prompt: string
+}
+
+export async function factoryGetPresets(): Promise<{ presets: Record<string, FactoryPreset> }> {
+  return fetchJSON('/factory/presets')
+}
+
+export interface FactorySettingsRequest {
+  handoff_threshold?: number
+  handoff_template?: string
+}
+
+export interface FactoryResponse {
+  success: boolean
+  message: string
+  data?: Record<string, unknown>
+}
+
+export async function factoryStart(projectName: string, req: FactoryStartRequest = {}): Promise<FactoryResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/factory/start`, {
+    method: 'POST',
+    body: JSON.stringify(req),
+  })
+}
+
+export async function factoryStop(projectName: string): Promise<FactoryResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/factory/stop`, {
+    method: 'POST',
+  })
+}
+
+export async function factoryStatus(projectName: string): Promise<FactoryResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/factory/status`)
+}
+
+export async function factoryUpdateSettings(projectName: string, req: FactorySettingsRequest): Promise<FactoryResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/factory/settings`, {
+    method: 'PUT',
+    body: JSON.stringify(req),
+  })
+}
+
+export async function factoryResume(projectName: string): Promise<FactoryResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/factory/resume`, {
+    method: 'POST',
+  })
+}
+
+export async function factoryGetHandoffs(projectName: string): Promise<FactoryResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/factory/handoffs`)
+}
+
+// Phase PRD Document API
+// Manages per-phase PRD documents (1.md, 2.md, etc.) used by factory mode
+
+export async function factoryListPhaseDocuments(projectName: string): Promise<FactoryResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/factory/phases/documents`)
+}
+
+export async function factoryGetPhaseDocument(projectName: string, phaseNum: number): Promise<FactoryResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/factory/phases/documents/${phaseNum}`)
+}
+
+export async function factoryUpdatePhaseDocument(projectName: string, phaseNum: number, content: string): Promise<FactoryResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/factory/phases/documents/${phaseNum}`, {
+    method: 'PUT',
+    body: JSON.stringify({ content }),
+  })
+}
+
+export async function factoryDeletePhaseDocument(projectName: string, phaseNum: number): Promise<FactoryResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/factory/phases/documents/${phaseNum}`, {
+    method: 'DELETE',
+  })
+}
+
+/** Upload .md/.txt files as phase PRDs. Uses raw fetch (FormData sets its own Content-Type). */
+export async function factoryUploadPhaseDocuments(projectName: string, files: File[]): Promise<FactoryResponse> {
+  const formData = new FormData()
+  files.forEach(f => formData.append('files', f))
+  const res = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectName)}/factory/phases/documents/upload`, {
+    method: 'POST',
+    body: formData,
+  })
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: 'Upload failed' }))
+    throw new Error(error.detail || `HTTP ${res.status}`)
+  }
+  return res.json()
+}
+
+// ============================================================================
+// Orchestrator: Approvals API
+// ============================================================================
+
+export async function getApprovals(
+  projectName: string,
+  status?: string,
+  limit?: number
+): Promise<{ approvals: ApprovalRequest[] }> {
+  const params = new URLSearchParams()
+  if (status) params.set('status', status)
+  if (limit != null) params.set('limit', String(limit))
+  const qs = params.toString()
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/approvals${qs ? `?${qs}` : ''}`)
+}
+
+export async function createApproval(
+  projectName: string,
+  data: { agent_id: string; command: string; reason?: string }
+): Promise<ApprovalRequest> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/approvals`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function resolveApproval(
+  projectName: string,
+  id: number,
+  data: { status: 'approved' | 'denied'; resolved_by?: string }
+): Promise<ApprovalRequest> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/approvals/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  })
+}
+
+// ============================================================================
+// Orchestrator: Checkpoints API
+// ============================================================================
+
+export async function getCheckpoints(
+  projectName: string,
+  limit?: number
+): Promise<{ checkpoints: Checkpoint[] }> {
+  const qs = limit != null ? `?limit=${limit}` : ''
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/checkpoints${qs}`)
+}
+
+export async function createCheckpoint(
+  projectName: string,
+  label: string
+): Promise<Checkpoint> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/checkpoints`, {
+    method: 'POST',
+    body: JSON.stringify({ label }),
+  })
+}
+
+export async function getCheckpointDetail(
+  projectName: string,
+  id: number
+): Promise<Checkpoint> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/checkpoints/${id}`)
+}
+
+export async function rollbackCheckpoint(
+  projectName: string,
+  id: number,
+  confirm: boolean = false
+): Promise<RollbackPreview> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/checkpoints/${id}/rollback?confirm=${confirm}`, {
+    method: 'POST',
+  })
+}
+
+// ============================================================================
+// Orchestrator: Action Log API
+// ============================================================================
+
+export async function getActionLog(
+  projectName: string,
+  filters?: Partial<ActionLogFilters>
+): Promise<PaginatedResult<ActionLogEntry>> {
+  const params = new URLSearchParams()
+  if (filters?.session_id) params.set('session_id', filters.session_id)
+  if (filters?.tool_name) params.set('tool_name', filters.tool_name)
+  if (filters?.status) params.set('status', filters.status)
+  if (filters?.search) params.set('search', filters.search)
+  if (filters?.page != null) params.set('page', String(filters.page))
+  if (filters?.limit != null) params.set('limit', String(filters.limit))
+  const qs = params.toString()
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/actions${qs ? `?${qs}` : ''}`)
+}
+
+export async function getActionLogSummary(
+  projectName: string
+): Promise<ActionLogSummary> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/actions/summary`)
+}
+
+// ============================================================================
+// Orchestrator: Verifications API
+// ============================================================================
+
+export async function getFeatureVerifications(
+  projectName: string,
+  featureId: number,
+  limit?: number
+): Promise<{ verifications: VerificationResult[]; feature_id: number }> {
+  const qs = limit != null ? `?limit=${limit}` : ''
+  return fetchJSON(
+    `/projects/${encodeURIComponent(projectName)}/features/${featureId}/verifications${qs}`
+  )
+}
+
+export async function getAllVerifications(
+  projectName: string,
+  passed?: boolean,
+  limit?: number
+): Promise<{ verifications: VerificationResult[] }> {
+  const params = new URLSearchParams()
+  if (passed != null) params.set('passed', String(passed))
+  if (limit != null) params.set('limit', String(limit))
+  const qs = params.toString()
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/verifications${qs ? `?${qs}` : ''}`)
+}
+
+// ============================================================================
+// Orchestrator: Commits API
+// ============================================================================
+
+export async function getProjectCommits(
+  projectName: string,
+  featureId?: number,
+  limit?: number
+): Promise<{ commits: Commit[] }> {
+  const params = new URLSearchParams()
+  if (featureId != null) params.set('feature_id', String(featureId))
+  if (limit != null) params.set('limit', String(limit))
+  const qs = params.toString()
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/commits${qs ? `?${qs}` : ''}`)
 }

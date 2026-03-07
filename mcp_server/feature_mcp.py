@@ -23,13 +23,19 @@ Tools:
 - feature_get_blocked: Get features blocked by dependencies (with limit)
 - feature_get_graph: Get the dependency graph
 - feature_split: Split a large feature into two parts at a step boundary
+- checkpoint_create: Create a manual checkpoint with git SHA + feature snapshot
+- preview_start: Start the project dev server for visual verification
+- preview_stop: Stop the project dev server
+- preview_status: Get dev server status (running/stopped + URL)
 
 Note: Feature selection (which feature to work on) is handled by the
 orchestrator, not by agents. Agents receive pre-assigned feature IDs.
 """
 
 import json
+import logging
 import os
+import subprocess
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -42,7 +48,9 @@ from sqlalchemy import text
 # Add parent directory to path so we can import from api module
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from api.database import Feature, atomic_transaction, create_database
+from api.database import Checkpoint, Feature, VerificationResult, atomic_transaction, create_database
+
+logger = logging.getLogger(__name__)
 from api.dependency_resolver import (
     MAX_DEPENDENCIES_PER_FEATURE,
     compute_scheduling_scores,
@@ -132,6 +140,112 @@ def get_session():
     if _session_maker is None:
         raise RuntimeError("Database not initialized")
     return _session_maker()
+
+
+# Maximum output size for verification records (10KB)
+_MAX_VERIFICATION_OUTPUT = 10240
+
+
+def _record_verification(session, feature_id: int, passed: bool, output: str, test_type: str) -> None:
+    """Record a VerificationResult for a feature.
+
+    Creates a new verification record in the database. Output is truncated
+    to 10KB to prevent oversized entries.
+
+    Args:
+        session: Active SQLAlchemy session (will be committed by caller).
+        feature_id: The feature this verification belongs to.
+        passed: Whether the verification passed.
+        output: Raw test output text.
+        test_type: Type of verification (lint/typecheck/e2e/manual).
+    """
+    try:
+        truncated_output = output[:_MAX_VERIFICATION_OUTPUT] if output else ""
+        record = VerificationResult(
+            feature_id=feature_id,
+            session_id=os.environ.get("AUTOFORGE_SESSION_ID"),
+            agent_index=int(os.environ.get("AUTOFORGE_AGENT_INDEX", "0")),
+            test_type=test_type,
+            passed=passed,
+            output=truncated_output,
+        )
+        session.add(record)
+        session.commit()
+    except Exception:
+        # Don't let verification recording failure break the main operation
+        try:
+            session.rollback()
+        except Exception:
+            pass
+
+
+def _create_checkpoint_internal(label: str, session=None) -> dict | None:
+    """Create a checkpoint with the current git SHA and feature snapshot.
+
+    This is a best-effort operation — errors are logged but never
+    propagated to the caller, so it won't break feature operations.
+
+    Args:
+        label: Human-readable label for the checkpoint.
+        session: Optional active SQLAlchemy session.
+
+    Returns:
+        Checkpoint dict on success, None on failure.
+    """
+    try:
+        # Get current git SHA
+        git_sha = "unknown"
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=str(PROJECT_DIR),
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode == 0:
+                git_sha = result.stdout.strip()
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+            pass
+
+        def _do_create(db):
+            features = db.query(Feature).all()
+            snapshot = json.dumps([
+                {
+                    "id": f.id,
+                    "name": f.name,
+                    "passes": bool(f.passes) if f.passes is not None else False,
+                    "in_progress": bool(f.in_progress) if f.in_progress is not None else False,
+                }
+                for f in features
+            ])
+            checkpoint = Checkpoint(
+                session_id=os.environ.get("AUTOFORGE_SESSION_ID"),
+                label=label,
+                git_sha=git_sha,
+                feature_snapshot=snapshot,
+            )
+            db.add(checkpoint)
+            db.commit()
+            db.refresh(checkpoint)
+            return checkpoint.to_dict()
+
+        if session is not None:
+            return _do_create(session)
+
+        # Create our own session
+        db = get_session()
+        try:
+            return _do_create(db)
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
+
+    except Exception as e:
+        logger.warning("Failed to create checkpoint '%s': %s", label, e)
+        return None
 
 
 @mcp.tool()
@@ -232,15 +346,21 @@ def feature_get_summary(
 
 @mcp.tool()
 def feature_mark_passing(
-    feature_id: Annotated[int, Field(description="The ID of the feature to mark as passing", ge=1)]
+    feature_id: Annotated[int, Field(description="The ID of the feature to mark as passing", ge=1)],
+    verification_output: Annotated[str, Field(description="Test/verification output text (optional)", default="")] = "",
+    test_type: Annotated[str, Field(description="Type of test: lint/typecheck/e2e/manual (optional)", default="manual")] = "manual",
 ) -> str:
     """Mark a feature as passing after successful implementation.
 
     Updates the feature's passes field to true and clears the in_progress flag.
     Use this after you have implemented the feature and verified it works correctly.
 
+    Optionally records a VerificationResult if verification_output is provided.
+
     Args:
         feature_id: The ID of the feature to mark as passing
+        verification_output: Optional test output text to record
+        test_type: Type of verification (lint/typecheck/e2e/manual)
 
     Returns:
         JSON with success confirmation: {success, feature_id, name}
@@ -264,9 +384,18 @@ def feature_mark_passing(
                 return json.dumps({"error": f"Feature with ID {feature_id} is already passing"})
             return json.dumps({"error": "Failed to mark feature passing for unknown reason"})
 
+        # Record verification result if output was provided
+        if verification_output:
+            _record_verification(session, feature_id, True, verification_output, test_type)
+
         # Get the feature name for the response
         feature = session.query(Feature).filter(Feature.id == feature_id).first()
-        return json.dumps({"success": True, "feature_id": feature_id, "name": feature.name})
+        feature_name = feature.name if feature else f"feature-{feature_id}"
+
+        # Auto-create checkpoint on feature completion (best-effort, non-blocking)
+        _create_checkpoint_internal(f"feature-{feature_id}-complete")
+
+        return json.dumps({"success": True, "feature_id": feature_id, "name": feature_name})
     except Exception as e:
         session.rollback()
         return json.dumps({"error": f"Failed to mark feature passing: {str(e)}"})
@@ -276,13 +405,17 @@ def feature_mark_passing(
 
 @mcp.tool()
 def feature_mark_failing(
-    feature_id: Annotated[int, Field(description="The ID of the feature to mark as failing", ge=1)]
+    feature_id: Annotated[int, Field(description="The ID of the feature to mark as failing", ge=1)],
+    verification_output: Annotated[str, Field(description="Test/verification output text (optional)", default="")] = "",
+    test_type: Annotated[str, Field(description="Type of test: lint/typecheck/e2e/manual (optional)", default="manual")] = "manual",
 ) -> str:
     """Mark a feature as failing after finding a regression.
 
     Updates the feature's passes field to false and clears the in_progress flag.
     Use this when a testing agent discovers that a previously-passing feature
     no longer works correctly (regression detected).
+
+    Optionally records a VerificationResult if verification_output is provided.
 
     After marking as failing, you should:
     1. Investigate the root cause
@@ -292,6 +425,8 @@ def feature_mark_failing(
 
     Args:
         feature_id: The ID of the feature to mark as failing
+        verification_output: Optional test output text to record
+        test_type: Type of verification (lint/typecheck/e2e/manual)
 
     Returns:
         JSON with the updated feature details, or error if not found.
@@ -311,6 +446,10 @@ def feature_mark_failing(
             WHERE id = :id
         """), {"id": feature_id})
         session.commit()
+
+        # Record verification result if output was provided
+        if verification_output:
+            _record_verification(session, feature_id, False, verification_output, test_type)
 
         # Refresh to get updated state
         session.refresh(feature)
@@ -1194,6 +1333,335 @@ def ask_user(
             return json.dumps({"error": f"Question at index {i} must have 2-4 options"})
 
     return "Questions presented to the user. Their response will arrive as your next message."
+
+
+@mcp.tool()
+def factory_write_handoff(
+    completed_summary: Annotated[str, Field(min_length=1, description="What you accomplished this session")],
+    next_phase_summary: Annotated[str, Field(min_length=1, description="What the next agent should work on")],
+    features_completed: Annotated[list[int] | None, Field(description="List of feature IDs you completed")] = None,
+    files_created: Annotated[list[str] | None, Field(description="List of new files you created")] = None,
+    files_modified: Annotated[list[str] | None, Field(description="List of existing files you modified")] = None,
+    priority_tasks: Annotated[list[str] | None, Field(description="Ordered list of tasks for the next agent")] = None,
+    feature_ids_to_work: Annotated[list[int] | None, Field(description="Feature IDs for the next agent to implement")] = None,
+    notes: Annotated[str | None, Field(description="Any important context for the next agent")] = None,
+    current_bugs: Annotated[list[dict] | None, Field(description="List of known bugs [{file, line, description, severity}]")] = None,
+    dev_server_url: Annotated[str | None, Field(description="URL of the running dev server (if any)")] = None,
+    dev_server_status: Annotated[str | None, Field(description="Status of dev server (running/stopped/was_running)")] = None,
+    context_usage_percent: Annotated[int | None, Field(description="Your estimated context usage percentage")] = None,
+    context_reason: Annotated[str | None, Field(description="Why you're handing off (approaching_budget, rate_limited, completed, etc.)")] = None,
+) -> str:
+    """Write a handoff file for the next agent session.
+
+    Call this when you are approaching your context budget or when you have
+    completed all assigned work for this phase. The handoff file tells AutoForge
+    what you accomplished, what's left to do, and any issues the next agent
+    should know about. AutoForge will automatically read this file and start
+    the next agent session.
+
+    Args:
+        completed_summary: What you accomplished this session
+        next_phase_summary: What the next agent should work on
+        features_completed: List of feature IDs you completed
+        files_created: List of new files you created
+        files_modified: List of existing files you modified
+        priority_tasks: Ordered list of tasks for the next agent
+        feature_ids_to_work: Feature IDs for the next agent to implement
+        notes: Any important context for the next agent
+        current_bugs: List of known bugs [{file, line, description, severity}]
+        dev_server_url: URL of the running dev server (if any)
+        dev_server_status: Status of dev server (running/stopped/was_running)
+        context_usage_percent: Your estimated context usage percentage
+        context_reason: Why you're handing off (approaching_budget, rate_limited, completed, etc.)
+
+    Returns:
+        JSON with status, path, and confirmation message.
+    """
+    from datetime import datetime, timezone
+
+    handoff_data = {
+        "version": 1,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "completed": {
+            "summary": completed_summary,
+            "features_completed": features_completed or [],
+            "files_created": files_created or [],
+            "files_modified": files_modified or [],
+        },
+        "next_phase": {
+            "summary": next_phase_summary,
+            "priority_tasks": priority_tasks or [],
+            "feature_ids_to_work": feature_ids_to_work or [],
+            "notes": notes or "",
+        },
+        "current_bugs": current_bugs or [],
+        "dev_server": {
+            "url": dev_server_url,
+            "status": dev_server_status or "unknown",
+        },
+        "context_usage": {
+            "estimated_percent": context_usage_percent,
+            "reason": context_reason or "approaching_budget",
+        },
+    }
+
+    try:
+        handoff_path = PROJECT_DIR / ".autoforge" / "handoff.json"
+        handoff_path.parent.mkdir(parents=True, exist_ok=True)
+        handoff_path.write_text(json.dumps(handoff_data, indent=2), encoding="utf-8")
+
+        return json.dumps({
+            "status": "written",
+            "path": str(handoff_path),
+            "message": "Handoff file written. AutoForge will read this when your session ends and auto-start the next agent."
+        })
+    except Exception as e:
+        return json.dumps({"error": f"Failed to write handoff file: {str(e)}"})
+
+
+# ── Preview / Dev Server MCP Tools ──────────────────────────────────────────
+# Lightweight dev server management so agents can start a preview server,
+# screenshot pages, and verify their own UI work.  Subprocess is managed
+# inside this MCP process — no REST round-trip to the FastAPI server.
+
+import re as _re
+import shlex as _shlex
+import subprocess as _subprocess
+import threading as _threading
+import time as _time
+
+_preview_process: _subprocess.Popen | None = None
+_preview_url: str | None = None
+_preview_lock = _threading.Lock()
+
+_URL_PATTERNS = [
+    r'https?://(?:localhost|127\.0\.0\.1):\d+(?:/[^\s]*)?',
+    r'https?://\[::1\]:\d+(?:/[^\s]*)?',
+    r'https?://0\.0\.0\.0:\d+(?:/[^\s]*)?',
+]
+
+
+def _detect_url(line: str) -> str | None:
+    for pat in _URL_PATTERNS:
+        m = _re.search(pat, line)
+        if m:
+            return m.group(0)
+    return None
+
+
+def _get_dev_command() -> str | None:
+    """Read the effective dev command from project config (same logic as project_config.py)."""
+    config_path = PROJECT_DIR / ".autoforge" / "config.json"
+    if not config_path.exists():
+        config_path = PROJECT_DIR / ".autocoder" / "config.json"
+    if config_path.exists():
+        try:
+            data = json.loads(config_path.read_text(encoding="utf-8"))
+            cmd = data.get("dev_command")
+            if isinstance(cmd, str) and cmd.strip():
+                return cmd.strip()
+        except Exception:
+            pass
+    # Auto-detect: check for common patterns
+    if (PROJECT_DIR / "package.json").exists():
+        return "npm run dev"
+    if (PROJECT_DIR / "manage.py").exists():
+        return "python manage.py runserver"
+    return None
+
+
+@mcp.tool()
+def checkpoint_create(
+    label: Annotated[str, Field(min_length=1, max_length=255, description="Human-readable label for this checkpoint")],
+) -> str:
+    """Create a manual checkpoint with the current git SHA and feature status snapshot.
+
+    Checkpoints record the project state at a point in time, enabling
+    rollback if something goes wrong. Each checkpoint stores:
+    - The current git commit SHA
+    - A JSON snapshot of all feature statuses (id, name, passes, in_progress)
+
+    Use descriptive labels like 'before-refactor' or 'all-auth-features-done'.
+
+    Args:
+        label: A descriptive label for this checkpoint.
+
+    Returns:
+        JSON with the created checkpoint details, or error message.
+    """
+    result = _create_checkpoint_internal(label)
+    if result is None:
+        return json.dumps({"error": "Failed to create checkpoint"})
+    return json.dumps({"success": True, "checkpoint": result})
+
+
+@mcp.tool()
+def preview_start(
+    command: Annotated[str | None, Field(description="Dev server command (e.g. 'npm run dev'). Leave empty to auto-detect.")] = None,
+) -> str:
+    """Start the project's dev server so you can preview your work.
+
+    Once the server is running, use Playwright MCP tools (screenshot, etc.)
+    to verify your UI changes visually.
+
+    Args:
+        command: Dev server command. Defaults to auto-detected command.
+
+    Returns:
+        JSON with status, url (if detected), and message.
+    """
+    global _preview_process, _preview_url
+
+    with _preview_lock:
+        # Already running?
+        if _preview_process is not None and _preview_process.poll() is None:
+            return json.dumps({
+                "status": "already_running",
+                "url": _preview_url,
+                "message": f"Dev server already running (PID {_preview_process.pid}). URL: {_preview_url or 'detecting...'}",
+            })
+
+        cmd = command or _get_dev_command()
+        if not cmd:
+            return json.dumps({
+                "error": "No dev command available. Pass a command or configure one in .autoforge/config.json"
+            })
+
+        argv = _shlex.split(cmd, posix=(sys.platform != "win32"))
+        if not argv:
+            return json.dumps({"error": "Empty command"})
+
+        # Windows: use .cmd shims for Node package managers
+        base = Path(argv[0]).name.lower()
+        if sys.platform == "win32" and base in {"npm", "pnpm", "yarn", "npx"} and not argv[0].lower().endswith(".cmd"):
+            argv[0] = argv[0] + ".cmd"
+
+        try:
+            popen_kwargs: dict = {
+                "stdin": _subprocess.DEVNULL,
+                "stdout": _subprocess.PIPE,
+                "stderr": _subprocess.STDOUT,
+                "cwd": str(PROJECT_DIR),
+            }
+            if sys.platform == "win32":
+                popen_kwargs["creationflags"] = _subprocess.CREATE_NO_WINDOW
+
+            _preview_process = _subprocess.Popen(argv, **popen_kwargs)
+            _preview_url = None
+
+            # Read output in background thread to detect URL
+            def _reader():
+                global _preview_url
+                proc = _preview_process
+                if not proc or not proc.stdout:
+                    return
+                try:
+                    for raw_line in proc.stdout:
+                        decoded = raw_line.decode("utf-8", errors="replace").rstrip()
+                        if not _preview_url:
+                            url = _detect_url(decoded)
+                            if url:
+                                _preview_url = url
+                except Exception:
+                    pass
+
+            t = _threading.Thread(target=_reader, daemon=True)
+            t.start()
+
+            # Wait briefly for URL detection
+            for _ in range(40):  # 4 seconds max
+                _time.sleep(0.1)
+                if _preview_url:
+                    break
+
+            return json.dumps({
+                "status": "started",
+                "pid": _preview_process.pid,
+                "url": _preview_url,
+                "command": cmd,
+                "message": f"Dev server started (PID {_preview_process.pid}). URL: {_preview_url or 'still starting...'}",
+            })
+
+        except FileNotFoundError:
+            _preview_process = None
+            return json.dumps({"error": f"Command not found: {argv[0]}"})
+        except Exception as e:
+            _preview_process = None
+            return json.dumps({"error": f"Failed to start dev server: {e}"})
+
+
+@mcp.tool()
+def preview_stop() -> str:
+    """Stop the project's dev server.
+
+    Returns:
+        JSON with status and message.
+    """
+    global _preview_process, _preview_url
+
+    with _preview_lock:
+        if _preview_process is None or _preview_process.poll() is not None:
+            _preview_process = None
+            _preview_url = None
+            return json.dumps({"status": "not_running", "message": "Dev server is not running."})
+
+        try:
+            import psutil
+            proc = psutil.Process(_preview_process.pid)
+            children = proc.children(recursive=True)
+            for child in children:
+                try:
+                    child.terminate()
+                except Exception:
+                    pass
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except psutil.TimeoutExpired:
+                for child in children:
+                    try:
+                        child.kill()
+                    except Exception:
+                        pass
+                proc.kill()
+        except Exception:
+            try:
+                _preview_process.terminate()
+                _preview_process.wait(timeout=3)
+            except Exception:
+                try:
+                    _preview_process.kill()
+                except Exception:
+                    pass
+
+        pid = _preview_process.pid
+        _preview_process = None
+        _preview_url = None
+        return json.dumps({"status": "stopped", "message": f"Dev server stopped (was PID {pid})."})
+
+
+@mcp.tool()
+def preview_status() -> str:
+    """Get the current status of the dev server.
+
+    Returns:
+        JSON with status (running/stopped), url, and pid.
+    """
+    global _preview_process, _preview_url
+
+    with _preview_lock:
+        if _preview_process is not None and _preview_process.poll() is None:
+            return json.dumps({
+                "status": "running",
+                "pid": _preview_process.pid,
+                "url": _preview_url,
+            })
+        else:
+            # Clean up if process died
+            if _preview_process is not None:
+                _preview_process = None
+                _preview_url = None
+            return json.dumps({"status": "stopped", "pid": None, "url": None})
 
 
 if __name__ == "__main__":

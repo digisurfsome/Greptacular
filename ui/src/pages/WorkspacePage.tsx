@@ -20,15 +20,15 @@ import { WorkspaceChat } from '../components/workspace/WorkspaceChat'
 import { WorkspaceLibrary } from '../components/workspace/WorkspaceLibrary'
 import { WorkspaceKeyboardHelp } from '../components/workspace/WorkspaceKeyboardHelp'
 import { WorkspaceUserGuide } from '../components/workspace/WorkspaceUserGuide'
-import { RepoSelector } from '../components/workspace/RepoSelector'
 import { PassoffEditor, type PassoffSection } from '../components/workspace/PassoffEditor'
 import { SwarmPanel } from '../components/workspace/SwarmPanel'
 import { CIStatusWidget } from '../components/workspace/CIStatusWidget'
 import { GitActivityWidget } from '../components/GitActivityWidget'
 import { useWorkspaceKeyboardShortcuts } from '../hooks/useWorkspaceKeyboardShortcuts'
 import { exportConversationMarkdown, getSettings } from '../lib/api'
-import type { WalkieTalkieLogEntry } from '../lib/types'
+import type { WalkieTalkieLogEntry, WorkspaceProvider } from '../lib/types'
 import { CountdownTimerBar } from '../components/workspace/CountdownTimerBar'
+import { FactoryPanel } from '../components/factory/FactoryPanel'
 import {
   ArrowLeft,
   ChevronRight,
@@ -41,6 +41,8 @@ import {
   Zap,
   Network,
   LayoutDashboard,
+  Menu,
+  Factory,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -72,11 +74,13 @@ export function WorkspacePage(): React.JSX.Element {
   const [activeConversationId, setActiveConversationId] = useState<number | null>(null)
   const [workingDirectory, setWorkingDirectory] = useState<string | null>(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const [libraryCollapsed, setLibraryCollapsed] = useState(false)
   const [showKeyboardHelp, setShowKeyboardHelp] = useState(false)
   const [showUserGuide, setShowUserGuide] = useState(false)
   const [splitView, setSplitView] = useState(false)
   const [showSwarm, setShowSwarm] = useState(false)
+  const [showFactory, setShowFactory] = useState(false)
 
   // Three-panel state (split view)
   const [prdConversationId, setPrdConversationId] = useState<number | null>(null)
@@ -101,6 +105,14 @@ export function WorkspacePage(): React.JSX.Element {
     try { return localStorage.getItem('workspace-panel-coder') === 'collapsed' } catch { return false }
   })
 
+  // Active provider (claude, codex, gemini) — persisted to localStorage
+  const [activeProvider, setActiveProvider] = useState<WorkspaceProvider>(() => {
+    try { return (localStorage.getItem('workspace-provider') as WorkspaceProvider) || 'claude' } catch { return 'claude' }
+  })
+
+  // Pending provider switch — shown in confirmation dialog when switching with an active conversation
+  const [pendingProviderSwitch, setPendingProviderSwitch] = useState<WorkspaceProvider | null>(null)
+
   // Persist panel collapse state to localStorage
   useEffect(() => {
     try {
@@ -110,8 +122,9 @@ export function WorkspacePage(): React.JSX.Element {
       localStorage.setItem('workspace-panel-research-model', researchModel)
       localStorage.setItem('workspace-panel-prd-model', prdModel)
       localStorage.setItem('workspace-panel-coder-model', coderModel)
+      localStorage.setItem('workspace-provider', activeProvider)
     } catch { /* ignore quota or security errors */ }
-  }, [researchCollapsed, prdCollapsed, coderCollapsed, researchModel, prdModel, coderModel])
+  }, [researchCollapsed, prdCollapsed, coderCollapsed, researchModel, prdModel, coderModel, activeProvider])
 
   // Passoff editor state — tab alongside Chat in PRD panel
   const [passoffSections, setPassoffSections] = useState<PassoffSection[]>([])
@@ -171,13 +184,16 @@ export function WorkspacePage(): React.JSX.Element {
   const [pendingEffort, setPendingEffort] = useState<'low' | 'medium' | 'high'>('high')
   const [newChatKey, setNewChatKey] = useState(0)
 
-  const handleNewChat = useCallback((model: string, contextMode: '1m' | '200k', effort: 'low' | 'medium' | 'high' = 'high') => {
+  const handleNewChat = useCallback((model: string, contextMode: '1m' | '200k', effort: 'low' | 'medium' | 'high' = 'high', provider?: WorkspaceProvider) => {
+    if (provider && provider !== activeProvider) {
+      setActiveProvider(provider)
+    }
     setPendingModel(model)
     setPendingContextMode(contextMode)
     setPendingEffort(effort)
     setNewChatKey(k => k + 1)
     setActiveConversationId(null)
-  }, [])
+  }, [activeProvider])
 
   /** Clear active conversation when it's deleted so the chat panel disconnects. */
   const handleDeleteConversation = useCallback((deletedId: number) => {
@@ -201,6 +217,7 @@ export function WorkspacePage(): React.JSX.Element {
 
   const handleSelectConversation = useCallback((id: number) => {
     setActiveConversationId(id)
+    setMobileSidebarOpen(false)
   }, [])
 
   const handleConversationCreated = useCallback((id: number) => {
@@ -296,9 +313,28 @@ export function WorkspacePage(): React.JSX.Element {
 
   return (
     <div className="h-screen flex flex-col bg-background">
-      {/* Breadcrumb navigation bar */}
-      <div className="flex items-center h-10 px-3 border-b border-border bg-card shrink-0">
+      {/* Breadcrumb navigation bar — wraps on narrow screens */}
+      <div className="flex flex-wrap items-center min-h-10 px-3 py-1 border-b border-border bg-card shrink-0 gap-y-1">
         <nav className="flex items-center gap-1 text-sm" aria-label="Breadcrumb">
+          {/* Sidebar toggle -- visible on mobile always, visible on desktop when sidebar is collapsed */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className={`h-7 px-2 text-muted-foreground hover:text-foreground ${sidebarCollapsed ? '' : 'md:hidden'}`}
+            onClick={() => {
+              // On mobile (below md), toggle the mobile drawer overlay
+              // On desktop (md+), toggle the sidebar collapse state
+              const isMobile = window.innerWidth < 768
+              if (isMobile) {
+                setMobileSidebarOpen(v => !v)
+              } else {
+                setSidebarCollapsed(v => !v)
+              }
+            }}
+            title="Toggle sidebar"
+          >
+            <Menu size={16} />
+          </Button>
           <Button
             variant="ghost"
             size="sm"
@@ -312,22 +348,21 @@ export function WorkspacePage(): React.JSX.Element {
           <span className="text-xs font-semibold text-foreground">
             Workspace
           </span>
-          <ChevronRight size={12} className="text-muted-foreground" />
-          <RepoSelector
-            onSelect={handleRepoSelect}
-            selectedPath={workingDirectory}
-          />
         </nav>
 
-        <div className="ml-auto flex items-center gap-1">
-          {/* Git Activity Widget — compact commit tracker */}
-          <GitActivityWidget
-            workingDirectory={workingDirectory}
-          />
-          <div className="w-px h-5 bg-border mx-1" />
-          {/* CI Pipeline Status — non-intrusive blinking indicator */}
-          <CIStatusWidget workingDirectory={workingDirectory} />
-          <div className="w-px h-5 bg-border mx-1" />
+        <div className="ml-auto flex flex-wrap items-center gap-1">
+          {/* Git Activity Widget — hidden on small screens to save space */}
+          <div className="hidden md:flex items-center">
+            <GitActivityWidget
+              workingDirectory={workingDirectory}
+            />
+            <div className="w-px h-5 bg-border mx-1" />
+          </div>
+          {/* CI Pipeline Status — hidden on small screens */}
+          <div className="hidden md:flex items-center">
+            <CIStatusWidget workingDirectory={workingDirectory} />
+            <div className="w-px h-5 bg-border mx-1" />
+          </div>
           <Button
             variant={splitView ? 'default' : 'ghost'}
             size="sm"
@@ -339,7 +374,7 @@ export function WorkspacePage(): React.JSX.Element {
             title="Three-panel mode: Research + PRD Builder + Coder"
           >
             <Columns2 size={14} />
-            <span className="text-[10px]">Split</span>
+            <span className="hidden sm:inline text-[10px]">Split</span>
           </Button>
           <Button
             variant={showSwarm ? 'default' : 'ghost'}
@@ -352,7 +387,20 @@ export function WorkspacePage(): React.JSX.Element {
             title="Swarm: concurrent autonomous agents with shared workspace"
           >
             <Network size={14} />
-            <span className="text-[10px]">Swarm</span>
+            <span className="hidden sm:inline text-[10px]">Swarm</span>
+          </Button>
+          <Button
+            variant={showFactory ? 'default' : 'ghost'}
+            size="sm"
+            className={`h-7 px-2 gap-1.5 ${showFactory
+              ? 'bg-amber-600 text-white hover:bg-amber-700'
+              : 'text-muted-foreground hover:text-foreground'
+            }`}
+            onClick={() => setShowFactory(v => !v)}
+            title="Factory Mode: autonomous phased feature pipeline"
+          >
+            <Factory size={14} />
+            <span className="hidden sm:inline text-[10px]">Factory</span>
           </Button>
           {splitView && (
             <Button
@@ -366,11 +414,12 @@ export function WorkspacePage(): React.JSX.Element {
               title="Auto-forward: when PRD Builder finishes, auto-send to Coder"
             >
               <Zap size={14} />
-              <span className="text-[10px]">Auto</span>
+              <span className="hidden sm:inline text-[10px]">Auto</span>
             </Button>
           )}
+          {/* Split-view panel focus buttons — hidden on mobile, advanced controls */}
           {splitView && (
-            <>
+            <div className="hidden md:flex items-center">
               <div className="w-px h-5 bg-border mx-1" />
               <Button
                 variant="ghost"
@@ -408,7 +457,7 @@ export function WorkspacePage(): React.JSX.Element {
               >
                 All
               </Button>
-            </>
+            </div>
           )}
           <Button
             variant="ghost"
@@ -418,8 +467,40 @@ export function WorkspacePage(): React.JSX.Element {
             title="Agent Role Library — blueprints for terminal agent roles"
           >
             <Bot size={14} />
-            <span className="text-[10px]">Roles</span>
+            <span className="hidden sm:inline text-[10px]">Roles</span>
           </Button>
+          {/* Provider selector */}
+          <div className="flex rounded-full border border-border overflow-hidden shadow-sm">
+            {(['claude', 'codex', 'gemini'] as const).map((p, idx) => {
+              const isActive = activeProvider === p
+              const colors: Record<string, string> = {
+                claude: 'bg-blue-600 text-white border-blue-400',
+                codex: 'bg-emerald-600 text-white border-emerald-400',
+                gemini: 'bg-violet-600 text-white border-violet-400',
+              }
+              return (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => {
+                    if (p === activeProvider) return
+                    if (activeConversationId !== null) {
+                      setPendingProviderSwitch(p)
+                    } else {
+                      setActiveProvider(p)
+                    }
+                  }}
+                  className={`px-2.5 py-1 text-[10px] font-semibold whitespace-nowrap transition-all duration-150 ${
+                    isActive
+                      ? colors[p] + ' shadow-inner'
+                      : 'bg-card text-muted-foreground hover:bg-muted hover:text-foreground'
+                  } ${idx === 0 ? 'rounded-l-full' : ''} ${idx === 2 ? 'rounded-r-full' : 'border-r border-border'}`}
+                >
+                  {p.charAt(0).toUpperCase() + p.slice(1)}
+                </button>
+              )
+            })}
+          </div>
           <Button
             variant="ghost"
             size="sm"
@@ -428,7 +509,7 @@ export function WorkspacePage(): React.JSX.Element {
             title="Multi-session Dashboard — run Claude, Codex, and Gemini side by side"
           >
             <LayoutDashboard size={14} />
-            <span className="text-[10px]">Dashboard</span>
+            <span className="hidden sm:inline text-[10px]">Dashboard</span>
           </Button>
           <Button
             variant="ghost"
@@ -438,7 +519,7 @@ export function WorkspacePage(): React.JSX.Element {
             title="User guide & notes"
           >
             <BookOpen size={14} />
-            <span className="text-[10px]">Guide</span>
+            <span className="hidden sm:inline text-[10px]">Guide</span>
           </Button>
           <Button
             variant="ghost"
@@ -461,23 +542,60 @@ export function WorkspacePage(): React.JSX.Element {
         onTimeout={() => setTimerActive(false)}
       />
 
+      {/* Factory Mode panel -- collapsible, between timer and main content */}
+      {showFactory && (
+        <div className="px-3 py-2 border-b border-border bg-card/50 shrink-0">
+          <FactoryPanel
+            projectName={workingDirectory}
+            model={pendingModel}
+            yoloMode={false}
+          />
+        </div>
+      )}
+
       {/* Main content area: sidebar | chat(s) | library */}
       <div className="flex flex-1 overflow-hidden">
-        <WorkspaceSidebar
-          activeConversationId={activeConversationId}
-          streamingIds={streamingIds}
-          collapsed={sidebarCollapsed}
-          onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
-          onNewChat={handleNewChat}
-          onSelectConversation={handleSelectConversation}
-          onDeleteConversation={handleDeleteConversation}
-          selectedWorkingDirectory={workingDirectory}
-          onWorkingDirectoryChange={handleRepoSelect}
-          modelPresetIndex={modelPresetIndex}
-          onModelPresetChange={handleModelPresetChange}
-          effortLevel={pendingEffort}
-          onEffortChange={setPendingEffort}
-        />
+        {/* Mobile backdrop -- darkens the screen when the sidebar drawer is open */}
+        {mobileSidebarOpen && (
+          <div
+            className="fixed inset-0 bg-black/40 z-40 md:hidden"
+            onClick={() => setMobileSidebarOpen(false)}
+          />
+        )}
+
+        {/* Sidebar: fixed overlay on mobile, normal column on desktop */}
+        <div
+          className={`
+            shrink-0 transition-all duration-200
+            md:relative md:flex md:flex-col
+            ${mobileSidebarOpen
+              ? 'fixed inset-y-0 left-0 z-50 flex flex-col bg-card shadow-xl w-72'
+              : 'hidden md:flex'
+            }
+            ${sidebarCollapsed && !mobileSidebarOpen ? 'md:w-0 md:overflow-hidden' : ''}
+          `}
+        >
+          <WorkspaceSidebar
+            activeConversationId={activeConversationId}
+            streamingIds={streamingIds}
+            collapsed={sidebarCollapsed && !mobileSidebarOpen}
+            onToggleCollapse={() => {
+              setSidebarCollapsed(!sidebarCollapsed)
+              // On mobile, also close the drawer when collapsing via the sidebar button
+              setMobileSidebarOpen(false)
+            }}
+            onNewChat={handleNewChat}
+            onSelectConversation={handleSelectConversation}
+            onDeleteConversation={handleDeleteConversation}
+            selectedWorkingDirectory={workingDirectory}
+            onWorkingDirectoryChange={handleRepoSelect}
+            modelPresetIndex={modelPresetIndex}
+            onModelPresetChange={handleModelPresetChange}
+            effortLevel={pendingEffort}
+            onEffortChange={setPendingEffort}
+            activeProvider={activeProvider}
+          />
+        </div>
 
         {splitView ? (
           /* Three-panel split view with accordion collapse */
@@ -514,6 +632,9 @@ export function WorkspacePage(): React.JSX.Element {
                 onStreamingChange={(streaming) => {
                   if (activeConversationId != null) {
                     setStreamingIds(prev => {
+                      const has = prev.has(activeConversationId)
+                      if (streaming && has) return prev
+                      if (!streaming && !has) return prev
                       const next = new Set(prev)
                       if (streaming) next.add(activeConversationId)
                       else next.delete(activeConversationId)
@@ -601,6 +722,9 @@ export function WorkspacePage(): React.JSX.Element {
                   onStreamingChange={(streaming) => {
                     if (prdConversationId != null) {
                       setStreamingIds(prev => {
+                        const has = prev.has(prdConversationId)
+                        if (streaming && has) return prev
+                        if (!streaming && !has) return prev
                         const next = new Set(prev)
                         if (streaming) next.add(prdConversationId)
                         else next.delete(prdConversationId)
@@ -643,6 +767,9 @@ export function WorkspacePage(): React.JSX.Element {
                 onStreamingChange={(streaming) => {
                   if (coderConversationId != null) {
                     setStreamingIds(prev => {
+                      const has = prev.has(coderConversationId)
+                      if (streaming && has) return prev
+                      if (!streaming && !has) return prev
                       const next = new Set(prev)
                       if (streaming) next.add(coderConversationId)
                       else next.delete(coderConversationId)
@@ -667,10 +794,14 @@ export function WorkspacePage(): React.JSX.Element {
               pendingModel={pendingModel}
               pendingContextMode={pendingContextMode}
               pendingEffort={pendingEffort}
+              provider={activeProvider}
               newChatKey={newChatKey}
               onStreamingChange={(streaming) => {
                 if (activeConversationId != null) {
                   setStreamingIds(prev => {
+                    const has = prev.has(activeConversationId)
+                    if (streaming && has) return prev
+                    if (!streaming && !has) return prev
                     const next = new Set(prev)
                     if (streaming) next.add(activeConversationId)
                     else next.delete(activeConversationId)
@@ -682,9 +813,9 @@ export function WorkspacePage(): React.JSX.Element {
           </div>
         )}
 
-        {/* Swarm panel (slides in from right, before library) */}
+        {/* Swarm panel (slides in from right, before library) -- hidden on mobile */}
         {showSwarm && (
-          <div className="w-80 border-l border-border shrink-0">
+          <div className="hidden md:block w-80 border-l border-border shrink-0">
             <SwarmPanel
               workingDirectory={workingDirectory}
               onClose={() => setShowSwarm(false)}
@@ -692,12 +823,15 @@ export function WorkspacePage(): React.JSX.Element {
           </div>
         )}
 
-        <WorkspaceLibrary
-          conversationId={activeConversationId}
-          collapsed={libraryCollapsed}
-          onToggleCollapse={() => setLibraryCollapsed(!libraryCollapsed)}
-          walkieTalkieLog={walkieTalkieLog}
-        />
+        {/* Library panel -- hidden on mobile to give chat full width */}
+        <div className="hidden md:flex">
+          <WorkspaceLibrary
+            conversationId={activeConversationId}
+            collapsed={libraryCollapsed}
+            onToggleCollapse={() => setLibraryCollapsed(!libraryCollapsed)}
+            walkieTalkieLog={walkieTalkieLog}
+          />
+        </div>
       </div>
 
       {/* Keyboard shortcuts help modal */}
@@ -711,6 +845,40 @@ export function WorkspacePage(): React.JSX.Element {
         isOpen={showUserGuide}
         onClose={() => setShowUserGuide(false)}
       />
+
+      {/* Provider switch confirmation dialog */}
+      {pendingProviderSwitch && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-card border border-border rounded-lg shadow-lg p-6 max-w-sm w-full mx-4">
+            <h3 className="text-sm font-semibold text-foreground mb-2">
+              Switch to {pendingProviderSwitch.charAt(0).toUpperCase() + pendingProviderSwitch.slice(1)}?
+            </h3>
+            <p className="text-xs text-muted-foreground mb-4">
+              This will change the active provider for new conversations. Your current chat will keep its original provider.
+            </p>
+            <div className="flex items-center justify-end gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => setPendingProviderSwitch(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => {
+                  setActiveProvider(pendingProviderSwitch)
+                  setPendingProviderSwitch(null)
+                }}
+              >
+                Switch
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   )

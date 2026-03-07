@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "autoforge-ui",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [".claude/start-preview.cjs", "--host", "0.0.0.0", "--port", "5173"],
+      "port": 5173
+    },
+    {
+      "name": "autoforge-backend",
+      "runtimeExecutable": "venv/Scripts/python.exe",
+      "runtimeArgs": ["start_ui.py", "--port", "8889"],
+      "port": 8889
+    }
+  ]
+}

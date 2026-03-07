@@ -29,6 +29,8 @@ import {
   ChevronDown,
   ScrollText,
   BookOpen,
+  Eye,
+  EyeOff,
 } from 'lucide-react'
 import { useWorkspaceChat } from '@/hooks/useWorkspaceChat'
 import { useWorkspaceConversation, useWorkspaceProviders } from '@/hooks/useWorkspaceConversations'
@@ -236,6 +238,9 @@ export function WorkspaceChat({
   const [showWalkieTalkieSettings, setShowWalkieTalkieSettings] = useState(false)
   const [isSavingSettings, setIsSavingSettings] = useState(false)
 
+  // Browser visibility toggle (headless vs visible) — default visible so user can peek anytime
+  const [playwrightHeadless, setPlaywrightHeadless] = useState(false)
+
   // Context mode: "1m" (1,000,000 tokens with beta) or "200k" (200,000 tokens standard).
   // When fixedContextMode is set (split-view), the mode is locked and the toggle is hidden.
   // For normal (non-split) mode, the context mode is now determined at chat creation time
@@ -253,19 +258,28 @@ export function WorkspaceChat({
   type ModelPreset = { model: string; context: '1m' | '200k'; label: string }
   const MODEL_PRESETS: ModelPreset[] = useMemo(() => {
     const CLAUDE_FALLBACK: ModelPreset[] = [
+      { model: 'opus', context: '200k', label: 'Opus 4.6 · 200K' },
+      { model: 'sonnet', context: '200k', label: 'Sonnet 4.6 · 200K' },
+      { model: 'haiku', context: '200k', label: 'Haiku · 200K' },
       { model: 'opus', context: '1m', label: 'Opus 4.6 · 1M' },
       { model: 'sonnet', context: '1m', label: 'Sonnet 4.6 · 1M' },
-      { model: 'opus', context: '200k', label: 'Opus 4.6 · 200K' },
     ]
     if (!wsProviders || !wsProviders[effectiveProvider]) return CLAUDE_FALLBACK
     const pDef = wsProviders[effectiveProvider]
     if (effectiveProvider === 'claude') {
       return [
-        ...pDef.models.map((m: { id: string; name: string }) => ({ model: m.id, context: '1m' as const, label: `${m.name} · 1M` })),
-        { model: pDef.models[0]?.id ?? 'opus', context: '200k' as const, label: `${pDef.models[0]?.name ?? 'Opus'} · 200K` },
+        ...pDef.models.map((m: { id: string; name: string }) => ({ model: m.id, context: '200k' as const, label: `${m.name} · 200K` })),
+        ...pDef.models.filter((m: { id: string; name: string }) => m.id !== 'haiku').map((m: { id: string; name: string }) => ({ model: m.id, context: '1m' as const, label: `${m.name} · 1M` })),
       ]
     }
-    return pDef.models.map((m: { id: string; name: string }) => ({ model: m.id, context: '1m' as const, label: m.name }))
+    // Non-Claude: base + optional 1M
+    return pDef.models.flatMap((m: { id: string; name: string; supports_1m?: boolean }) => {
+      const base: ModelPreset[] = [{ model: m.id, context: '200k' as const, label: m.name }]
+      if (m.supports_1m) {
+        base.push({ model: m.id, context: '1m' as const, label: `${m.name} · 1M` })
+      }
+      return base
+    })
   }, [wsProviders, effectiveProvider])
 
   // Keep sessionContextMode in sync when fixedContextMode changes (split-view)
@@ -282,6 +296,7 @@ export function WorkspaceChat({
         if (s.comm_check_frequency) setCommCheckFrequency(s.comm_check_frequency)
         if (s.comm_wait_timeout) setCommWaitTimeout(s.comm_wait_timeout)
         if (s.comm_auto_reply !== undefined) setCommAutoReply(s.comm_auto_reply)
+        if (s.playwright_headless !== undefined) setPlaywrightHeadless(s.playwright_headless)
       })
       .catch(() => { /* use defaults */ })
   }, [])
@@ -316,6 +331,7 @@ export function WorkspaceChat({
     walkieTalkieLog,
     addWalkieTalkieEntry,
     tokenLog,
+    clearTokenLog,
     modelId,
     attachedSessionId,
     start,
@@ -325,10 +341,13 @@ export function WorkspaceChat({
     clearMessages,
   } = useWorkspaceChat({ onError: handleError })
 
-  // Notify parent when streaming state changes (for sidebar activity indicator)
+  // Notify parent when streaming state changes (for sidebar activity indicator).
+  // Intentionally omit onStreamingChange from deps to avoid re-render loops
+  // when the parent passes an unstable callback reference (inline arrow).
   useEffect(() => {
     onStreamingChange?.(isLoading)
-  }, [isLoading, onStreamingChange])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading])
 
   // Notify parent when background session ID changes (for pane persistence).
   // Intentionally omit onSessionAttached from deps to avoid re-render loops
@@ -536,17 +555,22 @@ export function WorkspaceChat({
     }
   }, [liveMessages.length, isUserScrolledUp])
 
-  // Detect response completion (isLoading true→false) for auto-forward
+  // Detect response completion (isLoading true→false) for auto-forward.
+  // Intentionally omit onResponseComplete from deps to avoid re-render loops
+  // when the parent passes an unstable callback reference.
   const prevLoadingRef = useRef(false)
+  const onResponseCompleteRef = useRef(onResponseComplete)
+  onResponseCompleteRef.current = onResponseComplete
   useEffect(() => {
-    if (prevLoadingRef.current && !isLoading && onResponseComplete) {
+    if (prevLoadingRef.current && !isLoading && onResponseCompleteRef.current) {
       const lastMessage = liveMessages[liveMessages.length - 1]
       if (lastMessage?.role === 'assistant' && lastMessage.content) {
-        onResponseComplete(lastMessage.content)
+        onResponseCompleteRef.current(lastMessage.content)
       }
     }
     prevLoadingRef.current = isLoading
-  }, [isLoading, liveMessages, onResponseComplete])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading, liveMessages])
 
   // Token log auto-mode: show panel when streaming starts
   useEffect(() => {
@@ -931,6 +955,7 @@ export function WorkspaceChat({
           entries={tokenLog}
           conversationId={conversationId ?? activeConversationId}
           onClose={handleTokenLogClose}
+          onClear={clearTokenLog}
         />
       )}
 
@@ -953,6 +978,7 @@ export function WorkspaceChat({
             agentWaiting={agentWaiting}
             onToggleSettings={() => setShowWalkieTalkieSettings((v) => !v)}
             settingsOpen={showWalkieTalkieSettings}
+            provider={effectiveProvider}
           />
         </div>
 
@@ -1017,6 +1043,25 @@ export function WorkspaceChat({
             })()}
           </div>
         )}
+
+        {/* Browser visibility toggle: Headless / Visible */}
+        <button
+          type="button"
+          onClick={async () => {
+            const next = !playwrightHeadless
+            setPlaywrightHeadless(next)
+            try { await updateSettings({ playwright_headless: next }) } catch { setPlaywrightHeadless(!next) }
+          }}
+          className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap transition-all duration-150 shrink-0 ${
+            playwrightHeadless
+              ? 'bg-zinc-600 text-white hover:bg-zinc-500'
+              : 'bg-amber-500 text-white hover:bg-amber-400'
+          }`}
+          title={playwrightHeadless ? 'Browser: Headless (invisible) — click to make visible' : 'Browser: Visible (window shown) — click to hide'}
+        >
+          {playwrightHeadless ? <EyeOff size={10} /> : <Eye size={10} />}
+          {playwrightHeadless ? 'Headless' : 'Visible'}
+        </button>
 
         {/* Token log 3-state toggle: Auto | On | Off */}
         <div className="flex items-center gap-1 px-2">
@@ -1393,7 +1438,7 @@ export function WorkspaceChat({
               {lastError ? (
                 <div className="mb-4 p-3 bg-destructive/5 border border-destructive/20 rounded-md text-sm text-left">
                   <p className="font-medium text-destructive mb-1">Error details:</p>
-                  <p className="text-muted-foreground">{lastError}</p>
+                  <p className="text-muted-foreground">{typeof lastError === 'string' ? lastError : String(lastError)}</p>
                 </div>
               ) : (
                 <p className="text-sm mb-4">
@@ -1442,13 +1487,18 @@ export function WorkspaceChat({
             {displayMessages.map((message) => {
               // For assistant messages, extract structured blocks and strip
               // them from the content so tags are not rendered twice.
-              const hasBlocks =
-                message.role === 'assistant' &&
-                parseStructuredBlocks(message.content).length > 0
-
-              const renderedMessage = hasBlocks
-                ? { ...message, content: stripStructuredBlocks(message.content) }
-                : message
+              let hasBlocks = false
+              let renderedMessage = message
+              try {
+                hasBlocks =
+                  message.role === 'assistant' &&
+                  parseStructuredBlocks(message.content).length > 0
+                if (hasBlocks) {
+                  renderedMessage = { ...message, content: stripStructuredBlocks(message.content) }
+                }
+              } catch {
+                // Malformed content — render as-is without crashing
+              }
 
               return (
                 <div key={message.id ?? generateId()}>

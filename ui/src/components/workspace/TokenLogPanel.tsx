@@ -315,9 +315,11 @@ interface TokenLogPanelProps {
   conversationId: number | null
   /** Callback to close/dismiss the panel. */
   onClose?: () => void
+  /** Callback to clear the local entries array in the parent. */
+  onClear?: () => void
 }
 
-export function TokenLogPanel({ entries, conversationId, onClose }: TokenLogPanelProps): React.JSX.Element {
+export function TokenLogPanel({ entries, conversationId, onClose, onClear }: TokenLogPanelProps): React.JSX.Element {
   const [summary, setSummary] = useState<TokenLogSummary | null>(null)
   const [isLoadingSummary, setIsLoadingSummary] = useState(false)
   const [isClearing, setIsClearing] = useState(false)
@@ -360,7 +362,7 @@ export function TokenLogPanel({ entries, conversationId, onClose }: TokenLogPane
     }
   }, [conversationId])
 
-  // Clear the token log via the REST API
+  // Clear the token log via the REST API and reset local state
   const handleClear = useCallback(async () => {
     if (!conversationId) return
     setIsClearing(true)
@@ -368,12 +370,13 @@ export function TokenLogPanel({ entries, conversationId, onClose }: TokenLogPane
       await clearTokenLogApi(conversationId)
       setSummary(null)
       setShowBreakdown(false)
+      onClear?.()
     } catch {
       // Silently fail
     } finally {
       setIsClearing(false)
     }
-  }, [conversationId])
+  }, [conversationId, onClear])
 
   return (
     <div className="w-[320px] flex-shrink-0 flex flex-col h-full border-r border-border bg-card/60 animate-slide-in">

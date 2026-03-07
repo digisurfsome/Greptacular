@@ -108,6 +108,23 @@ Use the feature_get_stats tool
 Understanding the `app_spec.txt` is critical - it contains the full requirements
 for the application you're building.
 
+### COMMIT MESSAGE FORMAT (MANDATORY)
+
+All commits MUST use this format:
+```
+[autoforge] <type>(<scope>): <description>
+```
+
+**Types:** `feat`, `fix`, `test`, `refactor`, `chore`
+**Scope:** Feature ID (e.g., `#3`) or `system` for non-feature work
+
+**Examples:**
+- `[autoforge] feat(#3): Add user authentication form`
+- `[autoforge] fix(#7): Fix null check in payment handler`
+- `[autoforge] chore(system): Update dependencies`
+
+This format enables automated progress tracking via git log parsing. Non-conforming messages will be flagged.
+
 ## ARCHITECTURE REFERENCE (MANDATORY)
 
 If `ARCHITECTURE.md` exists in the project root, you MUST follow it for ALL architectural decisions:
@@ -426,3 +443,9 @@ This allows you to fully test email-dependent flows without needing external ema
 ---
 
 Begin by running Step 1 (Get Your Bearings).
+
+## Factory Mode (Auto-Handoff Protocol)
+
+> **This section is active when Factory Mode is enabled.**
+
+{factory_instructions}

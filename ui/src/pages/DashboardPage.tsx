@@ -28,6 +28,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
   X,
+  Menu,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { WorkspaceProvider, EffortLevel } from '@/lib/types'
@@ -165,6 +166,7 @@ export function DashboardPage(): React.JSX.Element {
 
   // Sidebar state
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const [workingDirectory, setWorkingDirectory] = useState<string | null>(() => {
     try { return localStorage.getItem('dashboard-working-dir') || null } catch { return null }
   })
@@ -236,6 +238,10 @@ export function DashboardPage(): React.JSX.Element {
     const pane = panesRef.current.find(p => p.id === paneId)
     if (!pane?.conversationId) return
     setStreamingIds(ids => {
+      const has = ids.has(pane.conversationId!)
+      // Return same reference if membership is already correct (prevents re-render loop)
+      if (isStreaming && has) return ids
+      if (!isStreaming && !has) return ids
       const next = new Set(ids)
       if (isStreaming) next.add(pane.conversationId!)
       else next.delete(pane.conversationId!)
@@ -267,6 +273,8 @@ export function DashboardPage(): React.JSX.Element {
         return { ...p, ...updates }
       })
     })
+    // Auto-close mobile sidebar drawer on conversation select
+    setMobileSidebarOpen(false)
   }, [])
 
   const handleDeleteConversation = useCallback((deletedId: number) => {
@@ -308,9 +316,19 @@ export function DashboardPage(): React.JSX.Element {
 
   return (
     <div className="h-screen flex flex-col bg-background">
-      {/* Breadcrumb navigation bar */}
-      <div className="flex items-center h-10 px-3 border-b border-border bg-card shrink-0">
+      {/* Breadcrumb navigation bar -- wraps on narrow screens */}
+      <div className="flex flex-wrap items-center min-h-10 px-3 py-1 border-b border-border bg-card shrink-0 gap-y-1">
         <nav className="flex items-center gap-1 text-sm" aria-label="Breadcrumb">
+          {/* Mobile sidebar toggle -- only visible below md breakpoint */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="md:hidden h-7 px-2 text-muted-foreground hover:text-foreground"
+            onClick={() => setMobileSidebarOpen(v => !v)}
+            title="Toggle sidebar"
+          >
+            <Menu size={16} />
+          </Button>
           <Button
             variant="ghost"
             size="sm"
@@ -318,53 +336,58 @@ export function DashboardPage(): React.JSX.Element {
             onClick={() => { window.location.hash = '' }}
           >
             <ArrowLeft size={14} />
-            <span className="text-xs">AutoForge</span>
+            <span className="text-xs hidden sm:inline">AutoForge</span>
           </Button>
           <ChevronRight size={12} className="text-muted-foreground" />
           <span className="text-xs font-semibold text-foreground">
             Dashboard
           </span>
-          <ChevronRight size={12} className="text-muted-foreground" />
-          <RepoSelector
-            onSelect={handleRepoSelect}
-            selectedPath={workingDirectory}
-          />
+          {/* Repo selector -- hidden on mobile to save space, available in sidebar */}
+          <ChevronRight size={12} className="text-muted-foreground hidden sm:block" />
+          <div className="hidden sm:block">
+            <RepoSelector
+              onSelect={handleRepoSelect}
+              selectedPath={workingDirectory}
+            />
+          </div>
         </nav>
 
-        <div className="ml-auto flex items-center gap-1">
-          {/* Layout mode buttons */}
-          <Button
-            variant={layoutMode === 'single' ? 'default' : 'ghost'}
-            size="sm"
-            className={`h-7 px-2 gap-1 ${layoutMode === 'single' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-            onClick={() => setLayoutMode('single')}
-            title="Single pane"
-          >
-            <Square size={14} />
-            <span className="text-[10px]">1</span>
-          </Button>
-          <Button
-            variant={layoutMode === 'dual' ? 'default' : 'ghost'}
-            size="sm"
-            className={`h-7 px-2 gap-1 ${layoutMode === 'dual' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-            onClick={() => setLayoutMode('dual')}
-            title="Two panes side by side"
-          >
-            <Columns2 size={14} />
-            <span className="text-[10px]">2</span>
-          </Button>
-          <Button
-            variant={layoutMode === 'triple' ? 'default' : 'ghost'}
-            size="sm"
-            className={`h-7 px-2 gap-1 ${layoutMode === 'triple' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-            onClick={() => setLayoutMode('triple')}
-            title="Three panes side by side"
-          >
-            <Columns3 size={14} />
-            <span className="text-[10px]">3</span>
-          </Button>
+        <div className="ml-auto flex flex-wrap items-center gap-1">
+          {/* Layout mode buttons -- hidden on mobile since panes stack automatically */}
+          <div className="hidden md:flex items-center gap-1">
+            <Button
+              variant={layoutMode === 'single' ? 'default' : 'ghost'}
+              size="sm"
+              className={`h-7 px-2 gap-1 ${layoutMode === 'single' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+              onClick={() => setLayoutMode('single')}
+              title="Single pane"
+            >
+              <Square size={14} />
+              <span className="text-[10px]">1</span>
+            </Button>
+            <Button
+              variant={layoutMode === 'dual' ? 'default' : 'ghost'}
+              size="sm"
+              className={`h-7 px-2 gap-1 ${layoutMode === 'dual' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+              onClick={() => setLayoutMode('dual')}
+              title="Two panes side by side"
+            >
+              <Columns2 size={14} />
+              <span className="text-[10px]">2</span>
+            </Button>
+            <Button
+              variant={layoutMode === 'triple' ? 'default' : 'ghost'}
+              size="sm"
+              className={`h-7 px-2 gap-1 ${layoutMode === 'triple' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+              onClick={() => setLayoutMode('triple')}
+              title="Three panes side by side"
+            >
+              <Columns3 size={14} />
+              <span className="text-[10px]">3</span>
+            </Button>
 
-          <div className="w-px h-5 bg-border mx-1" />
+            <div className="w-px h-5 bg-border mx-1" />
+          </div>
 
           {/* Back to Workspace link */}
           <Button
@@ -381,39 +404,74 @@ export function DashboardPage(): React.JSX.Element {
 
       {/* Main content: sidebar + panes */}
       <div className="flex flex-1 overflow-hidden">
-        <WorkspaceSidebar
-          activeConversationId={panes[0]?.conversationId ?? null}
-          streamingIds={streamingIds}
-          collapsed={sidebarCollapsed}
-          onToggleCollapse={() => setSidebarCollapsed(v => !v)}
-          onNewChat={handleNewChat}
-          onSelectConversation={handleSelectConversation}
-          onDeleteConversation={handleDeleteConversation}
-          selectedWorkingDirectory={workingDirectory}
-          onWorkingDirectoryChange={handleRepoSelect}
-          modelPresetIndex={modelPresetIndex}
-          onModelPresetChange={setModelPresetIndex}
-          effortLevel={pendingEffort}
-          onEffortChange={setPendingEffort}
-          activeProvider={panes[0]?.provider ?? 'claude'}
-        />
+        {/* Mobile backdrop -- darkens the screen when the sidebar drawer is open */}
+        {mobileSidebarOpen && (
+          <div
+            className="fixed inset-0 bg-black/40 z-40 md:hidden"
+            onClick={() => setMobileSidebarOpen(false)}
+          />
+        )}
 
-        {/* Panes — always mounted, toggled via CSS hidden to preserve session state */}
-        <div className="flex-1 flex overflow-hidden">
+        {/* Sidebar: fixed overlay on mobile, normal column on desktop */}
+        <div
+          className={`
+            shrink-0 transition-all duration-200
+            md:relative md:flex md:flex-col
+            ${mobileSidebarOpen
+              ? 'fixed inset-y-0 left-0 z-50 flex flex-col bg-card shadow-xl w-72'
+              : 'hidden md:flex'
+            }
+            ${sidebarCollapsed && !mobileSidebarOpen ? 'md:w-0 md:overflow-hidden' : ''}
+          `}
+        >
+          <WorkspaceSidebar
+            activeConversationId={panes[0]?.conversationId ?? null}
+            streamingIds={streamingIds}
+            collapsed={sidebarCollapsed && !mobileSidebarOpen}
+            onToggleCollapse={() => {
+              setSidebarCollapsed(!sidebarCollapsed)
+              // On mobile, also close the drawer when collapsing via the sidebar button
+              setMobileSidebarOpen(false)
+            }}
+            onNewChat={handleNewChat}
+            onSelectConversation={handleSelectConversation}
+            onDeleteConversation={handleDeleteConversation}
+            selectedWorkingDirectory={workingDirectory}
+            onWorkingDirectoryChange={handleRepoSelect}
+            modelPresetIndex={modelPresetIndex}
+            onModelPresetChange={setModelPresetIndex}
+            effortLevel={pendingEffort}
+            onEffortChange={setPendingEffort}
+            activeProvider={panes[0]?.provider ?? 'claude'}
+          />
+        </div>
+
+        {/* Panes — side by side on desktop, stacked vertically on mobile.
+            On mobile (<md) only the first non-collapsed pane is shown to
+            keep the layout usable on small screens. */}
+        <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
           {panes.map((pane, idx) => {
             const isLast = idx === panes.length - 1
 
             return (
               <Fragment key={pane.id}>
+                {/* Collapsed pane bar -- desktop only (vertical bars don't work well on mobile) */}
                 {pane.collapsed && (
-                  <CollapsedPaneBar
-                    label={pane.label}
-                    provider={pane.provider}
-                    onClick={() => updatePane(pane.id, { collapsed: false })}
-                  />
+                  <div className="hidden md:flex">
+                    <CollapsedPaneBar
+                      label={pane.label}
+                      provider={pane.provider}
+                      onClick={() => updatePane(pane.id, { collapsed: false })}
+                    />
+                  </div>
                 )}
                 <div
-                  className={`flex-1 min-w-0 flex flex-col overflow-hidden relative ${!isLast ? 'border-r border-border' : ''}${pane.collapsed ? ' hidden' : ''}`}
+                  className={`flex-1 min-w-0 flex flex-col overflow-hidden relative ${
+                    !isLast ? 'md:border-r border-border' : ''
+                  }${pane.collapsed ? ' hidden' : ''} ${
+                    /* On mobile, only show the first non-collapsed pane */
+                    idx > 0 ? 'hidden md:flex' : ''
+                  }`}
                 >
                   {/* Pane header with provider selector + collapse */}
                   <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-card shrink-0">
@@ -439,11 +497,11 @@ export function DashboardPage(): React.JSX.Element {
                       </button>
                     )}
 
-                    {/* Collapse button */}
+                    {/* Collapse button -- desktop only since panes are single-view on mobile */}
                     {panes.length > 1 && (
                       <button
                         onClick={() => updatePane(pane.id, { collapsed: true })}
-                        className="p-0.5 text-muted-foreground/40 hover:text-muted-foreground transition-colors"
+                        className="hidden md:block p-0.5 text-muted-foreground/40 hover:text-muted-foreground transition-colors"
                         title={`Collapse ${pane.label}`}
                       >
                         {idx === panes.length - 1 ? <ChevronsRight size={14} /> : <ChevronsLeft size={14} />}

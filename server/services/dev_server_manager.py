@@ -286,12 +286,13 @@ class DevServerProcessManager:
                     self.status = "stopped"
                 self._remove_lock()
 
-    async def start(self, command: str) -> tuple[bool, str]:
+    async def start(self, command: str, dev_dir: str | None = None) -> tuple[bool, str]:
         """
         Start the dev server as a subprocess.
 
         Args:
             command: The command to run (e.g., "npm run dev")
+            dev_dir: Optional subdirectory to run from (e.g., "ui")
 
         Returns:
             Tuple of (success, message)
@@ -335,6 +336,16 @@ class DevServerProcessManager:
         if sys.platform == "win32" and base in {"npm", "pnpm", "yarn", "npx"} and not argv[0].lower().endswith(".cmd"):
             argv[0] = argv[0] + ".cmd"
 
+        # Determine working directory (project root or subdirectory)
+        cwd = self.project_dir
+        if dev_dir:
+            # Security: prevent path traversal
+            if ".." in dev_dir or dev_dir.startswith("/") or dev_dir.startswith("\\"):
+                return False, "dev_dir must be a simple subdirectory name"
+            cwd = self.project_dir / dev_dir
+            if not cwd.is_dir():
+                return False, f"Dev directory does not exist: {cwd}"
+
         try:
             if sys.platform == "win32":
                 self.process = subprocess.Popen(
@@ -342,7 +353,7 @@ class DevServerProcessManager:
                     stdin=subprocess.DEVNULL,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
-                    cwd=str(self.project_dir),
+                    cwd=str(cwd),
                     creationflags=subprocess.CREATE_NO_WINDOW,
                 )
             else:
@@ -351,7 +362,7 @@ class DevServerProcessManager:
                     stdin=subprocess.DEVNULL,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
-                    cwd=str(self.project_dir),
+                    cwd=str(cwd),
                 )
 
             self._command = command

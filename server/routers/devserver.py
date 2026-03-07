@@ -24,8 +24,10 @@ from ..services.dev_server_manager import get_devserver_manager
 from ..services.project_config import (
     clear_dev_command,
     get_dev_command,
+    get_dev_dir,
     get_project_config,
     set_dev_command,
+    set_dev_dir,
 )
 from ..utils.project_helpers import get_project_path as _get_project_path
 from ..utils.validation import validate_project_name
@@ -314,8 +316,11 @@ async def start_devserver(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+    # Get dev_dir for subdirectory support
+    dev_dir = get_dev_dir(project_dir)
+
     # Now command is definitely str and validated
-    success, message = await manager.start(command)
+    success, message = await manager.start(command, dev_dir=dev_dir)
 
     return DevServerActionResponse(
         success=success,
@@ -373,6 +378,7 @@ async def get_devserver_config(project_name: str) -> DevServerConfigResponse:
         detected_command=config["detected_command"],
         custom_command=config["custom_command"],
         effective_command=config["effective_command"],
+        dev_dir=config["dev_dir"],
     )
 
 
@@ -425,6 +431,13 @@ async def update_devserver_config(
                 detail=f"Failed to save configuration: {e}"
             )
 
+    # Handle dev_dir update
+    if update.dev_dir is not None:
+        try:
+            set_dev_dir(project_dir, update.dev_dir if update.dev_dir != "" else None)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
     # Return updated config
     config = get_project_config(project_dir)
 
@@ -433,4 +446,5 @@ async def update_devserver_config(
         detected_command=config["detected_command"],
         custom_command=config["custom_command"],
         effective_command=config["effective_command"],
+        dev_dir=config["dev_dir"],
     )

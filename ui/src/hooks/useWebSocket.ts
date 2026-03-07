@@ -52,6 +52,10 @@ interface WebSocketState {
   celebration: CelebrationTrigger | null
   // Orchestrator state for Mission Control
   orchestratorStatus: OrchestratorStatus | null
+  // Factory event counter — incremented on each factory WS event to trigger refetch
+  factoryEventCounter: number
+  // Last factory event for UI consumption
+  lastFactoryEvent: { type: string; [key: string]: unknown } | null
 }
 
 const MAX_LOGS = 100 // Keep last 100 log lines
@@ -73,6 +77,8 @@ export function useProjectWebSocket(projectName: string | null) {
     celebrationQueue: [],
     celebration: null,
     orchestratorStatus: null,
+    factoryEventCounter: 0,
+    lastFactoryEvent: null,
   })
 
   const wsRef = useRef<WebSocket | null>(null)
@@ -326,6 +332,21 @@ export function useProjectWebSocket(projectName: string | null) {
               }))
               break
 
+            case 'factory_started':
+            case 'factory_stopped':
+            case 'factory_complete':
+            case 'factory_error':
+            case 'factory_status':
+            case 'phase_update':
+            case 'handoff_detected':
+            case 'rate_limit_wait':
+              setState(prev => ({
+                ...prev,
+                factoryEventCounter: prev.factoryEventCounter + 1,
+                lastFactoryEvent: message as { type: string; [key: string]: unknown },
+              }))
+              break
+
             case 'pong':
               // Heartbeat response
               break
@@ -398,6 +419,8 @@ export function useProjectWebSocket(projectName: string | null) {
       celebrationQueue: [],
       celebration: null,
       orchestratorStatus: null,
+      factoryEventCounter: 0,
+      lastFactoryEvent: null,
     })
 
     if (!projectName) {

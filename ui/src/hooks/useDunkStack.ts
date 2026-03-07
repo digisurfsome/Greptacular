@@ -15,8 +15,12 @@ import {
   dunkstackGetTokenState,
   dunkstackReadConfig,
   dunkstackSaveBridge,
+  dunkstackStartAgent,
+  dunkstackStopAgent,
+  dunkstackSendToAgent,
   type DunkStackSafetyStatus,
   type DunkStackTokenState,
+  type DunkStackAgentStatus,
 } from '@/lib/api'
 
 // ============================================================================
@@ -28,6 +32,24 @@ export interface CommsEntry {
   sender: 'human' | 'agent' | 'system'
   content: string
   title: string
+  timestamp: string
+}
+
+export interface AgentState {
+  running: boolean
+  streaming: boolean
+}
+
+export interface AgentEventEntry {
+  id: string
+  type: string
+  content?: string
+  tool?: string
+  input?: unknown
+  output?: string
+  is_error?: boolean
+  usage?: Record<string, number>
+  status?: string
   timestamp: string
 }
 
@@ -72,6 +94,15 @@ export interface UseDunkStackReturn {
     next_steps?: string
     open_questions?: string
   }) => Promise<void>
+
+  // Coding Agent
+  agentStatus: DunkStackAgentStatus | null
+  startAgent: (projectName: string, modelId?: string, contextWindow?: number) => Promise<void>
+  stopAgent: (projectName: string) => Promise<void>
+  sendToAgent: (projectName: string, message: string) => Promise<Array<Record<string, unknown>>>
+  agentStarting: boolean
+  agentEvents: AgentEventEntry[]
+  clearAgentEvents: () => void
 
   // Connection
   connected: boolean
@@ -125,6 +156,9 @@ export function useDunkStack(): UseDunkStackReturn {
   const [config, setConfig] = useState<DunkStackConfig | null>(null)
   const [connected, setConnected] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [agentStatus, setAgentStatus] = useState<DunkStackAgentStatus | null>(null)
+  const [agentStarting, setAgentStarting] = useState(false)
+  const [agentEvents, setAgentEvents] = useState<AgentEventEntry[]>([])
   const wsRef = useRef<WebSocket | null>(null)
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -229,6 +263,10 @@ export function useDunkStack(): UseDunkStackReturn {
               setSafetyStatus({ tier: 0, label: 'OK', color: 'green', message: 'Operating normally.' })
               break
 
+            case 'comms_reset':
+              setCommsLog([])
+              break
+
             case 'config_update':
               setConfig(msg.config as DunkStackConfig)
               break
@@ -244,6 +282,36 @@ export function useDunkStack(): UseDunkStackReturn {
                   timestamp: msg.timestamp,
                 },
               ])
+              break
+
+            case 'agent_event':
+            case 'text':
+            case 'tool_call':
+            case 'tool_result':
+            case 'result':
+            case 'response_done':
+            case 'error':
+            case 'agent_status':
+              // Real-time agent updates from the backend.
+              // Note: the backend broadcasts {"type": "agent_event", **event}
+              // but **event has its own 'type' field that overwrites "agent_event",
+              // so we receive "text", "tool_call", etc. directly.
+              if (msg.status) {
+                setAgentStatus(prev => ({ ...prev, status: msg.status, error: msg.error || null }))
+              }
+              // Accumulate all agent events for the split-screen API call view
+              setAgentEvents(prev => [...prev, {
+                id: `ae-${Date.now()}-${prev.length}`,
+                type: msg.type,
+                content: msg.content,
+                tool: msg.tool,
+                input: msg.input,
+                output: msg.output,
+                is_error: msg.is_error,
+                usage: msg.usage,
+                status: msg.status,
+                timestamp: new Date().toISOString(),
+              }])
               break
 
             case 'pong':
@@ -273,7 +341,7 @@ export function useDunkStack(): UseDunkStackReturn {
     }
   }, [])
 
-  // Poll comms files periodically as a fallback (every 10s)
+  // Poll comms files periodically (3s) so walkie-talkie responses appear quickly
   useEffect(() => {
     pollIntervalRef.current = setInterval(async () => {
       try {
@@ -290,16 +358,31 @@ export function useDunkStack(): UseDunkStackReturn {
       } catch {
         // Ignore
       }
-    }, 10000)
+    }, 3000)
 
     return () => {
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
     }
   }, [])
 
-  // Send message (human → agent)
+  // Send message (human → agent) via file-based walkie-talkie
   const sendMessage = useCallback(async (content: string, title?: string) => {
     await dunkstackWriteFromHuman(content, title)
+    // Immediately re-poll comms to pick up any pending updates
+    try {
+      const [toHuman, fromHuman] = await Promise.all([
+        dunkstackReadToHuman(),
+        dunkstackReadFromHuman(),
+      ])
+      const agentEntries = parseCommsFile(toHuman.content, 'agent')
+      const humanEntries = parseCommsFile(fromHuman.content, 'human')
+      const combined = [...agentEntries, ...humanEntries].sort(
+        (a, b) => a.timestamp.localeCompare(b.timestamp)
+      )
+      setCommsLog(combined)
+    } catch {
+      // Ignore - periodic poll will catch it
+    }
   }, [])
 
   // Update control mode
@@ -324,6 +407,79 @@ export function useDunkStack(): UseDunkStackReturn {
     fetch('/api/dunkstack/tokens/reset', { method: 'POST' })
   }, [])
 
+  // ── Coding Agent ──
+
+  const startAgent = useCallback(async (projectName: string, modelId?: string, contextWindow?: number) => {
+    setAgentStarting(true)
+    setAgentEvents([]) // Clear events on new start
+    try {
+      const result = await dunkstackStartAgent(projectName, modelId, contextWindow)
+      setAgentStatus(result)
+      // Accumulate events from the start response
+      const events = [...(result.startup_events || []), ...(result.response_events || [])] as Array<Record<string, unknown>>
+      if (events.length) {
+        setAgentEvents(events.map((e, i) => ({
+          id: `start-${Date.now()}-${i}`,
+          type: String(e.type || 'text'),
+          content: e.content as string | undefined,
+          tool: e.tool as string | undefined,
+          input: e.input,
+          output: e.output as string | undefined,
+          is_error: e.is_error as boolean | undefined,
+          usage: e.usage as Record<string, number> | undefined,
+          status: e.status as string | undefined,
+          timestamp: new Date().toISOString(),
+        })))
+      }
+    } catch (e) {
+      setAgentStatus({ status: 'error', error: String(e) })
+    } finally {
+      setAgentStarting(false)
+    }
+  }, [])
+
+  const clearAgentEvents = useCallback(() => setAgentEvents([]), [])
+
+  const stopAgent = useCallback(async (projectName: string) => {
+    try {
+      await dunkstackStopAgent(projectName)
+      setAgentStatus({ status: 'stopped' })
+    } catch (e) {
+      console.error('Failed to stop agent:', e)
+    }
+  }, [])
+
+  const sendToAgent = useCallback(async (projectName: string, message: string) => {
+    try {
+      const result = await dunkstackSendToAgent(projectName, message)
+      const events = result.events || []
+      // Accumulate events from the HTTP response (WebSocket may also deliver
+      // them, but duplicates are harmless in the log)
+      if (events.length) {
+        setAgentEvents(prev => [...prev, ...events.map((e, i) => ({
+          id: `send-${Date.now()}-${i}`,
+          type: String(e.type || 'text'),
+          content: e.content as string | undefined,
+          tool: e.tool as string | undefined,
+          input: e.input,
+          output: e.output as string | undefined,
+          is_error: e.is_error as boolean | undefined,
+          usage: e.usage as Record<string, number> | undefined,
+          status: e.status as string | undefined,
+          timestamp: new Date().toISOString(),
+        }))])
+      }
+      return events
+    } catch (e) {
+      console.error('Failed to send to agent:', e)
+      return []
+    }
+  }, [])
+
+  // Handle agent_event from WebSocket (update status in real-time)
+  // This is already handled in the onmessage handler above — we just need
+  // to add the agent_event case to the switch statement.
+
   return {
     commsLog,
     sendMessage,
@@ -334,6 +490,13 @@ export function useDunkStack(): UseDunkStackReturn {
     safetyStatus,
     config,
     saveBridge,
+    agentStatus,
+    startAgent,
+    stopAgent,
+    sendToAgent,
+    agentStarting,
+    agentEvents,
+    clearAgentEvents,
     connected,
     loading,
   }

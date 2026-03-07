@@ -188,13 +188,16 @@ export function RepoSelector({ onSelect, selectedPath }: RepoSelectorProps): Rea
               : 'Select Repo'}
         </span>
         {selectedPath && !isCloning ? (
-          <button
+          <span
+            role="button"
+            tabIndex={0}
             onClick={handleClear}
-            className="ml-0.5 text-muted-foreground hover:text-foreground"
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleClear(e as unknown as React.MouseEvent) } }}
+            className="ml-0.5 text-muted-foreground hover:text-foreground cursor-pointer"
             title="Clear selection"
           >
             <X size={12} />
-          </button>
+          </span>
         ) : (
           <ChevronDown size={12} className="shrink-0" />
         )}

@@ -14,6 +14,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import shutil
 import tempfile
 import time
@@ -65,8 +66,8 @@ The JSON must match this exact schema:
   ]
 }"""
 
-# Default model for transcript processing (Sonnet for speed/cost balance)
-DEFAULT_PROCESSING_MODEL = "claude-sonnet-4-6"
+# Default model for transcript processing (Opus on subscription billing)
+DEFAULT_PROCESSING_MODEL = "claude-opus-4-6"
 
 
 class YTProcessor:
@@ -123,6 +124,43 @@ class YTProcessor:
             lines.append(f"[{minutes}:{seconds:02d}] {seg.get('text', '')}")
         return "\n".join(lines)
 
+    # Known key misspellings/variants the model has produced
+    _KEY_ALIASES: dict[str, str] = {
+        "frame": "name",
+        "project_name": "name",
+        "title": "name",
+        "step_name": "name",
+        "desc": "description",
+        "summary": "description",
+    }
+
+    @staticmethod
+    def _repair_json(text: str) -> str:
+        """Best-effort repair of common LLM JSON mistakes."""
+        # Fix trailing commas before } or ]
+        text = re.sub(r",\s*([}\]])", r"\1", text)
+        # Fix "key","nextkey" pattern (missing colon + value)
+        text = re.sub(r'"([^"]+)"\s*,\s*"([^"]+)"\s*:', r'"\1": null, "\2":', text)
+        # Replace single-quoted strings with double-quoted
+        # (only outside of already double-quoted strings)
+        text = re.sub(r"(?<![\\])'\s*:", '":', text)
+        text = re.sub(r":\s*'([^']*)'", r': "\1"', text)
+        return text
+
+    @classmethod
+    def _normalize_keys(cls, obj: object) -> object:
+        """Recursively lowercase keys and apply alias mappings."""
+        if isinstance(obj, dict):
+            normalized: dict = {}
+            for key, value in obj.items():
+                lower_key = key.lower().strip()
+                mapped_key = cls._KEY_ALIASES.get(lower_key, lower_key)
+                normalized[mapped_key] = cls._normalize_keys(value)
+            return normalized
+        if isinstance(obj, list):
+            return [cls._normalize_keys(item) for item in obj]
+        return obj
+
     def _parse_ai_response(self, raw_text: str) -> dict:
         """Parse JSON from the AI response, handling various wrapper formats.
 
@@ -131,22 +169,32 @@ class YTProcessor:
         - Markdown-fenced: ````json\\n{...}\\n````
         - Text + JSON: ``Here is the result:\\n{...}``
         - Any combination of the above
+
+        Includes JSON repair for trailing commas, missing values, and
+        key normalization for common misspellings.
         """
         text = raw_text.strip()
+        logger.info(
+            "Parsing AI response: %d chars, preview=%.500s",
+            len(text), text[:500],
+        )
 
         # Try 1: direct parse (fastest path)
         try:
-            return json.loads(text)
+            result = json.loads(text)
+            logger.info("Parse strategy: direct")
+            return self._normalize_keys(result)
         except (json.JSONDecodeError, ValueError):
             pass
 
         # Try 2: strip markdown code fences
         if "```" in text:
-            import re
             fence_match = re.search(r"```(?:json)?\s*\n?(.*?)```", text, re.DOTALL)
             if fence_match:
                 try:
-                    return json.loads(fence_match.group(1).strip())
+                    result = json.loads(fence_match.group(1).strip())
+                    logger.info("Parse strategy: markdown fence")
+                    return self._normalize_keys(result)
                 except (json.JSONDecodeError, ValueError):
                     pass
 
@@ -156,13 +204,26 @@ class YTProcessor:
         if first_brace >= 0 and last_brace > first_brace:
             json_candidate = text[first_brace:last_brace + 1]
             try:
-                return json.loads(json_candidate)
+                result = json.loads(json_candidate)
+                logger.info("Parse strategy: brace extraction")
+                return self._normalize_keys(result)
             except (json.JSONDecodeError, ValueError):
                 pass
 
-        # Nothing worked — raise with helpful debug info
+        # Try 4: repair common LLM JSON mistakes then re-extract
+        if first_brace is not None and first_brace >= 0 and last_brace > first_brace:
+            repaired = self._repair_json(text[first_brace:last_brace + 1])
+            try:
+                result = json.loads(repaired)
+                logger.info("Parse strategy: JSON repair")
+                return self._normalize_keys(result)
+            except (json.JSONDecodeError, ValueError):
+                pass
+
+        # Nothing worked — log full response for debugging and raise
+        logger.error("All parse strategies failed. Full response:\n%s", text)
         preview = text[:500] if text else "(empty)"
-        raise ValueError(f"Could not extract JSON from response. Preview: {preview}")
+        raise ValueError(f"Could not extract valid JSON from AI response (length={len(text)}). Preview: {preview}")
 
     async def _call_via_sdk(self, system_prompt: str, user_message: str, model: str) -> str:
         """Call Claude via the Agent SDK using subscription auth.
@@ -206,21 +267,36 @@ class YTProcessor:
 
             full_text = ""
             msg_types_seen = []
+            sdk_error: str | None = None
             async for msg in client.receive_response():
                 msg_type = type(msg).__name__
                 msg_types_seen.append(msg_type)
-                if msg_type == "AssistantMessage" and hasattr(msg, "content"):
+                if msg_type in ("RateLimitEvent", "rate_limit_event"):
+                    continue  # Skip SDK informational events
+                elif msg_type == "AssistantMessage" and hasattr(msg, "content"):
                     for block in msg.content:
                         block_type = type(block).__name__
                         if block_type == "TextBlock" and hasattr(block, "text"):
                             full_text += block.text
                         else:
                             logger.debug("YT processor SDK: non-text block type=%s", block_type)
+                elif msg_type == "ResultMessage":
+                    is_error = getattr(msg, "is_error", False)
+                    if is_error:
+                        sdk_error = f"SDK ResultMessage reported an error (model={model})"
+                    logger.info(
+                        "YT processor SDK ResultMessage: is_error=%s, model=%s",
+                        is_error, getattr(msg, "model", "unknown"),
+                    )
 
             logger.info(
                 "YT processor SDK response: %d chars, msg_types=%s, preview=%.200s",
                 len(full_text), msg_types_seen, full_text[:200],
             )
+
+            # If the SDK flagged an error, raise so the caller can fall back
+            if sdk_error:
+                raise RuntimeError(sdk_error)
 
             if not full_text.strip():
                 raise RuntimeError(
@@ -357,10 +433,51 @@ class YTProcessor:
 
         try:
             result = self._parse_ai_response(raw_text)
-        except (json.JSONDecodeError, ValueError) as exc:
-            logger.error("Failed to parse AI response as JSON: %s", exc)
-            logger.debug("Raw AI response: %s", raw_text[:2000])
-            raise ValueError(f"AI response was not valid JSON: {exc}")
+        except (json.JSONDecodeError, ValueError) as first_exc:
+            logger.warning("First parse attempt failed: %s — retrying with stricter prompt", first_exc)
+            log("Response had formatting issues — asking Claude to fix it...")
+            retry_prompt = (
+                "Your previous response was not valid JSON. "
+                "Respond with ONLY a valid JSON object — no markdown fences, no commentary, no text before or after. "
+                "Here is the malformed response to fix:\n\n"
+                + raw_text[:6000]
+            )
+            try:
+                retry_text = await self._call_via_sdk(
+                    "You are a JSON repair assistant. Output ONLY valid JSON, nothing else.",
+                    retry_prompt,
+                    use_model,
+                )
+                result = self._parse_ai_response(retry_text)
+                log("Retry succeeded — parsed repaired JSON")
+                logger.info("JSON retry succeeded for video %s", video_id)
+            except Exception as retry_exc:
+                logger.error("Retry also failed: %s", retry_exc)
+                raise ValueError(
+                    "The AI response had formatting issues that couldn't be automatically repaired. "
+                    "This sometimes happens with complex videos. Please try again — "
+                    "the next response will likely be formatted correctly."
+                ) from first_exc
+
+        # Detect API error responses — the SDK or Anthropic API may return
+        # a valid JSON object with {error, type, request_id} instead of
+        # the expected strategy schema.
+        if "error" in result and "type" in result and len(result) <= 4:
+            error_detail = result.get("error", {})
+            if isinstance(error_detail, dict):
+                error_msg = error_detail.get("message", str(error_detail))
+                error_type = error_detail.get("type", "unknown")
+            else:
+                error_msg = str(error_detail)
+                error_type = result.get("type", "unknown")
+            logger.error(
+                "AI returned an API error instead of strategy results: type=%s message=%s",
+                error_type, error_msg,
+            )
+            raise RuntimeError(
+                f"Claude API error ({error_type}): {error_msg}. "
+                "Check your subscription status, model availability, or try again."
+            )
 
         # Validate structure — SDK agent context may cause the model to wrap
         # the response under a top-level key or use different names.

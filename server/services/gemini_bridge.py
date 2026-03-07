@@ -54,6 +54,17 @@ class GeminiBridge:
 
         self._current_process: Optional[asyncio.subprocess.Process] = None
 
+    async def start(self) -> None:
+        """Pre-check Gemini CLI availability before starting the session."""
+        gemini_path = shutil.which("gemini")
+        if not gemini_path:
+            raise RuntimeError(
+                "Gemini CLI is not installed globally.\n\n"
+                "Please install it by running this command in your terminal:\n"
+                "  npm install -g @google/gemini-cli\n\n"
+                "If it is already installed, make sure it is on your system PATH."
+            )
+
     async def close(self) -> None:
         """Kill any running Gemini process."""
         if self._current_process:
@@ -93,13 +104,13 @@ class GeminiBridge:
         gemini_path = shutil.which("gemini")
         use_npx = False
         if not gemini_path:
-            npx_path = shutil.which("npx")
-            if not npx_path:
+            # Fallback if start() was somehow skipped, but strongly discourage
+            gemini_path = shutil.which("npx")
+            if not gemini_path:
                 raise RuntimeError(
                     "Neither 'gemini' nor 'npx' found on PATH. "
                     "Install Gemini CLI: npm install -g @google/gemini-cli"
                 )
-            gemini_path = npx_path
             use_npx = True
 
         # Build command
@@ -143,10 +154,22 @@ class GeminiBridge:
             self.cwd, self.session_id, self.model,
         )
 
+        # Kill any lingering process from a previous concurrent call (BUG 6)
+        if self._current_process and self._current_process.returncode is None:
+            try:
+                self._current_process.terminate()
+                await asyncio.wait_for(self._current_process.wait(), timeout=5)
+            except (asyncio.TimeoutError, ProcessLookupError):
+                try:
+                    self._current_process.kill()
+                except ProcessLookupError:
+                    pass
+            self._current_process = None
+
         # Spawn process
         process = await asyncio.create_subprocess_exec(
             *cmd,
-            stdin=asyncio.subprocess.PIPE,
+            stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=self.cwd,
@@ -158,7 +181,15 @@ class GeminiBridge:
             accumulated_text: list[str] = []
 
             while process.stdout:
-                line = await process.stdout.readline()
+                try:
+                    line = await asyncio.wait_for(
+                        process.stdout.readline(),
+                        timeout=600,  # 10 min max per line (BUG 8)
+                    )
+                except asyncio.TimeoutError:
+                    logger.error("Gemini CLI stdout read timed out after 600s")
+                    yield {"type": "error", "content": "Gemini CLI response timed out"}
+                    break
                 if not line:
                     break
 
@@ -225,14 +256,46 @@ class GeminiBridge:
                     stderr_data = await process.stderr.read()
                 stderr_text = stderr_data.decode("utf-8", errors="replace").strip()
                 if stderr_text:
+                    # Filter out npm deprecation warnings that mask real errors
+                    clean_lines = [
+                        line for line in stderr_text.splitlines()
+                        if "npm warn deprecated" not in line.lower()
+                    ]
+                    clean_stderr = "\n".join(clean_lines).strip()
+                    if not clean_stderr:
+                        clean_stderr = "(No meaningful error output. Only npm warnings were found.)"
+
                     logger.warning(
                         "Gemini CLI stderr (rc=%d): %s",
-                        process.returncode, stderr_text[:500],
+                        process.returncode, clean_stderr[:500] or stderr_text[:200],
                     )
                     if not accumulated_text:
+                        stderr_lower = clean_stderr.lower()
+                        # Detect auth-specific errors and give clear guidance
+                        if "auth method" in stderr_lower or "gemini_api_key" in stderr_lower or "google_genai" in stderr_lower:
+                            error_msg = (
+                                "**Gemini authentication required.**\n\n"
+                                "Run this in your terminal to log in with your Google account (free tier):\n"
+                                "```\ngemini\n```\n"
+                                "Or set `GEMINI_API_KEY` in `~/.autoforge/.env` to use an API key instead."
+                            )
+                        elif "401" in clean_stderr or "403" in clean_stderr:
+                            error_msg = (
+                                "**Gemini auth expired or invalid.**\n\n"
+                                "Re-authenticate by running `gemini` in a terminal, "
+                                "or set a fresh `GEMINI_API_KEY` in `~/.autoforge/.env`."
+                            )
+                        elif "429" in clean_stderr or "quota" in stderr_lower or "rate" in stderr_lower:
+                            error_msg = (
+                                "**Gemini rate limit / quota exceeded.**\n\n"
+                                "Wait a moment and try again. If this persists, your subscription "
+                                "tier may need an upgrade or you may need to set `GEMINI_API_KEY`."
+                            )
+                        else:
+                            error_msg = f"Gemini CLI error:\n{clean_stderr[:500]}"
                         yield {
                             "type": "error",
-                            "content": f"Gemini CLI error: {stderr_text[:500]}",
+                            "content": error_msg,
                         }
 
         except asyncio.TimeoutError:

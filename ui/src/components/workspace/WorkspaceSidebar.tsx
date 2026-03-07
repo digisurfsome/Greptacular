@@ -163,13 +163,6 @@ export function WorkspaceSidebar({
   // Fetch provider definitions from backend
   const { data: providers } = useWorkspaceProviders()
 
-  // Build model presets for the active provider (falls back to Claude presets)
-  const isClaudeProvider = activeProvider === 'claude'
-  const SIDEBAR_MODEL_PRESETS: ModelPreset[] = useMemo(() => {
-    if (!providers || !providers[activeProvider]) return CLAUDE_MODEL_PRESETS
-    return buildPresetsForProvider(activeProvider, providers[activeProvider])
-  }, [providers, activeProvider])
-
   const [search, setSearch] = useState('')
   const [hoveredId, setHoveredId] = useState<number | null>(null)
   const [showCategoryManager, setShowCategoryManager] = useState(false)

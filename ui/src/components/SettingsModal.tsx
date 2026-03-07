@@ -412,7 +412,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   Headless Browser
                 </Label>
                 <p className="text-sm text-muted-foreground">
-                  Run browser without visible window (saves CPU)
+                  Hide browser window (default: visible so you can peek in)
                 </p>
               </div>
               <Switch

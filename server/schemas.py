@@ -433,7 +433,7 @@ class SettingsResponse(BaseModel):
     glm_mode: bool = False  # True when api_provider is "glm"
     ollama_mode: bool = False  # True when api_provider is "ollama"
     testing_agent_ratio: int = 1  # Regression testing agents (0-3)
-    playwright_headless: bool = True
+    playwright_headless: bool = False  # Default: visible browser (matches client.py)
     batch_size: int = 3  # Features per coding agent batch (1-3)
     api_provider: str = "claude"
     api_base_url: str | None = None

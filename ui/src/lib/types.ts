@@ -317,6 +317,7 @@ export interface DevServerConfig {
   detected_command: string | null
   custom_command: string | null
   effective_command: string | null
+  dev_dir: string | null
 }
 
 // Terminal types

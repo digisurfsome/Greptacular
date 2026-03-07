@@ -140,6 +140,15 @@ export function DunkStackPreviewPanel({ projectName, isHalf, onToggleHalf }: Dun
   }
 
   const handleRefresh = () => {
+    // Try to reload iframe content directly first (preserves current page/route)
+    if (iframeRef.current?.contentWindow) {
+      try {
+        iframeRef.current.contentWindow.location.reload()
+        return
+      } catch {
+        // Cross-origin restriction - fall through to key change
+      }
+    }
     setIframeKey(prev => prev + 1)
   }
 
@@ -235,7 +244,7 @@ export function DunkStackPreviewPanel({ projectName, isHalf, onToggleHalf }: Dun
             <iframe
               ref={iframeRef}
               key={iframeKey}
-              src={url}
+              src={url ? `${url}${url.includes('?') ? '&' : '?'}_cb=${iframeKey}` : url}
               className="w-full h-full border-0 bg-white"
               title="Live Preview"
               sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"

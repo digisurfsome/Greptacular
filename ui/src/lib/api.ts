@@ -78,6 +78,15 @@ import type {
   YTBatchVideoInput,
   YTBatchIngestResponse,
   YTBatchStatusResponse,
+  ApprovalRequest,
+  Checkpoint,
+  RollbackPreview,
+  ActionLogEntry,
+  ActionLogSummary,
+  ActionLogFilters,
+  PaginatedResult,
+  VerificationResult,
+  Commit,
 } from './types'
 
 const API_BASE = '/api'
@@ -2372,4 +2381,148 @@ export async function factoryUploadPhaseDocuments(projectName: string, files: Fi
     throw new Error(error.detail || `HTTP ${res.status}`)
   }
   return res.json()
+}
+
+// ============================================================================
+// Orchestrator: Approvals API
+// ============================================================================
+
+export async function getApprovals(
+  projectName: string,
+  status?: string,
+  limit?: number
+): Promise<{ approvals: ApprovalRequest[] }> {
+  const params = new URLSearchParams()
+  if (status) params.set('status', status)
+  if (limit != null) params.set('limit', String(limit))
+  const qs = params.toString()
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/approvals${qs ? `?${qs}` : ''}`)
+}
+
+export async function createApproval(
+  projectName: string,
+  data: { agent_id: string; command: string; reason?: string }
+): Promise<ApprovalRequest> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/approvals`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function resolveApproval(
+  projectName: string,
+  id: number,
+  data: { status: 'approved' | 'denied'; resolved_by?: string }
+): Promise<ApprovalRequest> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/approvals/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  })
+}
+
+// ============================================================================
+// Orchestrator: Checkpoints API
+// ============================================================================
+
+export async function getCheckpoints(
+  projectName: string,
+  limit?: number
+): Promise<{ checkpoints: Checkpoint[] }> {
+  const qs = limit != null ? `?limit=${limit}` : ''
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/checkpoints${qs}`)
+}
+
+export async function createCheckpoint(
+  projectName: string,
+  label: string
+): Promise<Checkpoint> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/checkpoints`, {
+    method: 'POST',
+    body: JSON.stringify({ label }),
+  })
+}
+
+export async function getCheckpointDetail(
+  projectName: string,
+  id: number
+): Promise<Checkpoint> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/checkpoints/${id}`)
+}
+
+export async function rollbackCheckpoint(
+  projectName: string,
+  id: number,
+  confirm: boolean = false
+): Promise<RollbackPreview> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/checkpoints/${id}/rollback?confirm=${confirm}`, {
+    method: 'POST',
+  })
+}
+
+// ============================================================================
+// Orchestrator: Action Log API
+// ============================================================================
+
+export async function getActionLog(
+  projectName: string,
+  filters?: Partial<ActionLogFilters>
+): Promise<PaginatedResult<ActionLogEntry>> {
+  const params = new URLSearchParams()
+  if (filters?.session_id) params.set('session_id', filters.session_id)
+  if (filters?.tool_name) params.set('tool_name', filters.tool_name)
+  if (filters?.status) params.set('status', filters.status)
+  if (filters?.search) params.set('search', filters.search)
+  if (filters?.page != null) params.set('page', String(filters.page))
+  if (filters?.limit != null) params.set('limit', String(filters.limit))
+  const qs = params.toString()
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/actions${qs ? `?${qs}` : ''}`)
+}
+
+export async function getActionLogSummary(
+  projectName: string
+): Promise<ActionLogSummary> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/actions/summary`)
+}
+
+// ============================================================================
+// Orchestrator: Verifications API
+// ============================================================================
+
+export async function getFeatureVerifications(
+  projectName: string,
+  featureId: number,
+  limit?: number
+): Promise<{ verifications: VerificationResult[]; feature_id: number }> {
+  const qs = limit != null ? `?limit=${limit}` : ''
+  return fetchJSON(
+    `/projects/${encodeURIComponent(projectName)}/features/${featureId}/verifications${qs}`
+  )
+}
+
+export async function getAllVerifications(
+  projectName: string,
+  passed?: boolean,
+  limit?: number
+): Promise<{ verifications: VerificationResult[] }> {
+  const params = new URLSearchParams()
+  if (passed != null) params.set('passed', String(passed))
+  if (limit != null) params.set('limit', String(limit))
+  const qs = params.toString()
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/verifications${qs ? `?${qs}` : ''}`)
+}
+
+// ============================================================================
+// Orchestrator: Commits API
+// ============================================================================
+
+export async function getProjectCommits(
+  projectName: string,
+  featureId?: number,
+  limit?: number
+): Promise<{ commits: Commit[] }> {
+  const params = new URLSearchParams()
+  if (featureId != null) params.set('feature_id', String(featureId))
+  if (limit != null) params.set('limit', String(limit))
+  const qs = params.toString()
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/commits${qs ? `?${qs}` : ''}`)
 }

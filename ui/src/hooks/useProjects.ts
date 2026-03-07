@@ -386,6 +386,11 @@ const DEFAULT_SETTINGS: Settings = {
   comm_check_frequency: 'per_feature',
   comm_wait_timeout: 120,
   comm_auto_reply: true,
+  approval_gates_enabled: false,
+  action_log_retention_days: 30,
+  verification_log_retention_days: 30,
+  debug_log_retention_days: 7,
+  approval_audio_enabled: false,
 }
 
 const DEFAULT_PROVIDERS: ProvidersResponse = {

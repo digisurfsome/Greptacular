@@ -81,13 +81,20 @@ async def get_actions(
     status: Optional[str] = Query(None),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
+    page: Optional[int] = Query(None, ge=1),
 ):
     """Get paginated action log entries with optional filters.
 
     Supports filtering by session_id, tool_name, and status (success/error).
-    Results are ordered by most recent first.
+    Results are ordered by most recent first. Accepts either offset or page
+    for pagination (page takes precedence over offset).
     """
     project_dir = _resolve_project(project_name)
+
+    # Support page-based pagination (page takes precedence over offset)
+    if page is not None:
+        offset = (page - 1) * limit
+
     _, ActionLog, _ = _get_db_classes()
 
     with _get_db_session(project_dir) as db:
@@ -102,8 +109,9 @@ async def get_actions(
         total = query.count()
         actions = query.offset(offset).limit(limit).all()
 
+        page = offset // limit + 1 if limit > 0 else 1
         return {
-            "actions": [
+            "items": [
                 {
                     "id": a.id,
                     "session_id": a.session_id,
@@ -119,8 +127,9 @@ async def get_actions(
                 for a in actions
             ],
             "total": total,
+            "page": page,
             "limit": limit,
-            "offset": offset,
+            "has_more": (offset + limit) < total,
         }
 
 
@@ -146,12 +155,15 @@ async def get_actions_summary(project_name: str):
 
         total_calls = sum(r.call_count for r in results)
         total_errors = sum(r.error_count for r in results)
+        all_durations = [r.avg_duration_ms for r in results if r.avg_duration_ms is not None]
+        overall_avg = round(sum(all_durations) / len(all_durations)) if all_durations else None
 
         return {
             "tools": [
                 {
                     "tool_name": r.tool_name,
                     "call_count": r.call_count,
+                    "count": r.call_count,  # alias for Session 2 TS types
                     "error_count": r.error_count,
                     "avg_duration_ms": round(r.avg_duration_ms) if r.avg_duration_ms else None,
                 }
@@ -160,6 +172,7 @@ async def get_actions_summary(project_name: str):
             "total_calls": total_calls,
             "total_errors": total_errors,
             "error_rate": round(total_errors / total_calls * 100, 1) if total_calls > 0 else 0,
+            "avg_duration_ms": overall_avg,
         }
 
 

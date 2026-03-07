@@ -215,6 +215,78 @@ class ActionLogSummary(Base):
     avg_duration_ms = Column(Integer)
 
 
+class ApprovalRequest(Base):
+    """Human-in-the-loop approval request for dangerous commands.
+
+    Agents create these when they encounter a command that requires human
+    approval. The UI polls for pending requests and lets the user approve
+    or deny. Requests expire after 5 minutes (TTL enforced at read time).
+    """
+
+    __tablename__ = "approval_requests"
+
+    __table_args__ = (
+        Index('idx_approval_status', 'project_name', 'status'),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    agent_id = Column(String(100), nullable=False)
+    project_name = Column(String(255), nullable=False)
+    command = Column(Text, nullable=False)
+    reason = Column(Text, nullable=True)
+    status = Column(String(20), nullable=False, default='pending')  # pending, approved, denied, expired
+    requested_at = Column(DateTime, nullable=False, default=_utc_now)
+    resolved_at = Column(DateTime, nullable=True)
+    resolved_by = Column(String(100), nullable=True)
+
+    def to_dict(self) -> dict:
+        """Convert approval request to dictionary for JSON serialization."""
+        return {
+            "id": self.id,
+            "agent_id": self.agent_id,
+            "project_name": self.project_name,
+            "command": self.command,
+            "reason": self.reason,
+            "status": self.status,
+            "requested_at": self.requested_at.isoformat() if self.requested_at else None,
+            "resolved_at": self.resolved_at.isoformat() if self.resolved_at else None,
+            "resolved_by": self.resolved_by,
+        }
+
+
+class Checkpoint(Base):
+    """Snapshot of git SHA + feature status at key moments.
+
+    Created automatically when features pass, or manually via the API.
+    Enables rollback to known-good states by storing the git commit hash
+    and a JSON snapshot of all feature statuses at that point in time.
+    """
+
+    __tablename__ = "checkpoints"
+
+    __table_args__ = (
+        Index('idx_checkpoint_created', 'created_at'),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(String(100), nullable=True)
+    label = Column(String(255), nullable=False)
+    git_sha = Column(String(40), nullable=False)
+    feature_snapshot = Column(Text, nullable=True)  # JSON blob
+    created_at = Column(DateTime, nullable=False, default=_utc_now)
+
+    def to_dict(self) -> dict:
+        """Convert checkpoint to dictionary for JSON serialization."""
+        return {
+            "id": self.id,
+            "session_id": self.session_id,
+            "label": self.label,
+            "git_sha": self.git_sha,
+            "feature_snapshot": self.feature_snapshot,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
 class ScheduleOverride(Base):
     """Persisted manual override for a schedule window."""
 
@@ -431,6 +503,24 @@ def _migrate_add_observability_tables(engine) -> None:
         ActionLogSummary.__table__.create(bind=engine)  # type: ignore[attr-defined]
 
 
+def _migrate_add_session2_tables(engine) -> None:
+    """Create approval_requests and checkpoints tables if they don't exist.
+
+    Part of Session 2 (Interactive Layer): adds human-in-the-loop approval
+    gates and git checkpoint/rollback support.
+    """
+    from sqlalchemy import inspect
+
+    inspector = inspect(engine)
+    existing_tables = inspector.get_table_names()
+
+    if "approval_requests" not in existing_tables:
+        ApprovalRequest.__table__.create(bind=engine)  # type: ignore[attr-defined]
+
+    if "checkpoints" not in existing_tables:
+        Checkpoint.__table__.create(bind=engine)  # type: ignore[attr-defined]
+
+
 def _configure_sqlite_immediate_transactions(engine) -> None:
     """Configure engine for IMMEDIATE transactions via event hooks.
 
@@ -527,6 +617,9 @@ def create_database(project_dir: Path) -> tuple:
 
     # Migrate to add observability tables (action_log, verification_results, action_log_summary)
     _migrate_add_observability_tables(engine)
+
+    # Migrate to add Session 2 tables (approval_requests, checkpoints)
+    _migrate_add_session2_tables(engine)
 
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

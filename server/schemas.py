@@ -457,6 +457,12 @@ class SettingsResponse(BaseModel):
     comm_check_frequency: str = "per_feature"  # per_feature, every_tool_call, never
     comm_wait_timeout: int = 120  # seconds (30-300)
     comm_auto_reply: bool = True  # auto-send "keep going" on timeout
+    # Session 2: Orchestration completion settings
+    approval_gates_enabled: bool = False  # Enable human-in-the-loop approval gates
+    action_log_retention_days: int = 30  # Days to keep action log entries
+    verification_log_retention_days: int = 30  # Days to keep verification results
+    debug_log_retention_days: int = 7  # Days to keep debug-level logs
+    approval_audio_enabled: bool = False  # Play audio alert on pending approval
 
 
 class ModelsResponse(BaseModel):
@@ -492,6 +498,12 @@ class SettingsUpdate(BaseModel):
     comm_check_frequency: str | None = None
     comm_wait_timeout: int | None = None
     comm_auto_reply: bool | None = None
+    # Session 2: Orchestration completion settings
+    approval_gates_enabled: bool | None = None
+    action_log_retention_days: int | None = None
+    verification_log_retention_days: int | None = None
+    debug_log_retention_days: int | None = None
+    approval_audio_enabled: bool | None = None
 
     @field_validator('api_base_url')
     @classmethod
@@ -575,6 +587,27 @@ class SettingsUpdate(BaseModel):
     def validate_comm_wait_timeout(cls, v: int | None) -> int | None:
         if v is not None and (v < 30 or v > 300):
             raise ValueError("comm_wait_timeout must be between 30 and 300 seconds")
+        return v
+
+    @field_validator('action_log_retention_days')
+    @classmethod
+    def validate_action_log_retention(cls, v: int | None) -> int | None:
+        if v is not None and (v < 1 or v > 365):
+            raise ValueError("action_log_retention_days must be between 1 and 365")
+        return v
+
+    @field_validator('verification_log_retention_days')
+    @classmethod
+    def validate_verification_log_retention(cls, v: int | None) -> int | None:
+        if v is not None and (v < 1 or v > 365):
+            raise ValueError("verification_log_retention_days must be between 1 and 365")
+        return v
+
+    @field_validator('debug_log_retention_days')
+    @classmethod
+    def validate_debug_log_retention(cls, v: int | None) -> int | None:
+        if v is not None and (v < 1 or v > 90):
+            raise ValueError("debug_log_retention_days must be between 1 and 90")
         return v
 
 

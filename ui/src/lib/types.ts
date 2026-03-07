@@ -1111,6 +1111,12 @@ export interface Settings {
   comm_check_frequency: string  // per_feature, every_tool_call, never
   comm_wait_timeout: number     // seconds (30-300)
   comm_auto_reply: boolean      // auto-send "keep going" on timeout
+  // Orchestration completion settings
+  approval_gates_enabled: boolean   // Enable human-in-the-loop approval gates
+  action_log_retention_days: number // Days to keep action log entries (1-365)
+  verification_log_retention_days: number // Days to keep verification results (1-365)
+  debug_log_retention_days: number  // Days to keep debug-level logs (1-90)
+  approval_audio_enabled: boolean   // Play audio alert on pending approval
 }
 
 export interface SettingsUpdate {
@@ -1136,6 +1142,12 @@ export interface SettingsUpdate {
   comm_check_frequency?: string
   comm_wait_timeout?: number
   comm_auto_reply?: boolean
+  // Orchestration completion settings
+  approval_gates_enabled?: boolean
+  action_log_retention_days?: number
+  verification_log_retention_days?: number
+  debug_log_retention_days?: number
+  approval_audio_enabled?: boolean
 }
 
 export interface ProjectSettingsUpdate {
@@ -1752,4 +1764,123 @@ export interface YTRoleOption {
   key: YTRoleKey
   label: string
   systemPrompt: string
+}
+
+// ============================================================================
+// Orchestrator Types (Session 2)
+// ============================================================================
+
+// Approval Gates — requests from agents that need operator sign-off
+export interface ApprovalRequest {
+  id: number
+  agent_id: string
+  project_name: string
+  command: string
+  reason: string | null
+  status: 'pending' | 'approved' | 'denied' | 'expired'
+  requested_at: string
+  resolved_at: string | null
+  resolved_by: string | null
+}
+
+// Checkpoints — git-anchored snapshots the operator can roll back to
+export interface Checkpoint {
+  id: number
+  session_id: string | null
+  label: string
+  git_sha: string
+  feature_snapshot: string | null  // JSON string of CheckpointFeatureSnapshot[]
+  created_at: string
+}
+
+export interface CheckpointFeatureSnapshot {
+  id: number
+  name: string
+  passes: boolean
+  in_progress: boolean
+}
+
+export interface RollbackPreview {
+  checkpoint: Checkpoint
+  changes: {
+    feature_id: number
+    feature_name: string
+    current_status: string
+    rollback_status: string
+  }[]
+  branch_name: string
+}
+
+// Action Log — detailed record of every tool call an agent makes
+export interface ActionLogEntry {
+  id: number
+  session_id: string
+  agent_index: number
+  turn_number: number | null
+  tool_name: string
+  tool_input_summary: string | null
+  result_summary: string | null
+  duration_ms: number | null
+  status: 'success' | 'error'
+  created_at: string
+}
+
+export interface ActionLogSummary {
+  total_calls: number
+  total_errors: number
+  error_count: number
+  error_rate: number
+  avg_duration_ms: number | null
+  tools: {
+    tool_name: string
+    count: number
+    call_count: number
+    error_count: number
+    avg_duration_ms: number | null
+  }[]
+}
+
+export interface ActionLogFilters {
+  session_id?: string
+  tool_name?: string
+  status?: 'success' | 'error'
+  search?: string
+  page: number
+  limit: number
+}
+
+// Generic paginated result wrapper
+export interface PaginatedResult<T> {
+  items: T[]
+  total: number
+  page: number
+  limit: number
+  has_more: boolean
+}
+
+// Verification Results — per-feature test/lint/typecheck outcomes
+export interface VerificationResult {
+  id: number
+  feature_id: number
+  feature_name?: string
+  session_id: string | null
+  agent_index: number
+  test_type: 'lint' | 'typecheck' | 'e2e' | 'manual'
+  passed: boolean
+  output: string | null
+  duration_ms: number | null
+  created_at: string
+}
+
+// Commits — parsed git log entries linked to features
+export interface Commit {
+  sha: string
+  message: string
+  timestamp: string
+  parsed: {
+    type: string
+    scope: string
+    description: string
+  } | null
+  feature_ids: number[]
 }

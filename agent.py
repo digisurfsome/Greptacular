@@ -7,8 +7,11 @@ Core agent interaction functions for running autonomous coding sessions.
 
 import asyncio
 import io
+import os
 import re
 import sys
+import time
+import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
@@ -60,6 +63,26 @@ BUDGET_CHECKPOINT_INTERVAL = 30  # Print budget checkpoint every N turns
 MAX_CODING_TURNS = 150           # Hard ceiling (matches client.py max_turns for coding)
 
 
+def _flush_action_log(buffer: list[dict], project_dir: Path) -> None:
+    """Flush buffered action log entries to database. Never raises."""
+    if not buffer:
+        return
+    try:
+        from api.database import ActionLog, create_database
+        _, SessionLocal = create_database(project_dir)
+        db = SessionLocal()
+        try:
+            for entry in buffer:
+                db.add(ActionLog(**entry))
+            db.commit()
+        except Exception:
+            db.rollback()
+        finally:
+            db.close()
+    except Exception:
+        pass  # Never crash agent on logging failures
+
+
 async def run_agent_session(
     client: ClaudeSDKClient,
     message: str,
@@ -79,6 +102,13 @@ async def run_agent_session(
         - "error" if an error occurred
     """
     print("Sending prompt to Claude Agent SDK...\n")
+
+    # Action log tracking
+    session_id = os.environ.get("AUTOFORGE_SESSION_ID", str(uuid.uuid4())[:8])
+    agent_index = int(os.environ.get("AUTOFORGE_AGENT_INDEX", "0"))
+    pending_tools: list[tuple[str, str, float]] = []  # (name, input_summary, start_time)
+    action_log_buffer: list[dict] = []
+    FLUSH_THRESHOLD = 10
 
     try:
         # Send the query
@@ -119,6 +149,7 @@ async def run_agent_session(
                                 print(f"   Input: {input_str[:200]}...", flush=True)
                             else:
                                 print(f"   Input: {input_str}", flush=True)
+                        pending_tools.append((block.name, str(getattr(block, 'input', ''))[:500], time.time()))
 
             # Handle UserMessage (tool results)
             elif msg_type == "UserMessage" and hasattr(msg, "content"):
@@ -140,10 +171,29 @@ async def run_agent_session(
                             # Tool succeeded - just show brief confirmation
                             print("   [Done]", flush=True)
 
+                        if pending_tools:
+                            tool_name, input_summary, start_time = pending_tools.pop(0)
+                            duration_ms = int((time.time() - start_time) * 1000)
+                            action_log_buffer.append({
+                                "session_id": session_id,
+                                "agent_index": agent_index,
+                                "turn_number": turn_count,
+                                "tool_name": tool_name,
+                                "tool_input_summary": input_summary,
+                                "result_summary": str(result_content)[:500] if result_content else None,
+                                "duration_ms": duration_ms,
+                                "status": "error" if is_error else "success",
+                            })
+                            if len(action_log_buffer) >= FLUSH_THRESHOLD:
+                                _flush_action_log(action_log_buffer, project_dir)
+                                action_log_buffer.clear()
+
         print("\n" + "-" * 70 + "\n")
+        _flush_action_log(action_log_buffer, project_dir)
         return "continue", response_text
 
     except Exception as e:
+        _flush_action_log(action_log_buffer, project_dir)
         error_str = str(e)
         print(f"Error during agent session: {error_str}")
 
@@ -295,7 +345,6 @@ async def run_autonomous_agent(
 
         # Create client (fresh context)
         # Pass agent_id for browser isolation in multi-agent scenarios
-        import os
         if agent_type == "testing":
             agent_id = f"testing-{os.getpid()}"  # Unique ID for testing agents
         elif feature_ids and len(feature_ids) > 1:

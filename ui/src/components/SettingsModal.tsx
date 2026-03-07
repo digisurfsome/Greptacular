@@ -761,6 +761,106 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               </div>
             </div>
 
+            <hr className="border-border" />
+
+            {/* Data & Logs */}
+            <div className="space-y-4">
+              <Label className="font-medium text-base">Data & Logs</Label>
+
+              {/* Approval Gates Toggle */}
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="approval-gates" className="text-sm font-medium">
+                    Approval Gates
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Enable approval gates for dangerous commands
+                  </p>
+                </div>
+                <Switch
+                  id="approval-gates"
+                  checked={settings.approval_gates_enabled ?? false}
+                  onCheckedChange={() => updateSettings.mutate({ approval_gates_enabled: !(settings.approval_gates_enabled ?? false) })}
+                  disabled={isSaving}
+                />
+              </div>
+
+              {/* Approval Audio Toggle */}
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="approval-audio" className="text-sm font-medium">
+                    Approval Audio
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Audio notification for approval requests
+                  </p>
+                </div>
+                <Switch
+                  id="approval-audio"
+                  checked={settings.approval_audio_enabled ?? false}
+                  onCheckedChange={() => updateSettings.mutate({ approval_audio_enabled: !(settings.approval_audio_enabled ?? false) })}
+                  disabled={isSaving}
+                />
+              </div>
+
+              {/* Action Log Retention */}
+              <div className="space-y-2">
+                <Label className="text-sm">Action Log Retention (days)</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={365}
+                  value={settings.action_log_retention_days ?? 30}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10)
+                    if (!isNaN(val) && val >= 1 && val <= 365 && !isSaving) {
+                      updateSettings.mutate({ action_log_retention_days: val })
+                    }
+                  }}
+                  disabled={isSaving}
+                  className="w-24"
+                />
+              </div>
+
+              {/* Verification Log Retention */}
+              <div className="space-y-2">
+                <Label className="text-sm">Verification Log Retention (days)</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={365}
+                  value={settings.verification_log_retention_days ?? 30}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10)
+                    if (!isNaN(val) && val >= 1 && val <= 365 && !isSaving) {
+                      updateSettings.mutate({ verification_log_retention_days: val })
+                    }
+                  }}
+                  disabled={isSaving}
+                  className="w-24"
+                />
+              </div>
+
+              {/* Debug Log Retention */}
+              <div className="space-y-2">
+                <Label className="text-sm">Debug Log Retention (days)</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={90}
+                  value={settings.debug_log_retention_days ?? 7}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10)
+                    if (!isNaN(val) && val >= 1 && val <= 90 && !isSaving) {
+                      updateSettings.mutate({ debug_log_retention_days: val })
+                    }
+                  }}
+                  disabled={isSaving}
+                  className="w-24"
+                />
+              </div>
+            </div>
+
             {/* Update Error */}
             {updateSettings.isError && (
               <Alert variant="destructive">

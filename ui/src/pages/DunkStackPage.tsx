@@ -61,6 +61,20 @@ import {
 } from '@/hooks/useAgentOS'
 import { DunkStackPreviewPanel } from '@/components/dunkstack/DunkStackPreviewPanel'
 import { RepoSelector } from '@/components/workspace/RepoSelector'
+import { useOrchestratorSession } from '@/hooks/useOrchestratorSession'
+import { useFeatures as useProjectFeatures } from '@/hooks/useProjects'
+import {
+  ApprovalBanner,
+  ApprovalHistory,
+  CheckpointTimeline,
+  ActionLogPanel,
+  ActionLogSummaryCard,
+  FailuresList,
+  VerificationHistory,
+  CommitsPanel,
+} from '@/components/orchestrator'
+
+type OrchestratorTab = 'action-log' | 'checkpoints' | 'verifications' | 'commits' | 'approvals'
 
 type RightPanel = 'safety' | 'files' | 'agent-os' | 'preview' | null
 type CenterView = 'chat' | 'agent-os-intake' | 'agent-os-workflow'
@@ -217,6 +231,20 @@ export function DunkStackPage(): React.JSX.Element {
   const { data: gapsData } = useGaps(isAgentOSView && selectedProject ? selectedProject : '')
   const resolveGap = useResolveGap(selectedProject || '')
   const autoResolveGaps = useAutoResolveGaps(selectedProject || '')
+
+  // Orchestrator session hook — powers all orchestration widgets below existing content
+  const orchestrator = useOrchestratorSession(selectedProject ?? '')
+  const [orchestratorTab, setOrchestratorTab] = useState<OrchestratorTab>('action-log')
+
+  // Project features for the CommitsPanel feature filter dropdown
+  const { data: projectFeaturesData } = useProjectFeatures(selectedProject)
+  const allFeatures = projectFeaturesData
+    ? [
+        ...projectFeaturesData.pending,
+        ...projectFeaturesData.in_progress,
+        ...projectFeaturesData.done,
+      ].map(f => ({ id: f.id, name: f.name }))
+    : []
 
   /** Select a project and persist choice. */
   const handleSelectProject = useCallback((name: string) => {
@@ -685,6 +713,16 @@ export function DunkStackPage(): React.JSX.Element {
 
         {/* Main content area */}
         <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Approval banner — full width, only shows when pending approvals exist */}
+          {selectedProject && (
+            <ApprovalBanner
+              approvals={orchestrator.pendingApprovals}
+              onApprove={orchestrator.approveRequest}
+              onDeny={orchestrator.denyRequest}
+              isLoading={orchestrator.approvalsLoading}
+            />
+          )}
+
           {centerView === 'chat' && (
             loading ? (
               <div className="flex items-center justify-center h-full">
@@ -736,6 +774,92 @@ export function DunkStackPage(): React.JSX.Element {
           {isAgentOSView && !selectedProject && (
             <div className="flex items-center justify-center h-full">
               <p className="text-sm text-muted-foreground">Select a project from the sidebar to start Agent OS</p>
+            </div>
+          )}
+
+          {/* Orchestrator widgets — tabbed section below existing content */}
+          {selectedProject && centerView === 'chat' && !loading && (
+            <div className="shrink-0 border-t border-border bg-card/40">
+              {/* Tab bar */}
+              <div className="flex items-center gap-1 px-3 py-2 border-b border-border/50 overflow-x-auto">
+                {([
+                  { id: 'action-log' as const, label: 'Action Log' },
+                  { id: 'checkpoints' as const, label: 'Checkpoints' },
+                  { id: 'verifications' as const, label: 'Verifications' },
+                  { id: 'commits' as const, label: 'Commits' },
+                  { id: 'approvals' as const, label: 'Approvals' },
+                ]).map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setOrchestratorTab(tab.id)}
+                    className={`px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap transition-colors ${
+                      orchestratorTab === tab.id
+                        ? 'bg-primary/10 text-primary border border-primary/20'
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Active tab content */}
+              <div className="max-h-[40vh] overflow-y-auto p-3">
+                {orchestratorTab === 'action-log' && (
+                  <div className="space-y-3">
+                    <ActionLogSummaryCard
+                      summary={orchestrator.actionLogSummary}
+                      isLoading={orchestrator.actionLogLoading}
+                    />
+                    <ActionLogPanel
+                      entries={orchestrator.actionLog}
+                      filters={orchestrator.actionLogFilters}
+                      onFiltersChange={orchestrator.setActionLogFilters}
+                      isLoading={orchestrator.actionLogLoading}
+                    />
+                  </div>
+                )}
+
+                {orchestratorTab === 'checkpoints' && (
+                  <CheckpointTimeline
+                    checkpoints={orchestrator.checkpoints}
+                    onRollback={orchestrator.rollbackToCheckpoint}
+                    onConfirmRollback={orchestrator.confirmRollback}
+                    onCreateCheckpoint={orchestrator.createCheckpoint}
+                    isLoading={orchestrator.checkpointsLoading}
+                  />
+                )}
+
+                {orchestratorTab === 'verifications' && (
+                  <div className="space-y-3">
+                    <FailuresList
+                      failures={orchestrator.recentFailures}
+                      isLoading={orchestrator.verificationsLoading}
+                    />
+                    <VerificationHistory
+                      results={orchestrator.recentFailures}
+                      isLoading={orchestrator.verificationsLoading}
+                    />
+                  </div>
+                )}
+
+                {orchestratorTab === 'commits' && (
+                  <CommitsPanel
+                    commits={orchestrator.commits}
+                    featureFilter={orchestrator.commitFeatureFilter}
+                    onFeatureFilterChange={orchestrator.setCommitFeatureFilter}
+                    features={allFeatures}
+                    isLoading={orchestrator.commitsLoading}
+                  />
+                )}
+
+                {orchestratorTab === 'approvals' && (
+                  <ApprovalHistory
+                    approvals={orchestrator.approvalHistory}
+                    isLoading={orchestrator.approvalsLoading}
+                  />
+                )}
+              </div>
             </div>
           )}
         </div>

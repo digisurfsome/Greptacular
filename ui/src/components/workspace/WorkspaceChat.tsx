@@ -963,6 +963,7 @@ export function WorkspaceChat({
             agentWaiting={agentWaiting}
             onToggleSettings={() => setShowWalkieTalkieSettings((v) => !v)}
             settingsOpen={showWalkieTalkieSettings}
+            provider={effectiveProvider}
           />
         </div>
 

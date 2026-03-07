@@ -182,11 +182,12 @@ export function WorkspaceSidebar({
   const editPopoverRef = useRef<HTMLDivElement>(null)
 
   // New-chat creation form state: toggled by the "New Chat" button.
-  // The inline form includes name, folder, repo toggle, model, and effort.
+  // The inline form includes name, folder, repo toggle, provider, model, and effort.
   const [showNewChatForm, setShowNewChatForm] = useState(false)
   const [newChatName, setNewChatName] = useState('')
   const [newChatCategory, setNewChatCategory] = useState('')
   const [attachRepo, setAttachRepo] = useState(false)
+  const [newChatProvider, setNewChatProvider] = useState<WorkspaceProvider>(activeProvider)
   const namingInputRef = useRef<HTMLInputElement>(null)
 
   const { data: conversations, isLoading } = useWorkspaceConversations()
@@ -211,6 +212,18 @@ export function WorkspaceSidebar({
   const togglePinMut = useTogglePin()
   const cycleModelBadgeMut = useCycleModelBadge()
   const bulkDeleteMutation = useBulkDeleteWorkspaceConversations()
+
+  // Reset newChatProvider when the form opens, or when the global provider changes
+  useEffect(() => {
+    setNewChatProvider(activeProvider)
+  }, [activeProvider, showNewChatForm])
+
+  // Build model presets for the new-chat form based on its local provider selection
+  const isNewChatClaude = newChatProvider === 'claude'
+  const newChatModelPresets: ModelPreset[] = useMemo(() => {
+    if (!providers || !providers[newChatProvider]) return CLAUDE_MODEL_PRESETS
+    return buildPresetsForProvider(newChatProvider, providers[newChatProvider])
+  }, [providers, newChatProvider])
 
   // Focus the naming input when the form appears
   useEffect(() => {
@@ -243,18 +256,18 @@ export function WorkspaceSidebar({
   const handleCreateNamedChat = useCallback(() => {
     if (!showNewChatForm) return
     const title = newChatName.trim() || undefined
-    const safeIdx = Math.min(modelPresetIndex, SIDEBAR_MODEL_PRESETS.length - 1)
-    const preset = SIDEBAR_MODEL_PRESETS[safeIdx]
+    const safeIdx = Math.min(modelPresetIndex, newChatModelPresets.length - 1)
+    const preset = newChatModelPresets[safeIdx]
     if (!preset) return
     // Only pass effort for Claude 1M context models; others don't support it
-    const effort = (isClaudeProvider && preset.context === '1m') ? effortLevel : 'high'
+    const effort = (isNewChatClaude && preset.context === '1m') ? effortLevel : 'high'
     createConversationMut.mutate({
       title,
       category: newChatCategory || undefined,
       model: preset.model,
       context_mode: preset.context,
       effort,
-      provider: activeProvider,
+      provider: newChatProvider,
     }, {
       onSuccess: (newConv) => {
         onSelectConversation(newConv.id, newConv.provider)
@@ -271,7 +284,7 @@ export function WorkspaceSidebar({
         setAttachRepo(false)
       },
     })
-  }, [showNewChatForm, newChatName, newChatCategory, createConversationMut, onSelectConversation, modelPresetIndex, effortLevel, SIDEBAR_MODEL_PRESETS, isClaudeProvider, activeProvider])
+  }, [showNewChatForm, newChatName, newChatCategory, createConversationMut, onSelectConversation, modelPresetIndex, effortLevel, newChatModelPresets, isNewChatClaude, newChatProvider])
 
   /** Cancel the naming form. */
   const handleCancelNaming = useCallback(() => {
@@ -279,7 +292,8 @@ export function WorkspaceSidebar({
     setNewChatName('')
     setNewChatCategory('')
     setAttachRepo(false)
-  }, [])
+    setNewChatProvider(activeProvider)
+  }, [activeProvider])
 
   /** Filter conversations by search term (case-insensitive substring). */
   const filtered = useMemo(() => {
@@ -502,16 +516,51 @@ export function WorkspaceSidebar({
             )}
           </div>
 
+          {/* Provider pill bar — pick provider before model */}
+          <div className="mb-1.5">
+            <span className="text-[10px] text-muted-foreground mb-0.5 block">Provider</span>
+            <div className="flex rounded-full border border-border overflow-hidden shadow-sm" role="radiogroup" aria-label="Provider selection">
+              {(['claude', 'codex', 'gemini'] as const).map((p, idx) => {
+                const isActive = newChatProvider === p
+                const colors: Record<string, string> = {
+                  claude: 'bg-blue-600 text-white shadow-inner',
+                  codex: 'bg-emerald-600 text-white shadow-inner',
+                  gemini: 'bg-violet-600 text-white shadow-inner',
+                }
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    role="radio"
+                    aria-checked={isActive}
+                    onClick={() => {
+                      setNewChatProvider(p)
+                      // Reset model selection when provider changes
+                      onModelPresetChange?.(0)
+                    }}
+                    className={`flex-1 px-1.5 py-1 text-[10px] font-semibold whitespace-nowrap transition-all duration-150 ${
+                      isActive
+                        ? colors[p]
+                        : 'bg-card text-muted-foreground hover:bg-muted hover:text-foreground'
+                    } ${idx === 0 ? 'rounded-l-full' : ''} ${idx === 2 ? 'rounded-r-full' : 'border-r border-border'}`}
+                  >
+                    {p.charAt(0).toUpperCase() + p.slice(1)}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
           {/* Model preset pills — pick model + context before starting */}
           <div className="mb-1.5">
             <span className="text-[10px] text-muted-foreground mb-0.5 block">Model</span>
             <div className="flex rounded-full border border-border overflow-hidden shadow-sm" role="radiogroup" aria-label="Model selection">
-              {SIDEBAR_MODEL_PRESETS.map((preset, idx) => {
+              {newChatModelPresets.map((preset, idx) => {
                 const isActive = modelPresetIndex === idx
                 // Provider-specific active colors
-                const activeColor = activeProvider === 'codex'
+                const activeColor = newChatProvider === 'codex'
                   ? 'bg-emerald-600 text-white shadow-inner'
-                  : activeProvider === 'gemini'
+                  : newChatProvider === 'gemini'
                     ? 'bg-violet-600 text-white shadow-inner'
                     : preset.model === 'sonnet'
                       ? 'bg-violet-500 text-white shadow-inner'
@@ -529,7 +578,7 @@ export function WorkspaceSidebar({
                       isActive
                         ? activeColor
                         : 'bg-card text-muted-foreground hover:bg-muted hover:text-foreground'
-                    } ${idx === 0 ? 'rounded-l-full' : ''} ${idx === SIDEBAR_MODEL_PRESETS.length - 1 ? 'rounded-r-full' : 'border-r border-border'}`}
+                    } ${idx === 0 ? 'rounded-l-full' : ''} ${idx === newChatModelPresets.length - 1 ? 'rounded-r-full' : 'border-r border-border'}`}
                   >
                     {preset.label}
                   </button>
@@ -539,8 +588,8 @@ export function WorkspaceSidebar({
           </div>
 
           {/* Effort level selector — only shown for Claude provider, active for Opus 1M */}
-          {isClaudeProvider && (() => {
-            const selectedPreset = SIDEBAR_MODEL_PRESETS[modelPresetIndex]
+          {isNewChatClaude && (() => {
+            const selectedPreset = newChatModelPresets[modelPresetIndex]
             const isOpus1M = selectedPreset?.context === '1m' && selectedPreset?.model === 'opus'
             return (
               <div className={`mb-1.5 transition-opacity duration-150 ${isOpus1M ? '' : 'opacity-35 pointer-events-none'}`}>

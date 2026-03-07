@@ -110,6 +110,9 @@ export function WorkspacePage(): React.JSX.Element {
     try { return (localStorage.getItem('workspace-provider') as WorkspaceProvider) || 'claude' } catch { return 'claude' }
   })
 
+  // Pending provider switch — shown in confirmation dialog when switching with an active conversation
+  const [pendingProviderSwitch, setPendingProviderSwitch] = useState<WorkspaceProvider | null>(null)
+
   // Persist panel collapse state to localStorage
   useEffect(() => {
     try {
@@ -479,7 +482,14 @@ export function WorkspacePage(): React.JSX.Element {
                 <button
                   key={p}
                   type="button"
-                  onClick={() => setActiveProvider(p)}
+                  onClick={() => {
+                    if (p === activeProvider) return
+                    if (activeConversationId !== null) {
+                      setPendingProviderSwitch(p)
+                    } else {
+                      setActiveProvider(p)
+                    }
+                  }}
                   className={`px-2.5 py-1 text-[10px] font-semibold whitespace-nowrap transition-all duration-150 ${
                     isActive
                       ? colors[p] + ' shadow-inner'
@@ -835,6 +845,40 @@ export function WorkspacePage(): React.JSX.Element {
         isOpen={showUserGuide}
         onClose={() => setShowUserGuide(false)}
       />
+
+      {/* Provider switch confirmation dialog */}
+      {pendingProviderSwitch && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-card border border-border rounded-lg shadow-lg p-6 max-w-sm w-full mx-4">
+            <h3 className="text-sm font-semibold text-foreground mb-2">
+              Switch to {pendingProviderSwitch.charAt(0).toUpperCase() + pendingProviderSwitch.slice(1)}?
+            </h3>
+            <p className="text-xs text-muted-foreground mb-4">
+              This will change the active provider for new conversations. Your current chat will keep its original provider.
+            </p>
+            <div className="flex items-center justify-end gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => setPendingProviderSwitch(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => {
+                  setActiveProvider(pendingProviderSwitch)
+                  setPendingProviderSwitch(null)
+                }}
+              >
+                Switch
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   )

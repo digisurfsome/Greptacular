@@ -643,11 +643,13 @@ class DevServerConfigResponse(BaseModel):
     detected_command: str | None = None
     custom_command: str | None = None
     effective_command: str | None = None
+    dev_dir: str | None = None  # Subdirectory to run dev server from (e.g. "ui")
 
 
 class DevServerConfigUpdate(BaseModel):
     """Request schema for updating dev server configuration."""
     custom_command: str | None = None  # None clears the custom command
+    dev_dir: str | None = None  # Subdirectory to run dev server from; None clears it
 
 
 # ============================================================================

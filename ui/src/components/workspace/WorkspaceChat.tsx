@@ -29,6 +29,8 @@ import {
   ChevronDown,
   ScrollText,
   BookOpen,
+  Eye,
+  EyeOff,
 } from 'lucide-react'
 import { useWorkspaceChat } from '@/hooks/useWorkspaceChat'
 import { useWorkspaceConversation, useWorkspaceProviders } from '@/hooks/useWorkspaceConversations'
@@ -236,6 +238,9 @@ export function WorkspaceChat({
   const [showWalkieTalkieSettings, setShowWalkieTalkieSettings] = useState(false)
   const [isSavingSettings, setIsSavingSettings] = useState(false)
 
+  // Browser visibility toggle (headless vs visible) — default visible so user can peek anytime
+  const [playwrightHeadless, setPlaywrightHeadless] = useState(false)
+
   // Context mode: "1m" (1,000,000 tokens with beta) or "200k" (200,000 tokens standard).
   // When fixedContextMode is set (split-view), the mode is locked and the toggle is hidden.
   // For normal (non-split) mode, the context mode is now determined at chat creation time
@@ -291,6 +296,7 @@ export function WorkspaceChat({
         if (s.comm_check_frequency) setCommCheckFrequency(s.comm_check_frequency)
         if (s.comm_wait_timeout) setCommWaitTimeout(s.comm_wait_timeout)
         if (s.comm_auto_reply !== undefined) setCommAutoReply(s.comm_auto_reply)
+        if (s.playwright_headless !== undefined) setPlaywrightHeadless(s.playwright_headless)
       })
       .catch(() => { /* use defaults */ })
   }, [])
@@ -1037,6 +1043,25 @@ export function WorkspaceChat({
             })()}
           </div>
         )}
+
+        {/* Browser visibility toggle: Headless / Visible */}
+        <button
+          type="button"
+          onClick={async () => {
+            const next = !playwrightHeadless
+            setPlaywrightHeadless(next)
+            try { await updateSettings({ playwright_headless: next }) } catch { setPlaywrightHeadless(!next) }
+          }}
+          className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap transition-all duration-150 shrink-0 ${
+            playwrightHeadless
+              ? 'bg-zinc-600 text-white hover:bg-zinc-500'
+              : 'bg-amber-500 text-white hover:bg-amber-400'
+          }`}
+          title={playwrightHeadless ? 'Browser: Headless (invisible) — click to make visible' : 'Browser: Visible (window shown) — click to hide'}
+        >
+          {playwrightHeadless ? <EyeOff size={10} /> : <Eye size={10} />}
+          {playwrightHeadless ? 'Headless' : 'Visible'}
+        </button>
 
         {/* Token log 3-state toggle: Auto | On | Off */}
         <div className="flex items-center gap-1 px-2">

@@ -24,7 +24,7 @@ load_dotenv()
 # Default Playwright headless mode - can be overridden via PLAYWRIGHT_HEADLESS env var
 # When True, browser runs invisibly in background (default - saves CPU)
 # When False, browser window is visible (useful for monitoring agent progress)
-DEFAULT_PLAYWRIGHT_HEADLESS = True
+DEFAULT_PLAYWRIGHT_HEADLESS = False
 
 # Default browser for Playwright - can be overridden via PLAYWRIGHT_BROWSER env var
 # Options: chrome, firefox, webkit, msedge

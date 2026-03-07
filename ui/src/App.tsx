@@ -1,6 +1,6 @@
 declare const __BUILD_TIME__: string
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useQueryClient, useQuery } from '@tanstack/react-query'
 import { useProjects, useFeatures, useAgentStatus, useSettings } from './hooks/useProjects'
 import { useProjectWebSocket } from './hooks/useWebSocket'
@@ -31,7 +31,7 @@ import { ResetProjectModal } from './components/ResetProjectModal'
 import { ProjectSetupRequired } from './components/ProjectSetupRequired'
 import { GitActivityWidget } from './components/GitActivityWidget'
 import { getDependencyGraph, startAgent } from './lib/api'
-import { Loader2, Settings, Moon, Sun, RotateCcw, BookOpen, MessageSquare, Layers, LayoutDashboard, FlaskConical } from 'lucide-react'
+import { Loader2, Settings, Moon, Sun, RotateCcw, BookOpen, MessageSquare, Layers, LayoutDashboard, FlaskConical, Monitor } from 'lucide-react'
 import type { Feature } from './lib/types'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -112,6 +112,19 @@ function App() {
 
   // Celebrate when all features are complete
   useCelebration(features, selectedProject)
+
+  // Auto-open Agent Monitor window when parallel agents start
+  const monitorWindowRef = useRef<Window | null>(null)
+  useEffect(() => {
+    // When orchestrator starts scheduling agents (parallel mode), open monitor
+    if (wsState.orchestratorStatus?.state === 'spawning' && wsState.activeAgents.length > 0) {
+      // Only open if we haven't already opened one (or if it was closed)
+      if (!monitorWindowRef.current || monitorWindowRef.current.closed) {
+        const monitorUrl = `${window.location.origin}${window.location.pathname}#/monitor`
+        monitorWindowRef.current = window.open(monitorUrl, 'autoforge-monitor', 'width=1200,height=800')
+      }
+    }
+  }, [wsState.orchestratorStatus?.state, wsState.activeAgents.length])
 
   // Persist selected project to localStorage
   const handleSelectProject = useCallback((project: string | null) => {
@@ -407,6 +420,21 @@ function App() {
               >
                 <FlaskConical size={16} />
                 <span className="hidden sm:inline text-xs">YT Lab</span>
+              </Button>
+
+              {/* Agent Monitor link — opens in new window */}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => {
+                  const monitorUrl = `${window.location.origin}${window.location.pathname}#/monitor`
+                  monitorWindowRef.current = window.open(monitorUrl, 'autoforge-monitor', 'width=1200,height=800')
+                }}
+                title="Open Agent Monitor in a new window"
+              >
+                <Monitor size={16} />
+                <span className="hidden sm:inline text-xs">Monitor</span>
               </Button>
 
               {/* Docs link */}

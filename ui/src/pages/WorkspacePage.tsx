@@ -26,7 +26,7 @@ import { CIStatusWidget } from '../components/workspace/CIStatusWidget'
 import { GitActivityWidget } from '../components/GitActivityWidget'
 import { useWorkspaceKeyboardShortcuts } from '../hooks/useWorkspaceKeyboardShortcuts'
 import { exportConversationMarkdown, getSettings } from '../lib/api'
-import type { WalkieTalkieLogEntry } from '../lib/types'
+import type { WalkieTalkieLogEntry, WorkspaceProvider } from '../lib/types'
 import { CountdownTimerBar } from '../components/workspace/CountdownTimerBar'
 import { FactoryPanel } from '../components/factory/FactoryPanel'
 import {
@@ -105,6 +105,14 @@ export function WorkspacePage(): React.JSX.Element {
     try { return localStorage.getItem('workspace-panel-coder') === 'collapsed' } catch { return false }
   })
 
+  // Active provider (claude, codex, gemini) — persisted to localStorage
+  const [activeProvider, setActiveProvider] = useState<WorkspaceProvider>(() => {
+    try { return (localStorage.getItem('workspace-provider') as WorkspaceProvider) || 'claude' } catch { return 'claude' }
+  })
+
+  // Pending provider switch — shown in confirmation dialog when switching with an active conversation
+  const [pendingProviderSwitch, setPendingProviderSwitch] = useState<WorkspaceProvider | null>(null)
+
   // Persist panel collapse state to localStorage
   useEffect(() => {
     try {
@@ -114,8 +122,9 @@ export function WorkspacePage(): React.JSX.Element {
       localStorage.setItem('workspace-panel-research-model', researchModel)
       localStorage.setItem('workspace-panel-prd-model', prdModel)
       localStorage.setItem('workspace-panel-coder-model', coderModel)
+      localStorage.setItem('workspace-provider', activeProvider)
     } catch { /* ignore quota or security errors */ }
-  }, [researchCollapsed, prdCollapsed, coderCollapsed, researchModel, prdModel, coderModel])
+  }, [researchCollapsed, prdCollapsed, coderCollapsed, researchModel, prdModel, coderModel, activeProvider])
 
   // Passoff editor state — tab alongside Chat in PRD panel
   const [passoffSections, setPassoffSections] = useState<PassoffSection[]>([])
@@ -175,13 +184,16 @@ export function WorkspacePage(): React.JSX.Element {
   const [pendingEffort, setPendingEffort] = useState<'low' | 'medium' | 'high'>('high')
   const [newChatKey, setNewChatKey] = useState(0)
 
-  const handleNewChat = useCallback((model: string, contextMode: '1m' | '200k', effort: 'low' | 'medium' | 'high' = 'high') => {
+  const handleNewChat = useCallback((model: string, contextMode: '1m' | '200k', effort: 'low' | 'medium' | 'high' = 'high', provider?: WorkspaceProvider) => {
+    if (provider && provider !== activeProvider) {
+      setActiveProvider(provider)
+    }
     setPendingModel(model)
     setPendingContextMode(contextMode)
     setPendingEffort(effort)
     setNewChatKey(k => k + 1)
     setActiveConversationId(null)
-  }, [])
+  }, [activeProvider])
 
   /** Clear active conversation when it's deleted so the chat panel disconnects. */
   const handleDeleteConversation = useCallback((deletedId: number) => {
@@ -457,6 +469,38 @@ export function WorkspacePage(): React.JSX.Element {
             <Bot size={14} />
             <span className="hidden sm:inline text-[10px]">Roles</span>
           </Button>
+          {/* Provider selector */}
+          <div className="flex rounded-full border border-border overflow-hidden shadow-sm">
+            {(['claude', 'codex', 'gemini'] as const).map((p, idx) => {
+              const isActive = activeProvider === p
+              const colors: Record<string, string> = {
+                claude: 'bg-blue-600 text-white border-blue-400',
+                codex: 'bg-emerald-600 text-white border-emerald-400',
+                gemini: 'bg-violet-600 text-white border-violet-400',
+              }
+              return (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => {
+                    if (p === activeProvider) return
+                    if (activeConversationId !== null) {
+                      setPendingProviderSwitch(p)
+                    } else {
+                      setActiveProvider(p)
+                    }
+                  }}
+                  className={`px-2.5 py-1 text-[10px] font-semibold whitespace-nowrap transition-all duration-150 ${
+                    isActive
+                      ? colors[p] + ' shadow-inner'
+                      : 'bg-card text-muted-foreground hover:bg-muted hover:text-foreground'
+                  } ${idx === 0 ? 'rounded-l-full' : ''} ${idx === 2 ? 'rounded-r-full' : 'border-r border-border'}`}
+                >
+                  {p.charAt(0).toUpperCase() + p.slice(1)}
+                </button>
+              )
+            })}
+          </div>
           <Button
             variant="ghost"
             size="sm"
@@ -549,6 +593,7 @@ export function WorkspacePage(): React.JSX.Element {
             onModelPresetChange={handleModelPresetChange}
             effortLevel={pendingEffort}
             onEffortChange={setPendingEffort}
+            activeProvider={activeProvider}
           />
         </div>
 
@@ -749,6 +794,7 @@ export function WorkspacePage(): React.JSX.Element {
               pendingModel={pendingModel}
               pendingContextMode={pendingContextMode}
               pendingEffort={pendingEffort}
+              provider={activeProvider}
               newChatKey={newChatKey}
               onStreamingChange={(streaming) => {
                 if (activeConversationId != null) {
@@ -799,6 +845,40 @@ export function WorkspacePage(): React.JSX.Element {
         isOpen={showUserGuide}
         onClose={() => setShowUserGuide(false)}
       />
+
+      {/* Provider switch confirmation dialog */}
+      {pendingProviderSwitch && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-card border border-border rounded-lg shadow-lg p-6 max-w-sm w-full mx-4">
+            <h3 className="text-sm font-semibold text-foreground mb-2">
+              Switch to {pendingProviderSwitch.charAt(0).toUpperCase() + pendingProviderSwitch.slice(1)}?
+            </h3>
+            <p className="text-xs text-muted-foreground mb-4">
+              This will change the active provider for new conversations. Your current chat will keep its original provider.
+            </p>
+            <div className="flex items-center justify-end gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => setPendingProviderSwitch(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => {
+                  setActiveProvider(pendingProviderSwitch)
+                  setPendingProviderSwitch(null)
+                }}
+              >
+                Switch
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   )

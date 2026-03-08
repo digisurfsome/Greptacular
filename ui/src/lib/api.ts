@@ -706,7 +706,7 @@ export interface WorkspaceProviderDef {
   install_command: string
   auth_env_var: string
   supports_subscription: boolean
-  models: { id: string; name: string }[]
+  models: { id: string; name: string; supports_1m?: boolean }[]
   default_model: string
 }
 

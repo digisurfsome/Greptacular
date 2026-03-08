@@ -427,12 +427,12 @@ export function LibraryFolderBrowser({
                   {file.file_type}
                 </span>
 
-                {/* File info */}
-                <div className="flex-1 min-w-0">
-                  <span className="block text-xs text-foreground truncate">
+                {/* File info — single line: name + size */}
+                <div className="flex-1 min-w-0 flex items-center gap-1.5">
+                  <span className="text-xs text-foreground truncate">
                     {file.display_name || file.filename}
                   </span>
-                  <span className="block text-[10px] text-muted-foreground">
+                  <span className="flex-shrink-0 text-[10px] text-muted-foreground/60">
                     {formatSize(file.file_size)}
                   </span>
                 </div>

@@ -259,11 +259,48 @@ export function WorkspaceChatHeader({
     [handleSave],
   )
 
+  // --- New category state ---
+  const [isAddingCategory, setIsAddingCategory] = useState(false)
+  const [newCategoryValue, setNewCategoryValue] = useState('')
+  const newCategoryRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (isAddingCategory) {
+      newCategoryRef.current?.focus()
+    }
+  }, [isAddingCategory])
+
   const handleCategoryChange = useCallback(
     (e: React.ChangeEvent<HTMLSelectElement>) => {
+      if (e.target.value === '__add_new__') {
+        setIsAddingCategory(true)
+        return
+      }
       onUpdateCategory(e.target.value)
     },
     [onUpdateCategory],
+  )
+
+  const handleSaveNewCategory = useCallback(() => {
+    const trimmed = newCategoryValue.trim()
+    if (trimmed) {
+      onUpdateCategory(trimmed)
+    }
+    setIsAddingCategory(false)
+    setNewCategoryValue('')
+  }, [newCategoryValue, onUpdateCategory])
+
+  const handleNewCategoryKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        handleSaveNewCategory()
+      } else if (e.key === 'Escape') {
+        setIsAddingCategory(false)
+        setNewCategoryValue('')
+      }
+    },
+    [handleSaveNewCategory],
   )
 
   // --- Tag handlers ---
@@ -386,18 +423,33 @@ export function WorkspaceChatHeader({
 
         {/* Category selector */}
         {conversationId !== null && (
-          <select
-            value={category}
-            onChange={handleCategoryChange}
-            className="text-xs bg-input border border-border rounded px-1.5 py-0.5 text-foreground outline-none ring-ring focus:ring-1"
-            aria-label="Conversation category"
-          >
-            {allCategories.map((cat) => (
-              <option key={cat} value={cat}>
-                {cat}
-              </option>
-            ))}
-          </select>
+          isAddingCategory ? (
+            <input
+              ref={newCategoryRef}
+              type="text"
+              value={newCategoryValue}
+              onChange={(e) => setNewCategoryValue(e.target.value)}
+              onBlur={handleSaveNewCategory}
+              onKeyDown={handleNewCategoryKeyDown}
+              placeholder="New category..."
+              className="text-xs bg-input border border-border rounded px-1.5 py-0.5 outline-none ring-ring focus:ring-1 w-24 text-foreground"
+              aria-label="New category name"
+            />
+          ) : (
+            <select
+              value={category}
+              onChange={handleCategoryChange}
+              className="text-xs bg-input border border-border rounded px-1.5 py-0.5 text-foreground outline-none ring-ring focus:ring-1"
+              aria-label="Conversation category"
+            >
+              {allCategories.map((cat) => (
+                <option key={cat} value={cat}>
+                  {cat}
+                </option>
+              ))}
+              <option value="__add_new__">+ Add new...</option>
+            </select>
+          )
         )}
 
         {/* Tags section */}

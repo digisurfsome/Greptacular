@@ -349,8 +349,10 @@ export function useWorkspaceChat({
       if (connectionGenerationRef.current !== thisGeneration) return;
       try {
         const data = JSON.parse(event.data) as WorkspaceChatServerMessage;
-        if (import.meta.env.DEV) {
-          console.debug('[useWorkspaceChat] Received WebSocket message:', data.type, data);
+        // Always-on diagnostic: log all non-noise message types so we can
+        // verify which events actually arrive via the browser console.
+        if (data.type !== 'heartbeat' && data.type !== 'pong') {
+          console.log('[WS]', data.type, data.type === 'token_log' ? (data as unknown as Record<string, unknown>).entry : '');
         }
 
         // Track sequence number from background session events
@@ -542,8 +544,12 @@ export function useWorkspaceChat({
             // Real-time token processing log entry from the backend.
             // Append to the log for display in the TokenLogPanel.
             const logData = data as { entry: TokenLogEntry };
+            console.log('[WS] token_log handler: entry exists=', !!logData.entry, 'event_type=', logData.entry?.event_type);
             if (logData.entry) {
-              setTokenLog((prev) => [...prev, logData.entry]);
+              setTokenLog((prev) => {
+                console.log('[WS] token_log appending: prev.length=', prev.length, 'new entry id=', logData.entry?.id);
+                return [...prev, logData.entry];
+              });
             }
             break;
           }
@@ -679,12 +685,22 @@ export function useWorkspaceChat({
 
           case "session_state": {
             const ssData = data as { state: string; seq?: number };
+            console.log('[WS] session_state:', ssData.state, 'queued=', !!queuedPayloadRef.current);
             if (ssData.seq && ssData.seq > lastSeqRef.current) {
               lastSeqRef.current = ssData.seq;
             }
             if (ssData.state === "waiting_input") {
-              setIsLoading(false);
               sessionReadyRef.current = true;
+              // Dispatch any queued message before resetting isLoading.
+              // The initial user message may be queued waiting for session readiness.
+              if (queuedPayloadRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
+                const queued = queuedPayloadRef.current;
+                queuedPayloadRef.current = null;
+                wsRef.current.send(JSON.stringify(queued));
+                // Keep isLoading true — we just sent a message
+              } else {
+                setIsLoading(false);
+              }
             } else if (ssData.state === "streaming") {
               setIsLoading(true);
               sessionReadyRef.current = false;

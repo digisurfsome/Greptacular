@@ -670,6 +670,12 @@ class BackgroundSession:
         seq = await self._output_buffer.append(event)
         # Add the sequence number to the broadcast copy so viewers can track position.
         broadcast_event = {**event, "seq": seq}
+        # Diagnostic: log token_log broadcasts to confirm backend is emitting them
+        if event.get("type") == "token_log":
+            logger.info(
+                "token_log broadcast: seq=%d viewers=%d entry_type=%s",
+                seq, len(self._viewers), event.get("entry", {}).get("event_type", "?"),
+            )
         await self._broadcast(broadcast_event)
 
     async def _emit_state_event(self) -> None:

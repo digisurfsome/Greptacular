@@ -635,6 +635,12 @@ export function useWorkspaceChat({
                       timestamp: new Date(),
                     },
                   ]);
+                } else if (eventType === "token_log") {
+                  // Replay token log entries so the TokenLogPanel populates on reconnect
+                  const logData = event as unknown as { entry: TokenLogEntry };
+                  if (logData.entry) {
+                    setTokenLog((prev) => [...prev, logData.entry]);
+                  }
                 }
               }
             }

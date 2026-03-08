@@ -11,6 +11,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   FileText,
   GitBranch,
@@ -21,6 +22,7 @@ import {
   User,
   Bot,
   Info,
+  RefreshCw,
 } from 'lucide-react'
 import {
   useDeleteFile,
@@ -50,8 +52,26 @@ export function WorkspaceLibrary({
   onToggleCollapse,
   walkieTalkieLog = [],
 }: WorkspaceLibraryProps): React.JSX.Element {
-  const [activeTab, setActiveTab] = useState<Tab>('library')
+  // Persist active tab to localStorage
+  const [activeTab, setActiveTab] = useState<Tab>(() => {
+    const saved = localStorage.getItem('workspace-library-tab')
+    return (saved === 'library' || saved === 'repos' || saved === 'walkie-talkie') ? saved : 'library'
+  })
+  const handleTabChange = useCallback((tab: Tab) => {
+    setActiveTab(tab)
+    localStorage.setItem('workspace-library-tab', tab)
+  }, [])
   const wtLogEndRef = useRef<HTMLDivElement>(null)
+
+  // Refresh handler: invalidate library + repo queries
+  const queryClient = useQueryClient()
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true)
+    await queryClient.invalidateQueries({ queryKey: ['workspace', 'library'] })
+    await queryClient.invalidateQueries({ queryKey: ['workspace', 'repos'] })
+    setTimeout(() => setIsRefreshing(false), 500)
+  }, [queryClient])
 
   // Current folder for the folder browser
   const [currentFolderId, setCurrentFolderId] = useState<number | null>(null)
@@ -104,7 +124,7 @@ export function WorkspaceLibrary({
       {/* Tab bar */}
       <div className="flex border-b border-border">
         <button
-          onClick={() => setActiveTab('library')}
+          onClick={() => handleTabChange('library')}
           className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors ${
             activeTab === 'library'
               ? 'text-foreground border-b-2 border-primary'
@@ -115,7 +135,7 @@ export function WorkspaceLibrary({
           Library
         </button>
         <button
-          onClick={() => setActiveTab('repos')}
+          onClick={() => handleTabChange('repos')}
           className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors ${
             activeTab === 'repos'
               ? 'text-foreground border-b-2 border-primary'
@@ -129,7 +149,7 @@ export function WorkspaceLibrary({
           )}
         </button>
         <button
-          onClick={() => setActiveTab('walkie-talkie')}
+          onClick={() => handleTabChange('walkie-talkie')}
           className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors ${
             activeTab === 'walkie-talkie'
               ? 'text-amber-600 dark:text-amber-400 border-b-2 border-amber-500'
@@ -143,6 +163,13 @@ export function WorkspaceLibrary({
               {walkieTalkieLog.length}
             </span>
           )}
+        </button>
+        <button
+          onClick={handleRefresh}
+          className="px-1.5 text-muted-foreground hover:text-foreground transition-colors"
+          title="Refresh"
+        >
+          <RefreshCw size={12} className={isRefreshing ? 'animate-spin' : ''} />
         </button>
         <button
           onClick={onToggleCollapse}

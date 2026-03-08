@@ -81,7 +81,14 @@ interface EntryWithRunningTotal {
 
 // -- Sub-components -----------------------------------------------------------
 
-/** Compact cumulative totals shown at the top of the panel. */
+/** Format token count in compact form for the header (e.g. 142.3K). */
+function formatTokensCompact(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
+  return String(n)
+}
+
+/** Two-row header: "This Turn" (latest API response) + "Session Total". */
 function TokenLogTotals({
   entries,
   summary,
@@ -89,77 +96,117 @@ function TokenLogTotals({
   entries: TokenLogEntry[]
   summary: TokenLogSummary | null
 }) {
-  const totals = useMemo(() => {
-    let estimatedTokens = 0
-    let apiInput = 0
-    let apiOutput = 0
+  const { thisTurn, sessionTotal } = useMemo(() => {
+    let totalInput = 0
+    let totalOutput = 0
     let totalCost = 0
-    // Use the LATEST result_summary for cache (not cumulative sum).
-    // Each turn's cache_read already includes all previously cached content.
-    let latestCacheRead = 0
-    let latestCacheCreate = 0
-    let latestInput = 0
+    let turnCount = 0
+    // Latest turn data
+    let lastInput = 0
+    let lastOutput = 0
+    let lastCost = 0
+    let lastCacheRead = 0
+    let lastCacheCreate = 0
 
     for (const e of entries) {
-      estimatedTokens += e.estimated_tokens
       if (e.event_type === 'result_summary') {
-        apiInput += e.api_input_tokens ?? 0
-        apiOutput += e.api_output_tokens ?? 0
+        totalInput += e.api_input_tokens ?? 0
+        totalOutput += e.api_output_tokens ?? 0
         totalCost += e.api_total_cost_usd ?? 0
-        latestCacheRead = e.api_cache_read_tokens ?? 0
-        latestCacheCreate = e.api_cache_creation_tokens ?? 0
-        latestInput = e.api_input_tokens ?? 0
+        turnCount++
+        lastInput = e.api_input_tokens ?? 0
+        lastOutput = e.api_output_tokens ?? 0
+        lastCost = e.api_total_cost_usd ?? 0
+        lastCacheRead = e.api_cache_read_tokens ?? 0
+        lastCacheCreate = e.api_cache_creation_tokens ?? 0
       }
     }
 
-    const currentContext = latestInput + latestCacheRead + latestCacheCreate
-    return { estimatedTokens, apiInput, apiOutput, cacheRead: latestCacheRead, totalCost, currentContext }
-  }, [entries])
+    const currentContext = lastInput + lastCacheRead + lastCacheCreate
+    const cacheHitRate = (lastInput + lastCacheRead) > 0
+      ? Math.round((lastCacheRead / (lastInput + lastCacheRead)) * 100)
+      : 0
 
-  const data = summary
-    ? {
-        estimatedTokens: summary.total_estimated_tokens,
-        apiInput: summary.total_api_input_tokens,
-        apiOutput: summary.total_api_output_tokens,
-        cacheRead: summary.latest_cache_read_tokens ?? summary.total_api_cache_read_tokens,
-        totalCost: summary.total_cost_usd,
-        currentContext: summary.current_context_tokens ?? 0,
-      }
-    : totals
+    return {
+      thisTurn: {
+        input: lastInput,
+        output: lastOutput,
+        cost: lastCost,
+        currentContext,
+        cacheHitRate,
+        cacheRead: lastCacheRead,
+      },
+      sessionTotal: {
+        input: summary?.total_api_input_tokens ?? totalInput,
+        output: summary?.total_api_output_tokens ?? totalOutput,
+        cost: summary?.total_cost_usd ?? totalCost,
+        turnCount,
+      },
+    }
+  }, [entries, summary])
 
   return (
-    <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[10px]">
-      <div className="flex justify-between">
-        <span className="text-muted-foreground">Input:</span>
-        <span className="font-mono font-bold text-foreground tabular-nums">
-          {formatTokens(data.apiInput)}
-        </span>
-      </div>
-      <div className="flex justify-between">
-        <span className="text-muted-foreground">Output:</span>
-        <span className="font-mono font-bold text-foreground tabular-nums">
-          {formatTokens(data.apiOutput)}
-        </span>
-      </div>
-      <div className="flex justify-between">
-        <span className="text-muted-foreground">Cache:</span>
-        <span className="font-mono font-bold text-foreground tabular-nums">
-          {formatTokens(data.cacheRead)}
-        </span>
-      </div>
-      {data.currentContext > 0 && (
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">Context:</span>
-          <span className="font-mono font-bold text-blue-500 tabular-nums">
-            {formatTokens(data.currentContext)}
-          </span>
+    <div className="space-y-2 text-[10px]">
+      {/* This Turn — latest API response */}
+      <div>
+        <div className="text-[9px] font-semibold text-muted-foreground/70 uppercase tracking-wider mb-0.5">This Turn</div>
+        <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Input:</span>
+            <span className="font-mono font-bold text-foreground tabular-nums">
+              {formatTokensCompact(thisTurn.input)}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Output:</span>
+            <span className="font-mono font-bold text-foreground tabular-nums">
+              {formatTokensCompact(thisTurn.output)}
+            </span>
+          </div>
+          {thisTurn.currentContext > 0 && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Context:</span>
+              <span className="font-mono font-bold text-blue-500 tabular-nums">
+                {formatTokensCompact(thisTurn.currentContext)}
+              </span>
+            </div>
+          )}
+          {thisTurn.cacheRead > 0 && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Cache Hit:</span>
+              <span className="font-mono font-bold text-purple-500 tabular-nums">
+                {thisTurn.cacheHitRate}%
+              </span>
+            </div>
+          )}
         </div>
-      )}
-      <div className="flex justify-between">
-        <span className="text-muted-foreground">Cost:</span>
-        <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
-          {formatCost(data.totalCost)}
-        </span>
+      </div>
+
+      {/* Session Total — sum of all turns */}
+      <div className="border-t border-border/30 pt-1.5">
+        <div className="text-[9px] font-semibold text-muted-foreground/70 uppercase tracking-wider mb-0.5">
+          Session Total <span className="normal-case font-normal">({sessionTotal.turnCount} turn{sessionTotal.turnCount !== 1 ? 's' : ''})</span>
+        </div>
+        <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Total Input:</span>
+            <span className="font-mono font-bold text-foreground tabular-nums">
+              {formatTokensCompact(sessionTotal.input)}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Total Output:</span>
+            <span className="font-mono font-bold text-foreground tabular-nums">
+              {formatTokensCompact(sessionTotal.output)}
+            </span>
+          </div>
+          <div className="flex justify-between col-span-2">
+            <span className="text-muted-foreground">API Cost:</span>
+            <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
+              {formatCost(sessionTotal.cost)}
+            </span>
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -225,10 +272,11 @@ function TokenLogRow({
   })
 
   const isSummary = entry.event_type === 'result_summary'
+  const thisTurnCost = isSummary ? (entry.api_total_cost_usd ?? 0) : 0
 
   return (
     <div className={`py-1 px-2 border-b border-border/30 hover:bg-muted/20 transition-colors text-[10px] ${isSummary ? 'bg-emerald-500/5' : ''}`}>
-      {/* Top line: turn#, time, badge, running total */}
+      {/* Top line: turn#, time, badge, cost info */}
       <div className="flex items-center gap-1.5">
         <span className="flex-shrink-0 w-4 text-right font-mono tabular-nums text-muted-foreground">
           {entry.turn_number}
@@ -239,9 +287,14 @@ function TokenLogRow({
         <span className={`flex-shrink-0 px-1 py-0.5 rounded text-[9px] font-semibold border ${eventTypeColor(entry.event_type)}`}>
           {eventTypeLabel(entry.event_type)}
         </span>
-        {/* Running cumulative cost (right-aligned) */}
+        {/* Right side: incremental cost (summary only) | running total */}
         <span className="ml-auto flex-shrink-0 font-mono tabular-nums text-muted-foreground">
-          {formatCost(runningTotal)}
+          {isSummary && thisTurnCost > 0 && (
+            <span className="text-emerald-600 dark:text-emerald-400 mr-1.5">
+              +{formatCost(thisTurnCost)}
+            </span>
+          )}
+          <span className="text-muted-foreground/60">{formatCost(runningTotal)}</span>
         </span>
       </div>
 
@@ -275,7 +328,7 @@ function TokenLogRow({
           </span>
         )}
 
-        {/* Summary details: API cost prominently */}
+        {/* Summary details: actual API token counts */}
         {isSummary && (
           <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-muted-foreground mt-0.5">
             {entry.api_input_tokens != null && (
@@ -284,10 +337,8 @@ function TokenLogRow({
             {entry.api_output_tokens != null && (
               <span>out:<span className="font-mono text-foreground">{formatTokens(entry.api_output_tokens)}</span></span>
             )}
-            {entry.api_total_cost_usd != null && (
-              <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold">
-                {formatCost(entry.api_total_cost_usd)}
-              </span>
+            {entry.api_cache_read_tokens != null && entry.api_cache_read_tokens > 0 && (
+              <span>cache:<span className="font-mono text-purple-500">{formatTokens(entry.api_cache_read_tokens)}</span></span>
             )}
             {entry.api_duration_ms != null && (
               <span>{formatDuration(entry.api_duration_ms)}</span>
@@ -295,10 +346,10 @@ function TokenLogRow({
           </div>
         )}
 
-        {/* Estimated tokens for non-summary */}
-        {!isSummary && entry.estimated_tokens > 0 && (
+        {/* Non-summary: show actual token data if available, else chars */}
+        {!isSummary && entry.event_type === 'tool_result' && entry.tool_result_length != null && entry.tool_result_length > 0 && (
           <span className="text-muted-foreground/60 ml-1">
-            ~{formatTokens(entry.estimated_tokens)}t
+            ({formatTokens(entry.tool_result_length)} chars)
           </span>
         )}
       </div>
@@ -319,12 +370,58 @@ interface TokenLogPanelProps {
   onClear?: () => void
 }
 
+const TOKEN_LOG_WIDTH_KEY = 'token-log-panel-width'
+const MIN_WIDTH = 240
+const MAX_WIDTH = 600
+const DEFAULT_WIDTH = 320
+
 export function TokenLogPanel({ entries, conversationId, onClose, onClear }: TokenLogPanelProps): React.JSX.Element {
   const [summary, setSummary] = useState<TokenLogSummary | null>(null)
   const [isLoadingSummary, setIsLoadingSummary] = useState(false)
   const [isClearing, setIsClearing] = useState(false)
   const [showBreakdown, setShowBreakdown] = useState(false)
   const logContainerRef = useRef<HTMLDivElement>(null)
+
+  // --- Resizable width ---
+  const [panelWidth, setPanelWidth] = useState(() => {
+    const saved = localStorage.getItem(TOKEN_LOG_WIDTH_KEY)
+    const w = saved ? parseInt(saved, 10) : DEFAULT_WIDTH
+    return (w >= MIN_WIDTH && w <= MAX_WIDTH) ? w : DEFAULT_WIDTH
+  })
+  const isDraggingRef = useRef(false)
+  const startXRef = useRef(0)
+  const startWidthRef = useRef(DEFAULT_WIDTH)
+
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    isDraggingRef.current = true
+    startXRef.current = e.clientX
+    startWidthRef.current = panelWidth
+
+    const handleMove = (ev: MouseEvent) => {
+      if (!isDraggingRef.current) return
+      // Panel is on the LEFT, so dragging left = wider (negative delta = wider)
+      const delta = startXRef.current - ev.clientX
+      const newWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startWidthRef.current + delta))
+      setPanelWidth(newWidth)
+    }
+    const handleUp = () => {
+      isDraggingRef.current = false
+      document.removeEventListener('mousemove', handleMove)
+      document.removeEventListener('mouseup', handleUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      // Persist
+      setPanelWidth((w) => {
+        localStorage.setItem(TOKEN_LOG_WIDTH_KEY, String(w))
+        return w
+      })
+    }
+    document.addEventListener('mousemove', handleMove)
+    document.addEventListener('mouseup', handleUp)
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }, [panelWidth])
 
   // Compute running cumulative cost for each entry.
   // The running total only increments on result_summary events,
@@ -379,7 +476,16 @@ export function TokenLogPanel({ entries, conversationId, onClose, onClear }: Tok
   }, [conversationId, onClear])
 
   return (
-    <div className="w-[320px] flex-shrink-0 flex flex-col h-full border-r border-border bg-card/60 animate-slide-in">
+    <div
+      className="flex-shrink-0 flex flex-col h-full border-r border-border bg-card/60 animate-slide-in relative"
+      style={{ width: `${panelWidth}px` }}
+    >
+      {/* Drag handle on left edge for resizing */}
+      <div
+        onMouseDown={handleResizeStart}
+        className="absolute top-0 left-0 w-1.5 h-full cursor-col-resize z-10 hover:bg-primary/30 active:bg-primary/50 transition-colors"
+        title="Drag to resize"
+      />
       {/* Panel header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-card">
         <div className="flex items-center gap-2">
@@ -444,7 +550,7 @@ export function TokenLogPanel({ entries, conversationId, onClose, onClear }: Tok
       <div className="flex items-center gap-1.5 px-2 py-1 text-[9px] text-muted-foreground/60 font-medium border-b border-border/50 bg-muted/20">
         <span className="w-4 text-right">#</span>
         <span className="flex-1">Time / Type / Details</span>
-        <span className="flex-shrink-0 text-right">Running $</span>
+        <span className="flex-shrink-0 text-right">+Turn / Total</span>
       </div>
 
       {/* Scrollable log entries -- takes remaining vertical space */}

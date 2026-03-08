@@ -1070,20 +1070,20 @@ export function WorkspaceChat({
                 <>
                   <span
                     className={`px-2 py-0.5 text-[10px] font-bold rounded-full whitespace-nowrap ${pillClass}`}
-                    title={`${activePreset.label} (active)`}
+                    title={`${activePreset.label} — AutoForge orchestration layer using ${displayId} as the underlying AI model. Context: ${activePreset.context === '1m' ? '1M tokens' : '200K tokens'}.`}
                   >
                     {activePreset.label}
                   </span>
                   <span
                     className="text-[10px] font-mono text-muted-foreground truncate max-w-[140px]"
-                    title={modelId ? `Confirmed: ${modelId}` : `Expected: ${displayId}`}
+                    title={modelId ? `Active model: ${modelId}` : `Expected model: ${displayId}`}
                   >
                     {displayId}
                   </span>
                   {apiTokenTotals.totalCost > 0 && (
                     <span
                       className="text-[10px] font-mono text-muted-foreground whitespace-nowrap"
-                      title={`API: ${apiTokenTotals.apiInput.toLocaleString()} in / ${apiTokenTotals.apiOutput.toLocaleString()} out / ${apiTokenTotals.cacheRead.toLocaleString()} cache`}
+                      title={`Session tokens: ${apiTokenTotals.apiInput.toLocaleString()} input / ${apiTokenTotals.apiOutput.toLocaleString()} output / ${apiTokenTotals.cacheRead.toLocaleString()} cache read`}
                     >
                       ${apiTokenTotals.totalCost.toFixed(3)} · {formatTokenCount(apiTokenTotals.apiInput + apiTokenTotals.apiOutput)} tok
                     </span>

@@ -189,6 +189,17 @@ export function WorkspaceSidebar({
   const [attachRepo, setAttachRepo] = useState(false)
   const namingInputRef = useRef<HTMLInputElement>(null)
 
+  // Sort mode: 'recent' (most recently updated first) or 'sequential' (creation order)
+  type SortMode = 'recent' | 'sequential'
+  const [sortMode, setSortMode] = useState<SortMode>(() => {
+    const saved = localStorage.getItem('workspace-sort-mode')
+    return (saved === 'recent' || saved === 'sequential') ? saved : 'recent'
+  })
+  const handleSortChange = useCallback((mode: SortMode) => {
+    setSortMode(mode)
+    localStorage.setItem('workspace-sort-mode', mode)
+  }, [])
+
   const { data: conversations, isLoading } = useWorkspaceConversations()
   const { data: bgSessions } = useBackgroundSessions()
 
@@ -242,7 +253,18 @@ export function WorkspaceSidebar({
   /** Create the named conversation and select it. */
   const handleCreateNamedChat = useCallback(() => {
     if (!showNewChatForm) return
-    const title = newChatName.trim() || undefined
+    // Auto-append timestamp if user didn't provide a title (format: M.DD.YY/HH:MMp)
+    const rawTitle = newChatName.trim()
+    const now = new Date()
+    const mo = now.getMonth() + 1
+    const dd = String(now.getDate()).padStart(2, '0')
+    const yy = String(now.getFullYear()).slice(-2)
+    const hr = now.getHours()
+    const mn = String(now.getMinutes()).padStart(2, '0')
+    const ampm = hr >= 12 ? 'p' : 'a'
+    const hr12 = hr % 12 || 12
+    const stamp = `${mo}.${dd}.${yy}/${hr12}:${mn}${ampm}`
+    const title = rawTitle ? `${rawTitle} · ${stamp}` : `Chat · ${stamp}`
     const safeIdx = Math.min(modelPresetIndex, SIDEBAR_MODEL_PRESETS.length - 1)
     const preset = SIDEBAR_MODEL_PRESETS[safeIdx]
     if (!preset) return
@@ -281,16 +303,24 @@ export function WorkspaceSidebar({
     setAttachRepo(false)
   }, [])
 
-  /** Filter conversations by search term (case-insensitive substring). */
+  /** Filter conversations by search term (case-insensitive substring) and sort. */
   const filtered = useMemo(() => {
     if (!conversations) return []
-    if (!search.trim()) return conversations
-
-    const term = search.trim().toLowerCase()
-    return conversations.filter((c) =>
-      (c.title ?? 'Untitled').toLowerCase().includes(term),
-    )
-  }, [conversations, search])
+    let result = conversations
+    if (search.trim()) {
+      const term = search.trim().toLowerCase()
+      result = result.filter((c) =>
+        (c.title ?? 'Untitled').toLowerCase().includes(term),
+      )
+    }
+    // Sort: 'recent' = most recently updated first, 'sequential' = oldest first (creation order)
+    const sorted = [...result].sort((a, b) => {
+      const dateA = new Date(a.updated_at ?? a.created_at ?? 0).getTime()
+      const dateB = new Date(b.updated_at ?? b.created_at ?? 0).getTime()
+      return sortMode === 'recent' ? dateB - dateA : dateA - dateB
+    })
+    return sorted
+  }, [conversations, search, sortMode])
 
   /** Group filtered conversations by category with pinned at top. */
   const grouped = useMemo(() => {
@@ -594,12 +624,28 @@ export function WorkspaceSidebar({
         </div>
       )}
 
-      {/* Search */}
-      <div className="px-3 pb-2">
+      {/* Search + sort toggle */}
+      <div className="px-3 pb-2 space-y-1.5">
         <ConversationSearch
           onSelectConversation={(id) => onSelectConversation(id)}
           onFilterChange={(filter) => setSearch(filter)}
         />
+        <div className="flex items-center gap-1">
+          <span className="text-[10px] text-muted-foreground mr-1">Sort:</span>
+          {(['recent', 'sequential'] as const).map((mode) => (
+            <button
+              key={mode}
+              onClick={() => handleSortChange(mode)}
+              className={`px-2 py-0.5 text-[10px] rounded-full transition-colors ${
+                sortMode === mode
+                  ? 'bg-primary text-primary-foreground font-semibold'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+              }`}
+            >
+              {mode === 'recent' ? 'Recent' : 'Sequential'}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Bulk action bar */}

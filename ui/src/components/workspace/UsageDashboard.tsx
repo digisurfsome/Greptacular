@@ -189,7 +189,15 @@ export function UsageDashboard({ conversationId, contextMode, model = 'opus' }: 
   // Quick summary for collapsed state
   const dailyTokens = usage?.daily.total_tokens ?? 0
   const dailyLimit = calibration?.daily.estimated_limit
-  const dailyPercent = dailyLimit ? Math.round((dailyTokens / dailyLimit) * 100) : null
+  const dailyConfidence = calibration?.daily.confidence ?? 'none'
+  // Only show percentage when we have meaningful calibration (medium+ confidence)
+  // and cap at 999% to avoid absurd numbers from bad calibration data
+  const rawDailyPercent = dailyLimit && dailyLimit > 0 ? Math.round((dailyTokens / dailyLimit) * 100) : null
+  const dailyPercent = (rawDailyPercent !== null && (dailyConfidence === 'medium' || dailyConfidence === 'high'))
+    ? Math.min(rawDailyPercent, 999)
+    : null
+  const dailyConvos = usage?.daily.conversation_count ?? 0
+  const dailyMsgs = usage?.daily.message_count ?? 0
 
   return (
     <div className="border-b border-border bg-card/60">
@@ -205,6 +213,11 @@ export function UsageDashboard({ conversationId, contextMode, model = 'opus' }: 
             {dailyPercent !== null && (
               <span className={`ml-1 ${dailyPercent > 90 ? 'text-destructive' : dailyPercent > 75 ? 'text-orange-400' : 'text-muted-foreground'}`}>
                 ({dailyPercent}%)
+              </span>
+            )}
+            {dailyConvos > 0 && (
+              <span className="ml-1.5 text-muted-foreground/70">
+                · {dailyConvos} chat{dailyConvos !== 1 ? 's' : ''} · {dailyMsgs} msg{dailyMsgs !== 1 ? 's' : ''}
               </span>
             )}
           </span>

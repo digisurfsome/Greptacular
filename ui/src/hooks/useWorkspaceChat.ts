@@ -480,7 +480,10 @@ export function useWorkspaceChat({
               queuedPayloadRef.current = null;
               // Keep isLoading true since we're immediately sending the queued message
               wsRef.current.send(JSON.stringify(queued));
-            } else {
+            } else if (!attachedSessionIdRef.current) {
+              // Only reset loading for direct (non-background) sessions.
+              // Background sessions may have multiple API turns; the session_state
+              // events (waiting_input, completed, failed) control loading state instead.
               setIsLoading(false);
             }
             break;
@@ -1079,20 +1082,24 @@ export function useWorkspaceChat({
           });
         }, 30 * 60 * 1000);
       } else {
-        // For Claude: keep the original 10-minute safety timeout
+        // For Claude: safety timeout.  Opus with large images can take 5+ min
+        // for a single API turn, and multi-turn agent sessions run much longer.
+        // Use 30 min non-destructive warning (same as Codex/Gemini) instead of
+        // the old 10 min hard-kill that was breaking long Opus sessions.
         loadingSafetyTimeoutRef.current = window.setTimeout(() => {
-          setIsLoading(false);
-          sessionReadyRef.current = true;
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: `safety-${Date.now()}`,
-              role: "system" as const,
-              content: "Request timed out (10 min). The connection may have dropped. Try sending your message again.",
-              timestamp: new Date(),
-            },
-          ]);
-        }, 10 * 60 * 1000);
+          setMessages((prev) => {
+            if (prev.some(m => m.id.startsWith('long-running-'))) return prev;
+            return [
+              ...prev,
+              {
+                id: `long-running-${Date.now()}`,
+                role: "system" as const,
+                content: "Session has been running for 30+ minutes. The agent may still be working — check the token log for activity.",
+                timestamp: new Date(),
+              },
+            ];
+          });
+        }, 30 * 60 * 1000);
       }
     } else if (loadingSafetyTimeoutRef.current) {
       window.clearTimeout(loadingSafetyTimeoutRef.current);

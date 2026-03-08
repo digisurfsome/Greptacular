@@ -10,7 +10,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { getTokenLog } from "../lib/api";
+import { getTokenLog, cancelWorkspaceSession } from "../lib/api";
 import type { ChatMessage, WorkspaceChatServerMessage, PendingInjection, ImageAttachment, WalkieTalkieLogEntry, TokenLogEntry } from "../lib/types";
 
 type ConnectionStatus = "disconnected" | "connecting" | "connected" | "error";
@@ -54,6 +54,8 @@ interface UseWorkspaceChatReturn {
   clearTokenLog: () => void;
   /** The background session ID this viewer is attached to (null if none). */
   attachedSessionId: string | null;
+  /** Cancel the currently running background session (stop the agent). */
+  cancelSession: () => void;
   disconnect: () => void;
   clearMessages: () => void;
 }
@@ -123,6 +125,11 @@ export function useWorkspaceChat({
   const maxReconnectAttempts = 3;
   const pingIntervalRef = useRef<number | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
+  // Monotonically increasing counter to prevent stale WebSocket callbacks
+  // from zombie connections. Each connect() increments this; onclose/onopen/
+  // onmessage handlers captured at creation time bail out if the generation
+  // has advanced (meaning a newer connection owns the session).
+  const connectionGenerationRef = useRef(0);
   const checkAndSendTimeoutRef = useRef<number | null>(null);
   const loadingSafetyTimeoutRef = useRef<number | null>(null);
 
@@ -199,6 +206,11 @@ export function useWorkspaceChat({
   }, [conversationId]);
 
   const connect = useCallback(() => {
+    // Increment the connection generation so stale onclose/onopen/onmessage
+    // handlers from previous WebSockets will not interfere with this connection.
+    connectionGenerationRef.current++;
+    const thisGeneration = connectionGenerationRef.current;
+
     // If an existing WebSocket is still open or connecting, close it first.
     // Previously this silently returned, which caused zombie connections when
     // disconnect()'s async onclose handler scheduled a reconnect that raced
@@ -225,6 +237,15 @@ export function useWorkspaceChat({
     wsRef.current = ws;
 
     ws.onopen = () => {
+      // If the generation has advanced, a newer connect() call owns the session.
+      // This WebSocket is stale — do nothing.
+      if (connectionGenerationRef.current !== thisGeneration) {
+        if (import.meta.env.DEV) {
+          console.debug('[useWorkspaceChat] Ignoring stale onopen (gen %d vs current %d)', thisGeneration, connectionGenerationRef.current);
+        }
+        ws.close();
+        return;
+      }
       setConnectionStatus("connected");
       setLastError(null);
       const wasReconnect = reconnectAttempts.current > 0;
@@ -281,6 +302,16 @@ export function useWorkspaceChat({
     };
 
     ws.onclose = (event) => {
+      // If the generation has advanced, this is a stale onclose from a WebSocket
+      // that was replaced by a newer connect() call. Do NOT update state or
+      // schedule reconnects — the new connection owns the session now.
+      if (connectionGenerationRef.current !== thisGeneration) {
+        if (import.meta.env.DEV) {
+          console.debug('[useWorkspaceChat] Ignoring stale onclose (gen %d vs current %d)', thisGeneration, connectionGenerationRef.current);
+        }
+        return;
+      }
+
       setConnectionStatus("disconnected");
       if (pingIntervalRef.current) {
         clearInterval(pingIntervalRef.current);
@@ -308,12 +339,14 @@ export function useWorkspaceChat({
     };
 
     ws.onerror = () => {
+      if (connectionGenerationRef.current !== thisGeneration) return;
       setConnectionStatus("error");
       setLastError("Could not connect to the workspace server. Check that the server is running.");
       onError?.("WebSocket connection error");
     };
 
     ws.onmessage = (event) => {
+      if (connectionGenerationRef.current !== thisGeneration) return;
       try {
         const data = JSON.parse(event.data) as WorkspaceChatServerMessage;
         if (import.meta.env.DEV) {
@@ -940,6 +973,17 @@ export function useWorkspaceChat({
     [],
   );
 
+  const cancelSession = useCallback(() => {
+    const sessionId = attachedSessionIdRef.current;
+    if (!sessionId) return;
+    cancelWorkspaceSession(sessionId).catch((err) => {
+      console.warn('[useWorkspaceChat] Failed to cancel session:', err);
+    });
+    // Optimistically update UI state — the server will send session_cancelled
+    // which will also set isLoading=false, but this gives instant feedback.
+    setIsLoading(false);
+  }, []);
+
   const disconnect = useCallback(() => {
     // Set to max to prevent the closing socket's async onclose from scheduling
     // zombie reconnects. The next start() call resets this to 0.
@@ -1078,6 +1122,7 @@ export function useWorkspaceChat({
     tokenLog,
     clearTokenLog: useCallback(() => setTokenLog([]), []),
     attachedSessionId,
+    cancelSession,
     disconnect,
     clearMessages,
   };

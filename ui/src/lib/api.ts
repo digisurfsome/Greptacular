@@ -1348,6 +1348,13 @@ export async function clearTokenLog(conversationId: number): Promise<void> {
   })
 }
 
+/** Cancel a running workspace background session. */
+export async function cancelWorkspaceSession(sessionId: string): Promise<{ status: string }> {
+  return fetchJSON(`/workspace/sessions/${encodeURIComponent(sessionId)}/cancel`, {
+    method: 'POST',
+  })
+}
+
 
 // ============================================================================
 // CI Monitor API

@@ -29,6 +29,7 @@ import {
   ChevronDown,
   ScrollText,
   BookOpen,
+  Square,
 } from 'lucide-react'
 import { useWorkspaceChat } from '@/hooks/useWorkspaceChat'
 import { useWorkspaceConversation, useWorkspaceProviders } from '@/hooks/useWorkspaceConversations'
@@ -62,6 +63,22 @@ import type { ChatMessage as ChatMessageType, WorkspaceMessage, PendingInjection
 
 const DRAFT_KEY_PREFIX = 'workspace-draft-'
 const TOKEN_LOG_MODE_KEY = 'workspace-token-log-mode'
+
+/** Tiny elapsed-time counter so the user can tell the agent is still alive. */
+function ElapsedTimer({ active }: { active: boolean }) {
+  const [seconds, setSeconds] = useState(0)
+  const startRef = useRef(Date.now())
+  useEffect(() => {
+    if (!active) { setSeconds(0); startRef.current = Date.now(); return }
+    startRef.current = Date.now()
+    const id = setInterval(() => setSeconds(Math.floor((Date.now() - startRef.current) / 1000)), 1000)
+    return () => clearInterval(id)
+  }, [active])
+  if (!active || seconds < 2) return null
+  const m = Math.floor(seconds / 60)
+  const s = seconds % 60
+  return <span className="text-[10px] tabular-nums text-muted-foreground/60">{m > 0 ? `${m}m ${s}s` : `${s}s`}</span>
+}
 
 /** Three-state toggle for the token log side panel. */
 type TokenLogMode = 'auto' | 'on' | 'off'
@@ -319,6 +336,7 @@ export function WorkspaceChat({
     clearTokenLog,
     modelId,
     attachedSessionId,
+    cancelSession,
     start,
     sendMessage,
     sendWalkieTalkie,
@@ -370,6 +388,42 @@ export function WorkspaceChat({
     const currentContext = latestInput + latestCacheRead + latestCacheCreate
     return { apiInput, apiOutput, cacheRead: latestCacheRead, totalCost, currentContext }
   }, [tokenLog])
+
+  // ── Context window threshold warnings ──────────────────────────────
+  // Inject system messages into the chat when context usage crosses
+  // key thresholds so both the user AND the agent can see them.
+  const firedThresholdsRef = useRef<Set<number>>(new Set())
+  const contextBudgetTotal = (fixedContextMode ?? pendingContextModeProp ?? '200k') === '1m' ? 1_000_000 : 200_000
+
+  const [contextWarnings, setContextWarnings] = useState<Array<{
+    id: string; role: 'system'; content: string; timestamp: Date
+  }>>([])
+
+  useEffect(() => {
+    if (apiTokenTotals.currentContext <= 0) return
+    const pct = (apiTokenTotals.currentContext / contextBudgetTotal) * 100
+    const fired = firedThresholdsRef.current
+
+    const thresholds: Array<{ at: number; msg: string }> = [
+      { at: 40, msg: '[CONTEXT 40%] Plenty of room. Coding is safe.' },
+      { at: 45, msg: '[CONTEXT 45%] Consider wrapping up current coding task. Start thinking about handoff.' },
+      { at: 50, msg: '[CONTEXT 50%] Coding should stop here. PRDs, discussion, and planning can continue. Quality degrades for code generation beyond this point.' },
+      { at: 55, msg: '[CONTEXT 55%] Quality may degrade for detailed work. Consider handoff for complex PRDs.' },
+      { at: 60, msg: '[CONTEXT 60%] Session should wrap up soon. Auto-generating handoff summary recommended.' },
+    ]
+
+    for (const t of thresholds) {
+      if (pct >= t.at && !fired.has(t.at)) {
+        fired.add(t.at)
+        setContextWarnings(prev => [...prev, {
+          id: `ctx-warn-${t.at}-${Date.now()}`,
+          role: 'system' as const,
+          content: t.msg,
+          timestamp: new Date(),
+        }])
+      }
+    }
+  }, [apiTokenTotals.currentContext, contextBudgetTotal])
 
   // Propagate walkie-talkie log to parent for display in sidebar panel
   useEffect(() => {
@@ -650,19 +704,26 @@ export function WorkspaceChat({
 
   // Merge initial (REST) messages with live (WebSocket) messages, deduplicating
   const displayMessages: ChatMessageType[] = useMemo(() => {
-    if (initialMessages.length === 0) return liveMessages
-    if (liveMessages.length === 0) return initialMessages
-
-    const seen = new Map<string, ChatMessageType>()
-    for (const msg of initialMessages) {
-      seen.set(dedupKey(msg), msg)
+    let merged: ChatMessageType[]
+    if (initialMessages.length === 0) merged = liveMessages
+    else if (liveMessages.length === 0) merged = initialMessages
+    else {
+      const seen = new Map<string, ChatMessageType>()
+      for (const msg of initialMessages) {
+        seen.set(dedupKey(msg), msg)
+      }
+      for (const msg of liveMessages) {
+        // Live messages take precedence (may have streaming state)
+        seen.set(dedupKey(msg), msg)
+      }
+      merged = Array.from(seen.values())
     }
-    for (const msg of liveMessages) {
-      // Live messages take precedence (may have streaming state)
-      seen.set(dedupKey(msg), msg)
+    // Append context warnings as system messages at the end
+    if (contextWarnings.length > 0) {
+      return [...merged, ...contextWarnings]
     }
-    return Array.from(seen.values())
-  }, [initialMessages, liveMessages])
+    return merged
+  }, [initialMessages, liveMessages, contextWarnings])
 
   // Build WorkspaceMessage[] for the fork modal from REST conversation detail
   const forkableMessages: WorkspaceMessage[] = useMemo(() => {
@@ -848,6 +909,11 @@ export function WorkspaceChat({
     sendMessage(content, attachments, libraryIds)
 
     setInputValue('')
+    // Reset textarea height back to single row after sending
+    const textarea = inputRef.current
+    if (textarea) {
+      textarea.style.height = 'auto'
+    }
     setPendingImages([])
     setPendingFiles([])
     setAttachedLibraryFiles([])
@@ -1238,13 +1304,21 @@ export function WorkspaceChat({
           medium: 'bg-blue-500 text-white',
           high: 'bg-orange-500 text-white',
         } as const
-        const usedTokens = (contextBudget.messageTokens || totalTokens) + contextBudget.summaryTokens
+        // Use CURRENT context window utilization from the latest API response,
+        // NOT cumulative totals. The API returns how many tokens are in the
+        // context window RIGHT NOW (input_tokens + cache_read + cache_create).
+        // Fall back to contextBudget if no API data yet.
+        const usedTokens = apiTokenTotals.currentContext > 0
+          ? apiTokenTotals.currentContext
+          : (contextBudget.messageTokens || totalTokens) + contextBudget.summaryTokens
         const barBudget = sessionContextMode === '1m' ? 1_000_000 : 200_000
         const barPercent = barBudget > 0 ? Math.min((usedTokens / barBudget) * 100, 100) : 0
         const isExtendedPricing = barBudget === 1_000_000 && usedTokens > 200_000
-        // Color for the bar fill based on usage level
-        const barFillColor = barPercent > 90 ? 'bg-destructive'
-          : barPercent > 75 ? 'bg-orange-500'
+        // Color coding: green (safe) → yellow (warning) → orange (caution) → red (danger)
+        const barFillColor = barPercent >= 60 ? 'bg-destructive'
+          : barPercent >= 50 ? 'bg-red-500'
+          : barPercent >= 45 ? 'bg-orange-500'
+          : barPercent >= 40 ? 'bg-yellow-500'
           : isExtendedPricing ? 'bg-amber-500'
           : 'bg-primary/50'
 
@@ -1293,7 +1367,7 @@ export function WorkspaceChat({
               <div className="flex-1 relative h-2 rounded-full bg-muted overflow-hidden">
                 {/* Fill */}
                 <div
-                  className={`absolute top-0 left-0 h-full rounded-full transition-all duration-500 ease-out ${barFillColor}`}
+                  className={`absolute top-0 left-0 h-full rounded-full transition-all duration-500 ease-out ${barFillColor} ${barPercent >= 50 ? 'animate-pulse' : ''}`}
                   style={{ width: `${barPercent}%` }}
                 />
                 {/* 200K pricing cliff marker on 1M panels */}
@@ -1489,8 +1563,12 @@ export function WorkspaceChat({
       {isLoading && displayMessages.length > 0 && !agentWaiting && (
         <div className="px-4 py-2 border-t border-border bg-background">
           <div className="flex items-center gap-2 text-muted-foreground text-sm">
-            <Loader2 size={16} className="animate-spin" />
-            <span>Thinking...</span>
+            <span className="relative flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-cyan-500"></span>
+            </span>
+            <span>Agent working...</span>
+            <ElapsedTimer active={isLoading} />
           </div>
         </div>
       )}
@@ -1715,26 +1793,32 @@ export function WorkspaceChat({
             className="flex-1 resize-y min-h-[44px] max-h-[240px] rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none ring-ring focus:ring-1 disabled:cursor-not-allowed disabled:opacity-50"
             rows={1}
           />
-          <Button
-            onClick={handleSend}
-            disabled={(!inputValue.trim() && pendingImages.length === 0 && pendingFiles.length === 0) || isLoading || isLoadingConversation}
-            title={fixedContextMode === '200k' ? 'Send (Subscription)' : fixedContextMode === '1m' ? 'Send (API)' : 'Send message'}
-            className={
-              panelLabel?.includes('RESEARCH')
-                ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                : panelLabel?.includes('CODER')
-                  ? 'bg-cyan-600 hover:bg-cyan-700 text-white'
-                  : panelLabel?.includes('PRD')
-                    ? 'bg-violet-600 hover:bg-violet-700 text-white'
-                    : undefined
-            }
-          >
-            {isLoading ? (
-              <Loader2 size={18} className="animate-spin" />
-            ) : (
+          {isLoading ? (
+            <Button
+              onClick={cancelSession}
+              title="Stop agent"
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              <Square size={16} className="fill-current" />
+            </Button>
+          ) : (
+            <Button
+              onClick={handleSend}
+              disabled={(!inputValue.trim() && pendingImages.length === 0 && pendingFiles.length === 0) || isLoadingConversation}
+              title={fixedContextMode === '200k' ? 'Send (Subscription)' : fixedContextMode === '1m' ? 'Send (API)' : 'Send message'}
+              className={
+                panelLabel?.includes('RESEARCH')
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  : panelLabel?.includes('CODER')
+                    ? 'bg-cyan-600 hover:bg-cyan-700 text-white'
+                    : panelLabel?.includes('PRD')
+                      ? 'bg-violet-600 hover:bg-violet-700 text-white'
+                      : undefined
+              }
+            >
               <Send size={18} />
-            )}
-          </Button>
+            </Button>
+          )}
         </div>
         <p className="text-xs text-muted-foreground mt-2">
           Enter to send, Shift+Enter for new line. Drag &amp; drop or paste images.

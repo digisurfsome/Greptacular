@@ -31,11 +31,11 @@ from fastapi.staticfiles import StaticFiles
 from .routers import (
     actions_router,
     agent_os_router,
-    build_planner_router,
     agent_router,
     approvals_router,
     assistant_chat_router,
     boilerplate_router,
+    build_planner_router,
     captures_router,
     checkpoints_router,
     ci_status_router,

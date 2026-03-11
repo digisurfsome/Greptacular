@@ -159,6 +159,31 @@ export async function listBoilerplates(): Promise<BoilerplateCategory[]> {
 }
 
 // ============================================================================
+// GitHub API
+// ============================================================================
+
+export async function validateGitHubToken(token: string): Promise<{ login: string; name: string; avatar_url: string }> {
+  return fetchJSON('/github/validate-token', {
+    method: 'POST',
+    body: JSON.stringify({ token }),
+  })
+}
+
+export async function createGitHubRepo(params: {
+  token: string
+  repo_name: string
+  private: boolean
+  description?: string
+  template_owner?: string
+  template_repo?: string
+}): Promise<{ status: string; repo_url: string; clone_url: string; full_name: string; private: boolean }> {
+  return fetchJSON('/github/create-repo', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  })
+}
+
+// ============================================================================
 // Styles API
 // ============================================================================
 

@@ -39,6 +39,12 @@ import {
   Star,
   ChevronLeft,
   ChevronRight,
+  Github,
+  ExternalLink,
+  Eye,
+  EyeOff,
+  Lock,
+  Unlock,
 } from 'lucide-react'
 import { useCreateProject, useBoilerplates, useStyles, useStyleProfiles, useStyleRecommendations, useStyleModifiers, useDescriptionRecommendation, useExtractStyleFromScreenshot } from '../hooks/useProjects'
 import { SpecCreationChat } from './SpecCreationChat'
@@ -52,7 +58,7 @@ import { PALETTES } from '../data/palettes'
 import { FONT_OPTIONS } from '../data/fonts'
 import { REFINEMENT_GROUPS } from '../data/refinementOptions'
 import { paletteToCustomColors } from '../lib/paletteUtils'
-import { startAgent } from '../lib/api'
+import { startAgent, validateGitHubToken, createGitHubRepo } from '../lib/api'
 import type { BoilerplateCategory, StyleOption, StyleGuide, StyleExtractionResult, DesignRefinement, DesignGuideAction } from '../lib/types'
 import { DEFAULT_REFINEMENT } from '../lib/types'
 import { Button } from '@/components/ui/button'
@@ -64,7 +70,7 @@ import { Card, CardContent } from '@/components/ui/card'
 
 type InitializerStatus = 'idle' | 'starting' | 'error'
 
-type Step = 'name' | 'folder' | 'boilerplate' | 'style' | 'method' | 'chat' | 'complete'
+type Step = 'name' | 'folder' | 'boilerplate' | 'style' | 'github' | 'method' | 'chat' | 'complete'
 type SpecMethod = 'claude' | 'manual'
 type StyleCategory = 'all' | 'core' | 'vibe'
 type StyleView = 'browse' | 'preview'
@@ -75,6 +81,7 @@ const STEP_ORDER: { id: Step; label: string }[] = [
   { id: 'folder', label: 'Location' },
   { id: 'boilerplate', label: 'Boilerplate' },
   { id: 'style', label: 'Design' },
+  { id: 'github', label: 'GitHub' },
   { id: 'method', label: 'Setup' },
   { id: 'chat', label: 'Build' },
 ]
@@ -287,6 +294,17 @@ export function NewProjectModal({
   const [initializerError, setInitializerError] = useState<string | null>(null)
   const [yoloModeSelected, setYoloModeSelected] = useState(false)
 
+  // GitHub integration state
+  const [githubToken, setGithubToken] = useState(() => localStorage.getItem('github_token') || '')
+  const [githubUser, setGithubUser] = useState<{ login: string; name: string; avatar_url: string } | null>(null)
+  const [githubTokenValidating, setGithubTokenValidating] = useState(false)
+  const [githubTokenError, setGithubTokenError] = useState<string | null>(null)
+  const [githubRepoPrivate, setGithubRepoPrivate] = useState(true)
+  const [githubRepoCreating, setGithubRepoCreating] = useState(false)
+  const [githubRepoUrl, setGithubRepoUrl] = useState<string | null>(null)
+  const [githubRepoError, setGithubRepoError] = useState<string | null>(null)
+  const [githubShowToken, setGithubShowToken] = useState(false)
+
   // Style picker state
   const [styleCategory, setStyleCategory] = useState<StyleCategory>('all')
   const [selectedAudience, setSelectedAudience] = useState<string>('')
@@ -470,6 +488,29 @@ export function NewProjectModal({
     setStyleId(filteredStyles[0].id)
   }, [filteredStyles]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Auto-validate saved GitHub token when entering the GitHub step
+  useEffect(() => {
+    if (step !== 'github' || githubUser || githubTokenValidating) return
+    const savedToken = localStorage.getItem('github_token')
+    if (savedToken && savedToken.length > 0) {
+      setGithubToken(savedToken)
+      setGithubTokenValidating(true)
+      setGithubTokenError(null)
+      validateGitHubToken(savedToken)
+        .then((user) => {
+          setGithubUser(user)
+          setGithubTokenError(null)
+        })
+        .catch(() => {
+          // Token expired or invalid -- clear it
+          localStorage.removeItem('github_token')
+          setGithubToken('')
+          setGithubTokenError('Saved token is no longer valid. Please enter a new one.')
+        })
+        .finally(() => setGithubTokenValidating(false))
+    }
+  }, [step]) // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!isOpen) return null
 
   const handleNameSubmit = (e: React.FormEvent) => {
@@ -530,11 +571,79 @@ export function NewProjectModal({
   }
 
   const handleStyleConfirm = () => {
-    changeStep('method')
+    changeStep('github')
   }
 
   const handleStyleSkip = () => {
     setStyleId(null)
+    changeStep('github')
+  }
+
+  // GitHub step handlers
+  const handleGithubValidateToken = async () => {
+    const token = githubToken.trim()
+    if (!token) {
+      setGithubTokenError('Please enter a GitHub token')
+      return
+    }
+    setGithubTokenValidating(true)
+    setGithubTokenError(null)
+    try {
+      const user = await validateGitHubToken(token)
+      setGithubUser(user)
+      localStorage.setItem('github_token', token)
+    } catch {
+      setGithubTokenError('Invalid token. Make sure it has "repo" scope.')
+      setGithubUser(null)
+    } finally {
+      setGithubTokenValidating(false)
+    }
+  }
+
+  const handleGithubCreateRepo = async () => {
+    if (!githubUser || !githubToken) return
+    setGithubRepoCreating(true)
+    setGithubRepoError(null)
+
+    // Parse template owner/repo from boilerplate if available
+    let templateOwner: string | undefined
+    let templateRepo: string | undefined
+    if (boilerplateId && boilerplateId !== 'scratch' && boilerplateCategories) {
+      for (const cat of boilerplateCategories) {
+        const opt = cat.options.find((o) => o.id === boilerplateId)
+        if (opt?.repo_url) {
+          const match = opt.repo_url.match(/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?$/)
+          if (match) {
+            templateOwner = match[1]
+            templateRepo = match[2]
+          }
+          break
+        }
+      }
+    }
+
+    try {
+      const result = await createGitHubRepo({
+        token: githubToken,
+        repo_name: projectName.trim(),
+        private: githubRepoPrivate,
+        description: `Created with AutoForge`,
+        template_owner: templateOwner,
+        template_repo: templateRepo,
+      })
+      setGithubRepoUrl(result.repo_url)
+    } catch (err: unknown) {
+      setGithubRepoError(err instanceof Error ? err.message : 'Failed to create repo')
+    } finally {
+      setGithubRepoCreating(false)
+    }
+  }
+
+  const handleGithubSkip = () => {
+    changeStep('method')
+  }
+
+  const handleGithubContinue = () => {
     changeStep('method')
   }
 
@@ -663,6 +772,15 @@ export function NewProjectModal({
     setDesignTab('base')
     setRefinement(DEFAULT_REFINEMENT)
     setSelectedFontId(null)
+    // Reset GitHub state (keep token in localStorage for convenience)
+    setGithubUser(null)
+    setGithubTokenValidating(false)
+    setGithubTokenError(null)
+    setGithubRepoPrivate(true)
+    setGithubRepoCreating(false)
+    setGithubRepoUrl(null)
+    setGithubRepoError(null)
+    setGithubShowToken(false)
     onClose()
   }
 
@@ -688,8 +806,10 @@ export function NewProjectModal({
       setDesignTab('base')
       setRefinement(DEFAULT_REFINEMENT)
       setSelectedFontId(null)
-    } else if (step === 'method') {
+    } else if (step === 'github') {
       changeStep('style')
+    } else if (step === 'method') {
+      changeStep('github')
       setSpecMethod(null)
     }
   }
@@ -705,6 +825,12 @@ export function NewProjectModal({
     if (targetIndex >= currentIndex) return // Only navigate backwards
 
     // Reset state for steps we are skipping over
+    if (targetIndex < 5) {
+      // Going before github: reset github repo state (keep token for convenience)
+      setGithubRepoUrl(null)
+      setGithubRepoError(null)
+      setGithubRepoCreating(false)
+    }
     if (targetIndex < 4) {
       // Going before style: reset style state
       setStyleId(null)
@@ -1865,7 +1991,231 @@ export function NewProjectModal({
         )}
 
         {/* ---------------------------------------------------------------- */}
-        {/* Step 5: Spec Method                                              */}
+        {/* Step 5: GitHub Repo (Optional)                                   */}
+        {/* ---------------------------------------------------------------- */}
+        {step === 'github' && (
+          <div className="flex-1 flex items-center justify-center p-6">
+            <div className="w-full max-w-lg space-y-4">
+              <div className="mb-2">
+                <h2 className="text-2xl font-semibold mb-1">GitHub Repository</h2>
+                <p className="text-sm text-muted-foreground">
+                  Create a GitHub repo for your project. This step is optional.
+                </p>
+              </div>
+
+              {/* Token input */}
+              <div className="space-y-2">
+                <Label htmlFor="github-token" className="text-sm font-medium">
+                  Personal Access Token
+                </Label>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Input
+                      id="github-token"
+                      type={githubShowToken ? 'text' : 'password'}
+                      placeholder="ghp_xxxxxxxxxxxx"
+                      value={githubToken}
+                      onChange={(e) => {
+                        setGithubToken(e.target.value)
+                        setGithubTokenError(null)
+                        setGithubUser(null)
+                      }}
+                      disabled={githubTokenValidating || !!githubUser}
+                      className="pr-9"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setGithubShowToken(!githubShowToken)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {githubShowToken ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                  </div>
+                  {!githubUser ? (
+                    <Button
+                      onClick={handleGithubValidateToken}
+                      disabled={githubTokenValidating || !githubToken.trim()}
+                      size="sm"
+                    >
+                      {githubTokenValidating ? (
+                        <>
+                          <Loader2 size={14} className="animate-spin" />
+                          Validating
+                        </>
+                      ) : (
+                        'Validate'
+                      )}
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setGithubUser(null)
+                        setGithubToken('')
+                        setGithubRepoUrl(null)
+                        setGithubRepoError(null)
+                        localStorage.removeItem('github_token')
+                      }}
+                    >
+                      Change
+                    </Button>
+                  )}
+                </div>
+                {githubTokenError && (
+                  <p className="text-xs text-destructive">{githubTokenError}</p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Needs <code className="px-1 py-0.5 bg-muted rounded text-[10px]">repo</code> scope.{' '}
+                  <a
+                    href="https://github.com/settings/tokens/new?scopes=repo&description=AutoForge"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline inline-flex items-center gap-0.5"
+                  >
+                    Create one <ExternalLink size={10} />
+                  </a>
+                </p>
+              </div>
+
+              {/* Authenticated user info */}
+              {githubUser && (
+                <Card>
+                  <CardContent className="p-3">
+                    <div className="flex items-center gap-3">
+                      {githubUser.avatar_url && (
+                        <img
+                          src={githubUser.avatar_url}
+                          alt={githubUser.login}
+                          className="w-8 h-8 rounded-full border"
+                        />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm">{githubUser.login}</div>
+                        {githubUser.name && (
+                          <div className="text-xs text-muted-foreground truncate">{githubUser.name}</div>
+                        )}
+                      </div>
+                      <CheckCircle2 size={16} className="text-green-500 shrink-0" />
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Repo creation section (only after token validated) */}
+              {githubUser && !githubRepoUrl && (
+                <div className="space-y-3 pt-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-medium">Repository Name</Label>
+                    <Badge variant="secondary" className="font-mono text-xs">
+                      {githubUser.login}/{projectName.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-')}
+                    </Badge>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-medium">Visibility</Label>
+                    <button
+                      type="button"
+                      onClick={() => setGithubRepoPrivate(!githubRepoPrivate)}
+                      className="flex items-center gap-1.5 text-sm px-2 py-1 rounded-md border hover:bg-muted transition-colors"
+                    >
+                      {githubRepoPrivate ? (
+                        <>
+                          <Lock size={12} />
+                          Private
+                        </>
+                      ) : (
+                        <>
+                          <Unlock size={12} />
+                          Public
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {boilerplateId && boilerplateId !== 'scratch' && (
+                    <p className="text-xs text-muted-foreground">
+                      Will be created from the{' '}
+                      <span className="font-medium text-foreground">
+                        {boilerplateCategories?.flatMap((c) => c.options).find((o) => o.id === boilerplateId)?.name}
+                      </span>{' '}
+                      template.
+                    </p>
+                  )}
+
+                  <Button
+                    onClick={handleGithubCreateRepo}
+                    disabled={githubRepoCreating}
+                    className="w-full"
+                  >
+                    {githubRepoCreating ? (
+                      <>
+                        <Loader2 size={14} className="animate-spin" />
+                        Creating Repository...
+                      </>
+                    ) : (
+                      <>
+                        <Github size={14} />
+                        Create GitHub Repository
+                      </>
+                    )}
+                  </Button>
+
+                  {githubRepoError && (
+                    <Alert variant="destructive">
+                      <AlertDescription>{githubRepoError}</AlertDescription>
+                    </Alert>
+                  )}
+                </div>
+              )}
+
+              {/* Success state */}
+              {githubRepoUrl && (
+                <Card className="border-green-500/50 bg-green-500/5">
+                  <CardContent className="p-4">
+                    <div className="flex items-start gap-3">
+                      <CheckCircle2 size={20} className="text-green-500 shrink-0 mt-0.5" />
+                      <div className="flex-1 min-w-0 space-y-1">
+                        <div className="font-medium text-sm">Repository created</div>
+                        <a
+                          href={githubRepoUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-primary hover:underline inline-flex items-center gap-1 break-all"
+                        >
+                          {githubRepoUrl}
+                          <ExternalLink size={10} />
+                        </a>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Navigation */}
+              <div className="flex justify-between pt-2">
+                <Button variant="ghost" onClick={handleBack}>
+                  <ArrowLeft size={16} />
+                  Back
+                </Button>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={handleGithubSkip}>
+                    Skip
+                  </Button>
+                  {githubRepoUrl && (
+                    <Button onClick={handleGithubContinue}>
+                      Continue
+                      <ArrowRight size={16} />
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ---------------------------------------------------------------- */}
+        {/* Step 6: Spec Method                                              */}
         {/* ---------------------------------------------------------------- */}
         {step === 'method' && (
           <div className="flex-1 flex items-center justify-center p-6">

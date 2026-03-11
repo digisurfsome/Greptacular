@@ -953,7 +953,7 @@ async def get_settings():
     settings = _get_settings()
     masked: dict[str, str] = {}
     for k, v in settings.items():
-        if any(secret in k for secret in ("password", "secret", "token")):
+        if any(secret in k for secret in ("password", "secret", "token", "api_key")):
             masked[k] = "***" + v[-4:] if len(v) > 4 else "****"
         else:
             masked[k] = v
@@ -1012,6 +1012,180 @@ async def get_balance():
         return {"connected": False, "balance": 0, "message": f"API error: {exc.response.status_code}"}
     except Exception as exc:
         return {"connected": False, "balance": 0, "message": f"Connection error: {exc}"}
+
+
+# ---- Domain Availability Check (RDAP - free, no API key needed) ----------
+
+# TLDs to check, in SEO priority order
+DOMAIN_TLDS = [".com", ".net", ".org", ".io", ".co", ".ai", ".app", ".dev", ".us", ".info"]
+
+# RDAP bootstrap - maps TLDs to their RDAP servers
+RDAP_BOOTSTRAP_URL = "https://rdap.org/domain/"
+
+
+async def _check_single_domain(client: httpx.AsyncClient, domain: str) -> dict:
+    """Check a single domain via RDAP. Returns availability info."""
+    try:
+        resp = await client.get(
+            f"{RDAP_BOOTSTRAP_URL}{domain}",
+            follow_redirects=True,
+            timeout=10,
+        )
+        if resp.status_code == 404:
+            # 404 = domain not found in registry = available
+            return {"domain": domain, "available": True, "is_premium": False, "premium_price": None}
+        elif resp.status_code == 200:
+            # 200 = domain exists = taken
+            return {"domain": domain, "available": False, "is_premium": False, "premium_price": None}
+        else:
+            # Other status codes - treat as unknown
+            return {"domain": domain, "available": None, "is_premium": False, "premium_price": None, "error": f"HTTP {resp.status_code}"}
+    except Exception:
+        return {"domain": domain, "available": None, "is_premium": False, "premium_price": None, "error": "timeout"}
+
+
+@app.get("/api/domain-check")
+async def domain_check(keyword: str = Query(...)):
+    """Check domain availability across TLDs via free RDAP protocol (no API key needed)."""
+    # Build domain name from keyword (remove spaces, lowercase)
+    base_domain = keyword.strip().lower().replace(" ", "").replace("-", "")
+    if not base_domain:
+        return {"error": "Invalid keyword", "domains": []}
+
+    domain_list = [base_domain + tld for tld in DOMAIN_TLDS]
+
+    try:
+        async with httpx.AsyncClient() as client:
+            # Check all TLDs concurrently for speed
+            tasks = [_check_single_domain(client, domain) for domain in domain_list]
+            results = await asyncio.gather(*tasks)
+
+        return {"keyword": keyword, "base_domain": base_domain, "domains": list(results)}
+
+    except Exception as exc:
+        return {"error": f"Domain check error: {exc}", "domains": []}
+
+
+@app.post("/api/domain-check-bulk")
+async def domain_check_bulk(payload: dict):
+    """Check .com/.net/.org availability for a list of keywords."""
+    keywords = payload.get("keywords", [])
+    if not keywords:
+        return {"results": {}}
+
+    # Limit to 15 keywords at a time (15 * 3 TLDs = 45 RDAP lookups)
+    keywords = keywords[:15]
+    check_tlds = [".com", ".net", ".org"]
+
+    async with httpx.AsyncClient() as client:
+        tasks = []
+        for kw in keywords:
+            base = kw.strip().lower().replace(" ", "").replace("-", "")
+            for tld in check_tlds:
+                tasks.append((kw, tld, _check_single_domain(client, base + tld)))
+
+        gathered = await asyncio.gather(*[t[2] for t in tasks])
+        results: dict[str, dict] = {}
+        for (kw, tld, _), result in zip(tasks, gathered):
+            if kw not in results:
+                results[kw] = {}
+            results[kw][tld] = {
+                "domain": result["domain"],
+                "available": result["available"],
+            }
+
+    return {"results": results}
+
+
+# ---- SERP Preview (DataForSEO) ------------------------------------------
+
+@app.get("/api/serp-preview")
+async def serp_preview(keyword: str = Query(...)):
+    """Fetch top 10 Google SERP results for a keyword. Costs ~$0.002 per call."""
+    settings = _get_settings()
+    login = settings.get("dataforseo_login", "")
+    password = settings.get("dataforseo_password", "")
+
+    if not login or not password:
+        return {"error": "DataForSEO credentials not configured. Go to Settings.", "results": []}
+
+    location_code = int(settings.get("location_code", "2840"))
+    language_code = settings.get("language_code", "en")
+
+    # Build the exact match domain from keyword for comparison
+    base_domain = keyword.strip().lower().replace(" ", "").replace("-", "")
+
+    payload = [{
+        "keyword": keyword,
+        "location_code": location_code,
+        "language_code": language_code,
+        "depth": 10,
+        "device": "desktop",
+    }]
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                f"{DATAFORSEO_BASE}/serp/google/organic/live",
+                json=payload,
+                auth=(login, password),
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+        results = []
+        has_exact_match = False
+
+        for task in data.get("tasks", []):
+            if task.get("status_code") != 20000:
+                error_msg = task.get("status_message", "Unknown error")
+                return {"error": f"DataForSEO: {error_msg}", "results": []}
+
+            for result in task.get("result", []) or []:
+                for item in result.get("items", []) or []:
+                    item_type = item.get("type", "")
+                    if item_type != "organic":
+                        continue
+
+                    domain = item.get("domain", "")
+                    url = item.get("url", "")
+
+                    # Check if this domain is an exact match for the keyword
+                    domain_base = domain.split(".")[0].lower() if domain else ""
+                    is_exact_match = domain_base == base_domain
+                    if is_exact_match:
+                        has_exact_match = True
+
+                    results.append({
+                        "rank": item.get("rank_absolute", 0),
+                        "domain": domain,
+                        "title": item.get("title", ""),
+                        "url": url,
+                        "description": item.get("description", ""),
+                        "is_exact_match": is_exact_match,
+                    })
+
+        # EMD opportunity analysis
+        emd_opportunity = "none"
+        if not has_exact_match:
+            emd_opportunity = "high"  # No exact match domain in top 10 = big opportunity
+
+        return {
+            "keyword": keyword,
+            "base_domain": base_domain,
+            "results": results,
+            "has_exact_match": has_exact_match,
+            "emd_opportunity": emd_opportunity,
+            "cost": 0.002,
+        }
+
+    except httpx.HTTPStatusError as exc:
+        code = exc.response.status_code
+        if code == 402:
+            return {"error": "Insufficient DataForSEO balance", "results": []}
+        return {"error": f"DataForSEO API error: {code}", "results": []}
+    except Exception as exc:
+        return {"error": f"SERP preview error: {exc}", "results": []}
 
 
 # ---- Search status (polling) -------------------------------------------

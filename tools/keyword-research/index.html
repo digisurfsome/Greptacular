@@ -105,6 +105,278 @@ input, select { font-family: inherit; }
   border-radius: 6px; background: #fff; color: #666;
 }
 .cost-log-footer button:hover { background: #f1f5f9; }
+
+/* -- Niche Explorer ------------------------------------------------------ */
+.btn-niche-explorer {
+  background: linear-gradient(135deg, #7c3aed, #a855f7); color: #fff;
+  border: none; border-radius: 8px; padding: 8px 16px; font-size: 13px;
+  font-weight: 600; cursor: pointer; white-space: nowrap;
+  transition: all 0.15s;
+}
+.btn-niche-explorer:hover { opacity: 0.9; transform: translateY(-1px); }
+.niche-modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 10000;
+  display: none; align-items: flex-start; justify-content: center; padding-top: 30px;
+}
+.niche-modal-overlay.open { display: flex; }
+.niche-modal {
+  background: #fff; border-radius: 16px; width: 640px; max-width: 95vw;
+  max-height: 90vh; overflow: hidden; box-shadow: 0 25px 50px rgba(0,0,0,0.3);
+  position: relative;
+}
+.niche-modal-header {
+  padding: 18px 24px; background: linear-gradient(135deg, #7c3aed, #4c1d95);
+  color: #fff;
+}
+.niche-modal-header h3 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+.niche-modal-header p { font-size: 13px; opacity: 0.85; margin: 0; }
+.niche-close {
+  position: absolute; top: 14px; right: 18px; background: none; border: none;
+  color: #fff; font-size: 22px; cursor: pointer; opacity: 0.7;
+}
+.niche-close:hover { opacity: 1; }
+.niche-modal-body { padding: 20px 24px; max-height: 65vh; overflow-y: auto; }
+.niche-step { margin-bottom: 18px; }
+.niche-step label {
+  display: block; font-size: 14px; font-weight: 600; color: #1e293b;
+  margin-bottom: 6px;
+}
+.niche-step label .step-num {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 50%; font-size: 12px;
+  background: #7c3aed; color: #fff; margin-right: 8px;
+}
+.niche-step .hint { font-size: 12px; color: #94a3b8; margin-bottom: 6px; }
+.niche-step input, .niche-step textarea {
+  width: 100%; padding: 10px 12px; border: 1.5px solid #e2e8f0; border-radius: 8px;
+  font-size: 13px; font-family: inherit; transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+.niche-step input:focus, .niche-step textarea:focus { border-color: #7c3aed; outline: none; }
+.niche-step textarea { resize: vertical; min-height: 60px; }
+.niche-step-header { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.niche-step-controls { display: flex; gap: 2px; margin-left: auto; }
+.niche-step-controls button {
+  background: none; border: 1px solid #e2e8f0; border-radius: 4px;
+  padding: 2px 6px; font-size: 12px; cursor: pointer; color: #64748b;
+}
+.niche-step-controls button:hover { background: #f1f5f9; color: #1e293b; }
+.niche-step-controls button.remove-btn:hover { background: #fee2e2; color: #dc2626; }
+.niche-step label[contenteditable] { cursor: text; border-bottom: 1px dashed transparent; }
+.niche-step label[contenteditable]:hover { border-bottom-color: #7c3aed; }
+.niche-step label[contenteditable]:focus { outline: none; border-bottom-color: #7c3aed; }
+.niche-add-btn:hover { background: #f5f3ff !important; border-color: #7c3aed !important; }
+.niche-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.niche-chip {
+  padding: 5px 12px; border: 1.5px solid #e2e8f0; border-radius: 99px;
+  font-size: 12px; cursor: pointer; transition: all 0.15s; user-select: none;
+  background: #fff; color: #475569;
+}
+.niche-chip:hover { border-color: #7c3aed; color: #7c3aed; }
+.niche-chip.selected { background: #7c3aed; color: #fff; border-color: #7c3aed; }
+.niche-seeds-preview {
+  background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 10px;
+  padding: 14px 16px; margin-top: 12px;
+}
+.niche-seeds-preview h4 { font-size: 13px; font-weight: 700; color: #1e293b; margin-bottom: 8px; }
+.niche-seed-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.niche-seed-tag {
+  font-size: 11px; padding: 3px 10px; border-radius: 99px;
+  font-weight: 600; border: 1px solid #e2e8f0;
+}
+.niche-seed-tag.direct { background: #dbeafe; color: #1e40af; border-color: #bfdbfe; }
+.niche-seed-tag.audience { background: #dcfce7; color: #166534; border-color: #bbf7d0; }
+.niche-seed-tag.problem { background: #fef3c7; color: #92400e; border-color: #fde68a; }
+.niche-seed-tag.competitor { background: #fee2e2; color: #991b1b; border-color: #fecaca; }
+.niche-seed-tag.feature { background: #ede9fe; color: #5b21b6; border-color: #ddd6fe; }
+.niche-seed-tag.community { background: #fce7f3; color: #9d174d; border-color: #fbcfe8; }
+.niche-seed-tag.usecase { background: #e0f2fe; color: #075985; border-color: #bae6fd; }
+.niche-seed-tag.intent { background: #dcfce7; color: #166534; border-color: #bbf7d0; }
+.niche-modal-footer {
+  padding: 14px 24px; border-top: 1px solid #e2e8f0;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.niche-run-btn {
+  background: linear-gradient(135deg, #7c3aed, #a855f7); color: #fff;
+  border: none; border-radius: 8px; padding: 10px 24px; font-size: 14px;
+  font-weight: 700; cursor: pointer; transition: all 0.15s;
+}
+.niche-run-btn:hover { opacity: 0.9; }
+.niche-run-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.niche-seed-count { font-size: 13px; color: #64748b; font-weight: 600; }
+.niche-progress {
+  padding: 14px 24px; background: #f8fafc; border-top: 1px solid #e2e8f0;
+  display: none;
+}
+.niche-progress-bar {
+  height: 6px; background: #e2e8f0; border-radius: 99px; overflow: hidden;
+  margin-bottom: 8px;
+}
+.niche-progress-fill {
+  height: 100%; background: linear-gradient(90deg, #7c3aed, #a855f7);
+  border-radius: 99px; transition: width 0.3s;
+  width: 0%;
+}
+.niche-progress-text { font-size: 12px; color: #64748b; }
+
+/* -- Domain Check -------------------------------------------------------- */
+.domain-btn {
+  background: none; border: 1px solid #d0d0d0; border-radius: 6px;
+  padding: 2px 8px; font-size: 11px; color: #666; cursor: pointer;
+  transition: all 0.15s; white-space: nowrap;
+}
+.domain-btn:hover { background: #f0f9ff; border-color: #0ea5e9; color: #0369a1; }
+.domain-modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 9999;
+  display: none; align-items: center; justify-content: center;
+}
+.domain-modal-overlay.open { display: flex; }
+.domain-modal {
+  background: #fff; border-radius: 16px; width: 520px; max-width: 95vw;
+  max-height: 85vh; overflow: hidden; box-shadow: 0 25px 50px rgba(0,0,0,0.25);
+}
+.domain-modal-header {
+  padding: 16px 20px; background: linear-gradient(135deg, #1e293b, #334155);
+  color: #fff;
+}
+.domain-modal-header h3 { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+.domain-modal-header .domain-kw { color: #fbbf24; font-weight: 700; }
+.domain-modal-close {
+  position: absolute; top: 12px; right: 16px; background: none; border: none;
+  color: #fff; font-size: 20px; cursor: pointer; opacity: 0.7;
+}
+.domain-modal-close:hover { opacity: 1; }
+.domain-modal-body { padding: 0; max-height: 60vh; overflow-y: auto; }
+.domain-loading {
+  padding: 40px; text-align: center; color: #666; font-size: 14px;
+}
+.domain-results { list-style: none; padding: 0; margin: 0; }
+.domain-result-row {
+  display: flex; align-items: center; padding: 12px 20px;
+  border-bottom: 1px solid #f1f5f9; gap: 12px; transition: background 0.1s;
+}
+.domain-result-row:hover { background: #f8fafc; }
+.domain-result-row .domain-status {
+  width: 28px; height: 28px; border-radius: 50%; display: flex;
+  align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0;
+}
+.domain-status.available { background: #dcfce7; color: #16a34a; }
+.domain-status.taken { background: #fee2e2; color: #dc2626; }
+.domain-status.premium { background: #fef3c7; color: #d97706; }
+.domain-result-row .domain-name {
+  flex: 1; font-size: 14px; font-weight: 500; color: #1e293b;
+}
+.domain-name .tld { color: #0369a1; font-weight: 700; }
+.domain-result-row .domain-tag {
+  font-size: 11px; padding: 2px 10px; border-radius: 99px; font-weight: 600;
+}
+.domain-tag.avail { background: #dcfce7; color: #166534; }
+.domain-tag.not-avail { background: #fee2e2; color: #991b1b; }
+.domain-tag.prem { background: #fef3c7; color: #92400e; }
+.domain-result-row .domain-price {
+  font-size: 12px; color: #666; min-width: 80px; text-align: right;
+}
+.domain-result-row .domain-register {
+  font-size: 11px; padding: 4px 12px; border-radius: 6px; border: none;
+  background: #16a34a; color: #fff; cursor: pointer; font-weight: 600;
+  text-decoration: none;
+}
+.domain-result-row .domain-register:hover { background: #15803d; }
+.domain-modal-footer {
+  padding: 12px 20px; background: #f8fafc; border-top: 1px solid #e2e8f0;
+  font-size: 11px; color: #94a3b8; text-align: center;
+}
+.domain-seo-tip {
+  padding: 12px 20px; background: #fffbeb; border-bottom: 1px solid #fef3c7;
+  font-size: 12px; color: #92400e;
+}
+.domain-seo-tip strong { color: #78350f; }
+
+/* Inline .com availability badges in the keyword table */
+.domain-inline {
+  display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
+}
+.domain-dot {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 10px; font-weight: 600; padding: 1px 7px;
+  border-radius: 99px; white-space: nowrap;
+}
+.domain-dot.avail { background: #dcfce7; color: #166534; }
+.domain-dot.taken { background: #fee2e2; color: #991b1b; }
+.domain-dot.checking { background: #f3f4f6; color: #999; }
+.check-domains-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: linear-gradient(135deg, #1e293b, #334155); color: #fff;
+  border: none; border-radius: 8px; padding: 6px 14px; font-size: 12px;
+  font-weight: 600; cursor: pointer; margin-left: 8px;
+}
+.check-domains-btn:hover { opacity: 0.9; }
+
+/* -- SERP Preview Panel -------------------------------------------------- */
+.serp-btn {
+  background: none; border: 1px solid #d0d0d0; border-radius: 6px;
+  padding: 2px 8px; font-size: 11px; color: #666; cursor: pointer;
+  transition: all 0.15s; white-space: nowrap;
+}
+.serp-btn:hover { background: #fef3c7; border-color: #f59e0b; color: #92400e; }
+.serp-modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 9998;
+  display: none; align-items: flex-start; justify-content: center; padding-top: 40px;
+}
+.serp-modal-overlay.open { display: flex; }
+.serp-modal {
+  background: #fff; border-radius: 16px; width: 700px; max-width: 95vw;
+  max-height: 85vh; overflow: hidden; box-shadow: 0 25px 50px rgba(0,0,0,0.25);
+  position: relative;
+}
+.serp-modal-header {
+  padding: 16px 20px; background: linear-gradient(135deg, #1a1a2e, #16213e);
+  color: #fff;
+}
+.serp-modal-header h3 { font-size: 16px; font-weight: 600; }
+.serp-modal-header .serp-kw { color: #fbbf24; font-weight: 700; }
+.serp-modal-close {
+  position: absolute; top: 12px; right: 16px; background: none; border: none;
+  color: #fff; font-size: 20px; cursor: pointer; opacity: 0.7;
+}
+.serp-modal-close:hover { opacity: 1; }
+.serp-emd-banner {
+  padding: 10px 20px; font-size: 13px; font-weight: 600;
+  display: flex; align-items: center; gap: 8px;
+}
+.serp-emd-banner.opportunity { background: #dcfce7; color: #166534; }
+.serp-emd-banner.taken { background: #fee2e2; color: #991b1b; }
+.serp-modal-body { padding: 0; max-height: 65vh; overflow-y: auto; }
+.serp-result {
+  padding: 12px 20px; border-bottom: 1px solid #f1f5f9; transition: background 0.1s;
+}
+.serp-result:hover { background: #f8fafc; }
+.serp-result-rank {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border-radius: 50%; font-size: 12px;
+  font-weight: 700; flex-shrink: 0; margin-right: 10px;
+  background: #f1f5f9; color: #64748b;
+}
+.serp-result-rank.top3 { background: #fef3c7; color: #92400e; }
+.serp-result-header { display: flex; align-items: center; margin-bottom: 4px; }
+.serp-result-title {
+  font-size: 14px; font-weight: 600; color: #1a0dab;
+  text-decoration: none; flex: 1;
+}
+.serp-result-title:hover { text-decoration: underline; }
+.serp-result-url { font-size: 12px; color: #006621; margin-bottom: 4px; word-break: break-all; }
+.serp-result-desc { font-size: 12px; color: #545454; line-height: 1.4; }
+.serp-result-tags { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.serp-tag {
+  font-size: 10px; padding: 1px 8px; border-radius: 99px; font-weight: 600;
+}
+.serp-tag.emd { background: #fef3c7; color: #92400e; }
+.serp-tag.generic { background: #f1f5f9; color: #64748b; }
+.serp-tag.subdomain { background: #ede9fe; color: #6d28d9; }
+.serp-modal-footer {
+  padding: 10px 20px; background: #f8fafc; border-top: 1px solid #e2e8f0;
+  font-size: 11px; color: #94a3b8; display: flex; justify-content: space-between;
+}
 .header-actions { display: flex; gap: 8px; align-items: center; }
 .icon-btn {
   background: none; border: 1px solid #d0d0d0; border-radius: 8px;
@@ -284,15 +556,16 @@ tbody tr:last-child td { border-bottom: none; }
 .diff-50  { background: #fed7aa; color: #9a3412; }
 .diff-100 { background: #fecaca; color: #991b1b; }
 
-/* Competition level badges */
-.comp-badge {
-  display: inline-block; padding: 2px 8px; border-radius: 99px;
-  font-size: 11px; font-weight: 600; text-transform: uppercase;
-}
-.comp-low    { background: #dcfce7; color: #166534; }
-.comp-medium { background: #fef9c3; color: #854d0e; }
-.comp-high   { background: #fecaca; color: #991b1b; }
-.comp-none   { background: #f3f4f6; color: #9ca3af; }
+/* Competition level badges (now uses diff-badge classes via diffClass) */
+
+/* Intent badges */
+.intent-badge { display: inline-block; padding: 1px 7px; border-radius: 99px; font-size: 10px; font-weight: 600; }
+.intent-buyer { background: #dcfce7; color: #166534; }
+.intent-tool { background: #dbeafe; color: #1e40af; }
+.intent-compare { background: #fef3c7; color: #92400e; }
+.intent-info { background: #f3e8ff; color: #6b21a8; }
+.intent-research { background: #e0f2fe; color: #075985; }
+.intent-general { background: #f3f4f6; color: #6b7280; }
 
 /* Trend indicators */
 .trend-rising    { color: #16a34a; font-weight: 600; }
@@ -642,6 +915,7 @@ tbody tr:last-child td { border-bottom: none; }
       <option value="both">Both (Merge)</option>
     </select>
     <button class="btn-primary" id="searchBtn" onclick="searchKeywords()">Search</button>
+    <button class="btn-niche-explorer" onclick="openNicheExplorer()" title="Answer 5 questions, get 15+ seed angles covering your entire niche">&#x1F9ED; Niche Explorer</button>
   </div>
 
   <!-- Progress indicator -->
@@ -693,13 +967,24 @@ tbody tr:last-child td { border-bottom: none; }
         </select>
       </div>
       <div class="filter-group">
-        <label>Competition</label>
-        <select id="filterComp" onchange="applyFilters(); saveFilters()" style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;">
+        <label>Intent</label>
+        <select id="filterIntent" onchange="applyFilters(); saveFilters()" style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;">
           <option value="all">All</option>
-          <option value="LOW">Low only</option>
-          <option value="MEDIUM">Medium only</option>
-          <option value="HIGH">High only</option>
+          <option value="Buyer">Buyer intent</option>
+          <option value="Tool">Tool intent</option>
+          <option value="Compare">Comparison</option>
+          <option value="Info">Informational</option>
+          <option value="Research">Research</option>
+          <option value="General">General</option>
         </select>
+      </div>
+      <div class="filter-group">
+        <label>Competition (0-100)</label>
+        <div class="filter-range">
+          <input type="number" id="filterCompMin" value="0" min="0" max="100" oninput="applyFilters(); saveFilters()">
+          <span>to</span>
+          <input type="number" id="filterCompMax" value="100" min="0" max="100" oninput="applyFilters(); saveFilters()">
+        </div>
       </div>
       <button class="btn-small btn-reset" onclick="resetFilters()">Reset Filters</button>
     </div>
@@ -710,6 +995,7 @@ tbody tr:last-child td { border-bottom: none; }
         <input type="text" class="table-filter-input" id="tableFilter"
                placeholder="Filter keywords..." oninput="applyFilters()">
         <div class="table-toolbar-right">
+          <button class="check-domains-btn" onclick="checkDomainsForPage()" title="Check .com/.net/.org availability for keywords on this page">&#x1F310; Check Domains</button>
           <span class="table-info" id="tableInfo"></span>
         </div>
       </div>
@@ -722,10 +1008,13 @@ tbody tr:last-child td { border-bottom: none; }
               <th data-col="volume" onclick="sortTable('volume')">Volume <span class="sort-arrow" id="sort-volume"></span></th>
               <th data-col="difficulty" onclick="sortTable('difficulty')">KD <span class="sort-arrow" id="sort-difficulty"></span></th>
               <th data-col="cpc" onclick="sortTable('cpc')">CPC <span class="sort-arrow" id="sort-cpc"></span></th>
-              <th data-col="competition_level" onclick="sortTable('competition_level')">Competition <span class="sort-arrow" id="sort-competition_level"></span></th>
+              <th data-col="competition" onclick="sortTable('competition')">Comp <span class="sort-arrow" id="sort-competition"></span></th>
               <th data-col="trend" onclick="sortTable('trend')">Trend <span class="sort-arrow" id="sort-trend"></span></th>
+              <th>Intent</th>
               <th data-col="opportunity_score" onclick="sortTable('opportunity_score')">Opportunity <span class="sort-arrow" id="sort-opportunity_score"></span></th>
               <th>SERP</th>
+              <th style="width:180px">Domains Available</th>
+              <th style="width:60px">Top 10</th>
             </tr>
           </thead>
           <tbody id="kwBody"></tbody>
@@ -857,8 +1146,9 @@ tbody tr:last-child td { border-bottom: none; }
               <th data-col="volume" onclick="sortNuggetTable('volume')">Volume <span class="sort-arrow" id="nsort-volume"></span></th>
               <th data-col="difficulty" onclick="sortNuggetTable('difficulty')">KD <span class="sort-arrow" id="nsort-difficulty"></span></th>
               <th data-col="cpc" onclick="sortNuggetTable('cpc')">CPC <span class="sort-arrow" id="nsort-cpc"></span></th>
-              <th data-col="competition_level" onclick="sortNuggetTable('competition_level')">Competition <span class="sort-arrow" id="nsort-competition_level"></span></th>
+              <th data-col="competition" onclick="sortNuggetTable('competition')">Comp <span class="sort-arrow" id="nsort-competition"></span></th>
               <th data-col="trend" onclick="sortNuggetTable('trend')">Trend <span class="sort-arrow" id="nsort-trend"></span></th>
+              <th>Intent</th>
               <th data-col="opportunity_score" onclick="sortNuggetTable('opportunity_score')">Opportunity <span class="sort-arrow" id="nsort-opportunity_score"></span></th>
               <th data-col="niche" onclick="sortNuggetTable('niche')">Niche <span class="sort-arrow" id="nsort-niche"></span></th>
               <th data-col="suffix" onclick="sortNuggetTable('suffix')">Suffix <span class="sort-arrow" id="nsort-suffix"></span></th>
@@ -982,6 +1272,77 @@ tbody tr:last-child td { border-bottom: none; }
   </div>
 </div>
 
+<!-- Niche Explorer Modal -->
+<div class="niche-modal-overlay" id="nicheModal" onclick="if(event.target===this)closeNicheExplorer()">
+  <div class="niche-modal">
+    <div class="niche-modal-header">
+      <h3>&#x1F9ED; Niche Explorer</h3>
+      <p>Answer these questions about your product. We'll generate seed keywords covering every angle of your niche — different audiences, problems, competitors, and community slang.</p>
+      <button class="niche-close" onclick="closeNicheExplorer()">&times;</button>
+    </div>
+    <div class="niche-modal-body">
+
+      <div id="nicheSteps"></div>
+      <button class="niche-add-btn" onclick="addNicheStep()" style="width:100%;margin-bottom:12px;padding:8px;border:1.5px dashed #d0d0d0;border-radius:8px;background:none;color:#7c3aed;font-size:13px;font-weight:600;cursor:pointer;">+ Add Custom Prompt</button>
+
+      <!-- Generated seeds preview -->
+      <div class="niche-seeds-preview" id="nicheSeedsPreview" style="display:none">
+        <h4>Generated Seed Keywords (<span id="nicheSeedCount">0</span> angles)</h4>
+        <div class="niche-seed-list" id="nicheSeedList"></div>
+      </div>
+    </div>
+
+    <div class="niche-progress" id="nicheProgress">
+      <div class="niche-progress-bar"><div class="niche-progress-fill" id="nicheProgressFill"></div></div>
+      <div class="niche-progress-text" id="nicheProgressText">Searching...</div>
+    </div>
+
+    <div class="niche-modal-footer">
+      <span class="niche-seed-count" id="nicheFooterCount">Fill in at least question 1 to generate seeds</span>
+      <button class="niche-run-btn" id="nicheRunBtn" onclick="runNicheExplorer()" disabled>&#x1F680; Run All Seeds</button>
+    </div>
+  </div>
+</div>
+
+<!-- SERP Preview Modal -->
+<div class="serp-modal-overlay" id="serpModal" onclick="if(event.target===this)closeSerpModal()">
+  <div class="serp-modal">
+    <div class="serp-modal-header">
+      <h3>&#x1F50D; SERP Analysis — <span class="serp-kw" id="serpModalKeyword"></span></h3>
+      <button class="serp-modal-close" onclick="closeSerpModal()">&times;</button>
+    </div>
+    <div class="serp-emd-banner" id="serpEmdBanner" style="display:none"></div>
+    <div class="serp-modal-body" id="serpModalBody">
+      <div class="domain-loading" id="serpLoading">Loading SERP results...</div>
+      <div id="serpResults"></div>
+    </div>
+    <div class="serp-modal-footer">
+      <span>Top 10 Google results via DataForSEO</span>
+      <span id="serpCostNote">Cost: ~$0.002</span>
+    </div>
+  </div>
+</div>
+
+<!-- Domain Check Modal -->
+<div class="domain-modal-overlay" id="domainModal" onclick="if(event.target===this)closeDomainModal()">
+  <div class="domain-modal" style="position:relative">
+    <div class="domain-modal-header">
+      <h3>&#x1F310; Domain Availability — <span class="domain-kw" id="domainModalKeyword"></span></h3>
+      <button class="domain-modal-close" onclick="closeDomainModal()">&times;</button>
+    </div>
+    <div class="domain-seo-tip">
+      <strong>SEO Tip:</strong> .com is king for SEO &amp; trust. Then .net &gt; .org &gt; .co. Avoid subdomains like .it.com — Google treats them differently.
+    </div>
+    <div class="domain-modal-body" id="domainModalBody">
+      <div class="domain-loading" id="domainLoading">Checking domains...</div>
+      <div class="domain-results" id="domainResults"></div>
+    </div>
+    <div class="domain-modal-footer">
+      Free domain checks via RDAP &bull; No API key needed &bull; Click "Register" to buy on Namecheap
+    </div>
+  </div>
+</div>
+
 <!-- Toast -->
 <div class="toast" id="toast"></div>
 
@@ -995,6 +1356,7 @@ let activeSegments = new Set();
 let currentSort = { col: 'volume', order: 'desc' };
 let filtersVisible = true;
 let currentPage = 1;
+let domainCache = {};  // keyword -> true (available) | false (taken) | 'checking'
 const PAGE_SIZE = 50;
 let searchPollingTimer = null;
 
@@ -1165,6 +1527,571 @@ async function getBalance() {
   const data = await api('GET', '/api/balance');
   if (data.connected && data.balance !== undefined) return data.balance;
   return null;
+}
+
+/* -- Domain Check (bulk .com/.net/.org for table) ------------------------ */
+async function checkDomainsForPage() {
+  const start = (currentPage - 1) * PAGE_SIZE;
+  const pageItems = displayedKeywords.slice(start, start + PAGE_SIZE);
+  const toCheck = pageItems.filter(kw => domainCache[kw.keyword] === undefined).map(kw => kw.keyword);
+
+  if (toCheck.length === 0) {
+    showToast('All domains on this page already checked');
+    return;
+  }
+
+  // Mark as checking and re-render
+  toCheck.forEach(kw => { domainCache[kw] = 'checking'; });
+  renderTable();
+
+  // Check in batches of 15 (15 * 3 TLDs = 45 RDAP lookups)
+  for (let i = 0; i < toCheck.length; i += 15) {
+    const batch = toCheck.slice(i, i + 15);
+    const data = await api('POST', '/api/domain-check-bulk', { keywords: batch });
+    if (data.results) {
+      for (const [kw, tldMap] of Object.entries(data.results)) {
+        // tldMap: { '.com': { domain, available }, '.net': ..., '.org': ... }
+        const cache = {};
+        for (const [tld, info] of Object.entries(tldMap)) {
+          cache[tld] = info.available === true;
+        }
+        domainCache[kw] = cache;
+      }
+    }
+    renderTable();
+  }
+
+  const anyFree = toCheck.filter(kw => {
+    const dc = domainCache[kw];
+    return dc && typeof dc === 'object' && (dc['.com'] || dc['.net'] || dc['.org']);
+  }).length;
+  showToast(`Checked ${toCheck.length} keywords: ${anyFree} have domains available!`);
+}
+
+/* -- Domain Check (detailed modal) --------------------------------------- */
+async function checkDomain(keyword) {
+  const modal = document.getElementById('domainModal');
+  const kwEl = document.getElementById('domainModalKeyword');
+  const body = document.getElementById('domainModalBody');
+  const loading = document.getElementById('domainLoading');
+  const results = document.getElementById('domainResults');
+
+  kwEl.textContent = keyword;
+  loading.style.display = 'block';
+  results.innerHTML = '';
+  modal.classList.add('open');
+
+  const data = await api('GET', '/api/domain-check?keyword=' + encodeURIComponent(keyword));
+
+  loading.style.display = 'none';
+
+  if (data.error) {
+    results.innerHTML = `<div class="domain-loading" style="color:#dc2626;">${escHtml(data.error)}</div>`;
+    return;
+  }
+
+  if (!data.domains || data.domains.length === 0) {
+    results.innerHTML = '<div class="domain-loading">No results returned.</div>';
+    return;
+  }
+
+  // SEO rank order for TLDs
+  const tldRank = {'.com':1, '.net':2, '.org':3, '.co':4, '.io':5, '.ai':6, '.app':7, '.dev':8, '.us':9, '.info':10};
+
+  const html = data.domains.map(d => {
+    const parts = d.domain.split('.');
+    const tld = '.' + parts.slice(1).join('.');
+    const base = parts[0];
+    const rank = tldRank[tld] || 99;
+    const seoLabel = rank <= 3 ? `<span style="font-size:10px;color:#16a34a;margin-left:4px;">★ Best for SEO</span>` : '';
+
+    let statusIcon, tag, registerBtn;
+    if (d.available && !d.is_premium) {
+      statusIcon = '<div class="domain-status available">✓</div>';
+      tag = '<span class="domain-tag avail">Available</span>';
+      registerBtn = `<a class="domain-register" href="https://www.namecheap.com/domains/registration/results/?domain=${encodeURIComponent(d.domain)}" target="_blank" rel="noopener">Register</a>`;
+    } else if (d.available && d.is_premium) {
+      statusIcon = '<div class="domain-status premium">$</div>';
+      tag = `<span class="domain-tag prem">Premium ${d.premium_price ? '$' + d.premium_price : ''}</span>`;
+      registerBtn = `<a class="domain-register" style="background:#d97706;" href="https://www.namecheap.com/domains/registration/results/?domain=${encodeURIComponent(d.domain)}" target="_blank" rel="noopener">View</a>`;
+    } else {
+      statusIcon = '<div class="domain-status taken">✗</div>';
+      tag = '<span class="domain-tag not-avail">Taken</span>';
+      registerBtn = `<a class="domain-register" style="background:#6b7280;" href="https://www.namecheap.com/domains/registration/results/?domain=${encodeURIComponent(d.domain)}" target="_blank" rel="noopener">Alternatives</a>`;
+    }
+
+    return `<div class="domain-result-row">
+      ${statusIcon}
+      <div class="domain-name">${escHtml(base)}<span class="tld">${escHtml(tld)}</span>${seoLabel}</div>
+      ${tag}
+      ${registerBtn}
+    </div>`;
+  }).join('');
+
+  results.innerHTML = html;
+}
+
+function closeDomainModal() {
+  document.getElementById('domainModal').classList.remove('open');
+}
+
+/* -- SERP Preview -------------------------------------------------------- */
+async function serpPreview(keyword) {
+  const modal = document.getElementById('serpModal');
+  const kwEl = document.getElementById('serpModalKeyword');
+  const loading = document.getElementById('serpLoading');
+  const results = document.getElementById('serpResults');
+  const banner = document.getElementById('serpEmdBanner');
+
+  kwEl.textContent = keyword;
+  loading.style.display = 'block';
+  results.innerHTML = '';
+  banner.style.display = 'none';
+  modal.classList.add('open');
+
+  const data = await api('GET', '/api/serp-preview?keyword=' + encodeURIComponent(keyword));
+
+  loading.style.display = 'none';
+
+  if (data.error) {
+    results.innerHTML = `<div class="domain-loading" style="color:#dc2626;">${escHtml(data.error)}</div>`;
+    return;
+  }
+
+  if (!data.results || data.results.length === 0) {
+    results.innerHTML = '<div class="domain-loading">No SERP results returned.</div>';
+    return;
+  }
+
+  // EMD opportunity banner
+  const baseDomain = data.base_domain || '';
+  if (!data.has_exact_match) {
+    banner.className = 'serp-emd-banner opportunity';
+    banner.innerHTML = `&#x1F4A1; <strong>EMD Opportunity!</strong> No exact match domain (${escHtml(baseDomain)}.com/net/org) found in top 10. An exact match domain could rank here.`;
+    banner.style.display = 'flex';
+  } else {
+    banner.className = 'serp-emd-banner taken';
+    banner.innerHTML = `&#x26A0; An exact match domain is already ranking in the top 10 for this keyword.`;
+    banner.style.display = 'flex';
+  }
+
+  // Render results
+  const html = data.results.map(r => {
+    const rankClass = r.rank <= 3 ? 'top3' : '';
+    const rDomainBase = (r.domain || '').split('.')[0].toLowerCase();
+    const isExact = rDomainBase === baseDomain;
+    const isSubdomain = (r.domain || '').split('.').length > 2;
+
+    let domainTag = '';
+    if (isExact) {
+      domainTag = '<span class="serp-tag emd">&#x2B50; Exact Match Domain</span>';
+    } else if (isSubdomain) {
+      domainTag = '<span class="serp-tag subdomain">Subdomain</span>';
+    } else {
+      domainTag = '<span class="serp-tag generic">Generic Domain</span>';
+    }
+
+    return `<div class="serp-result">
+      <div class="serp-result-header">
+        <span class="serp-result-rank ${rankClass}">${r.rank}</span>
+        <a class="serp-result-title" href="${escHtml(r.url)}" target="_blank" rel="noopener">${escHtml(r.title)}</a>
+      </div>
+      <div class="serp-result-url">${escHtml(r.url)}</div>
+      <div class="serp-result-desc">${escHtml(r.description || '')}</div>
+      <div class="serp-result-tags">
+        ${domainTag}
+        <span class="serp-tag generic">${escHtml(r.domain)}</span>
+      </div>
+    </div>`;
+  }).join('');
+
+  results.innerHTML = html;
+}
+
+function closeSerpModal() {
+  document.getElementById('serpModal').classList.remove('open');
+}
+
+/* -- Niche Explorer ------------------------------------------------------ */
+let nicheSeeds = [];
+
+let nicheStepData = [
+  { id: 'product', label: 'What does your product/tool do?', hint: 'Describe it in plain language. e.g. "A tool that generates color themes for websites"', placeholder: 'e.g. A UI tool that creates themes for websites and apps', type: 'input', value: '', chips: null },
+  { id: 'audience', label: 'Who is it for?', hint: 'Pick preset audiences or type custom ones', placeholder: 'Add custom audiences (comma-separated)', type: 'chips', value: '', chips: ['Developers','Designers','Agencies','Indie Hackers','No-Code Builders','Freelancers','Business Owners','Vibecoding'], selectedChips: [] },
+  { id: 'problem', label: 'What problem does it solve?', hint: 'What frustration or pain point do people have?', placeholder: 'e.g. Takes too long to pick colors and fonts', type: 'input', value: '' },
+  { id: 'competitors', label: 'What tools do people currently use instead?', hint: 'Competitors, alternatives, workarounds — comma-separated', placeholder: 'e.g. Figma, Canva, Coolors, Tailwind CSS', type: 'input', value: '' },
+  { id: 'features', label: 'Key features or sub-tools?', hint: 'What specific things can your tool do? Comma-separated', placeholder: 'e.g. color palette, font pairing, CSS variables', type: 'input', value: '' },
+  { id: 'intent', label: 'What value does it deliver?', hint: 'What does the user get? Saves time, saves money, higher quality, easier?', placeholder: 'e.g. saves hours of design work, professional results without hiring', type: 'input', value: '' },
+];
+
+function renderNicheSteps() {
+  const container = document.getElementById('nicheSteps');
+  container.innerHTML = nicheStepData.map((step, idx) => {
+    const isFirst = idx === 0;
+    const isLast = idx === nicheStepData.length - 1;
+    const isCustom = !!step.custom;
+    const num = idx + 1;
+
+    let controls = '<div class="niche-step-controls">';
+    if (!isFirst) controls += `<button onclick="moveNicheStep(${idx}, -1)" title="Move up">&uarr;</button>`;
+    if (!isLast) controls += `<button onclick="moveNicheStep(${idx}, 1)" title="Move down">&darr;</button>`;
+    if (isCustom) controls += `<button class="remove-btn" onclick="removeNicheStep(${idx})" title="Remove">&times;</button>`;
+    controls += '</div>';
+
+    let inputHtml = '';
+    if (step.type === 'chips') {
+      const chipsHtml = (step.chips || []).map(chip => {
+        const sel = (step.selectedChips || []).includes(chip) ? ' selected' : '';
+        return `<span class="niche-chip${sel}" onclick="toggleNicheChip(${idx}, this)">${escHtml(chip)}</span>`;
+      }).join('');
+      inputHtml = `<div class="niche-chips" id="nicheChips_${idx}">${chipsHtml}</div>
+        <input type="text" value="${escHtml(step.value || '')}" placeholder="${escHtml(step.placeholder)}" oninput="nicheStepData[${idx}].value=this.value;generateNicheSeeds()" style="margin-top:6px">`;
+    } else {
+      inputHtml = `<input type="text" value="${escHtml(step.value || '')}" placeholder="${escHtml(step.placeholder)}" oninput="nicheStepData[${idx}].value=this.value;generateNicheSeeds()">`;
+    }
+
+    return `<div class="niche-step">
+      <div class="niche-step-header">
+        <label><span class="step-num">${num}</span><span contenteditable="true" onblur="nicheStepData[${idx}].label=this.textContent.trim()||nicheStepData[${idx}].label">${escHtml(step.label)}</span></label>
+        ${controls}
+      </div>
+      <div class="hint">${escHtml(step.hint)}</div>
+      ${inputHtml}
+    </div>`;
+  }).join('');
+}
+
+function toggleNicheChip(stepIdx, el) {
+  el.classList.toggle('selected');
+  const chip = el.textContent.trim();
+  const step = nicheStepData[stepIdx];
+  if (!step.selectedChips) step.selectedChips = [];
+  const i = step.selectedChips.indexOf(chip);
+  if (i >= 0) step.selectedChips.splice(i, 1);
+  else step.selectedChips.push(chip);
+  generateNicheSeeds();
+}
+
+function addNicheStep() {
+  nicheStepData.push({ id: 'custom_' + Date.now(), label: 'Custom prompt', hint: 'Enter your own search angle', placeholder: 'e.g. specific terms your audience uses', type: 'input', value: '', custom: true });
+  renderNicheSteps();
+}
+
+function moveNicheStep(index, direction) {
+  const target = index + direction;
+  if (target < 0 || target >= nicheStepData.length) return;
+  // Save current input values from DOM before re-rendering
+  syncNicheInputValues();
+  const temp = nicheStepData[index];
+  nicheStepData[index] = nicheStepData[target];
+  nicheStepData[target] = temp;
+  renderNicheSteps();
+  generateNicheSeeds();
+}
+
+function removeNicheStep(index) {
+  if (!nicheStepData[index].custom) return;
+  nicheStepData.splice(index, 1);
+  renderNicheSteps();
+  generateNicheSeeds();
+}
+
+/** Sync current DOM input values back into nicheStepData before re-render */
+function syncNicheInputValues() {
+  const container = document.getElementById('nicheSteps');
+  if (!container) return;
+  const steps = container.querySelectorAll('.niche-step');
+  steps.forEach((stepEl, idx) => {
+    if (idx >= nicheStepData.length) return;
+    const input = stepEl.querySelector('input[type="text"]:last-of-type') || stepEl.querySelector('input[type="text"]');
+    if (input) nicheStepData[idx].value = input.value;
+    // Sync chips
+    if (nicheStepData[idx].type === 'chips') {
+      nicheStepData[idx].selectedChips = Array.from(stepEl.querySelectorAll('.niche-chip.selected')).map(c => c.textContent.trim());
+    }
+  });
+}
+
+function openNicheExplorer() {
+  document.getElementById('nicheModal').classList.add('open');
+  renderNicheSteps();
+  generateNicheSeeds();
+}
+
+function closeNicheExplorer() {
+  document.getElementById('nicheModal').classList.remove('open');
+}
+
+function toggleChip(el) {
+  el.classList.toggle('selected');
+  generateNicheSeeds();
+}
+
+function getSelectedChips(containerId) {
+  const el = document.getElementById(containerId);
+  if (!el) return [];
+  return Array.from(el.querySelectorAll('.niche-chip.selected'))
+    .map(c => c.textContent.trim());
+}
+
+function splitComma(str) {
+  return str.split(',').map(s => s.trim()).filter(s => s.length > 0);
+}
+
+/**
+ * Read step values from the DOM (handles both chips and input types).
+ * Returns an object keyed by step id with the current value.
+ */
+function readNicheStepValues() {
+  const vals = {};
+  const container = document.getElementById('nicheSteps');
+  if (!container) return vals;
+  const steps = container.querySelectorAll('.niche-step');
+  steps.forEach((stepEl, idx) => {
+    if (idx >= nicheStepData.length) return;
+    const step = nicheStepData[idx];
+    if (step.type === 'chips') {
+      const selected = Array.from(stepEl.querySelectorAll('.niche-chip.selected')).map(c => c.textContent.trim());
+      const inputEl = stepEl.querySelector('input[type="text"]');
+      const custom = inputEl ? splitComma(inputEl.value) : [];
+      vals[step.id] = { audiences: [...selected, ...custom] };
+    } else {
+      const inputEl = stepEl.querySelector('input[type="text"]');
+      vals[step.id] = inputEl ? inputEl.value.trim() : '';
+    }
+  });
+  return vals;
+}
+
+/**
+ * Universal seed generation engine.
+ * Reads from nicheStepData array dynamically.
+ */
+function generateNicheSeeds() {
+  const vals = readNicheStepValues();
+  const product = vals.product || '';
+  const audiences = vals.audience ? vals.audience.audiences : [];
+  const problem = vals.problem || '';
+  const competitors = typeof vals.competitors === 'string' ? splitComma(vals.competitors) : [];
+  const features = typeof vals.features === 'string' ? splitComma(vals.features) : [];
+  const intentVal = vals.intent || '';
+
+  const seeds = [];
+  const addSeed = (text, category) => {
+    const clean = text.toLowerCase().trim();
+    if (clean && clean.length >= 3 && !seeds.find(s => s.text === clean)) {
+      seeds.push({ text: clean, category });
+    }
+  };
+
+  if (!product) {
+    document.getElementById('nicheSeedsPreview').style.display = 'none';
+    document.getElementById('nicheFooterCount').textContent = 'Fill in at least question 1 to generate seeds';
+    document.getElementById('nicheRunBtn').disabled = true;
+    nicheSeeds = [];
+    return;
+  }
+
+  // Extract core noun phrases from the product description
+  const words = product.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(w =>
+    w.length > 2 && !['the','a','an','and','or','for','that','this','with','from','into','tool','app'].includes(w)
+  );
+
+  // --- CATEGORY 1: Direct tool/product searches ---
+  const corePhrases = [];
+  if (words.length >= 2) {
+    for (let i = 0; i < words.length - 1; i++) {
+      corePhrases.push(words[i] + ' ' + words[i+1]);
+    }
+    if (words.length >= 3) {
+      for (let i = 0; i < words.length - 2; i++) {
+        corePhrases.push(words[i] + ' ' + words[i+1] + ' ' + words[i+2]);
+      }
+    }
+  }
+  const toolSuffixes = ['tool', 'generator', 'builder', 'creator', 'maker', 'app', 'software'];
+  const bestPhrase = corePhrases[0] || words.join(' ');
+  toolSuffixes.forEach(suffix => {
+    addSeed(bestPhrase + ' ' + suffix, 'direct');
+  });
+  addSeed(bestPhrase, 'direct');
+  addSeed('online ' + bestPhrase, 'direct');
+  addSeed('free ' + bestPhrase, 'direct');
+  addSeed('best ' + bestPhrase, 'direct');
+
+  // --- CATEGORY 2: Audience-based ---
+  audiences.forEach(aud => {
+    const audLower = aud.toLowerCase();
+    addSeed(bestPhrase + ' for ' + audLower, 'audience');
+    addSeed(audLower + ' ' + (words[words.length - 1] || bestPhrase) + ' tools', 'audience');
+    addSeed('best tools for ' + audLower, 'audience');
+  });
+
+  // --- CATEGORY 3: Problem/pain-point searches ---
+  if (problem) {
+    const probWords = problem.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(w => w.length > 2);
+    if (probWords.length >= 2) {
+      addSeed('how to ' + probWords.slice(0, 4).join(' '), 'problem');
+      addSeed(probWords.slice(0, 3).join(' '), 'problem');
+    }
+    addSeed('how to ' + bestPhrase, 'problem');
+    addSeed(bestPhrase + ' easy', 'problem');
+    addSeed(bestPhrase + ' fast', 'problem');
+    addSeed(bestPhrase + ' automatically', 'problem');
+  }
+
+  // --- CATEGORY 4: Competitor alternatives ---
+  competitors.forEach(comp => {
+    const compLower = comp.toLowerCase().trim();
+    addSeed(compLower + ' alternative', 'competitor');
+    addSeed(compLower + ' vs', 'competitor');
+    addSeed('better than ' + compLower, 'competitor');
+    addSeed(compLower + ' free alternative', 'competitor');
+  });
+
+  // --- CATEGORY 5: Feature-specific ---
+  features.forEach(feat => {
+    const featLower = feat.toLowerCase().trim();
+    addSeed(featLower + ' generator', 'feature');
+    addSeed(featLower + ' tool', 'feature');
+    addSeed('online ' + featLower, 'feature');
+    addSeed(featLower, 'feature');
+  });
+
+  // --- CATEGORY 6: Buyer intent / value-based ---
+  if (intentVal) {
+    const intentTerms = splitComma(intentVal);
+    intentTerms.forEach(term => {
+      const t = term.toLowerCase().trim();
+      addSeed(t + ' ' + bestPhrase, 'intent');
+    });
+    // Standard buyer intent patterns
+    addSeed('save time ' + bestPhrase, 'intent');
+    addSeed(bestPhrase + ' faster', 'intent');
+    addSeed('automate ' + bestPhrase, 'intent');
+    addSeed('affordable ' + bestPhrase, 'intent');
+    addSeed('cheap ' + bestPhrase, 'intent');
+    addSeed('free ' + bestPhrase, 'intent');
+    addSeed('professional ' + bestPhrase, 'intent');
+    addSeed('better ' + bestPhrase, 'intent');
+    addSeed('high quality ' + bestPhrase, 'intent');
+  }
+
+  // --- CATEGORY 7: Community/trend slang ---
+  const communityTerms = {
+    'Developers': ['dev tools', 'github', 'npm package', 'cli tool', 'open source'],
+    'Designers': ['design system', 'ui kit', 'design tokens', 'figma plugin'],
+    'Agencies': ['agency tools', 'client deliverable', 'white label', 'agency workflow'],
+    'Indie Hackers': ['ship fast', 'saas boilerplate', 'indie hacker tools', 'micro saas'],
+    'No-Code Builders': ['no code', 'low code', 'drag and drop', 'without coding'],
+    'Freelancers': ['freelance tools', 'client project', 'quick prototype'],
+    'Business Owners': ['small business', 'diy website', 'affordable'],
+    'Vibecoding': ['vibecoding', 'vibe coding tools', 'ai coding', 'cursor ai'],
+  };
+  audiences.forEach(aud => {
+    const terms = communityTerms[aud] || [];
+    terms.forEach(term => {
+      addSeed(term + ' ' + (words[0] || ''), 'community');
+    });
+  });
+
+  // --- CATEGORY 8: Use-case based ---
+  const useCasePatterns = ['for website', 'for app', 'for landing page', 'for saas',
+    'for ecommerce', 'for portfolio', 'for dashboard', 'for startup'];
+  useCasePatterns.forEach(uc => {
+    addSeed(bestPhrase + ' ' + uc, 'usecase');
+  });
+
+  // --- PROMPT CHAINING: Cross-pollinate top seeds ---
+  if (features.length > 0 && audiences.length > 0) {
+    features.slice(0, 3).forEach(feat => {
+      audiences.slice(0, 3).forEach(aud => {
+        addSeed(feat.toLowerCase() + ' for ' + aud.toLowerCase(), 'usecase');
+      });
+    });
+  }
+
+  // --- Custom steps: treat values as direct seed keywords ---
+  nicheStepData.forEach(step => {
+    if (step.custom && vals[step.id]) {
+      const customVal = typeof vals[step.id] === 'string' ? vals[step.id] : '';
+      if (customVal) {
+        splitComma(customVal).forEach(kw => {
+          addSeed(kw, 'direct');
+        });
+      }
+    }
+  });
+
+  nicheSeeds = seeds;
+
+  // Render preview
+  const preview = document.getElementById('nicheSeedsPreview');
+  const list = document.getElementById('nicheSeedList');
+  const count = document.getElementById('nicheSeedCount');
+
+  if (seeds.length > 0) {
+    preview.style.display = 'block';
+    count.textContent = seeds.length;
+    list.innerHTML = seeds.map(s =>
+      `<span class="niche-seed-tag ${s.category}">${escHtml(s.text)}</span>`
+    ).join('');
+    document.getElementById('nicheFooterCount').textContent = `${seeds.length} seed angles ready`;
+    document.getElementById('nicheRunBtn').disabled = false;
+  } else {
+    preview.style.display = 'none';
+    document.getElementById('nicheFooterCount').textContent = 'Fill in at least question 1 to generate seeds';
+    document.getElementById('nicheRunBtn').disabled = true;
+  }
+}
+
+async function runNicheExplorer() {
+  if (nicheSeeds.length === 0) return;
+
+  const btn = document.getElementById('nicheRunBtn');
+  const progress = document.getElementById('nicheProgress');
+  const progressFill = document.getElementById('nicheProgressFill');
+  const progressText = document.getElementById('nicheProgressText');
+  const mode = document.getElementById('searchMode').value;
+
+  btn.disabled = true;
+  btn.textContent = 'Running...';
+  progress.style.display = 'block';
+
+  const total = nicheSeeds.length;
+  let completed = 0;
+  let totalKw = 0;
+
+  // Run seeds sequentially (to avoid hammering the API)
+  for (const seed of nicheSeeds) {
+    completed++;
+    const pct = Math.round((completed / total) * 100);
+    progressFill.style.width = pct + '%';
+    progressText.textContent = `Searching "${seed.text}" (${completed}/${total})... ${totalKw} keywords found so far`;
+
+    try {
+      const data = await api('POST', '/api/search', { seed_keyword: seed.text, mode: mode });
+      if (data.keywords) {
+        totalKw += data.count || data.keywords.length || 0;
+      }
+    } catch (e) {
+      // Continue with other seeds if one fails
+    }
+  }
+
+  // Done - load all results
+  progressFill.style.width = '100%';
+  progressText.textContent = `Done! ${totalKw} total keywords found from ${total} seed angles.`;
+
+  btn.textContent = '\u{1F680} Run All Seeds';
+  btn.disabled = false;
+
+  // Close modal and reload keywords
+  setTimeout(async () => {
+    closeNicheExplorer();
+    await loadKeywords();
+    showToast(`Niche Explorer: ${totalKw} keywords from ${total} seed angles!`);
+  }, 1500);
 }
 
 /* -- API status check ---------------------------------------------------- */
@@ -1357,7 +2284,9 @@ function resetFilters() {
   document.getElementById('filterOppMin').value = 0;
   document.getElementById('filterOppMax').value = 100;
   document.getElementById('filterTrend').value = 'all';
-  document.getElementById('filterComp').value = 'all';
+  document.getElementById('filterIntent').value = 'all';
+  document.getElementById('filterCompMin').value = 0;
+  document.getElementById('filterCompMax').value = 100;
   document.getElementById('tableFilter').value = '';
   activeSegments.clear();
   renderSegmentBar();
@@ -1374,7 +2303,9 @@ function applyFilters() {
   const oppMin = val('filterOppMin', 0);
   const oppMax = val('filterOppMax', 100);
   const trendFilter = document.getElementById('filterTrend').value;
-  const compFilter = document.getElementById('filterComp').value;
+  const intentFilter = document.getElementById('filterIntent').value;
+  const compMin = parseInt(document.getElementById('filterCompMin').value) || 0;
+  const compMax = parseInt(document.getElementById('filterCompMax').value) || 100;
   const textFilter = (document.getElementById('tableFilter').value || '').toLowerCase().trim();
 
   if (activeSegments.size > 0) {
@@ -1388,7 +2319,9 @@ function applyFilters() {
       const opp = kw.opportunity_score || 0;
       if (opp < oppMin || opp > oppMax) return false;
       if (trendFilter !== 'all' && kw.trend !== trendFilter) return false;
-      if (compFilter !== 'all' && (kw.competition_level || '').toUpperCase() !== compFilter) return false;
+      if (intentFilter !== 'all' && classifyIntent(kw.keyword).label !== intentFilter) return false;
+      const compNum = Math.round((kw.competition || 0) * 100);
+      if (compNum < compMin || compNum > compMax) return false;
       return ranges.some(([lo, hi]) => kw.difficulty >= lo && kw.difficulty <= hi);
     });
   } else {
@@ -1398,7 +2331,9 @@ function applyFilters() {
       const opp = kw.opportunity_score || 0;
       if (opp < oppMin || opp > oppMax) return false;
       if (trendFilter !== 'all' && kw.trend !== trendFilter) return false;
-      if (compFilter !== 'all' && (kw.competition_level || '').toUpperCase() !== compFilter) return false;
+      if (intentFilter !== 'all' && classifyIntent(kw.keyword).label !== intentFilter) return false;
+      const compNum = Math.round((kw.competition || 0) * 100);
+      if (compNum < compMin || compNum > compMax) return false;
       return true;
     });
   }
@@ -1428,7 +2363,9 @@ function saveFilters() {
     oppMin: document.getElementById('filterOppMin').value,
     oppMax: document.getElementById('filterOppMax').value,
     trend: document.getElementById('filterTrend').value,
-    comp: document.getElementById('filterComp').value,
+    intent: document.getElementById('filterIntent').value,
+    compMin: document.getElementById('filterCompMin').value,
+    compMax: document.getElementById('filterCompMax').value,
   };
   localStorage.setItem('kwFilters', JSON.stringify(filters));
 }
@@ -1445,7 +2382,9 @@ function loadFilters() {
     if (f.oppMin !== undefined) document.getElementById('filterOppMin').value = f.oppMin;
     if (f.oppMax !== undefined) document.getElementById('filterOppMax').value = f.oppMax;
     if (f.trend) document.getElementById('filterTrend').value = f.trend;
-    if (f.comp) document.getElementById('filterComp').value = f.comp;
+    if (f.intent) document.getElementById('filterIntent').value = f.intent;
+    if (f.compMin !== undefined) document.getElementById('filterCompMin').value = f.compMin;
+    if (f.compMax !== undefined) document.getElementById('filterCompMax').value = f.compMax;
   } catch(e) { /* ignore corrupt data */ }
 }
 
@@ -1482,6 +2421,17 @@ function updateSortArrows() {
   if (el) el.textContent = currentSort.order === 'asc' ? '\u25B2' : '\u25BC';
 }
 
+/* -- Search intent classification ---------------------------------------- */
+function classifyIntent(kw) {
+  const k = kw.toLowerCase();
+  if (/\b(buy|purchase|price|pricing|cost|cheap|affordable|deal|discount|coupon|free trial|subscribe|order|shop)\b/.test(k)) return { label: 'Buyer', cls: 'intent-buyer' };
+  if (/\b(tool|generator|builder|creator|maker|calculator|converter|checker|tester|analyzer|editor|app|software|platform|online|free)\b/.test(k)) return { label: 'Tool', cls: 'intent-tool' };
+  if (/\b(vs|versus|alternative|compared|comparison|better than|review|top \d|best)\b/.test(k)) return { label: 'Compare', cls: 'intent-compare' };
+  if (/\b(how to|what is|why|guide|tutorial|tips|learn|example|template)\b/.test(k)) return { label: 'Info', cls: 'intent-info' };
+  if (/\b(best|top|recommended|review)\b/.test(k)) return { label: 'Research', cls: 'intent-research' };
+  return { label: 'General', cls: 'intent-general' };
+}
+
 /* -- Render table -------------------------------------------------------- */
 function diffClass(d) {
   if (d <= 0)  return 'diff-0';
@@ -1497,14 +2447,6 @@ function oppClass(o) {
   if (o >= 60) return 'opp-good';
   if (o >= 40) return 'opp-mid';
   return 'opp-low';
-}
-
-function compClass(level) {
-  const l = (level || '').toUpperCase();
-  if (l === 'LOW') return 'comp-low';
-  if (l === 'MEDIUM') return 'comp-medium';
-  if (l === 'HIGH') return 'comp-high';
-  return 'comp-none';
 }
 
 function trendIcon(trend) {
@@ -1557,17 +2499,39 @@ function renderTable() {
   const rows = pageItems.map((kw, i) => {
     const opp = kw.opportunity_score || 0;
     const rowNum = start + i + 1;
-    const compLevel = (kw.competition_level || '').toUpperCase() || '-';
+    const compNum = Math.round((kw.competition || 0) * 100);
+    const intent = classifyIntent(kw.keyword);
+    const dc = domainCache[kw.keyword];
+    const kwEsc = escHtml(kw.keyword).replace(/'/g, "\\'");
+    let domainCell;
+    if (dc === undefined) {
+      domainCell = `<button class="domain-btn" onclick="checkDomain('${kwEsc}')">&#x1F310; Check</button>`;
+    } else if (dc === 'checking') {
+      domainCell = `<span class="domain-dot checking">checking...</span>`;
+    } else {
+      // dc is an object: { '.com': true/false, '.net': true/false, '.org': true/false }
+      const tlds = ['.com', '.net', '.org'];
+      const badges = tlds.map(tld => {
+        const avail = dc[tld];
+        if (avail === true) return `<span class="domain-dot avail">${tld} &#x2713;</span>`;
+        if (avail === false) return `<span class="domain-dot taken">${tld} &#x2717;</span>`;
+        return `<span class="domain-dot checking">${tld} ?</span>`;
+      }).join('');
+      domainCell = `<div class="domain-inline" style="cursor:pointer" onclick="checkDomain('${kwEsc}')">${badges}</div>`;
+    }
     return `<tr>
       <td class="row-num">${rowNum}</td>
       <td class="kw-cell"><a href="https://www.google.com/search?q=${encodeURIComponent(kw.keyword)}" target="_blank" rel="noopener" class="kw-link">${escHtml(kw.keyword)}</a></td>
       <td class="mono">${fmtNum(kw.volume)}<span class="vol-label">monthly</span></td>
       <td class="mono"><span class="diff-badge ${diffClass(kw.difficulty)}">${kw.difficulty}</span></td>
       <td class="mono">$${(kw.cpc || 0).toFixed(2)}</td>
-      <td><span class="comp-badge ${compClass(kw.competition_level)}">${compLevel}</span></td>
+      <td class="mono"><span class="diff-badge ${diffClass(compNum)}">${compNum}</span></td>
       <td style="text-align:center">${trendIcon(kw.trend)}</td>
+      <td><span class="intent-badge ${intent.cls}">${intent.label}</span></td>
       <td class="mono"><span class="opp-badge ${oppClass(opp)}">${opp}</span></td>
       <td>${renderSerpBadges(kw.serp_features)}</td>
+      <td>${domainCell}</td>
+      <td><button class="serp-btn" onclick="serpPreview('${kwEsc}')">&#x1F50D; SERP</button></td>
     </tr>`;
   });
   tbody.innerHTML = rows.join('');
@@ -1952,7 +2916,8 @@ function renderNuggetResults() {
   const rows = pageItems.map((kw, i) => {
     const opp = kw.opportunity_score || 0;
     const rowNum = start + i + 1;
-    const compLevel = (kw.competition_level || '').toUpperCase() || '-';
+    const compNum = Math.round((kw.competition || 0) * 100);
+    const intent = classifyIntent(kw.keyword || '');
     const tier = kw.tier || classifyNuggetTier(kw);
     const tierBadgeClass = tier === 'gold' ? 'tier-gold' : tier === 'silver' ? 'tier-silver' : 'tier-bronze';
     const tierLabel = tier.charAt(0).toUpperCase() + tier.slice(1);
@@ -1963,8 +2928,9 @@ function renderNuggetResults() {
       <td class="mono">${fmtNum(kw.volume)}</td>
       <td class="mono"><span class="diff-badge ${diffClass(kw.difficulty || 0)}">${kw.difficulty || 0}</span></td>
       <td class="mono">$${(kw.cpc || 0).toFixed(2)}</td>
-      <td><span class="comp-badge ${compClass(kw.competition_level)}">${compLevel}</span></td>
+      <td class="mono"><span class="diff-badge ${diffClass(compNum)}">${compNum}</span></td>
       <td style="text-align:center">${trendIcon(kw.trend)}</td>
+      <td><span class="intent-badge ${intent.cls}">${intent.label}</span></td>
       <td class="mono"><span class="opp-badge ${oppClass(opp)}">${opp}</span></td>
       <td>${escHtml(kw.niche || '')}</td>
       <td>${escHtml(kw.suffix || '')}</td>
@@ -2016,18 +2982,20 @@ function exportNuggetCSV() {
     });
   }
 
-  const headers = ['Keyword', 'Volume', 'KD', 'CPC', 'Competition', 'Trend', 'Opportunity', 'Niche', 'Suffix', 'Tier'];
+  const headers = ['Keyword', 'Volume', 'KD', 'CPC', 'Competition', 'Trend', 'Intent', 'Opportunity', 'Niche', 'Suffix', 'Tier'];
   const csvRows = [headers.join(',')];
 
   toExport.forEach(kw => {
     const tier = kw.tier || classifyNuggetTier(kw);
+    const intent = classifyIntent(kw.keyword || '');
     const row = [
       '"' + (kw.keyword || '').replace(/"/g, '""') + '"',
       kw.volume || 0,
       kw.difficulty || 0,
       (kw.cpc || 0).toFixed(2),
-      (kw.competition_level || '').toUpperCase() || '-',
+      Math.round((kw.competition || 0) * 100),
       kw.trend || 'stable',
+      intent.label,
       kw.opportunity_score || 0,
       '"' + (kw.niche || '').replace(/"/g, '""') + '"',
       '"' + (kw.suffix || '').replace(/"/g, '""') + '"',

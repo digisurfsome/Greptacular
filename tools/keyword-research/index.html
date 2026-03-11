@@ -1662,7 +1662,7 @@ function toggleTld(tld) {
   domainCache = {}; // clear cache since TLDs changed
   renderTldPicker();
   renderTable();
-  autoCheckDomainsForPage(); // re-check with new TLDs
+  scheduleAutoCheck(); // re-check with new TLDs
 }
 
 async function checkDomainsForPage() {
@@ -1670,7 +1670,15 @@ async function checkDomainsForPage() {
   const start = (currentPage - 1) * PAGE_SIZE;
   const pageItems = displayedKeywords.slice(start, start + PAGE_SIZE);
   pageItems.forEach(kw => { delete domainCache[kw.keyword]; });
-  autoCheckDomainsForPage();
+  scheduleAutoCheck();
+}
+
+let autoCheckTimer = null;
+
+function scheduleAutoCheck() {
+  // Debounce: wait 500ms after last call before actually checking
+  clearTimeout(autoCheckTimer);
+  autoCheckTimer = setTimeout(() => autoCheckDomainsForPage(), 500);
 }
 
 async function autoCheckDomainsForPage() {
@@ -1683,25 +1691,36 @@ async function autoCheckDomainsForPage() {
 
   autoCheckRunning = true;
 
-  // Mark as checking and re-render
+  // Mark as checking (update DOM directly, don't re-render full table)
   toCheck.forEach(kw => { domainCache[kw] = 'checking'; });
   renderTable();
 
-  // Batch size depends on number of TLDs
-  const batchSize = Math.max(5, Math.floor(50 / activeTlds.length));
+  // Small batches: 3 keywords at a time to avoid RDAP rate limits
+  const batchSize = 3;
   for (let i = 0; i < toCheck.length; i += batchSize) {
     const batch = toCheck.slice(i, i + batchSize);
-    const data = await api('POST', '/api/domain-check-bulk', { keywords: batch, tlds: activeTlds });
-    if (data.results) {
-      for (const [kw, tldMap] of Object.entries(data.results)) {
-        const cache = {};
-        for (const [tld, info] of Object.entries(tldMap)) {
-          cache[tld] = info.available === true;
+    try {
+      const data = await api('POST', '/api/domain-check-bulk', { keywords: batch, tlds: activeTlds });
+      if (data.results) {
+        for (const [kw, tldMap] of Object.entries(data.results)) {
+          const cache = {};
+          for (const [tld, info] of Object.entries(tldMap)) {
+            cache[tld] = info.available === true;
+          }
+          domainCache[kw] = cache;
         }
-        domainCache[kw] = cache;
       }
+      // Mark failed ones as empty result (not stuck on 'checking')
+      batch.forEach(kw => {
+        if (domainCache[kw] === 'checking') domainCache[kw] = {};
+      });
+    } catch (e) {
+      // On error, clear checking state so they don't stay stuck
+      batch.forEach(kw => { if (domainCache[kw] === 'checking') domainCache[kw] = {}; });
     }
     renderTable();
+    // Small delay between batches to avoid RDAP throttling
+    if (i + batchSize < toCheck.length) await new Promise(r => setTimeout(r, 300));
   }
 
   autoCheckRunning = false;
@@ -2263,6 +2282,7 @@ async function loadKeywords() {
   allKeywords = data.keywords || [];
   await loadSegments();
   applyFilters();
+  scheduleAutoCheck();
 }
 
 async function loadSegments() {
@@ -2674,9 +2694,6 @@ function renderTable() {
   // Render pagination controls
   renderPagination(totalPages);
   updateSortArrows();
-
-  // Auto-check domains for visible keywords (free RDAP — no cost)
-  autoCheckDomainsForPage();
 }
 
 function renderPagination(totalPages) {
@@ -2699,6 +2716,7 @@ function goToPage(page) {
   if (page < 1 || page > totalPages) return;
   currentPage = page;
   renderTable();
+  scheduleAutoCheck();
   // Scroll table into view
   document.querySelector('.kw-table-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }

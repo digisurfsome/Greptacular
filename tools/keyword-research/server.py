@@ -1083,12 +1083,19 @@ async def domain_check_bulk(payload: dict):
     max_kw = max(5, 50 // len(check_tlds))
     keywords = keywords[:max_kw]
 
+    # Use semaphore to limit concurrent RDAP requests (avoid rate limiting)
+    sem = asyncio.Semaphore(5)
+
+    async def _throttled_check(client: httpx.AsyncClient, domain: str) -> dict:
+        async with sem:
+            return await _check_single_domain(client, domain)
+
     async with httpx.AsyncClient() as client:
         tasks = []
         for kw in keywords:
             base = kw.strip().lower().replace(" ", "").replace("-", "")
             for tld in check_tlds:
-                tasks.append((kw, tld, _check_single_domain(client, base + tld)))
+                tasks.append((kw, tld, _throttled_check(client, base + tld)))
 
         gathered = await asyncio.gather(*[t[2] for t in tasks])
         results: dict[str, dict] = {}

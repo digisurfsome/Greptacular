@@ -674,11 +674,6 @@ class SettingsPayload(BaseModel):
     dataforseo_password: str = ""
     location_code: int = 2840
     language_code: str = "en"
-    namecheap_api_user: str = ""
-    namecheap_api_key: str = ""
-    namecheap_username: str = ""
-    namecheap_client_ip: str = ""
-    namecheap_sandbox: str = "false"
 
 
 class NuggetHuntRequest(BaseModel):
@@ -1020,85 +1015,84 @@ async def get_balance():
         return {"connected": False, "balance": 0, "message": f"Connection error: {exc}"}
 
 
-# ---- Domain Availability Check (Namecheap) ------------------------------
+# ---- Domain Availability Check (RDAP - free, no API key needed) ----------
 
-NAMECHEAP_API_URL = "https://api.namecheap.com/xml.response"
-NAMECHEAP_SANDBOX_URL = "https://api.sandbox.namecheap.com/xml.response"
-
-# TLDs to check, in priority order
+# TLDs to check, in SEO priority order
 DOMAIN_TLDS = [".com", ".net", ".org", ".io", ".co", ".ai", ".app", ".dev", ".us", ".info"]
+
+# RDAP bootstrap - maps TLDs to their RDAP servers
+RDAP_BOOTSTRAP_URL = "https://rdap.org/domain/"
+
+
+async def _check_single_domain(client: httpx.AsyncClient, domain: str) -> dict:
+    """Check a single domain via RDAP. Returns availability info."""
+    try:
+        resp = await client.get(
+            f"{RDAP_BOOTSTRAP_URL}{domain}",
+            follow_redirects=True,
+            timeout=10,
+        )
+        if resp.status_code == 404:
+            # 404 = domain not found in registry = available
+            return {"domain": domain, "available": True, "is_premium": False, "premium_price": None}
+        elif resp.status_code == 200:
+            # 200 = domain exists = taken
+            return {"domain": domain, "available": False, "is_premium": False, "premium_price": None}
+        else:
+            # Other status codes - treat as unknown
+            return {"domain": domain, "available": None, "is_premium": False, "premium_price": None, "error": f"HTTP {resp.status_code}"}
+    except Exception:
+        return {"domain": domain, "available": None, "is_premium": False, "premium_price": None, "error": "timeout"}
 
 
 @app.get("/api/domain-check")
 async def domain_check(keyword: str = Query(...)):
-    """Check domain availability across TLDs via Namecheap API."""
-    settings = _get_settings()
-    api_user = settings.get("namecheap_api_user", "")
-    api_key = settings.get("namecheap_api_key", "")
-    username = settings.get("namecheap_username", "") or api_user
-    client_ip = settings.get("namecheap_client_ip", "")
-    use_sandbox = settings.get("namecheap_sandbox", "false") == "true"
-
-    if not api_user or not api_key or not client_ip:
-        return {
-            "error": "Namecheap API not configured. Go to Settings to add your API credentials.",
-            "domains": [],
-        }
-
+    """Check domain availability across TLDs via free RDAP protocol (no API key needed)."""
     # Build domain name from keyword (remove spaces, lowercase)
     base_domain = keyword.strip().lower().replace(" ", "").replace("-", "")
+    if not base_domain:
+        return {"error": "Invalid keyword", "domains": []}
+
     domain_list = [base_domain + tld for tld in DOMAIN_TLDS]
 
-    base_url = NAMECHEAP_SANDBOX_URL if use_sandbox else NAMECHEAP_API_URL
-    params = {
-        "ApiUser": api_user,
-        "ApiKey": api_key,
-        "UserName": username,
-        "ClientIp": client_ip,
-        "Command": "namecheap.domains.check",
-        "DomainList": ",".join(domain_list),
-    }
-
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.get(base_url, params=params)
-            resp.raise_for_status()
+        async with httpx.AsyncClient() as client:
+            # Check all TLDs concurrently for speed
+            tasks = [_check_single_domain(client, domain) for domain in domain_list]
+            results = await asyncio.gather(*tasks)
 
-        root = ET.fromstring(resp.text)
-        # Namecheap XML uses a namespace
-        ns = ""
-        if root.tag.startswith("{"):
-            ns = root.tag.split("}")[0] + "}"
+        return {"keyword": keyword, "base_domain": base_domain, "domains": list(results)}
 
-        # Check for API-level errors
-        status = root.attrib.get("Status", "")
-        if status == "ERROR":
-            errors = root.findall(f".//{ns}Error")
-            err_msg = errors[0].text if errors else "Unknown Namecheap API error"
-            return {"error": err_msg, "domains": []}
-
-        results = []
-        for el in root.findall(f".//{ns}DomainCheckResult"):
-            domain = el.attrib.get("Domain", "")
-            available = el.attrib.get("Available", "false").lower() == "true"
-            is_premium = el.attrib.get("IsPremiumName", "false").lower() == "true"
-            premium_price = float(el.attrib.get("PremiumRegistrationPrice", "0") or "0")
-
-            results.append({
-                "domain": domain,
-                "available": available,
-                "is_premium": is_premium,
-                "premium_price": premium_price if is_premium else None,
-            })
-
-        return {"keyword": keyword, "base_domain": base_domain, "domains": results}
-
-    except httpx.HTTPStatusError as exc:
-        return {"error": f"Namecheap API error: {exc.response.status_code}", "domains": []}
-    except ET.ParseError:
-        return {"error": "Failed to parse Namecheap API response", "domains": []}
     except Exception as exc:
         return {"error": f"Domain check error: {exc}", "domains": []}
+
+
+@app.post("/api/domain-check-bulk")
+async def domain_check_bulk(payload: dict):
+    """Check .com availability for a list of keywords. Returns dict of keyword -> available."""
+    keywords = payload.get("keywords", [])
+    if not keywords:
+        return {"results": {}}
+
+    # Limit to 20 at a time to avoid hammering RDAP
+    keywords = keywords[:20]
+
+    async with httpx.AsyncClient() as client:
+        tasks = []
+        for kw in keywords:
+            base = kw.strip().lower().replace(" ", "").replace("-", "")
+            domain = base + ".com"
+            tasks.append((kw, _check_single_domain(client, domain)))
+
+        results = {}
+        gathered = await asyncio.gather(*[t[1] for t in tasks])
+        for (kw, _), result in zip(tasks, gathered):
+            results[kw] = {
+                "domain": result["domain"],
+                "available": result["available"],
+            }
+
+    return {"results": results}
 
 
 # ---- Search status (polling) -------------------------------------------

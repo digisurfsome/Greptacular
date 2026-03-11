@@ -178,6 +178,26 @@ input, select { font-family: inherit; }
   font-size: 12px; color: #92400e;
 }
 .domain-seo-tip strong { color: #78350f; }
+
+/* Inline .com availability badges in the keyword table */
+.domain-inline {
+  display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
+}
+.domain-dot {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 10px; font-weight: 600; padding: 1px 7px;
+  border-radius: 99px; white-space: nowrap;
+}
+.domain-dot.avail { background: #dcfce7; color: #166534; }
+.domain-dot.taken { background: #fee2e2; color: #991b1b; }
+.domain-dot.checking { background: #f3f4f6; color: #999; }
+.check-domains-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: linear-gradient(135deg, #1e293b, #334155); color: #fff;
+  border: none; border-radius: 8px; padding: 6px 14px; font-size: 12px;
+  font-weight: 600; cursor: pointer; margin-left: 8px;
+}
+.check-domains-btn:hover { opacity: 0.9; }
 .header-actions { display: flex; gap: 8px; align-items: center; }
 .icon-btn {
   background: none; border: 1px solid #d0d0d0; border-radius: 8px;
@@ -783,6 +803,7 @@ tbody tr:last-child td { border-bottom: none; }
         <input type="text" class="table-filter-input" id="tableFilter"
                placeholder="Filter keywords..." oninput="applyFilters()">
         <div class="table-toolbar-right">
+          <button class="check-domains-btn" onclick="checkDomainsForPage()" title="Check .com availability for keywords on this page">&#x1F310; Check .com Domains</button>
           <span class="table-info" id="tableInfo"></span>
         </div>
       </div>
@@ -799,7 +820,7 @@ tbody tr:last-child td { border-bottom: none; }
               <th data-col="trend" onclick="sortTable('trend')">Trend <span class="sort-arrow" id="sort-trend"></span></th>
               <th data-col="opportunity_score" onclick="sortTable('opportunity_score')">Opportunity <span class="sort-arrow" id="sort-opportunity_score"></span></th>
               <th>SERP</th>
-              <th style="width:70px">Domain</th>
+              <th style="width:130px">.com Domain</th>
             </tr>
           </thead>
           <tbody id="kwBody"></tbody>
@@ -1020,24 +1041,6 @@ tbody tr:last-child td { border-bottom: none; }
       </div>
     </div>
 
-    <hr style="margin:16px 0;border:none;border-top:1px solid #e0e0e0;">
-    <h3 style="font-size:14px;color:#334155;margin-bottom:8px;">&#x1F310; Namecheap Domain Check</h3>
-    <p style="font-size:12px;color:#888;margin-bottom:8px;">Free to check domains. Get API access at namecheap.com (requires $50+ balance or 20+ domains)</p>
-
-    <label>API User</label>
-    <input type="text" id="settNcApiUser" placeholder="your_namecheap_username">
-    <label>API Key</label>
-    <input type="password" id="settNcApiKey" placeholder="Namecheap API key">
-    <label>Username (if different from API User)</label>
-    <input type="text" id="settNcUsername" placeholder="Leave blank if same as API User">
-    <label>Your Whitelisted IP</label>
-    <input type="text" id="settNcClientIp" placeholder="e.g. 203.0.113.5">
-    <div style="margin-top:8px;">
-      <label style="display:inline;font-weight:normal;font-size:12px;">
-        <input type="checkbox" id="settNcSandbox"> Use Sandbox (testing)
-      </label>
-    </div>
-
     <label style="margin-top:16px">Location</label>
     <select id="settLocation">
       <option value="2840">United States</option>
@@ -1089,7 +1092,7 @@ tbody tr:last-child td { border-bottom: none; }
       <div class="domain-results" id="domainResults"></div>
     </div>
     <div class="domain-modal-footer">
-      Powered by Namecheap API &bull; Domain checks are free &bull; Click "Register" to open Namecheap
+      Free domain checks via RDAP &bull; No API key needed &bull; Click "Register" to buy on Namecheap
     </div>
   </div>
 </div>
@@ -1107,6 +1110,7 @@ let activeSegments = new Set();
 let currentSort = { col: 'volume', order: 'desc' };
 let filtersVisible = true;
 let currentPage = 1;
+let domainCache = {};  // keyword -> true (available) | false (taken) | 'checking'
 const PAGE_SIZE = 50;
 let searchPollingTimer = null;
 
@@ -1279,7 +1283,39 @@ async function getBalance() {
   return null;
 }
 
-/* -- Domain Check -------------------------------------------------------- */
+/* -- Domain Check (bulk .com for table) ---------------------------------- */
+async function checkDomainsForPage() {
+  const totalPages = Math.ceil(displayedKeywords.length / PAGE_SIZE);
+  const start = (currentPage - 1) * PAGE_SIZE;
+  const pageItems = displayedKeywords.slice(start, start + PAGE_SIZE);
+  const toCheck = pageItems.filter(kw => domainCache[kw.keyword] === undefined).map(kw => kw.keyword);
+
+  if (toCheck.length === 0) {
+    showToast('All domains on this page already checked');
+    return;
+  }
+
+  // Mark as checking and re-render
+  toCheck.forEach(kw => { domainCache[kw] = 'checking'; });
+  renderTable();
+
+  // Check in batches of 20
+  for (let i = 0; i < toCheck.length; i += 20) {
+    const batch = toCheck.slice(i, i + 20);
+    const data = await api('POST', '/api/domain-check-bulk', { keywords: batch });
+    if (data.results) {
+      for (const [kw, info] of Object.entries(data.results)) {
+        domainCache[kw] = info.available === true;
+      }
+    }
+    renderTable();
+  }
+
+  const freeCount = toCheck.filter(kw => domainCache[kw] === true).length;
+  showToast(`Checked ${toCheck.length} domains: ${freeCount} .com available!`);
+}
+
+/* -- Domain Check (detailed modal) --------------------------------------- */
 async function checkDomain(keyword) {
   const modal = document.getElementById('domainModal');
   const kwEl = document.getElementById('domainModalKeyword');
@@ -1737,6 +1773,17 @@ function renderTable() {
     const opp = kw.opportunity_score || 0;
     const rowNum = start + i + 1;
     const compLevel = (kw.competition_level || '').toUpperCase() || '-';
+    const domainStatus = domainCache[kw.keyword];
+    let domainCell;
+    if (domainStatus === undefined) {
+      domainCell = `<button class="domain-btn" onclick="checkDomain('${escHtml(kw.keyword).replace(/'/g, "\\'")}')">&#x1F310; Check</button>`;
+    } else if (domainStatus === 'checking') {
+      domainCell = `<span class="domain-dot checking">checking...</span>`;
+    } else if (domainStatus === true) {
+      domainCell = `<span class="domain-dot avail" style="cursor:pointer" onclick="checkDomain('${escHtml(kw.keyword).replace(/'/g, "\\'")}')">&#x2713; .com FREE</span>`;
+    } else {
+      domainCell = `<span class="domain-dot taken" style="cursor:pointer" onclick="checkDomain('${escHtml(kw.keyword).replace(/'/g, "\\'")}')">&#x2717; .com taken</span>`;
+    }
     return `<tr>
       <td class="row-num">${rowNum}</td>
       <td class="kw-cell"><a href="https://www.google.com/search?q=${encodeURIComponent(kw.keyword)}" target="_blank" rel="noopener" class="kw-link">${escHtml(kw.keyword)}</a></td>
@@ -1747,7 +1794,7 @@ function renderTable() {
       <td style="text-align:center">${trendIcon(kw.trend)}</td>
       <td class="mono"><span class="opp-badge ${oppClass(opp)}">${opp}</span></td>
       <td>${renderSerpBadges(kw.serp_features)}</td>
-      <td><button class="domain-btn" onclick="checkDomain('${escHtml(kw.keyword).replace(/'/g, "\\'")}')">&#x1F310; Check</button></td>
+      <td>${domainCell}</td>
     </tr>`;
   });
   tbody.innerHTML = rows.join('');
@@ -1814,11 +1861,6 @@ function openSettings() {
     if (data.dataforseo_login) document.getElementById('settDfsLogin').value = data.dataforseo_login;
     if (data.location_code) document.getElementById('settLocation').value = data.location_code;
     if (data.language_code) document.getElementById('settLanguage').value = data.language_code;
-    // Namecheap fields
-    if (data.namecheap_api_user) document.getElementById('settNcApiUser').value = data.namecheap_api_user;
-    if (data.namecheap_username) document.getElementById('settNcUsername').value = data.namecheap_username;
-    if (data.namecheap_client_ip) document.getElementById('settNcClientIp').value = data.namecheap_client_ip;
-    document.getElementById('settNcSandbox').checked = data.namecheap_sandbox === 'true';
     toggleSettingsFields();
   });
 }
@@ -1858,11 +1900,6 @@ async function saveSettingsQuiet() {
     dataforseo_password: document.getElementById('settDfsPassword').value,
     location_code: parseInt(document.getElementById('settLocation').value) || 2840,
     language_code: document.getElementById('settLanguage').value || 'en',
-    namecheap_api_user: document.getElementById('settNcApiUser').value,
-    namecheap_api_key: document.getElementById('settNcApiKey').value,
-    namecheap_username: document.getElementById('settNcUsername').value,
-    namecheap_client_ip: document.getElementById('settNcClientIp').value,
-    namecheap_sandbox: document.getElementById('settNcSandbox').checked ? 'true' : 'false',
   };
   await api('POST', '/api/settings', payload);
 }

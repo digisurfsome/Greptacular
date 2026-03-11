@@ -584,26 +584,30 @@ tbody tr:last-child td { border-bottom: none; }
       <div class="filter-group">
         <label>Volume</label>
         <div class="filter-row">
-          <input type="number" id="filterVolMin" value="0" min="0" onchange="applyFilters()">
+          <input type="number" id="filterVolMin" value="0" min="0" oninput="applyFilters(); saveFilters()">
           <span>to</span>
-          <input type="number" id="filterVolMax" value="10000000" min="0" onchange="applyFilters()">
+          <input type="number" id="filterVolMax" value="10000000" min="0" oninput="applyFilters(); saveFilters()">
         </div>
       </div>
       <div class="filter-group">
         <label>Difficulty (0-100)</label>
         <div class="filter-row">
-          <input type="number" id="filterDiffMin" value="0" min="0" max="100" onchange="applyFilters()">
+          <input type="number" id="filterDiffMin" value="0" min="0" max="100" oninput="applyFilters(); saveFilters()">
           <span>to</span>
-          <input type="number" id="filterDiffMax" value="100" min="0" max="100" onchange="applyFilters()">
+          <input type="number" id="filterDiffMax" value="100" min="0" max="100" oninput="applyFilters(); saveFilters()">
         </div>
       </div>
       <div class="filter-group">
-        <label>Min Opportunity Score</label>
-        <input type="number" id="filterMinOpp" value="0" min="0" max="100" onchange="applyFilters()">
+        <label>Opportunity Score (0-100)</label>
+        <div class="filter-row">
+          <input type="number" id="filterOppMin" value="0" min="0" max="100" oninput="applyFilters(); saveFilters()">
+          <span>to</span>
+          <input type="number" id="filterOppMax" value="100" min="0" max="100" oninput="applyFilters(); saveFilters()">
+        </div>
       </div>
       <div class="filter-group">
         <label>Trend</label>
-        <select id="filterTrend" onchange="applyFilters()" style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;">
+        <select id="filterTrend" onchange="applyFilters(); saveFilters()" style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;">
           <option value="all">All</option>
           <option value="rising">Rising only</option>
           <option value="stable">Stable only</option>
@@ -612,7 +616,7 @@ tbody tr:last-child td { border-bottom: none; }
       </div>
       <div class="filter-group">
         <label>Competition</label>
-        <select id="filterComp" onchange="applyFilters()" style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;">
+        <select id="filterComp" onchange="applyFilters(); saveFilters()" style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;">
           <option value="all">All</option>
           <option value="LOW">Low only</option>
           <option value="MEDIUM">Medium only</option>
@@ -1106,21 +1110,25 @@ function resetFilters() {
   document.getElementById('filterVolMax').value = 10000000;
   document.getElementById('filterDiffMin').value = 0;
   document.getElementById('filterDiffMax').value = 100;
-  document.getElementById('filterMinOpp').value = 0;
+  document.getElementById('filterOppMin').value = 0;
+  document.getElementById('filterOppMax').value = 100;
   document.getElementById('filterTrend').value = 'all';
   document.getElementById('filterComp').value = 'all';
   document.getElementById('tableFilter').value = '';
   activeSegments.clear();
   renderSegmentBar();
+  localStorage.removeItem('kwFilters');
   applyFilters();
 }
 
 function applyFilters() {
-  const volMin = parseInt(document.getElementById('filterVolMin').value) || 0;
-  const volMax = parseInt(document.getElementById('filterVolMax').value) || 10000000;
-  let diffMin = parseInt(document.getElementById('filterDiffMin').value) || 0;
-  let diffMax = parseInt(document.getElementById('filterDiffMax').value) || 100;
-  const minOpp = parseInt(document.getElementById('filterMinOpp').value) || 0;
+  const val = (id, fallback) => { const v = parseInt(document.getElementById(id).value); return isNaN(v) ? fallback : v; };
+  const volMin = val('filterVolMin', 0);
+  const volMax = val('filterVolMax', 10000000);
+  let diffMin = val('filterDiffMin', 0);
+  let diffMax = val('filterDiffMax', 100);
+  const oppMin = val('filterOppMin', 0);
+  const oppMax = val('filterOppMax', 100);
   const trendFilter = document.getElementById('filterTrend').value;
   const compFilter = document.getElementById('filterComp').value;
   const textFilter = (document.getElementById('tableFilter').value || '').toLowerCase().trim();
@@ -1133,7 +1141,8 @@ function applyFilters() {
     }
     filteredKeywords = allKeywords.filter(kw => {
       if (kw.volume < volMin || kw.volume > volMax) return false;
-      if ((kw.opportunity_score || 0) < minOpp) return false;
+      const opp = kw.opportunity_score || 0;
+      if (opp < oppMin || opp > oppMax) return false;
       if (trendFilter !== 'all' && kw.trend !== trendFilter) return false;
       if (compFilter !== 'all' && (kw.competition_level || '').toUpperCase() !== compFilter) return false;
       return ranges.some(([lo, hi]) => kw.difficulty >= lo && kw.difficulty <= hi);
@@ -1142,7 +1151,8 @@ function applyFilters() {
     filteredKeywords = allKeywords.filter(kw => {
       if (kw.volume < volMin || kw.volume > volMax) return false;
       if (kw.difficulty < diffMin || kw.difficulty > diffMax) return false;
-      if ((kw.opportunity_score || 0) < minOpp) return false;
+      const opp = kw.opportunity_score || 0;
+      if (opp < oppMin || opp > oppMax) return false;
       if (trendFilter !== 'all' && kw.trend !== trendFilter) return false;
       if (compFilter !== 'all' && (kw.competition_level || '').toUpperCase() !== compFilter) return false;
       return true;
@@ -1162,6 +1172,37 @@ function applyFilters() {
   sortData();
   renderTable();
   updateStats();
+}
+
+/* -- Filter Persistence (localStorage) ----------------------------------- */
+function saveFilters() {
+  const filters = {
+    volMin: document.getElementById('filterVolMin').value,
+    volMax: document.getElementById('filterVolMax').value,
+    diffMin: document.getElementById('filterDiffMin').value,
+    diffMax: document.getElementById('filterDiffMax').value,
+    oppMin: document.getElementById('filterOppMin').value,
+    oppMax: document.getElementById('filterOppMax').value,
+    trend: document.getElementById('filterTrend').value,
+    comp: document.getElementById('filterComp').value,
+  };
+  localStorage.setItem('kwFilters', JSON.stringify(filters));
+}
+
+function loadFilters() {
+  const saved = localStorage.getItem('kwFilters');
+  if (!saved) return;
+  try {
+    const f = JSON.parse(saved);
+    if (f.volMin !== undefined) document.getElementById('filterVolMin').value = f.volMin;
+    if (f.volMax !== undefined) document.getElementById('filterVolMax').value = f.volMax;
+    if (f.diffMin !== undefined) document.getElementById('filterDiffMin').value = f.diffMin;
+    if (f.diffMax !== undefined) document.getElementById('filterDiffMax').value = f.diffMax;
+    if (f.oppMin !== undefined) document.getElementById('filterOppMin').value = f.oppMin;
+    if (f.oppMax !== undefined) document.getElementById('filterOppMax').value = f.oppMax;
+    if (f.trend) document.getElementById('filterTrend').value = f.trend;
+    if (f.comp) document.getElementById('filterComp').value = f.comp;
+  } catch(e) { /* ignore corrupt data */ }
 }
 
 /* -- Sorting ------------------------------------------------------------- */
@@ -1821,6 +1862,7 @@ async function deleteHunt(huntId) {
 
 /* -- Init ---------------------------------------------------------------- */
 document.addEventListener('DOMContentLoaded', () => {
+  loadFilters();
   loadKeywords();
   checkApiStatus();
 });

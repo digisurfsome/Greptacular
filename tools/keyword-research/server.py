@@ -1068,30 +1068,124 @@ async def domain_check(keyword: str = Query(...)):
 
 @app.post("/api/domain-check-bulk")
 async def domain_check_bulk(payload: dict):
-    """Check .com availability for a list of keywords. Returns dict of keyword -> available."""
+    """Check .com/.net/.org availability for a list of keywords."""
     keywords = payload.get("keywords", [])
     if not keywords:
         return {"results": {}}
 
-    # Limit to 20 at a time to avoid hammering RDAP
-    keywords = keywords[:20]
+    # Limit to 15 keywords at a time (15 * 3 TLDs = 45 RDAP lookups)
+    keywords = keywords[:15]
+    check_tlds = [".com", ".net", ".org"]
 
     async with httpx.AsyncClient() as client:
         tasks = []
         for kw in keywords:
             base = kw.strip().lower().replace(" ", "").replace("-", "")
-            domain = base + ".com"
-            tasks.append((kw, _check_single_domain(client, domain)))
+            for tld in check_tlds:
+                tasks.append((kw, tld, _check_single_domain(client, base + tld)))
 
-        results = {}
-        gathered = await asyncio.gather(*[t[1] for t in tasks])
-        for (kw, _), result in zip(tasks, gathered):
-            results[kw] = {
+        gathered = await asyncio.gather(*[t[2] for t in tasks])
+        results: dict[str, dict] = {}
+        for (kw, tld, _), result in zip(tasks, gathered):
+            if kw not in results:
+                results[kw] = {}
+            results[kw][tld] = {
                 "domain": result["domain"],
                 "available": result["available"],
             }
 
     return {"results": results}
+
+
+# ---- SERP Preview (DataForSEO) ------------------------------------------
+
+@app.get("/api/serp-preview")
+async def serp_preview(keyword: str = Query(...)):
+    """Fetch top 10 Google SERP results for a keyword. Costs ~$0.002 per call."""
+    settings = _get_settings()
+    login = settings.get("dataforseo_login", "")
+    password = settings.get("dataforseo_password", "")
+
+    if not login or not password:
+        return {"error": "DataForSEO credentials not configured. Go to Settings.", "results": []}
+
+    location_code = int(settings.get("location_code", "2840"))
+    language_code = settings.get("language_code", "en")
+
+    # Build the exact match domain from keyword for comparison
+    base_domain = keyword.strip().lower().replace(" ", "").replace("-", "")
+
+    payload = [{
+        "keyword": keyword,
+        "location_code": location_code,
+        "language_code": language_code,
+        "depth": 10,
+        "device": "desktop",
+    }]
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                f"{DATAFORSEO_BASE}/serp/google/organic/live",
+                json=payload,
+                auth=(login, password),
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+        results = []
+        has_exact_match = False
+
+        for task in data.get("tasks", []):
+            if task.get("status_code") != 20000:
+                error_msg = task.get("status_message", "Unknown error")
+                return {"error": f"DataForSEO: {error_msg}", "results": []}
+
+            for result in task.get("result", []) or []:
+                for item in result.get("items", []) or []:
+                    item_type = item.get("type", "")
+                    if item_type != "organic":
+                        continue
+
+                    domain = item.get("domain", "")
+                    url = item.get("url", "")
+
+                    # Check if this domain is an exact match for the keyword
+                    domain_base = domain.split(".")[0].lower() if domain else ""
+                    is_exact_match = domain_base == base_domain
+                    if is_exact_match:
+                        has_exact_match = True
+
+                    results.append({
+                        "rank": item.get("rank_absolute", 0),
+                        "domain": domain,
+                        "title": item.get("title", ""),
+                        "url": url,
+                        "description": item.get("description", ""),
+                        "is_exact_match": is_exact_match,
+                    })
+
+        # EMD opportunity analysis
+        emd_opportunity = "none"
+        if not has_exact_match:
+            emd_opportunity = "high"  # No exact match domain in top 10 = big opportunity
+
+        return {
+            "keyword": keyword,
+            "base_domain": base_domain,
+            "results": results,
+            "has_exact_match": has_exact_match,
+            "emd_opportunity": emd_opportunity,
+            "cost": 0.002,
+        }
+
+    except httpx.HTTPStatusError as exc:
+        code = exc.response.status_code
+        if code == 402:
+            return {"error": "Insufficient DataForSEO balance", "results": []}
+        return {"error": f"DataForSEO API error: {code}", "results": []}
+    except Exception as exc:
+        return {"error": f"SERP preview error: {exc}", "results": []}
 
 
 # ---- Search status (polling) -------------------------------------------

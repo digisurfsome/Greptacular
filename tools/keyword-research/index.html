@@ -198,6 +198,72 @@ input, select { font-family: inherit; }
   font-weight: 600; cursor: pointer; margin-left: 8px;
 }
 .check-domains-btn:hover { opacity: 0.9; }
+
+/* -- SERP Preview Panel -------------------------------------------------- */
+.serp-btn {
+  background: none; border: 1px solid #d0d0d0; border-radius: 6px;
+  padding: 2px 8px; font-size: 11px; color: #666; cursor: pointer;
+  transition: all 0.15s; white-space: nowrap;
+}
+.serp-btn:hover { background: #fef3c7; border-color: #f59e0b; color: #92400e; }
+.serp-modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 9998;
+  display: none; align-items: flex-start; justify-content: center; padding-top: 40px;
+}
+.serp-modal-overlay.open { display: flex; }
+.serp-modal {
+  background: #fff; border-radius: 16px; width: 700px; max-width: 95vw;
+  max-height: 85vh; overflow: hidden; box-shadow: 0 25px 50px rgba(0,0,0,0.25);
+  position: relative;
+}
+.serp-modal-header {
+  padding: 16px 20px; background: linear-gradient(135deg, #1a1a2e, #16213e);
+  color: #fff;
+}
+.serp-modal-header h3 { font-size: 16px; font-weight: 600; }
+.serp-modal-header .serp-kw { color: #fbbf24; font-weight: 700; }
+.serp-modal-close {
+  position: absolute; top: 12px; right: 16px; background: none; border: none;
+  color: #fff; font-size: 20px; cursor: pointer; opacity: 0.7;
+}
+.serp-modal-close:hover { opacity: 1; }
+.serp-emd-banner {
+  padding: 10px 20px; font-size: 13px; font-weight: 600;
+  display: flex; align-items: center; gap: 8px;
+}
+.serp-emd-banner.opportunity { background: #dcfce7; color: #166534; }
+.serp-emd-banner.taken { background: #fee2e2; color: #991b1b; }
+.serp-modal-body { padding: 0; max-height: 65vh; overflow-y: auto; }
+.serp-result {
+  padding: 12px 20px; border-bottom: 1px solid #f1f5f9; transition: background 0.1s;
+}
+.serp-result:hover { background: #f8fafc; }
+.serp-result-rank {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border-radius: 50%; font-size: 12px;
+  font-weight: 700; flex-shrink: 0; margin-right: 10px;
+  background: #f1f5f9; color: #64748b;
+}
+.serp-result-rank.top3 { background: #fef3c7; color: #92400e; }
+.serp-result-header { display: flex; align-items: center; margin-bottom: 4px; }
+.serp-result-title {
+  font-size: 14px; font-weight: 600; color: #1a0dab;
+  text-decoration: none; flex: 1;
+}
+.serp-result-title:hover { text-decoration: underline; }
+.serp-result-url { font-size: 12px; color: #006621; margin-bottom: 4px; word-break: break-all; }
+.serp-result-desc { font-size: 12px; color: #545454; line-height: 1.4; }
+.serp-result-tags { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.serp-tag {
+  font-size: 10px; padding: 1px 8px; border-radius: 99px; font-weight: 600;
+}
+.serp-tag.emd { background: #fef3c7; color: #92400e; }
+.serp-tag.generic { background: #f1f5f9; color: #64748b; }
+.serp-tag.subdomain { background: #ede9fe; color: #6d28d9; }
+.serp-modal-footer {
+  padding: 10px 20px; background: #f8fafc; border-top: 1px solid #e2e8f0;
+  font-size: 11px; color: #94a3b8; display: flex; justify-content: space-between;
+}
 .header-actions { display: flex; gap: 8px; align-items: center; }
 .icon-btn {
   background: none; border: 1px solid #d0d0d0; border-radius: 8px;
@@ -803,7 +869,7 @@ tbody tr:last-child td { border-bottom: none; }
         <input type="text" class="table-filter-input" id="tableFilter"
                placeholder="Filter keywords..." oninput="applyFilters()">
         <div class="table-toolbar-right">
-          <button class="check-domains-btn" onclick="checkDomainsForPage()" title="Check .com availability for keywords on this page">&#x1F310; Check .com Domains</button>
+          <button class="check-domains-btn" onclick="checkDomainsForPage()" title="Check .com/.net/.org availability for keywords on this page">&#x1F310; Check Domains</button>
           <span class="table-info" id="tableInfo"></span>
         </div>
       </div>
@@ -820,7 +886,8 @@ tbody tr:last-child td { border-bottom: none; }
               <th data-col="trend" onclick="sortTable('trend')">Trend <span class="sort-arrow" id="sort-trend"></span></th>
               <th data-col="opportunity_score" onclick="sortTable('opportunity_score')">Opportunity <span class="sort-arrow" id="sort-opportunity_score"></span></th>
               <th>SERP</th>
-              <th style="width:130px">.com Domain</th>
+              <th style="width:180px">Domains Available</th>
+              <th style="width:60px">Top 10</th>
             </tr>
           </thead>
           <tbody id="kwBody"></tbody>
@@ -1077,6 +1144,25 @@ tbody tr:last-child td { border-bottom: none; }
   </div>
 </div>
 
+<!-- SERP Preview Modal -->
+<div class="serp-modal-overlay" id="serpModal" onclick="if(event.target===this)closeSerpModal()">
+  <div class="serp-modal">
+    <div class="serp-modal-header">
+      <h3>&#x1F50D; SERP Analysis — <span class="serp-kw" id="serpModalKeyword"></span></h3>
+      <button class="serp-modal-close" onclick="closeSerpModal()">&times;</button>
+    </div>
+    <div class="serp-emd-banner" id="serpEmdBanner" style="display:none"></div>
+    <div class="serp-modal-body" id="serpModalBody">
+      <div class="domain-loading" id="serpLoading">Loading SERP results...</div>
+      <div id="serpResults"></div>
+    </div>
+    <div class="serp-modal-footer">
+      <span>Top 10 Google results via DataForSEO</span>
+      <span id="serpCostNote">Cost: ~$0.002</span>
+    </div>
+  </div>
+</div>
+
 <!-- Domain Check Modal -->
 <div class="domain-modal-overlay" id="domainModal" onclick="if(event.target===this)closeDomainModal()">
   <div class="domain-modal" style="position:relative">
@@ -1283,9 +1369,8 @@ async function getBalance() {
   return null;
 }
 
-/* -- Domain Check (bulk .com for table) ---------------------------------- */
+/* -- Domain Check (bulk .com/.net/.org for table) ------------------------ */
 async function checkDomainsForPage() {
-  const totalPages = Math.ceil(displayedKeywords.length / PAGE_SIZE);
   const start = (currentPage - 1) * PAGE_SIZE;
   const pageItems = displayedKeywords.slice(start, start + PAGE_SIZE);
   const toCheck = pageItems.filter(kw => domainCache[kw.keyword] === undefined).map(kw => kw.keyword);
@@ -1299,20 +1384,28 @@ async function checkDomainsForPage() {
   toCheck.forEach(kw => { domainCache[kw] = 'checking'; });
   renderTable();
 
-  // Check in batches of 20
-  for (let i = 0; i < toCheck.length; i += 20) {
-    const batch = toCheck.slice(i, i + 20);
+  // Check in batches of 15 (15 * 3 TLDs = 45 RDAP lookups)
+  for (let i = 0; i < toCheck.length; i += 15) {
+    const batch = toCheck.slice(i, i + 15);
     const data = await api('POST', '/api/domain-check-bulk', { keywords: batch });
     if (data.results) {
-      for (const [kw, info] of Object.entries(data.results)) {
-        domainCache[kw] = info.available === true;
+      for (const [kw, tldMap] of Object.entries(data.results)) {
+        // tldMap: { '.com': { domain, available }, '.net': ..., '.org': ... }
+        const cache = {};
+        for (const [tld, info] of Object.entries(tldMap)) {
+          cache[tld] = info.available === true;
+        }
+        domainCache[kw] = cache;
       }
     }
     renderTable();
   }
 
-  const freeCount = toCheck.filter(kw => domainCache[kw] === true).length;
-  showToast(`Checked ${toCheck.length} domains: ${freeCount} .com available!`);
+  const anyFree = toCheck.filter(kw => {
+    const dc = domainCache[kw];
+    return dc && typeof dc === 'object' && (dc['.com'] || dc['.net'] || dc['.org']);
+  }).length;
+  showToast(`Checked ${toCheck.length} keywords: ${anyFree} have domains available!`);
 }
 
 /* -- Domain Check (detailed modal) --------------------------------------- */
@@ -1380,6 +1473,83 @@ async function checkDomain(keyword) {
 
 function closeDomainModal() {
   document.getElementById('domainModal').classList.remove('open');
+}
+
+/* -- SERP Preview -------------------------------------------------------- */
+async function serpPreview(keyword) {
+  const modal = document.getElementById('serpModal');
+  const kwEl = document.getElementById('serpModalKeyword');
+  const loading = document.getElementById('serpLoading');
+  const results = document.getElementById('serpResults');
+  const banner = document.getElementById('serpEmdBanner');
+
+  kwEl.textContent = keyword;
+  loading.style.display = 'block';
+  results.innerHTML = '';
+  banner.style.display = 'none';
+  modal.classList.add('open');
+
+  const data = await api('GET', '/api/serp-preview?keyword=' + encodeURIComponent(keyword));
+
+  loading.style.display = 'none';
+
+  if (data.error) {
+    results.innerHTML = `<div class="domain-loading" style="color:#dc2626;">${escHtml(data.error)}</div>`;
+    return;
+  }
+
+  if (!data.results || data.results.length === 0) {
+    results.innerHTML = '<div class="domain-loading">No SERP results returned.</div>';
+    return;
+  }
+
+  // EMD opportunity banner
+  const baseDomain = data.base_domain || '';
+  if (!data.has_exact_match) {
+    banner.className = 'serp-emd-banner opportunity';
+    banner.innerHTML = `&#x1F4A1; <strong>EMD Opportunity!</strong> No exact match domain (${escHtml(baseDomain)}.com/net/org) found in top 10. An exact match domain could rank here.`;
+    banner.style.display = 'flex';
+  } else {
+    banner.className = 'serp-emd-banner taken';
+    banner.innerHTML = `&#x26A0; An exact match domain is already ranking in the top 10 for this keyword.`;
+    banner.style.display = 'flex';
+  }
+
+  // Render results
+  const html = data.results.map(r => {
+    const rankClass = r.rank <= 3 ? 'top3' : '';
+    const rDomainBase = (r.domain || '').split('.')[0].toLowerCase();
+    const isExact = rDomainBase === baseDomain;
+    const isSubdomain = (r.domain || '').split('.').length > 2;
+
+    let domainTag = '';
+    if (isExact) {
+      domainTag = '<span class="serp-tag emd">&#x2B50; Exact Match Domain</span>';
+    } else if (isSubdomain) {
+      domainTag = '<span class="serp-tag subdomain">Subdomain</span>';
+    } else {
+      domainTag = '<span class="serp-tag generic">Generic Domain</span>';
+    }
+
+    return `<div class="serp-result">
+      <div class="serp-result-header">
+        <span class="serp-result-rank ${rankClass}">${r.rank}</span>
+        <a class="serp-result-title" href="${escHtml(r.url)}" target="_blank" rel="noopener">${escHtml(r.title)}</a>
+      </div>
+      <div class="serp-result-url">${escHtml(r.url)}</div>
+      <div class="serp-result-desc">${escHtml(r.description || '')}</div>
+      <div class="serp-result-tags">
+        ${domainTag}
+        <span class="serp-tag generic">${escHtml(r.domain)}</span>
+      </div>
+    </div>`;
+  }).join('');
+
+  results.innerHTML = html;
+}
+
+function closeSerpModal() {
+  document.getElementById('serpModal').classList.remove('open');
 }
 
 /* -- API status check ---------------------------------------------------- */
@@ -1773,16 +1943,23 @@ function renderTable() {
     const opp = kw.opportunity_score || 0;
     const rowNum = start + i + 1;
     const compLevel = (kw.competition_level || '').toUpperCase() || '-';
-    const domainStatus = domainCache[kw.keyword];
+    const dc = domainCache[kw.keyword];
+    const kwEsc = escHtml(kw.keyword).replace(/'/g, "\\'");
     let domainCell;
-    if (domainStatus === undefined) {
-      domainCell = `<button class="domain-btn" onclick="checkDomain('${escHtml(kw.keyword).replace(/'/g, "\\'")}')">&#x1F310; Check</button>`;
-    } else if (domainStatus === 'checking') {
+    if (dc === undefined) {
+      domainCell = `<button class="domain-btn" onclick="checkDomain('${kwEsc}')">&#x1F310; Check</button>`;
+    } else if (dc === 'checking') {
       domainCell = `<span class="domain-dot checking">checking...</span>`;
-    } else if (domainStatus === true) {
-      domainCell = `<span class="domain-dot avail" style="cursor:pointer" onclick="checkDomain('${escHtml(kw.keyword).replace(/'/g, "\\'")}')">&#x2713; .com FREE</span>`;
     } else {
-      domainCell = `<span class="domain-dot taken" style="cursor:pointer" onclick="checkDomain('${escHtml(kw.keyword).replace(/'/g, "\\'")}')">&#x2717; .com taken</span>`;
+      // dc is an object: { '.com': true/false, '.net': true/false, '.org': true/false }
+      const tlds = ['.com', '.net', '.org'];
+      const badges = tlds.map(tld => {
+        const avail = dc[tld];
+        if (avail === true) return `<span class="domain-dot avail">${tld} &#x2713;</span>`;
+        if (avail === false) return `<span class="domain-dot taken">${tld} &#x2717;</span>`;
+        return `<span class="domain-dot checking">${tld} ?</span>`;
+      }).join('');
+      domainCell = `<div class="domain-inline" style="cursor:pointer" onclick="checkDomain('${kwEsc}')">${badges}</div>`;
     }
     return `<tr>
       <td class="row-num">${rowNum}</td>
@@ -1795,6 +1972,7 @@ function renderTable() {
       <td class="mono"><span class="opp-badge ${oppClass(opp)}">${opp}</span></td>
       <td>${renderSerpBadges(kw.serp_features)}</td>
       <td>${domainCell}</td>
+      <td><button class="serp-btn" onclick="serpPreview('${kwEsc}')">&#x1F50D; SERP</button></td>
     </tr>`;
   });
   tbody.innerHTML = rows.join('');

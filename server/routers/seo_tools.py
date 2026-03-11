@@ -19,14 +19,12 @@ import csv
 import io
 import json
 import logging
-import os
 import random
-import shutil
 import sqlite3
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, AsyncGenerator, Optional
+from typing import Any, Optional
 
 import httpx
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
@@ -1617,234 +1615,26 @@ async def delete_nugget_hunt(hunt_id: int = Query(...)):
 # AI-Powered Keyword Analysis WebSocket
 # ===========================================================================
 #
-# Follows the same pattern as the assistant chat WebSocket
-# (server/routers/assistant_chat.py) but scoped for SEO keyword analysis.
-# Uses subscription auth (force_subscription=True) so it runs on the
-# Claude subscription rather than consuming API credits.
+# Uses BackgroundSessionManager (same pattern as server/routers/workspace.py)
+# so sessions survive WebSocket disconnects and viewers can reconnect.
 # ===========================================================================
 
-# Read-only built-in tools the SEO analyst can use
-_SEO_BUILTIN_TOOLS = [
-    "Read",
-    "Glob",
-    "Grep",
-    "WebFetch",
-    "WebSearch",
-]
-
-# Module-level session store: one active session at a time for simplicity
-_seo_chat_session: Optional["_SEOChatSession"] = None
-
-
-def _get_seo_system_prompt(model_id: str = "") -> str:
-    """Build the system prompt for the SEO keyword analyst."""
-    # Summarise the current keyword database for context
-    db_summary = ""
-    try:
-        conn = get_db()
-        try:
-            total = conn.execute("SELECT COUNT(*) FROM keywords").fetchone()[0]
-            if total > 0:
-                low_kd = conn.execute(
-                    "SELECT COUNT(*) FROM keywords WHERE difficulty <= 10"
-                ).fetchone()[0]
-                avg_vol = conn.execute(
-                    "SELECT AVG(volume) FROM keywords"
-                ).fetchone()[0] or 0
-                db_summary = (
-                    f"\n## Current Keyword Database\n"
-                    f"- Total keywords: {total}\n"
-                    f"- Low-KD keywords (difficulty <= 10): {low_kd}\n"
-                    f"- Average search volume: {int(avg_vol)}\n"
-                )
-        finally:
-            conn.close()
-    except Exception:
-        pass
-
-    model_block = ""
-    if model_id:
-        model_block = (
-            f"\n## Your Model Identity\n\n"
-            f"You are running as model **{model_id}**.\n"
-        )
-
-    return f"""You are an expert SEO keyword analyst and content strategist.
-
-You help users analyze keyword data, identify content opportunities, develop
-SEO strategies, and make data-driven decisions about which keywords to target.
-
-## Your Capabilities
-
-- Analyze keyword difficulty, search volume, and competition metrics
-- Identify "golden nugget" keywords (low difficulty, decent volume)
-- Suggest content strategies based on keyword clusters
-- Evaluate SERP feature opportunities (featured snippets, PAA, etc.)
-- Recommend keyword targeting priorities
-- Analyze trends and seasonality patterns
-- Compare keyword sets and identify gaps
-- Use WebSearch to research current SERP landscapes for keywords
-- Use WebFetch to analyze competitor pages ranking for target keywords
-
-## Guidelines
-
-- Always ground your analysis in the actual data when available
-- Be specific with recommendations — include the keyword, volume, and difficulty
-- When suggesting content, explain WHY a keyword is a good target
-- Consider search intent (informational, transactional, navigational)
-- Flag any risks (e.g., YMYL topics, high-authority competitors)
-- Use tables and structured formatting for data comparisons
-{db_summary}{model_block}"""
-
-
-class _SEOChatSession:
-    """
-    Lightweight chat session for AI-powered SEO analysis.
-
-    Wraps a ClaudeSDKClient with subscription auth and read-only tools.
-    Streams responses back as async generator chunks matching the protocol
-    used by the assistant chat.
-    """
-
-    def __init__(self) -> None:
-        self.client: Optional[Any] = None
-        self._client_entered: bool = False
-
-    async def start(self) -> AsyncGenerator[dict, None]:
-        """Initialise the Claude client and yield a ready event."""
-        from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
-
-        system_cli = shutil.which("claude")
-
-        try:
-            from registry import DEFAULT_MODEL, get_effective_sdk_env
-
-            # Force subscription auth so this does not consume API credits
-            sdk_env = get_effective_sdk_env(force_subscription=True)
-        except Exception as e:
-            logger.exception("Failed to load SDK environment for SEO chat")
-            yield {"type": "error", "content": f"Failed to load configuration: {e}"}
-            return
-
-        model = (
-            sdk_env.get("ANTHROPIC_DEFAULT_OPUS_MODEL")
-            or os.getenv("ANTHROPIC_DEFAULT_OPUS_MODEL", DEFAULT_MODEL)
-        )
-
-        system_prompt = _get_seo_system_prompt(model_id=model)
-
-        # Write the system prompt to a scratch CLAUDE.md so the SDK reads it
-        # via setting_sources=["project"] without polluting any real project.
-        scratch_dir = Path.home() / ".autoforge" / ".seo_chat_scratch"
-        scratch_dir.mkdir(parents=True, exist_ok=True)
-        claude_md = scratch_dir / "CLAUDE.md"
-        claude_md.write_text(system_prompt, encoding="utf-8")
-
-        # Minimal security settings — read-only, no bash
-        settings_data = {
-            "sandbox": {"enabled": False},
-            "permissions": {
-                "defaultMode": "bypassPermissions",
-                "allow": _SEO_BUILTIN_TOOLS,
-            },
-        }
-        settings_file = scratch_dir / "settings.json"
-        settings_file.write_text(json.dumps(settings_data, indent=2), encoding="utf-8")
-
-        try:
-            self.client = ClaudeSDKClient(
-                options=ClaudeAgentOptions(
-                    model=model,
-                    cli_path=system_cli,
-                    setting_sources=["project"],
-                    allowed_tools=_SEO_BUILTIN_TOOLS,
-                    permission_mode="bypassPermissions",
-                    max_turns=100,
-                    cwd=str(scratch_dir.resolve()),
-                    settings=str(settings_file.resolve()),
-                    env=sdk_env,
-                )
-            )
-            await self.client.__aenter__()
-            self._client_entered = True
-            logger.info("SEO chat session started (model=%s)", model)
-        except Exception as e:
-            logger.exception("Failed to create Claude client for SEO chat")
-            yield {"type": "error", "content": f"Failed to initialize SEO analyst: {e}"}
-            return
-
-        greeting = (
-            "Hello! I'm your SEO keyword analyst. I can help you analyze keywords, "
-            "identify content opportunities, and develop targeting strategies. "
-            "What would you like to explore?"
-        )
-        yield {"type": "text", "content": greeting}
-        yield {"type": "response_done"}
-
-    async def send_message(self, user_message: str) -> AsyncGenerator[dict, None]:
-        """Send a user message and stream the response."""
-        if not self.client:
-            yield {"type": "error", "content": "Session not initialized. Send 'start' first."}
-            return
-
-        try:
-            async for chunk in self._query_claude(user_message):
-                yield chunk
-            yield {"type": "response_done"}
-        except Exception as e:
-            logger.exception("Error during SEO chat query")
-            yield {"type": "error", "content": f"Error: {e}"}
-
-    async def _query_claude(self, message: str) -> AsyncGenerator[dict, None]:
-        """Internal method to query Claude and stream responses."""
-        if not self.client:
-            return
-
-        await self.client.query(message)
-
-        async for msg in self.client.receive_response():
-            msg_type = type(msg).__name__
-
-            # Skip SDK informational events
-            if msg_type in ("RateLimitEvent", "rate_limit_event"):
-                continue
-
-            if msg_type == "AssistantMessage" and hasattr(msg, "content"):
-                for block in msg.content:
-                    block_type = type(block).__name__
-
-                    if block_type == "TextBlock" and hasattr(block, "text"):
-                        text = block.text
-                        if text:
-                            yield {"type": "text", "content": text}
-
-                    elif block_type == "ToolUseBlock" and hasattr(block, "name"):
-                        tool_name = block.name
-                        tool_input = getattr(block, "input", {})
-                        yield {
-                            "type": "tool_call",
-                            "tool": tool_name,
-                            "input": tool_input,
-                        }
-
-            elif msg_type == "ResultMessage" and hasattr(msg, "usage"):
-                usage = msg.usage
-                if usage:
-                    yield {
-                        "type": "token_usage",
-                        "input_tokens": getattr(usage, "input_tokens", 0),
-                        "output_tokens": getattr(usage, "output_tokens", 0),
-                    }
-
-    async def cleanup(self) -> None:
-        """Clean up the Claude client."""
-        if self.client and self._client_entered:
-            try:
-                await self.client.__aexit__(None, None, None)
-            except Exception:
-                pass
-            self._client_entered = False
-            self.client = None
+_SEO_SYSTEM_PROMPT = (
+    "You are an SEO keyword research analyst with deep expertise in search engine "
+    "optimization, keyword strategy, and content planning. You help users analyze "
+    "keyword data, identify opportunities, plan content strategies, and understand "
+    "search intent.\n\n"
+    "When analyzing keywords, consider:\n"
+    "- Search volume trends and seasonality\n"
+    "- Keyword difficulty and competition levels\n"
+    "- Commercial intent and CPC values\n"
+    "- SERP feature opportunities (featured snippets, PAA, etc.)\n"
+    "- Content gap analysis\n"
+    "- Long-tail keyword opportunities\n"
+    "- Topic clustering and content silos\n\n"
+    "Provide actionable, data-driven recommendations. When the user shares keyword "
+    "data, analyze it thoroughly and suggest specific strategies for ranking improvement."
+)
 
 
 @router.websocket("/ws")
@@ -1852,28 +1642,32 @@ async def seo_chat_websocket(websocket: WebSocket):
     """
     WebSocket endpoint for AI-powered SEO keyword analysis.
 
-    Uses subscription auth (force_subscription=True) so conversations
-    run on the Claude subscription rather than consuming API credits.
+    Uses BackgroundSessionManager so sessions run independently of the
+    WebSocket connection. Follows the viewer protocol from workspace.py.
 
     Client -> Server:
-    - {"type": "start"} - Create a new analysis session
+    - {"type": "start", "model": "opus"} - Create a new analysis session
     - {"type": "message", "content": "..."} - Send user message
     - {"type": "ping"} - Keep-alive ping
 
     Server -> Client:
-    - {"type": "text", "content": "..."} - Text chunk from Claude
-    - {"type": "tool_call", "tool": "...", "input": {...}} - Tool being called
-    - {"type": "token_usage", "input_tokens": int, "output_tokens": int} - Token usage
-    - {"type": "response_done"} - Response complete
-    - {"type": "error", "content": "..."} - Error message
+    - {"type": "session_created", "session_id": "...", "conversation_id": int} - Session started
+    - {"type": "text", "content": "..."} - AI response text
+    - {"type": "tool_call", ...} - Tool usage events
+    - {"type": "token_usage", ...} - Token usage stats
+    - {"type": "session_completed"} - Session finished responding
+    - {"type": "replay", "events": [...]} - Catch-up events on reconnect
+    - {"type": "replay_done", "current_seq": int} - Replay complete
     - {"type": "pong"} - Keep-alive pong
+    - {"type": "error", "content": "..."} - Error message
     """
-    global _seo_chat_session
+    from ..services.background_session_manager import get_background_session_manager
 
     await websocket.accept()
-    logger.info("SEO chat WebSocket connected")
+    logger.info("SEO analysis WebSocket connected")
 
-    session: Optional[_SEOChatSession] = None
+    manager = await get_background_session_manager()
+    attached_session_id: Optional[str] = None
 
     try:
         while True:
@@ -1885,31 +1679,69 @@ async def seo_chat_websocket(websocket: WebSocket):
 
                 if msg_type == "ping":
                     await websocket.send_json({"type": "pong"})
-                    continue
 
                 elif msg_type == "start":
-                    # Clean up any previous session
-                    if _seo_chat_session is not None:
-                        await _seo_chat_session.cleanup()
-                        _seo_chat_session = None
-
-                    session = _SEOChatSession()
-                    _seo_chat_session = session
+                    # Create a new background session for SEO analysis.
+                    model = message.get("model", "opus")
+                    provider = "claude"
 
                     try:
-                        async for chunk in session.start():
-                            await websocket.send_json(chunk)
+                        bg_session = await manager.create_session(
+                            conversation_id=None,
+                            provider=provider,
+                            model=model,
+                            working_directory=None,
+                            context_mode="200k",
+                        )
+
+                        # Detach from any previous session
+                        if attached_session_id:
+                            try:
+                                await manager.detach_viewer(attached_session_id, websocket)
+                            except KeyError:
+                                pass
+
+                        attached_session_id = bg_session.session_id
+                        current_seq = await manager.attach_viewer(bg_session.session_id, websocket)
+
+                        await websocket.send_json({
+                            "type": "session_created",
+                            "session_id": bg_session.session_id,
+                            "conversation_id": bg_session.conversation_id,
+                        })
+
+                        # Replay events emitted between task start and viewer attachment
+                        early_events = await bg_session.get_events_since(0)
+                        if early_events:
+                            replay_events = [
+                                {**ev, "seq": seq}
+                                for seq, ev in early_events
+                                if seq <= current_seq
+                            ]
+                            if replay_events:
+                                await websocket.send_json({
+                                    "type": "replay",
+                                    "events": replay_events,
+                                })
+
+                        # Send the SEO system prompt as the first message to
+                        # prime the session with domain-specific context.
+                        await manager.submit_message(
+                            bg_session.session_id,
+                            _SEO_SYSTEM_PROMPT
+                            + "\n\nPlease acknowledge that you're ready to help "
+                            "with SEO keyword analysis.",
+                        )
+
                     except Exception as e:
-                        logger.exception("Error starting SEO chat session")
+                        logger.exception("Error starting SEO analysis session")
                         await websocket.send_json({
                             "type": "error",
-                            "content": f"Failed to start session: {e}",
+                            "content": f"Failed to start session: {str(e)}",
                         })
 
                 elif msg_type == "message":
-                    if session is None:
-                        session = _seo_chat_session
-                    if session is None:
+                    if not attached_session_id:
                         await websocket.send_json({
                             "type": "error",
                             "content": "No active session. Send 'start' first.",
@@ -1918,14 +1750,21 @@ async def seo_chat_websocket(websocket: WebSocket):
 
                     user_content = message.get("content", "").strip()
                     if not user_content:
-                        await websocket.send_json({
-                            "type": "error",
-                            "content": "Empty message",
-                        })
+                        await websocket.send_json({"type": "error", "content": "Empty message"})
                         continue
 
-                    async for chunk in session.send_message(user_content):
-                        await websocket.send_json(chunk)
+                    try:
+                        await manager.submit_message(attached_session_id, user_content)
+                    except KeyError:
+                        await websocket.send_json({
+                            "type": "error",
+                            "content": "Session not found. It may have been cleaned up.",
+                        })
+                    except RuntimeError as e:
+                        await websocket.send_json({
+                            "type": "error",
+                            "content": str(e),
+                        })
 
                 else:
                     await websocket.send_json({
@@ -1940,12 +1779,23 @@ async def seo_chat_websocket(websocket: WebSocket):
                 })
 
     except WebSocketDisconnect:
-        logger.info("SEO chat WebSocket disconnected")
-    except Exception:
-        logger.exception("SEO chat WebSocket error")
+        logger.info("SEO analysis WebSocket disconnected")
+
+    except Exception as e:
+        logger.exception("SEO analysis WebSocket error")
+        try:
+            await websocket.send_json({
+                "type": "error",
+                "content": f"Server error: {str(e)}",
+            })
+        except Exception:
+            pass
+
     finally:
-        # Clean up session on disconnect
-        if session is not None:
-            await session.cleanup()
-            if _seo_chat_session is session:
-                _seo_chat_session = None
+        # Detach viewer only; the session continues running in the background
+        if attached_session_id:
+            try:
+                await manager.detach_viewer(attached_session_id, websocket)
+            except Exception as e:
+                logger.warning("Error detaching SEO viewer on disconnect: %s", e)
+        logger.info("SEO analysis WebSocket cleaned up")

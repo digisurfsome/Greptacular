@@ -298,11 +298,12 @@ input, select { font-family: inherit; }
 }
 .domain-dot {
   display: inline-flex; align-items: center; gap: 3px;
-  font-size: 10px; font-weight: 600; padding: 1px 7px;
-  border-radius: 99px; white-space: nowrap;
+  font-size: 10px; font-weight: 700; padding: 2px 8px;
+  border-radius: 4px; white-space: nowrap; transition: all 0.15s;
 }
-.domain-dot.avail { background: #dcfce7; color: #166534; cursor: pointer; }
-.domain-dot.taken { opacity: 0.35; }
+.domain-dot.avail { background: #16a34a; color: #fff; cursor: pointer; box-shadow: 0 1px 3px rgba(22,163,74,0.3); }
+.domain-dot.avail:hover { background: #15803d; transform: scale(1.05); }
+.domain-dot.taken { background: #f1f5f9; color: #cbd5e1; text-decoration: line-through; }
 
 /* TLD picker chips in toolbar */
 .tld-picker { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
@@ -1705,7 +1706,7 @@ async function autoCheckDomainsForPage() {
         for (const [kw, tldMap] of Object.entries(data.results)) {
           const cache = {};
           for (const [tld, info] of Object.entries(tldMap)) {
-            cache[tld] = info.available === true;
+            cache[tld] = info.available;  // true = available, false = taken, null = unknown
           }
           domainCache[kw] = cache;
         }

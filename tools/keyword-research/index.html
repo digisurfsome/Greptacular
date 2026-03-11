@@ -449,6 +449,39 @@ input, select { font-family: inherit; }
 .progress-bar.error .progress-check { display: inline; content: '✗'; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* -- Content Strategy category tabs --------------------------------------- */
+.cs-cat-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 6px 14px; border-radius: 99px; font-size: 12px; font-weight: 600;
+  cursor: pointer; transition: all 0.15s; border: 1.5px solid #e2e8f0;
+  background: #fff; color: #64748b;
+}
+.cs-cat-btn:hover { border-color: #7c3aed; color: #7c3aed; }
+.cs-cat-btn.active { background: #7c3aed; color: #fff; border-color: #7c3aed; }
+.cs-count {
+  background: rgba(255,255,255,0.25); padding: 0 6px; border-radius: 99px;
+  font-size: 10px; min-width: 18px; text-align: center;
+}
+.cs-cat-btn.active .cs-count { background: rgba(255,255,255,0.3); }
+.cs-snap-item { background: #f8fafc; border-radius: 8px; padding: 10px 14px; }
+.cs-snap-label { font-size: 10px; font-weight: 700; text-transform: uppercase; color: #94a3b8; margin-bottom: 3px; }
+.cs-snap-value { font-size: 13px; color: #1e293b; }
+.cs-priority { font-size: 10px; font-weight: 700; padding: 1px 8px; border-radius: 99px; }
+.cs-priority.P0 { background: #fee2e2; color: #dc2626; }
+.cs-priority.P1 { background: #fef3c7; color: #d97706; }
+.cs-priority.P2 { background: #e0e7ff; color: #4f46e5; }
+.cs-vol { font-size: 11px; font-weight: 600; color: #059669; }
+.cs-kd { font-size: 11px; font-weight: 600; }
+.cs-cpc { font-size: 11px; color: #666; }
+.cs-pillar-card { background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+.cs-pillar-title { font-size: 16px; font-weight: 700; color: #1e293b; margin-bottom: 12px; }
+.cs-cluster { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-radius: 8px; font-size: 13px; }
+.cs-cluster:nth-child(odd) { background: #fff; }
+.cs-intent { font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 99px; }
+.cs-intent.informational { background: #dbeafe; color: #1d4ed8; }
+.cs-intent.commercial { background: #fef3c7; color: #d97706; }
+.cs-intent.transactional { background: #dcfce7; color: #166534; }
+
 /* -- Segment bar --------------------------------------------------------- */
 .segment-bar {
   display: flex; margin-bottom: 16px; border-radius: 10px; overflow: hidden;
@@ -904,6 +937,7 @@ tbody tr:last-child td { border-bottom: none; }
   <div class="mode-tabs">
     <button class="mode-tab active" onclick="switchMode('keyword-research')">Keyword Research</button>
     <button class="mode-tab" onclick="switchMode('nugget-hunter')">&#x26CF; Nugget Hunter</button>
+    <button class="mode-tab" onclick="switchMode('content-strategy')">&#x1F4C8; Content Strategy</button>
   </div>
 
   <!-- Keyword Research Panel (existing tool) -->
@@ -1188,6 +1222,61 @@ tbody tr:last-child td { border-bottom: none; }
 
   </div><!-- /nuggetHunterPanel -->
 
+  <!-- Content Strategy Panel -->
+  <div id="contentStrategyPanel" style="display:none">
+
+    <!-- Input Section -->
+    <div class="nugget-section">
+      <h3>&#x1F4C8; Content Strategy Generator</h3>
+      <p style="color:#666;font-size:13px;margin-bottom:16px;">Paste a SaaS homepage URL. AI analyzes the site, identifies competitors, and generates high-buying-intent content ideas across 6 categories — then researches keyword data for each one.</p>
+
+      <div style="display:flex;gap:10px;align-items:center;">
+        <input type="text" id="csUrlInput" placeholder="https://example.com" style="flex:1;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14px;">
+        <button class="btn-primary" id="csGenerateBtn" onclick="generateContentStrategy()" style="white-space:nowrap;">&#x1F9E0; Generate Strategy</button>
+      </div>
+      <div id="csStatus" style="margin-top:10px;font-size:13px;color:#7c3aed;display:none;"></div>
+    </div>
+
+    <!-- Results (hidden until generated) -->
+    <div id="csResults" style="display:none;">
+
+      <!-- Client Snapshot -->
+      <div class="nugget-section" id="csSnapshot">
+        <h3>&#x1F3AF; Client Snapshot</h3>
+        <div id="csSnapshotBody" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:13px;"></div>
+      </div>
+
+      <!-- Category Tabs -->
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;">
+        <button class="cs-cat-btn active" onclick="switchCsCategory('comparisons')">&#x2694; Comparisons <span class="cs-count" id="csCntComparisons">0</span></button>
+        <button class="cs-cat-btn" onclick="switchCsCategory('alternatives')">&#x1F504; Alternatives <span class="cs-count" id="csCntAlternatives">0</span></button>
+        <button class="cs-cat-btn" onclick="switchCsCategory('listicles')">&#x1F4DD; Listicles <span class="cs-count" id="csCntListicles">0</span></button>
+        <button class="cs-cat-btn" onclick="switchCsCategory('integrations')">&#x1F517; Integrations <span class="cs-count" id="csCntIntegrations">0</span></button>
+        <button class="cs-cat-btn" onclick="switchCsCategory('free_tools')">&#x1F6E0; Free Tools <span class="cs-count" id="csCntFreeTools">0</span></button>
+        <button class="cs-cat-btn" onclick="switchCsCategory('pillars')">&#x1F3D7; Pillars <span class="cs-count" id="csCntPillars">0</span></button>
+      </div>
+
+      <!-- Category Tables -->
+      <div class="nugget-section" style="padding:0;overflow:hidden;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;flex-wrap:wrap;gap:8px;">
+          <span class="table-info" id="csTableInfo"></span>
+          <div style="display:flex;gap:8px;">
+            <button class="icon-btn" onclick="researchCsKeywords()" id="csResearchBtn" title="Research keyword data for all ideas">&#x1F50D; Research Keywords</button>
+            <button class="icon-btn" onclick="exportCsCSV()">&#x2B07; Export CSV</button>
+          </div>
+        </div>
+        <table>
+          <thead id="csThead"></thead>
+          <tbody id="csTbody"></tbody>
+        </table>
+      </div>
+
+      <!-- Pillars view (separate) -->
+      <div id="csPillarsView" style="display:none;"></div>
+    </div>
+
+  </div><!-- /contentStrategyPanel -->
+
   <!-- Cost Log Panel (always visible) -->
   <div class="cost-log-panel" id="costLogPanel">
     <div class="cost-log-header" onclick="toggleCostLog()">
@@ -1248,6 +1337,10 @@ tbody tr:last-child td { border-bottom: none; }
         <div id="testResult"></div>
       </div>
     </div>
+
+    <label style="margin-top:16px">OpenAI API Key <span style="font-weight:400;color:#999">(for Content Strategy)</span></label>
+    <input type="password" id="settOpenaiKey" placeholder="sk-...">
+    <div style="font-size:11px;color:#999;margin-top:2px;">Uses gpt-4o-mini (~$0.01 per strategy). Get key at platform.openai.com</div>
 
     <label style="margin-top:16px">Location</label>
     <select id="settLocation">
@@ -2641,6 +2734,7 @@ function openSettings() {
   api('GET', '/api/settings').then(data => {
     if (data.data_source) document.getElementById('settDataSource').value = data.data_source;
     if (data.dataforseo_login) document.getElementById('settDfsLogin').value = data.dataforseo_login;
+    if (data.openai_api_key) document.getElementById('settOpenaiKey').value = data.openai_api_key;
     if (data.location_code) document.getElementById('settLocation').value = data.location_code;
     if (data.language_code) document.getElementById('settLanguage').value = data.language_code;
     toggleSettingsFields();
@@ -2680,6 +2774,7 @@ async function saveSettingsQuiet() {
     data_source: document.getElementById('settDataSource').value,
     dataforseo_login: document.getElementById('settDfsLogin').value,
     dataforseo_password: document.getElementById('settDfsPassword').value,
+    openai_api_key: document.getElementById('settOpenaiKey').value,
     location_code: parseInt(document.getElementById('settLocation').value) || 2840,
     language_code: document.getElementById('settLanguage').value || 'en',
   };
@@ -2695,22 +2790,21 @@ async function saveSettings() {
 
 /* -- Mode switching ------------------------------------------------------ */
 function switchMode(mode) {
-  const krPanel = document.getElementById('keywordResearchPanel');
-  const nhPanel = document.getElementById('nuggetHunterPanel');
+  const panels = {
+    'keyword-research': document.getElementById('keywordResearchPanel'),
+    'nugget-hunter': document.getElementById('nuggetHunterPanel'),
+    'content-strategy': document.getElementById('contentStrategyPanel'),
+  };
   const tabs = document.querySelectorAll('.mode-tab');
+  const tabMap = {'keyword-research': 0, 'nugget-hunter': 1, 'content-strategy': 2};
 
-  if (mode === 'nugget-hunter') {
-    krPanel.style.display = 'none';
-    nhPanel.style.display = 'block';
-    tabs[0].classList.remove('active');
-    tabs[1].classList.add('active');
-    loadHuntHistory();
-  } else {
-    krPanel.style.display = 'block';
-    nhPanel.style.display = 'none';
-    tabs[0].classList.add('active');
-    tabs[1].classList.remove('active');
-  }
+  Object.values(panels).forEach(p => p.style.display = 'none');
+  tabs.forEach(t => t.classList.remove('active'));
+
+  panels[mode].style.display = 'block';
+  tabs[tabMap[mode]].classList.add('active');
+
+  if (mode === 'nugget-hunter') loadHuntHistory();
 }
 
 /* -- Suffix toggle ------------------------------------------------------- */
@@ -3115,6 +3209,237 @@ async function deleteHunt(huntId) {
       nuggetHuntId = null;
     }
   }
+}
+
+/* -- Content Strategy Generator ------------------------------------------ */
+let csStrategy = null;
+let csCategory = 'comparisons';
+let csKeywordData = {};  // keyword -> { volume, difficulty, cpc, competition }
+
+async function generateContentStrategy() {
+  const url = document.getElementById('csUrlInput').value.trim();
+  if (!url) { showToast('Enter a URL', true); return; }
+
+  const btn = document.getElementById('csGenerateBtn');
+  const status = document.getElementById('csStatus');
+  btn.disabled = true;
+  btn.textContent = 'Analyzing...';
+  status.style.display = 'block';
+  status.textContent = 'AI is analyzing the site, finding competitors, and generating content ideas... (30-60 seconds)';
+
+  const data = await api('POST', '/api/content-strategy', { url });
+  btn.disabled = false;
+  btn.innerHTML = '&#x1F9E0; Generate Strategy';
+
+  if (data.error) {
+    status.textContent = data.error;
+    status.style.color = '#dc2626';
+    return;
+  }
+
+  status.style.display = 'none';
+  csStrategy = data.strategy;
+  csKeywordData = {};
+  renderCsResults();
+}
+
+function renderCsResults() {
+  if (!csStrategy) return;
+  document.getElementById('csResults').style.display = 'block';
+
+  // Snapshot
+  const snap = csStrategy.snapshot || {};
+  const snapBody = document.getElementById('csSnapshotBody');
+  snapBody.innerHTML = [
+    ['What They Sell', snap.what_they_sell],
+    ['ICP', snap.icp],
+    ['Primary CTA', snap.primary_cta],
+    ['Pricing', snap.pricing_motion],
+    ['Differentiators', (snap.differentiators || []).join(', ')],
+  ].map(([label, val]) =>
+    `<div class="cs-snap-item"><div class="cs-snap-label">${label}</div><div class="cs-snap-value">${escHtml(val || 'N/A')}</div></div>`
+  ).join('');
+
+  // Update counts
+  const counts = {
+    comparisons: (csStrategy.comparisons || []).length,
+    alternatives: (csStrategy.alternatives || []).length,
+    listicles: (csStrategy.listicles || []).length,
+    integrations: (csStrategy.integrations || []).length,
+    free_tools: (csStrategy.free_tools || []).length,
+    pillars: (csStrategy.pillars || []).length,
+  };
+  document.getElementById('csCntComparisons').textContent = counts.comparisons;
+  document.getElementById('csCntAlternatives').textContent = counts.alternatives;
+  document.getElementById('csCntListicles').textContent = counts.listicles;
+  document.getElementById('csCntIntegrations').textContent = counts.integrations;
+  document.getElementById('csCntFreeTools').textContent = counts.free_tools;
+  document.getElementById('csCntPillars').textContent = counts.pillars;
+
+  switchCsCategory(csCategory);
+}
+
+function switchCsCategory(cat) {
+  csCategory = cat;
+  document.querySelectorAll('.cs-cat-btn').forEach((btn, i) => {
+    const cats = ['comparisons','alternatives','listicles','integrations','free_tools','pillars'];
+    btn.classList.toggle('active', cats[i] === cat);
+  });
+
+  const thead = document.getElementById('csThead');
+  const tbody = document.getElementById('csTbody');
+  const pillarsView = document.getElementById('csPillarsView');
+  const tableInfo = document.getElementById('csTableInfo');
+
+  if (cat === 'pillars') {
+    thead.parentElement.style.display = 'none';
+    pillarsView.style.display = 'block';
+    renderCsPillars();
+    return;
+  }
+
+  thead.parentElement.style.display = '';
+  pillarsView.style.display = 'none';
+
+  const items = csStrategy[cat] || [];
+  tableInfo.textContent = `${items.length} content ideas`;
+
+  // Build header based on category
+  let headers = '';
+  if (cat === 'free_tools') {
+    headers = '<tr><th>#</th><th>Title</th><th>Target Keyword</th><th>Tool Concept</th><th>CTA</th><th>Vol</th><th>KD</th><th>CPC</th></tr>';
+  } else {
+    headers = '<tr><th>#</th><th>Title</th><th>Target Keyword</th><th>Priority</th><th>Notes</th><th>Vol</th><th>KD</th><th>CPC</th></tr>';
+  }
+  thead.innerHTML = headers;
+
+  const rows = items.map((item, i) => {
+    const kd = csKeywordData[item.target_keyword];
+    const volCell = kd ? `<span class="cs-vol">${fmtNum(kd.volume)}</span>` : '<span style="color:#ccc">—</span>';
+    const kdCell = kd ? `<span class="cs-kd ${diffClass(kd.difficulty)}">${kd.difficulty}</span>` : '<span style="color:#ccc">—</span>';
+    const cpcCell = kd ? `<span class="cs-cpc">$${kd.cpc.toFixed(2)}</span>` : '<span style="color:#ccc">—</span>';
+
+    if (cat === 'free_tools') {
+      return `<tr>
+        <td>${i + 1}</td>
+        <td><strong>${escHtml(item.title)}</strong></td>
+        <td style="font-size:12px;color:#7c3aed;">${escHtml(item.target_keyword)}</td>
+        <td style="font-size:12px;">${escHtml(item.tool_concept || '')}</td>
+        <td style="font-size:12px;">${escHtml(item.cta || '')}</td>
+        <td class="mono">${volCell}</td>
+        <td class="mono">${kdCell}</td>
+        <td class="mono">${cpcCell}</td>
+      </tr>`;
+    }
+
+    return `<tr>
+      <td>${i + 1}</td>
+      <td><strong>${escHtml(item.title)}</strong></td>
+      <td style="font-size:12px;color:#7c3aed;">${escHtml(item.target_keyword)}</td>
+      <td><span class="cs-priority ${escHtml(item.priority || 'P2')}">${escHtml(item.priority || '—')}</span></td>
+      <td style="font-size:12px;max-width:250px;">${escHtml(item.notes || '')}</td>
+      <td class="mono">${volCell}</td>
+      <td class="mono">${kdCell}</td>
+      <td class="mono">${cpcCell}</td>
+    </tr>`;
+  });
+
+  tbody.innerHTML = rows.join('');
+}
+
+function renderCsPillars() {
+  const view = document.getElementById('csPillarsView');
+  const pillars = csStrategy.pillars || [];
+
+  view.innerHTML = pillars.map(p => {
+    const clusters = (p.clusters || []).map(c => {
+      const kd = csKeywordData[c.target_keyword];
+      const kwInfo = kd ? `<span class="cs-vol">${fmtNum(kd.volume)}</span> · <span class="cs-kd">${kd.difficulty} KD</span>` : '';
+      return `<div class="cs-cluster">
+        <div>
+          <strong>${escHtml(c.title)}</strong>
+          <div style="font-size:11px;color:#7c3aed;margin-top:2px;">${escHtml(c.target_keyword)}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          ${kwInfo}
+          <span class="cs-intent ${escHtml(c.intent || 'informational')}">${escHtml(c.intent || '')}</span>
+        </div>
+      </div>`;
+    }).join('');
+
+    return `<div class="cs-pillar-card">
+      <div class="cs-pillar-title">&#x1F3D7; ${escHtml(p.pillar)}</div>
+      ${clusters}
+    </div>`;
+  }).join('');
+}
+
+async function researchCsKeywords() {
+  if (!csStrategy) return;
+
+  // Collect all target keywords across all categories
+  const allKeywords = new Set();
+  ['comparisons', 'alternatives', 'listicles', 'integrations', 'free_tools'].forEach(cat => {
+    (csStrategy[cat] || []).forEach(item => {
+      if (item.target_keyword) allKeywords.add(item.target_keyword);
+    });
+  });
+  (csStrategy.pillars || []).forEach(p => {
+    (p.clusters || []).forEach(c => {
+      if (c.target_keyword) allKeywords.add(c.target_keyword);
+    });
+  });
+
+  const keywords = [...allKeywords];
+  if (keywords.length === 0) return;
+
+  const btn = document.getElementById('csResearchBtn');
+  btn.disabled = true;
+  btn.textContent = `Researching ${keywords.length} keywords...`;
+
+  const data = await api('POST', '/api/content-strategy/research-keywords', { keywords });
+
+  if (data.results) {
+    data.results.forEach(r => {
+      csKeywordData[r.keyword] = r;
+    });
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = '&#x1F50D; Research Keywords';
+  showToast(`Got data for ${(data.results || []).length} keywords`);
+
+  // Re-render current view
+  switchCsCategory(csCategory);
+}
+
+function exportCsCSV() {
+  if (!csStrategy) return;
+  let csv = 'Category,Title,Target Keyword,Priority,Volume,KD,CPC,Notes\n';
+
+  ['comparisons', 'alternatives', 'listicles', 'integrations', 'free_tools'].forEach(cat => {
+    (csStrategy[cat] || []).forEach(item => {
+      const kd = csKeywordData[item.target_keyword] || {};
+      csv += [cat, item.title, item.target_keyword, item.priority || '', kd.volume || '', kd.difficulty || '', kd.cpc || '', item.notes || '']
+        .map(v => `"${String(v).replace(/"/g, '""')}"`)
+        .join(',') + '\n';
+    });
+  });
+
+  (csStrategy.pillars || []).forEach(p => {
+    (p.clusters || []).forEach(c => {
+      const kd = csKeywordData[c.target_keyword] || {};
+      csv += ['pillar:' + p.pillar, c.title, c.target_keyword, '', kd.volume || '', kd.difficulty || '', kd.cpc || '', c.intent || '']
+        .map(v => `"${String(v).replace(/"/g, '""')}"`)
+        .join(',') + '\n';
+    });
+  });
+
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'content-strategy.csv';
+  a.click();
 }
 
 /* -- Init ---------------------------------------------------------------- */

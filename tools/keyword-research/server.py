@@ -14,6 +14,7 @@ Supports:
 
 import csv
 import io
+import json
 import logging
 import random
 import sqlite3

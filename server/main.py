@@ -35,6 +35,7 @@ from .routers import (
     approvals_router,
     assistant_chat_router,
     boilerplate_router,
+    build_planner_router,
     captures_router,
     checkpoints_router,
     ci_status_router,
@@ -49,10 +50,12 @@ from .routers import (
     factory_router,
     features_router,
     filesystem_router,
+    github_router,
     notifications_router,
     projects_router,
     role_library_router,
     schedules_router,
+    seo_tools_router,
     settings_router,
     spec_creation_router,
     styles_router,
@@ -312,12 +315,14 @@ app.include_router(spec_creation_router)
 app.include_router(design_guide_router)
 app.include_router(expand_project_router)
 app.include_router(filesystem_router)
+app.include_router(github_router)
 app.include_router(assistant_chat_router)
 app.include_router(settings_router)
 app.include_router(terminal_router)
 app.include_router(workspace_router)
 app.include_router(notifications_router)
 app.include_router(role_library_router)
+app.include_router(seo_tools_router)
 app.include_router(swarm_router)
 app.include_router(dunkstack_router)
 app.include_router(agent_os_router)
@@ -333,6 +338,7 @@ app.include_router(commits_router)
 app.include_router(verifications_router)
 app.include_router(approvals_router)
 app.include_router(checkpoints_router)
+app.include_router(build_planner_router)
 
 
 # ============================================================================

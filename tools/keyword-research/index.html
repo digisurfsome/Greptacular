@@ -1,0 +1,3474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Keyword Golden Nugget Finder</title>
+<style>
+/* -- Reset & base -------------------------------------------------------- */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #f5f5f5;
+  color: #1a1a1a;
+  line-height: 1.5;
+}
+button { cursor: pointer; font-family: inherit; }
+input, select { font-family: inherit; }
+
+/* -- Layout -------------------------------------------------------------- */
+.app { max-width: 1400px; margin: 0 auto; padding: 16px 20px; }
+
+/* -- Header -------------------------------------------------------------- */
+.header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 0; border-bottom: 2px solid #e0e0e0; margin-bottom: 20px;
+}
+.header-left { display: flex; align-items: center; gap: 16px; }
+.header h1 { font-size: 22px; font-weight: 700; }
+.header h1 span { color: #f59e0b; }
+.api-status {
+  display: flex; align-items: center; gap: 6px; font-size: 12px;
+  padding: 4px 10px; border-radius: 99px; background: #f3f4f6; color: #666;
+}
+.api-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.api-dot.green { background: #22c55e; }
+.api-dot.red { background: #ef4444; }
+.api-balance { font-weight: 600; color: #111; }
+.cost-tracker {
+  display: flex; align-items: center; gap: 10px; font-size: 12px;
+  padding: 4px 10px; border-radius: 99px; background: #f3f4f6; color: #666;
+}
+.cost-tracker .cost-label { color: #888; }
+.cost-tracker .cost-value { font-weight: 600; color: #111; }
+.cost-tracker .cost-value.cost-flash { animation: costFlash 1.5s ease; }
+@keyframes costFlash { 0%,100%{ color:#111; } 30%{ color:#f59e0b; } }
+.cost-tracker .cost-sep { color: #d0d0d0; }
+.search-cost-badge {
+  display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px;
+  border-radius: 99px; background: #fef3c7; color: #92400e; margin-left: 8px;
+}
+
+/* -- Cost Log Panel ------------------------------------------------------ */
+.cost-log-panel {
+  margin-top: 20px; background: #fff; border: 1px solid #e0e0e0;
+  border-radius: 12px; overflow: hidden;
+}
+.cost-log-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; background: linear-gradient(135deg, #1e293b, #334155);
+  color: #fff; cursor: pointer; user-select: none;
+}
+.cost-log-header h3 { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.cost-log-header .cost-log-summary {
+  display: flex; gap: 16px; font-size: 12px;
+}
+.cost-log-header .cost-log-summary span { opacity: 0.8; }
+.cost-log-header .cost-log-summary strong { color: #fbbf24; opacity: 1; }
+.cost-log-toggle { font-size: 16px; transition: transform 0.2s; }
+.cost-log-toggle.collapsed { transform: rotate(-90deg); }
+.cost-log-body { max-height: 300px; overflow-y: auto; }
+.cost-log-body.collapsed { display: none; }
+.cost-log-empty {
+  padding: 24px; text-align: center; color: #999; font-size: 13px;
+}
+.cost-log-table {
+  width: 100%; border-collapse: collapse; font-size: 12px;
+}
+.cost-log-table th {
+  position: sticky; top: 0; background: #f8fafc; padding: 8px 12px;
+  text-align: left; font-weight: 600; color: #64748b; border-bottom: 2px solid #e2e8f0;
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+}
+.cost-log-table td {
+  padding: 7px 12px; border-bottom: 1px solid #f1f5f9; color: #334155;
+}
+.cost-log-table tr:hover td { background: #f8fafc; }
+.cost-log-table .cost-cell { font-weight: 600; color: #92400e; }
+.cost-log-table .kw-count-cell { font-weight: 600; color: #0369a1; }
+.cost-log-table .mode-badge {
+  display: inline-block; padding: 1px 8px; border-radius: 99px;
+  font-size: 10px; font-weight: 600; text-transform: uppercase;
+}
+.mode-badge.related { background: #dbeafe; color: #1e40af; }
+.mode-badge.suggestions { background: #fce7f3; color: #9d174d; }
+.mode-badge.merged { background: #e0e7ff; color: #3730a3; }
+.cost-log-footer {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 16px; background: #f8fafc; border-top: 1px solid #e2e8f0;
+  font-size: 12px; color: #64748b;
+}
+.cost-log-footer button {
+  font-size: 11px; padding: 4px 10px; border: 1px solid #d0d0d0;
+  border-radius: 6px; background: #fff; color: #666;
+}
+.cost-log-footer button:hover { background: #f1f5f9; }
+
+/* -- Niche Explorer ------------------------------------------------------ */
+.btn-niche-explorer {
+  background: linear-gradient(135deg, #7c3aed, #a855f7); color: #fff;
+  border: none; border-radius: 8px; padding: 8px 16px; font-size: 13px;
+  font-weight: 600; cursor: pointer; white-space: nowrap;
+  transition: all 0.15s;
+}
+.btn-niche-explorer:hover { opacity: 0.9; transform: translateY(-1px); }
+.niche-modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 10000;
+  display: none; align-items: flex-start; justify-content: center; padding-top: 30px;
+}
+.niche-modal-overlay.open { display: flex; }
+.niche-modal {
+  background: #fff; border-radius: 16px; width: 640px; max-width: 95vw;
+  max-height: 90vh; overflow: hidden; box-shadow: 0 25px 50px rgba(0,0,0,0.3);
+  position: relative;
+}
+.niche-modal-header {
+  padding: 18px 24px; background: linear-gradient(135deg, #7c3aed, #4c1d95);
+  color: #fff;
+}
+.niche-modal-header h3 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+.niche-modal-header p { font-size: 13px; opacity: 0.85; margin: 0; }
+.niche-close {
+  position: absolute; top: 14px; right: 18px; background: none; border: none;
+  color: #fff; font-size: 22px; cursor: pointer; opacity: 0.7;
+}
+.niche-close:hover { opacity: 1; }
+.niche-modal-body { padding: 20px 24px; max-height: 65vh; overflow-y: auto; }
+.niche-step { margin-bottom: 18px; }
+.niche-step label {
+  display: block; font-size: 14px; font-weight: 600; color: #1e293b;
+  margin-bottom: 6px;
+}
+.niche-step label .step-num {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 50%; font-size: 12px;
+  background: #7c3aed; color: #fff; margin-right: 8px;
+}
+.niche-step .hint { font-size: 12px; color: #94a3b8; margin-bottom: 6px; }
+.niche-step input, .niche-step textarea {
+  width: 100%; padding: 10px 12px; border: 1.5px solid #e2e8f0; border-radius: 8px;
+  font-size: 13px; font-family: inherit; transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+.niche-step input:focus, .niche-step textarea:focus { border-color: #7c3aed; outline: none; }
+.niche-step textarea { resize: vertical; min-height: 60px; }
+.niche-step-header { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.niche-step-controls { display: flex; gap: 2px; margin-left: auto; }
+.niche-step-controls button {
+  background: none; border: 1px solid #e2e8f0; border-radius: 4px;
+  padding: 2px 6px; font-size: 12px; cursor: pointer; color: #64748b;
+}
+.niche-step-controls button:hover { background: #f1f5f9; color: #1e293b; }
+.niche-step-controls button.remove-btn:hover { background: #fee2e2; color: #dc2626; }
+.niche-step label[contenteditable] { cursor: text; border-bottom: 1px dashed transparent; }
+.niche-step label[contenteditable]:hover { border-bottom-color: #7c3aed; }
+.niche-step label[contenteditable]:focus { outline: none; border-bottom-color: #7c3aed; }
+.niche-add-btn:hover { background: #f5f3ff !important; border-color: #7c3aed !important; }
+.niche-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.niche-chip {
+  padding: 5px 12px; border: 1.5px solid #e2e8f0; border-radius: 99px;
+  font-size: 12px; cursor: pointer; transition: all 0.15s; user-select: none;
+  background: #fff; color: #475569;
+}
+.niche-chip:hover { border-color: #7c3aed; color: #7c3aed; }
+.niche-chip.selected { background: #7c3aed; color: #fff; border-color: #7c3aed; }
+.niche-seeds-preview {
+  background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 10px;
+  padding: 14px 16px; margin-top: 12px;
+}
+.niche-seeds-preview h4 { font-size: 13px; font-weight: 700; color: #1e293b; margin-bottom: 8px; }
+.niche-seed-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.niche-seed-tag {
+  font-size: 11px; padding: 3px 10px; border-radius: 99px;
+  font-weight: 600; border: 1px solid #e2e8f0;
+}
+.niche-seed-tag.direct { background: #dbeafe; color: #1e40af; border-color: #bfdbfe; }
+.niche-seed-tag.audience { background: #dcfce7; color: #166534; border-color: #bbf7d0; }
+.niche-seed-tag.problem { background: #fef3c7; color: #92400e; border-color: #fde68a; }
+.niche-seed-tag.competitor { background: #fee2e2; color: #991b1b; border-color: #fecaca; }
+.niche-seed-tag.feature { background: #ede9fe; color: #5b21b6; border-color: #ddd6fe; }
+.niche-seed-tag.community { background: #fce7f3; color: #9d174d; border-color: #fbcfe8; }
+.niche-seed-tag.usecase { background: #e0f2fe; color: #075985; border-color: #bae6fd; }
+.niche-seed-tag.intent { background: #dcfce7; color: #166534; border-color: #bbf7d0; }
+.niche-modal-footer {
+  padding: 14px 24px; border-top: 1px solid #e2e8f0;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.niche-run-btn {
+  background: linear-gradient(135deg, #7c3aed, #a855f7); color: #fff;
+  border: none; border-radius: 8px; padding: 10px 24px; font-size: 14px;
+  font-weight: 700; cursor: pointer; transition: all 0.15s;
+}
+.niche-run-btn:hover { opacity: 0.9; }
+.niche-run-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.niche-seed-count { font-size: 13px; color: #64748b; font-weight: 600; }
+.niche-progress {
+  padding: 14px 24px; background: #f8fafc; border-top: 1px solid #e2e8f0;
+  display: none;
+}
+.niche-progress-bar {
+  height: 6px; background: #e2e8f0; border-radius: 99px; overflow: hidden;
+  margin-bottom: 8px;
+}
+.niche-progress-fill {
+  height: 100%; background: linear-gradient(90deg, #7c3aed, #a855f7);
+  border-radius: 99px; transition: width 0.3s;
+  width: 0%;
+}
+.niche-progress-text { font-size: 12px; color: #64748b; }
+
+/* -- Domain Check -------------------------------------------------------- */
+.domain-btn {
+  background: none; border: 1px solid #d0d0d0; border-radius: 6px;
+  padding: 2px 8px; font-size: 11px; color: #666; cursor: pointer;
+  transition: all 0.15s; white-space: nowrap;
+}
+.domain-btn:hover { background: #f0f9ff; border-color: #0ea5e9; color: #0369a1; }
+.domain-modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 9999;
+  display: none; align-items: center; justify-content: center;
+}
+.domain-modal-overlay.open { display: flex; }
+.domain-modal {
+  background: #fff; border-radius: 16px; width: 520px; max-width: 95vw;
+  max-height: 85vh; overflow: hidden; box-shadow: 0 25px 50px rgba(0,0,0,0.25);
+}
+.domain-modal-header {
+  padding: 16px 20px; background: linear-gradient(135deg, #1e293b, #334155);
+  color: #fff;
+}
+.domain-modal-header h3 { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+.domain-modal-header .domain-kw { color: #fbbf24; font-weight: 700; }
+.domain-modal-close {
+  position: absolute; top: 12px; right: 16px; background: none; border: none;
+  color: #fff; font-size: 20px; cursor: pointer; opacity: 0.7;
+}
+.domain-modal-close:hover { opacity: 1; }
+.domain-modal-body { padding: 0; max-height: 60vh; overflow-y: auto; }
+.domain-loading {
+  padding: 40px; text-align: center; color: #666; font-size: 14px;
+}
+.domain-results { list-style: none; padding: 0; margin: 0; }
+.domain-result-row {
+  display: flex; align-items: center; padding: 12px 20px;
+  border-bottom: 1px solid #f1f5f9; gap: 12px; transition: background 0.1s;
+}
+.domain-result-row:hover { background: #f8fafc; }
+.domain-result-row .domain-status {
+  width: 28px; height: 28px; border-radius: 50%; display: flex;
+  align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0;
+}
+.domain-status.available { background: #dcfce7; color: #16a34a; }
+.domain-status.taken { background: #fee2e2; color: #dc2626; }
+.domain-status.premium { background: #fef3c7; color: #d97706; }
+.domain-result-row .domain-name {
+  flex: 1; font-size: 14px; font-weight: 500; color: #1e293b;
+}
+.domain-name .tld { color: #0369a1; font-weight: 700; }
+.domain-result-row .domain-tag {
+  font-size: 11px; padding: 2px 10px; border-radius: 99px; font-weight: 600;
+}
+.domain-tag.avail { background: #dcfce7; color: #166534; }
+.domain-tag.not-avail { background: #fee2e2; color: #991b1b; }
+.domain-tag.prem { background: #fef3c7; color: #92400e; }
+.domain-result-row .domain-price {
+  font-size: 12px; color: #666; min-width: 80px; text-align: right;
+}
+.domain-result-row .domain-register {
+  font-size: 11px; padding: 4px 12px; border-radius: 6px; border: none;
+  background: #16a34a; color: #fff; cursor: pointer; font-weight: 600;
+  text-decoration: none;
+}
+.domain-result-row .domain-register:hover { background: #15803d; }
+.domain-modal-footer {
+  padding: 12px 20px; background: #f8fafc; border-top: 1px solid #e2e8f0;
+  font-size: 11px; color: #94a3b8; text-align: center;
+}
+.domain-seo-tip {
+  padding: 12px 20px; background: #fffbeb; border-bottom: 1px solid #fef3c7;
+  font-size: 12px; color: #92400e;
+}
+.domain-seo-tip strong { color: #78350f; }
+
+/* Inline .com availability badges in the keyword table */
+.domain-inline {
+  display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
+}
+.domain-dot {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 10px; font-weight: 700; padding: 2px 8px;
+  border-radius: 4px; white-space: nowrap; transition: all 0.15s;
+}
+.domain-dot.avail { background: #16a34a; color: #fff; cursor: pointer; box-shadow: 0 1px 3px rgba(22,163,74,0.3); }
+.domain-dot.avail:hover { background: #15803d; transform: scale(1.05); }
+.domain-dot.taken { background: #f1f5f9; color: #cbd5e1; text-decoration: line-through; }
+
+/* TLD picker chips in toolbar */
+.tld-picker { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.tld-picker-label { font-size: 11px; color: #64748b; font-weight: 600; margin-right: 2px; }
+.tld-chip {
+  font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 99px;
+  cursor: pointer; transition: all 0.15s; user-select: none;
+  border: 1.5px solid #e2e8f0; background: #f8fafc; color: #94a3b8;
+}
+.tld-chip:hover { border-color: #7c3aed; color: #7c3aed; }
+.tld-chip.active { background: #7c3aed; color: #fff; border-color: #7c3aed; }
+.tld-chip.active:hover { background: #6d28d9; }
+.domain-dot.checking { background: #f3f4f6; color: #999; }
+.check-domains-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: linear-gradient(135deg, #1e293b, #334155); color: #fff;
+  border: none; border-radius: 8px; padding: 6px 14px; font-size: 12px;
+  font-weight: 600; cursor: pointer; margin-left: 8px;
+}
+.check-domains-btn:hover { opacity: 0.9; }
+
+/* -- SERP Preview Panel -------------------------------------------------- */
+.serp-btn {
+  background: none; border: 1px solid #d0d0d0; border-radius: 6px;
+  padding: 2px 8px; font-size: 11px; color: #666; cursor: pointer;
+  transition: all 0.15s; white-space: nowrap;
+}
+.serp-btn:hover { background: #fef3c7; border-color: #f59e0b; color: #92400e; }
+.serp-modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 9998;
+  display: none; align-items: flex-start; justify-content: center; padding-top: 40px;
+}
+.serp-modal-overlay.open { display: flex; }
+.serp-modal {
+  background: #fff; border-radius: 16px; width: 700px; max-width: 95vw;
+  max-height: 85vh; overflow: hidden; box-shadow: 0 25px 50px rgba(0,0,0,0.25);
+  position: relative;
+}
+.serp-modal-header {
+  padding: 16px 20px; background: linear-gradient(135deg, #1a1a2e, #16213e);
+  color: #fff;
+}
+.serp-modal-header h3 { font-size: 16px; font-weight: 600; }
+.serp-modal-header .serp-kw { color: #fbbf24; font-weight: 700; }
+.serp-modal-close {
+  position: absolute; top: 12px; right: 16px; background: none; border: none;
+  color: #fff; font-size: 20px; cursor: pointer; opacity: 0.7;
+}
+.serp-modal-close:hover { opacity: 1; }
+.serp-emd-banner {
+  padding: 10px 20px; font-size: 13px; font-weight: 600;
+  display: flex; align-items: center; gap: 8px;
+}
+.serp-emd-banner.opportunity { background: #dcfce7; color: #166534; }
+.serp-emd-banner.taken { background: #fee2e2; color: #991b1b; }
+.serp-modal-body { padding: 0; max-height: 65vh; overflow-y: auto; }
+.serp-result {
+  padding: 12px 20px; border-bottom: 1px solid #f1f5f9; transition: background 0.1s;
+}
+.serp-result:hover { background: #f8fafc; }
+.serp-result-rank {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border-radius: 50%; font-size: 12px;
+  font-weight: 700; flex-shrink: 0; margin-right: 10px;
+  background: #f1f5f9; color: #64748b;
+}
+.serp-result-rank.top3 { background: #fef3c7; color: #92400e; }
+.serp-result-header { display: flex; align-items: center; margin-bottom: 4px; }
+.serp-result-title {
+  font-size: 14px; font-weight: 600; color: #1a0dab;
+  text-decoration: none; flex: 1;
+}
+.serp-result-title:hover { text-decoration: underline; }
+.serp-result-url { font-size: 12px; color: #006621; margin-bottom: 4px; word-break: break-all; }
+.serp-result-desc { font-size: 12px; color: #545454; line-height: 1.4; }
+.serp-result-tags { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.serp-tag {
+  font-size: 10px; padding: 1px 8px; border-radius: 99px; font-weight: 600;
+}
+.serp-tag.emd { background: #fef3c7; color: #92400e; }
+.serp-tag.generic { background: #f1f5f9; color: #64748b; }
+.serp-tag.subdomain { background: #ede9fe; color: #6d28d9; }
+.serp-modal-footer {
+  padding: 10px 20px; background: #f8fafc; border-top: 1px solid #e2e8f0;
+  font-size: 11px; color: #94a3b8; display: flex; justify-content: space-between;
+}
+.header-actions { display: flex; gap: 8px; align-items: center; }
+.icon-btn {
+  background: none; border: 1px solid #d0d0d0; border-radius: 8px;
+  padding: 8px 12px; font-size: 14px; color: #555; transition: all 0.15s;
+}
+.icon-btn:hover { background: #fff; border-color: #999; color: #111; }
+
+/* -- Stats bar ----------------------------------------------------------- */
+.stats-bar {
+  display: flex; gap: 24px; padding: 12px 16px;
+  background: #fff; border-radius: 10px; margin-bottom: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  font-size: 13px; color: #666; flex-wrap: wrap;
+}
+.stats-bar .stat-val {
+  font-weight: 700; color: #111;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+/* -- Search bar ---------------------------------------------------------- */
+.search-bar { display: flex; gap: 8px; margin-bottom: 16px; }
+.search-bar input {
+  flex: 1; padding: 10px 14px; border: 1px solid #d0d0d0; border-radius: 8px;
+  font-size: 14px; outline: none; transition: border-color 0.15s;
+}
+.search-bar input:focus { border-color: #3b82f6; }
+.search-mode-select {
+  padding: 10px 12px; border: 1px solid #d0d0d0; border-radius: 8px;
+  font-size: 13px; background: #fff; outline: none; color: #333;
+  min-width: 170px;
+}
+.btn-primary {
+  background: #3b82f6; color: #fff; border: none; border-radius: 8px;
+  padding: 10px 20px; font-size: 14px; font-weight: 600; transition: background 0.15s;
+  white-space: nowrap;
+}
+.btn-primary:hover { background: #2563eb; }
+.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* -- Progress indicator -------------------------------------------------- */
+.progress-bar {
+  display: none; align-items: center; gap: 10px; padding: 10px 16px;
+  background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px;
+  margin-bottom: 16px; font-size: 13px; color: #1e40af;
+}
+.progress-bar.active { display: flex; }
+.progress-spinner {
+  width: 16px; height: 16px; border: 2px solid #bfdbfe;
+  border-top-color: #3b82f6; border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+.progress-bar.done { background: #f0fdf4; border-color: #bbf7d0; color: #166534; }
+.progress-bar.done .progress-spinner { display: none; }
+.progress-check { display: none; font-weight: 700; }
+.progress-bar.done .progress-check { display: inline; }
+.progress-bar.error { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+.progress-bar.error .progress-spinner { display: none; }
+.progress-bar.error .progress-check { display: inline; content: '✗'; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* -- Content Strategy category tabs --------------------------------------- */
+.cs-cat-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 6px 14px; border-radius: 99px; font-size: 12px; font-weight: 600;
+  cursor: pointer; transition: all 0.15s; border: 1.5px solid #e2e8f0;
+  background: #fff; color: #64748b;
+}
+.cs-cat-btn:hover { border-color: #7c3aed; color: #7c3aed; }
+.cs-cat-btn.active { background: #7c3aed; color: #fff; border-color: #7c3aed; }
+.cs-count {
+  background: rgba(255,255,255,0.25); padding: 0 6px; border-radius: 99px;
+  font-size: 10px; min-width: 18px; text-align: center;
+}
+.cs-cat-btn.active .cs-count { background: rgba(255,255,255,0.3); }
+.cs-snap-item { background: #f8fafc; border-radius: 8px; padding: 10px 14px; }
+.cs-snap-label { font-size: 10px; font-weight: 700; text-transform: uppercase; color: #94a3b8; margin-bottom: 3px; }
+.cs-snap-value { font-size: 13px; color: #1e293b; }
+.cs-priority { font-size: 10px; font-weight: 700; padding: 1px 8px; border-radius: 99px; }
+.cs-priority.P0 { background: #fee2e2; color: #dc2626; }
+.cs-priority.P1 { background: #fef3c7; color: #d97706; }
+.cs-priority.P2 { background: #e0e7ff; color: #4f46e5; }
+.cs-vol { font-size: 11px; font-weight: 600; color: #059669; }
+.cs-kd { font-size: 11px; font-weight: 600; }
+.cs-cpc { font-size: 11px; color: #666; }
+.cs-pillar-card { background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+.cs-pillar-title { font-size: 16px; font-weight: 700; color: #1e293b; margin-bottom: 12px; }
+.cs-cluster { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-radius: 8px; font-size: 13px; }
+.cs-cluster:nth-child(odd) { background: #fff; }
+.cs-intent { font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 99px; }
+.cs-intent.informational { background: #dbeafe; color: #1d4ed8; }
+.cs-intent.commercial { background: #fef3c7; color: #d97706; }
+.cs-intent.transactional { background: #dcfce7; color: #166534; }
+
+/* -- Segment bar --------------------------------------------------------- */
+.segment-bar {
+  display: flex; margin-bottom: 16px; border-radius: 10px; overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+.segment {
+  flex: 1; text-align: center; padding: 12px 8px; cursor: pointer;
+  transition: all 0.15s; border: 2px solid transparent; position: relative;
+  user-select: none;
+}
+.segment:hover { filter: brightness(0.95); }
+.segment.active { border-color: #111; z-index: 1; transform: scale(1.02); }
+.segment .seg-label {
+  font-size: 11px; font-weight: 600; text-transform: uppercase; opacity: 0.8;
+}
+.segment .seg-count {
+  font-size: 20px; font-weight: 800;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+.seg-0    { background: #22c55e; color: #fff; }
+.seg-1-5  { background: #84cc16; color: #fff; }
+.seg-6-10 { background: #eab308; color: #fff; }
+.seg-11-20{ background: #f59e0b; color: #fff; }
+.seg-21-50{ background: #f97316; color: #fff; }
+.seg-51   { background: #ef4444; color: #fff; }
+
+/* -- Main layout (filters + table) --------------------------------------- */
+.main-layout { display: flex; gap: 16px; }
+.filters-panel {
+  width: 220px; flex-shrink: 0; background: #fff; border-radius: 10px;
+  padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  align-self: flex-start; position: sticky; top: 16px;
+}
+.filters-panel.collapsed { display: none; }
+.filters-panel h3 {
+  font-size: 13px; font-weight: 700; margin-bottom: 12px;
+  text-transform: uppercase; color: #888;
+}
+.filter-group { margin-bottom: 16px; }
+.filter-group label {
+  display: block; font-size: 12px; color: #666; margin-bottom: 4px;
+}
+.filter-group input[type="number"], .filter-group input[type="text"] {
+  width: 100%; padding: 6px 8px; border: 1px solid #ddd; border-radius: 6px;
+  font-size: 13px; font-family: 'SF Mono', 'Fira Code', monospace;
+}
+.filter-row { display: flex; gap: 6px; align-items: center; }
+.filter-row span { font-size: 12px; color: #999; }
+.btn-small {
+  background: #f0f0f0; border: 1px solid #ddd; border-radius: 6px;
+  padding: 6px 12px; font-size: 12px; font-weight: 600; transition: all 0.15s;
+}
+.btn-small:hover { background: #e0e0e0; }
+.btn-reset { width: 100%; margin-top: 8px; }
+
+.table-container { flex: 1; min-width: 0; }
+
+/* -- Table filter and info ----------------------------------------------- */
+.table-toolbar {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
+}
+.table-filter-input {
+  padding: 7px 10px; border: 1px solid #ddd; border-radius: 6px;
+  font-size: 13px; width: 250px; outline: none;
+}
+.table-filter-input:focus { border-color: #3b82f6; }
+.table-info {
+  font-size: 12px; color: #888;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+.table-toolbar-right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+
+/* -- Table --------------------------------------------------------------- */
+.kw-table-wrap {
+  background: #fff; border-radius: 10px; overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+table { width: 100%; border-collapse: collapse; }
+thead th {
+  text-align: left; padding: 10px 12px; font-size: 11px; font-weight: 700;
+  text-transform: uppercase; color: #888; border-bottom: 2px solid #eee;
+  cursor: pointer; user-select: none; white-space: nowrap;
+}
+thead th:hover { color: #333; }
+thead th .sort-arrow { margin-left: 4px; font-size: 10px; }
+tbody td {
+  padding: 8px 12px; font-size: 13px; border-bottom: 1px solid #f0f0f0;
+}
+tbody tr:hover { background: #fafafa; }
+tbody tr:last-child td { border-bottom: none; }
+.mono {
+  font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px;
+  text-align: right; font-weight: 500;
+}
+.kw-cell { font-weight: 500; }
+.kw-link { color: #1a56db; text-decoration: none; cursor: pointer; }
+.kw-link:hover { text-decoration: underline; color: #1e40af; }
+.row-num {
+  font-family: 'SF Mono', 'Fira Code', monospace; font-size: 11px;
+  color: #bbb; text-align: right; width: 36px;
+}
+.vol-label {
+  font-size: 9px; color: #aaa; display: block; font-weight: 400;
+}
+
+/* Difficulty badges */
+.diff-badge {
+  display: inline-block; padding: 2px 8px; border-radius: 99px;
+  font-size: 12px; font-weight: 700;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  min-width: 36px; text-align: center;
+}
+.diff-0   { background: #dcfce7; color: #166534; }
+.diff-5   { background: #ecfccb; color: #3f6212; }
+.diff-10  { background: #fef9c3; color: #854d0e; }
+.diff-20  { background: #ffedd5; color: #9a3412; }
+.diff-50  { background: #fed7aa; color: #9a3412; }
+.diff-100 { background: #fecaca; color: #991b1b; }
+
+/* Competition level badges (now uses diff-badge classes via diffClass) */
+
+/* Intent badges */
+.intent-badge { display: inline-block; padding: 1px 7px; border-radius: 99px; font-size: 10px; font-weight: 600; }
+.intent-buyer { background: #dcfce7; color: #166534; }
+.intent-tool { background: #dbeafe; color: #1e40af; }
+.intent-compare { background: #fef3c7; color: #92400e; }
+.intent-info { background: #f3e8ff; color: #6b21a8; }
+.intent-research { background: #e0f2fe; color: #075985; }
+.intent-general { background: #f3f4f6; color: #6b7280; }
+
+/* Trend indicators */
+.trend-rising    { color: #16a34a; font-weight: 600; }
+.trend-declining { color: #dc2626; font-weight: 600; }
+.trend-stable    { color: #9ca3af; }
+
+/* Opportunity badges */
+.opp-badge {
+  display: inline-block; padding: 2px 8px; border-radius: 99px;
+  font-size: 12px; font-weight: 700;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  min-width: 36px; text-align: center;
+}
+.opp-high   { background: #dcfce7; color: #166534; }
+.opp-good   { background: #d1fae5; color: #065f46; }
+.opp-mid    { background: #fef9c3; color: #854d0e; }
+.opp-low    { background: #f3f4f6; color: #6b7280; }
+
+/* SERP feature badges */
+.serp-badges { display: flex; flex-wrap: wrap; gap: 3px; }
+.serp-badge {
+  display: inline-block; padding: 1px 5px; border-radius: 4px;
+  font-size: 9px; font-weight: 600; background: #e0e7ff; color: #3730a3;
+  white-space: nowrap;
+}
+
+/* Pagination */
+.pagination {
+  display: flex; align-items: center; justify-content: center;
+  gap: 8px; padding: 12px; font-size: 13px;
+}
+.pagination button {
+  padding: 6px 12px; border: 1px solid #ddd; border-radius: 6px;
+  background: #fff; font-size: 13px;
+}
+.pagination button:hover { background: #f0f0f0; }
+.pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+.pagination .page-info {
+  font-family: 'SF Mono', 'Fira Code', monospace; color: #666;
+}
+
+/* -- Empty state --------------------------------------------------------- */
+.empty-state {
+  text-align: center; padding: 60px 20px; color: #999;
+}
+.empty-state .emoji { font-size: 48px; margin-bottom: 12px; }
+.empty-state p { font-size: 14px; }
+
+/* -- Modal --------------------------------------------------------------- */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex;
+  align-items: center; justify-content: center; z-index: 100;
+  opacity: 0; pointer-events: none; transition: opacity 0.2s;
+}
+.modal-overlay.open { opacity: 1; pointer-events: auto; }
+.modal {
+  background: #fff; border-radius: 12px; padding: 24px; width: 460px;
+  max-height: 80vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+}
+.modal h2 { font-size: 18px; margin-bottom: 16px; }
+.modal label {
+  display: block; font-size: 13px; font-weight: 600; color: #555;
+  margin-bottom: 4px; margin-top: 12px;
+}
+.modal input, .modal select {
+  width: 100%; padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px;
+  font-size: 14px;
+}
+.modal-actions {
+  display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px;
+}
+.btn-cancel {
+  background: #f0f0f0; border: 1px solid #ddd; border-radius: 8px;
+  padding: 8px 16px; font-size: 14px;
+}
+.modal .test-result {
+  margin-top: 8px; padding: 8px 12px; border-radius: 6px; font-size: 13px;
+}
+.modal .test-result.success { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+.modal .test-result.failure { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+
+/* -- Toast --------------------------------------------------------------- */
+.toast {
+  position: fixed; bottom: 20px; right: 20px; padding: 12px 20px;
+  background: #111; color: #fff; border-radius: 8px; font-size: 14px;
+  z-index: 300; opacity: 0; transform: translateY(10px);
+  transition: all 0.3s; pointer-events: none;
+}
+.toast.show { opacity: 1; transform: translateY(0); }
+.toast.error { background: #dc2626; }
+
+/* -- Responsive ---------------------------------------------------------- */
+@media (max-width: 768px) {
+  .main-layout { flex-direction: column; }
+  .filters-panel { width: 100%; position: static; }
+  .segment .seg-count { font-size: 16px; }
+  .segment .seg-label { font-size: 9px; }
+  .header { flex-wrap: wrap; gap: 8px; }
+  .search-bar { flex-wrap: wrap; }
+  .table-toolbar { flex-wrap: wrap; }
+  .table-filter-input { width: 100%; }
+  .nugget-summary { grid-template-columns: repeat(2, 1fr); }
+  .mode-tabs { overflow-x: auto; }
+}
+
+/* -- Mode tabs ----------------------------------------------------------- */
+.mode-tabs { display: flex; gap: 0; margin-bottom: 20px; }
+.mode-tab {
+  padding: 10px 24px; font-size: 14px; font-weight: 600;
+  border: 2px solid #e0e0e0; background: #f5f5f5; color: #666;
+  cursor: pointer; transition: all 0.15s;
+}
+.mode-tab:first-child { border-radius: 8px 0 0 8px; }
+.mode-tab:last-child { border-radius: 0 8px 8px 0; border-left: none; }
+.mode-tab.active { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+.mode-tab:not(.active):hover { background: #e9e9e9; }
+
+/* -- Nugget Hunter ------------------------------------------------------ */
+.nugget-section {
+  background: #fff; border-radius: 10px; padding: 20px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06); margin-bottom: 16px;
+}
+.nugget-section h3 {
+  font-size: 15px; font-weight: 700; margin-bottom: 14px; color: #333;
+}
+
+/* Niches textarea */
+.niches-textarea {
+  width: 100%; min-height: 120px; padding: 10px 14px;
+  border: 1px solid #d0d0d0; border-radius: 8px; font-size: 14px;
+  font-family: inherit; resize: vertical; outline: none; transition: border-color 0.15s;
+}
+.niches-textarea:focus { border-color: #3b82f6; }
+
+/* Suffix pills */
+.suffix-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+.suffix-pill {
+  display: inline-block; padding: 4px 12px; border-radius: 99px;
+  font-size: 12px; font-weight: 600; cursor: pointer;
+  border: 2px solid #d0d0d0; background: #fff; color: #555;
+  transition: all 0.15s; user-select: none;
+}
+.suffix-pill.active { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+.suffix-pill:not(.active):hover { background: #f0f0f0; }
+
+/* Hunt filters row */
+.hunt-filters {
+  display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 16px;
+}
+.hunt-filter-group { display: flex; flex-direction: column; gap: 4px; }
+.hunt-filter-group label {
+  font-size: 12px; font-weight: 600; color: #666;
+}
+.hunt-filter-group input,
+.hunt-filter-group select {
+  padding: 8px 10px; border: 1px solid #d0d0d0; border-radius: 6px;
+  font-size: 13px; font-family: inherit; outline: none; min-width: 100px;
+}
+.hunt-filter-group input:focus,
+.hunt-filter-group select:focus { border-color: #3b82f6; }
+
+/* Start hunt button */
+.btn-hunt {
+  background: #22c55e; color: #fff; border: none; border-radius: 8px;
+  padding: 12px 28px; font-size: 15px; font-weight: 700; cursor: pointer;
+  transition: background 0.15s; white-space: nowrap;
+}
+.btn-hunt:hover { background: #16a34a; }
+.btn-hunt:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* Progress bar */
+.hunt-progress { margin-bottom: 16px; }
+.hunt-progress-bar {
+  height: 24px; background: #e5e7eb; border-radius: 12px; overflow: hidden;
+  position: relative; margin-bottom: 8px;
+}
+.hunt-progress-fill {
+  height: 100%; background: linear-gradient(90deg, #22c55e, #16a34a);
+  border-radius: 12px; transition: width 0.5s ease;
+}
+.hunt-progress-text {
+  position: absolute; inset: 0; display: flex; align-items: center;
+  justify-content: center; font-size: 12px; font-weight: 700; color: #fff;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+.hunt-stats {
+  display: flex; gap: 16px; font-size: 13px; color: #666; align-items: center;
+}
+.hunt-stats .stat-val { font-weight: 700; color: #111; font-family: 'SF Mono', 'Fira Code', monospace; }
+.hunt-current-combo { font-size: 13px; color: #3b82f6; font-weight: 600; margin-bottom: 6px; }
+.btn-cancel-hunt {
+  background: #ef4444; color: #fff; border: none; border-radius: 6px;
+  padding: 6px 16px; font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: background 0.15s; margin-left: auto;
+}
+.btn-cancel-hunt:hover { background: #dc2626; }
+
+/* Summary cards */
+.nugget-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+.nugget-card {
+  padding: 16px; border-radius: 10px; text-align: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.nugget-card .card-value {
+  font-size: 28px; font-weight: 800;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+.nugget-card .card-label {
+  font-size: 12px; font-weight: 600; text-transform: uppercase; color: #666;
+  margin-top: 2px;
+}
+.nugget-card.total { background: #fff; border: 2px solid #e0e0e0; }
+.nugget-card.gold { background: linear-gradient(135deg, #fef3c7, #fde68a); border: 2px solid #f59e0b; }
+.nugget-card.silver { background: linear-gradient(135deg, #f3f4f6, #e5e7eb); border: 2px solid #9ca3af; }
+.nugget-card.bronze { background: linear-gradient(135deg, #ffedd5, #fed7aa); border: 2px solid #d97706; }
+
+/* Tier badges */
+.tier-badge {
+  display: inline-block; padding: 2px 10px; border-radius: 99px;
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+}
+.tier-gold { background: linear-gradient(135deg, #fbbf24, #f59e0b); color: #78350f; }
+.tier-silver { background: linear-gradient(135deg, #d1d5db, #9ca3af); color: #1f2937; }
+.tier-bronze { background: linear-gradient(135deg, #d97706, #b45309); color: #fff; }
+
+/* Tier filter tabs */
+.tier-tabs { display: flex; gap: 0; margin-bottom: 16px; }
+.tier-tab {
+  padding: 8px 18px; font-size: 13px; font-weight: 600;
+  border: 2px solid #e0e0e0; background: #f5f5f5; color: #666;
+  cursor: pointer; transition: all 0.15s;
+}
+.tier-tab:first-child { border-radius: 8px 0 0 8px; }
+.tier-tab:last-child { border-radius: 0 8px 8px 0; }
+.tier-tab:not(:first-child) { border-left: none; }
+.tier-tab.active { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+.tier-tab:not(.active):hover { background: #e9e9e9; }
+.tier-tab .tier-count {
+  margin-left: 4px; font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 11px;
+}
+
+/* Hunt history */
+.hunt-history-toggle {
+  display: flex; align-items: center; gap: 8px; cursor: pointer;
+  font-size: 14px; font-weight: 600; color: #555; padding: 10px 0;
+  user-select: none;
+}
+.hunt-history-toggle:hover { color: #333; }
+.hunt-history-toggle .arrow { transition: transform 0.2s; display: inline-block; }
+.hunt-history-toggle .arrow.open { transform: rotate(90deg); }
+.hunt-history-list { margin-top: 8px; }
+.hunt-history-item {
+  display: flex; align-items: center; gap: 12px; padding: 10px 14px;
+  background: #fff; border-radius: 8px; margin-bottom: 6px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04); font-size: 13px;
+  cursor: pointer; transition: background 0.15s;
+}
+.hunt-history-item:hover { background: #f9fafb; }
+.hunt-history-date {
+  font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; color: #888;
+  white-space: nowrap;
+}
+.hunt-history-niches { flex: 1; color: #333; font-weight: 500; }
+.hunt-history-status {
+  font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 2px 8px;
+  border-radius: 99px;
+}
+.hunt-history-status.completed { background: #dcfce7; color: #166534; }
+.hunt-history-status.running { background: #dbeafe; color: #1e40af; }
+.hunt-history-status.cancelled { background: #fef9c3; color: #854d0e; }
+.hunt-history-nuggets {
+  font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px;
+  font-weight: 700; color: #f59e0b;
+}
+.btn-delete-hunt {
+  background: none; border: none; color: #ccc; font-size: 16px;
+  cursor: pointer; padding: 2px 6px; border-radius: 4px; transition: all 0.15s;
+}
+.btn-delete-hunt:hover { color: #ef4444; background: #fef2f2; }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- Header -->
+  <div class="header">
+    <div class="header-left">
+      <h1>Keyword <span>Golden Nugget</span> Finder</h1>
+      <div class="api-status" id="apiStatus">
+        <div class="api-dot red" id="apiDot"></div>
+        <span id="apiStatusText">Checking...</span>
+        <span class="api-balance" id="apiBalance"></span>
+      </div>
+      <div class="cost-tracker" id="costTracker" style="display:none">
+        <span class="cost-label">Last search:</span>
+        <span class="cost-value" id="lastSearchCost">—</span>
+        <span class="cost-sep">|</span>
+        <span class="cost-label">Session total:</span>
+        <span class="cost-value" id="sessionCost">$0.00</span>
+        <span class="cost-sep">|</span>
+        <span class="cost-label">Searches:</span>
+        <span class="cost-value" id="searchCount">0</span>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button class="icon-btn" onclick="exportCSV()" title="Export CSV">
+        &#x2B07; Export CSV
+      </button>
+      <button class="icon-btn" onclick="document.getElementById('csvInput').click()" title="Import CSV">
+        &#x2B06; Import CSV
+      </button>
+      <input type="file" id="csvInput" accept=".csv" style="display:none" onchange="importCSV(this)">
+      <button class="icon-btn" id="toggleFiltersBtn" onclick="toggleFilters()" title="Toggle filters">
+        &#x2699; Filters
+      </button>
+      <button class="icon-btn" onclick="openSettings()" title="Settings">
+        &#x2699; Settings
+      </button>
+    </div>
+  </div>
+
+  <!-- Mode Tabs -->
+  <div class="mode-tabs">
+    <button class="mode-tab active" onclick="switchMode('keyword-research')">Keyword Research</button>
+    <button class="mode-tab" onclick="switchMode('nugget-hunter')">&#x26CF; Nugget Hunter</button>
+    <button class="mode-tab" onclick="switchMode('content-strategy')">&#x1F4C8; Content Strategy</button>
+  </div>
+
+  <!-- Keyword Research Panel (existing tool) -->
+  <div id="keywordResearchPanel">
+
+  <!-- Stats bar -->
+  <div class="stats-bar" id="statsBar">
+    <div>Total: <span class="stat-val" id="statTotal">0</span></div>
+    <div>Showing: <span class="stat-val" id="statShowing">0</span></div>
+    <div>Avg Difficulty: <span class="stat-val" id="statAvgDiff">0</span></div>
+    <div>Best Opportunity: <span class="stat-val" id="statBestOpp">0</span></div>
+  </div>
+
+  <!-- Search bar -->
+  <div class="search-bar">
+    <input type="text" id="searchInput" placeholder="Enter a seed keyword (e.g. calculator, ai tools, converter)"
+           onkeydown="if(event.key==='Enter')searchKeywords()">
+    <select class="search-mode-select" id="searchMode">
+      <option value="related">Related Keywords</option>
+      <option value="suggestions">Keyword Suggestions</option>
+      <option value="both">Both (Merge)</option>
+    </select>
+    <button class="btn-primary" id="searchBtn" onclick="searchKeywords()">Search</button>
+    <button class="btn-niche-explorer" onclick="openNicheExplorer()" title="Answer 5 questions, get 15+ seed angles covering your entire niche">&#x1F9ED; Niche Explorer</button>
+  </div>
+
+  <!-- Progress indicator -->
+  <div class="progress-bar" id="progressBar">
+    <div class="progress-spinner"></div>
+    <span class="progress-check">&#10003;</span>
+    <span id="progressText">Searching...</span>
+  </div>
+
+  <!-- Segment bar -->
+  <div class="segment-bar" id="segmentBar"></div>
+
+  <!-- Main content -->
+  <div class="main-layout">
+    <!-- Filters sidebar -->
+    <div class="filters-panel" id="filtersPanel">
+      <h3>Filters</h3>
+      <div class="filter-group">
+        <label>Volume</label>
+        <div class="filter-row">
+          <input type="number" id="filterVolMin" value="0" min="0" oninput="applyFilters(); saveFilters()">
+          <span>to</span>
+          <input type="number" id="filterVolMax" value="10000000" min="0" oninput="applyFilters(); saveFilters()">
+        </div>
+      </div>
+      <div class="filter-group">
+        <label>Difficulty (0-100)</label>
+        <div class="filter-row">
+          <input type="number" id="filterDiffMin" value="0" min="0" max="100" oninput="applyFilters(); saveFilters()">
+          <span>to</span>
+          <input type="number" id="filterDiffMax" value="100" min="0" max="100" oninput="applyFilters(); saveFilters()">
+        </div>
+      </div>
+      <div class="filter-group">
+        <label>Opportunity Score (0-100)</label>
+        <div class="filter-row">
+          <input type="number" id="filterOppMin" value="0" min="0" max="100" oninput="applyFilters(); saveFilters()">
+          <span>to</span>
+          <input type="number" id="filterOppMax" value="100" min="0" max="100" oninput="applyFilters(); saveFilters()">
+        </div>
+      </div>
+      <div class="filter-group">
+        <label>Trend</label>
+        <select id="filterTrend" onchange="applyFilters(); saveFilters()" style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;">
+          <option value="all">All</option>
+          <option value="rising">Rising only</option>
+          <option value="stable">Stable only</option>
+          <option value="declining">Declining only</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Intent</label>
+        <select id="filterIntent" onchange="applyFilters(); saveFilters()" style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;">
+          <option value="all">All</option>
+          <option value="Buyer">Buyer intent</option>
+          <option value="Tool">Tool intent</option>
+          <option value="Compare">Comparison</option>
+          <option value="Info">Informational</option>
+          <option value="Research">Research</option>
+          <option value="General">General</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Competition (0-100)</label>
+        <div class="filter-range">
+          <input type="number" id="filterCompMin" value="0" min="0" max="100" oninput="applyFilters(); saveFilters()">
+          <span>to</span>
+          <input type="number" id="filterCompMax" value="100" min="0" max="100" oninput="applyFilters(); saveFilters()">
+        </div>
+      </div>
+      <button class="btn-small btn-reset" onclick="resetFilters()">Reset Filters</button>
+    </div>
+
+    <!-- Table -->
+    <div class="table-container">
+      <div class="table-toolbar">
+        <input type="text" class="table-filter-input" id="tableFilter"
+               placeholder="Filter keywords..." oninput="applyFilters()">
+        <div class="table-toolbar-right">
+          <div class="tld-picker" id="tldPicker"></div>
+          <button class="check-domains-btn" onclick="checkDomainsForPage()" title="Re-check domains for this page">&#x1F504; Re-check</button>
+          <span class="table-info" id="tableInfo"></span>
+        </div>
+      </div>
+      <div class="kw-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:36px">#</th>
+              <th data-col="keyword" onclick="sortTable('keyword')">Keyword <span class="sort-arrow" id="sort-keyword"></span></th>
+              <th data-col="volume" onclick="sortTable('volume')">Volume <span class="sort-arrow" id="sort-volume"></span></th>
+              <th data-col="difficulty" onclick="sortTable('difficulty')">KD <span class="sort-arrow" id="sort-difficulty"></span></th>
+              <th data-col="cpc" onclick="sortTable('cpc')">CPC <span class="sort-arrow" id="sort-cpc"></span></th>
+              <th data-col="competition" onclick="sortTable('competition')">Comp <span class="sort-arrow" id="sort-competition"></span></th>
+              <th data-col="trend" onclick="sortTable('trend')">Trend <span class="sort-arrow" id="sort-trend"></span></th>
+              <th>Intent</th>
+              <th data-col="opportunity_score" onclick="sortTable('opportunity_score')">Opportunity <span class="sort-arrow" id="sort-opportunity_score"></span></th>
+              <th>SERP</th>
+              <th style="min-width:140px">Domains</th>
+              <th style="width:60px">Top 10</th>
+            </tr>
+          </thead>
+          <tbody id="kwBody"></tbody>
+        </table>
+        <div class="empty-state" id="emptyState">
+          <div class="emoji">&#x1F48E;</div>
+          <p>Loading keywords&hellip;</p>
+        </div>
+        <div class="pagination" id="pagination"></div>
+      </div>
+    </div>
+  </div>
+
+  </div><!-- /keywordResearchPanel -->
+
+  <!-- Nugget Hunter Panel -->
+  <div id="nuggetHunterPanel" style="display:none">
+
+    <!-- Setup Section -->
+    <div class="nugget-section">
+      <h3>&#x26CF; Nugget Hunt Setup</h3>
+
+      <label style="font-size:13px;font-weight:600;color:#555;margin-bottom:6px;display:block;">Niches</label>
+      <textarea class="niches-textarea" id="huntNiches" placeholder="Enter niches, one per line:&#10;mortgage&#10;fitness&#10;cooking&#10;real estate&#10;photography"></textarea>
+
+      <label style="font-size:13px;font-weight:600;color:#555;margin:14px 0 8px;display:block;">Suffixes <span style="font-weight:400;color:#999;">(click to toggle)</span></label>
+      <div class="suffix-pills" id="suffixPills">
+        <span class="suffix-pill active" onclick="toggleSuffix(this)">tool</span>
+        <span class="suffix-pill active" onclick="toggleSuffix(this)">calculator</span>
+        <span class="suffix-pill active" onclick="toggleSuffix(this)">checker</span>
+        <span class="suffix-pill active" onclick="toggleSuffix(this)">generator</span>
+        <span class="suffix-pill active" onclick="toggleSuffix(this)">converter</span>
+        <span class="suffix-pill active" onclick="toggleSuffix(this)">maker</span>
+        <span class="suffix-pill active" onclick="toggleSuffix(this)">finder</span>
+        <span class="suffix-pill active" onclick="toggleSuffix(this)">planner</span>
+        <span class="suffix-pill active" onclick="toggleSuffix(this)">tracker</span>
+        <span class="suffix-pill active" onclick="toggleSuffix(this)">builder</span>
+        <span class="suffix-pill active" onclick="toggleSuffix(this)">template</span>
+        <span class="suffix-pill active" onclick="toggleSuffix(this)">tester</span>
+        <span class="suffix-pill active" onclick="toggleSuffix(this)">analyzer</span>
+        <span class="suffix-pill active" onclick="toggleSuffix(this)">estimator</span>
+        <span class="suffix-pill active" onclick="toggleSuffix(this)">simulator</span>
+      </div>
+
+      <div class="hunt-filters">
+        <div class="hunt-filter-group">
+          <label>Max KD</label>
+          <input type="number" id="huntMaxKd" value="10" min="0" max="100">
+        </div>
+        <div class="hunt-filter-group">
+          <label>Min Volume</label>
+          <input type="number" id="huntMinVol" value="500" min="0">
+        </div>
+        <div class="hunt-filter-group">
+          <label>Search Mode</label>
+          <select id="huntSearchMode">
+            <option value="related">Related Keywords</option>
+            <option value="suggestions">Keyword Suggestions</option>
+            <option value="both">Both (Merge)</option>
+          </select>
+        </div>
+        <button class="btn-hunt" id="startHuntBtn" onclick="startNuggetHunt()">&#x26CF; Start Nugget Hunt</button>
+      </div>
+    </div>
+
+    <!-- Live Progress Section (hidden initially) -->
+    <div class="nugget-section" id="huntProgressSection" style="display:none">
+      <h3>Hunt Progress</h3>
+      <div class="hunt-current-combo" id="huntCurrentCombo">Preparing...</div>
+      <div class="hunt-progress">
+        <div class="hunt-progress-bar">
+          <div class="hunt-progress-fill" id="huntProgressFill" style="width:0%"></div>
+          <div class="hunt-progress-text" id="huntProgressText">0 / 0</div>
+        </div>
+      </div>
+      <div class="hunt-stats">
+        <div>Keywords scanned: <span class="stat-val" id="huntScanned">0</span></div>
+        <div>Nuggets found: <span class="stat-val" id="huntNuggetsFound">0</span></div>
+        <button class="btn-cancel-hunt" id="cancelHuntBtn" onclick="cancelHunt()">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Results Section (hidden initially) -->
+    <div id="huntResultsSection" style="display:none">
+
+      <!-- Summary Cards -->
+      <div class="nugget-summary" id="nuggetSummary">
+        <div class="nugget-card total">
+          <div class="card-value" id="summaryTotal">0</div>
+          <div class="card-label">Total Scanned</div>
+        </div>
+        <div class="nugget-card gold">
+          <div class="card-value" id="summaryGold">0</div>
+          <div class="card-label">Gold Nuggets</div>
+        </div>
+        <div class="nugget-card silver">
+          <div class="card-value" id="summarySilver">0</div>
+          <div class="card-label">Silver Nuggets</div>
+        </div>
+        <div class="nugget-card bronze">
+          <div class="card-value" id="summaryBronze">0</div>
+          <div class="card-label">Bronze Nuggets</div>
+        </div>
+      </div>
+
+      <!-- Tier filter tabs + export -->
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
+        <div class="tier-tabs" id="tierTabs">
+          <button class="tier-tab active" onclick="setNuggetTierFilter('all')">All <span class="tier-count" id="tierCountAll">0</span></button>
+          <button class="tier-tab" onclick="setNuggetTierFilter('gold')">Gold <span class="tier-count" id="tierCountGold">0</span></button>
+          <button class="tier-tab" onclick="setNuggetTierFilter('silver')">Silver <span class="tier-count" id="tierCountSilver">0</span></button>
+          <button class="tier-tab" onclick="setNuggetTierFilter('bronze')">Bronze <span class="tier-count" id="tierCountBronze">0</span></button>
+        </div>
+        <button class="icon-btn" onclick="exportNuggetCSV()">&#x2B07; Export Nuggets CSV</button>
+      </div>
+
+      <!-- Results Table -->
+      <div class="nugget-section" style="padding:0;overflow:hidden;">
+        <div style="padding:12px 16px;">
+          <input type="text" class="table-filter-input" id="nuggetTableFilter"
+                 placeholder="Filter nuggets..." oninput="renderNuggetResults()" style="width:280px;">
+          <span class="table-info" id="nuggetTableInfo" style="margin-left:10px;"></span>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th style="width:36px">#</th>
+              <th data-col="keyword" onclick="sortNuggetTable('keyword')">Keyword <span class="sort-arrow" id="nsort-keyword"></span></th>
+              <th data-col="volume" onclick="sortNuggetTable('volume')">Volume <span class="sort-arrow" id="nsort-volume"></span></th>
+              <th data-col="difficulty" onclick="sortNuggetTable('difficulty')">KD <span class="sort-arrow" id="nsort-difficulty"></span></th>
+              <th data-col="cpc" onclick="sortNuggetTable('cpc')">CPC <span class="sort-arrow" id="nsort-cpc"></span></th>
+              <th data-col="competition" onclick="sortNuggetTable('competition')">Comp <span class="sort-arrow" id="nsort-competition"></span></th>
+              <th data-col="trend" onclick="sortNuggetTable('trend')">Trend <span class="sort-arrow" id="nsort-trend"></span></th>
+              <th>Intent</th>
+              <th data-col="opportunity_score" onclick="sortNuggetTable('opportunity_score')">Opportunity <span class="sort-arrow" id="nsort-opportunity_score"></span></th>
+              <th data-col="niche" onclick="sortNuggetTable('niche')">Niche <span class="sort-arrow" id="nsort-niche"></span></th>
+              <th data-col="suffix" onclick="sortNuggetTable('suffix')">Suffix <span class="sort-arrow" id="nsort-suffix"></span></th>
+              <th>Tier</th>
+            </tr>
+          </thead>
+          <tbody id="nuggetBody"></tbody>
+        </table>
+        <div class="empty-state" id="nuggetEmptyState">
+          <div class="emoji">&#x26CF;</div>
+          <p>No nuggets yet. Start a hunt to find golden keyword opportunities.</p>
+        </div>
+        <div class="pagination" id="nuggetPagination"></div>
+      </div>
+    </div>
+
+    <!-- Hunt History -->
+    <div class="nugget-section" style="margin-top:16px;">
+      <div class="hunt-history-toggle" onclick="toggleHuntHistory()">
+        <span class="arrow" id="historyArrow">&#x25B6;</span> Hunt History
+      </div>
+      <div id="huntHistoryList" class="hunt-history-list" style="display:none"></div>
+    </div>
+
+  </div><!-- /nuggetHunterPanel -->
+
+  <!-- Content Strategy Panel -->
+  <div id="contentStrategyPanel" style="display:none">
+
+    <!-- Input Section -->
+    <div class="nugget-section">
+      <h3>&#x1F4C8; Content Strategy Generator</h3>
+      <p style="color:#666;font-size:13px;margin-bottom:16px;">Paste a SaaS homepage URL. AI analyzes the site, identifies competitors, and generates high-buying-intent content ideas across 6 categories — then researches keyword data for each one.</p>
+
+      <div style="display:flex;gap:10px;align-items:center;">
+        <input type="text" id="csUrlInput" placeholder="https://example.com" style="flex:1;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14px;">
+        <button class="btn-primary" id="csGenerateBtn" onclick="generateContentStrategy()" style="white-space:nowrap;">&#x1F9E0; Generate Strategy</button>
+      </div>
+      <div id="csStatus" style="margin-top:10px;font-size:13px;color:#7c3aed;display:none;"></div>
+    </div>
+
+    <!-- Results (hidden until generated) -->
+    <div id="csResults" style="display:none;">
+
+      <!-- Client Snapshot -->
+      <div class="nugget-section" id="csSnapshot">
+        <h3>&#x1F3AF; Client Snapshot</h3>
+        <div id="csSnapshotBody" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:13px;"></div>
+      </div>
+
+      <!-- Category Tabs -->
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;">
+        <button class="cs-cat-btn active" onclick="switchCsCategory('comparisons')">&#x2694; Comparisons <span class="cs-count" id="csCntComparisons">0</span></button>
+        <button class="cs-cat-btn" onclick="switchCsCategory('alternatives')">&#x1F504; Alternatives <span class="cs-count" id="csCntAlternatives">0</span></button>
+        <button class="cs-cat-btn" onclick="switchCsCategory('listicles')">&#x1F4DD; Listicles <span class="cs-count" id="csCntListicles">0</span></button>
+        <button class="cs-cat-btn" onclick="switchCsCategory('integrations')">&#x1F517; Integrations <span class="cs-count" id="csCntIntegrations">0</span></button>
+        <button class="cs-cat-btn" onclick="switchCsCategory('free_tools')">&#x1F6E0; Free Tools <span class="cs-count" id="csCntFreeTools">0</span></button>
+        <button class="cs-cat-btn" onclick="switchCsCategory('pillars')">&#x1F3D7; Pillars <span class="cs-count" id="csCntPillars">0</span></button>
+      </div>
+
+      <!-- Category Tables -->
+      <div class="nugget-section" style="padding:0;overflow:hidden;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;flex-wrap:wrap;gap:8px;">
+          <span class="table-info" id="csTableInfo"></span>
+          <div style="display:flex;gap:8px;">
+            <button class="icon-btn" onclick="researchCsKeywords()" id="csResearchBtn" title="Research keyword data for all ideas">&#x1F50D; Research Keywords</button>
+            <button class="icon-btn" onclick="exportCsCSV()">&#x2B07; Export CSV</button>
+          </div>
+        </div>
+        <table>
+          <thead id="csThead"></thead>
+          <tbody id="csTbody"></tbody>
+        </table>
+      </div>
+
+      <!-- Pillars view (separate) -->
+      <div id="csPillarsView" style="display:none;"></div>
+    </div>
+
+  </div><!-- /contentStrategyPanel -->
+
+  <!-- Cost Log Panel (always visible) -->
+  <div class="cost-log-panel" id="costLogPanel">
+    <div class="cost-log-header" onclick="toggleCostLog()">
+      <h3>&#x1F4B0; Search Cost Log</h3>
+      <div class="cost-log-summary">
+        <span>Searches: <strong id="clTotalSearches">0</strong></span>
+        <span>Keywords: <strong id="clTotalKeywords">0</strong></span>
+        <span>Total Cost: <strong id="clTotalCost">$0.0000</strong></span>
+        <span>Balance: <strong id="clBalance">—</strong></span>
+      </div>
+      <span class="cost-log-toggle" id="costLogToggle">&#x25BC;</span>
+    </div>
+    <div class="cost-log-body" id="costLogBody">
+      <div class="cost-log-empty" id="costLogEmpty">No searches yet. Costs will appear here as you search.</div>
+      <table class="cost-log-table" id="costLogTable" style="display:none">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Date &amp; Time</th>
+            <th>Keyword</th>
+            <th>Mode</th>
+            <th>Keywords Found</th>
+            <th>Cost</th>
+            <th>Balance After</th>
+            <th>Running Total</th>
+          </tr>
+        </thead>
+        <tbody id="costLogTableBody"></tbody>
+      </table>
+    </div>
+    <div class="cost-log-footer">
+      <span id="clFooterNote">Cost = balance before − balance after each search</span>
+      <button onclick="clearCostLog()">Clear Log</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- Settings Modal -->
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal">
+    <h2>Settings</h2>
+
+    <label>Data Source</label>
+    <select id="settDataSource" onchange="toggleSettingsFields()">
+      <option value="demo">Demo (no API keys needed)</option>
+      <option value="dataforseo">DataForSEO API</option>
+    </select>
+
+    <div id="dataforseoFields" style="display:none">
+      <label>DataForSEO Login (email)</label>
+      <input type="text" id="settDfsLogin" placeholder="your@email.com">
+      <label>DataForSEO API Password</label>
+      <input type="password" id="settDfsPassword" placeholder="API password">
+
+      <div style="margin-top: 12px;">
+        <button class="btn-small" onclick="testConnection()" id="testConnBtn">Test Connection</button>
+        <div id="testResult"></div>
+      </div>
+    </div>
+
+    <label style="margin-top:16px">OpenAI API Key <span style="font-weight:400;color:#999">(for Content Strategy)</span></label>
+    <input type="password" id="settOpenaiKey" placeholder="sk-...">
+    <div style="font-size:11px;color:#999;margin-top:2px;">Uses gpt-4o-mini (~$0.01 per strategy). Get key at platform.openai.com</div>
+
+    <label style="margin-top:16px">Location</label>
+    <select id="settLocation">
+      <option value="2840">United States</option>
+      <option value="2826">United Kingdom</option>
+      <option value="2124">Canada</option>
+      <option value="2036">Australia</option>
+      <option value="2276">Germany</option>
+      <option value="2250">France</option>
+      <option value="2724">Spain</option>
+      <option value="2380">Italy</option>
+      <option value="2076">Brazil</option>
+      <option value="2356">India</option>
+      <option value="2392">Japan</option>
+      <option value="2484">Mexico</option>
+      <option value="2528">Netherlands</option>
+    </select>
+
+    <label>Language</label>
+    <select id="settLanguage">
+      <option value="en">English</option>
+      <option value="de">German</option>
+      <option value="fr">French</option>
+      <option value="es">Spanish</option>
+      <option value="it">Italian</option>
+      <option value="pt">Portuguese</option>
+      <option value="ja">Japanese</option>
+      <option value="nl">Dutch</option>
+    </select>
+
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeSettings()">Cancel</button>
+      <button class="btn-primary" onclick="saveSettings()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Niche Explorer Modal -->
+<div class="niche-modal-overlay" id="nicheModal" onclick="if(event.target===this)closeNicheExplorer()">
+  <div class="niche-modal">
+    <div class="niche-modal-header">
+      <h3>&#x1F9ED; Niche Explorer</h3>
+      <p>Answer these questions about your product. We'll generate seed keywords covering every angle of your niche — different audiences, problems, competitors, and community slang.</p>
+      <button class="niche-close" onclick="closeNicheExplorer()">&times;</button>
+    </div>
+    <div class="niche-modal-body">
+
+      <div id="nicheSteps"></div>
+      <button class="niche-add-btn" onclick="addNicheStep()" style="width:100%;margin-bottom:12px;padding:8px;border:1.5px dashed #d0d0d0;border-radius:8px;background:none;color:#7c3aed;font-size:13px;font-weight:600;cursor:pointer;">+ Add Custom Prompt</button>
+
+      <!-- Generated seeds preview -->
+      <div class="niche-seeds-preview" id="nicheSeedsPreview" style="display:none">
+        <h4>Generated Seed Keywords (<span id="nicheSeedCount">0</span> angles)</h4>
+        <div class="niche-seed-list" id="nicheSeedList"></div>
+      </div>
+    </div>
+
+    <div class="niche-progress" id="nicheProgress">
+      <div class="niche-progress-bar"><div class="niche-progress-fill" id="nicheProgressFill"></div></div>
+      <div class="niche-progress-text" id="nicheProgressText">Searching...</div>
+    </div>
+
+    <div class="niche-modal-footer">
+      <span class="niche-seed-count" id="nicheFooterCount">Fill in at least question 1 to generate seeds</span>
+      <button class="niche-run-btn" id="nicheRunBtn" onclick="runNicheExplorer()" disabled>&#x1F680; Run All Seeds</button>
+    </div>
+  </div>
+</div>
+
+<!-- SERP Preview Modal -->
+<div class="serp-modal-overlay" id="serpModal" onclick="if(event.target===this)closeSerpModal()">
+  <div class="serp-modal">
+    <div class="serp-modal-header">
+      <h3>&#x1F50D; SERP Analysis — <span class="serp-kw" id="serpModalKeyword"></span></h3>
+      <button class="serp-modal-close" onclick="closeSerpModal()">&times;</button>
+    </div>
+    <div class="serp-emd-banner" id="serpEmdBanner" style="display:none"></div>
+    <div class="serp-modal-body" id="serpModalBody">
+      <div class="domain-loading" id="serpLoading">Loading SERP results...</div>
+      <div id="serpResults"></div>
+    </div>
+    <div class="serp-modal-footer">
+      <span>Top 10 Google results via DataForSEO</span>
+      <span id="serpCostNote">Cost: ~$0.002</span>
+    </div>
+  </div>
+</div>
+
+<!-- Domain Check Modal -->
+<div class="domain-modal-overlay" id="domainModal" onclick="if(event.target===this)closeDomainModal()">
+  <div class="domain-modal" style="position:relative">
+    <div class="domain-modal-header">
+      <h3>&#x1F310; Domain Availability — <span class="domain-kw" id="domainModalKeyword"></span></h3>
+      <button class="domain-modal-close" onclick="closeDomainModal()">&times;</button>
+    </div>
+    <div class="domain-seo-tip">
+      <strong>SEO Tip:</strong> .com is king for SEO &amp; trust. Then .net &gt; .org &gt; .co. Avoid subdomains like .it.com — Google treats them differently.
+    </div>
+    <div class="domain-modal-body" id="domainModalBody">
+      <div class="domain-loading" id="domainLoading">Checking domains...</div>
+      <div class="domain-results" id="domainResults"></div>
+    </div>
+    <div class="domain-modal-footer">
+      Free domain checks via RDAP &bull; No API key needed &bull; Click "Register" to buy on Namecheap
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+/* -- State --------------------------------------------------------------- */
+let allKeywords = [];
+let filteredKeywords = [];
+let displayedKeywords = [];  // after text filter
+let segments = [];
+let activeSegments = new Set();
+let currentSort = { col: 'volume', order: 'desc' };
+let filtersVisible = true;
+let currentPage = 1;
+let domainCache = {};  // keyword -> { '.com': true/false, '.net': true/false, ... } | 'checking'
+
+// Configurable TLD list - user can add/remove from the UI
+const ALL_TLDS = ['.com', '.net', '.org', '.io', '.ai', '.app', '.dev', '.co', '.us', '.info'];
+let activeTlds = JSON.parse(localStorage.getItem('kw_active_tlds') || 'null') || ['.com', '.net', '.org', '.app', '.ai', '.io'];
+
+function saveActiveTlds() { localStorage.setItem('kw_active_tlds', JSON.stringify(activeTlds)); }
+
+let autoCheckRunning = false;
+const PAGE_SIZE = 50;
+let searchPollingTimer = null;
+
+/* -- Nugget Hunter state ------------------------------------------------- */
+let nuggetHuntId = null;
+let nuggetResults = [];
+let nuggetTierFilter = 'all';
+let huntPollingTimer = null;
+let nuggetSort = { col: 'volume', order: 'desc' };
+let nuggetPage = 1;
+const NUGGET_PAGE_SIZE = 50;
+let huntHistoryOpen = false;
+
+/* -- SERP feature display labels ----------------------------------------- */
+const SERP_LABELS = {
+  'featured_snippet': 'Featured',
+  'local_pack': 'Local',
+  'video': 'Video',
+  'image': 'Images',
+  'knowledge_graph': 'Knowledge',
+  'people_also_ask': 'PAA',
+  'shopping': 'Shopping',
+  'top_stories': 'News',
+  'twitter': 'Twitter',
+  'sitelinks': 'Sitelinks',
+  'carousel': 'Carousel',
+  'map': 'Map',
+  'organic': '',
+  'paid': 'Ads',
+  'math_solver': 'Math',
+  'currency_box': 'Currency',
+  'find_results_on': '',
+  'scholarly_articles': 'Scholar',
+  'multi_carousel': '',
+  'recipes': 'Recipes',
+  'related_searches': '',
+};
+
+/* -- API helpers --------------------------------------------------------- */
+function showToast(msg, isError) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (isError ? ' error' : '');
+  setTimeout(() => t.className = 'toast', 3000);
+}
+
+async function api(method, url, body) {
+  try {
+    const opts = { method, headers: {} };
+    if (body && !(body instanceof FormData)) {
+      opts.headers['Content-Type'] = 'application/json';
+      opts.body = JSON.stringify(body);
+    } else if (body) {
+      opts.body = body;
+    }
+    const resp = await fetch(url, opts);
+    const data = await resp.json();
+    if (data.error) { showToast(data.error, true); }
+    return data;
+  } catch (e) {
+    showToast('Network error: ' + e.message, true);
+    return {};
+  }
+}
+
+/* -- Cost Log ------------------------------------------------------------ */
+let costLog = [];
+let costLogCollapsed = false;
+
+function loadCostLog() {
+  try {
+    const saved = localStorage.getItem('kwCostLog');
+    if (saved) costLog = JSON.parse(saved);
+  } catch(e) { costLog = []; }
+  renderCostLog();
+}
+
+function saveCostLog() {
+  localStorage.setItem('kwCostLog', JSON.stringify(costLog));
+}
+
+function addCostLogEntry(entry) {
+  costLog.push(entry);
+  saveCostLog();
+  renderCostLog();
+}
+
+function clearCostLog() {
+  if (!confirm('Clear the entire cost log?')) return;
+  costLog = [];
+  saveCostLog();
+  renderCostLog();
+}
+
+function toggleCostLog() {
+  costLogCollapsed = !costLogCollapsed;
+  document.getElementById('costLogBody').classList.toggle('collapsed', costLogCollapsed);
+  document.getElementById('costLogToggle').classList.toggle('collapsed', costLogCollapsed);
+}
+
+function renderCostLog() {
+  const empty = document.getElementById('costLogEmpty');
+  const table = document.getElementById('costLogTable');
+  const tbody = document.getElementById('costLogTableBody');
+
+  if (costLog.length === 0) {
+    empty.style.display = 'block';
+    table.style.display = 'none';
+    updateCostLogSummary();
+    return;
+  }
+
+  empty.style.display = 'none';
+  table.style.display = 'table';
+
+  let runningTotal = 0;
+  tbody.innerHTML = costLog.map((e, i) => {
+    runningTotal += e.cost;
+    const modeClass = e.mode === 'merged' ? 'merged' : e.mode === 'keyword_suggestions' ? 'suggestions' : 'related';
+    const modeLabel = e.mode === 'merged' ? 'Merged' : e.mode === 'keyword_suggestions' ? 'Suggestions' : 'Related';
+    return `<tr>
+      <td>${i + 1}</td>
+      <td>${e.datetime}</td>
+      <td><strong>${escapeHtml(e.keyword)}</strong></td>
+      <td><span class="mode-badge ${modeClass}">${modeLabel}</span></td>
+      <td class="kw-count-cell">${e.keywordsFound.toLocaleString()}</td>
+      <td class="cost-cell">$${e.cost.toFixed(4)}</td>
+      <td>$${e.balanceAfter.toFixed(2)}</td>
+      <td class="cost-cell">$${runningTotal.toFixed(4)}</td>
+    </tr>`;
+  }).join('');
+
+  updateCostLogSummary();
+
+  // Auto-scroll to bottom
+  const body = document.getElementById('costLogBody');
+  body.scrollTop = body.scrollHeight;
+}
+
+function escapeHtml(str) {
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+function updateCostLogSummary() {
+  const totalSearches = costLog.length;
+  const totalKeywords = costLog.reduce((s, e) => s + e.keywordsFound, 0);
+  const totalCost = costLog.reduce((s, e) => s + e.cost, 0);
+  const lastBalance = costLog.length > 0 ? costLog[costLog.length - 1].balanceAfter : null;
+
+  document.getElementById('clTotalSearches').textContent = totalSearches;
+  document.getElementById('clTotalKeywords').textContent = totalKeywords.toLocaleString();
+  document.getElementById('clTotalCost').textContent = '$' + totalCost.toFixed(4);
+  document.getElementById('clBalance').textContent = lastBalance !== null ? '$' + lastBalance.toFixed(2) : '—';
+
+  // Also update the header cost tracker
+  const tracker = document.getElementById('costTracker');
+  if (totalSearches > 0) {
+    tracker.style.display = 'flex';
+    document.getElementById('lastSearchCost').textContent = '$' + costLog[costLog.length - 1].cost.toFixed(4);
+    document.getElementById('sessionCost').textContent = '$' + totalCost.toFixed(4);
+    document.getElementById('searchCount').textContent = totalSearches;
+  }
+}
+
+async function getBalance() {
+  const data = await api('GET', '/api/balance');
+  if (data.connected && data.balance !== undefined) return data.balance;
+  return null;
+}
+
+/* -- Domain Check (bulk .com/.net/.org for table) ------------------------ */
+function renderTldPicker() {
+  const picker = document.getElementById('tldPicker');
+  picker.innerHTML = '<span class="tld-picker-label">TLDs:</span>' + ALL_TLDS.map(tld =>
+    `<span class="tld-chip ${activeTlds.includes(tld) ? 'active' : ''}" onclick="toggleTld('${tld}')">${tld}</span>`
+  ).join('');
+}
+
+function toggleTld(tld) {
+  if (activeTlds.includes(tld)) {
+    if (activeTlds.length <= 1) return; // keep at least 1
+    activeTlds = activeTlds.filter(t => t !== tld);
+  } else {
+    activeTlds.push(tld);
+  }
+  saveActiveTlds();
+  domainCache = {}; // clear cache since TLDs changed
+  renderTldPicker();
+  renderTable();
+  scheduleAutoCheck(); // re-check with new TLDs
+}
+
+async function checkDomainsForPage() {
+  // Force re-check: clear cache for current page keywords
+  const start = (currentPage - 1) * PAGE_SIZE;
+  const pageItems = displayedKeywords.slice(start, start + PAGE_SIZE);
+  pageItems.forEach(kw => { delete domainCache[kw.keyword]; });
+  scheduleAutoCheck();
+}
+
+let autoCheckTimer = null;
+
+function scheduleAutoCheck() {
+  // Debounce: wait 500ms after last call before actually checking
+  clearTimeout(autoCheckTimer);
+  autoCheckTimer = setTimeout(() => autoCheckDomainsForPage(), 500);
+}
+
+async function autoCheckDomainsForPage() {
+  if (autoCheckRunning) return;
+  const start = (currentPage - 1) * PAGE_SIZE;
+  const pageItems = displayedKeywords.slice(start, start + PAGE_SIZE);
+  const toCheck = pageItems.filter(kw => domainCache[kw.keyword] === undefined).map(kw => kw.keyword);
+
+  if (toCheck.length === 0) return;
+
+  autoCheckRunning = true;
+
+  // Mark as checking (update DOM directly, don't re-render full table)
+  toCheck.forEach(kw => { domainCache[kw] = 'checking'; });
+  renderTable();
+
+  // Small batches: 3 keywords at a time to avoid RDAP rate limits
+  const batchSize = 3;
+  for (let i = 0; i < toCheck.length; i += batchSize) {
+    const batch = toCheck.slice(i, i + batchSize);
+    try {
+      const data = await api('POST', '/api/domain-check-bulk', { keywords: batch, tlds: activeTlds });
+      if (data.results) {
+        for (const [kw, tldMap] of Object.entries(data.results)) {
+          const cache = {};
+          for (const [tld, info] of Object.entries(tldMap)) {
+            cache[tld] = info.available;  // true = available, false = taken, null = unknown
+          }
+          domainCache[kw] = cache;
+        }
+      }
+      // Mark failed ones as empty result (not stuck on 'checking')
+      batch.forEach(kw => {
+        if (domainCache[kw] === 'checking') domainCache[kw] = {};
+      });
+    } catch (e) {
+      // On error, clear checking state so they don't stay stuck
+      batch.forEach(kw => { if (domainCache[kw] === 'checking') domainCache[kw] = {}; });
+    }
+    renderTable();
+    // Small delay between batches to avoid RDAP throttling
+    if (i + batchSize < toCheck.length) await new Promise(r => setTimeout(r, 300));
+  }
+
+  autoCheckRunning = false;
+}
+
+/* -- Domain Check (detailed modal) --------------------------------------- */
+async function checkDomain(keyword) {
+  const modal = document.getElementById('domainModal');
+  const kwEl = document.getElementById('domainModalKeyword');
+  const body = document.getElementById('domainModalBody');
+  const loading = document.getElementById('domainLoading');
+  const results = document.getElementById('domainResults');
+
+  kwEl.textContent = keyword;
+  loading.style.display = 'block';
+  results.innerHTML = '';
+  modal.classList.add('open');
+
+  const data = await api('GET', '/api/domain-check?keyword=' + encodeURIComponent(keyword));
+
+  loading.style.display = 'none';
+
+  if (data.error) {
+    results.innerHTML = `<div class="domain-loading" style="color:#dc2626;">${escHtml(data.error)}</div>`;
+    return;
+  }
+
+  if (!data.domains || data.domains.length === 0) {
+    results.innerHTML = '<div class="domain-loading">No results returned.</div>';
+    return;
+  }
+
+  // SEO rank order for TLDs
+  const tldRank = {'.com':1, '.net':2, '.org':3, '.co':4, '.io':5, '.ai':6, '.app':7, '.dev':8, '.us':9, '.info':10};
+
+  const html = data.domains.map(d => {
+    const parts = d.domain.split('.');
+    const tld = '.' + parts.slice(1).join('.');
+    const base = parts[0];
+    const rank = tldRank[tld] || 99;
+    const seoLabel = rank <= 3 ? `<span style="font-size:10px;color:#16a34a;margin-left:4px;">★ Best for SEO</span>` : '';
+
+    let statusIcon, tag, registerBtn;
+    if (d.available && !d.is_premium) {
+      statusIcon = '<div class="domain-status available">✓</div>';
+      tag = '<span class="domain-tag avail">Available</span>';
+      registerBtn = `<a class="domain-register" href="https://www.namecheap.com/domains/registration/results/?domain=${encodeURIComponent(d.domain)}" target="_blank" rel="noopener">Register</a>`;
+    } else if (d.available && d.is_premium) {
+      statusIcon = '<div class="domain-status premium">$</div>';
+      tag = `<span class="domain-tag prem">Premium ${d.premium_price ? '$' + d.premium_price : ''}</span>`;
+      registerBtn = `<a class="domain-register" style="background:#d97706;" href="https://www.namecheap.com/domains/registration/results/?domain=${encodeURIComponent(d.domain)}" target="_blank" rel="noopener">View</a>`;
+    } else {
+      statusIcon = '<div class="domain-status taken">✗</div>';
+      tag = '<span class="domain-tag not-avail">Taken</span>';
+      registerBtn = `<a class="domain-register" style="background:#6b7280;" href="https://www.namecheap.com/domains/registration/results/?domain=${encodeURIComponent(d.domain)}" target="_blank" rel="noopener">Alternatives</a>`;
+    }
+
+    return `<div class="domain-result-row">
+      ${statusIcon}
+      <div class="domain-name">${escHtml(base)}<span class="tld">${escHtml(tld)}</span>${seoLabel}</div>
+      ${tag}
+      ${registerBtn}
+    </div>`;
+  }).join('');
+
+  results.innerHTML = html;
+}
+
+function closeDomainModal() {
+  document.getElementById('domainModal').classList.remove('open');
+}
+
+/* -- SERP Preview -------------------------------------------------------- */
+async function serpPreview(keyword) {
+  const modal = document.getElementById('serpModal');
+  const kwEl = document.getElementById('serpModalKeyword');
+  const loading = document.getElementById('serpLoading');
+  const results = document.getElementById('serpResults');
+  const banner = document.getElementById('serpEmdBanner');
+
+  kwEl.textContent = keyword;
+  loading.style.display = 'block';
+  results.innerHTML = '';
+  banner.style.display = 'none';
+  modal.classList.add('open');
+
+  const data = await api('GET', '/api/serp-preview?keyword=' + encodeURIComponent(keyword));
+
+  loading.style.display = 'none';
+
+  if (data.error) {
+    results.innerHTML = `<div class="domain-loading" style="color:#dc2626;">${escHtml(data.error)}</div>`;
+    return;
+  }
+
+  if (!data.results || data.results.length === 0) {
+    results.innerHTML = '<div class="domain-loading">No SERP results returned.</div>';
+    return;
+  }
+
+  // EMD opportunity banner
+  const baseDomain = data.base_domain || '';
+  if (!data.has_exact_match) {
+    banner.className = 'serp-emd-banner opportunity';
+    banner.innerHTML = `&#x1F4A1; <strong>EMD Opportunity!</strong> No exact match domain (${escHtml(baseDomain)}.com/net/org) found in top 10. An exact match domain could rank here.`;
+    banner.style.display = 'flex';
+  } else {
+    banner.className = 'serp-emd-banner taken';
+    banner.innerHTML = `&#x26A0; An exact match domain is already ranking in the top 10 for this keyword.`;
+    banner.style.display = 'flex';
+  }
+
+  // Render results
+  const html = data.results.map(r => {
+    const rankClass = r.rank <= 3 ? 'top3' : '';
+    const rDomainBase = (r.domain || '').split('.')[0].toLowerCase();
+    const isExact = rDomainBase === baseDomain;
+    const isSubdomain = (r.domain || '').split('.').length > 2;
+
+    let domainTag = '';
+    if (isExact) {
+      domainTag = '<span class="serp-tag emd">&#x2B50; Exact Match Domain</span>';
+    } else if (isSubdomain) {
+      domainTag = '<span class="serp-tag subdomain">Subdomain</span>';
+    } else {
+      domainTag = '<span class="serp-tag generic">Generic Domain</span>';
+    }
+
+    return `<div class="serp-result">
+      <div class="serp-result-header">
+        <span class="serp-result-rank ${rankClass}">${r.rank}</span>
+        <a class="serp-result-title" href="${escHtml(r.url)}" target="_blank" rel="noopener">${escHtml(r.title)}</a>
+      </div>
+      <div class="serp-result-url">${escHtml(r.url)}</div>
+      <div class="serp-result-desc">${escHtml(r.description || '')}</div>
+      <div class="serp-result-tags">
+        ${domainTag}
+        <span class="serp-tag generic">${escHtml(r.domain)}</span>
+      </div>
+    </div>`;
+  }).join('');
+
+  results.innerHTML = html;
+}
+
+function closeSerpModal() {
+  document.getElementById('serpModal').classList.remove('open');
+}
+
+/* -- Niche Explorer ------------------------------------------------------ */
+let nicheSeeds = [];
+
+let nicheStepData = [
+  { id: 'product', label: 'What does your product/tool do?', hint: 'Describe it in plain language. e.g. "A tool that generates color themes for websites"', placeholder: 'e.g. A UI tool that creates themes for websites and apps', type: 'input', value: '', chips: null },
+  { id: 'audience', label: 'Who is it for?', hint: 'Pick preset audiences or type custom ones', placeholder: 'Add custom audiences (comma-separated)', type: 'chips', value: '', chips: ['Developers','Designers','Agencies','Indie Hackers','No-Code Builders','Freelancers','Business Owners','Vibecoding'], selectedChips: [] },
+  { id: 'problem', label: 'What problem does it solve?', hint: 'What frustration or pain point do people have?', placeholder: 'e.g. Takes too long to pick colors and fonts', type: 'input', value: '' },
+  { id: 'competitors', label: 'What tools do people currently use instead?', hint: 'Competitors, alternatives, workarounds — comma-separated', placeholder: 'e.g. Figma, Canva, Coolors, Tailwind CSS', type: 'input', value: '' },
+  { id: 'features', label: 'Key features or sub-tools?', hint: 'What specific things can your tool do? Comma-separated', placeholder: 'e.g. color palette, font pairing, CSS variables', type: 'input', value: '' },
+  { id: 'intent', label: 'What value does it deliver?', hint: 'What does the user get? Saves time, saves money, higher quality, easier?', placeholder: 'e.g. saves hours of design work, professional results without hiring', type: 'input', value: '' },
+];
+
+function renderNicheSteps() {
+  const container = document.getElementById('nicheSteps');
+  container.innerHTML = nicheStepData.map((step, idx) => {
+    const isFirst = idx === 0;
+    const isLast = idx === nicheStepData.length - 1;
+    const isCustom = !!step.custom;
+    const num = idx + 1;
+
+    let controls = '<div class="niche-step-controls">';
+    if (!isFirst) controls += `<button onclick="moveNicheStep(${idx}, -1)" title="Move up">&uarr;</button>`;
+    if (!isLast) controls += `<button onclick="moveNicheStep(${idx}, 1)" title="Move down">&darr;</button>`;
+    if (isCustom) controls += `<button class="remove-btn" onclick="removeNicheStep(${idx})" title="Remove">&times;</button>`;
+    controls += '</div>';
+
+    let inputHtml = '';
+    if (step.type === 'chips') {
+      const chipsHtml = (step.chips || []).map(chip => {
+        const sel = (step.selectedChips || []).includes(chip) ? ' selected' : '';
+        return `<span class="niche-chip${sel}" onclick="toggleNicheChip(${idx}, this)">${escHtml(chip)}</span>`;
+      }).join('');
+      inputHtml = `<div class="niche-chips" id="nicheChips_${idx}">${chipsHtml}</div>
+        <input type="text" value="${escHtml(step.value || '')}" placeholder="${escHtml(step.placeholder)}" oninput="nicheStepData[${idx}].value=this.value;generateNicheSeeds()" style="margin-top:6px">`;
+    } else {
+      inputHtml = `<input type="text" value="${escHtml(step.value || '')}" placeholder="${escHtml(step.placeholder)}" oninput="nicheStepData[${idx}].value=this.value;generateNicheSeeds()">`;
+    }
+
+    return `<div class="niche-step">
+      <div class="niche-step-header">
+        <label><span class="step-num">${num}</span><span contenteditable="true" onblur="nicheStepData[${idx}].label=this.textContent.trim()||nicheStepData[${idx}].label">${escHtml(step.label)}</span></label>
+        ${controls}
+      </div>
+      <div class="hint">${escHtml(step.hint)}</div>
+      ${inputHtml}
+    </div>`;
+  }).join('');
+}
+
+function toggleNicheChip(stepIdx, el) {
+  el.classList.toggle('selected');
+  const chip = el.textContent.trim();
+  const step = nicheStepData[stepIdx];
+  if (!step.selectedChips) step.selectedChips = [];
+  const i = step.selectedChips.indexOf(chip);
+  if (i >= 0) step.selectedChips.splice(i, 1);
+  else step.selectedChips.push(chip);
+  generateNicheSeeds();
+}
+
+function addNicheStep() {
+  nicheStepData.push({ id: 'custom_' + Date.now(), label: 'Custom prompt', hint: 'Enter your own search angle', placeholder: 'e.g. specific terms your audience uses', type: 'input', value: '', custom: true });
+  renderNicheSteps();
+}
+
+function moveNicheStep(index, direction) {
+  const target = index + direction;
+  if (target < 0 || target >= nicheStepData.length) return;
+  // Save current input values from DOM before re-rendering
+  syncNicheInputValues();
+  const temp = nicheStepData[index];
+  nicheStepData[index] = nicheStepData[target];
+  nicheStepData[target] = temp;
+  renderNicheSteps();
+  generateNicheSeeds();
+}
+
+function removeNicheStep(index) {
+  if (!nicheStepData[index].custom) return;
+  nicheStepData.splice(index, 1);
+  renderNicheSteps();
+  generateNicheSeeds();
+}
+
+/** Sync current DOM input values back into nicheStepData before re-render */
+function syncNicheInputValues() {
+  const container = document.getElementById('nicheSteps');
+  if (!container) return;
+  const steps = container.querySelectorAll('.niche-step');
+  steps.forEach((stepEl, idx) => {
+    if (idx >= nicheStepData.length) return;
+    const input = stepEl.querySelector('input[type="text"]:last-of-type') || stepEl.querySelector('input[type="text"]');
+    if (input) nicheStepData[idx].value = input.value;
+    // Sync chips
+    if (nicheStepData[idx].type === 'chips') {
+      nicheStepData[idx].selectedChips = Array.from(stepEl.querySelectorAll('.niche-chip.selected')).map(c => c.textContent.trim());
+    }
+  });
+}
+
+function openNicheExplorer() {
+  document.getElementById('nicheModal').classList.add('open');
+  renderNicheSteps();
+  generateNicheSeeds();
+}
+
+function closeNicheExplorer() {
+  document.getElementById('nicheModal').classList.remove('open');
+}
+
+function toggleChip(el) {
+  el.classList.toggle('selected');
+  generateNicheSeeds();
+}
+
+function getSelectedChips(containerId) {
+  const el = document.getElementById(containerId);
+  if (!el) return [];
+  return Array.from(el.querySelectorAll('.niche-chip.selected'))
+    .map(c => c.textContent.trim());
+}
+
+function splitComma(str) {
+  return str.split(',').map(s => s.trim()).filter(s => s.length > 0);
+}
+
+/**
+ * Read step values from the DOM (handles both chips and input types).
+ * Returns an object keyed by step id with the current value.
+ */
+function readNicheStepValues() {
+  const vals = {};
+  const container = document.getElementById('nicheSteps');
+  if (!container) return vals;
+  const steps = container.querySelectorAll('.niche-step');
+  steps.forEach((stepEl, idx) => {
+    if (idx >= nicheStepData.length) return;
+    const step = nicheStepData[idx];
+    if (step.type === 'chips') {
+      const selected = Array.from(stepEl.querySelectorAll('.niche-chip.selected')).map(c => c.textContent.trim());
+      const inputEl = stepEl.querySelector('input[type="text"]');
+      const custom = inputEl ? splitComma(inputEl.value) : [];
+      vals[step.id] = { audiences: [...selected, ...custom] };
+    } else {
+      const inputEl = stepEl.querySelector('input[type="text"]');
+      vals[step.id] = inputEl ? inputEl.value.trim() : '';
+    }
+  });
+  return vals;
+}
+
+/**
+ * Universal seed generation engine.
+ * Reads from nicheStepData array dynamically.
+ */
+function generateNicheSeeds() {
+  const vals = readNicheStepValues();
+  const product = vals.product || '';
+  const audiences = vals.audience ? vals.audience.audiences : [];
+  const problem = vals.problem || '';
+  const competitors = typeof vals.competitors === 'string' ? splitComma(vals.competitors) : [];
+  const features = typeof vals.features === 'string' ? splitComma(vals.features) : [];
+  const intentVal = vals.intent || '';
+
+  const seeds = [];
+  const addSeed = (text, category) => {
+    const clean = text.toLowerCase().trim();
+    if (clean && clean.length >= 3 && !seeds.find(s => s.text === clean)) {
+      seeds.push({ text: clean, category });
+    }
+  };
+
+  if (!product) {
+    document.getElementById('nicheSeedsPreview').style.display = 'none';
+    document.getElementById('nicheFooterCount').textContent = 'Fill in at least question 1 to generate seeds';
+    document.getElementById('nicheRunBtn').disabled = true;
+    nicheSeeds = [];
+    return;
+  }
+
+  // Extract core noun phrases from the product description
+  const words = product.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(w =>
+    w.length > 2 && !['the','a','an','and','or','for','that','this','with','from','into','tool','app'].includes(w)
+  );
+
+  // --- CATEGORY 1: Direct tool/product searches ---
+  const corePhrases = [];
+  if (words.length >= 2) {
+    for (let i = 0; i < words.length - 1; i++) {
+      corePhrases.push(words[i] + ' ' + words[i+1]);
+    }
+    if (words.length >= 3) {
+      for (let i = 0; i < words.length - 2; i++) {
+        corePhrases.push(words[i] + ' ' + words[i+1] + ' ' + words[i+2]);
+      }
+    }
+  }
+  const toolSuffixes = ['tool', 'generator', 'builder', 'creator', 'maker', 'app', 'software'];
+  const bestPhrase = corePhrases[0] || words.join(' ');
+  toolSuffixes.forEach(suffix => {
+    addSeed(bestPhrase + ' ' + suffix, 'direct');
+  });
+  addSeed(bestPhrase, 'direct');
+  addSeed('online ' + bestPhrase, 'direct');
+  addSeed('free ' + bestPhrase, 'direct');
+  addSeed('best ' + bestPhrase, 'direct');
+
+  // --- CATEGORY 2: Audience-based ---
+  audiences.forEach(aud => {
+    const audLower = aud.toLowerCase();
+    addSeed(bestPhrase + ' for ' + audLower, 'audience');
+    addSeed(audLower + ' ' + (words[words.length - 1] || bestPhrase) + ' tools', 'audience');
+    addSeed('best tools for ' + audLower, 'audience');
+  });
+
+  // --- CATEGORY 3: Problem/pain-point searches ---
+  if (problem) {
+    const probWords = problem.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(w => w.length > 2);
+    if (probWords.length >= 2) {
+      addSeed('how to ' + probWords.slice(0, 4).join(' '), 'problem');
+      addSeed(probWords.slice(0, 3).join(' '), 'problem');
+    }
+    addSeed('how to ' + bestPhrase, 'problem');
+    addSeed(bestPhrase + ' easy', 'problem');
+    addSeed(bestPhrase + ' fast', 'problem');
+    addSeed(bestPhrase + ' automatically', 'problem');
+  }
+
+  // --- CATEGORY 4: Competitor alternatives ---
+  competitors.forEach(comp => {
+    const compLower = comp.toLowerCase().trim();
+    addSeed(compLower + ' alternative', 'competitor');
+    addSeed(compLower + ' vs', 'competitor');
+    addSeed('better than ' + compLower, 'competitor');
+    addSeed(compLower + ' free alternative', 'competitor');
+  });
+
+  // --- CATEGORY 5: Feature-specific ---
+  features.forEach(feat => {
+    const featLower = feat.toLowerCase().trim();
+    addSeed(featLower + ' generator', 'feature');
+    addSeed(featLower + ' tool', 'feature');
+    addSeed('online ' + featLower, 'feature');
+    addSeed(featLower, 'feature');
+  });
+
+  // --- CATEGORY 6: Buyer intent / value-based ---
+  if (intentVal) {
+    const intentTerms = splitComma(intentVal);
+    intentTerms.forEach(term => {
+      const t = term.toLowerCase().trim();
+      addSeed(t + ' ' + bestPhrase, 'intent');
+    });
+    // Standard buyer intent patterns
+    addSeed('save time ' + bestPhrase, 'intent');
+    addSeed(bestPhrase + ' faster', 'intent');
+    addSeed('automate ' + bestPhrase, 'intent');
+    addSeed('affordable ' + bestPhrase, 'intent');
+    addSeed('cheap ' + bestPhrase, 'intent');
+    addSeed('free ' + bestPhrase, 'intent');
+    addSeed('professional ' + bestPhrase, 'intent');
+    addSeed('better ' + bestPhrase, 'intent');
+    addSeed('high quality ' + bestPhrase, 'intent');
+  }
+
+  // --- CATEGORY 7: Community/trend slang ---
+  const communityTerms = {
+    'Developers': ['dev tools', 'github', 'npm package', 'cli tool', 'open source'],
+    'Designers': ['design system', 'ui kit', 'design tokens', 'figma plugin'],
+    'Agencies': ['agency tools', 'client deliverable', 'white label', 'agency workflow'],
+    'Indie Hackers': ['ship fast', 'saas boilerplate', 'indie hacker tools', 'micro saas'],
+    'No-Code Builders': ['no code', 'low code', 'drag and drop', 'without coding'],
+    'Freelancers': ['freelance tools', 'client project', 'quick prototype'],
+    'Business Owners': ['small business', 'diy website', 'affordable'],
+    'Vibecoding': ['vibecoding', 'vibe coding tools', 'ai coding', 'cursor ai'],
+  };
+  audiences.forEach(aud => {
+    const terms = communityTerms[aud] || [];
+    terms.forEach(term => {
+      addSeed(term + ' ' + (words[0] || ''), 'community');
+    });
+  });
+
+  // --- CATEGORY 8: Use-case based ---
+  const useCasePatterns = ['for website', 'for app', 'for landing page', 'for saas',
+    'for ecommerce', 'for portfolio', 'for dashboard', 'for startup'];
+  useCasePatterns.forEach(uc => {
+    addSeed(bestPhrase + ' ' + uc, 'usecase');
+  });
+
+  // --- PROMPT CHAINING: Cross-pollinate top seeds ---
+  if (features.length > 0 && audiences.length > 0) {
+    features.slice(0, 3).forEach(feat => {
+      audiences.slice(0, 3).forEach(aud => {
+        addSeed(feat.toLowerCase() + ' for ' + aud.toLowerCase(), 'usecase');
+      });
+    });
+  }
+
+  // --- Custom steps: treat values as direct seed keywords ---
+  nicheStepData.forEach(step => {
+    if (step.custom && vals[step.id]) {
+      const customVal = typeof vals[step.id] === 'string' ? vals[step.id] : '';
+      if (customVal) {
+        splitComma(customVal).forEach(kw => {
+          addSeed(kw, 'direct');
+        });
+      }
+    }
+  });
+
+  nicheSeeds = seeds;
+
+  // Render preview
+  const preview = document.getElementById('nicheSeedsPreview');
+  const list = document.getElementById('nicheSeedList');
+  const count = document.getElementById('nicheSeedCount');
+
+  if (seeds.length > 0) {
+    preview.style.display = 'block';
+    count.textContent = seeds.length;
+    list.innerHTML = seeds.map(s =>
+      `<span class="niche-seed-tag ${s.category}">${escHtml(s.text)}</span>`
+    ).join('');
+    document.getElementById('nicheFooterCount').textContent = `${seeds.length} seed angles ready`;
+    document.getElementById('nicheRunBtn').disabled = false;
+  } else {
+    preview.style.display = 'none';
+    document.getElementById('nicheFooterCount').textContent = 'Fill in at least question 1 to generate seeds';
+    document.getElementById('nicheRunBtn').disabled = true;
+  }
+}
+
+async function runNicheExplorer() {
+  if (nicheSeeds.length === 0) return;
+
+  const btn = document.getElementById('nicheRunBtn');
+  const progress = document.getElementById('nicheProgress');
+  const progressFill = document.getElementById('nicheProgressFill');
+  const progressText = document.getElementById('nicheProgressText');
+  const mode = document.getElementById('searchMode').value;
+
+  btn.disabled = true;
+  btn.textContent = 'Running...';
+  progress.style.display = 'block';
+
+  const total = nicheSeeds.length;
+  let completed = 0;
+  let totalKw = 0;
+
+  // Run seeds sequentially (to avoid hammering the API)
+  for (const seed of nicheSeeds) {
+    completed++;
+    const pct = Math.round((completed / total) * 100);
+    progressFill.style.width = pct + '%';
+    progressText.textContent = `Searching "${seed.text}" (${completed}/${total})... ${totalKw} keywords found so far`;
+
+    try {
+      const data = await api('POST', '/api/search', { seed_keyword: seed.text, mode: mode });
+      if (data.keywords) {
+        totalKw += data.count || data.keywords.length || 0;
+      }
+    } catch (e) {
+      // Continue with other seeds if one fails
+    }
+  }
+
+  // Done - load all results
+  progressFill.style.width = '100%';
+  progressText.textContent = `Done! ${totalKw} total keywords found from ${total} seed angles.`;
+
+  btn.textContent = '\u{1F680} Run All Seeds';
+  btn.disabled = false;
+
+  // Close modal and reload keywords
+  setTimeout(async () => {
+    closeNicheExplorer();
+    await loadKeywords();
+    showToast(`Niche Explorer: ${totalKw} keywords from ${total} seed angles!`);
+  }, 1500);
+}
+
+/* -- API status check ---------------------------------------------------- */
+async function checkApiStatus() {
+  const data = await api('GET', '/api/balance');
+  const dot = document.getElementById('apiDot');
+  const text = document.getElementById('apiStatusText');
+  const balance = document.getElementById('apiBalance');
+
+  if (data.connected) {
+    dot.className = 'api-dot green';
+    text.textContent = 'Connected';
+    balance.textContent = data.message || '';
+  } else {
+    dot.className = 'api-dot red';
+    // Check if it's demo mode or an error
+    const settings = await api('GET', '/api/settings');
+    if (settings.data_source === 'dataforseo') {
+      text.textContent = data.message || 'Not connected';
+    } else {
+      text.textContent = 'Demo Mode';
+    }
+    balance.textContent = '';
+  }
+}
+
+/* -- Load all keywords --------------------------------------------------- */
+async function loadKeywords() {
+  const data = await api('GET', '/api/keywords?sort_by=volume&sort_order=desc');
+  allKeywords = data.keywords || [];
+  await loadSegments();
+  applyFilters();
+  scheduleAutoCheck();
+}
+
+async function loadSegments() {
+  const data = await api('GET', '/api/segments');
+  segments = data.segments || [];
+  renderSegmentBar();
+}
+
+/* -- Search -------------------------------------------------------------- */
+async function searchKeywords() {
+  const input = document.getElementById('searchInput');
+  const seed = input.value.trim();
+  if (!seed) return;
+
+  const mode = document.getElementById('searchMode').value;
+  const btn = document.getElementById('searchBtn');
+  btn.disabled = true;
+
+  // Show progress indicator
+  showProgress('Searching...');
+
+  // Get balance before search
+  const balanceBefore = await getBalance();
+
+  const data = await api('POST', '/api/search', { seed_keyword: seed, mode: mode });
+  btn.disabled = false;
+
+  const kwFound = data.keywords ? (data.count || data.keywords.length) : 0;
+
+  // Get balance after search and log the cost
+  const balanceAfter = await getBalance();
+  if (balanceBefore !== null && balanceAfter !== null) {
+    const cost = Math.max(0, balanceBefore - balanceAfter);
+    const now = new Date();
+    addCostLogEntry({
+      datetime: now.toLocaleDateString() + ' ' + now.toLocaleTimeString(),
+      keyword: seed,
+      mode: mode,
+      keywordsFound: kwFound,
+      cost: cost,
+      balanceBefore: balanceBefore,
+      balanceAfter: balanceAfter,
+    });
+    // Update the balance display
+    document.getElementById('apiBalance').textContent = '$' + balanceAfter.toFixed(2) + ' remaining';
+  }
+
+  if (data.error) {
+    showProgressError(data.error);
+  } else if (kwFound > 0) {
+    showProgressDone('Found ' + kwFound + ' keywords');
+    await loadKeywords();
+  } else {
+    showProgressDone('Found 0 keywords');
+    await loadKeywords();
+  }
+}
+
+function showProgress(msg) {
+  const bar = document.getElementById('progressBar');
+  bar.className = 'progress-bar active';
+  document.getElementById('progressText').textContent = msg;
+}
+
+function showProgressDone(msg) {
+  const bar = document.getElementById('progressBar');
+  bar.className = 'progress-bar active done';
+  document.getElementById('progressText').textContent = msg;
+  setTimeout(() => { bar.className = 'progress-bar'; }, 4000);
+}
+
+function showProgressError(msg) {
+  const bar = document.getElementById('progressBar');
+  bar.className = 'progress-bar active error';
+  document.getElementById('progressText').textContent = msg;
+  setTimeout(() => { bar.className = 'progress-bar'; }, 6000);
+}
+
+function hideProgress() {
+  document.getElementById('progressBar').className = 'progress-bar';
+}
+
+/* -- CSV Import ---------------------------------------------------------- */
+async function importCSV(input) {
+  if (!input.files.length) return;
+  const form = new FormData();
+  form.append('file', input.files[0]);
+  const data = await api('POST', '/api/import-csv', form);
+  input.value = '';
+  if (data.imported) {
+    showToast('Imported ' + data.imported + ' keywords');
+    await loadKeywords();
+  }
+}
+
+/* -- CSV Export ----------------------------------------------------------- */
+function exportCSV() {
+  const params = new URLSearchParams();
+  params.set('difficulty_min', document.getElementById('filterDiffMin').value || '0');
+  params.set('difficulty_max', document.getElementById('filterDiffMax').value || '100');
+  params.set('volume_min', document.getElementById('filterVolMin').value || '0');
+  params.set('volume_max', document.getElementById('filterVolMax').value || '10000000');
+
+  const a = document.createElement('a');
+  a.href = '/api/export-csv?' + params.toString();
+  a.download = 'keywords_export.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  showToast('Exporting CSV...');
+}
+
+/* -- Segment bar --------------------------------------------------------- */
+function renderSegmentBar() {
+  const bar = document.getElementById('segmentBar');
+  const cssMap = {
+    '0': 'seg-0', '1-5': 'seg-1-5', '6-10': 'seg-6-10',
+    '11-20': 'seg-11-20', '21-50': 'seg-21-50', '51-100': 'seg-51',
+  };
+  bar.innerHTML = segments.map(s => {
+    const cls = cssMap[s.label] || '';
+    const active = activeSegments.has(s.label) ? ' active' : '';
+    return `<div class="segment ${cls}${active}" data-label="${s.label}"
+                 onclick="toggleSegment('${s.label}', event)">
+              <div class="seg-label">KD ${s.label}</div>
+              <div class="seg-count">${s.count}</div>
+            </div>`;
+  }).join('');
+}
+
+function toggleSegment(label, event) {
+  if (event && event.shiftKey) {
+    if (activeSegments.has(label)) activeSegments.delete(label);
+    else activeSegments.add(label);
+  } else {
+    if (activeSegments.size === 1 && activeSegments.has(label)) {
+      activeSegments.clear();
+    } else {
+      activeSegments.clear();
+      activeSegments.add(label);
+    }
+  }
+  renderSegmentBar();
+  applyFilters();
+}
+
+/* -- Filters ------------------------------------------------------------- */
+function toggleFilters() {
+  filtersVisible = !filtersVisible;
+  document.getElementById('filtersPanel').classList.toggle('collapsed', !filtersVisible);
+}
+
+function resetFilters() {
+  document.getElementById('filterVolMin').value = 0;
+  document.getElementById('filterVolMax').value = 10000000;
+  document.getElementById('filterDiffMin').value = 0;
+  document.getElementById('filterDiffMax').value = 100;
+  document.getElementById('filterOppMin').value = 0;
+  document.getElementById('filterOppMax').value = 100;
+  document.getElementById('filterTrend').value = 'all';
+  document.getElementById('filterIntent').value = 'all';
+  document.getElementById('filterCompMin').value = 0;
+  document.getElementById('filterCompMax').value = 100;
+  document.getElementById('tableFilter').value = '';
+  activeSegments.clear();
+  renderSegmentBar();
+  localStorage.removeItem('kwFilters');
+  applyFilters();
+}
+
+function applyFilters() {
+  const val = (id, fallback) => { const v = parseInt(document.getElementById(id).value); return isNaN(v) ? fallback : v; };
+  const volMin = val('filterVolMin', 0);
+  const volMax = val('filterVolMax', 10000000);
+  let diffMin = val('filterDiffMin', 0);
+  let diffMax = val('filterDiffMax', 100);
+  const oppMin = val('filterOppMin', 0);
+  const oppMax = val('filterOppMax', 100);
+  const trendFilter = document.getElementById('filterTrend').value;
+  const intentFilter = document.getElementById('filterIntent').value;
+  const compMin = parseInt(document.getElementById('filterCompMin').value) || 0;
+  const compMax = parseInt(document.getElementById('filterCompMax').value) || 100;
+  const textFilter = (document.getElementById('tableFilter').value || '').toLowerCase().trim();
+
+  if (activeSegments.size > 0) {
+    const ranges = [];
+    for (const label of activeSegments) {
+      const seg = segments.find(s => s.label === label);
+      if (seg) ranges.push([seg.min, seg.max]);
+    }
+    filteredKeywords = allKeywords.filter(kw => {
+      if (kw.volume < volMin || kw.volume > volMax) return false;
+      const opp = kw.opportunity_score || 0;
+      if (opp < oppMin || opp > oppMax) return false;
+      if (trendFilter !== 'all' && kw.trend !== trendFilter) return false;
+      if (intentFilter !== 'all' && classifyIntent(kw.keyword).label !== intentFilter) return false;
+      const compNum = Math.round((kw.competition || 0) * 100);
+      if (compNum < compMin || compNum > compMax) return false;
+      return ranges.some(([lo, hi]) => kw.difficulty >= lo && kw.difficulty <= hi);
+    });
+  } else {
+    filteredKeywords = allKeywords.filter(kw => {
+      if (kw.volume < volMin || kw.volume > volMax) return false;
+      if (kw.difficulty < diffMin || kw.difficulty > diffMax) return false;
+      const opp = kw.opportunity_score || 0;
+      if (opp < oppMin || opp > oppMax) return false;
+      if (trendFilter !== 'all' && kw.trend !== trendFilter) return false;
+      if (intentFilter !== 'all' && classifyIntent(kw.keyword).label !== intentFilter) return false;
+      const compNum = Math.round((kw.competition || 0) * 100);
+      if (compNum < compMin || compNum > compMax) return false;
+      return true;
+    });
+  }
+
+  // Apply text filter
+  if (textFilter) {
+    displayedKeywords = filteredKeywords.filter(kw =>
+      kw.keyword.toLowerCase().includes(textFilter)
+    );
+  } else {
+    displayedKeywords = filteredKeywords;
+  }
+
+  currentPage = 1;
+  sortData();
+  renderTable();
+  updateStats();
+}
+
+/* -- Filter Persistence (localStorage) ----------------------------------- */
+function saveFilters() {
+  const filters = {
+    volMin: document.getElementById('filterVolMin').value,
+    volMax: document.getElementById('filterVolMax').value,
+    diffMin: document.getElementById('filterDiffMin').value,
+    diffMax: document.getElementById('filterDiffMax').value,
+    oppMin: document.getElementById('filterOppMin').value,
+    oppMax: document.getElementById('filterOppMax').value,
+    trend: document.getElementById('filterTrend').value,
+    intent: document.getElementById('filterIntent').value,
+    compMin: document.getElementById('filterCompMin').value,
+    compMax: document.getElementById('filterCompMax').value,
+  };
+  localStorage.setItem('kwFilters', JSON.stringify(filters));
+}
+
+function loadFilters() {
+  const saved = localStorage.getItem('kwFilters');
+  if (!saved) return;
+  try {
+    const f = JSON.parse(saved);
+    if (f.volMin !== undefined) document.getElementById('filterVolMin').value = f.volMin;
+    if (f.volMax !== undefined) document.getElementById('filterVolMax').value = f.volMax;
+    if (f.diffMin !== undefined) document.getElementById('filterDiffMin').value = f.diffMin;
+    if (f.diffMax !== undefined) document.getElementById('filterDiffMax').value = f.diffMax;
+    if (f.oppMin !== undefined) document.getElementById('filterOppMin').value = f.oppMin;
+    if (f.oppMax !== undefined) document.getElementById('filterOppMax').value = f.oppMax;
+    if (f.trend) document.getElementById('filterTrend').value = f.trend;
+    if (f.intent) document.getElementById('filterIntent').value = f.intent;
+    if (f.compMin !== undefined) document.getElementById('filterCompMin').value = f.compMin;
+    if (f.compMax !== undefined) document.getElementById('filterCompMax').value = f.compMax;
+  } catch(e) { /* ignore corrupt data */ }
+}
+
+/* -- Sorting ------------------------------------------------------------- */
+function sortTable(col) {
+  if (currentSort.col === col) {
+    currentSort.order = currentSort.order === 'desc' ? 'asc' : 'desc';
+  } else {
+    currentSort.col = col;
+    currentSort.order = col === 'keyword' ? 'asc' : 'desc';
+  }
+  sortData();
+  renderTable();
+  updateSortArrows();
+}
+
+function sortData() {
+  const { col, order } = currentSort;
+  displayedKeywords.sort((a, b) => {
+    let va = a[col], vb = b[col];
+    if (typeof va === 'string') va = va.toLowerCase();
+    if (typeof vb === 'string') vb = vb.toLowerCase();
+    if (va == null) va = '';
+    if (vb == null) vb = '';
+    if (va < vb) return order === 'asc' ? -1 : 1;
+    if (va > vb) return order === 'asc' ? 1 : -1;
+    return 0;
+  });
+}
+
+function updateSortArrows() {
+  document.querySelectorAll('.sort-arrow').forEach(el => el.textContent = '');
+  const el = document.getElementById('sort-' + currentSort.col);
+  if (el) el.textContent = currentSort.order === 'asc' ? '\u25B2' : '\u25BC';
+}
+
+/* -- Search intent classification ---------------------------------------- */
+function classifyIntent(kw) {
+  const k = kw.toLowerCase();
+  if (/\b(buy|purchase|price|pricing|cost|cheap|affordable|deal|discount|coupon|free trial|subscribe|order|shop)\b/.test(k)) return { label: 'Buyer', cls: 'intent-buyer' };
+  if (/\b(tool|generator|builder|creator|maker|calculator|converter|checker|tester|analyzer|editor|app|software|platform|online|free)\b/.test(k)) return { label: 'Tool', cls: 'intent-tool' };
+  if (/\b(vs|versus|alternative|compared|comparison|better than|review|top \d|best)\b/.test(k)) return { label: 'Compare', cls: 'intent-compare' };
+  if (/\b(how to|what is|why|guide|tutorial|tips|learn|example|template)\b/.test(k)) return { label: 'Info', cls: 'intent-info' };
+  if (/\b(best|top|recommended|review)\b/.test(k)) return { label: 'Research', cls: 'intent-research' };
+  return { label: 'General', cls: 'intent-general' };
+}
+
+/* -- Render table -------------------------------------------------------- */
+function diffClass(d) {
+  if (d <= 0)  return 'diff-0';
+  if (d <= 5)  return 'diff-5';
+  if (d <= 10) return 'diff-10';
+  if (d <= 20) return 'diff-20';
+  if (d <= 50) return 'diff-50';
+  return 'diff-100';
+}
+
+function oppClass(o) {
+  if (o >= 80) return 'opp-high';
+  if (o >= 60) return 'opp-good';
+  if (o >= 40) return 'opp-mid';
+  return 'opp-low';
+}
+
+function trendIcon(trend) {
+  if (trend === 'rising') return '<span class="trend-rising" title="Rising">&#x2191;</span>';
+  if (trend === 'declining') return '<span class="trend-declining" title="Declining">&#x2193;</span>';
+  return '<span class="trend-stable" title="Stable">&#x2192;</span>';
+}
+
+function fmtNum(n) {
+  return (n || 0).toLocaleString();
+}
+
+function renderSerpBadges(serp) {
+  if (!serp || !Array.isArray(serp) || serp.length === 0) return '';
+  const badges = serp
+    .map(s => {
+      const label = SERP_LABELS[s] !== undefined ? SERP_LABELS[s] : s.replace(/_/g, ' ');
+      return label ? `<span class="serp-badge">${escHtml(label)}</span>` : '';
+    })
+    .filter(b => b)
+    .slice(0, 5);  // Show max 5 badges to save space
+  return `<div class="serp-badges">${badges.join('')}</div>`;
+}
+
+function renderTable() {
+  const tbody = document.getElementById('kwBody');
+  const empty = document.getElementById('emptyState');
+
+  if (displayedKeywords.length === 0) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    empty.querySelector('p').textContent = allKeywords.length === 0
+      ? 'No keywords yet. Use the search bar or import a CSV to get started.'
+      : 'No keywords match your filters. Try adjusting the ranges.';
+    document.getElementById('pagination').innerHTML = '';
+    document.getElementById('tableInfo').textContent = '';
+    return;
+  }
+  empty.style.display = 'none';
+
+  // Pagination
+  const totalPages = Math.ceil(displayedKeywords.length / PAGE_SIZE);
+  if (currentPage > totalPages) currentPage = totalPages;
+  const start = (currentPage - 1) * PAGE_SIZE;
+  const pageItems = displayedKeywords.slice(start, start + PAGE_SIZE);
+
+  document.getElementById('tableInfo').textContent =
+    fmtNum(displayedKeywords.length) + ' keywords';
+
+  const rows = pageItems.map((kw, i) => {
+    const opp = kw.opportunity_score || 0;
+    const rowNum = start + i + 1;
+    const compNum = Math.round((kw.competition || 0) * 100);
+    const intent = classifyIntent(kw.keyword);
+    const dc = domainCache[kw.keyword];
+    const kwEsc = escHtml(kw.keyword).replace(/'/g, "\\'");
+    let domainCell;
+    if (dc === undefined || dc === 'checking') {
+      domainCell = `<span class="domain-dot checking">checking...</span>`;
+    } else {
+      const badges = activeTlds.map(tld => {
+        const avail = dc[tld];
+        if (avail === true) return `<span class="domain-dot avail" onclick="checkDomain('${kwEsc}')" title="Available!">${tld} &#x2713;</span>`;
+        if (avail === false) return `<span class="domain-dot taken" title="Taken">${tld}</span>`;
+        return `<span class="domain-dot checking">${tld}</span>`;
+      }).join('');
+      domainCell = `<div class="domain-inline">${badges}</div>`;
+    }
+    return `<tr>
+      <td class="row-num">${rowNum}</td>
+      <td class="kw-cell"><a href="https://www.google.com/search?q=${encodeURIComponent(kw.keyword)}" target="_blank" rel="noopener" class="kw-link">${escHtml(kw.keyword)}</a></td>
+      <td class="mono">${fmtNum(kw.volume)}<span class="vol-label">monthly</span></td>
+      <td class="mono"><span class="diff-badge ${diffClass(kw.difficulty)}">${kw.difficulty}</span></td>
+      <td class="mono">$${(kw.cpc || 0).toFixed(2)}</td>
+      <td class="mono"><span class="diff-badge ${diffClass(compNum)}">${compNum}</span></td>
+      <td style="text-align:center">${trendIcon(kw.trend)}</td>
+      <td><span class="intent-badge ${intent.cls}">${intent.label}</span></td>
+      <td class="mono"><span class="opp-badge ${oppClass(opp)}">${opp}</span></td>
+      <td>${renderSerpBadges(kw.serp_features)}</td>
+      <td>${domainCell}</td>
+      <td><button class="serp-btn" onclick="serpPreview('${kwEsc}')">&#x1F50D; SERP</button></td>
+    </tr>`;
+  });
+  tbody.innerHTML = rows.join('');
+
+  // Render pagination controls
+  renderPagination(totalPages);
+  updateSortArrows();
+}
+
+function renderPagination(totalPages) {
+  const pag = document.getElementById('pagination');
+  if (totalPages <= 1) {
+    pag.innerHTML = '';
+    return;
+  }
+  pag.innerHTML = `
+    <button onclick="goToPage(1)" ${currentPage === 1 ? 'disabled' : ''}>&laquo;</button>
+    <button onclick="goToPage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''}>&lsaquo; Prev</button>
+    <span class="page-info">Page ${currentPage} of ${totalPages}</span>
+    <button onclick="goToPage(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''}>Next &rsaquo;</button>
+    <button onclick="goToPage(${totalPages})" ${currentPage === totalPages ? 'disabled' : ''}>&raquo;</button>
+  `;
+}
+
+function goToPage(page) {
+  const totalPages = Math.ceil(displayedKeywords.length / PAGE_SIZE);
+  if (page < 1 || page > totalPages) return;
+  currentPage = page;
+  renderTable();
+  scheduleAutoCheck();
+  // Scroll table into view
+  document.querySelector('.kw-table-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function escHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+/* -- Stats --------------------------------------------------------------- */
+function updateStats() {
+  document.getElementById('statTotal').textContent = fmtNum(allKeywords.length);
+  document.getElementById('statShowing').textContent = fmtNum(displayedKeywords.length);
+
+  if (displayedKeywords.length > 0) {
+    const avgDiff = Math.round(
+      displayedKeywords.reduce((s, k) => s + k.difficulty, 0) / displayedKeywords.length
+    );
+    const bestOpp = Math.max(...displayedKeywords.map(k => k.opportunity_score || 0));
+    document.getElementById('statAvgDiff').textContent = avgDiff;
+    document.getElementById('statBestOpp').textContent = bestOpp;
+  } else {
+    document.getElementById('statAvgDiff').textContent = '-';
+    document.getElementById('statBestOpp').textContent = '-';
+  }
+}
+
+/* -- Settings modal ------------------------------------------------------ */
+function openSettings() {
+  document.getElementById('settingsModal').classList.add('open');
+  document.getElementById('testResult').innerHTML = '';
+  api('GET', '/api/settings').then(data => {
+    if (data.data_source) document.getElementById('settDataSource').value = data.data_source;
+    if (data.dataforseo_login) document.getElementById('settDfsLogin').value = data.dataforseo_login;
+    if (data.openai_api_key) document.getElementById('settOpenaiKey').value = data.openai_api_key;
+    if (data.location_code) document.getElementById('settLocation').value = data.location_code;
+    if (data.language_code) document.getElementById('settLanguage').value = data.language_code;
+    toggleSettingsFields();
+  });
+}
+
+function closeSettings() {
+  document.getElementById('settingsModal').classList.remove('open');
+}
+
+function toggleSettingsFields() {
+  const src = document.getElementById('settDataSource').value;
+  document.getElementById('dataforseoFields').style.display = src === 'dataforseo' ? 'block' : 'none';
+}
+
+async function testConnection() {
+  const btn = document.getElementById('testConnBtn');
+  const result = document.getElementById('testResult');
+  btn.disabled = true;
+  result.innerHTML = '<div class="test-result" style="background:#f3f4f6;color:#666;border:1px solid #ddd;">Testing...</div>';
+
+  // Save settings first so the backend can use them
+  await saveSettingsQuiet();
+
+  const data = await api('GET', '/api/balance');
+  btn.disabled = false;
+
+  if (data.connected) {
+    result.innerHTML = `<div class="test-result success">Connected! Balance: ${data.message}</div>`;
+  } else {
+    result.innerHTML = `<div class="test-result failure">${data.message || 'Connection failed'}</div>`;
+  }
+}
+
+async function saveSettingsQuiet() {
+  const payload = {
+    data_source: document.getElementById('settDataSource').value,
+    dataforseo_login: document.getElementById('settDfsLogin').value,
+    dataforseo_password: document.getElementById('settDfsPassword').value,
+    openai_api_key: document.getElementById('settOpenaiKey').value,
+    location_code: parseInt(document.getElementById('settLocation').value) || 2840,
+    language_code: document.getElementById('settLanguage').value || 'en',
+  };
+  await api('POST', '/api/settings', payload);
+}
+
+async function saveSettings() {
+  await saveSettingsQuiet();
+  showToast('Settings saved');
+  closeSettings();
+  checkApiStatus();
+}
+
+/* -- Mode switching ------------------------------------------------------ */
+function switchMode(mode) {
+  const panels = {
+    'keyword-research': document.getElementById('keywordResearchPanel'),
+    'nugget-hunter': document.getElementById('nuggetHunterPanel'),
+    'content-strategy': document.getElementById('contentStrategyPanel'),
+  };
+  const tabs = document.querySelectorAll('.mode-tab');
+  const tabMap = {'keyword-research': 0, 'nugget-hunter': 1, 'content-strategy': 2};
+
+  Object.values(panels).forEach(p => p.style.display = 'none');
+  tabs.forEach(t => t.classList.remove('active'));
+
+  panels[mode].style.display = 'block';
+  tabs[tabMap[mode]].classList.add('active');
+
+  if (mode === 'nugget-hunter') loadHuntHistory();
+}
+
+/* -- Suffix toggle ------------------------------------------------------- */
+function toggleSuffix(el) {
+  el.classList.toggle('active');
+}
+
+/* -- Nugget Hunt --------------------------------------------------------- */
+async function startNuggetHunt() {
+  const nichesRaw = document.getElementById('huntNiches').value.trim();
+  if (!nichesRaw) {
+    showToast('Enter at least one niche', true);
+    return;
+  }
+
+  const niches = nichesRaw.split('\n').map(n => n.trim()).filter(n => n.length > 0);
+  const suffixEls = document.querySelectorAll('#suffixPills .suffix-pill.active');
+  const suffixes = Array.from(suffixEls).map(el => el.textContent);
+
+  if (suffixes.length === 0) {
+    showToast('Select at least one suffix', true);
+    return;
+  }
+
+  const maxKd = parseInt(document.getElementById('huntMaxKd').value) || 10;
+  const minVol = parseInt(document.getElementById('huntMinVol').value) || 500;
+  const searchMode = document.getElementById('huntSearchMode').value;
+
+  const btn = document.getElementById('startHuntBtn');
+  btn.disabled = true;
+
+  const data = await api('POST', '/api/nugget-hunt/start', {
+    niches, suffixes, kd_max: maxKd, vol_min: minVol, mode: searchMode
+  });
+
+  if (data.hunt_id) {
+    nuggetHuntId = data.hunt_id;
+    document.getElementById('huntProgressSection').style.display = 'block';
+    document.getElementById('huntCurrentCombo').textContent = 'Starting hunt...';
+    document.getElementById('huntProgressFill').style.width = '0%';
+    document.getElementById('huntProgressText').textContent = '0 / 0';
+    document.getElementById('huntScanned').textContent = '0';
+    document.getElementById('huntNuggetsFound').textContent = '0';
+
+    // Start polling
+    if (huntPollingTimer) clearInterval(huntPollingTimer);
+    huntPollingTimer = setInterval(pollHuntStatus, 2000);
+  } else {
+    btn.disabled = false;
+  }
+}
+
+async function pollHuntStatus() {
+  if (!nuggetHuntId) return;
+
+  const data = await api('GET', '/api/nugget-hunt/status?hunt_id=' + encodeURIComponent(nuggetHuntId));
+
+  if (!data || data.error) return;
+
+  // Update progress bar
+  const completed = data.completed_combos || 0;
+  const total = data.total_combos || 1;
+  const pct = Math.round((completed / total) * 100);
+  document.getElementById('huntProgressFill').style.width = pct + '%';
+  document.getElementById('huntProgressText').textContent = completed + ' / ' + total;
+
+  // Update current combo
+  if (data.current_combo) {
+    document.getElementById('huntCurrentCombo').textContent = 'Searching: ' + data.current_combo;
+  }
+
+  // Update stats
+  document.getElementById('huntScanned').textContent = fmtNum(data.total_keywords_scanned || 0);
+  document.getElementById('huntNuggetsFound').textContent = fmtNum(data.nuggets_found || 0);
+
+  // Check if done
+  if (data.status === 'completed' || data.status === 'cancelled') {
+    clearInterval(huntPollingTimer);
+    huntPollingTimer = null;
+    document.getElementById('startHuntBtn').disabled = false;
+
+    if (data.status === 'completed') {
+      document.getElementById('huntCurrentCombo').textContent = 'Hunt complete!';
+      showToast('Nugget hunt finished! Found ' + (data.nuggets_found || 0) + ' nuggets');
+    } else {
+      document.getElementById('huntCurrentCombo').textContent = 'Hunt cancelled';
+    }
+
+    // Load results
+    await loadHuntResults(nuggetHuntId);
+    loadHuntHistory();
+  }
+}
+
+async function cancelHunt() {
+  if (!nuggetHuntId) return;
+  await api('POST', '/api/nugget-hunt/cancel?hunt_id=' + encodeURIComponent(nuggetHuntId));
+  showToast('Hunt cancelled');
+}
+
+async function loadHuntResults(huntId, tier) {
+  const filterTier = tier || nuggetTierFilter;
+  let url = '/api/nugget-hunt/results?hunt_id=' + encodeURIComponent(huntId);
+  if (filterTier && filterTier !== 'all') {
+    url += '&tier=' + encodeURIComponent(filterTier);
+  }
+
+  const data = await api('GET', url);
+  const results = data.nuggets || data.results || [];
+  if (results.length > 0 || data.count !== undefined) {
+    nuggetResults = results;
+    nuggetHuntId = huntId;
+
+    // Show results section
+    document.getElementById('huntResultsSection').style.display = 'block';
+
+    renderNuggetSummary(results);
+    nuggetPage = 1;
+    renderNuggetResults();
+  }
+}
+
+/* -- Nugget summary cards ------------------------------------------------ */
+function renderNuggetSummary(summaryOrResults) {
+  let totalScanned = 0, gold = 0, silver = 0, bronze = 0;
+
+  if (summaryOrResults && summaryOrResults.total_scanned !== undefined) {
+    // Summary object from API
+    totalScanned = summaryOrResults.total_scanned || 0;
+    gold = summaryOrResults.gold || 0;
+    silver = summaryOrResults.silver || 0;
+    bronze = summaryOrResults.bronze || 0;
+  } else if (Array.isArray(summaryOrResults)) {
+    // Calculate from results array
+    totalScanned = summaryOrResults.length;
+    summaryOrResults.forEach(r => {
+      const tier = classifyNuggetTier(r);
+      if (tier === 'gold') gold++;
+      else if (tier === 'silver') silver++;
+      else if (tier === 'bronze') bronze++;
+    });
+  }
+
+  document.getElementById('summaryTotal').textContent = fmtNum(totalScanned);
+  document.getElementById('summaryGold').textContent = fmtNum(gold);
+  document.getElementById('summarySilver').textContent = fmtNum(silver);
+  document.getElementById('summaryBronze').textContent = fmtNum(bronze);
+
+  // Update tier tab counts
+  document.getElementById('tierCountAll').textContent = fmtNum(gold + silver + bronze);
+  document.getElementById('tierCountGold').textContent = fmtNum(gold);
+  document.getElementById('tierCountSilver').textContent = fmtNum(silver);
+  document.getElementById('tierCountBronze').textContent = fmtNum(bronze);
+}
+
+function classifyNuggetTier(kw) {
+  const kd = kw.difficulty || 0;
+  const vol = kw.volume || 0;
+  if (kd <= 2 && vol >= 1000) return 'gold';
+  if (kd <= 5 && vol >= 500) return 'silver';
+  if (kd <= 10 && vol >= 500) return 'bronze';
+  return 'none';
+}
+
+/* -- Tier filter tabs ---------------------------------------------------- */
+function setNuggetTierFilter(tier) {
+  nuggetTierFilter = tier;
+  // Update active tab
+  document.querySelectorAll('#tierTabs .tier-tab').forEach(tab => {
+    tab.classList.remove('active');
+  });
+  event.currentTarget.classList.add('active');
+  nuggetPage = 1;
+  renderNuggetResults();
+}
+
+/* -- Nugget table sorting ------------------------------------------------ */
+function sortNuggetTable(col) {
+  if (nuggetSort.col === col) {
+    nuggetSort.order = nuggetSort.order === 'desc' ? 'asc' : 'desc';
+  } else {
+    nuggetSort.col = col;
+    nuggetSort.order = col === 'keyword' || col === 'niche' || col === 'suffix' ? 'asc' : 'desc';
+  }
+  renderNuggetResults();
+}
+
+function updateNuggetSortArrows() {
+  document.querySelectorAll('[id^="nsort-"]').forEach(el => el.textContent = '');
+  const el = document.getElementById('nsort-' + nuggetSort.col);
+  if (el) el.textContent = nuggetSort.order === 'asc' ? '\u25B2' : '\u25BC';
+}
+
+/* -- Render nugget results table ----------------------------------------- */
+function renderNuggetResults() {
+  const tbody = document.getElementById('nuggetBody');
+  const empty = document.getElementById('nuggetEmptyState');
+  const textFilter = (document.getElementById('nuggetTableFilter').value || '').toLowerCase().trim();
+
+  // Filter by tier
+  let filtered = nuggetResults;
+  if (nuggetTierFilter !== 'all') {
+    filtered = filtered.filter(r => {
+      const tier = r.tier || classifyNuggetTier(r);
+      return tier === nuggetTierFilter;
+    });
+  }
+
+  // Filter by text
+  if (textFilter) {
+    filtered = filtered.filter(r =>
+      (r.keyword || '').toLowerCase().includes(textFilter) ||
+      (r.niche || '').toLowerCase().includes(textFilter) ||
+      (r.suffix || '').toLowerCase().includes(textFilter)
+    );
+  }
+
+  // Sort
+  const { col, order } = nuggetSort;
+  filtered.sort((a, b) => {
+    let va = a[col], vb = b[col];
+    if (typeof va === 'string') va = va.toLowerCase();
+    if (typeof vb === 'string') vb = vb.toLowerCase();
+    if (va == null) va = '';
+    if (vb == null) vb = '';
+    if (va < vb) return order === 'asc' ? -1 : 1;
+    if (va > vb) return order === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    document.getElementById('nuggetPagination').innerHTML = '';
+    document.getElementById('nuggetTableInfo').textContent = '';
+    return;
+  }
+  empty.style.display = 'none';
+
+  // Pagination
+  const totalPages = Math.ceil(filtered.length / NUGGET_PAGE_SIZE);
+  if (nuggetPage > totalPages) nuggetPage = totalPages;
+  const start = (nuggetPage - 1) * NUGGET_PAGE_SIZE;
+  const pageItems = filtered.slice(start, start + NUGGET_PAGE_SIZE);
+
+  document.getElementById('nuggetTableInfo').textContent = fmtNum(filtered.length) + ' nuggets';
+
+  const rows = pageItems.map((kw, i) => {
+    const opp = kw.opportunity_score || 0;
+    const rowNum = start + i + 1;
+    const compNum = Math.round((kw.competition || 0) * 100);
+    const intent = classifyIntent(kw.keyword || '');
+    const tier = kw.tier || classifyNuggetTier(kw);
+    const tierBadgeClass = tier === 'gold' ? 'tier-gold' : tier === 'silver' ? 'tier-silver' : 'tier-bronze';
+    const tierLabel = tier.charAt(0).toUpperCase() + tier.slice(1);
+
+    return `<tr>
+      <td class="row-num">${rowNum}</td>
+      <td class="kw-cell"><a href="https://www.google.com/search?q=${encodeURIComponent(kw.keyword || '')}" target="_blank" rel="noopener" class="kw-link">${escHtml(kw.keyword || '')}</a></td>
+      <td class="mono">${fmtNum(kw.volume)}</td>
+      <td class="mono"><span class="diff-badge ${diffClass(kw.difficulty || 0)}">${kw.difficulty || 0}</span></td>
+      <td class="mono">$${(kw.cpc || 0).toFixed(2)}</td>
+      <td class="mono"><span class="diff-badge ${diffClass(compNum)}">${compNum}</span></td>
+      <td style="text-align:center">${trendIcon(kw.trend)}</td>
+      <td><span class="intent-badge ${intent.cls}">${intent.label}</span></td>
+      <td class="mono"><span class="opp-badge ${oppClass(opp)}">${opp}</span></td>
+      <td>${escHtml(kw.niche || '')}</td>
+      <td>${escHtml(kw.suffix || '')}</td>
+      <td><span class="tier-badge ${tierBadgeClass}">${tierLabel}</span></td>
+    </tr>`;
+  });
+  tbody.innerHTML = rows.join('');
+
+  // Pagination controls
+  renderNuggetPagination(totalPages);
+  updateNuggetSortArrows();
+}
+
+function renderNuggetPagination(totalPages) {
+  const pag = document.getElementById('nuggetPagination');
+  if (totalPages <= 1) {
+    pag.innerHTML = '';
+    return;
+  }
+  pag.innerHTML = `
+    <button onclick="goToNuggetPage(1)" ${nuggetPage === 1 ? 'disabled' : ''}>&laquo;</button>
+    <button onclick="goToNuggetPage(${nuggetPage - 1})" ${nuggetPage === 1 ? 'disabled' : ''}>&lsaquo; Prev</button>
+    <span class="page-info">Page ${nuggetPage} of ${totalPages}</span>
+    <button onclick="goToNuggetPage(${nuggetPage + 1})" ${nuggetPage === totalPages ? 'disabled' : ''}>Next &rsaquo;</button>
+    <button onclick="goToNuggetPage(${totalPages})" ${nuggetPage === totalPages ? 'disabled' : ''}>&raquo;</button>
+  `;
+}
+
+function goToNuggetPage(page) {
+  const totalPages = Math.ceil(nuggetResults.length / NUGGET_PAGE_SIZE);
+  if (page < 1 || page > totalPages) return;
+  nuggetPage = page;
+  renderNuggetResults();
+}
+
+/* -- Export nugget CSV ---------------------------------------------------- */
+function exportNuggetCSV() {
+  if (!nuggetResults || nuggetResults.length === 0) {
+    showToast('No nuggets to export', true);
+    return;
+  }
+
+  // Filter by current tier
+  let toExport = nuggetResults;
+  if (nuggetTierFilter !== 'all') {
+    toExport = toExport.filter(r => {
+      const tier = r.tier || classifyNuggetTier(r);
+      return tier === nuggetTierFilter;
+    });
+  }
+
+  const headers = ['Keyword', 'Volume', 'KD', 'CPC', 'Competition', 'Trend', 'Intent', 'Opportunity', 'Niche', 'Suffix', 'Tier'];
+  const csvRows = [headers.join(',')];
+
+  toExport.forEach(kw => {
+    const tier = kw.tier || classifyNuggetTier(kw);
+    const intent = classifyIntent(kw.keyword || '');
+    const row = [
+      '"' + (kw.keyword || '').replace(/"/g, '""') + '"',
+      kw.volume || 0,
+      kw.difficulty || 0,
+      (kw.cpc || 0).toFixed(2),
+      Math.round((kw.competition || 0) * 100),
+      kw.trend || 'stable',
+      intent.label,
+      kw.opportunity_score || 0,
+      '"' + (kw.niche || '').replace(/"/g, '""') + '"',
+      '"' + (kw.suffix || '').replace(/"/g, '""') + '"',
+      tier
+    ];
+    csvRows.push(row.join(','));
+  });
+
+  const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'nuggets_export.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('Exported ' + toExport.length + ' nuggets');
+}
+
+/* -- Hunt history -------------------------------------------------------- */
+function toggleHuntHistory() {
+  huntHistoryOpen = !huntHistoryOpen;
+  const list = document.getElementById('huntHistoryList');
+  const arrow = document.getElementById('historyArrow');
+  list.style.display = huntHistoryOpen ? 'block' : 'none';
+  arrow.classList.toggle('open', huntHistoryOpen);
+  if (huntHistoryOpen) loadHuntHistory();
+}
+
+async function loadHuntHistory() {
+  const data = await api('GET', '/api/nugget-hunt/history');
+  if (data.hunts) {
+    renderHuntHistory(data.hunts);
+  }
+}
+
+function renderHuntHistory(hunts) {
+  const container = document.getElementById('huntHistoryList');
+  if (!hunts || hunts.length === 0) {
+    container.innerHTML = '<div style="padding:10px;color:#999;font-size:13px;">No hunt history yet.</div>';
+    return;
+  }
+
+  container.innerHTML = hunts.map(h => {
+    const date = new Date(h.created_at || h.date).toLocaleDateString('en-US', {
+      month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit'
+    });
+    const niches = (h.niches || []).join(', ');
+    const statusClass = h.status === 'completed' ? 'completed' : h.status === 'running' ? 'running' : 'cancelled';
+
+    return `<div class="hunt-history-item" onclick="loadHuntResults('${escHtml(h.hunt_id || h.id)}')">
+      <span class="hunt-history-date">${escHtml(date)}</span>
+      <span class="hunt-history-niches">${escHtml(niches)}</span>
+      <span class="hunt-history-status ${statusClass}">${escHtml(h.status)}</span>
+      <span class="hunt-history-nuggets">${fmtNum(h.nuggets_found || 0)} nuggets</span>
+      <button class="btn-delete-hunt" onclick="event.stopPropagation();deleteHunt('${escHtml(h.hunt_id || h.id)}')" title="Delete">&#x2715;</button>
+    </div>`;
+  }).join('');
+}
+
+async function deleteHunt(huntId) {
+  if (!confirm('Delete this hunt and its results?')) return;
+  const data = await api('DELETE', '/api/nugget-hunt/delete?hunt_id=' + encodeURIComponent(huntId));
+  if (!data.error) {
+    showToast('Hunt deleted');
+    loadHuntHistory();
+    // If we were viewing this hunt's results, clear them
+    if (nuggetHuntId === huntId) {
+      nuggetResults = [];
+      document.getElementById('huntResultsSection').style.display = 'none';
+      nuggetHuntId = null;
+    }
+  }
+}
+
+/* -- Content Strategy Generator ------------------------------------------ */
+let csStrategy = null;
+let csCategory = 'comparisons';
+let csKeywordData = {};  // keyword -> { volume, difficulty, cpc, competition }
+
+async function generateContentStrategy() {
+  const url = document.getElementById('csUrlInput').value.trim();
+  if (!url) { showToast('Enter a URL', true); return; }
+
+  const btn = document.getElementById('csGenerateBtn');
+  const status = document.getElementById('csStatus');
+  btn.disabled = true;
+  btn.textContent = 'Analyzing...';
+  status.style.display = 'block';
+  status.textContent = 'AI is analyzing the site, finding competitors, and generating content ideas... (30-60 seconds)';
+
+  const data = await api('POST', '/api/content-strategy', { url });
+  btn.disabled = false;
+  btn.innerHTML = '&#x1F9E0; Generate Strategy';
+
+  if (data.error) {
+    status.textContent = data.error;
+    status.style.color = '#dc2626';
+    return;
+  }
+
+  status.style.display = 'none';
+  csStrategy = data.strategy;
+  csKeywordData = {};
+  renderCsResults();
+}
+
+function renderCsResults() {
+  if (!csStrategy) return;
+  document.getElementById('csResults').style.display = 'block';
+
+  // Snapshot
+  const snap = csStrategy.snapshot || {};
+  const snapBody = document.getElementById('csSnapshotBody');
+  snapBody.innerHTML = [
+    ['What They Sell', snap.what_they_sell],
+    ['ICP', snap.icp],
+    ['Primary CTA', snap.primary_cta],
+    ['Pricing', snap.pricing_motion],
+    ['Differentiators', (snap.differentiators || []).join(', ')],
+  ].map(([label, val]) =>
+    `<div class="cs-snap-item"><div class="cs-snap-label">${label}</div><div class="cs-snap-value">${escHtml(val || 'N/A')}</div></div>`
+  ).join('');
+
+  // Update counts
+  const counts = {
+    comparisons: (csStrategy.comparisons || []).length,
+    alternatives: (csStrategy.alternatives || []).length,
+    listicles: (csStrategy.listicles || []).length,
+    integrations: (csStrategy.integrations || []).length,
+    free_tools: (csStrategy.free_tools || []).length,
+    pillars: (csStrategy.pillars || []).length,
+  };
+  document.getElementById('csCntComparisons').textContent = counts.comparisons;
+  document.getElementById('csCntAlternatives').textContent = counts.alternatives;
+  document.getElementById('csCntListicles').textContent = counts.listicles;
+  document.getElementById('csCntIntegrations').textContent = counts.integrations;
+  document.getElementById('csCntFreeTools').textContent = counts.free_tools;
+  document.getElementById('csCntPillars').textContent = counts.pillars;
+
+  switchCsCategory(csCategory);
+}
+
+function switchCsCategory(cat) {
+  csCategory = cat;
+  document.querySelectorAll('.cs-cat-btn').forEach((btn, i) => {
+    const cats = ['comparisons','alternatives','listicles','integrations','free_tools','pillars'];
+    btn.classList.toggle('active', cats[i] === cat);
+  });
+
+  const thead = document.getElementById('csThead');
+  const tbody = document.getElementById('csTbody');
+  const pillarsView = document.getElementById('csPillarsView');
+  const tableInfo = document.getElementById('csTableInfo');
+
+  if (cat === 'pillars') {
+    thead.parentElement.style.display = 'none';
+    pillarsView.style.display = 'block';
+    renderCsPillars();
+    return;
+  }
+
+  thead.parentElement.style.display = '';
+  pillarsView.style.display = 'none';
+
+  const items = csStrategy[cat] || [];
+  tableInfo.textContent = `${items.length} content ideas`;
+
+  // Build header based on category
+  let headers = '';
+  if (cat === 'free_tools') {
+    headers = '<tr><th>#</th><th>Title</th><th>Target Keyword</th><th>Tool Concept</th><th>CTA</th><th>Vol</th><th>KD</th><th>CPC</th></tr>';
+  } else {
+    headers = '<tr><th>#</th><th>Title</th><th>Target Keyword</th><th>Priority</th><th>Notes</th><th>Vol</th><th>KD</th><th>CPC</th></tr>';
+  }
+  thead.innerHTML = headers;
+
+  const rows = items.map((item, i) => {
+    const kd = csKeywordData[item.target_keyword];
+    const volCell = kd ? `<span class="cs-vol">${fmtNum(kd.volume)}</span>` : '<span style="color:#ccc">—</span>';
+    const kdCell = kd ? `<span class="cs-kd ${diffClass(kd.difficulty)}">${kd.difficulty}</span>` : '<span style="color:#ccc">—</span>';
+    const cpcCell = kd ? `<span class="cs-cpc">$${kd.cpc.toFixed(2)}</span>` : '<span style="color:#ccc">—</span>';
+
+    if (cat === 'free_tools') {
+      return `<tr>
+        <td>${i + 1}</td>
+        <td><strong>${escHtml(item.title)}</strong></td>
+        <td style="font-size:12px;color:#7c3aed;">${escHtml(item.target_keyword)}</td>
+        <td style="font-size:12px;">${escHtml(item.tool_concept || '')}</td>
+        <td style="font-size:12px;">${escHtml(item.cta || '')}</td>
+        <td class="mono">${volCell}</td>
+        <td class="mono">${kdCell}</td>
+        <td class="mono">${cpcCell}</td>
+      </tr>`;
+    }
+
+    return `<tr>
+      <td>${i + 1}</td>
+      <td><strong>${escHtml(item.title)}</strong></td>
+      <td style="font-size:12px;color:#7c3aed;">${escHtml(item.target_keyword)}</td>
+      <td><span class="cs-priority ${escHtml(item.priority || 'P2')}">${escHtml(item.priority || '—')}</span></td>
+      <td style="font-size:12px;max-width:250px;">${escHtml(item.notes || '')}</td>
+      <td class="mono">${volCell}</td>
+      <td class="mono">${kdCell}</td>
+      <td class="mono">${cpcCell}</td>
+    </tr>`;
+  });
+
+  tbody.innerHTML = rows.join('');
+}
+
+function renderCsPillars() {
+  const view = document.getElementById('csPillarsView');
+  const pillars = csStrategy.pillars || [];
+
+  view.innerHTML = pillars.map(p => {
+    const clusters = (p.clusters || []).map(c => {
+      const kd = csKeywordData[c.target_keyword];
+      const kwInfo = kd ? `<span class="cs-vol">${fmtNum(kd.volume)}</span> · <span class="cs-kd">${kd.difficulty} KD</span>` : '';
+      return `<div class="cs-cluster">
+        <div>
+          <strong>${escHtml(c.title)}</strong>
+          <div style="font-size:11px;color:#7c3aed;margin-top:2px;">${escHtml(c.target_keyword)}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          ${kwInfo}
+          <span class="cs-intent ${escHtml(c.intent || 'informational')}">${escHtml(c.intent || '')}</span>
+        </div>
+      </div>`;
+    }).join('');
+
+    return `<div class="cs-pillar-card">
+      <div class="cs-pillar-title">&#x1F3D7; ${escHtml(p.pillar)}</div>
+      ${clusters}
+    </div>`;
+  }).join('');
+}
+
+async function researchCsKeywords() {
+  if (!csStrategy) return;
+
+  // Collect all target keywords across all categories
+  const allKeywords = new Set();
+  ['comparisons', 'alternatives', 'listicles', 'integrations', 'free_tools'].forEach(cat => {
+    (csStrategy[cat] || []).forEach(item => {
+      if (item.target_keyword) allKeywords.add(item.target_keyword);
+    });
+  });
+  (csStrategy.pillars || []).forEach(p => {
+    (p.clusters || []).forEach(c => {
+      if (c.target_keyword) allKeywords.add(c.target_keyword);
+    });
+  });
+
+  const keywords = [...allKeywords];
+  if (keywords.length === 0) return;
+
+  const btn = document.getElementById('csResearchBtn');
+  btn.disabled = true;
+  btn.textContent = `Researching ${keywords.length} keywords...`;
+
+  const data = await api('POST', '/api/content-strategy/research-keywords', { keywords });
+
+  if (data.results) {
+    data.results.forEach(r => {
+      csKeywordData[r.keyword] = r;
+    });
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = '&#x1F50D; Research Keywords';
+  showToast(`Got data for ${(data.results || []).length} keywords`);
+
+  // Re-render current view
+  switchCsCategory(csCategory);
+}
+
+function exportCsCSV() {
+  if (!csStrategy) return;
+  let csv = 'Category,Title,Target Keyword,Priority,Volume,KD,CPC,Notes\n';
+
+  ['comparisons', 'alternatives', 'listicles', 'integrations', 'free_tools'].forEach(cat => {
+    (csStrategy[cat] || []).forEach(item => {
+      const kd = csKeywordData[item.target_keyword] || {};
+      csv += [cat, item.title, item.target_keyword, item.priority || '', kd.volume || '', kd.difficulty || '', kd.cpc || '', item.notes || '']
+        .map(v => `"${String(v).replace(/"/g, '""')}"`)
+        .join(',') + '\n';
+    });
+  });
+
+  (csStrategy.pillars || []).forEach(p => {
+    (p.clusters || []).forEach(c => {
+      const kd = csKeywordData[c.target_keyword] || {};
+      csv += ['pillar:' + p.pillar, c.title, c.target_keyword, '', kd.volume || '', kd.difficulty || '', kd.cpc || '', c.intent || '']
+        .map(v => `"${String(v).replace(/"/g, '""')}"`)
+        .join(',') + '\n';
+    });
+  });
+
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'content-strategy.csv';
+  a.click();
+}
+
+/* -- Init ---------------------------------------------------------------- */
+document.addEventListener('DOMContentLoaded', () => {
+  renderTldPicker();
+  loadFilters();
+  loadCostLog();
+  loadKeywords();
+  checkApiStatus();
+});
+</script>
+</body>
+</html>

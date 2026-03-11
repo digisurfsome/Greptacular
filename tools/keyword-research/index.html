@@ -301,8 +301,20 @@ input, select { font-family: inherit; }
   font-size: 10px; font-weight: 600; padding: 1px 7px;
   border-radius: 99px; white-space: nowrap;
 }
-.domain-dot.avail { background: #dcfce7; color: #166534; }
-.domain-dot.taken { background: #fee2e2; color: #991b1b; }
+.domain-dot.avail { background: #dcfce7; color: #166534; cursor: pointer; }
+.domain-dot.taken { opacity: 0.35; }
+
+/* TLD picker chips in toolbar */
+.tld-picker { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.tld-picker-label { font-size: 11px; color: #64748b; font-weight: 600; margin-right: 2px; }
+.tld-chip {
+  font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 99px;
+  cursor: pointer; transition: all 0.15s; user-select: none;
+  border: 1.5px solid #e2e8f0; background: #f8fafc; color: #94a3b8;
+}
+.tld-chip:hover { border-color: #7c3aed; color: #7c3aed; }
+.tld-chip.active { background: #7c3aed; color: #fff; border-color: #7c3aed; }
+.tld-chip.active:hover { background: #6d28d9; }
 .domain-dot.checking { background: #f3f4f6; color: #999; }
 .check-domains-btn {
   display: inline-flex; align-items: center; gap: 6px;
@@ -995,7 +1007,8 @@ tbody tr:last-child td { border-bottom: none; }
         <input type="text" class="table-filter-input" id="tableFilter"
                placeholder="Filter keywords..." oninput="applyFilters()">
         <div class="table-toolbar-right">
-          <button class="check-domains-btn" onclick="checkDomainsForPage()" title="Check .com/.net/.org availability for keywords on this page">&#x1F310; Check Domains</button>
+          <div class="tld-picker" id="tldPicker"></div>
+          <button class="check-domains-btn" onclick="checkDomainsForPage()" title="Re-check domains for this page">&#x1F504; Re-check</button>
           <span class="table-info" id="tableInfo"></span>
         </div>
       </div>
@@ -1013,7 +1026,7 @@ tbody tr:last-child td { border-bottom: none; }
               <th>Intent</th>
               <th data-col="opportunity_score" onclick="sortTable('opportunity_score')">Opportunity <span class="sort-arrow" id="sort-opportunity_score"></span></th>
               <th>SERP</th>
-              <th style="width:180px">Domains Available</th>
+              <th style="min-width:140px">Domains</th>
               <th style="width:60px">Top 10</th>
             </tr>
           </thead>
@@ -1356,7 +1369,15 @@ let activeSegments = new Set();
 let currentSort = { col: 'volume', order: 'desc' };
 let filtersVisible = true;
 let currentPage = 1;
-let domainCache = {};  // keyword -> true (available) | false (taken) | 'checking'
+let domainCache = {};  // keyword -> { '.com': true/false, '.net': true/false, ... } | 'checking'
+
+// Configurable TLD list - user can add/remove from the UI
+const ALL_TLDS = ['.com', '.net', '.org', '.io', '.ai', '.app', '.dev', '.co', '.us', '.info'];
+let activeTlds = JSON.parse(localStorage.getItem('kw_active_tlds') || 'null') || ['.com', '.net', '.org', '.app', '.ai', '.io'];
+
+function saveActiveTlds() { localStorage.setItem('kw_active_tlds', JSON.stringify(activeTlds)); }
+
+let autoCheckRunning = false;
 const PAGE_SIZE = 50;
 let searchPollingTimer = null;
 
@@ -1530,27 +1551,56 @@ async function getBalance() {
 }
 
 /* -- Domain Check (bulk .com/.net/.org for table) ------------------------ */
+function renderTldPicker() {
+  const picker = document.getElementById('tldPicker');
+  picker.innerHTML = '<span class="tld-picker-label">TLDs:</span>' + ALL_TLDS.map(tld =>
+    `<span class="tld-chip ${activeTlds.includes(tld) ? 'active' : ''}" onclick="toggleTld('${tld}')">${tld}</span>`
+  ).join('');
+}
+
+function toggleTld(tld) {
+  if (activeTlds.includes(tld)) {
+    if (activeTlds.length <= 1) return; // keep at least 1
+    activeTlds = activeTlds.filter(t => t !== tld);
+  } else {
+    activeTlds.push(tld);
+  }
+  saveActiveTlds();
+  domainCache = {}; // clear cache since TLDs changed
+  renderTldPicker();
+  renderTable();
+  autoCheckDomainsForPage(); // re-check with new TLDs
+}
+
 async function checkDomainsForPage() {
+  // Force re-check: clear cache for current page keywords
+  const start = (currentPage - 1) * PAGE_SIZE;
+  const pageItems = displayedKeywords.slice(start, start + PAGE_SIZE);
+  pageItems.forEach(kw => { delete domainCache[kw.keyword]; });
+  autoCheckDomainsForPage();
+}
+
+async function autoCheckDomainsForPage() {
+  if (autoCheckRunning) return;
   const start = (currentPage - 1) * PAGE_SIZE;
   const pageItems = displayedKeywords.slice(start, start + PAGE_SIZE);
   const toCheck = pageItems.filter(kw => domainCache[kw.keyword] === undefined).map(kw => kw.keyword);
 
-  if (toCheck.length === 0) {
-    showToast('All domains on this page already checked');
-    return;
-  }
+  if (toCheck.length === 0) return;
+
+  autoCheckRunning = true;
 
   // Mark as checking and re-render
   toCheck.forEach(kw => { domainCache[kw] = 'checking'; });
   renderTable();
 
-  // Check in batches of 15 (15 * 3 TLDs = 45 RDAP lookups)
-  for (let i = 0; i < toCheck.length; i += 15) {
-    const batch = toCheck.slice(i, i + 15);
-    const data = await api('POST', '/api/domain-check-bulk', { keywords: batch });
+  // Batch size depends on number of TLDs
+  const batchSize = Math.max(5, Math.floor(50 / activeTlds.length));
+  for (let i = 0; i < toCheck.length; i += batchSize) {
+    const batch = toCheck.slice(i, i + batchSize);
+    const data = await api('POST', '/api/domain-check-bulk', { keywords: batch, tlds: activeTlds });
     if (data.results) {
       for (const [kw, tldMap] of Object.entries(data.results)) {
-        // tldMap: { '.com': { domain, available }, '.net': ..., '.org': ... }
         const cache = {};
         for (const [tld, info] of Object.entries(tldMap)) {
           cache[tld] = info.available === true;
@@ -1561,11 +1611,7 @@ async function checkDomainsForPage() {
     renderTable();
   }
 
-  const anyFree = toCheck.filter(kw => {
-    const dc = domainCache[kw];
-    return dc && typeof dc === 'object' && (dc['.com'] || dc['.net'] || dc['.org']);
-  }).length;
-  showToast(`Checked ${toCheck.length} keywords: ${anyFree} have domains available!`);
+  autoCheckRunning = false;
 }
 
 /* -- Domain Check (detailed modal) --------------------------------------- */
@@ -2504,20 +2550,16 @@ function renderTable() {
     const dc = domainCache[kw.keyword];
     const kwEsc = escHtml(kw.keyword).replace(/'/g, "\\'");
     let domainCell;
-    if (dc === undefined) {
-      domainCell = `<button class="domain-btn" onclick="checkDomain('${kwEsc}')">&#x1F310; Check</button>`;
-    } else if (dc === 'checking') {
+    if (dc === undefined || dc === 'checking') {
       domainCell = `<span class="domain-dot checking">checking...</span>`;
     } else {
-      // dc is an object: { '.com': true/false, '.net': true/false, '.org': true/false }
-      const tlds = ['.com', '.net', '.org'];
-      const badges = tlds.map(tld => {
+      const badges = activeTlds.map(tld => {
         const avail = dc[tld];
-        if (avail === true) return `<span class="domain-dot avail">${tld} &#x2713;</span>`;
-        if (avail === false) return `<span class="domain-dot taken">${tld} &#x2717;</span>`;
-        return `<span class="domain-dot checking">${tld} ?</span>`;
+        if (avail === true) return `<span class="domain-dot avail" onclick="checkDomain('${kwEsc}')" title="Available!">${tld} &#x2713;</span>`;
+        if (avail === false) return `<span class="domain-dot taken" title="Taken">${tld}</span>`;
+        return `<span class="domain-dot checking">${tld}</span>`;
       }).join('');
-      domainCell = `<div class="domain-inline" style="cursor:pointer" onclick="checkDomain('${kwEsc}')">${badges}</div>`;
+      domainCell = `<div class="domain-inline">${badges}</div>`;
     }
     return `<tr>
       <td class="row-num">${rowNum}</td>
@@ -2539,6 +2581,9 @@ function renderTable() {
   // Render pagination controls
   renderPagination(totalPages);
   updateSortArrows();
+
+  // Auto-check domains for visible keywords (free RDAP — no cost)
+  autoCheckDomainsForPage();
 }
 
 function renderPagination(totalPages) {
@@ -3074,6 +3119,7 @@ async function deleteHunt(huntId) {
 
 /* -- Init ---------------------------------------------------------------- */
 document.addEventListener('DOMContentLoaded', () => {
+  renderTldPicker();
   loadFilters();
   loadCostLog();
   loadKeywords();

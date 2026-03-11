@@ -1068,14 +1068,19 @@ async def domain_check(keyword: str = Query(...)):
 
 @app.post("/api/domain-check-bulk")
 async def domain_check_bulk(payload: dict):
-    """Check .com/.net/.org availability for a list of keywords."""
+    """Check domain availability for a list of keywords across specified TLDs."""
     keywords = payload.get("keywords", [])
     if not keywords:
         return {"results": {}}
 
-    # Limit to 15 keywords at a time (15 * 3 TLDs = 45 RDAP lookups)
-    keywords = keywords[:15]
-    check_tlds = [".com", ".net", ".org"]
+    # Accept custom TLD list from frontend, default to .com/.net/.org
+    check_tlds = payload.get("tlds", [".com", ".net", ".org"])
+    # Sanitize: ensure they start with dot, limit to 10 TLDs
+    check_tlds = [t if t.startswith(".") else "." + t for t in check_tlds][:10]
+
+    # Limit keywords based on TLD count to keep RDAP calls reasonable
+    max_kw = max(5, 50 // len(check_tlds))
+    keywords = keywords[:max_kw]
 
     async with httpx.AsyncClient() as client:
         tasks = []

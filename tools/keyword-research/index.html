@@ -37,6 +37,74 @@ input, select { font-family: inherit; }
 .api-dot.green { background: #22c55e; }
 .api-dot.red { background: #ef4444; }
 .api-balance { font-weight: 600; color: #111; }
+.cost-tracker {
+  display: flex; align-items: center; gap: 10px; font-size: 12px;
+  padding: 4px 10px; border-radius: 99px; background: #f3f4f6; color: #666;
+}
+.cost-tracker .cost-label { color: #888; }
+.cost-tracker .cost-value { font-weight: 600; color: #111; }
+.cost-tracker .cost-value.cost-flash { animation: costFlash 1.5s ease; }
+@keyframes costFlash { 0%,100%{ color:#111; } 30%{ color:#f59e0b; } }
+.cost-tracker .cost-sep { color: #d0d0d0; }
+.search-cost-badge {
+  display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px;
+  border-radius: 99px; background: #fef3c7; color: #92400e; margin-left: 8px;
+}
+
+/* -- Cost Log Panel ------------------------------------------------------ */
+.cost-log-panel {
+  margin-top: 20px; background: #fff; border: 1px solid #e0e0e0;
+  border-radius: 12px; overflow: hidden;
+}
+.cost-log-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; background: linear-gradient(135deg, #1e293b, #334155);
+  color: #fff; cursor: pointer; user-select: none;
+}
+.cost-log-header h3 { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.cost-log-header .cost-log-summary {
+  display: flex; gap: 16px; font-size: 12px;
+}
+.cost-log-header .cost-log-summary span { opacity: 0.8; }
+.cost-log-header .cost-log-summary strong { color: #fbbf24; opacity: 1; }
+.cost-log-toggle { font-size: 16px; transition: transform 0.2s; }
+.cost-log-toggle.collapsed { transform: rotate(-90deg); }
+.cost-log-body { max-height: 300px; overflow-y: auto; }
+.cost-log-body.collapsed { display: none; }
+.cost-log-empty {
+  padding: 24px; text-align: center; color: #999; font-size: 13px;
+}
+.cost-log-table {
+  width: 100%; border-collapse: collapse; font-size: 12px;
+}
+.cost-log-table th {
+  position: sticky; top: 0; background: #f8fafc; padding: 8px 12px;
+  text-align: left; font-weight: 600; color: #64748b; border-bottom: 2px solid #e2e8f0;
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+}
+.cost-log-table td {
+  padding: 7px 12px; border-bottom: 1px solid #f1f5f9; color: #334155;
+}
+.cost-log-table tr:hover td { background: #f8fafc; }
+.cost-log-table .cost-cell { font-weight: 600; color: #92400e; }
+.cost-log-table .kw-count-cell { font-weight: 600; color: #0369a1; }
+.cost-log-table .mode-badge {
+  display: inline-block; padding: 1px 8px; border-radius: 99px;
+  font-size: 10px; font-weight: 600; text-transform: uppercase;
+}
+.mode-badge.related { background: #dbeafe; color: #1e40af; }
+.mode-badge.suggestions { background: #fce7f3; color: #9d174d; }
+.mode-badge.merged { background: #e0e7ff; color: #3730a3; }
+.cost-log-footer {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 16px; background: #f8fafc; border-top: 1px solid #e2e8f0;
+  font-size: 12px; color: #64748b;
+}
+.cost-log-footer button {
+  font-size: 11px; padding: 4px 10px; border: 1px solid #d0d0d0;
+  border-radius: 6px; background: #fff; color: #666;
+}
+.cost-log-footer button:hover { background: #f1f5f9; }
 .header-actions { display: flex; gap: 8px; align-items: center; }
 .icon-btn {
   background: none; border: 1px solid #d0d0d0; border-radius: 8px;
@@ -519,6 +587,16 @@ tbody tr:last-child td { border-bottom: none; }
         <span id="apiStatusText">Checking...</span>
         <span class="api-balance" id="apiBalance"></span>
       </div>
+      <div class="cost-tracker" id="costTracker" style="display:none">
+        <span class="cost-label">Last search:</span>
+        <span class="cost-value" id="lastSearchCost">—</span>
+        <span class="cost-sep">|</span>
+        <span class="cost-label">Session total:</span>
+        <span class="cost-value" id="sessionCost">$0.00</span>
+        <span class="cost-sep">|</span>
+        <span class="cost-label">Searches:</span>
+        <span class="cost-value" id="searchCount">0</span>
+      </div>
     </div>
     <div class="header-actions">
       <button class="icon-btn" onclick="exportCSV()" title="Export CSV">
@@ -584,26 +662,30 @@ tbody tr:last-child td { border-bottom: none; }
       <div class="filter-group">
         <label>Volume</label>
         <div class="filter-row">
-          <input type="number" id="filterVolMin" value="0" min="0" onchange="applyFilters()">
+          <input type="number" id="filterVolMin" value="0" min="0" oninput="applyFilters(); saveFilters()">
           <span>to</span>
-          <input type="number" id="filterVolMax" value="10000000" min="0" onchange="applyFilters()">
+          <input type="number" id="filterVolMax" value="10000000" min="0" oninput="applyFilters(); saveFilters()">
         </div>
       </div>
       <div class="filter-group">
         <label>Difficulty (0-100)</label>
         <div class="filter-row">
-          <input type="number" id="filterDiffMin" value="0" min="0" max="100" onchange="applyFilters()">
+          <input type="number" id="filterDiffMin" value="0" min="0" max="100" oninput="applyFilters(); saveFilters()">
           <span>to</span>
-          <input type="number" id="filterDiffMax" value="100" min="0" max="100" onchange="applyFilters()">
+          <input type="number" id="filterDiffMax" value="100" min="0" max="100" oninput="applyFilters(); saveFilters()">
         </div>
       </div>
       <div class="filter-group">
-        <label>Min Opportunity Score</label>
-        <input type="number" id="filterMinOpp" value="0" min="0" max="100" onchange="applyFilters()">
+        <label>Opportunity Score (0-100)</label>
+        <div class="filter-row">
+          <input type="number" id="filterOppMin" value="0" min="0" max="100" oninput="applyFilters(); saveFilters()">
+          <span>to</span>
+          <input type="number" id="filterOppMax" value="100" min="0" max="100" oninput="applyFilters(); saveFilters()">
+        </div>
       </div>
       <div class="filter-group">
         <label>Trend</label>
-        <select id="filterTrend" onchange="applyFilters()" style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;">
+        <select id="filterTrend" onchange="applyFilters(); saveFilters()" style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;">
           <option value="all">All</option>
           <option value="rising">Rising only</option>
           <option value="stable">Stable only</option>
@@ -612,7 +694,7 @@ tbody tr:last-child td { border-bottom: none; }
       </div>
       <div class="filter-group">
         <label>Competition</label>
-        <select id="filterComp" onchange="applyFilters()" style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;">
+        <select id="filterComp" onchange="applyFilters(); saveFilters()" style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;">
           <option value="all">All</option>
           <option value="LOW">Low only</option>
           <option value="MEDIUM">Medium only</option>
@@ -803,6 +885,42 @@ tbody tr:last-child td { border-bottom: none; }
 
   </div><!-- /nuggetHunterPanel -->
 
+  <!-- Cost Log Panel (always visible) -->
+  <div class="cost-log-panel" id="costLogPanel">
+    <div class="cost-log-header" onclick="toggleCostLog()">
+      <h3>&#x1F4B0; Search Cost Log</h3>
+      <div class="cost-log-summary">
+        <span>Searches: <strong id="clTotalSearches">0</strong></span>
+        <span>Keywords: <strong id="clTotalKeywords">0</strong></span>
+        <span>Total Cost: <strong id="clTotalCost">$0.0000</strong></span>
+        <span>Balance: <strong id="clBalance">—</strong></span>
+      </div>
+      <span class="cost-log-toggle" id="costLogToggle">&#x25BC;</span>
+    </div>
+    <div class="cost-log-body" id="costLogBody">
+      <div class="cost-log-empty" id="costLogEmpty">No searches yet. Costs will appear here as you search.</div>
+      <table class="cost-log-table" id="costLogTable" style="display:none">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Date &amp; Time</th>
+            <th>Keyword</th>
+            <th>Mode</th>
+            <th>Keywords Found</th>
+            <th>Cost</th>
+            <th>Balance After</th>
+            <th>Running Total</th>
+          </tr>
+        </thead>
+        <tbody id="costLogTableBody"></tbody>
+      </table>
+    </div>
+    <div class="cost-log-footer">
+      <span id="clFooterNote">Cost = balance before − balance after each search</span>
+      <button onclick="clearCostLog()">Clear Log</button>
+    </div>
+  </div>
+
 </div>
 
 <!-- Settings Modal -->
@@ -942,6 +1060,113 @@ async function api(method, url, body) {
   }
 }
 
+/* -- Cost Log ------------------------------------------------------------ */
+let costLog = [];
+let costLogCollapsed = false;
+
+function loadCostLog() {
+  try {
+    const saved = localStorage.getItem('kwCostLog');
+    if (saved) costLog = JSON.parse(saved);
+  } catch(e) { costLog = []; }
+  renderCostLog();
+}
+
+function saveCostLog() {
+  localStorage.setItem('kwCostLog', JSON.stringify(costLog));
+}
+
+function addCostLogEntry(entry) {
+  costLog.push(entry);
+  saveCostLog();
+  renderCostLog();
+}
+
+function clearCostLog() {
+  if (!confirm('Clear the entire cost log?')) return;
+  costLog = [];
+  saveCostLog();
+  renderCostLog();
+}
+
+function toggleCostLog() {
+  costLogCollapsed = !costLogCollapsed;
+  document.getElementById('costLogBody').classList.toggle('collapsed', costLogCollapsed);
+  document.getElementById('costLogToggle').classList.toggle('collapsed', costLogCollapsed);
+}
+
+function renderCostLog() {
+  const empty = document.getElementById('costLogEmpty');
+  const table = document.getElementById('costLogTable');
+  const tbody = document.getElementById('costLogTableBody');
+
+  if (costLog.length === 0) {
+    empty.style.display = 'block';
+    table.style.display = 'none';
+    updateCostLogSummary();
+    return;
+  }
+
+  empty.style.display = 'none';
+  table.style.display = 'table';
+
+  let runningTotal = 0;
+  tbody.innerHTML = costLog.map((e, i) => {
+    runningTotal += e.cost;
+    const modeClass = e.mode === 'merged' ? 'merged' : e.mode === 'keyword_suggestions' ? 'suggestions' : 'related';
+    const modeLabel = e.mode === 'merged' ? 'Merged' : e.mode === 'keyword_suggestions' ? 'Suggestions' : 'Related';
+    return `<tr>
+      <td>${i + 1}</td>
+      <td>${e.datetime}</td>
+      <td><strong>${escapeHtml(e.keyword)}</strong></td>
+      <td><span class="mode-badge ${modeClass}">${modeLabel}</span></td>
+      <td class="kw-count-cell">${e.keywordsFound.toLocaleString()}</td>
+      <td class="cost-cell">$${e.cost.toFixed(4)}</td>
+      <td>$${e.balanceAfter.toFixed(2)}</td>
+      <td class="cost-cell">$${runningTotal.toFixed(4)}</td>
+    </tr>`;
+  }).join('');
+
+  updateCostLogSummary();
+
+  // Auto-scroll to bottom
+  const body = document.getElementById('costLogBody');
+  body.scrollTop = body.scrollHeight;
+}
+
+function escapeHtml(str) {
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+function updateCostLogSummary() {
+  const totalSearches = costLog.length;
+  const totalKeywords = costLog.reduce((s, e) => s + e.keywordsFound, 0);
+  const totalCost = costLog.reduce((s, e) => s + e.cost, 0);
+  const lastBalance = costLog.length > 0 ? costLog[costLog.length - 1].balanceAfter : null;
+
+  document.getElementById('clTotalSearches').textContent = totalSearches;
+  document.getElementById('clTotalKeywords').textContent = totalKeywords.toLocaleString();
+  document.getElementById('clTotalCost').textContent = '$' + totalCost.toFixed(4);
+  document.getElementById('clBalance').textContent = lastBalance !== null ? '$' + lastBalance.toFixed(2) : '—';
+
+  // Also update the header cost tracker
+  const tracker = document.getElementById('costTracker');
+  if (totalSearches > 0) {
+    tracker.style.display = 'flex';
+    document.getElementById('lastSearchCost').textContent = '$' + costLog[costLog.length - 1].cost.toFixed(4);
+    document.getElementById('sessionCost').textContent = '$' + totalCost.toFixed(4);
+    document.getElementById('searchCount').textContent = totalSearches;
+  }
+}
+
+async function getBalance() {
+  const data = await api('GET', '/api/balance');
+  if (data.connected && data.balance !== undefined) return data.balance;
+  return null;
+}
+
 /* -- API status check ---------------------------------------------------- */
 async function checkApiStatus() {
   const data = await api('GET', '/api/balance');
@@ -993,13 +1218,36 @@ async function searchKeywords() {
   // Show progress indicator
   showProgress('Searching...');
 
+  // Get balance before search
+  const balanceBefore = await getBalance();
+
   const data = await api('POST', '/api/search', { seed_keyword: seed, mode: mode });
   btn.disabled = false;
 
+  const kwFound = data.keywords ? (data.count || data.keywords.length) : 0;
+
+  // Get balance after search and log the cost
+  const balanceAfter = await getBalance();
+  if (balanceBefore !== null && balanceAfter !== null) {
+    const cost = Math.max(0, balanceBefore - balanceAfter);
+    const now = new Date();
+    addCostLogEntry({
+      datetime: now.toLocaleDateString() + ' ' + now.toLocaleTimeString(),
+      keyword: seed,
+      mode: mode,
+      keywordsFound: kwFound,
+      cost: cost,
+      balanceBefore: balanceBefore,
+      balanceAfter: balanceAfter,
+    });
+    // Update the balance display
+    document.getElementById('apiBalance').textContent = '$' + balanceAfter.toFixed(2) + ' remaining';
+  }
+
   if (data.error) {
     showProgressError(data.error);
-  } else if (data.keywords && data.keywords.length > 0) {
-    showProgressDone('Found ' + (data.count || data.keywords.length) + ' keywords');
+  } else if (kwFound > 0) {
+    showProgressDone('Found ' + kwFound + ' keywords');
     await loadKeywords();
   } else {
     showProgressDone('Found 0 keywords');
@@ -1106,21 +1354,25 @@ function resetFilters() {
   document.getElementById('filterVolMax').value = 10000000;
   document.getElementById('filterDiffMin').value = 0;
   document.getElementById('filterDiffMax').value = 100;
-  document.getElementById('filterMinOpp').value = 0;
+  document.getElementById('filterOppMin').value = 0;
+  document.getElementById('filterOppMax').value = 100;
   document.getElementById('filterTrend').value = 'all';
   document.getElementById('filterComp').value = 'all';
   document.getElementById('tableFilter').value = '';
   activeSegments.clear();
   renderSegmentBar();
+  localStorage.removeItem('kwFilters');
   applyFilters();
 }
 
 function applyFilters() {
-  const volMin = parseInt(document.getElementById('filterVolMin').value) || 0;
-  const volMax = parseInt(document.getElementById('filterVolMax').value) || 10000000;
-  let diffMin = parseInt(document.getElementById('filterDiffMin').value) || 0;
-  let diffMax = parseInt(document.getElementById('filterDiffMax').value) || 100;
-  const minOpp = parseInt(document.getElementById('filterMinOpp').value) || 0;
+  const val = (id, fallback) => { const v = parseInt(document.getElementById(id).value); return isNaN(v) ? fallback : v; };
+  const volMin = val('filterVolMin', 0);
+  const volMax = val('filterVolMax', 10000000);
+  let diffMin = val('filterDiffMin', 0);
+  let diffMax = val('filterDiffMax', 100);
+  const oppMin = val('filterOppMin', 0);
+  const oppMax = val('filterOppMax', 100);
   const trendFilter = document.getElementById('filterTrend').value;
   const compFilter = document.getElementById('filterComp').value;
   const textFilter = (document.getElementById('tableFilter').value || '').toLowerCase().trim();
@@ -1133,7 +1385,8 @@ function applyFilters() {
     }
     filteredKeywords = allKeywords.filter(kw => {
       if (kw.volume < volMin || kw.volume > volMax) return false;
-      if ((kw.opportunity_score || 0) < minOpp) return false;
+      const opp = kw.opportunity_score || 0;
+      if (opp < oppMin || opp > oppMax) return false;
       if (trendFilter !== 'all' && kw.trend !== trendFilter) return false;
       if (compFilter !== 'all' && (kw.competition_level || '').toUpperCase() !== compFilter) return false;
       return ranges.some(([lo, hi]) => kw.difficulty >= lo && kw.difficulty <= hi);
@@ -1142,7 +1395,8 @@ function applyFilters() {
     filteredKeywords = allKeywords.filter(kw => {
       if (kw.volume < volMin || kw.volume > volMax) return false;
       if (kw.difficulty < diffMin || kw.difficulty > diffMax) return false;
-      if ((kw.opportunity_score || 0) < minOpp) return false;
+      const opp = kw.opportunity_score || 0;
+      if (opp < oppMin || opp > oppMax) return false;
       if (trendFilter !== 'all' && kw.trend !== trendFilter) return false;
       if (compFilter !== 'all' && (kw.competition_level || '').toUpperCase() !== compFilter) return false;
       return true;
@@ -1162,6 +1416,37 @@ function applyFilters() {
   sortData();
   renderTable();
   updateStats();
+}
+
+/* -- Filter Persistence (localStorage) ----------------------------------- */
+function saveFilters() {
+  const filters = {
+    volMin: document.getElementById('filterVolMin').value,
+    volMax: document.getElementById('filterVolMax').value,
+    diffMin: document.getElementById('filterDiffMin').value,
+    diffMax: document.getElementById('filterDiffMax').value,
+    oppMin: document.getElementById('filterOppMin').value,
+    oppMax: document.getElementById('filterOppMax').value,
+    trend: document.getElementById('filterTrend').value,
+    comp: document.getElementById('filterComp').value,
+  };
+  localStorage.setItem('kwFilters', JSON.stringify(filters));
+}
+
+function loadFilters() {
+  const saved = localStorage.getItem('kwFilters');
+  if (!saved) return;
+  try {
+    const f = JSON.parse(saved);
+    if (f.volMin !== undefined) document.getElementById('filterVolMin').value = f.volMin;
+    if (f.volMax !== undefined) document.getElementById('filterVolMax').value = f.volMax;
+    if (f.diffMin !== undefined) document.getElementById('filterDiffMin').value = f.diffMin;
+    if (f.diffMax !== undefined) document.getElementById('filterDiffMax').value = f.diffMax;
+    if (f.oppMin !== undefined) document.getElementById('filterOppMin').value = f.oppMin;
+    if (f.oppMax !== undefined) document.getElementById('filterOppMax').value = f.oppMax;
+    if (f.trend) document.getElementById('filterTrend').value = f.trend;
+    if (f.comp) document.getElementById('filterComp').value = f.comp;
+  } catch(e) { /* ignore corrupt data */ }
 }
 
 /* -- Sorting ------------------------------------------------------------- */
@@ -1821,6 +2106,8 @@ async function deleteHunt(huntId) {
 
 /* -- Init ---------------------------------------------------------------- */
 document.addEventListener('DOMContentLoaded', () => {
+  loadFilters();
+  loadCostLog();
   loadKeywords();
   checkApiStatus();
 });

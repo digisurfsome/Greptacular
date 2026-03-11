@@ -31,6 +31,7 @@ from fastapi.staticfiles import StaticFiles
 from .routers import (
     actions_router,
     agent_os_router,
+    build_planner_router,
     agent_router,
     approvals_router,
     assistant_chat_router,
@@ -333,6 +334,7 @@ app.include_router(commits_router)
 app.include_router(verifications_router)
 app.include_router(approvals_router)
 app.include_router(checkpoints_router)
+app.include_router(build_planner_router)
 
 
 # ============================================================================

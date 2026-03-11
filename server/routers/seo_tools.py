@@ -439,9 +439,11 @@ def _parse_labs_response(data: dict) -> list[dict]:
                     continue
                 kw_data = item.get("keyword_data") or item
                 kw_info = kw_data.get("keyword_info") or {}
-                serp_info = kw_data.get("serp_info") or {}
+                # serp_info can be a sibling of keyword_data (related_keywords)
+                # or nested inside kw_data (keyword_suggestions)
+                serp_info = kw_data.get("serp_info") or item.get("serp_info") or {}
 
-                kw_text = kw_data.get("keyword", "")
+                kw_text = kw_data.get("keyword") or item.get("keyword", "")
                 if not kw_text:
                     continue
 

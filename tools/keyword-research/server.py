@@ -16,11 +16,11 @@ import asyncio
 import csv
 import io
 import json
-import xml.etree.ElementTree as ET
 import logging
 import random
 import sqlite3
 import time
+import xml.etree.ElementTree as ET
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path

@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Keyword Golden Nugget Finder</title>
+<style>
+/* ── Reset & base ──────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #f5f5f5;
+  color: #1a1a1a;
+  line-height: 1.5;
+}
+button { cursor: pointer; font-family: inherit; }
+input { font-family: inherit; }
+
+/* ── Layout ────────────────────────────────────────────────────────── */
+.app { max-width: 1200px; margin: 0 auto; padding: 16px 20px; }
+
+/* ── Header ────────────────────────────────────────────────────────── */
+.header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 0; border-bottom: 2px solid #e0e0e0; margin-bottom: 20px;
+}
+.header h1 { font-size: 22px; font-weight: 700; }
+.header h1 span { color: #f59e0b; }
+.header-actions { display: flex; gap: 8px; align-items: center; }
+.icon-btn {
+  background: none; border: 1px solid #d0d0d0; border-radius: 8px;
+  padding: 8px 12px; font-size: 14px; color: #555; transition: all 0.15s;
+}
+.icon-btn:hover { background: #fff; border-color: #999; color: #111; }
+
+/* ── Stats bar ─────────────────────────────────────────────────────── */
+.stats-bar {
+  display: flex; gap: 24px; padding: 12px 16px;
+  background: #fff; border-radius: 10px; margin-bottom: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  font-size: 13px; color: #666; flex-wrap: wrap;
+}
+.stats-bar .stat-val { font-weight: 700; color: #111; font-family: 'SF Mono', 'Fira Code', monospace; }
+
+/* ── Search bar ────────────────────────────────────────────────────── */
+.search-bar {
+  display: flex; gap: 8px; margin-bottom: 16px;
+}
+.search-bar input {
+  flex: 1; padding: 10px 14px; border: 1px solid #d0d0d0; border-radius: 8px;
+  font-size: 14px; outline: none; transition: border-color 0.15s;
+}
+.search-bar input:focus { border-color: #3b82f6; }
+.btn-primary {
+  background: #3b82f6; color: #fff; border: none; border-radius: 8px;
+  padding: 10px 20px; font-size: 14px; font-weight: 600; transition: background 0.15s;
+}
+.btn-primary:hover { background: #2563eb; }
+.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* ── Segment bar ───────────────────────────────────────────────────── */
+.segment-bar {
+  display: flex; margin-bottom: 16px; border-radius: 10px; overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+.segment {
+  flex: 1; text-align: center; padding: 12px 8px; cursor: pointer;
+  transition: all 0.15s; border: 2px solid transparent; position: relative;
+  user-select: none;
+}
+.segment:hover { filter: brightness(0.95); }
+.segment.active { border-color: #111; z-index: 1; transform: scale(1.02); }
+.segment .seg-label { font-size: 11px; font-weight: 600; text-transform: uppercase; opacity: 0.8; }
+.segment .seg-count {
+  font-size: 20px; font-weight: 800;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+.seg-0    { background: #22c55e; color: #fff; }
+.seg-1-5  { background: #84cc16; color: #fff; }
+.seg-6-10 { background: #eab308; color: #fff; }
+.seg-11-20{ background: #f59e0b; color: #fff; }
+.seg-21-50{ background: #f97316; color: #fff; }
+.seg-51   { background: #ef4444; color: #fff; }
+
+/* ── Main layout (filters + table) ─────────────────────────────────── */
+.main-layout { display: flex; gap: 16px; }
+.filters-panel {
+  width: 220px; flex-shrink: 0; background: #fff; border-radius: 10px;
+  padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  align-self: flex-start; position: sticky; top: 16px;
+}
+.filters-panel.collapsed { display: none; }
+.filters-panel h3 { font-size: 13px; font-weight: 700; margin-bottom: 12px; text-transform: uppercase; color: #888; }
+.filter-group { margin-bottom: 16px; }
+.filter-group label { display: block; font-size: 12px; color: #666; margin-bottom: 4px; }
+.filter-group input[type="number"] {
+  width: 100%; padding: 6px 8px; border: 1px solid #ddd; border-radius: 6px;
+  font-size: 13px; font-family: 'SF Mono', 'Fira Code', monospace;
+}
+.filter-row { display: flex; gap: 6px; align-items: center; }
+.filter-row span { font-size: 12px; color: #999; }
+.btn-small {
+  background: #f0f0f0; border: 1px solid #ddd; border-radius: 6px;
+  padding: 6px 12px; font-size: 12px; font-weight: 600; transition: all 0.15s;
+}
+.btn-small:hover { background: #e0e0e0; }
+.btn-reset { width: 100%; margin-top: 8px; }
+
+.table-container { flex: 1; min-width: 0; }
+
+/* ── Table ─────────────────────────────────────────────────────────── */
+.kw-table-wrap {
+  background: #fff; border-radius: 10px; overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+table { width: 100%; border-collapse: collapse; }
+thead th {
+  text-align: left; padding: 10px 14px; font-size: 12px; font-weight: 700;
+  text-transform: uppercase; color: #888; border-bottom: 2px solid #eee;
+  cursor: pointer; user-select: none; white-space: nowrap;
+}
+thead th:hover { color: #333; }
+thead th .sort-arrow { margin-left: 4px; font-size: 10px; }
+tbody td {
+  padding: 10px 14px; font-size: 14px; border-bottom: 1px solid #f0f0f0;
+}
+tbody tr:hover { background: #fafafa; }
+tbody tr:last-child td { border-bottom: none; }
+.mono {
+  font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px;
+  text-align: right; font-weight: 500;
+}
+.kw-cell { font-weight: 500; }
+
+/* Difficulty badges */
+.diff-badge {
+  display: inline-block; padding: 2px 8px; border-radius: 99px;
+  font-size: 12px; font-weight: 700; font-family: 'SF Mono', 'Fira Code', monospace;
+  min-width: 36px; text-align: center;
+}
+.diff-0   { background: #dcfce7; color: #166534; }
+.diff-5   { background: #ecfccb; color: #3f6212; }
+.diff-10  { background: #fef9c3; color: #854d0e; }
+.diff-20  { background: #ffedd5; color: #9a3412; }
+.diff-50  { background: #fed7aa; color: #9a3412; }
+.diff-100 { background: #fecaca; color: #991b1b; }
+
+/* Opportunity badges */
+.opp-badge {
+  display: inline-block; padding: 2px 8px; border-radius: 99px;
+  font-size: 12px; font-weight: 700; font-family: 'SF Mono', 'Fira Code', monospace;
+  min-width: 36px; text-align: center;
+}
+.opp-high   { background: #dcfce7; color: #166534; }
+.opp-good   { background: #d1fae5; color: #065f46; }
+.opp-mid    { background: #fef9c3; color: #854d0e; }
+.opp-low    { background: #f3f4f6; color: #6b7280; }
+
+/* ── Empty state ───────────────────────────────────────────────────── */
+.empty-state {
+  text-align: center; padding: 60px 20px; color: #999;
+}
+.empty-state .emoji { font-size: 48px; margin-bottom: 12px; }
+.empty-state p { font-size: 14px; }
+
+/* ── Modal ─────────────────────────────────────────────────────────── */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex;
+  align-items: center; justify-content: center; z-index: 100;
+  opacity: 0; pointer-events: none; transition: opacity 0.2s;
+}
+.modal-overlay.open { opacity: 1; pointer-events: auto; }
+.modal {
+  background: #fff; border-radius: 12px; padding: 24px; width: 420px;
+  max-height: 80vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+}
+.modal h2 { font-size: 18px; margin-bottom: 16px; }
+.modal label { display: block; font-size: 13px; font-weight: 600; color: #555; margin-bottom: 4px; margin-top: 12px; }
+.modal input, .modal select {
+  width: 100%; padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px;
+  font-size: 14px;
+}
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+.btn-cancel {
+  background: #f0f0f0; border: 1px solid #ddd; border-radius: 8px;
+  padding: 8px 16px; font-size: 14px;
+}
+
+/* ── Loading ───────────────────────────────────────────────────────── */
+.loading-bar {
+  height: 3px; background: linear-gradient(90deg, #3b82f6 0%, #60a5fa 50%, #3b82f6 100%);
+  background-size: 200% 100%; animation: shimmer 1.5s ease-in-out infinite;
+  position: fixed; top: 0; left: 0; right: 0; z-index: 200;
+  display: none;
+}
+.loading-bar.active { display: block; }
+@keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+/* ── Toast ─────────────────────────────────────────────────────────── */
+.toast {
+  position: fixed; bottom: 20px; right: 20px; padding: 12px 20px;
+  background: #111; color: #fff; border-radius: 8px; font-size: 14px;
+  z-index: 300; opacity: 0; transform: translateY(10px);
+  transition: all 0.3s; pointer-events: none;
+}
+.toast.show { opacity: 1; transform: translateY(0); }
+.toast.error { background: #dc2626; }
+
+/* ── Responsive ────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .main-layout { flex-direction: column; }
+  .filters-panel { width: 100%; position: static; }
+  .segment .seg-count { font-size: 16px; }
+  .segment .seg-label { font-size: 9px; }
+}
+</style>
+</head>
+<body>
+
+<div class="loading-bar" id="loadingBar"></div>
+
+<div class="app">
+  <!-- Header -->
+  <div class="header">
+    <h1>Keyword <span>Golden Nugget</span> Finder</h1>
+    <div class="header-actions">
+      <button class="icon-btn" onclick="document.getElementById('csvInput').click()" title="Import CSV">
+        &#x2B06; Import CSV
+      </button>
+      <input type="file" id="csvInput" accept=".csv" style="display:none" onchange="importCSV(this)">
+      <button class="icon-btn" id="toggleFiltersBtn" onclick="toggleFilters()" title="Toggle filters">
+        &#x2699; Filters
+      </button>
+      <button class="icon-btn" onclick="openSettings()" title="Settings">
+        &#x2699; Settings
+      </button>
+    </div>
+  </div>
+
+  <!-- Stats bar -->
+  <div class="stats-bar" id="statsBar">
+    <div>Total: <span class="stat-val" id="statTotal">0</span></div>
+    <div>Showing: <span class="stat-val" id="statShowing">0</span></div>
+    <div>Avg Difficulty: <span class="stat-val" id="statAvgDiff">0</span></div>
+    <div>Best Opportunity: <span class="stat-val" id="statBestOpp">0</span></div>
+  </div>
+
+  <!-- Search bar -->
+  <div class="search-bar">
+    <input type="text" id="searchInput" placeholder="Enter a seed keyword (e.g. calculator, ai tools, converter)"
+           onkeydown="if(event.key==='Enter')searchKeywords()">
+    <button class="btn-primary" id="searchBtn" onclick="searchKeywords()">Search</button>
+  </div>
+
+  <!-- Segment bar -->
+  <div class="segment-bar" id="segmentBar"></div>
+
+  <!-- Main content -->
+  <div class="main-layout">
+    <!-- Filters sidebar -->
+    <div class="filters-panel" id="filtersPanel">
+      <h3>Filters</h3>
+      <div class="filter-group">
+        <label>Volume</label>
+        <div class="filter-row">
+          <input type="number" id="filterVolMin" value="0" min="0" onchange="applyFilters()">
+          <span>to</span>
+          <input type="number" id="filterVolMax" value="10000000" min="0" onchange="applyFilters()">
+        </div>
+      </div>
+      <div class="filter-group">
+        <label>Difficulty (0-100)</label>
+        <div class="filter-row">
+          <input type="number" id="filterDiffMin" value="0" min="0" max="100" onchange="applyFilters()">
+          <span>to</span>
+          <input type="number" id="filterDiffMax" value="100" min="0" max="100" onchange="applyFilters()">
+        </div>
+      </div>
+      <div class="filter-group">
+        <label>Min Opportunity Score</label>
+        <input type="number" id="filterMinOpp" value="0" min="0" max="100" onchange="applyFilters()">
+      </div>
+      <button class="btn-small btn-reset" onclick="resetFilters()">Reset Filters</button>
+    </div>
+
+    <!-- Table -->
+    <div class="table-container">
+      <div class="kw-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th data-col="keyword" onclick="sortTable('keyword')">Keyword <span class="sort-arrow" id="sort-keyword"></span></th>
+              <th data-col="volume" onclick="sortTable('volume')">Volume <span class="sort-arrow" id="sort-volume"></span></th>
+              <th data-col="difficulty" onclick="sortTable('difficulty')">Difficulty <span class="sort-arrow" id="sort-difficulty"></span></th>
+              <th data-col="cpc" onclick="sortTable('cpc')">CPC <span class="sort-arrow" id="sort-cpc"></span></th>
+              <th data-col="opportunity_score" onclick="sortTable('opportunity_score')">Opportunity <span class="sort-arrow" id="sort-opportunity_score"></span></th>
+            </tr>
+          </thead>
+          <tbody id="kwBody"></tbody>
+        </table>
+        <div class="empty-state" id="emptyState">
+          <div class="emoji">&#x1F48E;</div>
+          <p>Loading keywords&hellip;</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Settings Modal -->
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal">
+    <h2>Settings</h2>
+    <label>Data Source</label>
+    <select id="settDataSource" onchange="toggleSettingsFields()">
+      <option value="demo">Demo (no API keys needed)</option>
+      <option value="dataforseo">DataForSEO API</option>
+      <option value="google_ads">Google Ads API</option>
+    </select>
+
+    <div id="dataforseoFields" style="display:none">
+      <label>DataForSEO Login</label>
+      <input type="text" id="settDfsLogin" placeholder="your@email.com">
+      <label>DataForSEO Password</label>
+      <input type="password" id="settDfsPassword" placeholder="API password">
+    </div>
+
+    <div id="googleAdsFields" style="display:none">
+      <label>Client ID</label>
+      <input type="text" id="settGaClientId">
+      <label>Client Secret</label>
+      <input type="password" id="settGaClientSecret">
+      <label>Developer Token</label>
+      <input type="password" id="settGaDevToken">
+      <label>Refresh Token</label>
+      <input type="password" id="settGaRefreshToken">
+      <label>Customer ID</label>
+      <input type="text" id="settGaCustomerId" placeholder="123-456-7890">
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeSettings()">Cancel</button>
+      <button class="btn-primary" onclick="saveSettings()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+/* ── State ─────────────────────────────────────────────────────────── */
+let allKeywords = [];
+let filteredKeywords = [];
+let segments = [];
+let activeSegments = new Set();   // set of segment labels that are toggled on
+let currentSort = { col: 'volume', order: 'desc' };
+let filtersVisible = true;
+
+/* ── API helpers ───────────────────────────────────────────────────── */
+function setLoading(on) {
+  document.getElementById('loadingBar').classList.toggle('active', on);
+}
+
+function showToast(msg, isError) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (isError ? ' error' : '');
+  setTimeout(() => t.className = 'toast', 3000);
+}
+
+async function api(method, url, body) {
+  setLoading(true);
+  try {
+    const opts = { method, headers: {} };
+    if (body && !(body instanceof FormData)) {
+      opts.headers['Content-Type'] = 'application/json';
+      opts.body = JSON.stringify(body);
+    } else if (body) {
+      opts.body = body;
+    }
+    const resp = await fetch(url, opts);
+    const data = await resp.json();
+    if (data.error) { showToast(data.error, true); }
+    return data;
+  } catch (e) {
+    showToast('Network error: ' + e.message, true);
+    return {};
+  } finally {
+    setLoading(false);
+  }
+}
+
+/* ── Load all keywords ─────────────────────────────────────────────── */
+async function loadKeywords() {
+  const data = await api('GET', '/api/keywords?sort_by=volume&sort_order=desc');
+  allKeywords = data.keywords || [];
+  await loadSegments();
+  applyFilters();
+}
+
+async function loadSegments() {
+  const data = await api('GET', '/api/segments');
+  segments = data.segments || [];
+  renderSegmentBar();
+}
+
+/* ── Search ────────────────────────────────────────────────────────── */
+async function searchKeywords() {
+  const input = document.getElementById('searchInput');
+  const seed = input.value.trim();
+  if (!seed) return;
+  document.getElementById('searchBtn').disabled = true;
+  const data = await api('POST', '/api/search', { seed_keyword: seed });
+  document.getElementById('searchBtn').disabled = false;
+  if (data.keywords) {
+    showToast('Found ' + data.keywords.length + ' keywords');
+    await loadKeywords();
+  }
+}
+
+/* ── CSV Import ────────────────────────────────────────────────────── */
+async function importCSV(input) {
+  if (!input.files.length) return;
+  const form = new FormData();
+  form.append('file', input.files[0]);
+  const data = await api('POST', '/api/import-csv', form);
+  input.value = '';
+  if (data.imported) {
+    showToast('Imported ' + data.imported + ' keywords');
+    await loadKeywords();
+  }
+}
+
+/* ── Segment bar ───────────────────────────────────────────────────── */
+function renderSegmentBar() {
+  const bar = document.getElementById('segmentBar');
+  const cssMap = { '0': 'seg-0', '1-5': 'seg-1-5', '6-10': 'seg-6-10',
+                   '11-20': 'seg-11-20', '21-50': 'seg-21-50', '51-100': 'seg-51' };
+  bar.innerHTML = segments.map(s => {
+    const cls = cssMap[s.label] || '';
+    const active = activeSegments.has(s.label) ? ' active' : '';
+    return `<div class="segment ${cls}${active}" data-label="${s.label}"
+                 onclick="toggleSegment('${s.label}', event)">
+              <div class="seg-label">KD ${s.label}</div>
+              <div class="seg-count">${s.count}</div>
+            </div>`;
+  }).join('');
+}
+
+function toggleSegment(label, event) {
+  if (event && event.shiftKey) {
+    // Shift+click: toggle single segment
+    if (activeSegments.has(label)) activeSegments.delete(label);
+    else activeSegments.add(label);
+  } else {
+    // Regular click: toggle single, or select exclusively
+    if (activeSegments.size === 1 && activeSegments.has(label)) {
+      activeSegments.clear();   // clicking same one again clears
+    } else {
+      activeSegments.clear();
+      activeSegments.add(label);
+    }
+  }
+  renderSegmentBar();
+  applyFilters();
+}
+
+/* ── Filters ───────────────────────────────────────────────────────── */
+function toggleFilters() {
+  filtersVisible = !filtersVisible;
+  document.getElementById('filtersPanel').classList.toggle('collapsed', !filtersVisible);
+}
+
+function resetFilters() {
+  document.getElementById('filterVolMin').value = 0;
+  document.getElementById('filterVolMax').value = 10000000;
+  document.getElementById('filterDiffMin').value = 0;
+  document.getElementById('filterDiffMax').value = 100;
+  document.getElementById('filterMinOpp').value = 0;
+  activeSegments.clear();
+  renderSegmentBar();
+  applyFilters();
+}
+
+function applyFilters() {
+  const volMin = parseInt(document.getElementById('filterVolMin').value) || 0;
+  const volMax = parseInt(document.getElementById('filterVolMax').value) || 10000000;
+  let diffMin = parseInt(document.getElementById('filterDiffMin').value) || 0;
+  let diffMax = parseInt(document.getElementById('filterDiffMax').value) || 100;
+  const minOpp = parseInt(document.getElementById('filterMinOpp').value) || 0;
+
+  // If segments are active, they override the difficulty filter inputs
+  if (activeSegments.size > 0) {
+    const ranges = [];
+    for (const label of activeSegments) {
+      const seg = segments.find(s => s.label === label);
+      if (seg) ranges.push([seg.min, seg.max]);
+    }
+    // Build a combined filter
+    filteredKeywords = allKeywords.filter(kw => {
+      if (kw.volume < volMin || kw.volume > volMax) return false;
+      if ((kw.opportunity_score || 0) < minOpp) return false;
+      return ranges.some(([lo, hi]) => kw.difficulty >= lo && kw.difficulty <= hi);
+    });
+  } else {
+    filteredKeywords = allKeywords.filter(kw => {
+      if (kw.volume < volMin || kw.volume > volMax) return false;
+      if (kw.difficulty < diffMin || kw.difficulty > diffMax) return false;
+      if ((kw.opportunity_score || 0) < minOpp) return false;
+      return true;
+    });
+  }
+
+  sortData();
+  renderTable();
+  updateStats();
+}
+
+/* ── Sorting ───────────────────────────────────────────────────────── */
+function sortTable(col) {
+  if (currentSort.col === col) {
+    currentSort.order = currentSort.order === 'desc' ? 'asc' : 'desc';
+  } else {
+    currentSort.col = col;
+    currentSort.order = col === 'keyword' ? 'asc' : 'desc';
+  }
+  sortData();
+  renderTable();
+  updateSortArrows();
+}
+
+function sortData() {
+  const { col, order } = currentSort;
+  filteredKeywords.sort((a, b) => {
+    let va = a[col], vb = b[col];
+    if (typeof va === 'string') va = va.toLowerCase();
+    if (typeof vb === 'string') vb = vb.toLowerCase();
+    if (va < vb) return order === 'asc' ? -1 : 1;
+    if (va > vb) return order === 'asc' ? 1 : -1;
+    return 0;
+  });
+}
+
+function updateSortArrows() {
+  document.querySelectorAll('.sort-arrow').forEach(el => el.textContent = '');
+  const el = document.getElementById('sort-' + currentSort.col);
+  if (el) el.textContent = currentSort.order === 'asc' ? '\u25B2' : '\u25BC';
+}
+
+/* ── Render table ──────────────────────────────────────────────────── */
+function diffClass(d) {
+  if (d <= 0)  return 'diff-0';
+  if (d <= 5)  return 'diff-5';
+  if (d <= 10) return 'diff-10';
+  if (d <= 20) return 'diff-20';
+  if (d <= 50) return 'diff-50';
+  return 'diff-100';
+}
+
+function oppClass(o) {
+  if (o >= 80) return 'opp-high';
+  if (o >= 60) return 'opp-good';
+  if (o >= 40) return 'opp-mid';
+  return 'opp-low';
+}
+
+function fmtNum(n) {
+  return (n || 0).toLocaleString();
+}
+
+function renderTable() {
+  const tbody = document.getElementById('kwBody');
+  const empty = document.getElementById('emptyState');
+
+  if (filteredKeywords.length === 0) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    empty.querySelector('p').textContent = allKeywords.length === 0
+      ? 'No keywords yet. Use the search bar or import a CSV to get started.'
+      : 'No keywords match your filters. Try adjusting the ranges.';
+    return;
+  }
+  empty.style.display = 'none';
+
+  // Render in chunks to stay responsive with large datasets
+  const rows = filteredKeywords.map(kw => {
+    const opp = kw.opportunity_score || 0;
+    return `<tr>
+      <td class="kw-cell">${escHtml(kw.keyword)}</td>
+      <td class="mono">${fmtNum(kw.volume)}</td>
+      <td class="mono"><span class="diff-badge ${diffClass(kw.difficulty)}">${kw.difficulty}</span></td>
+      <td class="mono">$${(kw.cpc || 0).toFixed(2)}</td>
+      <td class="mono"><span class="opp-badge ${oppClass(opp)}">${opp}</span></td>
+    </tr>`;
+  });
+  tbody.innerHTML = rows.join('');
+  updateSortArrows();
+}
+
+function escHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+/* ── Stats ─────────────────────────────────────────────────────────── */
+function updateStats() {
+  document.getElementById('statTotal').textContent = fmtNum(allKeywords.length);
+  document.getElementById('statShowing').textContent = fmtNum(filteredKeywords.length);
+
+  if (filteredKeywords.length > 0) {
+    const avgDiff = Math.round(
+      filteredKeywords.reduce((s, k) => s + k.difficulty, 0) / filteredKeywords.length
+    );
+    const bestOpp = Math.max(...filteredKeywords.map(k => k.opportunity_score || 0));
+    document.getElementById('statAvgDiff').textContent = avgDiff;
+    document.getElementById('statBestOpp').textContent = bestOpp;
+  } else {
+    document.getElementById('statAvgDiff').textContent = '-';
+    document.getElementById('statBestOpp').textContent = '-';
+  }
+}
+
+/* ── Settings modal ────────────────────────────────────────────────── */
+function openSettings() {
+  document.getElementById('settingsModal').classList.add('open');
+  // Load current settings
+  api('GET', '/api/settings').then(data => {
+    if (data.data_source) document.getElementById('settDataSource').value = data.data_source;
+    if (data.dataforseo_login) document.getElementById('settDfsLogin').value = data.dataforseo_login;
+    toggleSettingsFields();
+  });
+}
+
+function closeSettings() {
+  document.getElementById('settingsModal').classList.remove('open');
+}
+
+function toggleSettingsFields() {
+  const src = document.getElementById('settDataSource').value;
+  document.getElementById('dataforseoFields').style.display = src === 'dataforseo' ? 'block' : 'none';
+  document.getElementById('googleAdsFields').style.display = src === 'google_ads' ? 'block' : 'none';
+}
+
+async function saveSettings() {
+  const payload = {
+    data_source: document.getElementById('settDataSource').value,
+    dataforseo_login: document.getElementById('settDfsLogin').value,
+    dataforseo_password: document.getElementById('settDfsPassword').value,
+    google_ads_client_id: document.getElementById('settGaClientId').value,
+    google_ads_client_secret: document.getElementById('settGaClientSecret').value,
+    google_ads_developer_token: document.getElementById('settGaDevToken').value,
+    google_ads_refresh_token: document.getElementById('settGaRefreshToken').value,
+    google_ads_customer_id: document.getElementById('settGaCustomerId').value,
+  };
+  await api('POST', '/api/settings', payload);
+  showToast('Settings saved');
+  closeSettings();
+}
+
+/* ── Init ──────────────────────────────────────────────────────────── */
+document.addEventListener('DOMContentLoaded', () => {
+  loadKeywords();
+});
+</script>
+</body>
+</html>

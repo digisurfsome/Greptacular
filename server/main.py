@@ -55,6 +55,7 @@ from .routers import (
     projects_router,
     role_library_router,
     schedules_router,
+    seo_tools_router,
     settings_router,
     spec_creation_router,
     styles_router,
@@ -321,6 +322,7 @@ app.include_router(terminal_router)
 app.include_router(workspace_router)
 app.include_router(notifications_router)
 app.include_router(role_library_router)
+app.include_router(seo_tools_router)
 app.include_router(swarm_router)
 app.include_router(dunkstack_router)
 app.include_router(agent_os_router)

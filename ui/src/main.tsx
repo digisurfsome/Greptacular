@@ -10,6 +10,7 @@ import { DunkStackPage } from './pages/DunkStackPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { YTStrategyLabPage } from './pages/YTStrategyLabPage'
 import { MonitorPage } from './pages/MonitorPage'
+import { SEOToolsPage } from './pages/SEOToolsPage'
 import { BuildPlannerPage } from './pages/BuildPlannerPage'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import './styles/globals.css'
@@ -63,6 +64,9 @@ function Root() {
   }
   if (hash === '#/monitor' || hash.startsWith('#/monitor/')) {
     return <MonitorPage />
+  }
+  if (hash === '#/seo-tools' || hash.startsWith('#/seo-tools/')) {
+    return <SEOToolsPage />
   }
   if (hash === '#/build-planner' || hash.startsWith('#/build-planner/')) {
     return <BuildPlannerPage />

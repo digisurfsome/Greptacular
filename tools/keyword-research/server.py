@@ -671,6 +671,7 @@ class SettingsPayload(BaseModel):
     data_source: str = "demo"           # demo | dataforseo
     dataforseo_login: str = ""
     dataforseo_password: str = ""
+    openai_api_key: str = ""            # for Content Strategy AI
     location_code: int = 2840
     language_code: str = "en"
 
@@ -1068,14 +1069,19 @@ async def domain_check(keyword: str = Query(...)):
 
 @app.post("/api/domain-check-bulk")
 async def domain_check_bulk(payload: dict):
-    """Check .com/.net/.org availability for a list of keywords."""
+    """Check domain availability for a list of keywords across specified TLDs."""
     keywords = payload.get("keywords", [])
     if not keywords:
         return {"results": {}}
 
-    # Limit to 15 keywords at a time (15 * 3 TLDs = 45 RDAP lookups)
-    keywords = keywords[:15]
-    check_tlds = [".com", ".net", ".org"]
+    # Accept custom TLD list from frontend, default to .com/.net/.org
+    check_tlds = payload.get("tlds", [".com", ".net", ".org"])
+    # Sanitize: ensure they start with dot, limit to 10 TLDs
+    check_tlds = [t if t.startswith(".") else "." + t for t in check_tlds][:10]
+
+    # Limit keywords based on TLD count to keep RDAP calls reasonable
+    max_kw = max(5, 50 // len(check_tlds))
+    keywords = keywords[:max_kw]
 
     async with httpx.AsyncClient() as client:
         tasks = []
@@ -1777,6 +1783,173 @@ async def delete_nugget_hunt(hunt_id: int = Query(...)):
         return {"status": "ok", "hunt_id": hunt_id}
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Content Strategy Generator (AI-powered, uses OpenAI API)
+# ---------------------------------------------------------------------------
+
+CONTENT_STRATEGY_PROMPT = """You are an expert B2B SaaS SEO strategist. I'll give you ONE URL (a SaaS homepage). Your job is to generate a content map focused on fast wins first (comparisons, alternatives, listicles, integrations, free tools), then pillars/clusters for compounding growth.
+
+Rules:
+- Analyze the site (what they sell, who they serve, competitors, integrations, features)
+- Infer realistic competitors and "vs/alternatives" targets based on category
+- Assume B2B SaaS ICP unless clearly otherwise
+- If something is unclear, make best-effort assumptions and label them
+- EVERY listicle title MUST start with a number between 5 and 7 (only "5", "6", or "7")
+- Focus on HIGH BUYING INTENT keywords — people ready to buy, switch, or compare
+
+You MUST return valid JSON with this exact structure:
+{
+  "snapshot": {
+    "what_they_sell": "...",
+    "icp": "...",
+    "primary_cta": "...",
+    "pricing_motion": "...",
+    "differentiators": ["...", "..."]
+  },
+  "comparisons": [
+    {"title": "Product vs Competitor", "target_keyword": "product vs competitor", "priority": "P0", "notes": "..."}
+  ],
+  "alternatives": [
+    {"title": "Top Competitor Alternatives", "target_keyword": "competitor alternatives", "priority": "P0", "notes": "..."}
+  ],
+  "listicles": [
+    {"title": "7 Best Tools for X", "target_keyword": "best tools for x", "notes": "..."}
+  ],
+  "integrations": [
+    {"title": "Product + Integration Name", "target_keyword": "product integration name", "notes": "..."}
+  ],
+  "free_tools": [
+    {"title": "Free X Calculator", "target_keyword": "free x calculator", "tool_concept": "...", "output": "...", "cta": "..."}
+  ],
+  "pillars": [
+    {
+      "pillar": "Pillar Name",
+      "clusters": [
+        {"title": "Cluster Article Title", "target_keyword": "target keyword", "intent": "informational|commercial|transactional"}
+      ]
+    }
+  ]
+}
+
+Return ONLY valid JSON. No markdown, no code fences, no explanations outside the JSON.
+
+URL: """
+
+
+@app.post("/api/content-strategy")
+async def content_strategy(payload: dict):
+    """Generate a content strategy for a SaaS URL using AI."""
+    url = payload.get("url", "").strip()
+    if not url:
+        return {"error": "URL is required"}
+
+    settings = _get_settings()
+    api_key = settings.get("openai_api_key", "")
+    if not api_key:
+        return {"error": "OpenAI API key not configured. Go to Settings to add it."}
+
+    prompt = CONTENT_STRATEGY_PROMPT + url
+
+    try:
+        async with httpx.AsyncClient(timeout=120) as client:
+            resp = await client.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": "gpt-4o-mini",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.7,
+                    "max_tokens": 4096,
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            content = data["choices"][0]["message"]["content"]
+
+            # Strip markdown fences if present
+            content = content.strip()
+            if content.startswith("```"):
+                content = content.split("\n", 1)[1] if "\n" in content else content[3:]
+            if content.endswith("```"):
+                content = content[:-3]
+            content = content.strip()
+            if content.startswith("json"):
+                content = content[4:].strip()
+
+            strategy = json.loads(content)
+            return {"strategy": strategy}
+
+    except httpx.HTTPStatusError as e:
+        return {"error": f"OpenAI API error: {e.response.status_code} - {e.response.text[:200]}"}
+    except json.JSONDecodeError:
+        return {"error": "AI returned invalid JSON. Try again.", "raw": content[:500]}
+    except Exception as e:
+        return {"error": f"Failed: {str(e)}"}
+
+
+@app.post("/api/content-strategy/research-keywords")
+async def content_strategy_research(payload: dict):
+    """Take generated content ideas and research their keywords via DataForSEO."""
+    keywords = payload.get("keywords", [])
+    if not keywords:
+        return {"results": []}
+
+    settings = _get_settings()
+    login = settings.get("dataforseo_login", "")
+    password = settings.get("dataforseo_password", "")
+    location_code = int(settings.get("location_code", "2840"))
+    language_code = settings.get("language_code", "en")
+
+    if not login or not password:
+        # Return demo data
+        results = []
+        for kw in keywords[:50]:
+            results.append({
+                "keyword": kw,
+                "volume": random.randint(100, 5000),
+                "difficulty": random.randint(5, 40),
+                "cpc": round(random.uniform(0.5, 15.0), 2),
+                "competition": round(random.uniform(0.1, 0.8), 2),
+            })
+        return {"results": results}
+
+    # Use DataForSEO bulk keyword data
+    auth = (login, password)
+    all_results = []
+
+    for i in range(0, len(keywords), 50):
+        batch = keywords[i : i + 50]
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
+                resp = await client.post(
+                    f"{DATAFORSEO_BASE}/keywords_data/google_ads/search_volume/live",
+                    auth=auth,
+                    json=[{
+                        "keywords": batch,
+                        "location_code": location_code,
+                        "language_code": language_code,
+                    }],
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                if data.get("tasks") and data["tasks"][0].get("result"):
+                    for item in data["tasks"][0]["result"]:
+                        all_results.append({
+                            "keyword": item.get("keyword", ""),
+                            "volume": item.get("search_volume", 0) or 0,
+                            "difficulty": 0,
+                            "cpc": item.get("cpc", 0) or 0,
+                            "competition": item.get("competition", 0) or 0,
+                        })
+        except Exception as e:
+            logger.error("DataForSEO keyword research failed: %s", e)
+
+    return {"results": all_results}
 
 
 # ---------------------------------------------------------------------------

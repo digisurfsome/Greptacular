@@ -31,7 +31,7 @@ import { ResetProjectModal } from './components/ResetProjectModal'
 import { ProjectSetupRequired } from './components/ProjectSetupRequired'
 import { GitActivityWidget } from './components/GitActivityWidget'
 import { getDependencyGraph, startAgent } from './lib/api'
-import { Loader2, Settings, Moon, Sun, RotateCcw, BookOpen, MessageSquare, Layers, LayoutDashboard, FlaskConical, Monitor } from 'lucide-react'
+import { Loader2, Settings, Moon, Sun, RotateCcw, BookOpen, MessageSquare, Layers, LayoutDashboard, FlaskConical, Monitor, Search } from 'lucide-react'
 import type { Feature } from './lib/types'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -420,6 +420,18 @@ function App() {
               >
                 <FlaskConical size={16} />
                 <span className="hidden sm:inline text-xs">YT Lab</span>
+              </Button>
+
+              {/* SEO Tools link */}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => { window.location.hash = '#/seo-tools' }}
+                title="SEO Keyword Research Tools"
+              >
+                <Search size={16} />
+                <span className="hidden sm:inline text-xs">SEO Tools</span>
               </Button>
 
               {/* Agent Monitor link — opens in new window */}

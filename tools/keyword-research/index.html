@@ -105,6 +105,79 @@ input, select { font-family: inherit; }
   border-radius: 6px; background: #fff; color: #666;
 }
 .cost-log-footer button:hover { background: #f1f5f9; }
+
+/* -- Domain Check -------------------------------------------------------- */
+.domain-btn {
+  background: none; border: 1px solid #d0d0d0; border-radius: 6px;
+  padding: 2px 8px; font-size: 11px; color: #666; cursor: pointer;
+  transition: all 0.15s; white-space: nowrap;
+}
+.domain-btn:hover { background: #f0f9ff; border-color: #0ea5e9; color: #0369a1; }
+.domain-modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 9999;
+  display: none; align-items: center; justify-content: center;
+}
+.domain-modal-overlay.open { display: flex; }
+.domain-modal {
+  background: #fff; border-radius: 16px; width: 520px; max-width: 95vw;
+  max-height: 85vh; overflow: hidden; box-shadow: 0 25px 50px rgba(0,0,0,0.25);
+}
+.domain-modal-header {
+  padding: 16px 20px; background: linear-gradient(135deg, #1e293b, #334155);
+  color: #fff;
+}
+.domain-modal-header h3 { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+.domain-modal-header .domain-kw { color: #fbbf24; font-weight: 700; }
+.domain-modal-close {
+  position: absolute; top: 12px; right: 16px; background: none; border: none;
+  color: #fff; font-size: 20px; cursor: pointer; opacity: 0.7;
+}
+.domain-modal-close:hover { opacity: 1; }
+.domain-modal-body { padding: 0; max-height: 60vh; overflow-y: auto; }
+.domain-loading {
+  padding: 40px; text-align: center; color: #666; font-size: 14px;
+}
+.domain-results { list-style: none; padding: 0; margin: 0; }
+.domain-result-row {
+  display: flex; align-items: center; padding: 12px 20px;
+  border-bottom: 1px solid #f1f5f9; gap: 12px; transition: background 0.1s;
+}
+.domain-result-row:hover { background: #f8fafc; }
+.domain-result-row .domain-status {
+  width: 28px; height: 28px; border-radius: 50%; display: flex;
+  align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0;
+}
+.domain-status.available { background: #dcfce7; color: #16a34a; }
+.domain-status.taken { background: #fee2e2; color: #dc2626; }
+.domain-status.premium { background: #fef3c7; color: #d97706; }
+.domain-result-row .domain-name {
+  flex: 1; font-size: 14px; font-weight: 500; color: #1e293b;
+}
+.domain-name .tld { color: #0369a1; font-weight: 700; }
+.domain-result-row .domain-tag {
+  font-size: 11px; padding: 2px 10px; border-radius: 99px; font-weight: 600;
+}
+.domain-tag.avail { background: #dcfce7; color: #166534; }
+.domain-tag.not-avail { background: #fee2e2; color: #991b1b; }
+.domain-tag.prem { background: #fef3c7; color: #92400e; }
+.domain-result-row .domain-price {
+  font-size: 12px; color: #666; min-width: 80px; text-align: right;
+}
+.domain-result-row .domain-register {
+  font-size: 11px; padding: 4px 12px; border-radius: 6px; border: none;
+  background: #16a34a; color: #fff; cursor: pointer; font-weight: 600;
+  text-decoration: none;
+}
+.domain-result-row .domain-register:hover { background: #15803d; }
+.domain-modal-footer {
+  padding: 12px 20px; background: #f8fafc; border-top: 1px solid #e2e8f0;
+  font-size: 11px; color: #94a3b8; text-align: center;
+}
+.domain-seo-tip {
+  padding: 12px 20px; background: #fffbeb; border-bottom: 1px solid #fef3c7;
+  font-size: 12px; color: #92400e;
+}
+.domain-seo-tip strong { color: #78350f; }
 .header-actions { display: flex; gap: 8px; align-items: center; }
 .icon-btn {
   background: none; border: 1px solid #d0d0d0; border-radius: 8px;
@@ -726,6 +799,7 @@ tbody tr:last-child td { border-bottom: none; }
               <th data-col="trend" onclick="sortTable('trend')">Trend <span class="sort-arrow" id="sort-trend"></span></th>
               <th data-col="opportunity_score" onclick="sortTable('opportunity_score')">Opportunity <span class="sort-arrow" id="sort-opportunity_score"></span></th>
               <th>SERP</th>
+              <th style="width:70px">Domain</th>
             </tr>
           </thead>
           <tbody id="kwBody"></tbody>
@@ -946,6 +1020,24 @@ tbody tr:last-child td { border-bottom: none; }
       </div>
     </div>
 
+    <hr style="margin:16px 0;border:none;border-top:1px solid #e0e0e0;">
+    <h3 style="font-size:14px;color:#334155;margin-bottom:8px;">&#x1F310; Namecheap Domain Check</h3>
+    <p style="font-size:12px;color:#888;margin-bottom:8px;">Free to check domains. Get API access at namecheap.com (requires $50+ balance or 20+ domains)</p>
+
+    <label>API User</label>
+    <input type="text" id="settNcApiUser" placeholder="your_namecheap_username">
+    <label>API Key</label>
+    <input type="password" id="settNcApiKey" placeholder="Namecheap API key">
+    <label>Username (if different from API User)</label>
+    <input type="text" id="settNcUsername" placeholder="Leave blank if same as API User">
+    <label>Your Whitelisted IP</label>
+    <input type="text" id="settNcClientIp" placeholder="e.g. 203.0.113.5">
+    <div style="margin-top:8px;">
+      <label style="display:inline;font-weight:normal;font-size:12px;">
+        <input type="checkbox" id="settNcSandbox"> Use Sandbox (testing)
+      </label>
+    </div>
+
     <label style="margin-top:16px">Location</label>
     <select id="settLocation">
       <option value="2840">United States</option>
@@ -978,6 +1070,26 @@ tbody tr:last-child td { border-bottom: none; }
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeSettings()">Cancel</button>
       <button class="btn-primary" onclick="saveSettings()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Domain Check Modal -->
+<div class="domain-modal-overlay" id="domainModal" onclick="if(event.target===this)closeDomainModal()">
+  <div class="domain-modal" style="position:relative">
+    <div class="domain-modal-header">
+      <h3>&#x1F310; Domain Availability — <span class="domain-kw" id="domainModalKeyword"></span></h3>
+      <button class="domain-modal-close" onclick="closeDomainModal()">&times;</button>
+    </div>
+    <div class="domain-seo-tip">
+      <strong>SEO Tip:</strong> .com is king for SEO &amp; trust. Then .net &gt; .org &gt; .co. Avoid subdomains like .it.com — Google treats them differently.
+    </div>
+    <div class="domain-modal-body" id="domainModalBody">
+      <div class="domain-loading" id="domainLoading">Checking domains...</div>
+      <div class="domain-results" id="domainResults"></div>
+    </div>
+    <div class="domain-modal-footer">
+      Powered by Namecheap API &bull; Domain checks are free &bull; Click "Register" to open Namecheap
     </div>
   </div>
 </div>
@@ -1165,6 +1277,73 @@ async function getBalance() {
   const data = await api('GET', '/api/balance');
   if (data.connected && data.balance !== undefined) return data.balance;
   return null;
+}
+
+/* -- Domain Check -------------------------------------------------------- */
+async function checkDomain(keyword) {
+  const modal = document.getElementById('domainModal');
+  const kwEl = document.getElementById('domainModalKeyword');
+  const body = document.getElementById('domainModalBody');
+  const loading = document.getElementById('domainLoading');
+  const results = document.getElementById('domainResults');
+
+  kwEl.textContent = keyword;
+  loading.style.display = 'block';
+  results.innerHTML = '';
+  modal.classList.add('open');
+
+  const data = await api('GET', '/api/domain-check?keyword=' + encodeURIComponent(keyword));
+
+  loading.style.display = 'none';
+
+  if (data.error) {
+    results.innerHTML = `<div class="domain-loading" style="color:#dc2626;">${escHtml(data.error)}</div>`;
+    return;
+  }
+
+  if (!data.domains || data.domains.length === 0) {
+    results.innerHTML = '<div class="domain-loading">No results returned.</div>';
+    return;
+  }
+
+  // SEO rank order for TLDs
+  const tldRank = {'.com':1, '.net':2, '.org':3, '.co':4, '.io':5, '.ai':6, '.app':7, '.dev':8, '.us':9, '.info':10};
+
+  const html = data.domains.map(d => {
+    const parts = d.domain.split('.');
+    const tld = '.' + parts.slice(1).join('.');
+    const base = parts[0];
+    const rank = tldRank[tld] || 99;
+    const seoLabel = rank <= 3 ? `<span style="font-size:10px;color:#16a34a;margin-left:4px;">★ Best for SEO</span>` : '';
+
+    let statusIcon, tag, registerBtn;
+    if (d.available && !d.is_premium) {
+      statusIcon = '<div class="domain-status available">✓</div>';
+      tag = '<span class="domain-tag avail">Available</span>';
+      registerBtn = `<a class="domain-register" href="https://www.namecheap.com/domains/registration/results/?domain=${encodeURIComponent(d.domain)}" target="_blank" rel="noopener">Register</a>`;
+    } else if (d.available && d.is_premium) {
+      statusIcon = '<div class="domain-status premium">$</div>';
+      tag = `<span class="domain-tag prem">Premium ${d.premium_price ? '$' + d.premium_price : ''}</span>`;
+      registerBtn = `<a class="domain-register" style="background:#d97706;" href="https://www.namecheap.com/domains/registration/results/?domain=${encodeURIComponent(d.domain)}" target="_blank" rel="noopener">View</a>`;
+    } else {
+      statusIcon = '<div class="domain-status taken">✗</div>';
+      tag = '<span class="domain-tag not-avail">Taken</span>';
+      registerBtn = `<a class="domain-register" style="background:#6b7280;" href="https://www.namecheap.com/domains/registration/results/?domain=${encodeURIComponent(d.domain)}" target="_blank" rel="noopener">Alternatives</a>`;
+    }
+
+    return `<div class="domain-result-row">
+      ${statusIcon}
+      <div class="domain-name">${escHtml(base)}<span class="tld">${escHtml(tld)}</span>${seoLabel}</div>
+      ${tag}
+      ${registerBtn}
+    </div>`;
+  }).join('');
+
+  results.innerHTML = html;
+}
+
+function closeDomainModal() {
+  document.getElementById('domainModal').classList.remove('open');
 }
 
 /* -- API status check ---------------------------------------------------- */
@@ -1568,6 +1747,7 @@ function renderTable() {
       <td style="text-align:center">${trendIcon(kw.trend)}</td>
       <td class="mono"><span class="opp-badge ${oppClass(opp)}">${opp}</span></td>
       <td>${renderSerpBadges(kw.serp_features)}</td>
+      <td><button class="domain-btn" onclick="checkDomain('${escHtml(kw.keyword).replace(/'/g, "\\'")}')">&#x1F310; Check</button></td>
     </tr>`;
   });
   tbody.innerHTML = rows.join('');
@@ -1634,6 +1814,11 @@ function openSettings() {
     if (data.dataforseo_login) document.getElementById('settDfsLogin').value = data.dataforseo_login;
     if (data.location_code) document.getElementById('settLocation').value = data.location_code;
     if (data.language_code) document.getElementById('settLanguage').value = data.language_code;
+    // Namecheap fields
+    if (data.namecheap_api_user) document.getElementById('settNcApiUser').value = data.namecheap_api_user;
+    if (data.namecheap_username) document.getElementById('settNcUsername').value = data.namecheap_username;
+    if (data.namecheap_client_ip) document.getElementById('settNcClientIp').value = data.namecheap_client_ip;
+    document.getElementById('settNcSandbox').checked = data.namecheap_sandbox === 'true';
     toggleSettingsFields();
   });
 }
@@ -1673,6 +1858,11 @@ async function saveSettingsQuiet() {
     dataforseo_password: document.getElementById('settDfsPassword').value,
     location_code: parseInt(document.getElementById('settLocation').value) || 2840,
     language_code: document.getElementById('settLanguage').value || 'en',
+    namecheap_api_user: document.getElementById('settNcApiUser').value,
+    namecheap_api_key: document.getElementById('settNcApiKey').value,
+    namecheap_username: document.getElementById('settNcUsername').value,
+    namecheap_client_ip: document.getElementById('settNcClientIp').value,
+    namecheap_sandbox: document.getElementById('settNcSandbox').checked ? 'true' : 'false',
   };
   await api('POST', '/api/settings', payload);
 }

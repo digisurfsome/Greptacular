@@ -16,6 +16,7 @@ import asyncio
 import csv
 import io
 import json
+import xml.etree.ElementTree as ET
 import logging
 import random
 import sqlite3
@@ -673,6 +674,11 @@ class SettingsPayload(BaseModel):
     dataforseo_password: str = ""
     location_code: int = 2840
     language_code: str = "en"
+    namecheap_api_user: str = ""
+    namecheap_api_key: str = ""
+    namecheap_username: str = ""
+    namecheap_client_ip: str = ""
+    namecheap_sandbox: str = "false"
 
 
 class NuggetHuntRequest(BaseModel):
@@ -953,7 +959,7 @@ async def get_settings():
     settings = _get_settings()
     masked: dict[str, str] = {}
     for k, v in settings.items():
-        if any(secret in k for secret in ("password", "secret", "token")):
+        if any(secret in k for secret in ("password", "secret", "token", "api_key")):
             masked[k] = "***" + v[-4:] if len(v) > 4 else "****"
         else:
             masked[k] = v
@@ -1012,6 +1018,87 @@ async def get_balance():
         return {"connected": False, "balance": 0, "message": f"API error: {exc.response.status_code}"}
     except Exception as exc:
         return {"connected": False, "balance": 0, "message": f"Connection error: {exc}"}
+
+
+# ---- Domain Availability Check (Namecheap) ------------------------------
+
+NAMECHEAP_API_URL = "https://api.namecheap.com/xml.response"
+NAMECHEAP_SANDBOX_URL = "https://api.sandbox.namecheap.com/xml.response"
+
+# TLDs to check, in priority order
+DOMAIN_TLDS = [".com", ".net", ".org", ".io", ".co", ".ai", ".app", ".dev", ".us", ".info"]
+
+
+@app.get("/api/domain-check")
+async def domain_check(keyword: str = Query(...)):
+    """Check domain availability across TLDs via Namecheap API."""
+    settings = _get_settings()
+    api_user = settings.get("namecheap_api_user", "")
+    api_key = settings.get("namecheap_api_key", "")
+    username = settings.get("namecheap_username", "") or api_user
+    client_ip = settings.get("namecheap_client_ip", "")
+    use_sandbox = settings.get("namecheap_sandbox", "false") == "true"
+
+    if not api_user or not api_key or not client_ip:
+        return {
+            "error": "Namecheap API not configured. Go to Settings to add your API credentials.",
+            "domains": [],
+        }
+
+    # Build domain name from keyword (remove spaces, lowercase)
+    base_domain = keyword.strip().lower().replace(" ", "").replace("-", "")
+    domain_list = [base_domain + tld for tld in DOMAIN_TLDS]
+
+    base_url = NAMECHEAP_SANDBOX_URL if use_sandbox else NAMECHEAP_API_URL
+    params = {
+        "ApiUser": api_user,
+        "ApiKey": api_key,
+        "UserName": username,
+        "ClientIp": client_ip,
+        "Command": "namecheap.domains.check",
+        "DomainList": ",".join(domain_list),
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(base_url, params=params)
+            resp.raise_for_status()
+
+        root = ET.fromstring(resp.text)
+        # Namecheap XML uses a namespace
+        ns = ""
+        if root.tag.startswith("{"):
+            ns = root.tag.split("}")[0] + "}"
+
+        # Check for API-level errors
+        status = root.attrib.get("Status", "")
+        if status == "ERROR":
+            errors = root.findall(f".//{ns}Error")
+            err_msg = errors[0].text if errors else "Unknown Namecheap API error"
+            return {"error": err_msg, "domains": []}
+
+        results = []
+        for el in root.findall(f".//{ns}DomainCheckResult"):
+            domain = el.attrib.get("Domain", "")
+            available = el.attrib.get("Available", "false").lower() == "true"
+            is_premium = el.attrib.get("IsPremiumName", "false").lower() == "true"
+            premium_price = float(el.attrib.get("PremiumRegistrationPrice", "0") or "0")
+
+            results.append({
+                "domain": domain,
+                "available": available,
+                "is_premium": is_premium,
+                "premium_price": premium_price if is_premium else None,
+            })
+
+        return {"keyword": keyword, "base_domain": base_domain, "domains": results}
+
+    except httpx.HTTPStatusError as exc:
+        return {"error": f"Namecheap API error: {exc.response.status_code}", "domains": []}
+    except ET.ParseError:
+        return {"error": "Failed to parse Namecheap API response", "domains": []}
+    except Exception as exc:
+        return {"error": f"Domain check error: {exc}", "domains": []}
 
 
 # ---- Search status (polling) -------------------------------------------

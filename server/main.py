@@ -35,6 +35,7 @@ from .routers import (
     approvals_router,
     assistant_chat_router,
     boilerplate_router,
+    build_planner_router,
     captures_router,
     checkpoints_router,
     ci_status_router,
@@ -335,6 +336,7 @@ app.include_router(commits_router)
 app.include_router(verifications_router)
 app.include_router(approvals_router)
 app.include_router(checkpoints_router)
+app.include_router(build_planner_router)
 
 
 # ============================================================================

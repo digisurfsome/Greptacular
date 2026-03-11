@@ -106,6 +106,106 @@ input, select { font-family: inherit; }
 }
 .cost-log-footer button:hover { background: #f1f5f9; }
 
+/* -- Niche Explorer ------------------------------------------------------ */
+.btn-niche-explorer {
+  background: linear-gradient(135deg, #7c3aed, #a855f7); color: #fff;
+  border: none; border-radius: 8px; padding: 8px 16px; font-size: 13px;
+  font-weight: 600; cursor: pointer; white-space: nowrap;
+  transition: all 0.15s;
+}
+.btn-niche-explorer:hover { opacity: 0.9; transform: translateY(-1px); }
+.niche-modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 10000;
+  display: none; align-items: flex-start; justify-content: center; padding-top: 30px;
+}
+.niche-modal-overlay.open { display: flex; }
+.niche-modal {
+  background: #fff; border-radius: 16px; width: 640px; max-width: 95vw;
+  max-height: 90vh; overflow: hidden; box-shadow: 0 25px 50px rgba(0,0,0,0.3);
+  position: relative;
+}
+.niche-modal-header {
+  padding: 18px 24px; background: linear-gradient(135deg, #7c3aed, #4c1d95);
+  color: #fff;
+}
+.niche-modal-header h3 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+.niche-modal-header p { font-size: 13px; opacity: 0.85; margin: 0; }
+.niche-close {
+  position: absolute; top: 14px; right: 18px; background: none; border: none;
+  color: #fff; font-size: 22px; cursor: pointer; opacity: 0.7;
+}
+.niche-close:hover { opacity: 1; }
+.niche-modal-body { padding: 20px 24px; max-height: 65vh; overflow-y: auto; }
+.niche-step { margin-bottom: 18px; }
+.niche-step label {
+  display: block; font-size: 14px; font-weight: 600; color: #1e293b;
+  margin-bottom: 6px;
+}
+.niche-step label .step-num {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 50%; font-size: 12px;
+  background: #7c3aed; color: #fff; margin-right: 8px;
+}
+.niche-step .hint { font-size: 12px; color: #94a3b8; margin-bottom: 6px; }
+.niche-step input, .niche-step textarea {
+  width: 100%; padding: 10px 12px; border: 1.5px solid #e2e8f0; border-radius: 8px;
+  font-size: 13px; font-family: inherit; transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+.niche-step input:focus, .niche-step textarea:focus { border-color: #7c3aed; outline: none; }
+.niche-step textarea { resize: vertical; min-height: 60px; }
+.niche-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.niche-chip {
+  padding: 5px 12px; border: 1.5px solid #e2e8f0; border-radius: 99px;
+  font-size: 12px; cursor: pointer; transition: all 0.15s; user-select: none;
+  background: #fff; color: #475569;
+}
+.niche-chip:hover { border-color: #7c3aed; color: #7c3aed; }
+.niche-chip.selected { background: #7c3aed; color: #fff; border-color: #7c3aed; }
+.niche-seeds-preview {
+  background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 10px;
+  padding: 14px 16px; margin-top: 12px;
+}
+.niche-seeds-preview h4 { font-size: 13px; font-weight: 700; color: #1e293b; margin-bottom: 8px; }
+.niche-seed-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.niche-seed-tag {
+  font-size: 11px; padding: 3px 10px; border-radius: 99px;
+  font-weight: 600; border: 1px solid #e2e8f0;
+}
+.niche-seed-tag.direct { background: #dbeafe; color: #1e40af; border-color: #bfdbfe; }
+.niche-seed-tag.audience { background: #dcfce7; color: #166534; border-color: #bbf7d0; }
+.niche-seed-tag.problem { background: #fef3c7; color: #92400e; border-color: #fde68a; }
+.niche-seed-tag.competitor { background: #fee2e2; color: #991b1b; border-color: #fecaca; }
+.niche-seed-tag.feature { background: #ede9fe; color: #5b21b6; border-color: #ddd6fe; }
+.niche-seed-tag.community { background: #fce7f3; color: #9d174d; border-color: #fbcfe8; }
+.niche-seed-tag.usecase { background: #e0f2fe; color: #075985; border-color: #bae6fd; }
+.niche-modal-footer {
+  padding: 14px 24px; border-top: 1px solid #e2e8f0;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.niche-run-btn {
+  background: linear-gradient(135deg, #7c3aed, #a855f7); color: #fff;
+  border: none; border-radius: 8px; padding: 10px 24px; font-size: 14px;
+  font-weight: 700; cursor: pointer; transition: all 0.15s;
+}
+.niche-run-btn:hover { opacity: 0.9; }
+.niche-run-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.niche-seed-count { font-size: 13px; color: #64748b; font-weight: 600; }
+.niche-progress {
+  padding: 14px 24px; background: #f8fafc; border-top: 1px solid #e2e8f0;
+  display: none;
+}
+.niche-progress-bar {
+  height: 6px; background: #e2e8f0; border-radius: 99px; overflow: hidden;
+  margin-bottom: 8px;
+}
+.niche-progress-fill {
+  height: 100%; background: linear-gradient(90deg, #7c3aed, #a855f7);
+  border-radius: 99px; transition: width 0.3s;
+  width: 0%;
+}
+.niche-progress-text { font-size: 12px; color: #64748b; }
+
 /* -- Domain Check -------------------------------------------------------- */
 .domain-btn {
   background: none; border: 1px solid #d0d0d0; border-radius: 6px;
@@ -801,6 +901,7 @@ tbody tr:last-child td { border-bottom: none; }
       <option value="both">Both (Merge)</option>
     </select>
     <button class="btn-primary" id="searchBtn" onclick="searchKeywords()">Search</button>
+    <button class="btn-niche-explorer" onclick="openNicheExplorer()" title="Answer 5 questions, get 15+ seed angles covering your entire niche">&#x1F9ED; Niche Explorer</button>
   </div>
 
   <!-- Progress indicator -->
@@ -1140,6 +1241,74 @@ tbody tr:last-child td { border-bottom: none; }
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeSettings()">Cancel</button>
       <button class="btn-primary" onclick="saveSettings()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Niche Explorer Modal -->
+<div class="niche-modal-overlay" id="nicheModal" onclick="if(event.target===this)closeNicheExplorer()">
+  <div class="niche-modal">
+    <div class="niche-modal-header">
+      <h3>&#x1F9ED; Niche Explorer</h3>
+      <p>Answer these questions about your product. We'll generate seed keywords covering every angle of your niche — different audiences, problems, competitors, and community slang.</p>
+      <button class="niche-close" onclick="closeNicheExplorer()">&times;</button>
+    </div>
+    <div class="niche-modal-body">
+
+      <div class="niche-step">
+        <label><span class="step-num">1</span>What does your product/tool do?</label>
+        <div class="hint">Describe it in plain language. e.g. "A tool that generates color themes for websites"</div>
+        <input type="text" id="nicheProduct" placeholder="e.g. A UI tool that creates themes for websites and apps" oninput="generateNicheSeeds()">
+      </div>
+
+      <div class="niche-step">
+        <label><span class="step-num">2</span>Who is it for? (pick all that apply)</label>
+        <div class="niche-chips" id="nicheAudience">
+          <span class="niche-chip" onclick="toggleChip(this)">Developers</span>
+          <span class="niche-chip" onclick="toggleChip(this)">Designers</span>
+          <span class="niche-chip" onclick="toggleChip(this)">Agencies</span>
+          <span class="niche-chip" onclick="toggleChip(this)">Indie Hackers</span>
+          <span class="niche-chip" onclick="toggleChip(this)">No-Code Builders</span>
+          <span class="niche-chip" onclick="toggleChip(this)">Freelancers</span>
+          <span class="niche-chip" onclick="toggleChip(this)">Business Owners</span>
+          <span class="niche-chip" onclick="toggleChip(this)">Vibecoding</span>
+        </div>
+        <input type="text" id="nicheAudienceCustom" placeholder="Add custom audiences (comma-separated)" oninput="generateNicheSeeds()" style="margin-top:6px">
+      </div>
+
+      <div class="niche-step">
+        <label><span class="step-num">3</span>What problem does it solve?</label>
+        <div class="hint">What frustration or pain point do people have that your tool fixes?</div>
+        <input type="text" id="nicheProblem" placeholder="e.g. Takes too long to pick colors and fonts that look good together" oninput="generateNicheSeeds()">
+      </div>
+
+      <div class="niche-step">
+        <label><span class="step-num">4</span>What tools do people currently use instead?</label>
+        <div class="hint">Competitors, alternatives, workarounds — comma-separated</div>
+        <input type="text" id="nicheCompetitors" placeholder="e.g. Figma, Canva, Coolors, Tailwind CSS" oninput="generateNicheSeeds()">
+      </div>
+
+      <div class="niche-step">
+        <label><span class="step-num">5</span>Key features or sub-tools?</label>
+        <div class="hint">What specific things can your tool do? Comma-separated</div>
+        <input type="text" id="nicheFeatures" placeholder="e.g. color palette, font pairing, CSS variables, dark mode" oninput="generateNicheSeeds()">
+      </div>
+
+      <!-- Generated seeds preview -->
+      <div class="niche-seeds-preview" id="nicheSeedsPreview" style="display:none">
+        <h4>Generated Seed Keywords (<span id="nicheSeedCount">0</span> angles)</h4>
+        <div class="niche-seed-list" id="nicheSeedList"></div>
+      </div>
+    </div>
+
+    <div class="niche-progress" id="nicheProgress">
+      <div class="niche-progress-bar"><div class="niche-progress-fill" id="nicheProgressFill"></div></div>
+      <div class="niche-progress-text" id="nicheProgressText">Searching...</div>
+    </div>
+
+    <div class="niche-modal-footer">
+      <span class="niche-seed-count" id="nicheFooterCount">Fill in at least question 1 to generate seeds</span>
+      <button class="niche-run-btn" id="nicheRunBtn" onclick="runNicheExplorer()" disabled>&#x1F680; Run All Seeds</button>
     </div>
   </div>
 </div>
@@ -1550,6 +1719,243 @@ async function serpPreview(keyword) {
 
 function closeSerpModal() {
   document.getElementById('serpModal').classList.remove('open');
+}
+
+/* -- Niche Explorer ------------------------------------------------------ */
+let nicheSeeds = [];
+
+function openNicheExplorer() {
+  document.getElementById('nicheModal').classList.add('open');
+  generateNicheSeeds();
+}
+
+function closeNicheExplorer() {
+  document.getElementById('nicheModal').classList.remove('open');
+}
+
+function toggleChip(el) {
+  el.classList.toggle('selected');
+  generateNicheSeeds();
+}
+
+function getSelectedChips(containerId) {
+  return Array.from(document.getElementById(containerId).querySelectorAll('.niche-chip.selected'))
+    .map(c => c.textContent.trim());
+}
+
+function splitComma(str) {
+  return str.split(',').map(s => s.trim()).filter(s => s.length > 0);
+}
+
+/**
+ * Universal seed generation engine.
+ * Takes product info and generates keyword angles across 7 universal categories.
+ * These categories work for ANY product — tools, SaaS, physical goods, services.
+ */
+function generateNicheSeeds() {
+  const product = document.getElementById('nicheProduct').value.trim();
+  const audiences = [
+    ...getSelectedChips('nicheAudience'),
+    ...splitComma(document.getElementById('nicheAudienceCustom').value),
+  ];
+  const problem = document.getElementById('nicheProblem').value.trim();
+  const competitors = splitComma(document.getElementById('nicheCompetitors').value);
+  const features = splitComma(document.getElementById('nicheFeatures').value);
+
+  const seeds = [];
+  const addSeed = (text, category) => {
+    const clean = text.toLowerCase().trim();
+    if (clean && clean.length >= 3 && !seeds.find(s => s.text === clean)) {
+      seeds.push({ text: clean, category });
+    }
+  };
+
+  if (!product) {
+    document.getElementById('nicheSeedsPreview').style.display = 'none';
+    document.getElementById('nicheFooterCount').textContent = 'Fill in at least question 1 to generate seeds';
+    document.getElementById('nicheRunBtn').disabled = true;
+    nicheSeeds = [];
+    return;
+  }
+
+  // Extract core noun phrases from the product description
+  // Simple extraction: take meaningful 2-3 word combos
+  const words = product.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(w =>
+    w.length > 2 && !['the','a','an','and','or','for','that','this','with','from','into','tool','app'].includes(w)
+  );
+
+  // --- CATEGORY 1: Direct tool/product searches ---
+  // These are what people type when they KNOW what they want
+  const corePhrases = [];
+  if (words.length >= 2) {
+    for (let i = 0; i < words.length - 1; i++) {
+      corePhrases.push(words[i] + ' ' + words[i+1]);
+    }
+    if (words.length >= 3) {
+      for (let i = 0; i < words.length - 2; i++) {
+        corePhrases.push(words[i] + ' ' + words[i+1] + ' ' + words[i+2]);
+      }
+    }
+  }
+  const toolSuffixes = ['tool', 'generator', 'builder', 'creator', 'maker', 'app', 'software'];
+  const bestPhrase = corePhrases[0] || words.join(' ');
+  toolSuffixes.forEach(suffix => {
+    addSeed(bestPhrase + ' ' + suffix, 'direct');
+  });
+  addSeed(bestPhrase, 'direct');
+  addSeed('online ' + bestPhrase, 'direct');
+  addSeed('free ' + bestPhrase, 'direct');
+  addSeed('best ' + bestPhrase, 'direct');
+
+  // --- CATEGORY 2: Audience-based ---
+  // Same product, different buyer language
+  audiences.forEach(aud => {
+    const audLower = aud.toLowerCase();
+    addSeed(bestPhrase + ' for ' + audLower, 'audience');
+    addSeed(audLower + ' ' + (words[words.length - 1] || bestPhrase) + ' tools', 'audience');
+    addSeed('best tools for ' + audLower, 'audience');
+  });
+
+  // --- CATEGORY 3: Problem/pain-point searches ---
+  // What people search BEFORE they know your product exists
+  if (problem) {
+    const probWords = problem.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(w => w.length > 2);
+    if (probWords.length >= 2) {
+      addSeed('how to ' + probWords.slice(0, 4).join(' '), 'problem');
+      addSeed(probWords.slice(0, 3).join(' '), 'problem');
+    }
+    addSeed('how to ' + bestPhrase, 'problem');
+    addSeed(bestPhrase + ' easy', 'problem');
+    addSeed(bestPhrase + ' fast', 'problem');
+    addSeed(bestPhrase + ' automatically', 'problem');
+  }
+
+  // --- CATEGORY 4: Competitor alternatives ---
+  // Steal traffic from competitors
+  competitors.forEach(comp => {
+    const compLower = comp.toLowerCase().trim();
+    addSeed(compLower + ' alternative', 'competitor');
+    addSeed(compLower + ' vs', 'competitor');
+    addSeed('better than ' + compLower, 'competitor');
+    addSeed(compLower + ' free alternative', 'competitor');
+  });
+
+  // --- CATEGORY 5: Feature-specific ---
+  // Each feature is its own keyword universe
+  features.forEach(feat => {
+    const featLower = feat.toLowerCase().trim();
+    addSeed(featLower + ' generator', 'feature');
+    addSeed(featLower + ' tool', 'feature');
+    addSeed('online ' + featLower, 'feature');
+    addSeed(featLower, 'feature');
+  });
+
+  // --- CATEGORY 6: Community/trend slang ---
+  // The goldmine hidden terms that change by community
+  const communityTerms = {
+    'Developers': ['dev tools', 'github', 'npm package', 'cli tool', 'open source'],
+    'Designers': ['design system', 'ui kit', 'design tokens', 'figma plugin'],
+    'Agencies': ['agency tools', 'client deliverable', 'white label', 'agency workflow'],
+    'Indie Hackers': ['ship fast', 'saas boilerplate', 'indie hacker tools', 'micro saas'],
+    'No-Code Builders': ['no code', 'low code', 'drag and drop', 'without coding'],
+    'Freelancers': ['freelance tools', 'client project', 'quick prototype'],
+    'Business Owners': ['small business', 'diy website', 'affordable'],
+    'Vibecoding': ['vibecoding', 'vibe coding tools', 'ai coding', 'cursor ai'],
+  };
+  audiences.forEach(aud => {
+    const terms = communityTerms[aud] || [];
+    terms.forEach(term => {
+      addSeed(term + ' ' + (words[0] || ''), 'community');
+    });
+  });
+
+  // --- CATEGORY 7: Use-case based ---
+  // Specific applications/contexts where the tool is used
+  const useCasePatterns = ['for website', 'for app', 'for landing page', 'for saas',
+    'for ecommerce', 'for portfolio', 'for dashboard', 'for startup'];
+  useCasePatterns.forEach(uc => {
+    addSeed(bestPhrase + ' ' + uc, 'usecase');
+  });
+
+  // --- PROMPT CHAINING: Cross-pollinate top seeds ---
+  // Combine audience + feature to find deep niches
+  if (features.length > 0 && audiences.length > 0) {
+    features.slice(0, 3).forEach(feat => {
+      audiences.slice(0, 3).forEach(aud => {
+        addSeed(feat.toLowerCase() + ' for ' + aud.toLowerCase(), 'usecase');
+      });
+    });
+  }
+
+  nicheSeeds = seeds;
+
+  // Render preview
+  const preview = document.getElementById('nicheSeedsPreview');
+  const list = document.getElementById('nicheSeedList');
+  const count = document.getElementById('nicheSeedCount');
+
+  if (seeds.length > 0) {
+    preview.style.display = 'block';
+    count.textContent = seeds.length;
+    list.innerHTML = seeds.map(s =>
+      `<span class="niche-seed-tag ${s.category}">${escHtml(s.text)}</span>`
+    ).join('');
+    document.getElementById('nicheFooterCount').textContent = `${seeds.length} seed angles ready`;
+    document.getElementById('nicheRunBtn').disabled = false;
+  } else {
+    preview.style.display = 'none';
+    document.getElementById('nicheFooterCount').textContent = 'Fill in at least question 1 to generate seeds';
+    document.getElementById('nicheRunBtn').disabled = true;
+  }
+}
+
+async function runNicheExplorer() {
+  if (nicheSeeds.length === 0) return;
+
+  const btn = document.getElementById('nicheRunBtn');
+  const progress = document.getElementById('nicheProgress');
+  const progressFill = document.getElementById('nicheProgressFill');
+  const progressText = document.getElementById('nicheProgressText');
+  const mode = document.getElementById('searchMode').value;
+
+  btn.disabled = true;
+  btn.textContent = 'Running...';
+  progress.style.display = 'block';
+
+  const total = nicheSeeds.length;
+  let completed = 0;
+  let totalKw = 0;
+
+  // Run seeds sequentially (to avoid hammering the API)
+  for (const seed of nicheSeeds) {
+    completed++;
+    const pct = Math.round((completed / total) * 100);
+    progressFill.style.width = pct + '%';
+    progressText.textContent = `Searching "${seed.text}" (${completed}/${total})... ${totalKw} keywords found so far`;
+
+    try {
+      const data = await api('POST', '/api/search', { seed_keyword: seed.text, mode: mode });
+      if (data.keywords) {
+        totalKw += data.count || data.keywords.length || 0;
+      }
+    } catch (e) {
+      // Continue with other seeds if one fails
+    }
+  }
+
+  // Done - load all results
+  progressFill.style.width = '100%';
+  progressText.textContent = `Done! ${totalKw} total keywords found from ${total} seed angles.`;
+
+  btn.textContent = '\u{1F680} Run All Seeds';
+  btn.disabled = false;
+
+  // Close modal and reload keywords
+  setTimeout(async () => {
+    closeNicheExplorer();
+    await loadKeywords();
+    showToast(`Niche Explorer: ${totalKw} keywords from ${total} seed angles!`);
+  }, 1500);
 }
 
 /* -- API status check ---------------------------------------------------- */

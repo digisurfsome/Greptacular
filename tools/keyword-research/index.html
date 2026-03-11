@@ -92,6 +92,9 @@ input, select { font-family: inherit; }
 .progress-bar.done .progress-spinner { display: none; }
 .progress-check { display: none; font-weight: 700; }
 .progress-bar.done .progress-check { display: inline; }
+.progress-bar.error { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+.progress-bar.error .progress-spinner { display: none; }
+.progress-bar.error .progress-check { display: inline; content: '✗'; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* -- Segment bar --------------------------------------------------------- */
@@ -189,6 +192,8 @@ tbody tr:last-child td { border-bottom: none; }
   text-align: right; font-weight: 500;
 }
 .kw-cell { font-weight: 500; }
+.kw-link { color: #1a56db; text-decoration: none; cursor: pointer; }
+.kw-link:hover { text-decoration: underline; color: #1e40af; }
 .row-num {
   font-family: 'SF Mono', 'Fira Code', monospace; font-size: 11px;
   color: #bbb; text-align: right; width: 36px;
@@ -991,11 +996,14 @@ async function searchKeywords() {
   const data = await api('POST', '/api/search', { seed_keyword: seed, mode: mode });
   btn.disabled = false;
 
-  if (data.keywords) {
-    showProgressDone('Found ' + data.count + ' keywords');
+  if (data.error) {
+    showProgressError(data.error);
+  } else if (data.keywords && data.keywords.length > 0) {
+    showProgressDone('Found ' + (data.count || data.keywords.length) + ' keywords');
     await loadKeywords();
   } else {
-    hideProgress();
+    showProgressDone('Found 0 keywords');
+    await loadKeywords();
   }
 }
 
@@ -1010,6 +1018,13 @@ function showProgressDone(msg) {
   bar.className = 'progress-bar active done';
   document.getElementById('progressText').textContent = msg;
   setTimeout(() => { bar.className = 'progress-bar'; }, 4000);
+}
+
+function showProgressError(msg) {
+  const bar = document.getElementById('progressBar');
+  bar.className = 'progress-bar active error';
+  document.getElementById('progressText').textContent = msg;
+  setTimeout(() => { bar.className = 'progress-bar'; }, 6000);
 }
 
 function hideProgress() {
@@ -1260,7 +1275,7 @@ function renderTable() {
     const compLevel = (kw.competition_level || '').toUpperCase() || '-';
     return `<tr>
       <td class="row-num">${rowNum}</td>
-      <td class="kw-cell">${escHtml(kw.keyword)}</td>
+      <td class="kw-cell"><a href="https://www.google.com/search?q=${encodeURIComponent(kw.keyword)}" target="_blank" rel="noopener" class="kw-link">${escHtml(kw.keyword)}</a></td>
       <td class="mono">${fmtNum(kw.volume)}<span class="vol-label">monthly</span></td>
       <td class="mono"><span class="diff-badge ${diffClass(kw.difficulty)}">${kw.difficulty}</span></td>
       <td class="mono">$${(kw.cpc || 0).toFixed(2)}</td>
@@ -1659,7 +1674,7 @@ function renderNuggetResults() {
 
     return `<tr>
       <td class="row-num">${rowNum}</td>
-      <td class="kw-cell">${escHtml(kw.keyword || '')}</td>
+      <td class="kw-cell"><a href="https://www.google.com/search?q=${encodeURIComponent(kw.keyword || '')}" target="_blank" rel="noopener" class="kw-link">${escHtml(kw.keyword || '')}</a></td>
       <td class="mono">${fmtNum(kw.volume)}</td>
       <td class="mono"><span class="diff-badge ${diffClass(kw.difficulty || 0)}">${kw.difficulty || 0}</span></td>
       <td class="mono">$${(kw.cpc || 0).toFixed(2)}</td>

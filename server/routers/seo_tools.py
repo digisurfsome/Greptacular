@@ -394,11 +394,9 @@ async def _dataforseo_keyword_suggestions(
         "keyword": seed,
         "location_code": location_code,
         "language_code": language_code,
-        "depth": 2,
         "limit": 500,
         "include_serp_info": True,
         "include_seed_keyword": True,
-        "include_clickstream_data": False,
     }]
 
     async with httpx.AsyncClient(timeout=60.0) as client:
@@ -410,7 +408,12 @@ async def _dataforseo_keyword_suggestions(
         resp.raise_for_status()
         data = resp.json()
 
-    return _parse_labs_response(data)
+    logger.info("Keyword suggestions for '%s': tasks=%d, status=%s",
+                seed, len(data.get("tasks", [])),
+                [t.get("status_code") for t in data.get("tasks", [])])
+    result = _parse_labs_response(data)
+    logger.info("Keyword suggestions parsed: %d keywords", len(result))
+    return result
 
 
 def _parse_labs_response(data: dict) -> list[dict]:
@@ -420,16 +423,27 @@ def _parse_labs_response(data: dict) -> list[dict]:
     for task in data.get("tasks", []):
         if task.get("status_code") != 20000:
             error_msg = task.get("status_message", "Unknown error")
-            logger.warning("DataForSEO task error: %s", error_msg)
+            logger.warning("DataForSEO task error: %s (code: %s)", error_msg, task.get("status_code"))
             continue
 
-        for result in task.get("result", []) or []:
-            for item in result.get("items", []) or []:
-                kw_data = item.get("keyword_data", {})
-                kw_info = kw_data.get("keyword_info", {})
-                serp_info = kw_data.get("serp_info", {})
+        task_results = task.get("result", []) or []
+        logger.debug("DataForSEO task has %d result groups, total items: %s",
+                      len(task_results),
+                      sum(len((r or {}).get("items", []) or []) for r in task_results if r))
 
-                kw_text = kw_data.get("keyword", "")
+        for result in task_results:
+            if result is None:
+                continue
+            for item in result.get("items", []) or []:
+                if item is None:
+                    continue
+                kw_data = item.get("keyword_data") or item
+                kw_info = kw_data.get("keyword_info") or {}
+                # serp_info can be a sibling of keyword_data (related_keywords)
+                # or nested inside kw_data (keyword_suggestions)
+                serp_info = kw_data.get("serp_info") or item.get("serp_info") or {}
+
+                kw_text = kw_data.get("keyword") or item.get("keyword", "")
                 if not kw_text:
                     continue
 
@@ -1164,7 +1178,7 @@ async def search_keywords(req: SearchRequest):
     """Search for keywords by seed. Uses configured data source."""
     seed = req.seed_keyword.strip().lower()
     if not seed:
-        return {"error": "Seed keyword is required", "keywords": []}
+        return {"error": "Seed keyword is required", "keywords": [], "count": 0}
 
     mode = req.mode if req.mode in ("related", "suggestions", "both") else "related"
     settings = _get_settings()
@@ -1176,7 +1190,7 @@ async def search_keywords(req: SearchRequest):
         login = settings.get("dataforseo_login", "")
         password = settings.get("dataforseo_password", "")
         if not login or not password:
-            return {"error": "DataForSEO credentials not configured", "keywords": []}
+            return {"error": "DataForSEO credentials not configured", "keywords": [], "count": 0}
 
         location_code = int(settings.get("location_code", "2840"))
         language_code = settings.get("language_code", "en")
@@ -1188,16 +1202,16 @@ async def search_keywords(req: SearchRequest):
         except httpx.HTTPStatusError as exc:
             code = exc.response.status_code
             if code == 401:
-                return {"error": "Authentication failed. Check your DataForSEO credentials.", "keywords": []}
+                return {"error": "Authentication failed. Check your DataForSEO credentials.", "keywords": [], "count": 0}
             elif code == 403:
-                return {"error": "Access denied. Your account may not have access to this endpoint.", "keywords": []}
+                return {"error": "Access denied. Your account may not have access to this endpoint.", "keywords": [], "count": 0}
             elif code == 402:
-                return {"error": "Insufficient balance. Please top up your DataForSEO account.", "keywords": []}
+                return {"error": "Insufficient balance. Please top up your DataForSEO account.", "keywords": [], "count": 0}
             elif code == 429:
-                return {"error": "Rate limit exceeded. Please wait a moment and try again.", "keywords": []}
-            return {"error": f"DataForSEO API error: {code}", "keywords": []}
+                return {"error": "Rate limit exceeded. Please wait a moment and try again.", "keywords": [], "count": 0}
+            return {"error": f"DataForSEO API error: {code}", "keywords": [], "count": 0}
         except Exception as exc:
-            return {"error": f"DataForSEO error: {exc}", "keywords": []}
+            return {"error": f"DataForSEO error: {exc}", "keywords": [], "count": 0}
 
     else:
         # Demo mode

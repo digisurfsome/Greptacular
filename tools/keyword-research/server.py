@@ -1,14 +1,15 @@
 """
 SEO Keyword Research Tool - Backend Server
 
-A FastAPI server that helps find "golden nugget" keywords:
-high search volume but low competition/difficulty.
+Uses DataForSEO Labs API for fine-grained search volume data.
+Three search modes: Related Keywords, Keyword Suggestions, or Both (merged).
+Two-step enrichment: keyword data + bulk keyword difficulty scores.
 
-Supports multiple data sources:
-- Demo mode (works out of the box)
-- DataForSEO API (volume + keyword difficulty)
-- Google Ads API (volume + PPC competition)
+Supports:
+- DataForSEO Labs API (fine-grained volume, CPC, competition, KD, SERP features)
+- Demo mode (works out of the box with sample data)
 - CSV import (Ahrefs, Semrush, or generic format)
+- CSV export of results
 """
 
 import csv
@@ -24,13 +25,44 @@ from typing import Any
 
 import httpx
 from fastapi import FastAPI, File, Query, UploadFile
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
 DB_PATH = Path(__file__).parent / "keywords.db"
 INDEX_PATH = Path(__file__).parent / "index.html"
+
+DATAFORSEO_BASE = "https://api.dataforseo.com/v3"
+
+# Location codes for common countries
+LOCATION_CODES = {
+    "US": 2840,
+    "UK": 2826,
+    "CA": 2124,
+    "AU": 2036,
+    "DE": 2276,
+    "FR": 2250,
+    "ES": 2724,
+    "IT": 2380,
+    "BR": 2076,
+    "IN": 2356,
+    "JP": 2392,
+    "MX": 2484,
+    "NL": 2528,
+}
+
+# Supported language codes
+LANGUAGE_CODES = {
+    "en": "English",
+    "de": "German",
+    "fr": "French",
+    "es": "Spanish",
+    "it": "Italian",
+    "pt": "Portuguese",
+    "ja": "Japanese",
+    "nl": "Dutch",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -52,14 +84,19 @@ def init_db() -> None:
     try:
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS keywords (
-                keyword     TEXT NOT NULL,
-                volume      INTEGER DEFAULT 0,
-                difficulty  INTEGER DEFAULT 0,
-                cpc         REAL DEFAULT 0.0,
-                competition REAL DEFAULT 0.0,
-                source      TEXT DEFAULT 'demo',
-                seed_keyword TEXT DEFAULT '',
-                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                keyword          TEXT NOT NULL,
+                volume           INTEGER DEFAULT 0,
+                difficulty       INTEGER DEFAULT 0,
+                cpc              REAL DEFAULT 0.0,
+                competition      REAL DEFAULT 0.0,
+                competition_level TEXT DEFAULT '',
+                monthly_searches TEXT DEFAULT '[]',
+                serp_features    TEXT DEFAULT '[]',
+                search_intent    TEXT DEFAULT '',
+                trend            TEXT DEFAULT 'stable',
+                source           TEXT DEFAULT 'demo',
+                seed_keyword     TEXT DEFAULT '',
+                last_updated     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(keyword)
             );
 
@@ -72,156 +109,93 @@ def init_db() -> None:
                 ON keywords(difficulty);
             CREATE INDEX IF NOT EXISTS idx_keywords_volume
                 ON keywords(volume);
+            CREATE INDEX IF NOT EXISTS idx_keywords_seed
+                ON keywords(seed_keyword);
         """)
+
+        # Migrate existing tables: add new columns if missing
+        existing_cols = {
+            row[1] for row in conn.execute("PRAGMA table_info(keywords)").fetchall()
+        }
+        migrations = {
+            "competition_level": "TEXT DEFAULT ''",
+            "monthly_searches": "TEXT DEFAULT '[]'",
+            "serp_features": "TEXT DEFAULT '[]'",
+            "search_intent": "TEXT DEFAULT ''",
+            "trend": "TEXT DEFAULT 'stable'",
+        }
+        for col_name, col_def in migrations.items():
+            if col_name not in existing_cols:
+                conn.execute(f"ALTER TABLE keywords ADD COLUMN {col_name} {col_def}")
+
         conn.commit()
     finally:
         conn.close()
 
 
 # ---------------------------------------------------------------------------
+# In-memory search status (for progress reporting)
+# ---------------------------------------------------------------------------
+
+# Simple dict keyed by seed keyword to track multi-step search progress.
+_search_status: dict[str, dict[str, Any]] = {}
+
+
+# ---------------------------------------------------------------------------
 # Demo data generator
 # ---------------------------------------------------------------------------
 
-# Realistic seed data organised by niche so the output feels genuine.
 _DEMO_KEYWORDS: list[dict[str, Any]] = [
-    # Calculators (generally mid-high volume, mixed difficulty)
-    {"keyword": "mortgage calculator", "volume": 49500, "difficulty": 78, "cpc": 3.40},
-    {"keyword": "bmi calculator", "volume": 40500, "difficulty": 62, "cpc": 1.20},
-    {"keyword": "calorie calculator", "volume": 33100, "difficulty": 55, "cpc": 0.90},
-    {"keyword": "tip calculator", "volume": 27100, "difficulty": 35, "cpc": 0.60},
-    {"keyword": "gpa calculator", "volume": 22200, "difficulty": 42, "cpc": 0.80},
-    {"keyword": "body fat calculator", "volume": 18100, "difficulty": 48, "cpc": 1.10},
-    {"keyword": "age calculator", "volume": 14800, "difficulty": 28, "cpc": 0.30},
-    {"keyword": "pregnancy due date calculator", "volume": 12100, "difficulty": 52, "cpc": 1.50},
-    {"keyword": "subnet calculator", "volume": 9900, "difficulty": 22, "cpc": 0.70},
-    {"keyword": "percentage calculator", "volume": 8100, "difficulty": 38, "cpc": 0.40},
-    {"keyword": "compound interest calculator", "volume": 6600, "difficulty": 45, "cpc": 2.80},
-    {"keyword": "loan calculator", "volume": 40500, "difficulty": 72, "cpc": 4.20},
-    {"keyword": "paycheck calculator", "volume": 33100, "difficulty": 58, "cpc": 2.10},
-    {"keyword": "tax calculator", "volume": 27100, "difficulty": 65, "cpc": 3.50},
-    {"keyword": "ovulation calculator", "volume": 22200, "difficulty": 50, "cpc": 1.30},
-    {"keyword": "concrete calculator", "volume": 14800, "difficulty": 18, "cpc": 0.90},
-    {"keyword": "tile calculator", "volume": 8100, "difficulty": 12, "cpc": 0.70},
-    {"keyword": "mulch calculator", "volume": 6600, "difficulty": 8, "cpc": 0.50},
-    {"keyword": "gravel calculator", "volume": 5400, "difficulty": 10, "cpc": 0.60},
-    {"keyword": "drywall calculator", "volume": 4400, "difficulty": 5, "cpc": 0.45},
-    {"keyword": "roofing calculator", "volume": 3600, "difficulty": 15, "cpc": 2.30},
-    {"keyword": "deck cost calculator", "volume": 2900, "difficulty": 7, "cpc": 1.80},
-    {"keyword": "fence calculator", "volume": 2400, "difficulty": 4, "cpc": 1.20},
-    {"keyword": "wallpaper calculator", "volume": 1900, "difficulty": 3, "cpc": 0.35},
-    {"keyword": "paint calculator", "volume": 3600, "difficulty": 9, "cpc": 0.55},
-
-    # Marketing tools
-    {"keyword": "email subject line generator", "volume": 5400, "difficulty": 25, "cpc": 1.80},
-    {"keyword": "headline analyzer", "volume": 4400, "difficulty": 30, "cpc": 1.50},
-    {"keyword": "meta description generator", "volume": 3600, "difficulty": 18, "cpc": 1.20},
-    {"keyword": "blog title generator", "volume": 6600, "difficulty": 22, "cpc": 1.00},
-    {"keyword": "hashtag generator", "volume": 8100, "difficulty": 32, "cpc": 0.80},
-    {"keyword": "utm builder", "volume": 2900, "difficulty": 15, "cpc": 0.60},
-    {"keyword": "social media post generator", "volume": 3600, "difficulty": 28, "cpc": 1.40},
-    {"keyword": "ad copy generator", "volume": 2400, "difficulty": 20, "cpc": 2.50},
-    {"keyword": "landing page builder free", "volume": 4400, "difficulty": 45, "cpc": 5.80},
-    {"keyword": "email template builder", "volume": 2900, "difficulty": 35, "cpc": 3.20},
-    {"keyword": "seo title generator", "volume": 1900, "difficulty": 12, "cpc": 0.90},
-    {"keyword": "keyword density checker", "volume": 2400, "difficulty": 16, "cpc": 0.70},
-    {"keyword": "readability score checker", "volume": 1600, "difficulty": 14, "cpc": 0.50},
-    {"keyword": "word counter online", "volume": 9900, "difficulty": 20, "cpc": 0.25},
-    {"keyword": "character counter", "volume": 6600, "difficulty": 18, "cpc": 0.20},
-
-    # AI tools
-    {"keyword": "ai prompt generator", "volume": 12100, "difficulty": 35, "cpc": 1.80},
-    {"keyword": "chatbot builder", "volume": 9900, "difficulty": 55, "cpc": 4.50},
-    {"keyword": "ai writing assistant", "volume": 8100, "difficulty": 60, "cpc": 3.80},
-    {"keyword": "ai image generator free", "volume": 33100, "difficulty": 52, "cpc": 0.90},
-    {"keyword": "ai logo maker", "volume": 14800, "difficulty": 42, "cpc": 2.20},
-    {"keyword": "text to speech free", "volume": 22200, "difficulty": 48, "cpc": 0.70},
-    {"keyword": "ai resume builder", "volume": 12100, "difficulty": 50, "cpc": 3.50},
-    {"keyword": "ai essay writer", "volume": 18100, "difficulty": 45, "cpc": 1.20},
-    {"keyword": "ai code generator", "volume": 9900, "difficulty": 38, "cpc": 2.00},
-    {"keyword": "ai voice cloner free", "volume": 6600, "difficulty": 30, "cpc": 0.80},
-    {"keyword": "ai background remover", "volume": 14800, "difficulty": 40, "cpc": 0.60},
-    {"keyword": "ai video generator", "volume": 8100, "difficulty": 42, "cpc": 1.50},
-    {"keyword": "ai music generator", "volume": 5400, "difficulty": 35, "cpc": 0.90},
-    {"keyword": "ai paraphrasing tool", "volume": 12100, "difficulty": 38, "cpc": 0.70},
-    {"keyword": "ai grammar checker", "volume": 6600, "difficulty": 55, "cpc": 1.80},
-
-    # Golden nuggets (low difficulty, decent volume) -- the ones users want to find
-    {"keyword": "cubic yards calculator", "volume": 4400, "difficulty": 2, "cpc": 0.35},
-    {"keyword": "board foot calculator", "volume": 3600, "difficulty": 1, "cpc": 0.40},
-    {"keyword": "stair calculator", "volume": 2900, "difficulty": 3, "cpc": 0.50},
-    {"keyword": "asphalt calculator", "volume": 2400, "difficulty": 0, "cpc": 0.45},
-    {"keyword": "rebar calculator", "volume": 1900, "difficulty": 0, "cpc": 0.55},
-    {"keyword": "sand calculator", "volume": 2400, "difficulty": 1, "cpc": 0.30},
-    {"keyword": "paver calculator", "volume": 3600, "difficulty": 4, "cpc": 0.65},
-    {"keyword": "insulation calculator", "volume": 2900, "difficulty": 3, "cpc": 0.75},
-    {"keyword": "wire gauge calculator", "volume": 1600, "difficulty": 0, "cpc": 0.35},
-    {"keyword": "voltage drop calculator", "volume": 2400, "difficulty": 2, "cpc": 0.40},
-    {"keyword": "air duct calculator", "volume": 1300, "difficulty": 0, "cpc": 0.50},
-    {"keyword": "heat load calculator", "volume": 1900, "difficulty": 1, "cpc": 0.60},
-    {"keyword": "cfm calculator", "volume": 1600, "difficulty": 2, "cpc": 0.45},
-    {"keyword": "pipe size calculator", "volume": 2400, "difficulty": 3, "cpc": 0.55},
-    {"keyword": "bolt torque calculator", "volume": 1300, "difficulty": 1, "cpc": 0.30},
-    {"keyword": "gear ratio calculator", "volume": 2900, "difficulty": 5, "cpc": 0.35},
-    {"keyword": "pulley calculator", "volume": 1600, "difficulty": 2, "cpc": 0.25},
-    {"keyword": "spring constant calculator", "volume": 1300, "difficulty": 0, "cpc": 0.20},
-    {"keyword": "ohms law calculator", "volume": 3600, "difficulty": 4, "cpc": 0.30},
-    {"keyword": "resistor color code calculator", "volume": 2900, "difficulty": 3, "cpc": 0.25},
-
-    # Medium difficulty, varied volume
-    {"keyword": "free invoice generator", "volume": 14800, "difficulty": 38, "cpc": 2.80},
-    {"keyword": "qr code generator free", "volume": 33100, "difficulty": 42, "cpc": 0.50},
-    {"keyword": "barcode generator", "volume": 9900, "difficulty": 28, "cpc": 0.60},
-    {"keyword": "color palette generator", "volume": 8100, "difficulty": 25, "cpc": 0.40},
-    {"keyword": "password generator", "volume": 18100, "difficulty": 35, "cpc": 0.30},
-    {"keyword": "lorem ipsum generator", "volume": 6600, "difficulty": 22, "cpc": 0.15},
-    {"keyword": "random name generator", "volume": 12100, "difficulty": 30, "cpc": 0.20},
-    {"keyword": "meme generator", "volume": 22200, "difficulty": 50, "cpc": 0.25},
-    {"keyword": "gif maker", "volume": 9900, "difficulty": 40, "cpc": 0.35},
-    {"keyword": "pdf to word converter", "volume": 27100, "difficulty": 55, "cpc": 0.80},
-    {"keyword": "image compressor", "volume": 8100, "difficulty": 32, "cpc": 0.30},
-    {"keyword": "video compressor online", "volume": 6600, "difficulty": 28, "cpc": 0.40},
-    {"keyword": "json formatter", "volume": 9900, "difficulty": 15, "cpc": 0.20},
-    {"keyword": "cron expression generator", "volume": 4400, "difficulty": 8, "cpc": 0.30},
-    {"keyword": "regex tester", "volume": 6600, "difficulty": 18, "cpc": 0.25},
-    {"keyword": "base64 encoder", "volume": 3600, "difficulty": 10, "cpc": 0.15},
-    {"keyword": "html to markdown converter", "volume": 2400, "difficulty": 6, "cpc": 0.20},
-    {"keyword": "svg to png converter", "volume": 4400, "difficulty": 12, "cpc": 0.25},
-    {"keyword": "yaml validator", "volume": 1900, "difficulty": 5, "cpc": 0.15},
-    {"keyword": "css minifier", "volume": 2900, "difficulty": 8, "cpc": 0.10},
-
-    # High competition (hard to rank for)
-    {"keyword": "website builder", "volume": 49500, "difficulty": 90, "cpc": 8.50},
-    {"keyword": "crm software", "volume": 27100, "difficulty": 85, "cpc": 12.00},
-    {"keyword": "project management tool", "volume": 22200, "difficulty": 82, "cpc": 9.80},
-    {"keyword": "accounting software", "volume": 18100, "difficulty": 88, "cpc": 11.50},
-    {"keyword": "email marketing software", "volume": 14800, "difficulty": 80, "cpc": 7.20},
-    {"keyword": "web hosting", "volume": 40500, "difficulty": 92, "cpc": 15.00},
-    {"keyword": "vpn service", "volume": 33100, "difficulty": 88, "cpc": 6.50},
-    {"keyword": "antivirus software", "volume": 22200, "difficulty": 85, "cpc": 5.80},
-    {"keyword": "online course platform", "volume": 9900, "difficulty": 75, "cpc": 8.90},
-    {"keyword": "ecommerce platform", "volume": 12100, "difficulty": 82, "cpc": 10.20},
-
-    # More low difficulty gems
-    {"keyword": "thread pitch calculator", "volume": 1300, "difficulty": 0, "cpc": 0.25},
-    {"keyword": "rpm to rad/s converter", "volume": 880, "difficulty": 0, "cpc": 0.10},
-    {"keyword": "hydraulic cylinder calculator", "volume": 720, "difficulty": 1, "cpc": 0.40},
-    {"keyword": "sheet metal bend allowance calculator", "volume": 590, "difficulty": 0, "cpc": 0.35},
-    {"keyword": "weld strength calculator", "volume": 480, "difficulty": 0, "cpc": 0.30},
-    {"keyword": "pneumatic cylinder force calculator", "volume": 390, "difficulty": 1, "cpc": 0.25},
-    {"keyword": "belt length calculator", "volume": 880, "difficulty": 2, "cpc": 0.20},
-    {"keyword": "chain length calculator", "volume": 720, "difficulty": 1, "cpc": 0.15},
-    {"keyword": "thermal expansion calculator", "volume": 1300, "difficulty": 3, "cpc": 0.30},
-    {"keyword": "pressure drop calculator", "volume": 1600, "difficulty": 2, "cpc": 0.35},
-    {"keyword": "flow rate calculator", "volume": 2900, "difficulty": 5, "cpc": 0.40},
-    {"keyword": "pump head calculator", "volume": 590, "difficulty": 0, "cpc": 0.30},
-    {"keyword": "venturi flow calculator", "volume": 320, "difficulty": 0, "cpc": 0.20},
-    {"keyword": "orifice plate calculator", "volume": 480, "difficulty": 1, "cpc": 0.25},
-    {"keyword": "catenary calculator", "volume": 390, "difficulty": 0, "cpc": 0.15},
-    {"keyword": "moment of inertia calculator", "volume": 2400, "difficulty": 4, "cpc": 0.20},
-    {"keyword": "deflection calculator beam", "volume": 1600, "difficulty": 3, "cpc": 0.30},
-    {"keyword": "column buckling calculator", "volume": 720, "difficulty": 0, "cpc": 0.25},
-    {"keyword": "fatigue life calculator", "volume": 390, "difficulty": 0, "cpc": 0.20},
-    {"keyword": "stress concentration factor calculator", "volume": 590, "difficulty": 1, "cpc": 0.15},
+    {"keyword": "mortgage calculator", "volume": 49500, "difficulty": 78, "cpc": 3.40,
+     "competition_level": "HIGH", "trend": "stable"},
+    {"keyword": "bmi calculator", "volume": 40500, "difficulty": 62, "cpc": 1.20,
+     "competition_level": "MEDIUM", "trend": "stable"},
+    {"keyword": "calorie calculator", "volume": 33100, "difficulty": 55, "cpc": 0.90,
+     "competition_level": "MEDIUM", "trend": "rising"},
+    {"keyword": "tip calculator", "volume": 27100, "difficulty": 35, "cpc": 0.60,
+     "competition_level": "LOW", "trend": "stable"},
+    {"keyword": "gpa calculator", "volume": 22200, "difficulty": 42, "cpc": 0.80,
+     "competition_level": "MEDIUM", "trend": "stable"},
+    {"keyword": "concrete calculator", "volume": 14800, "difficulty": 18, "cpc": 0.90,
+     "competition_level": "LOW", "trend": "stable"},
+    {"keyword": "tile calculator", "volume": 8100, "difficulty": 12, "cpc": 0.70,
+     "competition_level": "LOW", "trend": "rising"},
+    {"keyword": "mulch calculator", "volume": 6600, "difficulty": 8, "cpc": 0.50,
+     "competition_level": "LOW", "trend": "stable"},
+    {"keyword": "drywall calculator", "volume": 4400, "difficulty": 5, "cpc": 0.45,
+     "competition_level": "LOW", "trend": "stable"},
+    {"keyword": "cubic yards calculator", "volume": 4400, "difficulty": 2, "cpc": 0.35,
+     "competition_level": "LOW", "trend": "rising"},
+    {"keyword": "board foot calculator", "volume": 3600, "difficulty": 1, "cpc": 0.40,
+     "competition_level": "LOW", "trend": "stable"},
+    {"keyword": "stair calculator", "volume": 2900, "difficulty": 3, "cpc": 0.50,
+     "competition_level": "LOW", "trend": "stable"},
+    {"keyword": "asphalt calculator", "volume": 2400, "difficulty": 0, "cpc": 0.45,
+     "competition_level": "LOW", "trend": "stable"},
+    {"keyword": "paver calculator", "volume": 3600, "difficulty": 4, "cpc": 0.65,
+     "competition_level": "LOW", "trend": "rising"},
+    {"keyword": "ohms law calculator", "volume": 3600, "difficulty": 4, "cpc": 0.30,
+     "competition_level": "LOW", "trend": "stable"},
+    {"keyword": "ai image generator free", "volume": 33100, "difficulty": 52, "cpc": 0.90,
+     "competition_level": "HIGH", "trend": "rising"},
+    {"keyword": "qr code generator free", "volume": 33100, "difficulty": 42, "cpc": 0.50,
+     "competition_level": "MEDIUM", "trend": "stable"},
+    {"keyword": "password generator", "volume": 18100, "difficulty": 35, "cpc": 0.30,
+     "competition_level": "MEDIUM", "trend": "stable"},
+    {"keyword": "website builder", "volume": 49500, "difficulty": 90, "cpc": 8.50,
+     "competition_level": "HIGH", "trend": "declining"},
+    {"keyword": "web hosting", "volume": 40500, "difficulty": 92, "cpc": 15.00,
+     "competition_level": "HIGH", "trend": "declining"},
+    {"keyword": "json formatter", "volume": 9900, "difficulty": 15, "cpc": 0.20,
+     "competition_level": "LOW", "trend": "rising"},
+    {"keyword": "regex tester", "volume": 6600, "difficulty": 18, "cpc": 0.25,
+     "competition_level": "LOW", "trend": "stable"},
+    {"keyword": "wire gauge calculator", "volume": 1600, "difficulty": 0, "cpc": 0.35,
+     "competition_level": "LOW", "trend": "stable"},
+    {"keyword": "voltage drop calculator", "volume": 2400, "difficulty": 2, "cpc": 0.40,
+     "competition_level": "LOW", "trend": "stable"},
+    {"keyword": "flow rate calculator", "volume": 2900, "difficulty": 5, "cpc": 0.40,
+     "competition_level": "LOW", "trend": "stable"},
 ]
 
 
@@ -236,11 +210,18 @@ def seed_demo_data() -> None:
         now = datetime.now(timezone.utc).isoformat()
         conn.executemany(
             """INSERT OR IGNORE INTO keywords
-               (keyword, volume, difficulty, cpc, competition, source, seed_keyword, last_updated)
-               VALUES (?, ?, ?, ?, ?, 'demo', 'demo', ?)""",
+               (keyword, volume, difficulty, cpc, competition, competition_level,
+                monthly_searches, serp_features, trend, source, seed_keyword, last_updated)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'demo', 'demo', ?)""",
             [
-                (kw["keyword"], kw["volume"], kw["difficulty"], kw["cpc"],
-                 round(random.uniform(0.01, 0.95), 2), now)
+                (
+                    kw["keyword"], kw["volume"], kw["difficulty"], kw["cpc"],
+                    round(random.uniform(0.01, 0.95), 2),
+                    kw.get("competition_level", "LOW"),
+                    "[]", "[]",
+                    kw.get("trend", "stable"),
+                    now,
+                )
                 for kw in _DEMO_KEYWORDS
             ],
         )
@@ -267,88 +248,288 @@ def compute_opportunity_scores(rows: list[dict]) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# DataForSEO client
+# Trend computation from monthly search data
 # ---------------------------------------------------------------------------
 
-async def dataforseo_search(seed: str, login: str, password: str) -> list[dict]:
+def compute_trend(monthly_searches: list[dict]) -> str:
     """
-    Fetch related keywords with volume and difficulty from DataForSEO.
-    Uses the Keywords Data API (Google Ads) for volume and
-    DataForSEO Labs for keyword difficulty.
+    Compute trend direction from monthly_searches array.
+    Compares the average of the last 3 months to the first 3 months.
+    Returns 'rising', 'declining', or 'stable'.
     """
-    results: list[dict] = []
-    auth = (login, password)
-    base = "https://api.dataforseo.com/v3"
+    if not monthly_searches or len(monthly_searches) < 6:
+        return "stable"
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        # Step 1 -- get related keywords with volume via Keywords Data
-        payload = [{"keyword": seed, "language_code": "en", "location_code": 2840}]
+    # monthly_searches is typically ordered newest-first from DataForSEO
+    # Each item has {"year": 2024, "month": 1, "search_volume": 1234}
+    volumes = [m.get("search_volume", 0) or 0 for m in monthly_searches]
+
+    if len(volumes) < 6:
+        return "stable"
+
+    # Recent = first 3 entries (newest), older = last 3 entries (oldest)
+    recent_avg = sum(volumes[:3]) / 3
+    older_avg = sum(volumes[-3:]) / 3
+
+    if older_avg == 0:
+        return "rising" if recent_avg > 0 else "stable"
+
+    change_pct = (recent_avg - older_avg) / older_avg
+    if change_pct > 0.15:
+        return "rising"
+    elif change_pct < -0.15:
+        return "declining"
+    return "stable"
+
+
+# ---------------------------------------------------------------------------
+# DataForSEO Labs API client
+# ---------------------------------------------------------------------------
+
+async def _dataforseo_related_keywords(
+    seed: str, login: str, password: str,
+    location_code: int, language_code: str,
+) -> list[dict]:
+    """
+    Fetch related keywords using DataForSEO Labs Related Keywords endpoint.
+    Returns keywords with volume, CPC, competition from keyword_info.
+    """
+    auth = (login, password)
+    payload = [{
+        "keyword": seed,
+        "location_code": location_code,
+        "language_code": language_code,
+        "depth": 2,
+        "limit": 500,
+        "include_serp_info": True,
+        "include_seed_keyword": True,
+        "include_clickstream_data": False,
+    }]
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
         resp = await client.post(
-            f"{base}/keywords_data/google_ads/keywords_for_keywords/live",
+            f"{DATAFORSEO_BASE}/dataforseo_labs/google/related_keywords/live",
             json=payload,
             auth=auth,
         )
         resp.raise_for_status()
         data = resp.json()
 
-        kw_list: list[dict] = []
-        for task in data.get("tasks", []):
-            for result in task.get("result", []) or []:
-                kw_text = result.get("keyword", "")
-                vol = result.get("search_volume") or 0
-                cpc_val = result.get("cpc") or 0.0
-                comp = result.get("competition") or 0.0
-                if kw_text:
-                    kw_list.append({
-                        "keyword": kw_text,
-                        "volume": vol,
-                        "cpc": round(cpc_val, 2),
-                        "competition": round(comp, 4),
-                    })
+    return _parse_labs_response(data)
 
-        if not kw_list:
-            return results
 
-        # Step 2 -- get difficulty scores via DataForSEO Labs
-        # Batch in groups of 100
-        for i in range(0, len(kw_list), 100):
-            batch = kw_list[i : i + 100]
-            diff_payload = [{
-                "keywords": [k["keyword"] for k in batch],
-                "language_code": "en",
-                "location_code": 2840,
+async def _dataforseo_keyword_suggestions(
+    seed: str, login: str, password: str,
+    location_code: int, language_code: str,
+) -> list[dict]:
+    """
+    Fetch keyword suggestions using DataForSEO Labs Keyword Suggestions endpoint.
+    Uses autocomplete data for broader discovery.
+    """
+    auth = (login, password)
+    payload = [{
+        "keyword": seed,
+        "location_code": location_code,
+        "language_code": language_code,
+        "depth": 2,
+        "limit": 500,
+        "include_serp_info": True,
+        "include_seed_keyword": True,
+        "include_clickstream_data": False,
+    }]
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        resp = await client.post(
+            f"{DATAFORSEO_BASE}/dataforseo_labs/google/keyword_suggestions/live",
+            json=payload,
+            auth=auth,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+    return _parse_labs_response(data)
+
+
+def _parse_labs_response(data: dict) -> list[dict]:
+    """Parse the response from related_keywords or keyword_suggestions endpoints."""
+    results: list[dict] = []
+
+    for task in data.get("tasks", []):
+        if task.get("status_code") != 20000:
+            error_msg = task.get("status_message", "Unknown error")
+            logger.warning("DataForSEO task error: %s", error_msg)
+            continue
+
+        for result in task.get("result", []) or []:
+            for item in result.get("items", []) or []:
+                kw_data = item.get("keyword_data", {})
+                kw_info = kw_data.get("keyword_info", {})
+                serp_info = kw_data.get("serp_info", {})
+
+                kw_text = kw_data.get("keyword", "")
+                if not kw_text:
+                    continue
+
+                volume = kw_info.get("search_volume") or 0
+                cpc_val = kw_info.get("cpc") or 0.0
+                competition = kw_info.get("competition") or 0.0
+                comp_level = kw_info.get("competition_level") or ""
+                monthly = kw_info.get("monthly_searches") or []
+                serp_types = serp_info.get("serp_item_types") or []
+
+                trend = compute_trend(monthly)
+
+                results.append({
+                    "keyword": kw_text,
+                    "volume": volume,
+                    "cpc": round(cpc_val, 2),
+                    "competition": round(competition, 4),
+                    "competition_level": comp_level,
+                    "monthly_searches": monthly,
+                    "serp_features": serp_types,
+                    "trend": trend,
+                })
+
+    return results
+
+
+async def _dataforseo_bulk_keyword_difficulty(
+    keywords: list[str], login: str, password: str,
+    location_code: int, language_code: str,
+) -> dict[str, int]:
+    """
+    Get keyword difficulty scores for a batch of keywords.
+    Max 1000 keywords per call.
+    Returns dict mapping keyword -> difficulty (0-100).
+    """
+    if not keywords:
+        return {}
+
+    auth = (login, password)
+    diff_map: dict[str, int] = {}
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        # Batch in groups of 1000
+        for i in range(0, len(keywords), 1000):
+            batch = keywords[i:i + 1000]
+            payload = [{
+                "keywords": batch,
+                "location_code": location_code,
+                "language_code": language_code,
             }]
-            diff_resp = await client.post(
-                f"{base}/dataforseo_labs/google/keyword_suggestions/live",
-                json=diff_payload,
+            resp = await client.post(
+                f"{DATAFORSEO_BASE}/dataforseo_labs/google/bulk_keyword_difficulty/live",
+                json=payload,
                 auth=auth,
             )
-            diff_resp.raise_for_status()
-            diff_data = diff_resp.json()
+            resp.raise_for_status()
+            data = resp.json()
 
-            # Build a difficulty lookup
-            diff_map: dict[str, int] = {}
-            for task in diff_data.get("tasks", []):
+            for task in data.get("tasks", []):
+                if task.get("status_code") != 20000:
+                    continue
                 for result in task.get("result", []) or []:
                     for item in result.get("items", []) or []:
-                        kd = item.get("keyword_info", {}).get("keyword_difficulty")
-                        kw_name = item.get("keyword")
+                        kw_name = item.get("keyword", "")
+                        kd = item.get("keyword_difficulty")
                         if kw_name and kd is not None:
                             diff_map[kw_name.lower()] = int(kd)
 
-            for kw in batch:
-                kw["difficulty"] = diff_map.get(kw["keyword"].lower(), 0)
+    return diff_map
 
-        results = kw_list
 
-    return results
+async def dataforseo_search(
+    seed: str, login: str, password: str,
+    mode: str, location_code: int, language_code: str,
+) -> list[dict]:
+    """
+    Main search function. Orchestrates the two-step enrichment flow:
+    1. Fetch keywords via related_keywords and/or keyword_suggestions
+    2. Enrich with bulk keyword difficulty scores
+
+    Args:
+        seed: The seed keyword to search for
+        login: DataForSEO login email
+        password: DataForSEO API password
+        mode: 'related', 'suggestions', or 'both'
+        location_code: Location code (e.g. 2840 for US)
+        language_code: Language code (e.g. 'en')
+    """
+    status_key = seed.lower()
+    _search_status[status_key] = {"step": "fetching", "message": "Fetching keywords...", "done": False}
+
+    all_keywords: list[dict] = []
+
+    try:
+        # Step 1: Fetch keywords based on mode
+        if mode in ("related", "both"):
+            _search_status[status_key]["message"] = "Fetching related keywords..."
+            related = await _dataforseo_related_keywords(
+                seed, login, password, location_code, language_code
+            )
+            all_keywords.extend(related)
+
+        if mode in ("suggestions", "both"):
+            _search_status[status_key]["message"] = "Fetching keyword suggestions..."
+            suggestions = await _dataforseo_keyword_suggestions(
+                seed, login, password, location_code, language_code
+            )
+            all_keywords.extend(suggestions)
+
+        # Deduplicate by keyword text (keep the first occurrence)
+        seen: set[str] = set()
+        deduped: list[dict] = []
+        for kw in all_keywords:
+            key = kw["keyword"].lower()
+            if key not in seen:
+                seen.add(key)
+                deduped.append(kw)
+        all_keywords = deduped
+
+        if not all_keywords:
+            _search_status[status_key] = {
+                "step": "done", "message": "No keywords found.", "done": True, "count": 0,
+            }
+            return []
+
+        # Step 2: Enrich with bulk keyword difficulty
+        _search_status[status_key]["message"] = (
+            f"Getting difficulty scores for {len(all_keywords)} keywords..."
+        )
+        kw_texts = [kw["keyword"] for kw in all_keywords]
+        diff_map = await _dataforseo_bulk_keyword_difficulty(
+            kw_texts, login, password, location_code, language_code
+        )
+
+        # Merge difficulty scores into keyword data
+        for kw in all_keywords:
+            kd = diff_map.get(kw["keyword"].lower())
+            if kd is not None:
+                kw["difficulty"] = kd
+
+        _search_status[status_key] = {
+            "step": "done",
+            "message": f"Done! Found {len(all_keywords)} keywords.",
+            "done": True,
+            "count": len(all_keywords),
+        }
+
+    except Exception as exc:
+        _search_status[status_key] = {
+            "step": "error",
+            "message": f"Error: {exc}",
+            "done": True,
+            "count": 0,
+        }
+        raise
+
+    return all_keywords
 
 
 # ---------------------------------------------------------------------------
 # CSV parser  (Ahrefs, Semrush, or generic)
 # ---------------------------------------------------------------------------
 
-# Column name mappings for common SEO tool exports
 _COLUMN_ALIASES: dict[str, list[str]] = {
     "keyword": ["keyword", "query", "search query", "term", "keyphrase"],
     "volume": [
@@ -369,7 +550,7 @@ def _normalise_header(header: str) -> str:
 
 
 def _map_columns(headers: list[str]) -> dict[str, int | None]:
-    """Map our canonical field names to column indices in the CSV."""
+    """Map canonical field names to column indices in the CSV."""
     mapping: dict[str, int | None] = {k: None for k in _COLUMN_ALIASES}
     normed = [_normalise_header(h) for h in headers]
     for field, aliases in _COLUMN_ALIASES.items():
@@ -437,17 +618,15 @@ def parse_csv(content: str) -> list[dict]:
 
 class SearchRequest(BaseModel):
     seed_keyword: str
+    mode: str = "related"  # 'related', 'suggestions', or 'both'
 
 
 class SettingsPayload(BaseModel):
-    data_source: str = "demo"           # demo | dataforseo | google_ads
+    data_source: str = "demo"           # demo | dataforseo
     dataforseo_login: str = ""
     dataforseo_password: str = ""
-    google_ads_client_id: str = ""
-    google_ads_client_secret: str = ""
-    google_ads_developer_token: str = ""
-    google_ads_refresh_token: str = ""
-    google_ads_customer_id: str = ""
+    location_code: int = 2840
+    language_code: str = "en"
 
 
 # ---------------------------------------------------------------------------
@@ -497,8 +676,7 @@ def _save_setting(key: str, value: str) -> None:
 @app.get("/api/settings")
 async def get_settings():
     settings = _get_settings()
-    # Mask sensitive values
-    masked = {}
+    masked: dict[str, str] = {}
     for k, v in settings.items():
         if any(secret in k for secret in ("password", "secret", "token")):
             masked[k] = "***" + v[-4:] if len(v) > 4 else "****"
@@ -514,6 +692,65 @@ async def save_settings(payload: SettingsPayload):
     return {"status": "ok"}
 
 
+# ---- API Balance -------------------------------------------------------
+
+@app.get("/api/balance")
+async def get_balance():
+    """Check DataForSEO API credit balance."""
+    settings = _get_settings()
+    login = settings.get("dataforseo_login", "")
+    password = settings.get("dataforseo_password", "")
+
+    if not login or not password:
+        return {"connected": False, "balance": 0, "message": "No API credentials configured"}
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(
+                f"{DATAFORSEO_BASE}/appendix/user_data",
+                auth=(login, password),
+            )
+
+            if resp.status_code == 401:
+                return {"connected": False, "balance": 0, "message": "Invalid credentials (401)"}
+            if resp.status_code == 403:
+                return {"connected": False, "balance": 0, "message": "Access denied (403)"}
+
+            resp.raise_for_status()
+            data = resp.json()
+
+            # Extract balance from response
+            balance = 0.0
+            for task in data.get("tasks", []):
+                for result in task.get("result", []) or []:
+                    money_data = result.get("money", {})
+                    balance = money_data.get("balance", 0.0)
+                    break
+
+            return {
+                "connected": True,
+                "balance": round(balance, 2),
+                "message": f"${balance:.2f} remaining",
+            }
+
+    except httpx.HTTPStatusError as exc:
+        return {"connected": False, "balance": 0, "message": f"API error: {exc.response.status_code}"}
+    except Exception as exc:
+        return {"connected": False, "balance": 0, "message": f"Connection error: {exc}"}
+
+
+# ---- Search status (polling) -------------------------------------------
+
+@app.get("/api/search-status")
+async def get_search_status(seed: str = Query("")):
+    """Get the current status of an ongoing search."""
+    status_key = seed.strip().lower()
+    status = _search_status.get(status_key)
+    if status is None:
+        return {"step": "idle", "message": "", "done": True}
+    return status
+
+
 # ---- Search ------------------------------------------------------------
 
 @app.post("/api/search")
@@ -523,6 +760,7 @@ async def search_keywords(req: SearchRequest):
     if not seed:
         return {"error": "Seed keyword is required", "keywords": []}
 
+    mode = req.mode if req.mode in ("related", "suggestions", "both") else "related"
     settings = _get_settings()
     source = settings.get("data_source", "demo")
 
@@ -533,22 +771,30 @@ async def search_keywords(req: SearchRequest):
         password = settings.get("dataforseo_password", "")
         if not login or not password:
             return {"error": "DataForSEO credentials not configured", "keywords": []}
+
+        location_code = int(settings.get("location_code", "2840"))
+        language_code = settings.get("language_code", "en")
+
         try:
-            new_keywords = await dataforseo_search(seed, login, password)
+            new_keywords = await dataforseo_search(
+                seed, login, password, mode, location_code, language_code
+            )
         except httpx.HTTPStatusError as exc:
-            return {"error": f"DataForSEO API error: {exc.response.status_code}", "keywords": []}
+            code = exc.response.status_code
+            if code == 401:
+                return {"error": "Authentication failed. Check your DataForSEO credentials.", "keywords": []}
+            elif code == 403:
+                return {"error": "Access denied. Your account may not have access to this endpoint.", "keywords": []}
+            elif code == 402:
+                return {"error": "Insufficient balance. Please top up your DataForSEO account.", "keywords": []}
+            elif code == 429:
+                return {"error": "Rate limit exceeded. Please wait a moment and try again.", "keywords": []}
+            return {"error": f"DataForSEO API error: {code}", "keywords": []}
         except Exception as exc:
             return {"error": f"DataForSEO error: {exc}", "keywords": []}
 
-    elif source == "google_ads":
-        # Google Ads integration would go here; for now return an info message
-        return {
-            "error": "Google Ads integration is not yet implemented. Use DataForSEO or CSV import.",
-            "keywords": [],
-        }
-
     else:
-        # Demo mode -- filter demo data by seed substring and generate related variants
+        # Demo mode
         new_keywords = _generate_demo_search_results(seed)
 
     # Persist to database
@@ -559,15 +805,34 @@ async def search_keywords(req: SearchRequest):
     conn = get_db()
     try:
         rows = conn.execute(
-            "SELECT keyword, volume, difficulty, cpc, competition, source "
-            "FROM keywords WHERE seed_keyword = ? ORDER BY volume DESC",
+            """SELECT keyword, volume, difficulty, cpc, competition,
+                      competition_level, monthly_searches, serp_features,
+                      trend, source
+               FROM keywords WHERE seed_keyword = ? ORDER BY volume DESC""",
             (seed,),
         ).fetchall()
-        result = [dict(r) for r in rows]
+        result = _rows_to_dicts(rows)
         result = compute_opportunity_scores(result)
         return {"keywords": result, "count": len(result)}
     finally:
         conn.close()
+
+
+def _rows_to_dicts(rows: list) -> list[dict]:
+    """Convert sqlite Row objects to dicts, parsing JSON fields."""
+    result = []
+    for r in rows:
+        d = dict(r)
+        # Parse JSON text fields
+        for json_field in ("monthly_searches", "serp_features"):
+            val = d.get(json_field, "[]")
+            if isinstance(val, str):
+                try:
+                    d[json_field] = json.loads(val)
+                except (json.JSONDecodeError, TypeError):
+                    d[json_field] = []
+        result.append(d)
+    return result
 
 
 def _generate_demo_search_results(seed: str) -> list[dict]:
@@ -575,17 +840,15 @@ def _generate_demo_search_results(seed: str) -> list[dict]:
     results: list[dict] = []
     seed_lower = seed.lower()
 
-    # Include exact matches from demo data
     for kw in _DEMO_KEYWORDS:
         if seed_lower in kw["keyword"].lower():
             results.append(dict(kw))
 
-    # Generate some plausible variations
-    prefixes = ["best", "free", "online", "simple", "easy", "quick"]
-    suffixes = ["online", "free", "tool", "app", "2024", "for beginners"]
+    prefixes = ["best", "free", "online", "simple"]
+    suffixes = ["online", "free", "tool", "app"]
 
-    random.seed(hash(seed) + int(time.time() / 3600))  # stable within the hour
-    for prefix in random.sample(prefixes, min(3, len(prefixes))):
+    random.seed(hash(seed) + int(time.time() / 3600))
+    for prefix in random.sample(prefixes, min(2, len(prefixes))):
         vol = random.randint(100, 5000)
         diff = random.randint(0, 60)
         results.append({
@@ -594,8 +857,10 @@ def _generate_demo_search_results(seed: str) -> list[dict]:
             "difficulty": diff,
             "cpc": round(random.uniform(0.1, 3.0), 2),
             "competition": round(random.uniform(0.01, 0.8), 2),
+            "competition_level": "LOW" if diff < 30 else "MEDIUM",
+            "trend": random.choice(["rising", "stable", "declining"]),
         })
-    for suffix in random.sample(suffixes, min(3, len(suffixes))):
+    for suffix in random.sample(suffixes, min(2, len(suffixes))):
         vol = random.randint(50, 3000)
         diff = random.randint(0, 45)
         results.append({
@@ -604,15 +869,18 @@ def _generate_demo_search_results(seed: str) -> list[dict]:
             "difficulty": diff,
             "cpc": round(random.uniform(0.1, 2.5), 2),
             "competition": round(random.uniform(0.01, 0.7), 2),
+            "competition_level": "LOW" if diff < 30 else "MEDIUM",
+            "trend": random.choice(["rising", "stable", "stable"]),
         })
 
-    # Add the seed keyword itself
     results.append({
         "keyword": seed,
         "volume": random.randint(1000, 20000),
         "difficulty": random.randint(10, 50),
         "cpc": round(random.uniform(0.5, 4.0), 2),
         "competition": round(random.uniform(0.1, 0.9), 2),
+        "competition_level": "MEDIUM",
+        "trend": "stable",
     })
 
     return results
@@ -627,21 +895,33 @@ def _upsert_keywords(
     try:
         conn.executemany(
             """INSERT INTO keywords
-               (keyword, volume, difficulty, cpc, competition, source, seed_keyword, last_updated)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+               (keyword, volume, difficulty, cpc, competition, competition_level,
+                monthly_searches, serp_features, trend, source, seed_keyword, last_updated)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(keyword) DO UPDATE SET
                  volume = excluded.volume,
                  difficulty = excluded.difficulty,
                  cpc = excluded.cpc,
                  competition = excluded.competition,
+                 competition_level = excluded.competition_level,
+                 monthly_searches = excluded.monthly_searches,
+                 serp_features = excluded.serp_features,
+                 trend = excluded.trend,
                  source = excluded.source,
                  seed_keyword = excluded.seed_keyword,
                  last_updated = excluded.last_updated
             """,
             [
                 (
-                    kw["keyword"], kw.get("volume", 0), kw.get("difficulty", 0),
-                    kw.get("cpc", 0.0), kw.get("competition", 0.0),
+                    kw["keyword"],
+                    kw.get("volume", 0),
+                    kw.get("difficulty", 0),
+                    kw.get("cpc", 0.0),
+                    kw.get("competition", 0.0),
+                    kw.get("competition_level", ""),
+                    json.dumps(kw.get("monthly_searches", [])),
+                    json.dumps(kw.get("serp_features", [])),
+                    kw.get("trend", "stable"),
                     source, seed, now,
                 )
                 for kw in keywords
@@ -657,7 +937,7 @@ def _upsert_keywords(
 @app.post("/api/import-csv")
 async def import_csv(file: UploadFile = File(...)):
     """Import keywords from an uploaded CSV (Ahrefs, Semrush, or generic)."""
-    content = (await file.read()).decode("utf-8-sig")  # Handle BOM
+    content = (await file.read()).decode("utf-8-sig")
     keywords = parse_csv(content)
     if not keywords:
         return {"error": "Could not parse any keywords from the CSV. Check column headers.", "count": 0}
@@ -672,6 +952,69 @@ async def import_csv(file: UploadFile = File(...)):
         conn.close()
 
 
+# ---- CSV Export --------------------------------------------------------
+
+@app.get("/api/export-csv")
+async def export_csv(
+    difficulty_min: int = Query(0, ge=0, le=100),
+    difficulty_max: int = Query(100, ge=0, le=100),
+    volume_min: int = Query(0, ge=0),
+    volume_max: int = Query(10_000_000, ge=0),
+    seed: str = Query(""),
+):
+    """Export keywords as a downloadable CSV file."""
+    conn = get_db()
+    try:
+        params: list[Any] = [difficulty_min, difficulty_max, volume_min, volume_max]
+        query = """SELECT keyword, volume, difficulty, cpc, competition,
+                          competition_level, trend, source
+                   FROM keywords
+                   WHERE difficulty >= ? AND difficulty <= ?
+                     AND volume >= ? AND volume <= ?"""
+        if seed:
+            query += " AND seed_keyword = ?"
+            params.append(seed)
+        query += " ORDER BY volume DESC"
+
+        rows = conn.execute(query, params).fetchall()
+        result = [dict(r) for r in rows]
+        result = compute_opportunity_scores(result)
+    finally:
+        conn.close()
+
+    # Build CSV in memory
+    output = io.StringIO()
+    writer = csv.DictWriter(
+        output,
+        fieldnames=["keyword", "volume", "difficulty", "cpc", "competition",
+                     "competition_level", "trend", "opportunity_score", "source"],
+    )
+    writer.writeheader()
+    for row in result:
+        writer.writerow({
+            "keyword": row["keyword"],
+            "volume": row["volume"],
+            "difficulty": row["difficulty"],
+            "cpc": row["cpc"],
+            "competition": row["competition"],
+            "competition_level": row.get("competition_level", ""),
+            "trend": row.get("trend", "stable"),
+            "opportunity_score": row.get("opportunity_score", 0),
+            "source": row.get("source", ""),
+        })
+
+    csv_bytes = output.getvalue().encode("utf-8")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    return StreamingResponse(
+        io.BytesIO(csv_bytes),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f'attachment; filename="keywords_export_{timestamp}.csv"',
+        },
+    )
+
+
 # ---- Keywords list (with filtering) -----------------------------------
 
 @app.get("/api/keywords")
@@ -684,7 +1027,10 @@ async def get_keywords(
     sort_order: str = Query("desc"),
 ):
     """Get all cached keywords with filtering and sorting."""
-    allowed_sort = {"volume", "difficulty", "cpc", "competition", "keyword", "opportunity_score"}
+    allowed_sort = {
+        "volume", "difficulty", "cpc", "competition", "keyword",
+        "opportunity_score", "trend", "competition_level",
+    }
     if sort_by not in allowed_sort:
         sort_by = "volume"
     if sort_order not in ("asc", "desc"):
@@ -693,14 +1039,16 @@ async def get_keywords(
     conn = get_db()
     try:
         rows = conn.execute(
-            """SELECT keyword, volume, difficulty, cpc, competition, source
+            """SELECT keyword, volume, difficulty, cpc, competition,
+                      competition_level, monthly_searches, serp_features,
+                      trend, source
                FROM keywords
                WHERE difficulty >= ? AND difficulty <= ?
                  AND volume >= ? AND volume <= ?
                ORDER BY volume DESC""",
             (difficulty_min, difficulty_max, volume_min, volume_max),
         ).fetchall()
-        result = [dict(r) for r in rows]
+        result = _rows_to_dicts(rows)
         result = compute_opportunity_scores(result)
 
         # Sort (opportunity_score is computed, so we sort in Python)
@@ -738,6 +1086,20 @@ async def get_segments():
             ).fetchone()[0]
             seg["count"] = count
         return {"segments": segments, "total": total}
+    finally:
+        conn.close()
+
+
+# ---- Clear database ----------------------------------------------------
+
+@app.post("/api/clear")
+async def clear_keywords():
+    """Clear all keywords from the database."""
+    conn = get_db()
+    try:
+        conn.execute("DELETE FROM keywords")
+        conn.commit()
+        return {"status": "ok"}
     finally:
         conn.close()
 

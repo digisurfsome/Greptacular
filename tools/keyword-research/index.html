@@ -154,6 +154,18 @@ input, select { font-family: inherit; }
 }
 .niche-step input:focus, .niche-step textarea:focus { border-color: #7c3aed; outline: none; }
 .niche-step textarea { resize: vertical; min-height: 60px; }
+.niche-step-header { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.niche-step-controls { display: flex; gap: 2px; margin-left: auto; }
+.niche-step-controls button {
+  background: none; border: 1px solid #e2e8f0; border-radius: 4px;
+  padding: 2px 6px; font-size: 12px; cursor: pointer; color: #64748b;
+}
+.niche-step-controls button:hover { background: #f1f5f9; color: #1e293b; }
+.niche-step-controls button.remove-btn:hover { background: #fee2e2; color: #dc2626; }
+.niche-step label[contenteditable] { cursor: text; border-bottom: 1px dashed transparent; }
+.niche-step label[contenteditable]:hover { border-bottom-color: #7c3aed; }
+.niche-step label[contenteditable]:focus { outline: none; border-bottom-color: #7c3aed; }
+.niche-add-btn:hover { background: #f5f3ff !important; border-color: #7c3aed !important; }
 .niche-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
 .niche-chip {
   padding: 5px 12px; border: 1.5px solid #e2e8f0; border-radius: 99px;
@@ -179,6 +191,7 @@ input, select { font-family: inherit; }
 .niche-seed-tag.feature { background: #ede9fe; color: #5b21b6; border-color: #ddd6fe; }
 .niche-seed-tag.community { background: #fce7f3; color: #9d174d; border-color: #fbcfe8; }
 .niche-seed-tag.usecase { background: #e0f2fe; color: #075985; border-color: #bae6fd; }
+.niche-seed-tag.intent { background: #dcfce7; color: #166534; border-color: #bbf7d0; }
 .niche-modal-footer {
   padding: 14px 24px; border-top: 1px solid #e2e8f0;
   display: flex; justify-content: space-between; align-items: center;
@@ -543,15 +556,16 @@ tbody tr:last-child td { border-bottom: none; }
 .diff-50  { background: #fed7aa; color: #9a3412; }
 .diff-100 { background: #fecaca; color: #991b1b; }
 
-/* Competition level badges */
-.comp-badge {
-  display: inline-block; padding: 2px 8px; border-radius: 99px;
-  font-size: 11px; font-weight: 600; text-transform: uppercase;
-}
-.comp-low    { background: #dcfce7; color: #166534; }
-.comp-medium { background: #fef9c3; color: #854d0e; }
-.comp-high   { background: #fecaca; color: #991b1b; }
-.comp-none   { background: #f3f4f6; color: #9ca3af; }
+/* Competition level badges (now uses diff-badge classes via diffClass) */
+
+/* Intent badges */
+.intent-badge { display: inline-block; padding: 1px 7px; border-radius: 99px; font-size: 10px; font-weight: 600; }
+.intent-buyer { background: #dcfce7; color: #166534; }
+.intent-tool { background: #dbeafe; color: #1e40af; }
+.intent-compare { background: #fef3c7; color: #92400e; }
+.intent-info { background: #f3e8ff; color: #6b21a8; }
+.intent-research { background: #e0f2fe; color: #075985; }
+.intent-general { background: #f3f4f6; color: #6b7280; }
 
 /* Trend indicators */
 .trend-rising    { color: #16a34a; font-weight: 600; }
@@ -953,13 +967,24 @@ tbody tr:last-child td { border-bottom: none; }
         </select>
       </div>
       <div class="filter-group">
-        <label>Competition</label>
-        <select id="filterComp" onchange="applyFilters(); saveFilters()" style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;">
+        <label>Intent</label>
+        <select id="filterIntent" onchange="applyFilters(); saveFilters()" style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;">
           <option value="all">All</option>
-          <option value="LOW">Low only</option>
-          <option value="MEDIUM">Medium only</option>
-          <option value="HIGH">High only</option>
+          <option value="Buyer">Buyer intent</option>
+          <option value="Tool">Tool intent</option>
+          <option value="Compare">Comparison</option>
+          <option value="Info">Informational</option>
+          <option value="Research">Research</option>
+          <option value="General">General</option>
         </select>
+      </div>
+      <div class="filter-group">
+        <label>Competition (0-100)</label>
+        <div class="filter-range">
+          <input type="number" id="filterCompMin" value="0" min="0" max="100" oninput="applyFilters(); saveFilters()">
+          <span>to</span>
+          <input type="number" id="filterCompMax" value="100" min="0" max="100" oninput="applyFilters(); saveFilters()">
+        </div>
       </div>
       <button class="btn-small btn-reset" onclick="resetFilters()">Reset Filters</button>
     </div>
@@ -983,8 +1008,9 @@ tbody tr:last-child td { border-bottom: none; }
               <th data-col="volume" onclick="sortTable('volume')">Volume <span class="sort-arrow" id="sort-volume"></span></th>
               <th data-col="difficulty" onclick="sortTable('difficulty')">KD <span class="sort-arrow" id="sort-difficulty"></span></th>
               <th data-col="cpc" onclick="sortTable('cpc')">CPC <span class="sort-arrow" id="sort-cpc"></span></th>
-              <th data-col="competition_level" onclick="sortTable('competition_level')">Competition <span class="sort-arrow" id="sort-competition_level"></span></th>
+              <th data-col="competition" onclick="sortTable('competition')">Comp <span class="sort-arrow" id="sort-competition"></span></th>
               <th data-col="trend" onclick="sortTable('trend')">Trend <span class="sort-arrow" id="sort-trend"></span></th>
+              <th>Intent</th>
               <th data-col="opportunity_score" onclick="sortTable('opportunity_score')">Opportunity <span class="sort-arrow" id="sort-opportunity_score"></span></th>
               <th>SERP</th>
               <th style="width:180px">Domains Available</th>
@@ -1120,8 +1146,9 @@ tbody tr:last-child td { border-bottom: none; }
               <th data-col="volume" onclick="sortNuggetTable('volume')">Volume <span class="sort-arrow" id="nsort-volume"></span></th>
               <th data-col="difficulty" onclick="sortNuggetTable('difficulty')">KD <span class="sort-arrow" id="nsort-difficulty"></span></th>
               <th data-col="cpc" onclick="sortNuggetTable('cpc')">CPC <span class="sort-arrow" id="nsort-cpc"></span></th>
-              <th data-col="competition_level" onclick="sortNuggetTable('competition_level')">Competition <span class="sort-arrow" id="nsort-competition_level"></span></th>
+              <th data-col="competition" onclick="sortNuggetTable('competition')">Comp <span class="sort-arrow" id="nsort-competition"></span></th>
               <th data-col="trend" onclick="sortNuggetTable('trend')">Trend <span class="sort-arrow" id="nsort-trend"></span></th>
+              <th>Intent</th>
               <th data-col="opportunity_score" onclick="sortNuggetTable('opportunity_score')">Opportunity <span class="sort-arrow" id="nsort-opportunity_score"></span></th>
               <th data-col="niche" onclick="sortNuggetTable('niche')">Niche <span class="sort-arrow" id="nsort-niche"></span></th>
               <th data-col="suffix" onclick="sortNuggetTable('suffix')">Suffix <span class="sort-arrow" id="nsort-suffix"></span></th>
@@ -1255,44 +1282,8 @@ tbody tr:last-child td { border-bottom: none; }
     </div>
     <div class="niche-modal-body">
 
-      <div class="niche-step">
-        <label><span class="step-num">1</span>What does your product/tool do?</label>
-        <div class="hint">Describe it in plain language. e.g. "A tool that generates color themes for websites"</div>
-        <input type="text" id="nicheProduct" placeholder="e.g. A UI tool that creates themes for websites and apps" oninput="generateNicheSeeds()">
-      </div>
-
-      <div class="niche-step">
-        <label><span class="step-num">2</span>Who is it for? (pick all that apply)</label>
-        <div class="niche-chips" id="nicheAudience">
-          <span class="niche-chip" onclick="toggleChip(this)">Developers</span>
-          <span class="niche-chip" onclick="toggleChip(this)">Designers</span>
-          <span class="niche-chip" onclick="toggleChip(this)">Agencies</span>
-          <span class="niche-chip" onclick="toggleChip(this)">Indie Hackers</span>
-          <span class="niche-chip" onclick="toggleChip(this)">No-Code Builders</span>
-          <span class="niche-chip" onclick="toggleChip(this)">Freelancers</span>
-          <span class="niche-chip" onclick="toggleChip(this)">Business Owners</span>
-          <span class="niche-chip" onclick="toggleChip(this)">Vibecoding</span>
-        </div>
-        <input type="text" id="nicheAudienceCustom" placeholder="Add custom audiences (comma-separated)" oninput="generateNicheSeeds()" style="margin-top:6px">
-      </div>
-
-      <div class="niche-step">
-        <label><span class="step-num">3</span>What problem does it solve?</label>
-        <div class="hint">What frustration or pain point do people have that your tool fixes?</div>
-        <input type="text" id="nicheProblem" placeholder="e.g. Takes too long to pick colors and fonts that look good together" oninput="generateNicheSeeds()">
-      </div>
-
-      <div class="niche-step">
-        <label><span class="step-num">4</span>What tools do people currently use instead?</label>
-        <div class="hint">Competitors, alternatives, workarounds — comma-separated</div>
-        <input type="text" id="nicheCompetitors" placeholder="e.g. Figma, Canva, Coolors, Tailwind CSS" oninput="generateNicheSeeds()">
-      </div>
-
-      <div class="niche-step">
-        <label><span class="step-num">5</span>Key features or sub-tools?</label>
-        <div class="hint">What specific things can your tool do? Comma-separated</div>
-        <input type="text" id="nicheFeatures" placeholder="e.g. color palette, font pairing, CSS variables, dark mode" oninput="generateNicheSeeds()">
-      </div>
+      <div id="nicheSteps"></div>
+      <button class="niche-add-btn" onclick="addNicheStep()" style="width:100%;margin-bottom:12px;padding:8px;border:1.5px dashed #d0d0d0;border-radius:8px;background:none;color:#7c3aed;font-size:13px;font-weight:600;cursor:pointer;">+ Add Custom Prompt</button>
 
       <!-- Generated seeds preview -->
       <div class="niche-seeds-preview" id="nicheSeedsPreview" style="display:none">
@@ -1724,8 +1715,106 @@ function closeSerpModal() {
 /* -- Niche Explorer ------------------------------------------------------ */
 let nicheSeeds = [];
 
+let nicheStepData = [
+  { id: 'product', label: 'What does your product/tool do?', hint: 'Describe it in plain language. e.g. "A tool that generates color themes for websites"', placeholder: 'e.g. A UI tool that creates themes for websites and apps', type: 'input', value: '', chips: null },
+  { id: 'audience', label: 'Who is it for?', hint: 'Pick preset audiences or type custom ones', placeholder: 'Add custom audiences (comma-separated)', type: 'chips', value: '', chips: ['Developers','Designers','Agencies','Indie Hackers','No-Code Builders','Freelancers','Business Owners','Vibecoding'], selectedChips: [] },
+  { id: 'problem', label: 'What problem does it solve?', hint: 'What frustration or pain point do people have?', placeholder: 'e.g. Takes too long to pick colors and fonts', type: 'input', value: '' },
+  { id: 'competitors', label: 'What tools do people currently use instead?', hint: 'Competitors, alternatives, workarounds — comma-separated', placeholder: 'e.g. Figma, Canva, Coolors, Tailwind CSS', type: 'input', value: '' },
+  { id: 'features', label: 'Key features or sub-tools?', hint: 'What specific things can your tool do? Comma-separated', placeholder: 'e.g. color palette, font pairing, CSS variables', type: 'input', value: '' },
+  { id: 'intent', label: 'What value does it deliver?', hint: 'What does the user get? Saves time, saves money, higher quality, easier?', placeholder: 'e.g. saves hours of design work, professional results without hiring', type: 'input', value: '' },
+];
+
+function renderNicheSteps() {
+  const container = document.getElementById('nicheSteps');
+  container.innerHTML = nicheStepData.map((step, idx) => {
+    const isFirst = idx === 0;
+    const isLast = idx === nicheStepData.length - 1;
+    const isCustom = !!step.custom;
+    const num = idx + 1;
+
+    let controls = '<div class="niche-step-controls">';
+    if (!isFirst) controls += `<button onclick="moveNicheStep(${idx}, -1)" title="Move up">&uarr;</button>`;
+    if (!isLast) controls += `<button onclick="moveNicheStep(${idx}, 1)" title="Move down">&darr;</button>`;
+    if (isCustom) controls += `<button class="remove-btn" onclick="removeNicheStep(${idx})" title="Remove">&times;</button>`;
+    controls += '</div>';
+
+    let inputHtml = '';
+    if (step.type === 'chips') {
+      const chipsHtml = (step.chips || []).map(chip => {
+        const sel = (step.selectedChips || []).includes(chip) ? ' selected' : '';
+        return `<span class="niche-chip${sel}" onclick="toggleNicheChip(${idx}, this)">${escHtml(chip)}</span>`;
+      }).join('');
+      inputHtml = `<div class="niche-chips" id="nicheChips_${idx}">${chipsHtml}</div>
+        <input type="text" value="${escHtml(step.value || '')}" placeholder="${escHtml(step.placeholder)}" oninput="nicheStepData[${idx}].value=this.value;generateNicheSeeds()" style="margin-top:6px">`;
+    } else {
+      inputHtml = `<input type="text" value="${escHtml(step.value || '')}" placeholder="${escHtml(step.placeholder)}" oninput="nicheStepData[${idx}].value=this.value;generateNicheSeeds()">`;
+    }
+
+    return `<div class="niche-step">
+      <div class="niche-step-header">
+        <label><span class="step-num">${num}</span><span contenteditable="true" onblur="nicheStepData[${idx}].label=this.textContent.trim()||nicheStepData[${idx}].label">${escHtml(step.label)}</span></label>
+        ${controls}
+      </div>
+      <div class="hint">${escHtml(step.hint)}</div>
+      ${inputHtml}
+    </div>`;
+  }).join('');
+}
+
+function toggleNicheChip(stepIdx, el) {
+  el.classList.toggle('selected');
+  const chip = el.textContent.trim();
+  const step = nicheStepData[stepIdx];
+  if (!step.selectedChips) step.selectedChips = [];
+  const i = step.selectedChips.indexOf(chip);
+  if (i >= 0) step.selectedChips.splice(i, 1);
+  else step.selectedChips.push(chip);
+  generateNicheSeeds();
+}
+
+function addNicheStep() {
+  nicheStepData.push({ id: 'custom_' + Date.now(), label: 'Custom prompt', hint: 'Enter your own search angle', placeholder: 'e.g. specific terms your audience uses', type: 'input', value: '', custom: true });
+  renderNicheSteps();
+}
+
+function moveNicheStep(index, direction) {
+  const target = index + direction;
+  if (target < 0 || target >= nicheStepData.length) return;
+  // Save current input values from DOM before re-rendering
+  syncNicheInputValues();
+  const temp = nicheStepData[index];
+  nicheStepData[index] = nicheStepData[target];
+  nicheStepData[target] = temp;
+  renderNicheSteps();
+  generateNicheSeeds();
+}
+
+function removeNicheStep(index) {
+  if (!nicheStepData[index].custom) return;
+  nicheStepData.splice(index, 1);
+  renderNicheSteps();
+  generateNicheSeeds();
+}
+
+/** Sync current DOM input values back into nicheStepData before re-render */
+function syncNicheInputValues() {
+  const container = document.getElementById('nicheSteps');
+  if (!container) return;
+  const steps = container.querySelectorAll('.niche-step');
+  steps.forEach((stepEl, idx) => {
+    if (idx >= nicheStepData.length) return;
+    const input = stepEl.querySelector('input[type="text"]:last-of-type') || stepEl.querySelector('input[type="text"]');
+    if (input) nicheStepData[idx].value = input.value;
+    // Sync chips
+    if (nicheStepData[idx].type === 'chips') {
+      nicheStepData[idx].selectedChips = Array.from(stepEl.querySelectorAll('.niche-chip.selected')).map(c => c.textContent.trim());
+    }
+  });
+}
+
 function openNicheExplorer() {
   document.getElementById('nicheModal').classList.add('open');
+  renderNicheSteps();
   generateNicheSeeds();
 }
 
@@ -1739,7 +1828,9 @@ function toggleChip(el) {
 }
 
 function getSelectedChips(containerId) {
-  return Array.from(document.getElementById(containerId).querySelectorAll('.niche-chip.selected'))
+  const el = document.getElementById(containerId);
+  if (!el) return [];
+  return Array.from(el.querySelectorAll('.niche-chip.selected'))
     .map(c => c.textContent.trim());
 }
 
@@ -1748,19 +1839,42 @@ function splitComma(str) {
 }
 
 /**
+ * Read step values from the DOM (handles both chips and input types).
+ * Returns an object keyed by step id with the current value.
+ */
+function readNicheStepValues() {
+  const vals = {};
+  const container = document.getElementById('nicheSteps');
+  if (!container) return vals;
+  const steps = container.querySelectorAll('.niche-step');
+  steps.forEach((stepEl, idx) => {
+    if (idx >= nicheStepData.length) return;
+    const step = nicheStepData[idx];
+    if (step.type === 'chips') {
+      const selected = Array.from(stepEl.querySelectorAll('.niche-chip.selected')).map(c => c.textContent.trim());
+      const inputEl = stepEl.querySelector('input[type="text"]');
+      const custom = inputEl ? splitComma(inputEl.value) : [];
+      vals[step.id] = { audiences: [...selected, ...custom] };
+    } else {
+      const inputEl = stepEl.querySelector('input[type="text"]');
+      vals[step.id] = inputEl ? inputEl.value.trim() : '';
+    }
+  });
+  return vals;
+}
+
+/**
  * Universal seed generation engine.
- * Takes product info and generates keyword angles across 7 universal categories.
- * These categories work for ANY product — tools, SaaS, physical goods, services.
+ * Reads from nicheStepData array dynamically.
  */
 function generateNicheSeeds() {
-  const product = document.getElementById('nicheProduct').value.trim();
-  const audiences = [
-    ...getSelectedChips('nicheAudience'),
-    ...splitComma(document.getElementById('nicheAudienceCustom').value),
-  ];
-  const problem = document.getElementById('nicheProblem').value.trim();
-  const competitors = splitComma(document.getElementById('nicheCompetitors').value);
-  const features = splitComma(document.getElementById('nicheFeatures').value);
+  const vals = readNicheStepValues();
+  const product = vals.product || '';
+  const audiences = vals.audience ? vals.audience.audiences : [];
+  const problem = vals.problem || '';
+  const competitors = typeof vals.competitors === 'string' ? splitComma(vals.competitors) : [];
+  const features = typeof vals.features === 'string' ? splitComma(vals.features) : [];
+  const intentVal = vals.intent || '';
 
   const seeds = [];
   const addSeed = (text, category) => {
@@ -1779,13 +1893,11 @@ function generateNicheSeeds() {
   }
 
   // Extract core noun phrases from the product description
-  // Simple extraction: take meaningful 2-3 word combos
   const words = product.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(w =>
     w.length > 2 && !['the','a','an','and','or','for','that','this','with','from','into','tool','app'].includes(w)
   );
 
   // --- CATEGORY 1: Direct tool/product searches ---
-  // These are what people type when they KNOW what they want
   const corePhrases = [];
   if (words.length >= 2) {
     for (let i = 0; i < words.length - 1; i++) {
@@ -1808,7 +1920,6 @@ function generateNicheSeeds() {
   addSeed('best ' + bestPhrase, 'direct');
 
   // --- CATEGORY 2: Audience-based ---
-  // Same product, different buyer language
   audiences.forEach(aud => {
     const audLower = aud.toLowerCase();
     addSeed(bestPhrase + ' for ' + audLower, 'audience');
@@ -1817,7 +1928,6 @@ function generateNicheSeeds() {
   });
 
   // --- CATEGORY 3: Problem/pain-point searches ---
-  // What people search BEFORE they know your product exists
   if (problem) {
     const probWords = problem.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(w => w.length > 2);
     if (probWords.length >= 2) {
@@ -1831,7 +1941,6 @@ function generateNicheSeeds() {
   }
 
   // --- CATEGORY 4: Competitor alternatives ---
-  // Steal traffic from competitors
   competitors.forEach(comp => {
     const compLower = comp.toLowerCase().trim();
     addSeed(compLower + ' alternative', 'competitor');
@@ -1841,7 +1950,6 @@ function generateNicheSeeds() {
   });
 
   // --- CATEGORY 5: Feature-specific ---
-  // Each feature is its own keyword universe
   features.forEach(feat => {
     const featLower = feat.toLowerCase().trim();
     addSeed(featLower + ' generator', 'feature');
@@ -1850,8 +1958,26 @@ function generateNicheSeeds() {
     addSeed(featLower, 'feature');
   });
 
-  // --- CATEGORY 6: Community/trend slang ---
-  // The goldmine hidden terms that change by community
+  // --- CATEGORY 6: Buyer intent / value-based ---
+  if (intentVal) {
+    const intentTerms = splitComma(intentVal);
+    intentTerms.forEach(term => {
+      const t = term.toLowerCase().trim();
+      addSeed(t + ' ' + bestPhrase, 'intent');
+    });
+    // Standard buyer intent patterns
+    addSeed('save time ' + bestPhrase, 'intent');
+    addSeed(bestPhrase + ' faster', 'intent');
+    addSeed('automate ' + bestPhrase, 'intent');
+    addSeed('affordable ' + bestPhrase, 'intent');
+    addSeed('cheap ' + bestPhrase, 'intent');
+    addSeed('free ' + bestPhrase, 'intent');
+    addSeed('professional ' + bestPhrase, 'intent');
+    addSeed('better ' + bestPhrase, 'intent');
+    addSeed('high quality ' + bestPhrase, 'intent');
+  }
+
+  // --- CATEGORY 7: Community/trend slang ---
   const communityTerms = {
     'Developers': ['dev tools', 'github', 'npm package', 'cli tool', 'open source'],
     'Designers': ['design system', 'ui kit', 'design tokens', 'figma plugin'],
@@ -1869,8 +1995,7 @@ function generateNicheSeeds() {
     });
   });
 
-  // --- CATEGORY 7: Use-case based ---
-  // Specific applications/contexts where the tool is used
+  // --- CATEGORY 8: Use-case based ---
   const useCasePatterns = ['for website', 'for app', 'for landing page', 'for saas',
     'for ecommerce', 'for portfolio', 'for dashboard', 'for startup'];
   useCasePatterns.forEach(uc => {
@@ -1878,7 +2003,6 @@ function generateNicheSeeds() {
   });
 
   // --- PROMPT CHAINING: Cross-pollinate top seeds ---
-  // Combine audience + feature to find deep niches
   if (features.length > 0 && audiences.length > 0) {
     features.slice(0, 3).forEach(feat => {
       audiences.slice(0, 3).forEach(aud => {
@@ -1886,6 +2010,18 @@ function generateNicheSeeds() {
       });
     });
   }
+
+  // --- Custom steps: treat values as direct seed keywords ---
+  nicheStepData.forEach(step => {
+    if (step.custom && vals[step.id]) {
+      const customVal = typeof vals[step.id] === 'string' ? vals[step.id] : '';
+      if (customVal) {
+        splitComma(customVal).forEach(kw => {
+          addSeed(kw, 'direct');
+        });
+      }
+    }
+  });
 
   nicheSeeds = seeds;
 
@@ -2148,7 +2284,9 @@ function resetFilters() {
   document.getElementById('filterOppMin').value = 0;
   document.getElementById('filterOppMax').value = 100;
   document.getElementById('filterTrend').value = 'all';
-  document.getElementById('filterComp').value = 'all';
+  document.getElementById('filterIntent').value = 'all';
+  document.getElementById('filterCompMin').value = 0;
+  document.getElementById('filterCompMax').value = 100;
   document.getElementById('tableFilter').value = '';
   activeSegments.clear();
   renderSegmentBar();
@@ -2165,7 +2303,9 @@ function applyFilters() {
   const oppMin = val('filterOppMin', 0);
   const oppMax = val('filterOppMax', 100);
   const trendFilter = document.getElementById('filterTrend').value;
-  const compFilter = document.getElementById('filterComp').value;
+  const intentFilter = document.getElementById('filterIntent').value;
+  const compMin = parseInt(document.getElementById('filterCompMin').value) || 0;
+  const compMax = parseInt(document.getElementById('filterCompMax').value) || 100;
   const textFilter = (document.getElementById('tableFilter').value || '').toLowerCase().trim();
 
   if (activeSegments.size > 0) {
@@ -2179,7 +2319,9 @@ function applyFilters() {
       const opp = kw.opportunity_score || 0;
       if (opp < oppMin || opp > oppMax) return false;
       if (trendFilter !== 'all' && kw.trend !== trendFilter) return false;
-      if (compFilter !== 'all' && (kw.competition_level || '').toUpperCase() !== compFilter) return false;
+      if (intentFilter !== 'all' && classifyIntent(kw.keyword).label !== intentFilter) return false;
+      const compNum = Math.round((kw.competition || 0) * 100);
+      if (compNum < compMin || compNum > compMax) return false;
       return ranges.some(([lo, hi]) => kw.difficulty >= lo && kw.difficulty <= hi);
     });
   } else {
@@ -2189,7 +2331,9 @@ function applyFilters() {
       const opp = kw.opportunity_score || 0;
       if (opp < oppMin || opp > oppMax) return false;
       if (trendFilter !== 'all' && kw.trend !== trendFilter) return false;
-      if (compFilter !== 'all' && (kw.competition_level || '').toUpperCase() !== compFilter) return false;
+      if (intentFilter !== 'all' && classifyIntent(kw.keyword).label !== intentFilter) return false;
+      const compNum = Math.round((kw.competition || 0) * 100);
+      if (compNum < compMin || compNum > compMax) return false;
       return true;
     });
   }
@@ -2219,7 +2363,9 @@ function saveFilters() {
     oppMin: document.getElementById('filterOppMin').value,
     oppMax: document.getElementById('filterOppMax').value,
     trend: document.getElementById('filterTrend').value,
-    comp: document.getElementById('filterComp').value,
+    intent: document.getElementById('filterIntent').value,
+    compMin: document.getElementById('filterCompMin').value,
+    compMax: document.getElementById('filterCompMax').value,
   };
   localStorage.setItem('kwFilters', JSON.stringify(filters));
 }
@@ -2236,7 +2382,9 @@ function loadFilters() {
     if (f.oppMin !== undefined) document.getElementById('filterOppMin').value = f.oppMin;
     if (f.oppMax !== undefined) document.getElementById('filterOppMax').value = f.oppMax;
     if (f.trend) document.getElementById('filterTrend').value = f.trend;
-    if (f.comp) document.getElementById('filterComp').value = f.comp;
+    if (f.intent) document.getElementById('filterIntent').value = f.intent;
+    if (f.compMin !== undefined) document.getElementById('filterCompMin').value = f.compMin;
+    if (f.compMax !== undefined) document.getElementById('filterCompMax').value = f.compMax;
   } catch(e) { /* ignore corrupt data */ }
 }
 
@@ -2273,6 +2421,17 @@ function updateSortArrows() {
   if (el) el.textContent = currentSort.order === 'asc' ? '\u25B2' : '\u25BC';
 }
 
+/* -- Search intent classification ---------------------------------------- */
+function classifyIntent(kw) {
+  const k = kw.toLowerCase();
+  if (/\b(buy|purchase|price|pricing|cost|cheap|affordable|deal|discount|coupon|free trial|subscribe|order|shop)\b/.test(k)) return { label: 'Buyer', cls: 'intent-buyer' };
+  if (/\b(tool|generator|builder|creator|maker|calculator|converter|checker|tester|analyzer|editor|app|software|platform|online|free)\b/.test(k)) return { label: 'Tool', cls: 'intent-tool' };
+  if (/\b(vs|versus|alternative|compared|comparison|better than|review|top \d|best)\b/.test(k)) return { label: 'Compare', cls: 'intent-compare' };
+  if (/\b(how to|what is|why|guide|tutorial|tips|learn|example|template)\b/.test(k)) return { label: 'Info', cls: 'intent-info' };
+  if (/\b(best|top|recommended|review)\b/.test(k)) return { label: 'Research', cls: 'intent-research' };
+  return { label: 'General', cls: 'intent-general' };
+}
+
 /* -- Render table -------------------------------------------------------- */
 function diffClass(d) {
   if (d <= 0)  return 'diff-0';
@@ -2288,14 +2447,6 @@ function oppClass(o) {
   if (o >= 60) return 'opp-good';
   if (o >= 40) return 'opp-mid';
   return 'opp-low';
-}
-
-function compClass(level) {
-  const l = (level || '').toUpperCase();
-  if (l === 'LOW') return 'comp-low';
-  if (l === 'MEDIUM') return 'comp-medium';
-  if (l === 'HIGH') return 'comp-high';
-  return 'comp-none';
 }
 
 function trendIcon(trend) {
@@ -2348,7 +2499,8 @@ function renderTable() {
   const rows = pageItems.map((kw, i) => {
     const opp = kw.opportunity_score || 0;
     const rowNum = start + i + 1;
-    const compLevel = (kw.competition_level || '').toUpperCase() || '-';
+    const compNum = Math.round((kw.competition || 0) * 100);
+    const intent = classifyIntent(kw.keyword);
     const dc = domainCache[kw.keyword];
     const kwEsc = escHtml(kw.keyword).replace(/'/g, "\\'");
     let domainCell;
@@ -2373,8 +2525,9 @@ function renderTable() {
       <td class="mono">${fmtNum(kw.volume)}<span class="vol-label">monthly</span></td>
       <td class="mono"><span class="diff-badge ${diffClass(kw.difficulty)}">${kw.difficulty}</span></td>
       <td class="mono">$${(kw.cpc || 0).toFixed(2)}</td>
-      <td><span class="comp-badge ${compClass(kw.competition_level)}">${compLevel}</span></td>
+      <td class="mono"><span class="diff-badge ${diffClass(compNum)}">${compNum}</span></td>
       <td style="text-align:center">${trendIcon(kw.trend)}</td>
+      <td><span class="intent-badge ${intent.cls}">${intent.label}</span></td>
       <td class="mono"><span class="opp-badge ${oppClass(opp)}">${opp}</span></td>
       <td>${renderSerpBadges(kw.serp_features)}</td>
       <td>${domainCell}</td>
@@ -2763,7 +2916,8 @@ function renderNuggetResults() {
   const rows = pageItems.map((kw, i) => {
     const opp = kw.opportunity_score || 0;
     const rowNum = start + i + 1;
-    const compLevel = (kw.competition_level || '').toUpperCase() || '-';
+    const compNum = Math.round((kw.competition || 0) * 100);
+    const intent = classifyIntent(kw.keyword || '');
     const tier = kw.tier || classifyNuggetTier(kw);
     const tierBadgeClass = tier === 'gold' ? 'tier-gold' : tier === 'silver' ? 'tier-silver' : 'tier-bronze';
     const tierLabel = tier.charAt(0).toUpperCase() + tier.slice(1);
@@ -2774,8 +2928,9 @@ function renderNuggetResults() {
       <td class="mono">${fmtNum(kw.volume)}</td>
       <td class="mono"><span class="diff-badge ${diffClass(kw.difficulty || 0)}">${kw.difficulty || 0}</span></td>
       <td class="mono">$${(kw.cpc || 0).toFixed(2)}</td>
-      <td><span class="comp-badge ${compClass(kw.competition_level)}">${compLevel}</span></td>
+      <td class="mono"><span class="diff-badge ${diffClass(compNum)}">${compNum}</span></td>
       <td style="text-align:center">${trendIcon(kw.trend)}</td>
+      <td><span class="intent-badge ${intent.cls}">${intent.label}</span></td>
       <td class="mono"><span class="opp-badge ${oppClass(opp)}">${opp}</span></td>
       <td>${escHtml(kw.niche || '')}</td>
       <td>${escHtml(kw.suffix || '')}</td>
@@ -2827,18 +2982,20 @@ function exportNuggetCSV() {
     });
   }
 
-  const headers = ['Keyword', 'Volume', 'KD', 'CPC', 'Competition', 'Trend', 'Opportunity', 'Niche', 'Suffix', 'Tier'];
+  const headers = ['Keyword', 'Volume', 'KD', 'CPC', 'Competition', 'Trend', 'Intent', 'Opportunity', 'Niche', 'Suffix', 'Tier'];
   const csvRows = [headers.join(',')];
 
   toExport.forEach(kw => {
     const tier = kw.tier || classifyNuggetTier(kw);
+    const intent = classifyIntent(kw.keyword || '');
     const row = [
       '"' + (kw.keyword || '').replace(/"/g, '""') + '"',
       kw.volume || 0,
       kw.difficulty || 0,
       (kw.cpc || 0).toFixed(2),
-      (kw.competition_level || '').toUpperCase() || '-',
+      Math.round((kw.competition || 0) * 100),
       kw.trend || 'stable',
+      intent.label,
       kw.opportunity_score || 0,
       '"' + (kw.niche || '').replace(/"/g, '""') + '"',
       '"' + (kw.suffix || '').replace(/"/g, '""') + '"',

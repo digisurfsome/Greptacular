@@ -1139,7 +1139,7 @@ async def serp_preview(keyword: str = Query(...)):
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
-                f"{DATAFORSEO_BASE}/serp/google/organic/live",
+                f"{DATAFORSEO_BASE}/serp/google/organic/live/regular",
                 json=payload,
                 auth=(login, password),
             )
@@ -1149,13 +1149,24 @@ async def serp_preview(keyword: str = Query(...)):
         results = []
         has_exact_match = False
 
-        for task in data.get("tasks", []):
-            if task.get("status_code") != 20000:
-                error_msg = task.get("status_message", "Unknown error")
-                return {"error": f"DataForSEO: {error_msg}", "results": []}
+        tasks = data.get("tasks", [])
+        if not tasks:
+            logger.warning("SERP: No tasks in response: %s", json.dumps(data)[:500])
+            return {"error": "No tasks returned from DataForSEO", "results": []}
 
-            for result in task.get("result", []) or []:
-                for item in result.get("items", []) or []:
+        for task in tasks:
+            status = task.get("status_code")
+            if status != 20000:
+                error_msg = task.get("status_message", "Unknown error")
+                return {"error": f"DataForSEO: {error_msg} (code {status})", "results": []}
+
+            task_results = task.get("result") or []
+            if not task_results:
+                logger.warning("SERP: Task ok but no results. Task keys: %s", list(task.keys()))
+
+            for result in task_results:
+                items = result.get("items") or []
+                for item in items:
                     item_type = item.get("type", "")
                     if item_type != "organic":
                         continue
@@ -1177,6 +1188,9 @@ async def serp_preview(keyword: str = Query(...)):
                         "description": item.get("description", ""),
                         "is_exact_match": is_exact_match,
                     })
+
+        if not results:
+            logger.warning("SERP: Parsed 0 organic items. Raw task count: %d", len(tasks))
 
         # EMD opportunity analysis
         emd_opportunity = "none"

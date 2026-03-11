@@ -12,6 +12,7 @@ Supports:
 - CSV export of results
 """
 
+import asyncio
 import csv
 import io
 import json
@@ -112,6 +113,50 @@ def init_db() -> None:
                 ON keywords(volume);
             CREATE INDEX IF NOT EXISTS idx_keywords_seed
                 ON keywords(seed_keyword);
+
+            CREATE TABLE IF NOT EXISTS nugget_hunts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                status TEXT DEFAULT 'pending',
+                niches TEXT NOT NULL,
+                suffixes TEXT NOT NULL DEFAULT '[]',
+                settings TEXT DEFAULT '{}',
+                total_combos INTEGER DEFAULT 0,
+                completed_combos INTEGER DEFAULT 0,
+                current_combo TEXT DEFAULT '',
+                nuggets_found INTEGER DEFAULT 0,
+                total_keywords_scanned INTEGER DEFAULT 0,
+                started_at TIMESTAMP,
+                completed_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                error_message TEXT DEFAULT ''
+            );
+
+            CREATE TABLE IF NOT EXISTS nuggets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                hunt_id INTEGER NOT NULL,
+                keyword TEXT NOT NULL,
+                volume INTEGER DEFAULT 0,
+                difficulty INTEGER DEFAULT 0,
+                cpc REAL DEFAULT 0.0,
+                competition REAL DEFAULT 0.0,
+                competition_level TEXT DEFAULT '',
+                monthly_searches TEXT DEFAULT '[]',
+                serp_features TEXT DEFAULT '[]',
+                trend TEXT DEFAULT 'stable',
+                opportunity_score INTEGER DEFAULT 0,
+                seed_combo TEXT DEFAULT '',
+                niche TEXT DEFAULT '',
+                suffix TEXT DEFAULT '',
+                tier TEXT DEFAULT 'bronze',
+                research_notes TEXT DEFAULT '',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(hunt_id, keyword)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_nuggets_hunt_id
+                ON nuggets(hunt_id);
+            CREATE INDEX IF NOT EXISTS idx_nuggets_tier
+                ON nuggets(tier);
         """)
 
         # Migrate existing tables: add new columns if missing
@@ -630,6 +675,235 @@ class SettingsPayload(BaseModel):
     language_code: str = "en"
 
 
+class NuggetHuntRequest(BaseModel):
+    niches: list[str]  # e.g., ["mortgage", "fitness", "cooking"]
+    suffixes: list[str] | None = None  # optional custom suffixes, defaults to built-in list
+    kd_max: int = 10  # max keyword difficulty to keep
+    vol_min: int = 500  # min volume to keep
+    mode: str = "related"  # search mode: related, suggestions, both
+
+
+class NuggetHuntSettings(BaseModel):
+    kd_max: int = 10
+    vol_min: int = 500
+    mode: str = "related"
+
+
+# ---------------------------------------------------------------------------
+# Nugget Hunter — default suffixes and background task state
+# ---------------------------------------------------------------------------
+
+DEFAULT_SUFFIXES = [
+    "tool", "calculator", "checker", "generator", "converter",
+    "maker", "finder", "planner", "tracker", "builder",
+    "template", "tester", "analyzer", "estimator", "simulator",
+]
+
+# Track running hunt tasks so they can be awaited or cancelled
+_active_hunts: dict[int, asyncio.Task] = {}  # hunt_id -> Task
+_cancelled_hunts: set[int] = set()
+
+
+def _classify_nugget_tier(difficulty: int, volume: int) -> str:
+    """Assign a tier based on keyword difficulty and search volume."""
+    if difficulty <= 2 and volume >= 1000:
+        return "gold"
+    if difficulty <= 5 and volume >= 500:
+        return "silver"
+    # Caller already filtered for KD <= kd_max and vol >= vol_min
+    return "bronze"
+
+
+async def _run_nugget_hunt(hunt_id: int) -> None:
+    """
+    Background pipeline that iterates every niche x suffix combo,
+    calls DataForSEO, filters for low-KD / high-volume nuggets, and
+    persists results to the nuggets table.
+    """
+    conn = get_db()
+    try:
+        hunt_row = conn.execute(
+            "SELECT * FROM nugget_hunts WHERE id = ?", (hunt_id,)
+        ).fetchone()
+        if not hunt_row:
+            logger.error("Nugget hunt %d not found", hunt_id)
+            return
+
+        niches: list[str] = json.loads(hunt_row["niches"])
+        suffixes: list[str] = json.loads(hunt_row["suffixes"])
+        settings: dict = json.loads(hunt_row["settings"])
+        kd_max = settings.get("kd_max", 10)
+        vol_min = settings.get("vol_min", 500)
+        mode = settings.get("mode", "related")
+    finally:
+        conn.close()
+
+    # Load DataForSEO credentials from the settings table
+    app_settings = _get_settings()
+    login = app_settings.get("dataforseo_login", "")
+    password = app_settings.get("dataforseo_password", "")
+    location_code = int(app_settings.get("location_code", "2840"))
+    language_code = app_settings.get("language_code", "en")
+
+    if not login or not password:
+        _update_hunt_status(hunt_id, "failed", error="DataForSEO credentials not configured")
+        return
+
+    # Mark hunt as running
+    conn = get_db()
+    try:
+        conn.execute(
+            "UPDATE nugget_hunts SET status = 'running', started_at = ? WHERE id = ?",
+            (datetime.now(timezone.utc).isoformat(), hunt_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    combos = [(niche, suffix) for niche in niches for suffix in suffixes]
+    total_keywords_scanned = 0
+    nuggets_found = 0
+
+    for idx, (niche, suffix) in enumerate(combos):
+        # Check for cancellation between combos
+        if hunt_id in _cancelled_hunts:
+            _cancelled_hunts.discard(hunt_id)
+            _update_hunt_status(hunt_id, "cancelled")
+            return
+
+        combo_text = f"{niche} {suffix}"
+
+        # Update progress in the DB
+        conn = get_db()
+        try:
+            conn.execute(
+                """UPDATE nugget_hunts
+                   SET current_combo = ?, completed_combos = ?
+                   WHERE id = ?""",
+                (combo_text, idx, hunt_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        try:
+            results = await dataforseo_search(
+                combo_text, login, password, mode, location_code, language_code
+            )
+        except Exception as exc:
+            logger.warning("Nugget hunt %d: combo '%s' failed: %s", hunt_id, combo_text, exc)
+            # Continue to the next combo instead of aborting the whole hunt
+            if idx < len(combos) - 1:
+                await asyncio.sleep(2)
+            continue
+
+        total_keywords_scanned += len(results)
+
+        # Filter for golden nuggets
+        filtered = [
+            kw for kw in results
+            if kw.get("difficulty", 100) <= kd_max and kw.get("volume", 0) >= vol_min
+        ]
+
+        if filtered:
+            # Compute opportunity scores relative to this combo's result set
+            filtered = compute_opportunity_scores(filtered)
+
+            conn = get_db()
+            try:
+                for kw in filtered:
+                    tier = _classify_nugget_tier(kw.get("difficulty", 0), kw.get("volume", 0))
+                    try:
+                        conn.execute(
+                            """INSERT OR IGNORE INTO nuggets
+                               (hunt_id, keyword, volume, difficulty, cpc, competition,
+                                competition_level, monthly_searches, serp_features,
+                                trend, opportunity_score, seed_combo, niche, suffix, tier)
+                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                            (
+                                hunt_id,
+                                kw["keyword"],
+                                kw.get("volume", 0),
+                                kw.get("difficulty", 0),
+                                kw.get("cpc", 0.0),
+                                kw.get("competition", 0.0),
+                                kw.get("competition_level", ""),
+                                json.dumps(kw.get("monthly_searches", [])),
+                                json.dumps(kw.get("serp_features", [])),
+                                kw.get("trend", "stable"),
+                                kw.get("opportunity_score", 0),
+                                combo_text,
+                                niche,
+                                suffix,
+                                tier,
+                            ),
+                        )
+                    except sqlite3.Error as db_err:
+                        logger.warning("Nugget insert error: %s", db_err)
+
+                conn.commit()
+
+                # Recount nuggets for this hunt (INSERT OR IGNORE may skip dupes)
+                actual_count = conn.execute(
+                    "SELECT COUNT(*) FROM nuggets WHERE hunt_id = ?", (hunt_id,)
+                ).fetchone()[0]
+                nuggets_found = actual_count
+
+                conn.execute(
+                    """UPDATE nugget_hunts
+                       SET nuggets_found = ?, total_keywords_scanned = ?
+                       WHERE id = ?""",
+                    (nuggets_found, total_keywords_scanned, hunt_id),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+        # Rate-limit delay between API calls (skip after last combo)
+        if idx < len(combos) - 1:
+            await asyncio.sleep(2)
+
+    # Mark completed
+    conn = get_db()
+    try:
+        conn.execute(
+            """UPDATE nugget_hunts
+               SET status = 'completed', completed_combos = ?, current_combo = '',
+                   nuggets_found = ?, total_keywords_scanned = ?,
+                   completed_at = ?
+               WHERE id = ?""",
+            (
+                len(combos),
+                nuggets_found,
+                total_keywords_scanned,
+                datetime.now(timezone.utc).isoformat(),
+                hunt_id,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    # Clean up task reference
+    _active_hunts.pop(hunt_id, None)
+
+
+def _update_hunt_status(hunt_id: int, status: str, *, error: str = "") -> None:
+    """Helper to set hunt status and optional error message."""
+    conn = get_db()
+    try:
+        conn.execute(
+            """UPDATE nugget_hunts
+               SET status = ?, error_message = ?, completed_at = ?
+               WHERE id = ?""",
+            (status, error, datetime.now(timezone.utc).isoformat(), hunt_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    _active_hunts.pop(hunt_id, None)
+
+
 # ---------------------------------------------------------------------------
 # FastAPI app
 # ---------------------------------------------------------------------------
@@ -1101,6 +1375,232 @@ async def clear_keywords():
         conn.execute("DELETE FROM keywords")
         conn.commit()
         return {"status": "ok"}
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Nugget Hunter API endpoints
+# ---------------------------------------------------------------------------
+
+
+@app.post("/api/nugget-hunt/start")
+async def start_nugget_hunt(req: NuggetHuntRequest):
+    """Start a new automated nugget hunt across niche x suffix combos."""
+    niches = [n.strip().lower() for n in req.niches if n.strip()]
+    if not niches:
+        return {"error": "At least one niche is required"}
+
+    suffixes = req.suffixes if req.suffixes else DEFAULT_SUFFIXES
+    suffixes = [s.strip().lower() for s in suffixes if s.strip()]
+    total_combos = len(niches) * len(suffixes)
+
+    settings_json = json.dumps({
+        "kd_max": req.kd_max,
+        "vol_min": req.vol_min,
+        "mode": req.mode,
+    })
+
+    conn = get_db()
+    try:
+        cursor = conn.execute(
+            """INSERT INTO nugget_hunts (status, niches, suffixes, settings, total_combos)
+               VALUES ('pending', ?, ?, ?, ?)""",
+            (json.dumps(niches), json.dumps(suffixes), settings_json, total_combos),
+        )
+        hunt_id = cursor.lastrowid
+        conn.commit()
+    finally:
+        conn.close()
+
+    # Launch the pipeline as a background task
+    task = asyncio.create_task(_run_nugget_hunt(hunt_id))
+    _active_hunts[hunt_id] = task
+
+    return {"hunt_id": hunt_id, "status": "running", "total_combos": total_combos}
+
+
+@app.get("/api/nugget-hunt/status")
+async def get_nugget_hunt_status(hunt_id: int = Query(...)):
+    """Get the current status and progress of a nugget hunt."""
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT * FROM nugget_hunts WHERE id = ?", (hunt_id,)
+        ).fetchone()
+        if not row:
+            return {"error": "Hunt not found"}
+        result = dict(row)
+        # Parse JSON fields for the response
+        for field in ("niches", "suffixes", "settings"):
+            val = result.get(field, "[]")
+            if isinstance(val, str):
+                try:
+                    result[field] = json.loads(val)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+        return result
+    finally:
+        conn.close()
+
+
+@app.post("/api/nugget-hunt/cancel")
+async def cancel_nugget_hunt(hunt_id: int = Query(...)):
+    """Cancel a running nugget hunt."""
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT status FROM nugget_hunts WHERE id = ?", (hunt_id,)
+        ).fetchone()
+        if not row:
+            return {"error": "Hunt not found"}
+        if row["status"] not in ("pending", "running"):
+            return {"error": f"Hunt is already {row['status']}"}
+    finally:
+        conn.close()
+
+    # Signal cancellation; the pipeline checks this between combos
+    _cancelled_hunts.add(hunt_id)
+
+    # If the task is still in _active_hunts, let it self-cancel on the next
+    # iteration.  If it somehow finished already, mark cancelled directly.
+    if hunt_id not in _active_hunts:
+        _update_hunt_status(hunt_id, "cancelled")
+
+    return {"status": "cancelling", "hunt_id": hunt_id}
+
+
+@app.get("/api/nugget-hunt/results")
+async def get_nugget_hunt_results(
+    hunt_id: int = Query(...),
+    tier: str = Query("all"),
+    sort_by: str = Query("volume"),
+    sort_order: str = Query("desc"),
+):
+    """Get the nuggets found by a hunt, with optional tier filter and sorting."""
+    allowed_sort = {"volume", "difficulty", "opportunity_score", "cpc", "keyword", "tier"}
+    if sort_by not in allowed_sort:
+        sort_by = "volume"
+    if sort_order not in ("asc", "desc"):
+        sort_order = "desc"
+
+    conn = get_db()
+    try:
+        params: list[Any] = [hunt_id]
+        query = """SELECT * FROM nuggets WHERE hunt_id = ?"""
+        if tier and tier != "all":
+            query += " AND tier = ?"
+            params.append(tier)
+
+        rows = conn.execute(query, params).fetchall()
+        result = []
+        for r in rows:
+            d = dict(r)
+            # Parse JSON text fields
+            for json_field in ("monthly_searches", "serp_features"):
+                val = d.get(json_field, "[]")
+                if isinstance(val, str):
+                    try:
+                        d[json_field] = json.loads(val)
+                    except (json.JSONDecodeError, TypeError):
+                        d[json_field] = []
+            result.append(d)
+
+        # Sort in Python (opportunity_score may not be in SQL sort)
+        reverse = sort_order == "desc"
+        try:
+            result.sort(key=lambda r: r.get(sort_by, 0) or 0, reverse=reverse)
+        except TypeError:
+            result.sort(key=lambda r: str(r.get(sort_by, "")), reverse=reverse)
+
+        return {"nuggets": result, "count": len(result)}
+    finally:
+        conn.close()
+
+
+@app.get("/api/nugget-hunt/history")
+async def get_nugget_hunt_history():
+    """Get a list of all nugget hunts, most recent first."""
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM nugget_hunts ORDER BY created_at DESC"
+        ).fetchall()
+        results = []
+        for row in rows:
+            d = dict(row)
+            for field in ("niches", "suffixes", "settings"):
+                val = d.get(field, "[]")
+                if isinstance(val, str):
+                    try:
+                        d[field] = json.loads(val)
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+            results.append(d)
+        return {"hunts": results, "count": len(results)}
+    finally:
+        conn.close()
+
+
+@app.get("/api/nugget-hunt/export-csv")
+async def export_nugget_hunt_csv(
+    hunt_id: int = Query(...),
+    tier: str = Query("all"),
+):
+    """Export nuggets from a hunt as a downloadable CSV file."""
+    conn = get_db()
+    try:
+        params: list[Any] = [hunt_id]
+        query = "SELECT * FROM nuggets WHERE hunt_id = ?"
+        if tier and tier != "all":
+            query += " AND tier = ?"
+            params.append(tier)
+        query += " ORDER BY volume DESC"
+
+        rows = conn.execute(query, params).fetchall()
+        result = [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+    output = io.StringIO()
+    fieldnames = [
+        "keyword", "volume", "difficulty", "cpc", "competition",
+        "competition_level", "trend", "opportunity_score", "tier",
+        "seed_combo", "niche", "suffix",
+    ]
+    writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction="ignore")
+    writer.writeheader()
+    for row in result:
+        writer.writerow(row)
+
+    csv_bytes = output.getvalue().encode("utf-8")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    return StreamingResponse(
+        io.BytesIO(csv_bytes),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f'attachment; filename="nuggets_hunt_{hunt_id}_{timestamp}.csv"',
+        },
+    )
+
+
+@app.delete("/api/nugget-hunt/delete")
+async def delete_nugget_hunt(hunt_id: int = Query(...)):
+    """Delete a hunt and all its associated nuggets."""
+    # Cancel if still running
+    if hunt_id in _active_hunts:
+        _cancelled_hunts.add(hunt_id)
+        task = _active_hunts.pop(hunt_id, None)
+        if task and not task.done():
+            task.cancel()
+
+    conn = get_db()
+    try:
+        conn.execute("DELETE FROM nuggets WHERE hunt_id = ?", (hunt_id,))
+        conn.execute("DELETE FROM nugget_hunts WHERE id = ?", (hunt_id,))
+        conn.commit()
+        return {"status": "ok", "hunt_id": hunt_id}
     finally:
         conn.close()
 

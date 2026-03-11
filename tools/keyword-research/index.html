@@ -321,7 +321,185 @@ tbody tr:last-child td { border-bottom: none; }
   .search-bar { flex-wrap: wrap; }
   .table-toolbar { flex-wrap: wrap; }
   .table-filter-input { width: 100%; }
+  .nugget-summary { grid-template-columns: repeat(2, 1fr); }
+  .mode-tabs { overflow-x: auto; }
 }
+
+/* -- Mode tabs ----------------------------------------------------------- */
+.mode-tabs { display: flex; gap: 0; margin-bottom: 20px; }
+.mode-tab {
+  padding: 10px 24px; font-size: 14px; font-weight: 600;
+  border: 2px solid #e0e0e0; background: #f5f5f5; color: #666;
+  cursor: pointer; transition: all 0.15s;
+}
+.mode-tab:first-child { border-radius: 8px 0 0 8px; }
+.mode-tab:last-child { border-radius: 0 8px 8px 0; border-left: none; }
+.mode-tab.active { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+.mode-tab:not(.active):hover { background: #e9e9e9; }
+
+/* -- Nugget Hunter ------------------------------------------------------ */
+.nugget-section {
+  background: #fff; border-radius: 10px; padding: 20px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06); margin-bottom: 16px;
+}
+.nugget-section h3 {
+  font-size: 15px; font-weight: 700; margin-bottom: 14px; color: #333;
+}
+
+/* Niches textarea */
+.niches-textarea {
+  width: 100%; min-height: 120px; padding: 10px 14px;
+  border: 1px solid #d0d0d0; border-radius: 8px; font-size: 14px;
+  font-family: inherit; resize: vertical; outline: none; transition: border-color 0.15s;
+}
+.niches-textarea:focus { border-color: #3b82f6; }
+
+/* Suffix pills */
+.suffix-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+.suffix-pill {
+  display: inline-block; padding: 4px 12px; border-radius: 99px;
+  font-size: 12px; font-weight: 600; cursor: pointer;
+  border: 2px solid #d0d0d0; background: #fff; color: #555;
+  transition: all 0.15s; user-select: none;
+}
+.suffix-pill.active { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+.suffix-pill:not(.active):hover { background: #f0f0f0; }
+
+/* Hunt filters row */
+.hunt-filters {
+  display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 16px;
+}
+.hunt-filter-group { display: flex; flex-direction: column; gap: 4px; }
+.hunt-filter-group label {
+  font-size: 12px; font-weight: 600; color: #666;
+}
+.hunt-filter-group input,
+.hunt-filter-group select {
+  padding: 8px 10px; border: 1px solid #d0d0d0; border-radius: 6px;
+  font-size: 13px; font-family: inherit; outline: none; min-width: 100px;
+}
+.hunt-filter-group input:focus,
+.hunt-filter-group select:focus { border-color: #3b82f6; }
+
+/* Start hunt button */
+.btn-hunt {
+  background: #22c55e; color: #fff; border: none; border-radius: 8px;
+  padding: 12px 28px; font-size: 15px; font-weight: 700; cursor: pointer;
+  transition: background 0.15s; white-space: nowrap;
+}
+.btn-hunt:hover { background: #16a34a; }
+.btn-hunt:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* Progress bar */
+.hunt-progress { margin-bottom: 16px; }
+.hunt-progress-bar {
+  height: 24px; background: #e5e7eb; border-radius: 12px; overflow: hidden;
+  position: relative; margin-bottom: 8px;
+}
+.hunt-progress-fill {
+  height: 100%; background: linear-gradient(90deg, #22c55e, #16a34a);
+  border-radius: 12px; transition: width 0.5s ease;
+}
+.hunt-progress-text {
+  position: absolute; inset: 0; display: flex; align-items: center;
+  justify-content: center; font-size: 12px; font-weight: 700; color: #fff;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+.hunt-stats {
+  display: flex; gap: 16px; font-size: 13px; color: #666; align-items: center;
+}
+.hunt-stats .stat-val { font-weight: 700; color: #111; font-family: 'SF Mono', 'Fira Code', monospace; }
+.hunt-current-combo { font-size: 13px; color: #3b82f6; font-weight: 600; margin-bottom: 6px; }
+.btn-cancel-hunt {
+  background: #ef4444; color: #fff; border: none; border-radius: 6px;
+  padding: 6px 16px; font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: background 0.15s; margin-left: auto;
+}
+.btn-cancel-hunt:hover { background: #dc2626; }
+
+/* Summary cards */
+.nugget-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+.nugget-card {
+  padding: 16px; border-radius: 10px; text-align: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.nugget-card .card-value {
+  font-size: 28px; font-weight: 800;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+.nugget-card .card-label {
+  font-size: 12px; font-weight: 600; text-transform: uppercase; color: #666;
+  margin-top: 2px;
+}
+.nugget-card.total { background: #fff; border: 2px solid #e0e0e0; }
+.nugget-card.gold { background: linear-gradient(135deg, #fef3c7, #fde68a); border: 2px solid #f59e0b; }
+.nugget-card.silver { background: linear-gradient(135deg, #f3f4f6, #e5e7eb); border: 2px solid #9ca3af; }
+.nugget-card.bronze { background: linear-gradient(135deg, #ffedd5, #fed7aa); border: 2px solid #d97706; }
+
+/* Tier badges */
+.tier-badge {
+  display: inline-block; padding: 2px 10px; border-radius: 99px;
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+}
+.tier-gold { background: linear-gradient(135deg, #fbbf24, #f59e0b); color: #78350f; }
+.tier-silver { background: linear-gradient(135deg, #d1d5db, #9ca3af); color: #1f2937; }
+.tier-bronze { background: linear-gradient(135deg, #d97706, #b45309); color: #fff; }
+
+/* Tier filter tabs */
+.tier-tabs { display: flex; gap: 0; margin-bottom: 16px; }
+.tier-tab {
+  padding: 8px 18px; font-size: 13px; font-weight: 600;
+  border: 2px solid #e0e0e0; background: #f5f5f5; color: #666;
+  cursor: pointer; transition: all 0.15s;
+}
+.tier-tab:first-child { border-radius: 8px 0 0 8px; }
+.tier-tab:last-child { border-radius: 0 8px 8px 0; }
+.tier-tab:not(:first-child) { border-left: none; }
+.tier-tab.active { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+.tier-tab:not(.active):hover { background: #e9e9e9; }
+.tier-tab .tier-count {
+  margin-left: 4px; font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 11px;
+}
+
+/* Hunt history */
+.hunt-history-toggle {
+  display: flex; align-items: center; gap: 8px; cursor: pointer;
+  font-size: 14px; font-weight: 600; color: #555; padding: 10px 0;
+  user-select: none;
+}
+.hunt-history-toggle:hover { color: #333; }
+.hunt-history-toggle .arrow { transition: transform 0.2s; display: inline-block; }
+.hunt-history-toggle .arrow.open { transform: rotate(90deg); }
+.hunt-history-list { margin-top: 8px; }
+.hunt-history-item {
+  display: flex; align-items: center; gap: 12px; padding: 10px 14px;
+  background: #fff; border-radius: 8px; margin-bottom: 6px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04); font-size: 13px;
+  cursor: pointer; transition: background 0.15s;
+}
+.hunt-history-item:hover { background: #f9fafb; }
+.hunt-history-date {
+  font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; color: #888;
+  white-space: nowrap;
+}
+.hunt-history-niches { flex: 1; color: #333; font-weight: 500; }
+.hunt-history-status {
+  font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 2px 8px;
+  border-radius: 99px;
+}
+.hunt-history-status.completed { background: #dcfce7; color: #166534; }
+.hunt-history-status.running { background: #dbeafe; color: #1e40af; }
+.hunt-history-status.cancelled { background: #fef9c3; color: #854d0e; }
+.hunt-history-nuggets {
+  font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px;
+  font-weight: 700; color: #f59e0b;
+}
+.btn-delete-hunt {
+  background: none; border: none; color: #ccc; font-size: 16px;
+  cursor: pointer; padding: 2px 6px; border-radius: 4px; transition: all 0.15s;
+}
+.btn-delete-hunt:hover { color: #ef4444; background: #fef2f2; }
 </style>
 </head>
 <body>
@@ -353,6 +531,15 @@ tbody tr:last-child td { border-bottom: none; }
       </button>
     </div>
   </div>
+
+  <!-- Mode Tabs -->
+  <div class="mode-tabs">
+    <button class="mode-tab active" onclick="switchMode('keyword-research')">Keyword Research</button>
+    <button class="mode-tab" onclick="switchMode('nugget-hunter')">&#x26CF; Nugget Hunter</button>
+  </div>
+
+  <!-- Keyword Research Panel (existing tool) -->
+  <div id="keywordResearchPanel">
 
   <!-- Stats bar -->
   <div class="stats-bar" id="statsBar">
@@ -464,6 +651,153 @@ tbody tr:last-child td { border-bottom: none; }
       </div>
     </div>
   </div>
+
+  </div><!-- /keywordResearchPanel -->
+
+  <!-- Nugget Hunter Panel -->
+  <div id="nuggetHunterPanel" style="display:none">
+
+    <!-- Setup Section -->
+    <div class="nugget-section">
+      <h3>&#x26CF; Nugget Hunt Setup</h3>
+
+      <label style="font-size:13px;font-weight:600;color:#555;margin-bottom:6px;display:block;">Niches</label>
+      <textarea class="niches-textarea" id="huntNiches" placeholder="Enter niches, one per line:&#10;mortgage&#10;fitness&#10;cooking&#10;real estate&#10;photography"></textarea>
+
+      <label style="font-size:13px;font-weight:600;color:#555;margin:14px 0 8px;display:block;">Suffixes <span style="font-weight:400;color:#999;">(click to toggle)</span></label>
+      <div class="suffix-pills" id="suffixPills">
+        <span class="suffix-pill active" onclick="toggleSuffix(this)">tool</span>
+        <span class="suffix-pill active" onclick="toggleSuffix(this)">calculator</span>
+        <span class="suffix-pill active" onclick="toggleSuffix(this)">checker</span>
+        <span class="suffix-pill active" onclick="toggleSuffix(this)">generator</span>
+        <span class="suffix-pill active" onclick="toggleSuffix(this)">converter</span>
+        <span class="suffix-pill active" onclick="toggleSuffix(this)">maker</span>
+        <span class="suffix-pill active" onclick="toggleSuffix(this)">finder</span>
+        <span class="suffix-pill active" onclick="toggleSuffix(this)">planner</span>
+        <span class="suffix-pill active" onclick="toggleSuffix(this)">tracker</span>
+        <span class="suffix-pill active" onclick="toggleSuffix(this)">builder</span>
+        <span class="suffix-pill active" onclick="toggleSuffix(this)">template</span>
+        <span class="suffix-pill active" onclick="toggleSuffix(this)">tester</span>
+        <span class="suffix-pill active" onclick="toggleSuffix(this)">analyzer</span>
+        <span class="suffix-pill active" onclick="toggleSuffix(this)">estimator</span>
+        <span class="suffix-pill active" onclick="toggleSuffix(this)">simulator</span>
+      </div>
+
+      <div class="hunt-filters">
+        <div class="hunt-filter-group">
+          <label>Max KD</label>
+          <input type="number" id="huntMaxKd" value="10" min="0" max="100">
+        </div>
+        <div class="hunt-filter-group">
+          <label>Min Volume</label>
+          <input type="number" id="huntMinVol" value="500" min="0">
+        </div>
+        <div class="hunt-filter-group">
+          <label>Search Mode</label>
+          <select id="huntSearchMode">
+            <option value="related">Related Keywords</option>
+            <option value="suggestions">Keyword Suggestions</option>
+            <option value="both">Both (Merge)</option>
+          </select>
+        </div>
+        <button class="btn-hunt" id="startHuntBtn" onclick="startNuggetHunt()">&#x26CF; Start Nugget Hunt</button>
+      </div>
+    </div>
+
+    <!-- Live Progress Section (hidden initially) -->
+    <div class="nugget-section" id="huntProgressSection" style="display:none">
+      <h3>Hunt Progress</h3>
+      <div class="hunt-current-combo" id="huntCurrentCombo">Preparing...</div>
+      <div class="hunt-progress">
+        <div class="hunt-progress-bar">
+          <div class="hunt-progress-fill" id="huntProgressFill" style="width:0%"></div>
+          <div class="hunt-progress-text" id="huntProgressText">0 / 0</div>
+        </div>
+      </div>
+      <div class="hunt-stats">
+        <div>Keywords scanned: <span class="stat-val" id="huntScanned">0</span></div>
+        <div>Nuggets found: <span class="stat-val" id="huntNuggetsFound">0</span></div>
+        <button class="btn-cancel-hunt" id="cancelHuntBtn" onclick="cancelHunt()">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Results Section (hidden initially) -->
+    <div id="huntResultsSection" style="display:none">
+
+      <!-- Summary Cards -->
+      <div class="nugget-summary" id="nuggetSummary">
+        <div class="nugget-card total">
+          <div class="card-value" id="summaryTotal">0</div>
+          <div class="card-label">Total Scanned</div>
+        </div>
+        <div class="nugget-card gold">
+          <div class="card-value" id="summaryGold">0</div>
+          <div class="card-label">Gold Nuggets</div>
+        </div>
+        <div class="nugget-card silver">
+          <div class="card-value" id="summarySilver">0</div>
+          <div class="card-label">Silver Nuggets</div>
+        </div>
+        <div class="nugget-card bronze">
+          <div class="card-value" id="summaryBronze">0</div>
+          <div class="card-label">Bronze Nuggets</div>
+        </div>
+      </div>
+
+      <!-- Tier filter tabs + export -->
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
+        <div class="tier-tabs" id="tierTabs">
+          <button class="tier-tab active" onclick="setNuggetTierFilter('all')">All <span class="tier-count" id="tierCountAll">0</span></button>
+          <button class="tier-tab" onclick="setNuggetTierFilter('gold')">Gold <span class="tier-count" id="tierCountGold">0</span></button>
+          <button class="tier-tab" onclick="setNuggetTierFilter('silver')">Silver <span class="tier-count" id="tierCountSilver">0</span></button>
+          <button class="tier-tab" onclick="setNuggetTierFilter('bronze')">Bronze <span class="tier-count" id="tierCountBronze">0</span></button>
+        </div>
+        <button class="icon-btn" onclick="exportNuggetCSV()">&#x2B07; Export Nuggets CSV</button>
+      </div>
+
+      <!-- Results Table -->
+      <div class="nugget-section" style="padding:0;overflow:hidden;">
+        <div style="padding:12px 16px;">
+          <input type="text" class="table-filter-input" id="nuggetTableFilter"
+                 placeholder="Filter nuggets..." oninput="renderNuggetResults()" style="width:280px;">
+          <span class="table-info" id="nuggetTableInfo" style="margin-left:10px;"></span>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th style="width:36px">#</th>
+              <th data-col="keyword" onclick="sortNuggetTable('keyword')">Keyword <span class="sort-arrow" id="nsort-keyword"></span></th>
+              <th data-col="volume" onclick="sortNuggetTable('volume')">Volume <span class="sort-arrow" id="nsort-volume"></span></th>
+              <th data-col="difficulty" onclick="sortNuggetTable('difficulty')">KD <span class="sort-arrow" id="nsort-difficulty"></span></th>
+              <th data-col="cpc" onclick="sortNuggetTable('cpc')">CPC <span class="sort-arrow" id="nsort-cpc"></span></th>
+              <th data-col="competition_level" onclick="sortNuggetTable('competition_level')">Competition <span class="sort-arrow" id="nsort-competition_level"></span></th>
+              <th data-col="trend" onclick="sortNuggetTable('trend')">Trend <span class="sort-arrow" id="nsort-trend"></span></th>
+              <th data-col="opportunity_score" onclick="sortNuggetTable('opportunity_score')">Opportunity <span class="sort-arrow" id="nsort-opportunity_score"></span></th>
+              <th data-col="niche" onclick="sortNuggetTable('niche')">Niche <span class="sort-arrow" id="nsort-niche"></span></th>
+              <th data-col="suffix" onclick="sortNuggetTable('suffix')">Suffix <span class="sort-arrow" id="nsort-suffix"></span></th>
+              <th>Tier</th>
+            </tr>
+          </thead>
+          <tbody id="nuggetBody"></tbody>
+        </table>
+        <div class="empty-state" id="nuggetEmptyState">
+          <div class="emoji">&#x26CF;</div>
+          <p>No nuggets yet. Start a hunt to find golden keyword opportunities.</p>
+        </div>
+        <div class="pagination" id="nuggetPagination"></div>
+      </div>
+    </div>
+
+    <!-- Hunt History -->
+    <div class="nugget-section" style="margin-top:16px;">
+      <div class="hunt-history-toggle" onclick="toggleHuntHistory()">
+        <span class="arrow" id="historyArrow">&#x25B6;</span> Hunt History
+      </div>
+      <div id="huntHistoryList" class="hunt-history-list" style="display:none"></div>
+    </div>
+
+  </div><!-- /nuggetHunterPanel -->
+
 </div>
 
 <!-- Settings Modal -->
@@ -540,6 +874,16 @@ let filtersVisible = true;
 let currentPage = 1;
 const PAGE_SIZE = 50;
 let searchPollingTimer = null;
+
+/* -- Nugget Hunter state ------------------------------------------------- */
+let nuggetHuntId = null;
+let nuggetResults = [];
+let nuggetTierFilter = 'all';
+let huntPollingTimer = null;
+let nuggetSort = { col: 'volume', order: 'desc' };
+let nuggetPage = 1;
+const NUGGET_PAGE_SIZE = 50;
+let huntHistoryOpen = false;
 
 /* -- SERP feature display labels ----------------------------------------- */
 const SERP_LABELS = {
@@ -1038,6 +1382,426 @@ async function saveSettings() {
   showToast('Settings saved');
   closeSettings();
   checkApiStatus();
+}
+
+/* -- Mode switching ------------------------------------------------------ */
+function switchMode(mode) {
+  const krPanel = document.getElementById('keywordResearchPanel');
+  const nhPanel = document.getElementById('nuggetHunterPanel');
+  const tabs = document.querySelectorAll('.mode-tab');
+
+  if (mode === 'nugget-hunter') {
+    krPanel.style.display = 'none';
+    nhPanel.style.display = 'block';
+    tabs[0].classList.remove('active');
+    tabs[1].classList.add('active');
+    loadHuntHistory();
+  } else {
+    krPanel.style.display = 'block';
+    nhPanel.style.display = 'none';
+    tabs[0].classList.add('active');
+    tabs[1].classList.remove('active');
+  }
+}
+
+/* -- Suffix toggle ------------------------------------------------------- */
+function toggleSuffix(el) {
+  el.classList.toggle('active');
+}
+
+/* -- Nugget Hunt --------------------------------------------------------- */
+async function startNuggetHunt() {
+  const nichesRaw = document.getElementById('huntNiches').value.trim();
+  if (!nichesRaw) {
+    showToast('Enter at least one niche', true);
+    return;
+  }
+
+  const niches = nichesRaw.split('\n').map(n => n.trim()).filter(n => n.length > 0);
+  const suffixEls = document.querySelectorAll('#suffixPills .suffix-pill.active');
+  const suffixes = Array.from(suffixEls).map(el => el.textContent);
+
+  if (suffixes.length === 0) {
+    showToast('Select at least one suffix', true);
+    return;
+  }
+
+  const maxKd = parseInt(document.getElementById('huntMaxKd').value) || 10;
+  const minVol = parseInt(document.getElementById('huntMinVol').value) || 500;
+  const searchMode = document.getElementById('huntSearchMode').value;
+
+  const btn = document.getElementById('startHuntBtn');
+  btn.disabled = true;
+
+  const data = await api('POST', '/api/nugget-hunt/start', {
+    niches, suffixes, kd_max: maxKd, vol_min: minVol, mode: searchMode
+  });
+
+  if (data.hunt_id) {
+    nuggetHuntId = data.hunt_id;
+    document.getElementById('huntProgressSection').style.display = 'block';
+    document.getElementById('huntCurrentCombo').textContent = 'Starting hunt...';
+    document.getElementById('huntProgressFill').style.width = '0%';
+    document.getElementById('huntProgressText').textContent = '0 / 0';
+    document.getElementById('huntScanned').textContent = '0';
+    document.getElementById('huntNuggetsFound').textContent = '0';
+
+    // Start polling
+    if (huntPollingTimer) clearInterval(huntPollingTimer);
+    huntPollingTimer = setInterval(pollHuntStatus, 2000);
+  } else {
+    btn.disabled = false;
+  }
+}
+
+async function pollHuntStatus() {
+  if (!nuggetHuntId) return;
+
+  const data = await api('GET', '/api/nugget-hunt/status?hunt_id=' + encodeURIComponent(nuggetHuntId));
+
+  if (!data || data.error) return;
+
+  // Update progress bar
+  const completed = data.completed_combos || 0;
+  const total = data.total_combos || 1;
+  const pct = Math.round((completed / total) * 100);
+  document.getElementById('huntProgressFill').style.width = pct + '%';
+  document.getElementById('huntProgressText').textContent = completed + ' / ' + total;
+
+  // Update current combo
+  if (data.current_combo) {
+    document.getElementById('huntCurrentCombo').textContent = 'Searching: ' + data.current_combo;
+  }
+
+  // Update stats
+  document.getElementById('huntScanned').textContent = fmtNum(data.total_keywords_scanned || 0);
+  document.getElementById('huntNuggetsFound').textContent = fmtNum(data.nuggets_found || 0);
+
+  // Check if done
+  if (data.status === 'completed' || data.status === 'cancelled') {
+    clearInterval(huntPollingTimer);
+    huntPollingTimer = null;
+    document.getElementById('startHuntBtn').disabled = false;
+
+    if (data.status === 'completed') {
+      document.getElementById('huntCurrentCombo').textContent = 'Hunt complete!';
+      showToast('Nugget hunt finished! Found ' + (data.nuggets_found || 0) + ' nuggets');
+    } else {
+      document.getElementById('huntCurrentCombo').textContent = 'Hunt cancelled';
+    }
+
+    // Load results
+    await loadHuntResults(nuggetHuntId);
+    loadHuntHistory();
+  }
+}
+
+async function cancelHunt() {
+  if (!nuggetHuntId) return;
+  await api('POST', '/api/nugget-hunt/cancel?hunt_id=' + encodeURIComponent(nuggetHuntId));
+  showToast('Hunt cancelled');
+}
+
+async function loadHuntResults(huntId, tier) {
+  const filterTier = tier || nuggetTierFilter;
+  let url = '/api/nugget-hunt/results?hunt_id=' + encodeURIComponent(huntId);
+  if (filterTier && filterTier !== 'all') {
+    url += '&tier=' + encodeURIComponent(filterTier);
+  }
+
+  const data = await api('GET', url);
+  const results = data.nuggets || data.results || [];
+  if (results.length > 0 || data.count !== undefined) {
+    nuggetResults = results;
+    nuggetHuntId = huntId;
+
+    // Show results section
+    document.getElementById('huntResultsSection').style.display = 'block';
+
+    renderNuggetSummary(results);
+    nuggetPage = 1;
+    renderNuggetResults();
+  }
+}
+
+/* -- Nugget summary cards ------------------------------------------------ */
+function renderNuggetSummary(summaryOrResults) {
+  let totalScanned = 0, gold = 0, silver = 0, bronze = 0;
+
+  if (summaryOrResults && summaryOrResults.total_scanned !== undefined) {
+    // Summary object from API
+    totalScanned = summaryOrResults.total_scanned || 0;
+    gold = summaryOrResults.gold || 0;
+    silver = summaryOrResults.silver || 0;
+    bronze = summaryOrResults.bronze || 0;
+  } else if (Array.isArray(summaryOrResults)) {
+    // Calculate from results array
+    totalScanned = summaryOrResults.length;
+    summaryOrResults.forEach(r => {
+      const tier = classifyNuggetTier(r);
+      if (tier === 'gold') gold++;
+      else if (tier === 'silver') silver++;
+      else if (tier === 'bronze') bronze++;
+    });
+  }
+
+  document.getElementById('summaryTotal').textContent = fmtNum(totalScanned);
+  document.getElementById('summaryGold').textContent = fmtNum(gold);
+  document.getElementById('summarySilver').textContent = fmtNum(silver);
+  document.getElementById('summaryBronze').textContent = fmtNum(bronze);
+
+  // Update tier tab counts
+  document.getElementById('tierCountAll').textContent = fmtNum(gold + silver + bronze);
+  document.getElementById('tierCountGold').textContent = fmtNum(gold);
+  document.getElementById('tierCountSilver').textContent = fmtNum(silver);
+  document.getElementById('tierCountBronze').textContent = fmtNum(bronze);
+}
+
+function classifyNuggetTier(kw) {
+  const kd = kw.difficulty || 0;
+  const vol = kw.volume || 0;
+  if (kd <= 2 && vol >= 1000) return 'gold';
+  if (kd <= 5 && vol >= 500) return 'silver';
+  if (kd <= 10 && vol >= 500) return 'bronze';
+  return 'none';
+}
+
+/* -- Tier filter tabs ---------------------------------------------------- */
+function setNuggetTierFilter(tier) {
+  nuggetTierFilter = tier;
+  // Update active tab
+  document.querySelectorAll('#tierTabs .tier-tab').forEach(tab => {
+    tab.classList.remove('active');
+  });
+  event.currentTarget.classList.add('active');
+  nuggetPage = 1;
+  renderNuggetResults();
+}
+
+/* -- Nugget table sorting ------------------------------------------------ */
+function sortNuggetTable(col) {
+  if (nuggetSort.col === col) {
+    nuggetSort.order = nuggetSort.order === 'desc' ? 'asc' : 'desc';
+  } else {
+    nuggetSort.col = col;
+    nuggetSort.order = col === 'keyword' || col === 'niche' || col === 'suffix' ? 'asc' : 'desc';
+  }
+  renderNuggetResults();
+}
+
+function updateNuggetSortArrows() {
+  document.querySelectorAll('[id^="nsort-"]').forEach(el => el.textContent = '');
+  const el = document.getElementById('nsort-' + nuggetSort.col);
+  if (el) el.textContent = nuggetSort.order === 'asc' ? '\u25B2' : '\u25BC';
+}
+
+/* -- Render nugget results table ----------------------------------------- */
+function renderNuggetResults() {
+  const tbody = document.getElementById('nuggetBody');
+  const empty = document.getElementById('nuggetEmptyState');
+  const textFilter = (document.getElementById('nuggetTableFilter').value || '').toLowerCase().trim();
+
+  // Filter by tier
+  let filtered = nuggetResults;
+  if (nuggetTierFilter !== 'all') {
+    filtered = filtered.filter(r => {
+      const tier = r.tier || classifyNuggetTier(r);
+      return tier === nuggetTierFilter;
+    });
+  }
+
+  // Filter by text
+  if (textFilter) {
+    filtered = filtered.filter(r =>
+      (r.keyword || '').toLowerCase().includes(textFilter) ||
+      (r.niche || '').toLowerCase().includes(textFilter) ||
+      (r.suffix || '').toLowerCase().includes(textFilter)
+    );
+  }
+
+  // Sort
+  const { col, order } = nuggetSort;
+  filtered.sort((a, b) => {
+    let va = a[col], vb = b[col];
+    if (typeof va === 'string') va = va.toLowerCase();
+    if (typeof vb === 'string') vb = vb.toLowerCase();
+    if (va == null) va = '';
+    if (vb == null) vb = '';
+    if (va < vb) return order === 'asc' ? -1 : 1;
+    if (va > vb) return order === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    document.getElementById('nuggetPagination').innerHTML = '';
+    document.getElementById('nuggetTableInfo').textContent = '';
+    return;
+  }
+  empty.style.display = 'none';
+
+  // Pagination
+  const totalPages = Math.ceil(filtered.length / NUGGET_PAGE_SIZE);
+  if (nuggetPage > totalPages) nuggetPage = totalPages;
+  const start = (nuggetPage - 1) * NUGGET_PAGE_SIZE;
+  const pageItems = filtered.slice(start, start + NUGGET_PAGE_SIZE);
+
+  document.getElementById('nuggetTableInfo').textContent = fmtNum(filtered.length) + ' nuggets';
+
+  const rows = pageItems.map((kw, i) => {
+    const opp = kw.opportunity_score || 0;
+    const rowNum = start + i + 1;
+    const compLevel = (kw.competition_level || '').toUpperCase() || '-';
+    const tier = kw.tier || classifyNuggetTier(kw);
+    const tierBadgeClass = tier === 'gold' ? 'tier-gold' : tier === 'silver' ? 'tier-silver' : 'tier-bronze';
+    const tierLabel = tier.charAt(0).toUpperCase() + tier.slice(1);
+
+    return `<tr>
+      <td class="row-num">${rowNum}</td>
+      <td class="kw-cell">${escHtml(kw.keyword || '')}</td>
+      <td class="mono">${fmtNum(kw.volume)}</td>
+      <td class="mono"><span class="diff-badge ${diffClass(kw.difficulty || 0)}">${kw.difficulty || 0}</span></td>
+      <td class="mono">$${(kw.cpc || 0).toFixed(2)}</td>
+      <td><span class="comp-badge ${compClass(kw.competition_level)}">${compLevel}</span></td>
+      <td style="text-align:center">${trendIcon(kw.trend)}</td>
+      <td class="mono"><span class="opp-badge ${oppClass(opp)}">${opp}</span></td>
+      <td>${escHtml(kw.niche || '')}</td>
+      <td>${escHtml(kw.suffix || '')}</td>
+      <td><span class="tier-badge ${tierBadgeClass}">${tierLabel}</span></td>
+    </tr>`;
+  });
+  tbody.innerHTML = rows.join('');
+
+  // Pagination controls
+  renderNuggetPagination(totalPages);
+  updateNuggetSortArrows();
+}
+
+function renderNuggetPagination(totalPages) {
+  const pag = document.getElementById('nuggetPagination');
+  if (totalPages <= 1) {
+    pag.innerHTML = '';
+    return;
+  }
+  pag.innerHTML = `
+    <button onclick="goToNuggetPage(1)" ${nuggetPage === 1 ? 'disabled' : ''}>&laquo;</button>
+    <button onclick="goToNuggetPage(${nuggetPage - 1})" ${nuggetPage === 1 ? 'disabled' : ''}>&lsaquo; Prev</button>
+    <span class="page-info">Page ${nuggetPage} of ${totalPages}</span>
+    <button onclick="goToNuggetPage(${nuggetPage + 1})" ${nuggetPage === totalPages ? 'disabled' : ''}>Next &rsaquo;</button>
+    <button onclick="goToNuggetPage(${totalPages})" ${nuggetPage === totalPages ? 'disabled' : ''}>&raquo;</button>
+  `;
+}
+
+function goToNuggetPage(page) {
+  const totalPages = Math.ceil(nuggetResults.length / NUGGET_PAGE_SIZE);
+  if (page < 1 || page > totalPages) return;
+  nuggetPage = page;
+  renderNuggetResults();
+}
+
+/* -- Export nugget CSV ---------------------------------------------------- */
+function exportNuggetCSV() {
+  if (!nuggetResults || nuggetResults.length === 0) {
+    showToast('No nuggets to export', true);
+    return;
+  }
+
+  // Filter by current tier
+  let toExport = nuggetResults;
+  if (nuggetTierFilter !== 'all') {
+    toExport = toExport.filter(r => {
+      const tier = r.tier || classifyNuggetTier(r);
+      return tier === nuggetTierFilter;
+    });
+  }
+
+  const headers = ['Keyword', 'Volume', 'KD', 'CPC', 'Competition', 'Trend', 'Opportunity', 'Niche', 'Suffix', 'Tier'];
+  const csvRows = [headers.join(',')];
+
+  toExport.forEach(kw => {
+    const tier = kw.tier || classifyNuggetTier(kw);
+    const row = [
+      '"' + (kw.keyword || '').replace(/"/g, '""') + '"',
+      kw.volume || 0,
+      kw.difficulty || 0,
+      (kw.cpc || 0).toFixed(2),
+      (kw.competition_level || '').toUpperCase() || '-',
+      kw.trend || 'stable',
+      kw.opportunity_score || 0,
+      '"' + (kw.niche || '').replace(/"/g, '""') + '"',
+      '"' + (kw.suffix || '').replace(/"/g, '""') + '"',
+      tier
+    ];
+    csvRows.push(row.join(','));
+  });
+
+  const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'nuggets_export.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('Exported ' + toExport.length + ' nuggets');
+}
+
+/* -- Hunt history -------------------------------------------------------- */
+function toggleHuntHistory() {
+  huntHistoryOpen = !huntHistoryOpen;
+  const list = document.getElementById('huntHistoryList');
+  const arrow = document.getElementById('historyArrow');
+  list.style.display = huntHistoryOpen ? 'block' : 'none';
+  arrow.classList.toggle('open', huntHistoryOpen);
+  if (huntHistoryOpen) loadHuntHistory();
+}
+
+async function loadHuntHistory() {
+  const data = await api('GET', '/api/nugget-hunt/history');
+  if (data.hunts) {
+    renderHuntHistory(data.hunts);
+  }
+}
+
+function renderHuntHistory(hunts) {
+  const container = document.getElementById('huntHistoryList');
+  if (!hunts || hunts.length === 0) {
+    container.innerHTML = '<div style="padding:10px;color:#999;font-size:13px;">No hunt history yet.</div>';
+    return;
+  }
+
+  container.innerHTML = hunts.map(h => {
+    const date = new Date(h.created_at || h.date).toLocaleDateString('en-US', {
+      month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit'
+    });
+    const niches = (h.niches || []).join(', ');
+    const statusClass = h.status === 'completed' ? 'completed' : h.status === 'running' ? 'running' : 'cancelled';
+
+    return `<div class="hunt-history-item" onclick="loadHuntResults('${escHtml(h.hunt_id || h.id)}')">
+      <span class="hunt-history-date">${escHtml(date)}</span>
+      <span class="hunt-history-niches">${escHtml(niches)}</span>
+      <span class="hunt-history-status ${statusClass}">${escHtml(h.status)}</span>
+      <span class="hunt-history-nuggets">${fmtNum(h.nuggets_found || 0)} nuggets</span>
+      <button class="btn-delete-hunt" onclick="event.stopPropagation();deleteHunt('${escHtml(h.hunt_id || h.id)}')" title="Delete">&#x2715;</button>
+    </div>`;
+  }).join('');
+}
+
+async function deleteHunt(huntId) {
+  if (!confirm('Delete this hunt and its results?')) return;
+  const data = await api('DELETE', '/api/nugget-hunt/delete?hunt_id=' + encodeURIComponent(huntId));
+  if (!data.error) {
+    showToast('Hunt deleted');
+    loadHuntHistory();
+    // If we were viewing this hunt's results, clear them
+    if (nuggetHuntId === huntId) {
+      nuggetResults = [];
+      document.getElementById('huntResultsSection').style.display = 'none';
+      nuggetHuntId = null;
+    }
+  }
 }
 
 /* -- Init ---------------------------------------------------------------- */

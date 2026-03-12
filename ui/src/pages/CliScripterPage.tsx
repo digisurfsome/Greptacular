@@ -656,6 +656,27 @@ export function CliScripterPage() {
   // ---- Build Library ----
   const [libraryOpen, setLibraryOpen] = usePersistedState('cli_scripter_library_open', false)
 
+  // ---- Boilerplate context (fetched from backend analysis docs) ----
+  const [boilerplateContext, setBoilerplateContext] = useState('')
+
+  // Fetch boilerplate analysis doc when boilerplate selection changes
+  useEffect(() => {
+    if (boilerplate === 'scratch') {
+      setBoilerplateContext('')
+      return
+    }
+    fetch(`${API_BASE}/api/cli-scripter/boilerplate-context?boilerplate_id=${encodeURIComponent(boilerplate)}`)
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data?.content) {
+          setBoilerplateContext(data.content)
+        } else {
+          setBoilerplateContext('')
+        }
+      })
+      .catch(() => setBoilerplateContext(''))
+  }, [boilerplate])
+
   // ---- Build Dashboard (refresh interval in ms, default 30s) ----
   const [buildRefreshInterval, setBuildRefreshInterval] = usePersistedState('cli_scripter_refresh_interval', 30000)
 
@@ -823,12 +844,17 @@ export function CliScripterPage() {
 
   // ---- Prompt assembly ----
   const generatePRD = () => {
+    // Include boilerplate analysis docs as context if available
+    const boilerplateSection = boilerplateContext
+      ? `\n\nBOILERPLATE ANALYSIS (what's already built — do NOT recreate these):\n${boilerplateContext}`
+      : ''
+
     const prompt = `You are a senior software architect. Create a detailed PRD for:
 
 App: ${appName || '[App Name]'}
 Description: ${appDescription || '[App Description]'}
 Boilerplate: ${selectedBoilerplate.label}
-Tech Stack: ${selectedBoilerplate.tech}${selectedBoilerplate.id !== 'scratch' ? `\n\nNote: This project uses the ${selectedBoilerplate.label} boilerplate. Many foundational features are already built. Focus the PRD on NEW features the user wants to add on top.` : ''}
+Tech Stack: ${selectedBoilerplate.tech}${selectedBoilerplate.id !== 'scratch' ? `\n\nNote: This project uses the ${selectedBoilerplate.label} boilerplate. Many foundational features are already built. Focus the PRD on NEW features the user wants to add on top.` : ''}${boilerplateSection}
 
 Features:
 ${getFeatureListText() || '[No features defined]'}

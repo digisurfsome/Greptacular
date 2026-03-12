@@ -660,6 +660,56 @@ async def get_combined_rules(slot: str = Query("main", description="Slot to merg
 
 
 # ---------------------------------------------------------------------------
+# Boilerplate analysis docs (Phase 10)
+# ---------------------------------------------------------------------------
+
+# Mapping from boilerplate ID to analysis doc filename
+_BOILERPLATE_DOCS: dict[str, str] = {
+    "web-supabase-stripe": "boilerplate-web-d2d.md",
+    "mobile-flutter-firebase": "boilerplate-flutter-firebase.md",
+    "web-mobile-supabase": "boilerplate-web-d2d.md",  # Full stack uses the web doc + flutter doc
+}
+
+
+@router.get("/boilerplate-context")
+async def get_boilerplate_context(
+    boilerplate_id: str = Query(..., description="Boilerplate template ID"),
+):
+    """Return the analysis doc content for a boilerplate, to inject into PRD generation.
+
+    For 'web-mobile-supabase' (dual build), returns both web and flutter docs concatenated.
+    For 'scratch', returns empty string (no boilerplate context needed).
+    """
+    if boilerplate_id == "scratch":
+        return {"boilerplate_id": boilerplate_id, "content": "", "token_estimate": 0}
+
+    # Locate docs directory (relative to the project root)
+    docs_dir = Path(__file__).parent.parent.parent / "docs"
+
+    contents: list[str] = []
+
+    if boilerplate_id == "web-mobile-supabase":
+        # Dual build: include both docs
+        for doc_name in ["boilerplate-web-d2d.md", "boilerplate-flutter-firebase.md"]:
+            doc_path = docs_dir / doc_name
+            if doc_path.exists():
+                contents.append(doc_path.read_text(encoding="utf-8"))
+    else:
+        doc_name = _BOILERPLATE_DOCS.get(boilerplate_id)
+        if doc_name:
+            doc_path = docs_dir / doc_name
+            if doc_path.exists():
+                contents.append(doc_path.read_text(encoding="utf-8"))
+
+    combined = "\n\n---\n\n".join(contents)
+    return {
+        "boilerplate_id": boilerplate_id,
+        "content": combined,
+        "token_estimate": len(combined) // 4,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Project info endpoint (file listing + git log)
 # ---------------------------------------------------------------------------
 

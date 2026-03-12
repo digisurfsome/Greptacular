@@ -25,6 +25,7 @@ import { PromptBar } from '@/components/cli-scripter/PromptBar'
 import { BuildDashboard } from '@/components/cli-scripter/BuildDashboard'
 import { BuildLogPanel } from '@/components/cli-scripter/BuildLogPanel'
 import { PhaseStatusSidebar } from '@/components/cli-scripter/PhaseStatusSidebar'
+import { RefreshIntervalSelector } from '@/components/cli-scripter/RefreshIntervalSelector'
 import { parseWaves, sequentialWaves } from '@/lib/waveParser'
 import {
   ArrowLeft,
@@ -656,9 +657,7 @@ export function CliScripterPage() {
   const [libraryOpen, setLibraryOpen] = usePersistedState('cli_scripter_library_open', false)
 
   // ---- Build Dashboard (refresh interval in ms, default 30s) ----
-  // setBuildRefreshInterval is used by the RefreshIntervalSelector component (Phase 6)
   const [buildRefreshInterval, setBuildRefreshInterval] = usePersistedState('cli_scripter_refresh_interval', 30000)
-  void setBuildRefreshInterval // Suppress unused warning until Phase 6 adds the selector UI
 
   // ---- Parsed wave structure (derived from phase AI result) ----
   const parsedWaves = useCallback(() => {
@@ -1257,6 +1256,12 @@ Output a detailed phase plan with feature assignments, estimated token usage per
           projectDir={projectDir}
           refreshInterval={buildRefreshInterval}
         />
+        <div className="flex justify-end">
+          <RefreshIntervalSelector
+            value={buildRefreshInterval}
+            onChange={setBuildRefreshInterval}
+          />
+        </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
           <div className="lg:col-span-2">
             <BuildLogPanel

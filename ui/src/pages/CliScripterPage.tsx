@@ -21,6 +21,7 @@ import { RuleBlockLibrary, createEmptyBlock, type RuleBlockData } from '@/compon
 import { Combiner, getMergedText } from '@/components/cli-scripter/Combiner'
 import { GatePopup, NEW_BUILD_PREFIX, EDIT_PATCH_PREFIX, type BuildMode, type PhaseMode } from '@/components/cli-scripter/GatePopup'
 import { BuildLibrary, type BuildConfigFull } from '@/components/cli-scripter/BuildLibrary'
+import { PromptBar } from '@/components/cli-scripter/PromptBar'
 import {
   ArrowLeft,
   Plus,
@@ -1732,18 +1733,12 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
                         </select>
                       </div>
                     </div>
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="text-xs text-zinc-500">Prompt Template</label>
-                        <ClearButton value={role.prompt} onClear={() => updateRole(role.id, { prompt: '' })} />
-                      </div>
-                      <textarea
-                        value={role.prompt}
-                        onChange={(e) => updateRole(role.id, { prompt: e.target.value })}
-                        rows={8}
-                        className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-300 text-xs font-mono focus:border-orange-500 focus:outline-none resize-y"
-                      />
-                    </div>
+                    <PromptBar
+                      label="Prompt Template"
+                      value={role.prompt}
+                      defaultValue={DEFAULT_AGENT_ROLES.find(r => r.id === role.id)?.prompt || ''}
+                      onChange={(v) => updateRole(role.id, { prompt: v })}
+                    />
                     {role.id === 'verifier' && (
                       <p className="text-xs text-zinc-600">
                         Reads from .claude/templates/e2e_verification_prompt.template.md if it exists.
@@ -2018,6 +2013,37 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
             aiResult={buildAiResult}
             aiLoading={buildAiLoading}
           />
+
+          {/* Prompt override bars for generation prompts */}
+          {(prdPrompt || phasePrompt || buildPrompt) && (
+            <div className="mt-3 pt-3 border-t border-zinc-800 space-y-2">
+              <p className="text-xs text-zinc-600 mb-2">Override generated prompts before running with AI:</p>
+              {prdPrompt && (
+                <PromptBar
+                  label="PRD Generation Prompt"
+                  value={prdPrompt}
+                  defaultValue={prdPrompt}
+                  onChange={setPrdPrompt}
+                />
+              )}
+              {phasePrompt && (
+                <PromptBar
+                  label="Phase-Split Prompt"
+                  value={phasePrompt}
+                  defaultValue={phasePrompt}
+                  onChange={setPhasePrompt}
+                />
+              )}
+              {buildPrompt && (
+                <PromptBar
+                  label="Build Scripts Prompt"
+                  value={buildPrompt}
+                  defaultValue={buildPrompt}
+                  onChange={setBuildPrompt}
+                />
+              )}
+            </div>
+          )}
 
           {/* Write Scripts to Disk */}
           {(buildAiResult || prdAiResult) && projectDir && (

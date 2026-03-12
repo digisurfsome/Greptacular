@@ -295,8 +295,10 @@ async def convert_single_prompt(
         f'Return ONLY the converted prompt, no explanation.'
     )
 
-    # Haiku for prompt conversion — it's a rewrite task, not reasoning
-    prompt_model = "claude-haiku-4-5"
+    # Sonnet for prompt conversion — cheap (67 hrs/day capacity) and reliable.
+    # Haiku was timing out due to CLI startup overhead; Sonnet is fast enough
+    # and this step is too important to risk [UNCONVERTED] fallbacks.
+    prompt_model = "claude-sonnet-4-6"
     processor = YTProcessor(model=prompt_model)
     max_retries = 2
 
@@ -306,7 +308,7 @@ async def convert_single_prompt(
                 PROMPT_CONVERSION_SYSTEM,
                 user_message if attempt == 0 else f"{user_message}\n\nPlease provide the converted prompt.",
                 prompt_model,
-                timeout=30,
+                timeout=60,
             )
 
             if not result or not result.strip():
@@ -482,7 +484,7 @@ async def generate_blueprint(
             on_progress("Skipped prompt conversion (test mode)")
     else:
         if on_progress:
-            on_progress(f"Converting {len(valid_steps)} prompts via Haiku...")
+            on_progress(f"Converting {len(valid_steps)} prompts via Sonnet...")
         converted_prompts = await convert_prompts(valid_steps, project_name, on_progress)
 
     if on_progress:

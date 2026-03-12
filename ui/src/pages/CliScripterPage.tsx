@@ -118,7 +118,7 @@ const TURNS_OPTIONS = ['10', '25', '50', 'Unlimited']
 const TRANSITION_OPTIONS = ['Pause', 'Auto-continue', 'Prompt me']
 const ERROR_OPTIONS = ['Retry once then skip', 'Stop everything', 'Skip immediately']
 const GIT_OPTIONS = ['After each feature', 'After each phase', 'Never']
-const PHASE_COUNT_OPTIONS = ['2', '3', '4', '5', '6+']
+const PHASE_COUNT_OPTIONS = ['Auto', '2', '3', '4', '5', '6+']
 
 const DEFAULT_AGENT_ROLES: AgentRole[] = [
   {
@@ -288,7 +288,7 @@ function SectionCard({
   children: React.ReactNode
 }) {
   return (
-    <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+    <div className="bg-zinc-800/40 border border-zinc-700/60 rounded-xl p-6 shadow-sm">
       <div className="flex items-center gap-2 mb-4">
         {icon}
         <h2 className="text-lg font-semibold text-white">{title}</h2>
@@ -317,7 +317,7 @@ function TextInput({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:border-purple-500 focus:outline-none transition-colors"
+        className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:border-orange-500 focus:outline-none transition-colors"
       />
     </div>
   )
@@ -347,7 +347,7 @@ function TextArea({
         rows={rows}
         placeholder={placeholder}
         readOnly={readOnly}
-        className={`w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:border-purple-500 focus:outline-none transition-colors resize-y ${
+        className={`w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:border-orange-500 focus:outline-none transition-colors resize-y ${
           readOnly ? 'opacity-80 cursor-default' : ''
         }`}
       />
@@ -373,7 +373,7 @@ function SelectInput({
         <select
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="w-full appearance-none bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:border-purple-500 focus:outline-none transition-colors pr-8"
+          className="w-full appearance-none bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:border-orange-500 focus:outline-none transition-colors pr-8"
         >
           {options.map((opt) => {
             const label = typeof opt === 'string' ? opt : opt.label
@@ -509,20 +509,27 @@ export function CliScripterPage() {
   const [combiningRules, setCombiningRules] = useState(false)
   const [combineError, setCombineError] = useState<string | null>(null)
 
-  // ---- Features ----
+  // ---- Phase-Specific Rules ("Top Bun") ----
+  const [splitPhaseRules, setSplitPhaseRules] = useState(false) // toggle: all same vs split
+  const [phase1Rules, setPhase1Rules] = useState('') // full rules for Phase 1 (e.g. 1000 lines)
+  const [phase2PlusRules, setPhase2PlusRules] = useState('') // condensed rules for Phase 2+ (e.g. 350 lines)
+
+  // ---- Features (optional — skip if you already have a PRD) ----
   const [features, setFeatures] = useState<FeatureRow[]>([
     { id: 1, name: '', size: 'M' },
   ])
   const [dependencies, setDependencies] = useState('')
+  const [showFeatures, setShowFeatures] = useState(false)
   let nextFeatureId = features.length > 0 ? Math.max(...features.map((f) => f.id)) + 1 : 1
 
   // ---- Build Settings ----
-  const [model, setModel] = useState(MODELS[0].value)
+  // Model defaults to sonnet; each agent role has its own model selector
+  const model = MODELS[0].value
   const [turns, setTurns] = useState('25')
   const [transition, setTransition] = useState(TRANSITION_OPTIONS[0])
   const [errorHandling, setErrorHandling] = useState(ERROR_OPTIONS[0])
   const [gitCommits, setGitCommits] = useState(GIT_OPTIONS[0])
-  const [phaseCount, setPhaseCount] = useState('3')
+  const [phaseCount, setPhaseCount] = useState('Auto')
 
   // ---- Phase Assignments ----
   const [phaseAssignments, setPhaseAssignments] = useState('')
@@ -667,6 +674,32 @@ export function CliScripterPage() {
     return nonEmpty.join('\n\n')
   }
 
+  // ---- Phase-specific rules helper ----
+  const getRulesForPhase = (phaseNum: number) => {
+    if (!splitPhaseRules) return getRulesText() // all phases same
+    return phaseNum === 1 ? (phase1Rules || getRulesText()) : (phase2PlusRules || getRulesText())
+  }
+
+  // ---- Token estimation (rough: 1 token ≈ 4 chars) ----
+  const estimateTokens = (text: string) => Math.ceil(text.length / 4)
+
+  const getPhase1CabRide = () => {
+    const rules = getRulesForPhase(1)
+    const architectPrompt = agentRoles.find(r => r.id === 'architect')?.prompt || ''
+    const coderPrompt = agentRoles.find(r => r.id === 'coder')?.prompt || ''
+    return estimateTokens(rules) + estimateTokens(architectPrompt) + estimateTokens(coderPrompt)
+  }
+
+  const getPhase2PlusCabRide = () => {
+    const rules = getRulesForPhase(2)
+    const coderPrompt = agentRoles.find(r => r.id === 'coder')?.prompt || ''
+    const reviewerPrompt = agentRoles.find(r => r.id === 'reviewer')?.prompt || ''
+    return estimateTokens(rules) + estimateTokens(coderPrompt) + estimateTokens(reviewerPrompt)
+  }
+
+  const TOKEN_BUDGET = 100000 // max tokens per phase
+  const BUFFER_PCT = 0.10 // 10% safety buffer
+
   // ---- Feature list text ----
   const getFeatureListText = () => {
     return features
@@ -710,22 +743,43 @@ Create a comprehensive PRD with:
 
   const generatePhaseSplit = () => {
     const prdOutput = prdAiResult || '[Paste your PRD here]'
-    const prompt = `Split this PRD into ${phaseCount} build phases for Claude Code sessions.
+    const p1Cab = getPhase1CabRide()
+    const p2Cab = getPhase2PlusCabRide()
+    const p1Available = Math.floor((TOKEN_BUDGET - p1Cab) * (1 - BUFFER_PCT))
+    const p2Available = Math.floor((TOKEN_BUDGET - p2Cab) * (1 - BUFFER_PCT))
+
+    const phaseCountText = phaseCount === 'Auto'
+      ? 'as many phases as needed to stay under the token budget'
+      : `${phaseCount} build phases`
+    const prompt = `Split this PRD into ${phaseCountText} for Claude Code sessions.
 
 PRD:
 ${prdOutput}
 
-Rules:
-- Phase 1 = project setup + foundation (2-3 features max, heavy on rules)
+TOKEN BUDGET CONSTRAINTS:
+- Each phase gets a fresh ${TOKEN_BUDGET.toLocaleString()}-token context window
+- Phase 1 cab ride: ~${p1Cab.toLocaleString()} tokens → ${p1Available.toLocaleString()} available for content
+- Phase 2+ cab ride: ~${p2Cab.toLocaleString()} tokens → ${p2Available.toLocaleString()} available for content
+${splitPhaseRules ? '- Phase 1 uses FULL rules. Phase 2+ uses CONDENSED rules.' : '- All phases use the same rules.'}
+
+SPLITTING RULES:
+- Phase 1 = project setup + foundation (2-3 features max)
 - Phase 2+ = feature building (3-5 features per phase)
 - Respect dependencies: if B depends on A, A goes first
-- Each phase gets a fresh context window
+- Each phase must be testable on its own
+- Find natural break points between feature groups
+
+TESTING PHASE SIZING:
+- If the build has 3+ feature phases, the post-build verification (Verifier role) needs its OWN dedicated phase at the end.
+- If the build has 6+ feature phases, give verification TWO phases (split by backend vs frontend).
+- The verification phase prompt is long and thorough — budget at least 80,000 tokens for it.
+- This means: for a 4-phase feature build, output 5 phases total (4 features + 1 verification).
 
 Settings:
 - Turns per phase: ${turns}
 - Phase transition: ${transition}
 
-Output a detailed phase plan with feature assignments.`
+Output a detailed phase plan with feature assignments and estimated token usage.`
     setPhasePrompt(prompt)
     setPhaseAiResult('')
   }
@@ -833,23 +887,45 @@ Create a comprehensive PRD with:
       setPrdAiResult(prdResult)
       setGenerateAllStep(2)
 
-      // Step 2: Phase Split
-      const phasePromptText = `Split this PRD into ${phaseCount} build phases for Claude Code sessions.
+      // Step 2: Phase Split (with token math)
+      const p1Cab = getPhase1CabRide()
+      const p2Cab = getPhase2PlusCabRide()
+      const p1Available = Math.floor((TOKEN_BUDGET - p1Cab) * (1 - BUFFER_PCT))
+      const p2Available = Math.floor((TOKEN_BUDGET - p2Cab) * (1 - BUFFER_PCT))
+
+      const phaseCountText = phaseCount === 'Auto'
+        ? 'as many phases as needed to stay under the token budget'
+        : `${phaseCount} build phases`
+      const phasePromptText = `Split this PRD into ${phaseCountText} for Claude Code sessions.
 
 PRD:
 ${prdResult}
 
-Rules:
-- Phase 1 = project setup + foundation (2-3 features max)
-- Phase 2+ = feature building (3-5 features per phase)
-- Respect dependencies
-- Each phase gets a fresh context window
+TOKEN BUDGET CONSTRAINTS (CRITICAL):
+- Each phase gets a fresh ${TOKEN_BUDGET.toLocaleString()}-token context window
+- Phase 1 "cab ride" (overhead: rules + prompts): ~${p1Cab.toLocaleString()} tokens → ${p1Available.toLocaleString()} tokens available for feature content
+- Phase 2+ "cab ride": ~${p2Cab.toLocaleString()} tokens → ${p2Available.toLocaleString()} tokens available for feature content
+- ${Math.round(BUFFER_PCT * 100)}% safety buffer is already subtracted
+${splitPhaseRules ? '- Phase 1 uses FULL rules. Phase 2+ uses CONDENSED rules referencing what Phase 1 built.' : '- All phases use the same rules.'}
+
+SPLITTING RULES:
+- Phase 1 = project setup + foundation (2-3 features max, gets the full rules overhead)
+- Phase 2+ = feature building (3-5 features per phase, lighter rules overhead)
+- Respect dependencies: if B depends on A, A goes in an earlier phase
+- Each phase must be testable on its own — find natural break points
+- NEVER split in the middle of a tightly coupled feature group
+
+TESTING PHASE SIZING:
+- If the build has 3+ feature phases, the post-build verification (Verifier role) needs its OWN dedicated phase at the end.
+- If the build has 6+ feature phases, give verification TWO phases (split by backend vs frontend).
+- The verification phase prompt is long and thorough — budget at least 80,000 tokens for it.
+- This means: for a 4-phase feature build, output 5 phases total (4 features + 1 verification).
 
 Settings:
 - Turns per phase: ${turns}
 - Phase transition: ${transition}
 
-Output a detailed phase plan with feature assignments.`
+Output a detailed phase plan with feature assignments and estimated token usage per phase.`
       const phaseResult = await callGenerate(phasePromptText, model)
       setPhaseAiResult(phaseResult)
       setGenerateAllStep(3)
@@ -900,7 +976,8 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
 
       if (phases.length === 0) {
         // Fall back to generating numbered phases
-        for (let i = 1; i <= parseInt(phaseCount); i++) {
+        const fallbackCount = phaseCount === 'Auto' ? 3 : (parseInt(phaseCount) || 3)
+        for (let i = 1; i <= fallbackCount; i++) {
           phases.push(`Phase ${i}`)
         }
       }
@@ -966,7 +1043,7 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
               <ArrowLeft size={20} />
             </button>
             <div>
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-400 via-purple-300 to-cyan-400 bg-clip-text text-transparent">
+              <h1 className="text-2xl font-bold bg-gradient-to-r from-orange-400 via-amber-300 to-yellow-400 bg-clip-text text-transparent">
                 CLI Scripter
               </h1>
               <p className="text-xs text-zinc-500 mt-0.5">
@@ -975,7 +1052,7 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Terminal size={20} className="text-purple-400" />
+            <Terminal size={20} className="text-orange-400" />
           </div>
         </div>
       </header>
@@ -984,7 +1061,7 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
       <main className="max-w-4xl mx-auto px-4 py-8 space-y-6">
         {/* Section 1: Project Basics */}
         <SectionCard
-          icon={<Cpu size={18} className="text-purple-400" />}
+          icon={<Cpu size={18} className="text-orange-400" />}
           title="Project Basics"
         >
           <div className="space-y-4">
@@ -1020,7 +1097,7 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
                   type="checkbox"
                   checked={createRepo}
                   onChange={(e) => setCreateRepo(e.target.checked)}
-                  className="w-4 h-4 rounded border-zinc-600 bg-zinc-900 text-purple-500 focus:ring-purple-500 focus:ring-offset-0"
+                  className="w-4 h-4 rounded border-zinc-600 bg-zinc-900 text-orange-500 focus:ring-purple-500 focus:ring-offset-0"
                 />
                 <Github size={16} className="text-zinc-400" />
                 <span className="text-sm text-zinc-300">Create GitHub repo</span>
@@ -1036,7 +1113,7 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
                       value={repoName}
                       onChange={(e) => setRepoName(e.target.value)}
                       placeholder={appName ? slugifyName(appName) : 'my-app'}
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:border-purple-500 focus:outline-none transition-colors"
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:border-orange-500 focus:outline-none transition-colors"
                     />
                   </div>
 
@@ -1054,7 +1131,7 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
                             setGithubError(null)
                           }}
                           placeholder="ghp_..."
-                          className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:border-purple-500 focus:outline-none transition-colors pr-9"
+                          className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:border-orange-500 focus:outline-none transition-colors pr-9"
                         />
                         <button
                           type="button"
@@ -1092,7 +1169,7 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
                       onClick={handleCreateRepo}
                       disabled={repoCreating || !githubUser || !effectiveRepoName}
                       size="sm"
-                      className="gap-1 bg-gradient-to-r from-purple-600 to-cyan-500 text-white hover:opacity-90 transition-opacity border-0 disabled:opacity-40"
+                      className="gap-1 bg-gradient-to-r from-orange-500 to-amber-500 text-white hover:opacity-90 transition-opacity border-0 disabled:opacity-40"
                     >
                       {repoCreating ? <Loader2 size={14} className="animate-spin" /> : <Github size={14} />}
                       Create Repo
@@ -1146,7 +1223,7 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
                         ? 'e.g., Follow mobile-first responsive design. Use Tailwind CSS...'
                         : 'e.g., Write unit tests for all utility functions...'
                   }
-                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:border-purple-500 focus:outline-none transition-colors resize-y"
+                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:border-orange-500 focus:outline-none transition-colors resize-y"
                 />
               </div>
             ))}
@@ -1175,7 +1252,7 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
               onClick={combineRules}
               disabled={combiningRules || ruleBlocks.every((b) => !b.trim())}
               size="sm"
-              className="gap-1 bg-gradient-to-r from-purple-600 to-cyan-500 text-white hover:opacity-90 transition-opacity border-0 disabled:opacity-40"
+              className="gap-1 bg-gradient-to-r from-orange-500 to-amber-500 text-white hover:opacity-90 transition-opacity border-0 disabled:opacity-40"
             >
               {combiningRules ? (
                 <Loader2 size={14} className="animate-spin" />
@@ -1221,62 +1298,167 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
           )}
         </SectionCard>
 
-        {/* Section 3: Features */}
+        {/* Section: Phase Rules ("Top Bun") */}
         <SectionCard
-          icon={<Layers size={18} className="text-green-400" />}
-          title="Features"
+          icon={<Layers size={18} className="text-amber-400" />}
+          title="Phase Rules"
         >
-          <div className="space-y-2">
-            {features.map((feature) => (
-              <div key={feature.id} className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={feature.name}
-                  onChange={(e) => updateFeature(feature.id, 'name', e.target.value)}
-                  placeholder="Feature name..."
-                  className="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:border-purple-500 focus:outline-none transition-colors"
-                />
-                <div className="relative">
-                  <select
-                    value={feature.size}
-                    onChange={(e) => updateFeature(feature.id, 'size', e.target.value)}
-                    className="appearance-none bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:border-purple-500 focus:outline-none transition-colors pr-7 w-16"
-                  >
-                    <option value="S">S</option>
-                    <option value="M">M</option>
-                    <option value="L">L</option>
-                  </select>
-                  <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none" />
+          <p className="text-sm text-zinc-500 mb-4">
+            The "top bun" — rules that get prepended to each phase's prompt. Phase 1 often needs the full ruleset (~1000 lines) while Phase 2+ can reference what's already built (~350 lines).
+          </p>
+
+          {/* Toggle */}
+          <div className="flex items-center gap-3 mb-4">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={splitPhaseRules}
+                onChange={(e) => setSplitPhaseRules(e.target.checked)}
+                className="w-4 h-4 rounded border-zinc-600 bg-zinc-900 text-orange-500"
+              />
+              <span className="text-sm text-zinc-300">
+                {splitPhaseRules ? 'Phase 1 and Phase 2+ have different rules' : 'All phases use the same rules'}
+              </span>
+            </label>
+          </div>
+
+          {!splitPhaseRules ? (
+            <div className="bg-zinc-800/30 border border-zinc-700/50 rounded-lg p-3">
+              <p className="text-xs text-zinc-500 mb-1">Using the Build Rules from above for all phases.</p>
+              <p className="text-xs text-zinc-600">
+                Estimated cab ride: ~{(getPhase1CabRide()).toLocaleString()} tokens per phase
+                {' '}({Math.round(getPhase1CabRide() / TOKEN_BUDGET * 100)}% of {(TOKEN_BUDGET).toLocaleString()} budget)
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* Phase 1 rules */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-sm text-orange-400 font-medium">Phase 1 Rules (Full)</label>
+                  <span className="text-xs text-zinc-600">
+                    ~{estimateTokens(phase1Rules).toLocaleString()} tokens
+                    {' '}• Cab ride: ~{getPhase1CabRide().toLocaleString()}
+                    {' '}({Math.round(getPhase1CabRide() / TOKEN_BUDGET * 100)}% of budget)
+                  </span>
                 </div>
-                <button
-                  onClick={() => removeFeature(feature.id)}
-                  className="text-zinc-500 hover:text-red-400 transition-colors p-1"
-                  title="Remove feature"
-                >
-                  <X size={16} />
-                </button>
+                <textarea
+                  value={phase1Rules}
+                  onChange={(e) => setPhase1Rules(e.target.value)}
+                  rows={6}
+                  placeholder="Full ruleset for Phase 1 — complete schematics, coding standards, file structure rules, naming conventions...&#10;&#10;This is your detailed blueprint. The agent has no reference code yet, so be thorough."
+                  className="w-full bg-zinc-900 border border-orange-700/40 rounded-lg px-3 py-2 text-white text-sm focus:border-orange-500 focus:outline-none transition-colors resize-y"
+                />
               </div>
-            ))}
-          </div>
-          <Button
-            onClick={addFeature}
-            variant="outline"
-            size="sm"
-            className="gap-1 mt-3 border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-500 bg-transparent"
-          >
-            <Plus size={14} />
-            Add Feature
-          </Button>
-          <div className="mt-4">
-            <TextArea
-              label="Dependencies"
-              value={dependencies}
-              onChange={setDependencies}
-              rows={3}
-              placeholder="Describe which features depend on which, e.g.:\n- Auth must be built before Dashboard\n- API layer is required by all frontend features"
-            />
-          </div>
+
+              {/* Phase 2+ rules */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-sm text-cyan-400 font-medium">Phase 2+ Rules (Condensed)</label>
+                  <span className="text-xs text-zinc-600">
+                    ~{estimateTokens(phase2PlusRules).toLocaleString()} tokens
+                    {' '}• Cab ride: ~{getPhase2PlusCabRide().toLocaleString()}
+                    {' '}({Math.round(getPhase2PlusCabRide() / TOKEN_BUDGET * 100)}% of budget)
+                  </span>
+                </div>
+                <textarea
+                  value={phase2PlusRules}
+                  onChange={(e) => setPhase2PlusRules(e.target.value)}
+                  rows={6}
+                  placeholder="Condensed rules for Phase 2 onward — references what Phase 1 built, key conventions, critical constraints...&#10;&#10;The codebase exists now, so this is a summary referencing the live code."
+                  className="w-full bg-zinc-900 border border-cyan-700/40 rounded-lg px-3 py-2 text-white text-sm focus:border-cyan-500 focus:outline-none transition-colors resize-y"
+                />
+              </div>
+
+              {/* Token budget summary */}
+              <div className="bg-zinc-800/30 border border-zinc-700/50 rounded-lg p-3 space-y-1">
+                <p className="text-xs text-zinc-400 font-medium">Token Budget Summary</p>
+                <div className="flex gap-4 text-xs">
+                  <span className="text-orange-400">
+                    Phase 1: {getPhase1CabRide().toLocaleString()} cab ride → {(TOKEN_BUDGET - getPhase1CabRide()).toLocaleString()} for content
+                  </span>
+                  <span className="text-cyan-400">
+                    Phase 2+: {getPhase2PlusCabRide().toLocaleString()} cab ride → {(TOKEN_BUDGET - getPhase2PlusCabRide()).toLocaleString()} for content
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-600">
+                  Budget: {TOKEN_BUDGET.toLocaleString()} tokens/phase • {Math.round(BUFFER_PCT * 100)}% safety buffer
+                </p>
+              </div>
+            </div>
+          )}
         </SectionCard>
+
+        {/* Section 3: Features (optional, collapsible) */}
+        <div className="bg-zinc-800/40 border border-zinc-700/60 rounded-xl p-6 shadow-sm">
+          <div
+            className="flex items-center gap-2 cursor-pointer"
+            onClick={() => setShowFeatures(!showFeatures)}
+          >
+            <Layers size={18} className="text-green-400" />
+            <h2 className="text-lg font-semibold text-white">Features</h2>
+            <span className="text-xs text-zinc-600 ml-2">Optional — skip if you already have a PRD</span>
+            <div className="flex-1" />
+            {showFeatures ? <ChevronUp size={14} className="text-zinc-500" /> : <ChevronDown size={14} className="text-zinc-500" />}
+          </div>
+          {showFeatures && (
+            <div className="mt-4">
+              <p className="text-sm text-zinc-500 mb-3">
+                Quick feature list for PRD generation. If you're bringing a finished PRD, skip this section entirely.
+              </p>
+              <div className="space-y-2">
+                {features.map((feature) => (
+                  <div key={feature.id} className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={feature.name}
+                      onChange={(e) => updateFeature(feature.id, 'name', e.target.value)}
+                      placeholder="Feature name..."
+                      className="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:border-orange-500 focus:outline-none transition-colors"
+                    />
+                    <div className="relative">
+                      <select
+                        value={feature.size}
+                        onChange={(e) => updateFeature(feature.id, 'size', e.target.value)}
+                        className="appearance-none bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:border-orange-500 focus:outline-none transition-colors pr-7 w-16"
+                      >
+                        <option value="S">S</option>
+                        <option value="M">M</option>
+                        <option value="L">L</option>
+                      </select>
+                      <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none" />
+                    </div>
+                    <button
+                      onClick={() => removeFeature(feature.id)}
+                      className="text-zinc-500 hover:text-red-400 transition-colors p-1"
+                      title="Remove feature"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <Button
+                onClick={addFeature}
+                variant="outline"
+                size="sm"
+                className="gap-1 mt-3 border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-500 bg-transparent"
+              >
+                <Plus size={14} />
+                Add Feature
+              </Button>
+              <div className="mt-4">
+                <TextArea
+                  label="Dependencies"
+                  value={dependencies}
+                  onChange={setDependencies}
+                  rows={3}
+                  placeholder="Describe which features depend on which, e.g.:\n- Auth must be built before Dashboard\n- API layer is required by all frontend features"
+                />
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Section 4: Build Settings */}
         <SectionCard
@@ -1284,42 +1466,51 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
           title="Build Settings"
         >
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <SelectInput
-              label="Model"
-              value={model}
-              onChange={setModel}
-              options={MODELS}
-            />
-            <SelectInput
-              label="Turns per Phase"
-              value={turns}
-              onChange={setTurns}
-              options={TURNS_OPTIONS}
-            />
-            <SelectInput
-              label="Phase Transition"
-              value={transition}
-              onChange={setTransition}
-              options={TRANSITION_OPTIONS}
-            />
-            <SelectInput
-              label="Error Handling"
-              value={errorHandling}
-              onChange={setErrorHandling}
-              options={ERROR_OPTIONS}
-            />
-            <SelectInput
-              label="Git Commits"
-              value={gitCommits}
-              onChange={setGitCommits}
-              options={GIT_OPTIONS}
-            />
-            <SelectInput
-              label="Number of Phases"
-              value={phaseCount}
-              onChange={setPhaseCount}
-              options={PHASE_COUNT_OPTIONS}
-            />
+            <div>
+              <SelectInput
+                label="Turns per Phase"
+                value={turns}
+                onChange={setTurns}
+                options={TURNS_OPTIONS}
+              />
+              <p className="text-xs text-zinc-600 mt-1">Max agent conversation turns per phase. 25 is good for most builds.</p>
+            </div>
+            <div>
+              <SelectInput
+                label="Phase Transition"
+                value={transition}
+                onChange={setTransition}
+                options={TRANSITION_OPTIONS}
+              />
+              <p className="text-xs text-zinc-600 mt-1">Pause = wait between phases. Auto-continue = overnight builds.</p>
+            </div>
+            <div>
+              <SelectInput
+                label="Error Handling"
+                value={errorHandling}
+                onChange={setErrorHandling}
+                options={ERROR_OPTIONS}
+              />
+              <p className="text-xs text-zinc-600 mt-1">What to do when a phase fails its lint/type checks.</p>
+            </div>
+            <div>
+              <SelectInput
+                label="Git Commits"
+                value={gitCommits}
+                onChange={setGitCommits}
+                options={GIT_OPTIONS}
+              />
+              <p className="text-xs text-zinc-600 mt-1">When the agent should commit its work.</p>
+            </div>
+            <div>
+              <SelectInput
+                label="Number of Phases"
+                value={phaseCount}
+                onChange={setPhaseCount}
+                options={PHASE_COUNT_OPTIONS}
+              />
+              <p className="text-xs text-zinc-600 mt-1">Auto calculates from token budget. Override if needed.</p>
+            </div>
           </div>
         </SectionCard>
 
@@ -1349,7 +1540,7 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
                       updateRole(role.id, { enabled: e.target.checked })
                     }}
                     onClick={(e) => e.stopPropagation()}
-                    className="w-4 h-4 rounded border-zinc-600 bg-zinc-900 text-purple-500"
+                    className="w-4 h-4 rounded border-zinc-600 bg-zinc-900 text-orange-500"
                   />
                   {ROLE_ICONS[role.id] || <Cpu size={16} className="text-zinc-400" />}
                   <span className="font-medium text-white text-sm flex-1">{role.name}</span>
@@ -1380,7 +1571,7 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
                         <select
                           value={role.model}
                           onChange={(e) => updateRole(role.id, { model: e.target.value })}
-                          className="w-full appearance-none bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-1.5 text-white text-sm focus:border-purple-500 focus:outline-none"
+                          className="w-full appearance-none bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-1.5 text-white text-sm focus:border-orange-500 focus:outline-none"
                         >
                           {ROLE_MODEL_OPTIONS.map(opt => (
                             <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -1394,7 +1585,7 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
                         value={role.prompt}
                         onChange={(e) => updateRole(role.id, { prompt: e.target.value })}
                         rows={8}
-                        className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-300 text-xs font-mono focus:border-purple-500 focus:outline-none resize-y"
+                        className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-300 text-xs font-mono focus:border-orange-500 focus:outline-none resize-y"
                       />
                     </div>
                     {role.id === 'verifier' && (
@@ -1414,7 +1605,7 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
               type="checkbox"
               checked={includeVerification}
               onChange={(e) => setIncludeVerification(e.target.checked)}
-              className="w-4 h-4 rounded border-zinc-600 bg-zinc-900 text-purple-500"
+              className="w-4 h-4 rounded border-zinc-600 bg-zinc-900 text-orange-500"
             />
             <span className="text-sm text-zinc-300">Include post-build verification phase (Opus)</span>
             <span className="text-xs text-zinc-600">&mdash; runs full test protocol after all phases</span>
@@ -1434,9 +1625,114 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
           />
         </SectionCard>
 
+        {/* Section: Build Estimate */}
+        <SectionCard
+          icon={<Zap size={18} className="text-orange-400" />}
+          title="Build Estimate"
+        >
+          {(() => {
+            const numPhases = phaseCount === 'Auto' ? Math.max(2, Math.ceil(features.filter(f => f.name.trim()).length / 4) || 3) : parseInt(phaseCount) || 3
+            const p1Cab = getPhase1CabRide()
+            const p2Cab = getPhase2PlusCabRide()
+            const enabledRoles = agentRoles.filter(r => r.enabled)
+            const perPhaseRoles = enabledRoles.filter(r => r.runsWhen === 'per_phase' || r.runsWhen === 'per_phase_after')
+            const oneTimeRoles = enabledRoles.filter(r => r.runsWhen === 'once_before' || r.runsWhen === 'once_after' || r.runsWhen === 'once_final')
+
+            // Estimate tokens per role run (rough: prompt tokens + expected output)
+            const roleEstimate = (role: typeof agentRoles[0]) => {
+              const promptTokens = estimateTokens(role.prompt)
+              // Opus roles tend to use more output, sonnet less
+              const outputMultiplier = role.model === 'opus' ? 3 : 2
+              return promptTokens * outputMultiplier
+            }
+
+            const phase1Total = p1Cab + perPhaseRoles.reduce((sum, r) => sum + roleEstimate(r), 0)
+            const phase2Total = p2Cab + perPhaseRoles.reduce((sum, r) => sum + roleEstimate(r), 0)
+            const oneTimeTotal = oneTimeRoles.reduce((sum, r) => sum + roleEstimate(r), 0)
+            const grandTotal = phase1Total + (phase2Total * (numPhases - 1)) + oneTimeTotal
+
+            // Verification phase estimate
+            const verifier = agentRoles.find(r => r.id === 'verifier')
+            const verifyEstimate = verifier?.enabled ? roleEstimate(verifier) * (numPhases > 4 ? 2 : 1) : 0
+
+            // Suppress unused variable lint warning — verifyEstimate is used in the warnings below
+            void verifyEstimate
+
+            return (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="bg-zinc-900/60 rounded-lg p-3 text-center">
+                    <p className="text-2xl font-bold text-orange-400">{numPhases}</p>
+                    <p className="text-xs text-zinc-500">Phases</p>
+                  </div>
+                  <div className="bg-zinc-900/60 rounded-lg p-3 text-center">
+                    <p className="text-2xl font-bold text-cyan-400">{enabledRoles.length}</p>
+                    <p className="text-xs text-zinc-500">Active Roles</p>
+                  </div>
+                  <div className="bg-zinc-900/60 rounded-lg p-3 text-center">
+                    <p className="text-2xl font-bold text-amber-400">{Math.round(grandTotal / 1000)}K</p>
+                    <p className="text-xs text-zinc-500">Est. Total Tokens</p>
+                  </div>
+                  <div className="bg-zinc-900/60 rounded-lg p-3 text-center">
+                    <p className="text-2xl font-bold text-green-400">{numPhases + oneTimeRoles.length}</p>
+                    <p className="text-xs text-zinc-500">CLI Sessions</p>
+                  </div>
+                </div>
+
+                {/* Phase breakdown */}
+                <div className="bg-zinc-900/40 rounded-lg p-3 space-y-2">
+                  <p className="text-xs text-zinc-400 font-medium">Phase Breakdown</p>
+                  <div className="space-y-1">
+                    {oneTimeRoles.filter(r => r.runsWhen === 'once_before').map(r => (
+                      <div key={r.id} className="flex items-center justify-between text-xs">
+                        <span className="text-purple-400">Pre-build: {r.name}</span>
+                        <span className="text-zinc-500">~{Math.round(roleEstimate(r) / 1000)}K tokens ({r.model})</span>
+                      </div>
+                    ))}
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-orange-400">Phase 1 (setup + foundation)</span>
+                      <span className="text-zinc-500">~{Math.round(phase1Total / 1000)}K tokens</span>
+                    </div>
+                    {numPhases > 1 && (
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-cyan-400">Phases 2-{numPhases} (features) x {numPhases - 1}</span>
+                        <span className="text-zinc-500">~{Math.round(phase2Total / 1000)}K each</span>
+                      </div>
+                    )}
+                    {oneTimeRoles.filter(r => r.runsWhen === 'once_after').map(r => (
+                      <div key={r.id} className="flex items-center justify-between text-xs">
+                        <span className="text-red-400">Post-build: {r.name}</span>
+                        <span className="text-zinc-500">~{Math.round(roleEstimate(r) / 1000)}K tokens ({r.model})</span>
+                      </div>
+                    ))}
+                    {oneTimeRoles.filter(r => r.runsWhen === 'once_final').map(r => (
+                      <div key={r.id} className="flex items-center justify-between text-xs">
+                        <span className="text-green-400">Final: {r.name}</span>
+                        <span className="text-zinc-500">~{Math.round(roleEstimate(r) / 1000)}K tokens ({r.model})</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Warnings */}
+                {grandTotal > 500000 && (
+                  <div className="bg-amber-900/20 border border-amber-700/40 rounded-lg px-3 py-2 text-xs text-amber-300">
+                    Large build ({Math.round(grandTotal / 1000)}K tokens). Consider breaking into smaller builds or running overnight.
+                  </div>
+                )}
+                {numPhases > 4 && verifier?.enabled && (
+                  <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-lg px-3 py-2 text-xs text-zinc-400">
+                    Verification will use {numPhases > 4 ? '2 sessions' : '1 session'} for {numPhases}-phase build.
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+        </SectionCard>
+
         {/* Section: Generate */}
         <SectionCard
-          icon={<Rocket size={18} className="text-purple-400" />}
+          icon={<Rocket size={18} className="text-orange-400" />}
           title="Generate"
         >
           {/* Project Directory for script output */}
@@ -1453,7 +1749,7 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
           <button
             onClick={runGenerateAll}
             disabled={generateAllLoading}
-            className="w-full flex items-center justify-center gap-3 bg-gradient-to-r from-purple-600 via-cyan-500 to-green-500 rounded-xl px-6 py-4 text-white font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 mb-4"
+            className="w-full flex items-center justify-center gap-3 bg-gradient-to-r from-orange-500 via-amber-500 to-orange-600 rounded-xl px-6 py-4 text-white font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 mb-4 shadow-lg shadow-orange-500/20"
           >
             {generateAllLoading ? (
               <>
@@ -1564,6 +1860,45 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
                   </ul>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Start Build + Copy Commands */}
+          {scriptsWritten && scriptsWritten.length > 0 && (
+            <div className="mt-4 border-t border-zinc-700/50 pt-4 space-y-3">
+              <p className="text-sm text-orange-400 font-medium">Ready to Build</p>
+
+              {/* Start build button */}
+              <button
+                onClick={() => {
+                  const cmd = `cd "${projectDir}" && bash scripts/cli-scripter/run_all.sh`
+                  copyToClipboard(cmd)
+                }}
+                className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-orange-500 to-amber-500 rounded-lg px-4 py-3 text-white font-semibold hover:opacity-90 transition-opacity"
+              >
+                <Copy size={16} />
+                Copy Start Command
+              </button>
+              <p className="text-xs text-zinc-600 text-center">Copies the run_all.sh command -- paste into your terminal to start the build.</p>
+
+              {/* Individual phase commands */}
+              <div className="space-y-1">
+                {scriptsWritten.filter(f => f.includes('.sh')).map(f => {
+                  const cmd = `cd "${projectDir}" && bash "${f}"`
+                  return (
+                    <div key={f} className="flex items-center gap-2 bg-zinc-900/50 rounded-lg px-3 py-2">
+                      <Terminal size={12} className="text-zinc-500 shrink-0" />
+                      <code className="text-xs text-zinc-400 flex-1 truncate">{f}</code>
+                      <button
+                        onClick={() => copyToClipboard(cmd)}
+                        className="text-xs text-orange-400 hover:text-orange-300 shrink-0"
+                      >
+                        <Copy size={12} />
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           )}
         </SectionCard>

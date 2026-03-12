@@ -2,6 +2,8 @@
 
 Phase 1: Registry CRUD (all [ROBOT])
 Phase 2: Blueprint generation + PRD upload (mixed [ROBOT]/[AGENT])
+Phase 7: Batch generation endpoints [ROBOT]
+Phase 8: Usage tracking endpoints [ROBOT]
 """
 
 import asyncio
@@ -15,14 +17,18 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from ..models.tool_factory import IngestionSource, ToolStatus
+from ..services.batch_tool_generator import BatchToolGenerator
 from ..services.tool_registry import ToolRegistryService
+from ..services.tool_usage import ToolUsageTracker
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/tool-factory", tags=["tool-factory"])
 
-# Shared registry instance
+# Shared service instances
 _registry = ToolRegistryService()
+_batch_generator = BatchToolGenerator(registry=_registry)
+_usage_tracker = ToolUsageTracker()
 
 
 # ---------------------------------------------------------------------------
@@ -372,3 +378,146 @@ async def upload_prd(
     except Exception as e:
         logger.exception("PRD upload processing failed")
         raise HTTPException(status_code=500, detail=f"PRD upload failed: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Phase 7: Batch Generation Endpoints [ROBOT]
+# ---------------------------------------------------------------------------
+
+class BatchGenerateRequest(BaseModel):
+    """Request to start batch tool generation."""
+    project_ids: list[str] = Field(..., min_length=1, max_length=50)
+    default_theme_id: Optional[str] = None
+    auto_deploy: bool = False
+
+
+class BatchGenerateResponse(BaseModel):
+    batch_id: str
+    total: int
+    status: str
+
+
+@router.post("/batch/generate", response_model=BatchGenerateResponse)
+async def batch_generate(body: BatchGenerateRequest):
+    """Start batch generation from project IDs. [ROBOT]
+
+    Starts batch in a background task and returns the batch_id immediately.
+    """
+    async def _run() -> None:
+        await _batch_generator.generate_batch(
+            project_ids=body.project_ids,
+            default_theme_id=body.default_theme_id,
+            auto_deploy=body.auto_deploy,
+        )
+
+    asyncio.create_task(_run())
+
+    # The generate_batch call stores itself in _batches. Return a placeholder
+    # status while the background task spins up. The batch will appear in
+    # get_batch_status once generate_batch enters its loop.
+    return BatchGenerateResponse(
+        batch_id="pending",
+        total=len(body.project_ids),
+        status="running",
+    )
+
+
+@router.get("/batch/{batch_id}")
+async def batch_status(batch_id: str):
+    """Poll batch progress. [ROBOT]"""
+    status = _batch_generator.get_batch_status(batch_id)
+    if not status:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    return status.model_dump()
+
+
+@router.post("/batch/cancel/{batch_id}")
+async def batch_cancel(batch_id: str):
+    """Cancel a running batch. [ROBOT]"""
+    success = _batch_generator.cancel_batch(batch_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    return {"status": "cancelling", "batch_id": batch_id}
+
+
+@router.post("/batch/deploy")
+async def batch_deploy(body: dict):
+    """Deploy all draft tools in a batch. [ROBOT]"""
+    batch_id = body.get("batch_id")
+    if not batch_id:
+        raise HTTPException(status_code=400, detail="batch_id is required")
+
+    status = _batch_generator.get_batch_status(batch_id)
+    if not status:
+        raise HTTPException(status_code=404, detail="Batch not found")
+
+    deployed = 0
+    errors = 0
+    for result in status.results:
+        if result.status == "success" and result.tool_id and not result.sheet_url:
+            try:
+                from ..services.google_auth import get_credentials
+                from ..services.sheet_deployer import deploy_sheet as _deploy
+                from ..services.sheet_theme_engine import preset_theme_to_theme_config
+
+                creds = get_credentials()
+                if not creds:
+                    raise HTTPException(status_code=401, detail="Not authenticated with Google")
+
+                tool = await _registry.get_tool(result.tool_id)
+                if not tool:
+                    continue
+
+                theme = tool.active_theme or tool.blueprint.theme
+                if not theme:
+                    theme = preset_theme_to_theme_config("modern-minimalist")
+
+                deploy_result = await _deploy(
+                    blueprint=tool.blueprint,
+                    theme=theme,
+                    credentials=creds,
+                )
+                await _registry.update_tool(
+                    result.tool_id,
+                    status=ToolStatus.ACTIVE,
+                    sheet_id=deploy_result["sheet_id"],
+                    sheet_url=deploy_result["sheet_url"],
+                    sheet_title=deploy_result["sheet_title"],
+                    active_theme=theme,
+                )
+                result.sheet_url = deploy_result["sheet_url"]
+                deployed += 1
+            except Exception as e:
+                logger.warning("Batch deploy failed for tool %s: %s", result.tool_id, e)
+                errors += 1
+
+    return {"batch_id": batch_id, "deployed": deployed, "errors": errors}
+
+
+# ---------------------------------------------------------------------------
+# Phase 8: Usage Tracking Endpoints [ROBOT]
+# ---------------------------------------------------------------------------
+
+@router.get("/usage")
+async def get_usage():
+    """Get current user's usage stats. [ROBOT]"""
+    monthly = _usage_tracker.get_monthly_usage()
+    all_time = _usage_tracker.get_all_time_usage()
+    tier = _usage_tracker.get_tier()
+    limits = _usage_tracker.get_tier_limits(tier)
+
+    return {
+        "monthly": monthly.model_dump(),
+        "all_time": all_time.model_dump(),
+        "tier": tier,
+        "limits": limits,
+    }
+
+
+@router.get("/usage/history")
+async def get_usage_history(months: int = 6):
+    """Monthly usage history. [ROBOT]"""
+    if months < 1 or months > 24:
+        raise HTTPException(status_code=400, detail="months must be between 1 and 24")
+    history = _usage_tracker.get_usage_history(months=months)
+    return {"history": [m.model_dump() for m in history]}

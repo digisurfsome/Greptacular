@@ -2573,6 +2573,9 @@ export interface TFToolFactoryStats {
   active_tools: number
   total_runs: number
   total_tokens: number
+  total_tools_created?: number
+  total_tools_deployed?: number
+  by_status?: Record<string, number>
 }
 
 export interface TFDeployResult {
@@ -2693,4 +2696,113 @@ export async function createCustomTheme(
     method: 'POST',
     body: JSON.stringify(config),
   })
+}
+
+// ============================================================================
+// Tool Factory Batch API (Phase 7)
+// ============================================================================
+
+export interface TFBatchGenerateRequest {
+  project_ids: string[]
+  default_theme_id?: string | null
+  auto_deploy?: boolean
+}
+
+export interface TFBatchGenerateResponse {
+  batch_id: string
+  total: number
+  status: string
+}
+
+export interface TFBatchToolResult {
+  project_id: string
+  tool_id: string | null
+  tool_name: string
+  status: 'success' | 'error' | 'skipped'
+  error: string | null
+  sheet_url: string | null
+  duration_seconds: number
+}
+
+export interface TFBatchStatus {
+  batch_id: string
+  total: number
+  completed: number
+  failed: number
+  current_tool: string | null
+  status: 'running' | 'completed' | 'cancelled' | 'error'
+  results: TFBatchToolResult[]
+  started_at: string
+  completed_at: string | null
+}
+
+export async function startBatchGeneration(
+  request: TFBatchGenerateRequest
+): Promise<TFBatchGenerateResponse> {
+  return fetchJSON('/tool-factory/batch/generate', {
+    method: 'POST',
+    body: JSON.stringify(request),
+  })
+}
+
+export async function fetchBatchStatus(batchId: string): Promise<TFBatchStatus> {
+  return fetchJSON(`/tool-factory/batch/${encodeURIComponent(batchId)}`)
+}
+
+export async function cancelBatch(batchId: string): Promise<void> {
+  return fetchJSON(`/tool-factory/batch/cancel/${encodeURIComponent(batchId)}`, {
+    method: 'POST',
+  })
+}
+
+export async function deployBatch(batchId: string): Promise<void> {
+  return fetchJSON('/tool-factory/batch/deploy', {
+    method: 'POST',
+    body: JSON.stringify({ batch_id: batchId }),
+  })
+}
+
+// ============================================================================
+// Tool Factory Usage API (Phase 8)
+// ============================================================================
+
+export interface TFMonthlyUsage {
+  month: string
+  tools_generated: number
+  tools_deployed: number
+  chain_executions: number
+  tokens_used: number
+  themes_extracted: number
+}
+
+export interface TFAllTimeUsage {
+  total_tools_generated: number
+  total_tools_deployed: number
+  total_chain_executions: number
+  total_tokens_used: number
+  first_generation_at: string | null
+  last_generation_at: string | null
+}
+
+export interface TFUsageStats {
+  monthly: TFMonthlyUsage
+  all_time: TFAllTimeUsage
+  tier: string
+  limits: {
+    tools_per_month: number
+    themes: string[]
+    batch: boolean
+    api_access: boolean
+  }
+}
+
+export async function fetchToolUsage(): Promise<TFUsageStats> {
+  return fetchJSON('/tool-factory/usage')
+}
+
+export async function fetchToolUsageHistory(
+  months?: number
+): Promise<{ history: TFMonthlyUsage[] }> {
+  const params = months ? `?months=${months}` : ''
+  return fetchJSON(`/tool-factory/usage/history${params}`)
 }

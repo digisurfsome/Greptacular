@@ -4,17 +4,19 @@
  */
 
 import { useState, useMemo } from 'react'
-import { ArrowLeft, ChevronRight, Search, Wrench, Plus } from 'lucide-react'
+import { ArrowLeft, ChevronRight, Search, Wrench, Plus, BarChart3 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ToolCard } from './ToolCard'
 import { ToolDetailView } from './ToolDetailView'
 import { ThemePicker } from './ThemePicker'
+import { AnalyticsDashboard } from './AnalyticsDashboard'
 import { useTools, useToolStats } from '@/hooks/useToolFactory'
 import { useSwapTheme } from '@/hooks/useToolThemes'
 import type { TFToolStatus, TFThemeConfig } from '@/lib/types'
 
 type SortOption = 'created' | 'last_run' | 'name'
+type ViewTab = 'tools' | 'analytics'
 
 const STATUS_FILTERS: { value: TFToolStatus | 'all'; label: string }[] = [
   { value: 'all', label: 'All' },
@@ -30,6 +32,7 @@ export function ToolManagerPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [sortBy, setSortBy] = useState<SortOption>('created')
   const [showThemePicker, setShowThemePicker] = useState(false)
+  const [activeTab, setActiveTab] = useState<ViewTab>('tools')
 
   const { data: tools, isLoading } = useTools(statusFilter === 'all' ? undefined : statusFilter)
   const { data: stats } = useToolStats()
@@ -159,82 +162,115 @@ export function ToolManagerPage() {
                 </p>
               )}
             </div>
-            <Button
-              className="gap-1.5"
-              onClick={() => { window.location.hash = '#/yt-lab' }}
-            >
-              <Plus size={14} />
-              New Tool
-            </Button>
-          </div>
-
-          {/* Filters */}
-          <div className="flex flex-wrap items-center gap-3">
-            {/* Status filter chips */}
-            <div className="flex gap-1">
-              {STATUS_FILTERS.map((f) => (
+            <div className="flex items-center gap-2">
+              <div className="flex border border-border rounded-lg overflow-hidden">
                 <button
-                  key={f.value}
-                  onClick={() => setStatusFilter(f.value)}
-                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                    statusFilter === f.value
+                  onClick={() => setActiveTab('tools')}
+                  className={`px-3 py-1.5 text-xs font-medium flex items-center gap-1.5 transition-colors ${
+                    activeTab === 'tools'
                       ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted text-muted-foreground hover:text-foreground'
+                      : 'bg-card text-muted-foreground hover:text-foreground'
                   }`}
                 >
-                  {f.label}
+                  <Wrench size={12} />
+                  Tools
                 </button>
-              ))}
+                <button
+                  onClick={() => setActiveTab('analytics')}
+                  className={`px-3 py-1.5 text-xs font-medium flex items-center gap-1.5 transition-colors ${
+                    activeTab === 'analytics'
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-card text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <BarChart3 size={12} />
+                  Analytics
+                </button>
+              </div>
+              <Button
+                className="gap-1.5"
+                onClick={() => { window.location.hash = '#/yt-lab' }}
+              >
+                <Plus size={14} />
+                New Tool
+              </Button>
             </div>
-
-            {/* Search */}
-            <div className="relative flex-1 min-w-[200px] max-w-sm">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search tools..."
-                className="pl-9 h-8"
-              />
-            </div>
-
-            {/* Sort */}
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as SortOption)}
-              className="h-8 px-2 rounded-md border border-input bg-background text-sm"
-            >
-              <option value="created">Newest</option>
-              <option value="last_run">Last Run</option>
-              <option value="name">Name</option>
-            </select>
           </div>
 
-          {/* Tool grid */}
-          {isLoading ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="animate-pulse bg-muted rounded-lg h-32" />
-              ))}
-            </div>
-          ) : filteredTools.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-              <Wrench size={32} className="mb-3 opacity-50" />
-              <p className="text-sm font-medium">No tools found</p>
-              <p className="text-xs mt-1">
-                {searchQuery ? 'Try a different search' : 'Generate your first tool from YT Strategy Lab'}
-              </p>
-            </div>
+          {/* Analytics tab */}
+          {activeTab === 'analytics' ? (
+            <AnalyticsDashboard />
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredTools.map((tool) => (
-                <ToolCard
-                  key={tool.tool_id}
-                  tool={tool}
-                  onClick={() => setSelectedToolId(tool.tool_id)}
-                />
-              ))}
-            </div>
+            <>
+              {/* Filters */}
+              <div className="flex flex-wrap items-center gap-3">
+                {/* Status filter chips */}
+                <div className="flex gap-1">
+                  {STATUS_FILTERS.map((f) => (
+                    <button
+                      key={f.value}
+                      onClick={() => setStatusFilter(f.value)}
+                      className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                        statusFilter === f.value
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-muted text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Search */}
+                <div className="relative flex-1 min-w-[200px] max-w-sm">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search tools..."
+                    className="pl-9 h-8"
+                  />
+                </div>
+
+                {/* Sort */}
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as SortOption)}
+                  className="h-8 px-2 rounded-md border border-input bg-background text-sm"
+                >
+                  <option value="created">Newest</option>
+                  <option value="last_run">Last Run</option>
+                  <option value="name">Name</option>
+                </select>
+              </div>
+
+              {/* Tool grid */}
+              {isLoading ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <div key={i} className="animate-pulse bg-muted rounded-lg h-32" />
+                  ))}
+                </div>
+              ) : filteredTools.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+                  <Wrench size={32} className="mb-3 opacity-50" />
+                  <p className="text-sm font-medium">No tools found</p>
+                  <p className="text-xs mt-1">
+                    {searchQuery ? 'Try a different search' : 'Generate your first tool from YT Strategy Lab'}
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {filteredTools.map((tool) => (
+                    <ToolCard
+                      key={tool.tool_id}
+                      tool={tool}
+                      onClick={() => setSelectedToolId(tool.tool_id)}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
       </main>

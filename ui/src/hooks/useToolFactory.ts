@@ -91,3 +91,52 @@ export function useGoogleAuthUrl() {
     enabled: false, // Only fetch on demand
   })
 }
+
+// ============================================================================
+// Batch Generation (Phase 7)
+// ============================================================================
+
+export function useStartBatch() {
+  return useMutation({
+    mutationFn: (request: api.TFBatchGenerateRequest) =>
+      api.startBatchGeneration(request),
+  })
+}
+
+export function useBatchStatus(batchId: string | null) {
+  return useQuery({
+    queryKey: ['tf-batch', batchId],
+    queryFn: () => api.fetchBatchStatus(batchId!),
+    enabled: !!batchId,
+    refetchInterval: (query) => {
+      const status = query.state.data?.status
+      return status === 'running' ? 2000 : false
+    },
+  })
+}
+
+export function useCancelBatch() {
+  return useMutation({
+    mutationFn: (batchId: string) => api.cancelBatch(batchId),
+  })
+}
+
+// ============================================================================
+// Usage Tracking (Phase 8)
+// ============================================================================
+
+export function useToolUsage() {
+  return useQuery({
+    queryKey: ['tf-usage'],
+    queryFn: api.fetchToolUsage,
+    staleTime: 30_000,
+  })
+}
+
+export function useToolUsageHistory(months?: number) {
+  return useQuery({
+    queryKey: ['tf-usage-history', months],
+    queryFn: () => api.fetchToolUsageHistory(months),
+    staleTime: 60_000,
+  })
+}

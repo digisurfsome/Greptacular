@@ -22,6 +22,7 @@ import { Combiner, getMergedText } from '@/components/cli-scripter/Combiner'
 import { GatePopup, NEW_BUILD_PREFIX, EDIT_PATCH_PREFIX, type BuildMode, type PhaseMode } from '@/components/cli-scripter/GatePopup'
 import { BuildLibrary, type BuildConfigFull } from '@/components/cli-scripter/BuildLibrary'
 import { PromptBar } from '@/components/cli-scripter/PromptBar'
+import { BuildDashboard } from '@/components/cli-scripter/BuildDashboard'
 import { parseWaves, sequentialWaves } from '@/lib/waveParser'
 import {
   ArrowLeft,
@@ -652,6 +653,11 @@ export function CliScripterPage() {
   // ---- Build Library ----
   const [libraryOpen, setLibraryOpen] = usePersistedState('cli_scripter_library_open', false)
 
+  // ---- Build Dashboard (refresh interval in ms, default 30s) ----
+  // setBuildRefreshInterval is used by the RefreshIntervalSelector component (Phase 6)
+  const [buildRefreshInterval, setBuildRefreshInterval] = usePersistedState('cli_scripter_refresh_interval', 30000)
+  void setBuildRefreshInterval // Suppress unused warning until Phase 6 adds the selector UI
+
   // ---- Parsed wave structure (derived from phase AI result) ----
   const parsedWaves = useCallback(() => {
     const src = phaseAiResult || phaseAssignments
@@ -1242,6 +1248,14 @@ Output a detailed phase plan with feature assignments, estimated token usage per
           </div>
         </div>
       </header>
+
+      {/* Build Dashboard — shows during active builds */}
+      <div className="max-w-4xl mx-auto px-4 pt-4">
+        <BuildDashboard
+          projectDir={projectDir}
+          refreshInterval={buildRefreshInterval}
+        />
+      </div>
 
       {/* Content */}
       <main className="max-w-4xl mx-auto px-4 py-8 space-y-6">

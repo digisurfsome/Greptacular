@@ -1,20 +1,85 @@
-# PRD: CLI Scripter v2 — Live Build Dashboard, Terminal Integration, Build Storage
+# PRD: CLI Scripter v2 — Full Pipeline Upgrade
 
 > **Status:** Design — ready to build
 > **Prerequisite:** CLI Scripter v1 (current) working and field-tested with 1-2 real builds
-> **Context:** These are the features that didn't fit in the initial CLI Scripter sessions
+> **Context:** Everything needed to make CLI Scripter production-grade for daily use
+
+---
+
+## AGENT BRIEFING — READ THIS FIRST
+
+You are implementing upgrades to the CLI Scripter page in AutoForge. This is an existing React + Python (FastAPI) application with a neobrutalism design system.
+
+### What This Is
+
+The CLI Scripter is a tool that generates bash scripts for building apps using Claude CLI (`claude -p`). It takes a PRD, splits it into phases, assigns agent roles (Architect, Coder, Reviewer, Verifier, Cartographer), and generates executable build scripts. The user runs those scripts to build software autonomously.
+
+### Your Job
+
+This PRD contains 24 implementation phases across 8 systems plus cross-cutting fixes. You will NOT build all 24 in one session. Work through them in the priority order listed in the "Recommended Build Priority" section at the bottom. Each phase is scoped to fit under 50% context window. Build as many as you can, commit after each one, and note where the next agent picks up.
+
+### Key Files
+
+| File | What | Lines |
+|------|------|-------|
+| `ui/src/pages/CliScripterPage.tsx` | Main page — most UI changes go here | ~1,976 |
+| `server/routers/cli_scripter.py` | Backend API — generation, scripts, queue | ~472 |
+| `ui/src/components/` | New components go here (PromptBar, RuleBlock, PhaseCard, ProjectFileBrowser, etc.) |
+| `ui/src/hooks/` | New hooks go here (usePersistedState) |
+| `ui/src/lib/` | Utilities go here (tokenEstimate, waveParser) |
+| `server/routers/__init__.py` | Router imports — update if adding new routers |
+| `server/main.py` | FastAPI app — update if adding new routers |
+
+### How To Work
+
+1. Read the PRD section for the phase you're building
+2. Read the existing source files to understand current code patterns
+3. Implement exactly what the PRD describes — the diagrams, data models, and component specs are precise and intentional
+4. Match existing patterns: neobrutalism design, Tailwind CSS v4, React 19, TanStack Query, Radix UI, orange accent color scheme
+5. After EVERY phase: run `cd ui && npm run build` — must pass with zero TypeScript errors
+6. Commit to main after each phase with a clear message (e.g., "Phase 20: Add localStorage persistence layer")
+7. If you run out of context, commit what you have and leave a note in the commit message about what's next
+
+### What NOT To Do
+
+- Don't restructure the page layout — make surgical additions to what exists
+- Don't change the design system — match existing colors, fonts, spacing
+- Don't add npm dependencies without checking if an existing package covers the need
+- Don't skip the build check after each phase
+- Don't try to build all 24 phases — focus on doing a few phases well rather than rushing through many
+
+### Build Priority (work IN THIS ORDER)
+
+1. **Phase 20-22** — Persistence + Clear buttons + Phase Assignments read-only fix *(most critical — nothing persists right now)*
+2. **Phase 23** — Project directory file browser in two spots
+3. **Phase 16-19** — Build Rules Library & Combiner (the biggest feature)
+4. **Phase 7-9** — Build Storage & Queue (SQLite configs)
+5. **Phase 12-13** — Prompt Visibility (PromptBar component)
+6. **Phase 14** — Card-Based Build Estimate display
+7. **Phase 15** — Parallel Wave building
+8. **Phase 1-6** — Live Dashboard + Terminal Integration
+9. **Phase 10-11** — Boilerplate Prep (only needed for dual builds)
+10. **FIX** — Deterministic script templates (replace LLM with Python string formatting)
+
+Start with #1. When done, move to #2. Keep going until you hit 40% context, then commit and stop.
 
 ---
 
 ## Overview
 
-The CLI Scripter currently generates scripts and lets you copy commands. What's missing is the **live experience** — watching builds run, managing saved builds, and controlling the pipeline from the UI instead of juggling terminal windows.
+The CLI Scripter currently generates scripts and lets you copy commands. What's missing is **persistence** (nothing survives page reload), **rule management** (can't save/reuse/combine rule sets), **live monitoring** (can't watch builds from the UI), and **workflow polish** (prompts hidden, estimates unreadable, no parallel execution).
 
-Three systems, in build order:
+Eight systems + cross-cutting fixes, in priority order:
 
 1. **Live Build Dashboard** — watch builds run from inside the page
 2. **Terminal Integration** — start builds, monitor progress, copy commands
 3. **Build Storage** — save, recall, queue, and reorder build configs
+4. **Boilerplate Prep** — merge web + mobile repos for dual builds
+5. **Prompt Visibility** — surface all 8 hidden prompts with lock/edit/reset
+6. **Card Build Estimate** — replace unusable phase breakdown with pipeline cards
+7. **Parallel Waves** — prompt-driven parallel phase execution
+8. **Build Rules Library & Combiner** — named rule blocks, tags, two-way bound combiner, gate popup
+9. **Cross-cutting: Persistence + Clear Buttons** — localStorage for all inputs, clear buttons everywhere
 
 ---
 
@@ -756,6 +821,395 @@ Running 2+ Claude CLI sessions simultaneously burns through the 5-hour token win
 
 ---
 
+## System 8: Build Rules Library & Combiner (5/10 difficulty)
+
+### The Problem
+
+Build rules are the foundation of every build — they tell the agent HOW to code. But right now:
+1. Rules live in plain textareas with no structure
+2. You can't save or reuse rule sets across builds
+3. You can't mix and match rules from different sources (your own, a mentor's, project-specific)
+4. The split-phase toggle is buried in settings where you can forget about it
+5. There's no way to combine multiple rule sets into the Phase 1 and Phase 2+ rules
+
+### Architecture: Three Layers
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  LAYER 1: Rule Block Library (persistent, reusable)     │
+│  Named blocks you create once, use across many builds   │
+├─────────────────────────────────────────────────────────┤
+│  LAYER 2: Combiner (three output slots)                 │
+│  Checkboxes select which blocks merge into each slot    │
+├─────────────────────────────────────────────────────────┤
+│  LAYER 3: Phase Rules (what the build actually uses)    │
+│  Filled by the Combiner via Send buttons                │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Layer 1: Rule Block Library
+
+A scrollable list of named, persistent text blocks. Each block is a self-contained set of rules (e.g., "Mentor's Code Standards", "Security Protocol", "TypeScript Strict", "Condensed Phase 2 Rules").
+
+**Block layout:**
+
+```
+┌─ "Code Standards" ─────────────────── [Edit] [Clear] ─┐
+│                                              ☑ Main   │
+│  Always use TypeScript strict mode...        ☑ P1     │
+│  No any types. Prefer interfaces...          ☐ P2+    │
+│                                                        │
+│  Tags: [security] [typescript] [core]    ⋮ drag ≡     │
+└────────────────────────────────────────────────────────┘
+```
+
+**Block features:**
+- **Name** (editable) — displayed as the block header
+- **Text content** — the actual rules (editable textarea, default locked)
+- **Three checkboxes on the right rail** — `☐ Main`, `☐ P1`, `☐ P2+` control which combiner slots this block feeds into. These are **two-way bound** with the combiner below (check from either location, both update).
+- **Tags** — filterable metadata separate from the name. Examples: `[security]`, `[testing]`, `[typescript]`, `[mentor]`. Click a tag to filter the library to only blocks with that tag. Click again to show all.
+- **Labels** — visual grouping headers for drag-and-drop ordering. Like folder names ("Core", "Style", "Project-Specific"). Blocks under the same label stay grouped when dragged.
+- **Drag-and-drop** — reorder blocks. The merge order in the combiner follows the library order (top block's text first).
+- **Edit/Lock toggle** — default locked (read-only). Click Edit to unlock the textarea. Click Lock to save. Prevents accidental edits.
+- **Clear button** — empties the text content (with confirmation).
+- **[+ New Block] button** — adds a blank block at the bottom.
+- **Delete block** — removes block entirely (with confirmation).
+
+**Sorting/filtering:**
+- Filter by tag: click any tag to show only blocks with that tag
+- Sort by: drag order (default), name (A-Z), date created
+- When filtered by tag, the filtered view preserves drag order within results
+
+### Layer 2: Combiner
+
+Three output slots that merge checked blocks into ready-to-use rule text.
+
+```
+┌─ Main Combined ─────────────────── [↻ Re-pull] ───────┐
+│ ☑ Code Standards                                       │
+│ ☑ Mentor's Rules        ← two-way bound to blocks ↑   │
+│ ☐ Security Protocol                                    │
+│ ☐ Condensed Rules                                      │
+│                                                        │
+│ Preview: "Always use TypeScript strict mode...         │
+│ No any types... Test every function... No magic..."    │
+│                                          142 tokens    │
+└────────────────────────────────────────────────────────┘
+
+┌─ Phase 1 Combo ─────────────────── [↻ Re-pull] ───────┐
+│ ☑ Code Standards                                       │
+│ ☑ Mentor's Rules        ← two-way bound to blocks ↑   │
+│ ☑ Security Protocol                                    │
+│ ☐ Condensed Rules                                      │
+│                                                        │
+│ Preview: "Always use TypeScript... Test every...       │
+│ Validate all inputs... Sanitize SQL..."                │
+│                                          218 tokens    │
+└────────────────────────────────────────────────────────┘
+
+┌─ Phase 2+ Combo ────────────────── [↻ Re-pull] ───────┐
+│ ☐ Code Standards                                       │
+│ ☑ Mentor's Rules        ← two-way bound to blocks ↑   │
+│ ☐ Security Protocol                                    │
+│ ☑ Condensed Rules                                      │
+│                                                        │
+│ Preview: "Test every function... No magic...           │
+│ Short version: TS strict, test all..."                 │
+│                                           89 tokens    │
+└────────────────────────────────────────────────────────┘
+```
+
+**Combiner features:**
+- **Checklist** — shows all blocks from the library. Checked = included in this combo's merge.
+- **Two-way binding** — checking a block in the combiner checks the corresponding checkbox (Main/P1/P2+) on the block card above. Unchecking from either location unchecks both.
+- **Re-pull button (↻)** — re-merges from all currently checked blocks with their latest text content. Use after editing a block's text above.
+- **Preview** — read-only preview of the merged text (first ~200 chars).
+- **Token count** — shows estimated tokens for the merged content.
+- **Merge order** — follows the library's drag order (top to bottom).
+
+### Layer 3: The "Go" Gate (Single vs Split Phase)
+
+The existing `splitPhaseRules` toggle gets removed from Build Settings and replaced with a **gate popup** on the Generate/Process button.
+
+When the user hits the main action button (Generate All, or the individual Send buttons), a popup appears:
+
+```
+┌──────────────────────────────────────────┐
+│  How are you building this?              │
+│                                          │
+│  ┌──────────────┐  ┌───────────────────┐ │
+│  │ Single Phase │  │   Split Phase     │ │
+│  │              │  │                   │ │
+│  │ Uses: Main   │  │ Uses: P1 Combo    │ │
+│  │ Combined     │  │  + P2+ Combo      │ │
+│  │              │  │                   │ │
+│  │  142 tokens  │  │ 218 + 89 tokens   │ │
+│  └──────────────┘  └───────────────────┘ │
+│                                          │
+│  Last used: Split Phase                  │
+└──────────────────────────────────────────┘
+```
+
+**Gate behavior:**
+- **Cannot be skipped** — you must click one of the two options to proceed.
+- **Shows token counts** — so you know the cost of each choice.
+- **Shows "Last used"** — reminds you what you picked last time.
+- **One click proceeds** — clicking an option immediately triggers the action. No second confirmation needed. The choice IS the confirmation.
+- **Remembers last choice** — persisted in localStorage so "Last used" label is always accurate.
+
+**What happens after the choice:**
+- **Single Phase** → Main Combined text is sent as the rules for all phases
+- **Split Phase** → Phase 1 Combo is sent as Phase 1 rules, Phase 2+ Combo is sent as Phase 2+ rules
+
+### Data Model (Persistence)
+
+Rule blocks persist to `~/.autoforge/cli_scripter_rules.json`:
+
+```json
+{
+  "version": 1,
+  "blocks": [
+    {
+      "id": "uuid-1",
+      "name": "Code Standards",
+      "content": "Always use TypeScript strict mode...",
+      "tags": ["typescript", "core"],
+      "label": "Core",
+      "order": 0,
+      "combiner_main": true,
+      "combiner_p1": true,
+      "combiner_p2plus": false,
+      "created_at": "2026-03-12T10:00:00Z",
+      "updated_at": "2026-03-12T10:00:00Z"
+    },
+    {
+      "id": "uuid-2",
+      "name": "Mentor's Rules",
+      "content": "Test every function...",
+      "tags": ["mentor", "testing"],
+      "label": "Core",
+      "order": 1,
+      "combiner_main": true,
+      "combiner_p1": true,
+      "combiner_p2plus": true,
+      "created_at": "2026-03-12T10:00:00Z",
+      "updated_at": "2026-03-12T10:00:00Z"
+    }
+  ],
+  "last_phase_mode": "split"
+}
+```
+
+**Backend endpoints:**
+
+```
+GET  /api/cli-scripter/rules          — Load all rule blocks
+POST /api/cli-scripter/rules          — Save all rule blocks (full replace)
+GET  /api/cli-scripter/rules/combined — Get merged text for a slot (main|p1|p2plus)
+```
+
+### Implementation Phases
+
+**Phase 16: Rule Block Library component (3/10)**
+- RuleBlock component: name, content, edit/lock, clear, delete
+- Library container: scrollable list, [+ New Block] button
+- Drag-and-drop reorder (use existing patterns from queue management)
+- Tags: add/remove tags per block, click-to-filter
+- Labels: grouping headers, drag respects label groups
+
+**Phase 17: Combiner + two-way binding (3/10)**
+- Three combiner slots: Main Combined, Phase 1 Combo, Phase 2+ Combo
+- Checkbox list in each slot, two-way bound to block checkboxes
+- Re-pull button: re-merge from checked blocks
+- Preview text + token count
+- Merge order follows library drag order
+
+**Phase 18: Gate popup + Send flow (2/10)**
+- Gate popup component: two-button modal (Single Phase / Split Phase)
+- Intercepts Generate All button click
+- Routes combined text to correct Phase Rules fields
+- Persists last choice to localStorage
+- Remove old `splitPhaseRules` toggle from Build Settings
+
+**Phase 19: Backend persistence (2/10)**
+- JSON file at `~/.autoforge/cli_scripter_rules.json`
+- REST endpoints: GET/POST rules, GET combined text
+- Load on page mount, save on every block change (debounced 1 second)
+
+---
+
+## Cross-Cutting Fix: Persistence + Clear Buttons (3/10 difficulty)
+
+### The Problem
+
+Almost NOTHING in CLI Scripter persists between page reloads. Every `useState` variable resets to its default. The user has to re-enter everything — app name, description, features, settings, prompts, AI results — every single time.
+
+### What Currently Persists
+
+| Field | Persisted? | Where |
+|-------|-----------|-------|
+| GitHub PAT | ✅ Yes | localStorage |
+| Everything else | ❌ No | React state only |
+
+### What MUST Persist
+
+All user-entered data should survive page reloads. Two tiers:
+
+**Tier 1: localStorage (immediate, no backend needed)**
+| Field | Key |
+|-------|-----|
+| App name | `cli_scripter_app_name` |
+| App description | `cli_scripter_app_description` |
+| Boilerplate selection | `cli_scripter_boilerplate` |
+| Features list | `cli_scripter_features` |
+| Dependencies | `cli_scripter_dependencies` |
+| Build settings (turns, transition, error handling, git commits, phase count) | `cli_scripter_settings` |
+| Agent role configs (enabled, model, prompt overrides) | `cli_scripter_roles` |
+| Phase assignments | `cli_scripter_phase_assignments` |
+| Include verification toggle | `cli_scripter_include_verification` |
+| Project directory | `cli_scripter_project_dir` |
+| Split phase mode (last used) | `cli_scripter_phase_mode` |
+
+**Tier 2: Backend persistence (for data that should survive browser clears)**
+| Field | Where |
+|-------|-------|
+| Rule blocks + combiner state | `~/.autoforge/cli_scripter_rules.json` (System 8) |
+| Saved build configs | SQLite `build_configs` table (System 3) |
+| Build queue | SQLite `build_queue` table (System 3) |
+
+**Tier 3: Session-only (intentionally NOT persisted)**
+| Field | Why |
+|-------|-----|
+| AI generation results (PRD, phases, scripts) | These are outputs, not inputs. User regenerates them. |
+| Loading/error states | Transient UI state |
+| GitHub validation state | Re-validates on token change |
+
+### Clear Buttons
+
+Every persistent text input gets a clear button (small `✕` icon on the right edge of the field):
+- **Single-click** clears the field
+- **No confirmation** for small fields (app name, description)
+- **Confirmation dialog** for large fields (rules, features, phase assignments, AI results)
+- Clear buttons are subtle (zinc-500, hover to orange) — visible but not distracting
+
+### Implementation
+
+**Phase 20: localStorage persistence layer (2/10)**
+- Custom `usePersistedState` hook:
+  ```typescript
+  function usePersistedState<T>(key: string, defaultValue: T): [T, (v: T) => void]
+  ```
+- Replace all `useState` calls for Tier 1 fields with `usePersistedState`
+- Debounced saves (500ms) to avoid thrashing on every keystroke
+- Load from localStorage on mount, fall back to defaults if missing
+
+**Phase 21: Clear buttons (1/10)**
+- ClearButton component: small ✕ icon, positioned at right edge of input/textarea
+- Add to all text inputs and textareas
+- Confirmation dialog for fields with >100 characters of content
+- Clear also clears the persisted localStorage value
+
+---
+
+## Cross-Cutting Fix: Phase Assignments → Read-Only Output (1/10 difficulty)
+
+### The Problem
+
+The Phase Assignments section is currently an editable textarea, which implies the user should fill it in manually. That's wrong — the LLM decides phase assignments during the phase split step. The user shouldn't be deciding "Phase 1: auth, Phase 2: API" by hand. The whole point of the AI split is that the AI figures this out.
+
+### Current State
+
+```typescript
+const [phaseAssignments, setPhaseAssignments] = useState('')
+// Rendered as an editable <textarea>
+```
+
+### Fix
+
+1. **Make it read-only** — change from `<textarea>` to a styled read-only display block (pre-formatted text with a subtle border). No cursor, no editing.
+2. **Populate automatically** — after the "Split into Phases" step completes, parse the AI output and fill the Phase Assignments display with the result.
+3. **Add a "Regenerate" button** — if the user doesn't like what the AI decided, they click "Regenerate" to re-run the phase split. They don't hand-edit.
+4. **Show empty state** — before phase split runs: "Phase assignments will appear here after generating the phase split."
+5. **Remove from localStorage persistence** — this is an AI output, not user input. Don't persist it (it gets regenerated).
+
+### Implementation
+
+**Phase 22: Phase Assignments read-only conversion (1/10)**
+- Change textarea to read-only styled div with `whitespace-pre-wrap`
+- Auto-populate from phase split AI result
+- Add "↻ Regenerate Split" button
+- Empty state message when no split has been generated
+
+---
+
+## Cross-Cutting Fix: Project Directory File Browser (3/10 difficulty)
+
+### The Problem
+
+The user picks a project directory but has no way to see what's already in it. They can't check what files exist, what's been built before, or whether they're pointing at the right folder. The directory path is just a text input — a blind field.
+
+### Solution: Mini File Browser in Two Spots
+
+Add a compact, collapsible file browser that shows the contents of the selected project directory. **Same component, same data, shown in two places:**
+
+1. **Top of page** — in the Project Basics section, below the directory input
+2. **Bottom of page** — in the Generate section, above the Generate All button
+
+Both instances are synced — they show the same directory, same view. This way the user can see their project files from either end of the page without scrolling.
+
+### File Browser Design
+
+```
+┌─ Project Files ──────────────────── [↻ Refresh] [▼] ─┐
+│                                                        │
+│  📁 src/                                               │
+│  📁 scripts/cli-scripter/          ← previous builds   │
+│  📄 package.json                   2 hours ago          │
+│  📄 CLAUDE.md                      3 hours ago          │
+│  📄 tsconfig.json                  1 day ago            │
+│                                                        │
+│  Recent commits:                                        │
+│  • "Phase 2: API endpoints" — 2 hours ago              │
+│  • "Phase 1: Auth + DB setup" — 5 hours ago            │
+│  • "Initial boilerplate" — 1 day ago                   │
+└────────────────────────────────────────────────────────┘
+```
+
+**Features:**
+- **Collapsible** — default collapsed (just a slim "Project Files ▶" bar). Click to expand. Stays open once expanded until manually collapsed.
+- **Top-level only** — shows files and folders at the root of the project directory. Not a full tree — just enough to see what's there.
+- **Recent timestamps** — show relative time ("2 hours ago") for the most recently modified files.
+- **Recent commits** — if it's a git repo, show the last 3 commit messages with timestamps. Quick way to see what's been built.
+- **Refresh button** — re-reads the directory (doesn't auto-poll, to avoid performance issues).
+- **Highlight build artifacts** — if a `scripts/cli-scripter/` folder exists (from previous builds), highlight it in orange so the user knows there are existing scripts.
+- **Error state** — if the directory doesn't exist or is empty, show "Directory not found" or "Empty directory" with appropriate styling.
+
+### Backend
+
+Reuse the existing filesystem browser API (`server/routers/filesystem.py`) — it already handles directory listing with security controls. Just need a lightweight endpoint or reuse the existing one:
+
+```
+GET /api/filesystem/list?path={project_dir}&depth=1
+```
+
+For git info:
+```
+GET /api/cli-scripter/project-info?path={project_dir}
+```
+Returns: `{ files: [...], recent_commits: [...], has_previous_builds: boolean }`
+
+### Implementation
+
+**Phase 23: Project directory file browser (3/10)**
+- ProjectFileBrowser component: collapsible, top-level file list, recent commits
+- Mount in Project Basics section (below directory input)
+- Mount in Generate section (above Generate All button)
+- Both instances share the same data (React Query cache keyed on project path)
+- Backend: reuse filesystem.py + add git log endpoint
+- Refresh button, error states, highlight previous builds
+
+---
+
 ## Build Order (all systems)
 
 | Phase | System | What | Difficulty | Tokens Saved |
@@ -775,6 +1229,28 @@ Running 2+ Claude CLI sessions simultaneously burns through the 5-hour token win
 | 13 | System 5 | Prompt persistence in Build Storage | 1/10 | — |
 | 14 | System 6 | Pipeline card component (Build Estimate) | 2/10 | — |
 | 15 | System 7 | Parallel wave parsing + CLI script generation | 3/10 | — |
+| 16 | System 8 | Rule Block Library component | 3/10 | — |
+| 17 | System 8 | Combiner + two-way binding | 3/10 | — |
+| 18 | System 8 | Gate popup + Send flow | 2/10 | — |
+| 19 | System 8 | Backend rule persistence | 2/10 | — |
+| 20 | Fix | localStorage persistence layer | 2/10 | — |
+| 21 | Fix | Clear buttons on all inputs | 1/10 | — |
+| 22 | Fix | Phase Assignments → read-only output | 1/10 | — |
+| 23 | Fix | Project directory file browser (×2 spots) | 3/10 | — |
 | FIX | — | Deterministic script templates | 2/10 | ~5K/build |
 
-Each phase is under 50% context window. Total: ~16 sessions across 2-3 weeks.
+Each phase is under 50% context window. Total: ~24 phases across 3-4 weeks.
+
+### Recommended Build Priority
+
+Build persistence, UX fixes, and the rules library FIRST — these are the most painful gaps for daily use:
+
+1. **Phase 20-22 (Persistence + Clear buttons + Phase Assignments fix)** — do this immediately, affects everything
+2. **Phase 23 (File browser)** — know what you're building into before you start
+3. **Phase 16-19 (System 8: Rules Library)** — the core workflow improvement
+4. **Phase 7-9 (System 3: Build Storage)** — save/load/queue configs
+5. **Phase 12-13 (System 5: Prompt Visibility)** — surface hidden prompts
+6. **Phase 14 (System 6: Card Build Estimate)** — fix the unusable display
+7. **Phase 15 (System 7: Parallel Waves)** — optional optimization
+8. **Phase 1-6 (Systems 1-2: Live Dashboard + Terminal)** — nice to have, not blocking
+9. **Phase 10-11 (System 4: Boilerplate)** — only needed for dual builds

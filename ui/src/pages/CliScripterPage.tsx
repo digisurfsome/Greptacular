@@ -1172,6 +1172,12 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
         projectDir,
         buildMode,
         phaseMode,
+        // Prompt overrides — null means use auto-generated default
+        prompts: {
+          prd: prdPrompt || null,
+          phase_split: phasePrompt || null,
+          build_scripts: buildPrompt || null,
+        },
       },
       project_dir: projectDir || undefined,
       phase_count: phaseCount === 'Auto' ? undefined : parseInt(phaseCount) || undefined,
@@ -1200,6 +1206,13 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
     if (typeof c.projectDir === 'string') setProjectDir(c.projectDir)
     if (typeof c.buildMode === 'string') setBuildMode(c.buildMode as BuildMode)
     if (typeof c.phaseMode === 'string') setPhaseMode(c.phaseMode as PhaseMode)
+    // Restore prompt overrides if saved
+    const prompts = c.prompts as Record<string, string | null> | undefined
+    if (prompts) {
+      if (typeof prompts.prd === 'string') setPrdPrompt(prompts.prd)
+      if (typeof prompts.phase_split === 'string') setPhasePrompt(prompts.phase_split)
+      if (typeof prompts.build_scripts === 'string') setBuildPrompt(prompts.build_scripts)
+    }
   }
 
   return (

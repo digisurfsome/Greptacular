@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react'
-import { Loader2, CheckCircle2, Circle, AlertCircle, Clock } from 'lucide-react'
+import { Loader2, CheckCircle2, AlertCircle, Clock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { generateBlueprintStream, type GenerateBlueprintParams } from '@/lib/api'
 import type { TFSheetBlueprint } from '@/lib/types'

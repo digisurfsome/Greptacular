@@ -153,6 +153,63 @@ Every build MUST log:
 
 This data feeds the rate limit dashboard and helps optimize preset selection over time.
 
+### How To Get Token Data from `claude -p`
+
+**The Anthropic dashboard does NOT show subscription usage — only API key usage.**
+
+To track tokens on the Max subscription, use `--output-format json`:
+
+```bash
+unset ANTHROPIC_API_KEY 2>/dev/null || true
+claude -p --output-format json --model sonnet --dangerously-skip-permissions "your prompt" > output.json
+```
+
+The JSON response includes:
+
+```json
+{
+  "type": "result",
+  "duration_ms": 4545,
+  "num_turns": 1,
+  "total_cost_usd": 0.2183,
+  "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 34902,
+    "cache_read_input_tokens": 0,
+    "output_tokens": 8
+  },
+  "modelUsage": {
+    "claude-sonnet-4-6": {
+      "inputTokens": 2,
+      "outputTokens": 8,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 34902,
+      "costUSD": 0.2183
+    }
+  },
+  "result": "the agent's text output"
+}
+```
+
+Parse with Python:
+
+```python
+import json
+d = json.load(open("output.json"))
+u = d["usage"]
+total_input = u["input_tokens"] + u["cache_creation_input_tokens"] + u["cache_read_input_tokens"]
+total_output = u["output_tokens"]
+cost_equiv = d["total_cost_usd"]  # What it WOULD cost on API (useful for comparison)
+```
+
+**Note:** `total_cost_usd` shows the API-equivalent cost, not actual cost. On Max subscription, this is $0 — but the number tells you how expensive the session was in token terms.
+
+### Build Scripts Already Instrumented
+
+Both build scripts use `--output-format json` and parse token data automatically:
+- `scripts/test-build-quick.sh` — Shows tokens per phase + grand total
+- `scripts/run-cli-scripter-build.sh` — Shows tokens per agent + grand total + heartbeat during long runs
+
 ---
 
 ## For PRD Makers

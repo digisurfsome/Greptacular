@@ -1,46 +1,41 @@
 #!/usr/bin/env bash
 # =============================================================================
-# CLI Scripter v2 Build Pipeline — Runs 4 agents sequentially via Claude CLI
+# API Research Engine Build — 2 agents (backend + frontend)
 # =============================================================================
 #
 # Usage (from Git Bash on Windows):
 #   cd "C:/Users/lober/GitHub/Greptacular - AutoForge Build/Greptacular"
-#   bash scripts/run-cli-scripter-build.sh
+#   bash scripts/run-api-research-build.sh
 #
 # Or to run a single agent:
-#   bash scripts/run-cli-scripter-build.sh --agent 1
-#   bash scripts/run-cli-scripter-build.sh --agent 4
+#   bash scripts/run-api-research-build.sh --agent 1   # Backend only
+#   bash scripts/run-api-research-build.sh --agent 2   # Frontend only
 #
 # Options:
-#   --agent N       Run only agent N (1-4)
-#   --start-from N  Start from agent N and run all remaining
+#   --agent N       Run only agent N (1-2)
 #   --dry-run       Print commands without executing
-#   --model MODEL   Override model (default: sonnet, agent 4 always uses opus)
+#   --model MODEL   Override model (default: sonnet)
 #
-# No interaction required — runs all agents straight through.
 # =============================================================================
 
 set -euo pipefail
 
 # ─── Auth Fix ────────────────────────────────────────────────────────────────
-# Unset API key so Claude CLI uses the Max subscription instead of API credits
 unset ANTHROPIC_API_KEY 2>/dev/null || true
 
 # ─── Config ──────────────────────────────────────────────────────────────────
 PROJECT_DIR="C:/Users/lober/GitHub/Greptacular - AutoForge Build/Greptacular"
 BRIEFS_DIR="${PROJECT_DIR}/docs/agent-briefs"
-PRD_FILE="${PROJECT_DIR}/docs/prd-cli-scripter-v2.md"
+PRD_FILE="${PROJECT_DIR}/docs/prd-api-research-engine.md"
 LOG_DIR="${PROJECT_DIR}/.claude/build-logs"
 MODEL="sonnet"
 DRY_RUN=false
 SINGLE_AGENT=0
-START_FROM=1
 
 # ─── Parse Args ──────────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
     case $1 in
         --agent)    SINGLE_AGENT=$2; shift 2 ;;
-        --start-from) START_FROM=$2; shift 2 ;;
         --dry-run)  DRY_RUN=true; shift ;;
         --model)    MODEL=$2; shift 2 ;;
         *)          echo "Unknown option: $1"; exit 1 ;;
@@ -69,24 +64,17 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 # ─── Agent Runner ────────────────────────────────────────────────────────────
 run_agent() {
     local AGENT_NUM=$1
-    local BRIEF_FILE="${BRIEFS_DIR}/cli-scripter-agent-${AGENT_NUM}.md"
-    local JSON_FILE="${LOG_DIR}/cli-scripter-agent-${AGENT_NUM}_${TIMESTAMP}.json"
+    local BRIEF_FILE="${BRIEFS_DIR}/api-research-agent-${AGENT_NUM}.md"
+    local JSON_FILE="${LOG_DIR}/api-research-agent-${AGENT_NUM}_${TIMESTAMP}.json"
     local AGENT_MODEL="$MODEL"
     local AGENT_DESC=""
 
-    # Agent 4 (verification) always uses opus
-    if [ "$AGENT_NUM" -eq 4 ]; then
-        AGENT_MODEL="opus"
-    fi
-
     case $AGENT_NUM in
-        1) AGENT_DESC="Package 1: Foundation & UX Fixes (8 phases)" ;;
-        2) AGENT_DESC="Package 2: Storage, Prompts & Display (8 phases)" ;;
-        3) AGENT_DESC="Package 3: Dashboard, Terminal, Sketches (10 phases)" ;;
-        4) AGENT_DESC="Package 4: Post-Build Verification & Testing" ;;
+        1) AGENT_DESC="Phase 1: Backend — api_research.py + pipeline integration" ;;
+        2) AGENT_DESC="Phase 2: Frontend — TypeScript types + BlueprintPreview UI" ;;
     esac
 
-    local TOTAL_AGENTS=4
+    local TOTAL_AGENTS=2
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     log_info "AGENT ${AGENT_NUM} of ${TOTAL_AGENTS}: ${AGENT_DESC}"
@@ -100,27 +88,28 @@ run_agent() {
     local BRIEF_CONTENT
     BRIEF_CONTENT=$(cat "$BRIEF_FILE")
 
-    local PROMPT="You are implementing the CLI Scripter v2 upgrade for AutoForge.
+    local PROMPT="You are building the API Research Engine for AutoForge's Tool Factory.
 
 PROJECT DIRECTORY: ${PROJECT_DIR}
 
-FULL PRD: Read docs/prd-cli-scripter-v2.md for complete specs, diagrams, and data models.
+FULL PRD: Read docs/prd-api-research-engine.md for complete specs, data models, and UI wireframes.
 
 YOUR BRIEF (implement everything in this document):
 ${BRIEF_CONTENT}
 
 INSTRUCTIONS:
-1. Read the full PRD first: docs/prd-cli-scripter-v2.md
+1. Read the full PRD first: docs/prd-api-research-engine.md
 2. Read the existing source files to understand current patterns
-3. Build every phase in your brief, in order
-4. After EVERY phase: run 'cd ui && npm run build' — zero TypeScript errors
+3. Build every task in your brief, in order
+4. After completing: run 'cd ui && npm run build' — zero TypeScript errors
 5. Run 'cd ui && npm run lint' to check for lint issues
-6. Commit after each phase with a clear message
+6. Commit with a clear message describing what was built
 7. Stage only files you created or modified — do NOT use 'git add -A'
 8. Do NOT push to remote — just commit locally
 9. Stay under 50% context window (100k tokens). If running low, commit what you have.
 
-CRITICAL: Match existing patterns — neobrutalism design, Tailwind CSS v4, React 19, TanStack Query, Radix UI, orange accent."
+CRITICAL: Match existing patterns — neobrutalism design, Tailwind CSS v4, React 19, TanStack Query, Radix UI, orange accent.
+CRITICAL: Use force_subscription=True for ALL Claude API calls. See docs/SUBSCRIPTION_AND_WEBSOCKET_GUIDE.md."
 
     if [ "$DRY_RUN" = true ]; then
         log_warn "DRY RUN — would execute:"
@@ -186,7 +175,7 @@ except Exception as e:
         local NUM_TURNS=$(echo "$PARSE_OUTPUT" | cut -d'|' -f4)
         local API_DURATION=$(echo "$PARSE_OUTPUT" | cut -d'|' -f5)
 
-        # Show abbreviated result (first 500 chars)
+        # Show abbreviated result (last 500 chars — most relevant)
         echo ""
         $PYTHON -c "
 import json, sys
@@ -194,7 +183,6 @@ try:
     with open(sys.argv[1]) as f:
         d = json.load(f)
     r = d.get('result', 'No result')
-    # Show last 500 chars (most relevant part — the summary)
     if len(r) > 500:
         print('...' + r[-500:])
     else:
@@ -206,7 +194,7 @@ except:
         echo ""
         log_info "📊 Tokens: ${TOTAL_IN} in / ${OUT_TOKENS} out | Turns: ${NUM_TURNS} | API time: ${API_DURATION}s | Cost equiv: \$${COST_USD}"
         log_ok "Agent ${AGENT_NUM} of ${TOTAL_AGENTS} completed in ${MINUTES}m ${SECONDS}s"
-        echo "${AGENT_NUM}: SUCCESS (${MINUTES}m ${SECONDS}s) [model: ${AGENT_MODEL}] [tokens: ${TOTAL_IN} in / ${OUT_TOKENS} out | turns: ${NUM_TURNS} | \$${COST_USD}]" >> "${LOG_DIR}/cli-scripter-summary_${TIMESTAMP}.txt"
+        echo "${AGENT_NUM}: SUCCESS (${MINUTES}m ${SECONDS}s) [model: ${AGENT_MODEL}] [tokens: ${TOTAL_IN} in / ${OUT_TOKENS} out | turns: ${NUM_TURNS} | \$${COST_USD}]" >> "${LOG_DIR}/api-research-summary_${TIMESTAMP}.txt"
 
         # Accumulate totals
         TOTAL_INPUT_TOKENS=$(( TOTAL_INPUT_TOKENS + TOTAL_IN ))
@@ -224,7 +212,7 @@ except:
         local DURATION=$(( END_TIME - START_TIME ))
 
         log_error "Agent ${AGENT_NUM} of ${TOTAL_AGENTS} failed with exit code ${EXIT_CODE} after ${DURATION}s"
-        echo "${AGENT_NUM}: FAILED (exit code ${EXIT_CODE}) [model: ${AGENT_MODEL}]" >> "${LOG_DIR}/cli-scripter-summary_${TIMESTAMP}.txt"
+        echo "${AGENT_NUM}: FAILED (exit code ${EXIT_CODE}) [model: ${AGENT_MODEL}]" >> "${LOG_DIR}/api-research-summary_${TIMESTAMP}.txt"
         return $EXIT_CODE
     fi
 }
@@ -233,12 +221,13 @@ except:
 
 echo ""
 echo "╔══════════════════════════════════════════════════════════════════════════╗"
-echo "║       CLI SCRIPTER v2 BUILD PIPELINE — 4 AGENTS                        ║"
-echo "║       3 build packages + 1 verification package                        ║"
+echo "║       API RESEARCH ENGINE BUILD — 2 AGENTS                             ║"
+echo "║       Phase 1: Backend  |  Phase 2: Frontend                           ║"
 echo "╚══════════════════════════════════════════════════════════════════════════╝"
 echo ""
 log_info "Project: ${PROJECT_DIR}"
-log_info "Model: ${MODEL} (agent 4 uses opus)"
+log_info "PRD: ${PRD_FILE}"
+log_info "Model: ${MODEL}"
 log_info "Logs: ${LOG_DIR}"
 log_info "Timestamp: ${TIMESTAMP}"
 
@@ -247,10 +236,10 @@ if [ "$DRY_RUN" = true ]; then
 fi
 
 # Record start
-echo "=== BUILD STATUS ===" > "${LOG_DIR}/cli-scripter-summary_${TIMESTAMP}.txt"
-echo "Build started: $(date)" >> "${LOG_DIR}/cli-scripter-summary_${TIMESTAMP}.txt"
-echo "Model: ${MODEL}" >> "${LOG_DIR}/cli-scripter-summary_${TIMESTAMP}.txt"
-echo "---" >> "${LOG_DIR}/cli-scripter-summary_${TIMESTAMP}.txt"
+echo "=== API RESEARCH ENGINE BUILD ===" > "${LOG_DIR}/api-research-summary_${TIMESTAMP}.txt"
+echo "Build started: $(date)" >> "${LOG_DIR}/api-research-summary_${TIMESTAMP}.txt"
+echo "Model: ${MODEL}" >> "${LOG_DIR}/api-research-summary_${TIMESTAMP}.txt"
+echo "---" >> "${LOG_DIR}/api-research-summary_${TIMESTAMP}.txt"
 
 PIPELINE_START=$(date +%s)
 
@@ -261,12 +250,8 @@ if [ "$SINGLE_AGENT" -gt 0 ]; then
     exit $?
 fi
 
-# ─── Sequential Pipeline (no pauses — runs all the way through) ─────────────
-for AGENT_NUM in 1 2 3 4; do
-    if [ "$AGENT_NUM" -lt "$START_FROM" ]; then
-        continue
-    fi
-
+# ─── Sequential Pipeline ─────────────────────────────────────────────────────
+for AGENT_NUM in 1 2; do
     run_agent "$AGENT_NUM"
     if [ $? -ne 0 ]; then
         log_error "Agent ${AGENT_NUM} failed. Stopping pipeline."
@@ -280,15 +265,15 @@ TOTAL_DURATION=$(( PIPELINE_END - PIPELINE_START ))
 TOTAL_MINUTES=$(( TOTAL_DURATION / 60 ))
 TOTAL_SECONDS=$(( TOTAL_DURATION % 60 ))
 
-echo "" >> "${LOG_DIR}/cli-scripter-summary_${TIMESTAMP}.txt"
-echo "---" >> "${LOG_DIR}/cli-scripter-summary_${TIMESTAMP}.txt"
-echo "Total time: ${TOTAL_MINUTES}m ${TOTAL_SECONDS}s" >> "${LOG_DIR}/cli-scripter-summary_${TIMESTAMP}.txt"
-echo "TOKEN TOTALS: ${TOTAL_INPUT_TOKENS} input / ${TOTAL_OUTPUT_TOKENS} output" >> "${LOG_DIR}/cli-scripter-summary_${TIMESTAMP}.txt"
-echo "Build completed: $(date)" >> "${LOG_DIR}/cli-scripter-summary_${TIMESTAMP}.txt"
+echo "" >> "${LOG_DIR}/api-research-summary_${TIMESTAMP}.txt"
+echo "---" >> "${LOG_DIR}/api-research-summary_${TIMESTAMP}.txt"
+echo "Total time: ${TOTAL_MINUTES}m ${TOTAL_SECONDS}s" >> "${LOG_DIR}/api-research-summary_${TIMESTAMP}.txt"
+echo "TOKEN TOTALS: ${TOTAL_INPUT_TOKENS} input / ${TOTAL_OUTPUT_TOKENS} output" >> "${LOG_DIR}/api-research-summary_${TIMESTAMP}.txt"
+echo "Build completed: $(date)" >> "${LOG_DIR}/api-research-summary_${TIMESTAMP}.txt"
 
 echo ""
 echo "╔══════════════════════════════════════════════════════════════════════════╗"
-echo "║              ✅  ALL 4 AGENTS FINISHED — BUILD COMPLETE  ✅            ║"
+echo "║        ✅  BOTH AGENTS FINISHED — API RESEARCH BUILD COMPLETE  ✅      ║"
 echo "╚══════════════════════════════════════════════════════════════════════════╝"
 echo ""
 log_ok "Total time: ${TOTAL_MINUTES}m ${TOTAL_SECONDS}s"
@@ -298,21 +283,13 @@ echo -e "  Total input tokens:  ${GREEN}${TOTAL_INPUT_TOKENS}${NC}"
 echo -e "  Total output tokens: ${GREEN}${TOTAL_OUTPUT_TOKENS}${NC}"
 echo ""
 echo "=== AGENT SUMMARY ==="
-cat "${LOG_DIR}/cli-scripter-summary_${TIMESTAMP}.txt"
+cat "${LOG_DIR}/api-research-summary_${TIMESTAMP}.txt"
 echo ""
-log_info "Full logs: ${LOG_DIR}/cli-scripter-agent-*_${TIMESTAMP}.json"
+log_info "Full logs: ${LOG_DIR}/api-research-agent-*_${TIMESTAMP}.json"
 echo ""
 
-# Show latest files and git log
-echo "=== LATEST FILES ==="
-ls -lt "${PROJECT_DIR}/ui/src/pages/" | head -5
-ls -lt "${PROJECT_DIR}/ui/src/components/" 2>/dev/null | head -10
-echo ""
+# Show git log
 echo "=== GIT LOG ==="
 cd "$PROJECT_DIR"
-git log --oneline -15
-echo ""
-echo "╔══════════════════════════════════════════════════════════════════════════╗"
-echo "║  Next: Deploy chain — npm build, git push, pull to live, restart       ║"
-echo "╚══════════════════════════════════════════════════════════════════════════╝"
+git log --oneline -10
 echo ""

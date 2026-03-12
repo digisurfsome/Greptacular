@@ -20,6 +20,9 @@ PROJECT_DIR="C:/Users/lober/GitHub/Greptacular - AutoForge Build/Greptacular"
 TEST_DIR="${PROJECT_DIR}/.claude/test-build"
 LOG_DIR="${PROJECT_DIR}/.claude/build-logs"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+TOTAL_INPUT_TOKENS=0
+TOTAL_OUTPUT_TOKENS=0
+PYTHON=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || echo "python")
 
 # Colors
 RED='\033[0;31m'
@@ -53,29 +56,71 @@ run_phase() {
     local PHASE_NUM=$1
     local PHASE_DESC=$2
     local PROMPT=$3
-    local LOG_FILE="${LOG_DIR}/test-build-phase-${PHASE_NUM}_${TIMESTAMP}.log"
+    local JSON_FILE="${LOG_DIR}/test-build-phase-${PHASE_NUM}_${TIMESTAMP}.json"
 
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     log_info "PHASE ${PHASE_NUM} of ${TOTAL_PHASES}: ${PHASE_DESC}"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    log_info "Starting... (log: ${LOG_FILE})"
+    log_info "Starting... (output: ${JSON_FILE})"
 
     local START_TIME=$(date +%s)
 
     cd "$TEST_DIR"
     if echo "$PROMPT" | claude -p \
         --model sonnet \
+        --output-format json \
         --dangerously-skip-permissions \
-        2>&1 | tee "$LOG_FILE"; then
+        > "$JSON_FILE" 2>&1; then
 
         local END_TIME=$(date +%s)
         local DURATION=$(( END_TIME - START_TIME ))
         local MINUTES=$(( DURATION / 60 ))
         local SECONDS=$(( DURATION % 60 ))
 
+        # Parse token data from JSON output
+        local PARSE_OUTPUT
+        PARSE_OUTPUT=$($PYTHON -c "
+import json, sys
+try:
+    with open(sys.argv[1]) as f:
+        d = json.load(f)
+    u = d.get('usage', {})
+    inp = u.get('input_tokens', 0)
+    cache_create = u.get('cache_creation_input_tokens', 0)
+    cache_read = u.get('cache_read_input_tokens', 0)
+    out = u.get('output_tokens', 0)
+    cost = d.get('total_cost_usd', 0)
+    total_in = inp + cache_create + cache_read
+    print(f'{total_in}|{out}|{cost:.4f}')
+except Exception as e:
+    print('0|0|0.0000')
+" "$JSON_FILE" 2>/dev/null) || PARSE_OUTPUT="0|0|0.0000"
+
+        local TOTAL_IN=$(echo "$PARSE_OUTPUT" | cut -d'|' -f1)
+        local OUT_TOKENS=$(echo "$PARSE_OUTPUT" | cut -d'|' -f2)
+        local COST_USD=$(echo "$PARSE_OUTPUT" | cut -d'|' -f3)
+
+        # Display result text from JSON
+        $PYTHON -c "
+import json, sys
+try:
+    with open(sys.argv[1]) as f:
+        d = json.load(f)
+    print(d.get('result', 'No result text'))
+except:
+    print('Could not parse result')
+" "$JSON_FILE" 2>/dev/null
+
+        echo ""
+        log_info "📊 Tokens: ${TOTAL_IN} in / ${OUT_TOKENS} out | API cost equiv: \$${COST_USD}"
         log_ok "Phase ${PHASE_NUM} of ${TOTAL_PHASES} completed in ${MINUTES}m ${SECONDS}s"
-        echo "${PHASE_NUM}: SUCCESS (${MINUTES}m ${SECONDS}s) [model: sonnet]" >> "${LOG_DIR}/test-build-summary_${TIMESTAMP}.txt"
+        echo "${PHASE_NUM}: SUCCESS (${MINUTES}m ${SECONDS}s) [model: sonnet] [tokens: ${TOTAL_IN} in / ${OUT_TOKENS} out | \$${COST_USD}]" >> "${LOG_DIR}/test-build-summary_${TIMESTAMP}.txt"
+
+        # Accumulate totals (bash integer math)
+        TOTAL_INPUT_TOKENS=$(( TOTAL_INPUT_TOKENS + TOTAL_IN ))
+        TOTAL_OUTPUT_TOKENS=$(( TOTAL_OUTPUT_TOKENS + OUT_TOKENS ))
+
         return 0
     else
         local EXIT_CODE=$?
@@ -129,6 +174,7 @@ TOTAL_SECONDS=$(( TOTAL_DURATION % 60 ))
 echo "" >> "${LOG_DIR}/test-build-summary_${TIMESTAMP}.txt"
 echo "---" >> "${LOG_DIR}/test-build-summary_${TIMESTAMP}.txt"
 echo "Total time: ${TOTAL_MINUTES}m ${TOTAL_SECONDS}s" >> "${LOG_DIR}/test-build-summary_${TIMESTAMP}.txt"
+echo "TOKEN TOTALS: ${TOTAL_INPUT_TOKENS} input / ${TOTAL_OUTPUT_TOKENS} output" >> "${LOG_DIR}/test-build-summary_${TIMESTAMP}.txt"
 echo "Completed: $(date)" >> "${LOG_DIR}/test-build-summary_${TIMESTAMP}.txt"
 
 echo ""
@@ -138,11 +184,15 @@ echo "╚═══════════════════════�
 echo ""
 log_ok "Total time: ${TOTAL_MINUTES}m ${TOTAL_SECONDS}s"
 echo ""
+echo "=== TOKEN USAGE ==="
+echo -e "  Total input tokens:  ${GREEN}${TOTAL_INPUT_TOKENS}${NC}"
+echo -e "  Total output tokens: ${GREEN}${TOTAL_OUTPUT_TOKENS}${NC}"
+echo ""
 echo "=== PHASE SUMMARY ==="
 cat "${LOG_DIR}/test-build-summary_${TIMESTAMP}.txt"
 echo ""
 echo "=== FILES CREATED ==="
 ls -la "${TEST_DIR}/"
 echo ""
-log_info "Full logs: ${LOG_DIR}/test-build-phase-*_${TIMESTAMP}.log"
+log_info "Full logs: ${LOG_DIR}/test-build-phase-*_${TIMESTAMP}.json"
 echo ""

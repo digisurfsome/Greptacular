@@ -160,6 +160,16 @@ unset ANTHROPIC_API_KEY 2>/dev/null || true
 
 This ensures `claude -p` uses the subscription login, not the API key.
 
+### Token Tracking with `--output-format json`
+
+**The Anthropic dashboard does NOT show subscription token usage.** To track how many tokens each build burns, always use:
+
+```bash
+claude -p --output-format json --model sonnet --dangerously-skip-permissions "prompt" > output.json
+```
+
+The JSON includes `usage.input_tokens`, `usage.output_tokens`, `usage.cache_creation_input_tokens`, `total_cost_usd` (API-equivalent cost), and `num_turns`. See `docs/SONNET_OPUS_OPTIMIZATION.md` for full field reference and parsing examples.
+
 ### How Auth Flows Through WebSocket
 
 ```
@@ -306,5 +316,6 @@ Before you write ANY code that:
 - Calls an AI model → Check subscription vs API key (see auth section above)
 - Opens a WebSocket → Use the ONE existing connection (see WebSocket section above)
 - Creates a build script → Include `unset ANTHROPIC_API_KEY` at the top
+- Creates a build script → Use `--output-format json` to capture token usage (see Token Tracking section above)
 
 **If you violate these rules, you are creating a bug that costs the user real money.**

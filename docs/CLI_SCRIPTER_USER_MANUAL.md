@@ -190,6 +190,31 @@ Change `sleep 30` or `sleep 5` to any number of seconds you want.
 
 ---
 
+## Token Tracking
+
+Both build scripts automatically track token usage per phase/agent using `--output-format json`.
+
+After each phase/agent completes, you'll see:
+```
+[INFO] 📊 Tokens: 34902 in / 8 out | API cost equiv: $0.2183
+```
+
+At the end of a full build, you'll see grand totals:
+```
+=== TOKEN USAGE ===
+  Total input tokens:  104706
+  Total output tokens: 24
+```
+
+Token data is also saved to the summary file in `.claude/build-logs/`. The `total_cost_usd` field shows what the build WOULD cost on API pay-per-use — useful for comparing builds even though Max subscription costs $0 per token.
+
+For the real build script (`run-cli-scripter-build.sh`), a heartbeat prints every 60 seconds so you know the agent is still running:
+```
+[HEARTBEAT] Agent 2 still running... 15m elapsed (14:32:07)
+```
+
+---
+
 ## Model Optimization (The Golden Rule)
 
 All roles default to **Sonnet**. Opus is used for batch checkpoints every 3-4 phases, not per-phase review.

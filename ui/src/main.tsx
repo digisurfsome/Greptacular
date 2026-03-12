@@ -12,6 +12,7 @@ import { YTStrategyLabPage } from './pages/YTStrategyLabPage'
 import { MonitorPage } from './pages/MonitorPage'
 import { SEOToolsPage } from './pages/SEOToolsPage'
 import { BuildPlannerPage } from './pages/BuildPlannerPage'
+import { ToolManagerPage } from './components/tool-factory/ToolManagerPage'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import './styles/globals.css'
 
@@ -70,6 +71,9 @@ function Root() {
   }
   if (hash === '#/build-planner' || hash.startsWith('#/build-planner/')) {
     return <BuildPlannerPage />
+  }
+  if (hash === '#/tools' || hash.startsWith('#/tools/')) {
+    return <ToolManagerPage />
   }
   return <App />
 }

@@ -87,6 +87,11 @@ import type {
   PaginatedResult,
   VerificationResult,
   Commit,
+  TFGeneratedTool,
+  TFSheetBlueprint,
+  TFThemeConfig,
+  TFPRDExtractionResult,
+  TFToolStatus,
 } from './types'
 
 const API_BASE = '/api'
@@ -2557,4 +2562,135 @@ export async function getProjectCommits(
   if (limit != null) params.set('limit', String(limit))
   const qs = params.toString()
   return fetchJSON(`/projects/${encodeURIComponent(projectName)}/commits${qs ? `?${qs}` : ''}`)
+}
+
+// ============================================================================
+// Tool Factory API
+// ============================================================================
+
+export interface TFToolFactoryStats {
+  total_tools: number
+  active_tools: number
+  total_runs: number
+  total_tokens: number
+}
+
+export interface TFDeployResult {
+  tool_id: string
+  sheet_id: string
+  sheet_url: string
+  sheet_title: string
+}
+
+export interface TFThemePreview {
+  preview_html: string
+  theme: TFThemeConfig
+}
+
+export async function fetchTools(status?: TFToolStatus): Promise<TFGeneratedTool[]> {
+  const params = status ? `?status=${status}` : ''
+  return fetchJSON(`/tool-factory/tools${params}`)
+}
+
+export async function fetchTool(toolId: string): Promise<TFGeneratedTool> {
+  return fetchJSON(`/tool-factory/tools/${encodeURIComponent(toolId)}`)
+}
+
+export async function archiveTool(toolId: string): Promise<void> {
+  return fetchJSON(`/tool-factory/tools/${encodeURIComponent(toolId)}`, {
+    method: 'DELETE',
+  })
+}
+
+export async function fetchToolStats(): Promise<TFToolFactoryStats> {
+  return fetchJSON('/tool-factory/stats')
+}
+
+export async function generateBlueprint(
+  projectId: string,
+  theme?: TFThemeConfig | null
+): Promise<TFSheetBlueprint> {
+  return fetchJSON('/tool-factory/generate', {
+    method: 'POST',
+    body: JSON.stringify({ project_id: projectId, theme: theme ?? null }),
+  })
+}
+
+export async function uploadPRD(
+  content: string,
+  filename: string
+): Promise<TFPRDExtractionResult> {
+  return fetchJSON('/tool-factory/upload-prd', {
+    method: 'POST',
+    body: JSON.stringify({ content, filename }),
+  })
+}
+
+export async function deployTool(
+  toolId: string,
+  folderId?: string
+): Promise<TFDeployResult> {
+  return fetchJSON(`/tool-factory/deploy/${encodeURIComponent(toolId)}`, {
+    method: 'POST',
+    body: JSON.stringify({ folder_id: folderId ?? null }),
+  })
+}
+
+export async function fetchGoogleAuthStatus(): Promise<{ authenticated: boolean }> {
+  return fetchJSON('/tool-factory/google/status')
+}
+
+export async function fetchGoogleAuthUrl(): Promise<{ url: string }> {
+  return fetchJSON('/tool-factory/google/auth-url')
+}
+
+// ============================================================================
+// Tool Factory Themes API
+// ============================================================================
+
+export async function fetchThemes(): Promise<TFThemeConfig[]> {
+  return fetchJSON('/tool-factory/themes')
+}
+
+export async function fetchTheme(themeId: string): Promise<TFThemeConfig> {
+  return fetchJSON(`/tool-factory/themes/${encodeURIComponent(themeId)}`)
+}
+
+export async function extractTheme(imageFile: File): Promise<TFThemeConfig> {
+  const formData = new FormData()
+  formData.append('image', imageFile)
+  const response = await fetch(`${API_BASE}/tool-factory/themes/extract`, {
+    method: 'POST',
+    body: formData,
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(error.detail || `HTTP ${response.status}`)
+  }
+  return response.json()
+}
+
+export async function previewTheme(themeId: string): Promise<TFThemePreview> {
+  return fetchJSON(`/tool-factory/themes/${encodeURIComponent(themeId)}/preview`, {
+    method: 'POST',
+  })
+}
+
+export async function swapTheme(
+  toolId: string,
+  themeId: string
+): Promise<TFGeneratedTool> {
+  return fetchJSON(`/tool-factory/tools/${encodeURIComponent(toolId)}/theme`, {
+    method: 'PUT',
+    body: JSON.stringify({ theme_id: themeId }),
+  })
+}
+
+export async function createCustomTheme(
+  config: Partial<TFThemeConfig>
+): Promise<TFThemeConfig> {
+  return fetchJSON('/tool-factory/themes/custom', {
+    method: 'POST',
+    body: JSON.stringify(config),
+  })
 }

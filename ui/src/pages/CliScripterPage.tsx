@@ -14,6 +14,7 @@
  */
 
 import { useState, useCallback, useEffect } from 'react'
+import { usePersistedState } from '@/hooks/usePersistedState'
 import {
   ArrowLeft,
   Plus,
@@ -486,10 +487,10 @@ function OutputArea({
 // ---------------------------------------------------------------------------
 
 export function CliScripterPage() {
-  // ---- Project Basics ----
-  const [appName, setAppName] = useState('')
-  const [appDescription, setAppDescription] = useState('')
-  const [boilerplate, setBoilerplate] = useState<string>(BOILERPLATES[0].id)
+  // ---- Project Basics (persisted to localStorage) ----
+  const [appName, setAppName] = usePersistedState('cli_scripter_app_name', '')
+  const [appDescription, setAppDescription] = usePersistedState('cli_scripter_app_description', '')
+  const [boilerplate, setBoilerplate] = usePersistedState<string>('cli_scripter_boilerplate', BOILERPLATES[0].id)
 
   // ---- GitHub Repo Creation ----
   const [createRepo, setCreateRepo] = useState(false)
@@ -503,33 +504,33 @@ export function CliScripterPage() {
   const [repoUrl, setRepoUrl] = useState<string | null>(null)
   const [repoError, setRepoError] = useState<string | null>(null)
 
-  // ---- Rule Blocks ----
-  const [ruleBlocks, setRuleBlocks] = useState<string[]>(['', '', ''])
-  const [combinedRules, setCombinedRules] = useState('')
+  // ---- Rule Blocks (persisted to localStorage) ----
+  const [ruleBlocks, setRuleBlocks] = usePersistedState<string[]>('cli_scripter_rule_blocks', ['', '', ''])
+  const [combinedRules, setCombinedRules] = usePersistedState('cli_scripter_combined_rules', '')
   const [combiningRules, setCombiningRules] = useState(false)
   const [combineError, setCombineError] = useState<string | null>(null)
 
-  // ---- Phase-Specific Rules ("Top Bun") ----
-  const [splitPhaseRules, setSplitPhaseRules] = useState(false) // toggle: all same vs split
-  const [phase1Rules, setPhase1Rules] = useState('') // full rules for Phase 1 (e.g. 1000 lines)
-  const [phase2PlusRules, setPhase2PlusRules] = useState('') // condensed rules for Phase 2+ (e.g. 350 lines)
+  // ---- Phase-Specific Rules ("Top Bun") (persisted) ----
+  const [splitPhaseRules, setSplitPhaseRules] = usePersistedState('cli_scripter_phase_mode', false)
+  const [phase1Rules, setPhase1Rules] = usePersistedState('cli_scripter_phase1_rules', '')
+  const [phase2PlusRules, setPhase2PlusRules] = usePersistedState('cli_scripter_phase2plus_rules', '')
 
-  // ---- Features (optional — skip if you already have a PRD) ----
-  const [features, setFeatures] = useState<FeatureRow[]>([
+  // ---- Features (optional — skip if you already have a PRD) (persisted) ----
+  const [features, setFeatures] = usePersistedState<FeatureRow[]>('cli_scripter_features', [
     { id: 1, name: '', size: 'M' },
   ])
-  const [dependencies, setDependencies] = useState('')
-  const [showFeatures, setShowFeatures] = useState(false)
+  const [dependencies, setDependencies] = usePersistedState('cli_scripter_dependencies', '')
+  const [showFeatures, setShowFeatures] = usePersistedState('cli_scripter_show_features', false)
   let nextFeatureId = features.length > 0 ? Math.max(...features.map((f) => f.id)) + 1 : 1
 
   // ---- Build Settings ----
   // Model defaults to sonnet; each agent role has its own model selector
   const model = MODELS[0].value
-  const [turns, setTurns] = useState('25')
-  const [transition, setTransition] = useState(TRANSITION_OPTIONS[0])
-  const [errorHandling, setErrorHandling] = useState(ERROR_OPTIONS[0])
-  const [gitCommits, setGitCommits] = useState(GIT_OPTIONS[0])
-  const [phaseCount, setPhaseCount] = useState('Auto')
+  const [turns, setTurns] = usePersistedState('cli_scripter_turns', '25')
+  const [transition, setTransition] = usePersistedState('cli_scripter_transition', TRANSITION_OPTIONS[0])
+  const [errorHandling, setErrorHandling] = usePersistedState('cli_scripter_error_handling', ERROR_OPTIONS[0])
+  const [gitCommits, setGitCommits] = usePersistedState('cli_scripter_git_commits', GIT_OPTIONS[0])
+  const [phaseCount, setPhaseCount] = usePersistedState('cli_scripter_phase_count', 'Auto')
 
   // ---- Phase Assignments ----
   const [phaseAssignments, setPhaseAssignments] = useState('')
@@ -547,12 +548,12 @@ export function CliScripterPage() {
   const [phaseAiLoading, setPhaseAiLoading] = useState(false)
   const [buildAiLoading, setBuildAiLoading] = useState(false)
 
-  // ---- Agent Roles ----
-  const [agentRoles, setAgentRoles] = useState<AgentRole[]>(DEFAULT_AGENT_ROLES)
+  // ---- Agent Roles (persisted) ----
+  const [agentRoles, setAgentRoles] = usePersistedState<AgentRole[]>('cli_scripter_roles', DEFAULT_AGENT_ROLES)
   const [expandedRole, setExpandedRole] = useState<string | null>(null)
 
-  // ---- Include verification ----
-  const [includeVerification, setIncludeVerification] = useState(true)
+  // ---- Include verification (persisted) ----
+  const [includeVerification, setIncludeVerification] = usePersistedState('cli_scripter_include_verification', true)
 
   // ---- Generate All ----
   const [generateAllLoading, setGenerateAllLoading] = useState(false)
@@ -563,10 +564,10 @@ export function CliScripterPage() {
   const [scriptsWritten, setScriptsWritten] = useState<string[] | null>(null)
   const [writingScripts, setWritingScripts] = useState(false)
   const [writeError, setWriteError] = useState<string | null>(null)
-  const [projectDir, setProjectDir] = useState('')
+  const [projectDir, setProjectDir] = usePersistedState('cli_scripter_project_dir', '')
 
-  // ---- Build Queue ----
-  const [queueItems, setQueueItems] = useState<Array<{name: string, project_dir: string, scripts_dir?: string, status: string}>>([])
+  // ---- Build Queue (persisted) ----
+  const [queueItems, setQueueItems] = usePersistedState<Array<{name: string, project_dir: string, scripts_dir?: string, status: string}>>('cli_scripter_queue', [])
 
   const selectedBoilerplate = BOILERPLATES.find((b) => b.id === boilerplate) || BOILERPLATES[0]
 

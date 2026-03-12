@@ -216,6 +216,123 @@ async def generate_from_prd(body: PRDUploadRequest):
         raise HTTPException(status_code=500, detail=f"PRD processing failed: {e}")
 
 
+# ---------------------------------------------------------------------------
+# Phase 4: Google Auth + Deploy Endpoints [ROBOT]
+# ---------------------------------------------------------------------------
+
+@router.get("/google/auth-url")
+async def google_auth_url():
+    """Get OAuth URL for Google authorization. [ROBOT]"""
+    from ..services.google_auth import start_oauth_flow
+
+    try:
+        url = start_oauth_flow()
+        return {"auth_url": url}
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.post("/google/callback")
+async def google_callback(body: dict):
+    """Handle OAuth callback with authorization code. [ROBOT]"""
+    from ..services.google_auth import handle_oauth_callback
+
+    code = body.get("code")
+    if not code:
+        raise HTTPException(status_code=400, detail="Authorization code is required")
+
+    success = handle_oauth_callback(code)
+    if not success:
+        raise HTTPException(status_code=500, detail="OAuth token exchange failed")
+
+    return {"status": "authenticated"}
+
+
+@router.get("/google/status")
+async def google_status():
+    """Check if Google OAuth is authenticated. [ROBOT]"""
+    from ..services.google_auth import is_authenticated
+
+    return {"authenticated": is_authenticated()}
+
+
+@router.post("/deploy/{tool_id}")
+async def deploy_tool(tool_id: str, body: dict = None):
+    """Deploy blueprint as Google Sheet. [ROBOT]"""
+    from ..models.tool_factory import ToolStatus
+    from ..services.google_auth import get_credentials
+    from ..services.sheet_deployer import deploy_sheet
+    from ..services.sheet_theme_engine import preset_theme_to_theme_config
+
+    body = body or {}
+
+    tool = await _registry.get_tool(tool_id)
+    if not tool:
+        raise HTTPException(status_code=404, detail=f"Tool not found: {tool_id}")
+
+    creds = get_credentials()
+    if not creds:
+        raise HTTPException(status_code=401, detail="Not authenticated with Google. Call /google/auth-url first.")
+
+    # Resolve theme: tool's active theme > blueprint theme > default preset
+    theme = tool.active_theme or tool.blueprint.theme
+    if not theme:
+        theme = preset_theme_to_theme_config("modern-minimalist")
+
+    # Update status to deploying
+    await _registry.update_tool(tool_id, status=ToolStatus.DEPLOYING)
+
+    try:
+        result = await deploy_sheet(
+            blueprint=tool.blueprint,
+            theme=theme,
+            credentials=creds,
+            folder_id=body.get("folder_id"),
+        )
+
+        # Update tool with sheet details
+        await _registry.update_tool(
+            tool_id,
+            status=ToolStatus.ACTIVE,
+            sheet_id=result["sheet_id"],
+            sheet_url=result["sheet_url"],
+            sheet_title=result["sheet_title"],
+            active_theme=theme,
+        )
+
+        return result
+
+    except Exception as e:
+        await _registry.update_tool(tool_id, status=ToolStatus.ERROR)
+        logger.exception("Deployment failed for tool %s", tool_id)
+        raise HTTPException(status_code=500, detail=f"Deployment failed: {e}")
+
+
+@router.post("/deploy/{tool_id}/redeploy-theme")
+async def redeploy_tool_theme(tool_id: str):
+    """Re-apply theme to deployed sheet. [ROBOT]"""
+    from ..services.google_auth import get_credentials
+    from ..services.sheet_deployer import redeploy_theme
+
+    tool = await _registry.get_tool(tool_id)
+    if not tool:
+        raise HTTPException(status_code=404, detail=f"Tool not found: {tool_id}")
+    if not tool.sheet_id:
+        raise HTTPException(status_code=400, detail="Tool is not deployed yet")
+    if not tool.active_theme:
+        raise HTTPException(status_code=400, detail="Tool has no active theme")
+
+    creds = get_credentials()
+    if not creds:
+        raise HTTPException(status_code=401, detail="Not authenticated with Google")
+
+    success = await redeploy_theme(tool.sheet_id, tool.active_theme, creds)
+    if not success:
+        raise HTTPException(status_code=500, detail="Theme redeployment failed")
+
+    return {"status": "redeployed", "sheet_id": tool.sheet_id}
+
+
 @router.post("/upload-prd")
 async def upload_prd(
     file: Optional[UploadFile] = File(None),

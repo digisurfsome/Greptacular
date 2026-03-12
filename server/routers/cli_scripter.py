@@ -78,6 +78,7 @@ class WriteScriptsRequest(BaseModel):
     include_verification: bool = True
     waves: list[list[int]] | None = None       # Parallel wave groups e.g. [[1], [2, 3], [4]]
     parallel_mode: bool = False                # Enable parallel execution in master script
+    boilerplate_id: str | None = None          # If 'web-mobile-supabase', add Phase 0 prep
 
 
 class QueueItem(BaseModel):
@@ -254,6 +255,101 @@ async def _run_claude_cli(prompt: str, model: str = "sonnet", timeout: int = 300
 # Script generation helpers
 # ---------------------------------------------------------------------------
 
+# Boilerplate repo URLs for template cloning
+_BOILERPLATE_REPOS: dict[str, dict[str, str]] = {
+    "web-supabase-stripe": {
+        "owner": "digisurfsome",
+        "repo": "Web-BoilerPlate-D2D",
+    },
+    "mobile-flutter-firebase": {
+        "owner": "digisurfsome",
+        "repo": "apparence-kit-firebase",
+    },
+}
+
+
+def _generate_prep_script(project_name: str) -> str:
+    """Generate Phase 0 prep script for dual builds (web + mobile).
+
+    Clones both boilerplate repos and merges them into a single project directory.
+    100% deterministic — bash script, no LLM.
+    """
+    web_repo = _BOILERPLATE_REPOS["web-supabase-stripe"]
+    mobile_repo = _BOILERPLATE_REPOS["mobile-flutter-firebase"]
+
+    return f'''#!/bin/bash
+# ===========================================
+# PHASE 0 — Boilerplate Prep (Dual Build)
+# Project: {project_name}
+# Merges web + mobile boilerplate repos
+# 100% deterministic — no LLM
+# ===========================================
+set -e
+
+PROJECT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
+cd "$PROJECT_DIR"
+
+echo "============================================"
+echo "  PHASE 0: Boilerplate Merge"
+echo "  Combining web + mobile templates"
+echo "============================================"
+echo ""
+
+# Clone web boilerplate if not already present
+if [ ! -d "web" ]; then
+  echo ">>> Cloning web boilerplate..."
+  git clone https://github.com/{web_repo["owner"]}/{web_repo["repo"]}.git web
+  echo ">>> Web boilerplate cloned to ./web/"
+else
+  echo ">>> Web directory already exists, skipping clone"
+fi
+
+# Clone mobile boilerplate if not already present
+if [ ! -d "mobile" ]; then
+  echo ">>> Cloning mobile boilerplate..."
+  git clone https://github.com/{mobile_repo["owner"]}/{mobile_repo["repo"]}.git mobile
+  echo ">>> Mobile boilerplate cloned to ./mobile/"
+else
+  echo ">>> Mobile directory already exists, skipping clone"
+fi
+
+# Create shared config directory
+mkdir -p shared
+
+# Create a shared .env template
+if [ ! -f "shared/.env.example" ]; then
+  cat > shared/.env.example <<'ENV_EOF'
+# Shared configuration for web + mobile
+# Supabase (used by both web and mobile)
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+
+# Stripe (web payments)
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=
+
+# RevenueCat (mobile payments)
+REVENUECAT_API_KEY_IOS=
+REVENUECAT_API_KEY_ANDROID=
+
+# Analytics
+NEXT_PUBLIC_POSTHOG_KEY=
+MIXPANEL_TOKEN=
+ENV_EOF
+  echo ">>> Created shared/.env.example"
+fi
+
+echo ""
+echo "=== Phase 0 complete ==="
+echo "Directory structure:"
+echo "  ./web/     — Next.js web app"
+echo "  ./mobile/  — Flutter mobile app"
+echo "  ./shared/  — Shared configuration"
+'''
+
+
 def _generate_script_content(
     role_name: str,
     description: str,
@@ -298,16 +394,29 @@ def _generate_master_script(
     phase_count: int,
     waves: list[list[int]] | None = None,
     parallel_mode: bool = False,
+    include_prep: bool = False,
 ) -> str:
     """Generate the run_all.sh master script.
 
     If waves is provided and parallel_mode is True, phases in the same wave
     run concurrently using bash background jobs + wait.
+    If include_prep is True, adds Phase 0 prep step before the architect.
     """
     total = len(script_files)
 
     # Build the body
     steps = []
+
+    # Phase 0: Boilerplate prep (dual builds only)
+    if include_prep:
+        steps.append('''# Phase 0: Boilerplate Prep (deterministic — no LLM)
+if [ -f "$SCRIPT_DIR/phase0_prep.sh" ]; then
+  CURRENT=$((CURRENT + 1))
+  echo ">>> [$CURRENT/$TOTAL_STEPS] Phase 0 — Boilerplate Prep..."
+  bash "$SCRIPT_DIR/phase0_prep.sh"
+  echo ">>> Phase 0 complete"
+  echo ""
+fi''')
 
     # Check for architect
     steps.append('''# Architect
@@ -509,6 +618,14 @@ async def write_scripts(request: WriteScriptsRequest):
         written_files = []
         all_script_names = []
 
+        # Phase 0: Boilerplate prep for dual builds (web + mobile)
+        if request.boilerplate_id == "web-mobile-supabase":
+            prep_content = _generate_prep_script(request.project_name)
+            prep_filename = "phase0_prep.sh"
+            (scripts_dir / prep_filename).write_text(prep_content, encoding="utf-8")
+            written_files.append(prep_filename)
+            all_script_names.append(prep_filename)
+
         for role in request.agent_roles:
             if not role.enabled:
                 continue
@@ -594,6 +711,7 @@ async def write_scripts(request: WriteScriptsRequest):
             len(request.phases),
             waves=request.waves,
             parallel_mode=request.parallel_mode,
+            include_prep=request.boilerplate_id == "web-mobile-supabase",
         )
         (scripts_dir / "run_all.sh").write_text(master, encoding="utf-8")
         written_files.append("run_all.sh")

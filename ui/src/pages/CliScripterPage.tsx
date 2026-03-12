@@ -1141,6 +1141,7 @@ Output a detailed phase plan with feature assignments, estimated token usage per
           include_verification: includeVerification,
           waves: effectiveWaves,
           parallel_mode: parallelMode,
+          boilerplate_id: boilerplate,
         }),
       })
       if (!res.ok) {
@@ -1967,6 +1968,17 @@ Output a detailed phase plan with feature assignments, estimated token usage per
                     ) : <p className="text-xs text-zinc-400 font-medium">Pipeline</p>
                   })()}
                   <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto pb-1">
+                    {/* Phase 0: Boilerplate Prep (dual builds only) */}
+                    {boilerplate === 'web-mobile-supabase' && (
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <div className="bg-zinc-900/60 border border-amber-700/50 rounded-lg p-2 min-w-[100px] text-center">
+                          <p className="text-xs font-medium text-amber-300">Phase 0</p>
+                          <p className="text-orange-400 text-xs font-bold mt-0.5">~2.5K</p>
+                          <p className="text-zinc-600 text-[10px]">no LLM</p>
+                        </div>
+                        <span className="text-orange-500 text-xs">→</span>
+                      </div>
+                    )}
                     {/* Pre-build roles */}
                     {oneTimeRoles.filter(r => r.runsWhen === 'once_before').map((r, idx) => (
                       <div key={r.id} className="flex items-center gap-1.5 shrink-0">

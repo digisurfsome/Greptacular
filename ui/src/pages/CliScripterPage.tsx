@@ -17,10 +17,10 @@ import { useState, useCallback, useEffect } from 'react'
 import { usePersistedState } from '@/hooks/usePersistedState'
 import { ClearButton } from '@/components/cli-scripter/ClearButton'
 import { ProjectFileBrowser } from '@/components/cli-scripter/ProjectFileBrowser'
+import { RuleBlockLibrary, createEmptyBlock, type RuleBlockData } from '@/components/cli-scripter/RuleBlock'
 import {
   ArrowLeft,
   Plus,
-  Minus,
   Copy,
   Wand2,
   Cpu,
@@ -522,7 +522,9 @@ export function CliScripterPage() {
   const [repoError, setRepoError] = useState<string | null>(null)
 
   // ---- Rule Blocks (persisted to localStorage) ----
-  const [ruleBlocks, setRuleBlocks] = usePersistedState<string[]>('cli_scripter_rule_blocks', ['', '', ''])
+  const [ruleBlocks, setRuleBlocks] = usePersistedState<RuleBlockData[]>('cli_scripter_rule_blocks_v2', [
+    createEmptyBlock(0),
+  ])
   const [combinedRules, setCombinedRules] = usePersistedState('cli_scripter_combined_rules', '')
   const [combiningRules, setCombiningRules] = useState(false)
   const [combineError, setCombineError] = useState<string | null>(null)
@@ -650,26 +652,15 @@ export function CliScripterPage() {
   }, [phaseAiResult])
 
   // ---- Rule block handlers ----
-  const addRuleBlock = () => setRuleBlocks((prev) => [...prev, ''])
-  const removeLastRuleBlock = () => {
-    if (ruleBlocks.length > 1) setRuleBlocks((prev) => prev.slice(0, -1))
-  }
-  const updateRuleBlock = (index: number, value: string) => {
-    setRuleBlocks((prev) => {
-      const next = [...prev]
-      next[index] = value
-      return next
-    })
-  }
-
   const combineRules = async () => {
-    const nonEmpty = ruleBlocks.filter((b) => b.trim())
+    const nonEmpty = ruleBlocks.filter((b) => b.content.trim())
     if (nonEmpty.length === 0) return
 
     setCombiningRules(true)
     setCombineError(null)
     try {
-      const prompt = `I have ${nonEmpty.length} separate rule blocks for an AI coding agent. Combine them into ONE cohesive, non-redundant set of rules. Remove duplicates. Resolve conflicts (later blocks take priority). Keep the same level of detail.\n\n${nonEmpty.join('\n\n---\n\n')}`
+      const texts = nonEmpty.map((b) => b.content.trim())
+      const prompt = `I have ${texts.length} separate rule blocks for an AI coding agent. Combine them into ONE cohesive, non-redundant set of rules. Remove duplicates. Resolve conflicts (later blocks take priority). Keep the same level of detail.\n\n${texts.join('\n\n---\n\n')}`
       const result = await callGenerate(prompt, model)
       setCombinedRules(result)
     } catch (err) {
@@ -695,7 +686,7 @@ export function CliScripterPage() {
   // ---- Rules text helper ----
   const getRulesText = () => {
     if (combinedRules) return combinedRules
-    const nonEmpty = ruleBlocks.filter((b) => b.trim())
+    const nonEmpty = ruleBlocks.filter((b) => b.content.trim()).map((b) => b.content.trim())
     return nonEmpty.join('\n\n')
   }
 
@@ -1233,56 +1224,17 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
           title="Build Rules"
         >
           <p className="text-sm text-zinc-500 mb-4">
-            Define rules for the AI coding agent. Each block can be a separate concern (styling, architecture, testing, etc.). Use "Combine Rules" to merge them with AI.
+            Named rule blocks you create once and reuse across builds. Check the sidebar boxes (Main, P1, P2+) to include blocks in combiner slots.
           </p>
-          <div className="space-y-3">
-            {ruleBlocks.map((block, i) => (
-              <div key={i}>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs text-zinc-500">
-                    Rule Block {i + 1}
-                  </label>
-                  <ClearButton value={block} onClear={() => updateRuleBlock(i, '')} />
-                </div>
-                <textarea
-                  value={block}
-                  onChange={(e) => updateRuleBlock(i, e.target.value)}
-                  rows={4}
-                  placeholder={
-                    i === 0
-                      ? 'e.g., Use TypeScript strict mode. All components must be functional...'
-                      : i === 1
-                        ? 'e.g., Follow mobile-first responsive design. Use Tailwind CSS...'
-                        : 'e.g., Write unit tests for all utility functions...'
-                  }
-                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:border-orange-500 focus:outline-none transition-colors resize-y"
-                />
-              </div>
-            ))}
-          </div>
-          <div className="flex gap-2 mt-4">
-            <Button
-              onClick={addRuleBlock}
-              variant="outline"
-              size="sm"
-              className="gap-1 border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-500 bg-transparent"
-            >
-              <Plus size={14} />
-              Add Rule Block
-            </Button>
-            <Button
-              onClick={removeLastRuleBlock}
-              variant="outline"
-              size="sm"
-              disabled={ruleBlocks.length <= 1}
-              className="gap-1 border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-500 bg-transparent disabled:opacity-40"
-            >
-              <Minus size={14} />
-              Remove Last
-            </Button>
+
+          {/* Rule Block Library */}
+          <RuleBlockLibrary blocks={ruleBlocks} onBlocksChange={setRuleBlocks} />
+
+          {/* Combine button + output */}
+          <div className="mt-4 pt-3 border-t border-zinc-800">
             <Button
               onClick={combineRules}
-              disabled={combiningRules || ruleBlocks.every((b) => !b.trim())}
+              disabled={combiningRules || ruleBlocks.every((b) => !b.content.trim())}
               size="sm"
               className="gap-1 bg-gradient-to-r from-orange-500 to-amber-500 text-white hover:opacity-90 transition-opacity border-0 disabled:opacity-40"
             >
@@ -1291,9 +1243,10 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
               ) : (
                 <Wand2 size={14} />
               )}
-              Combine Rules
+              Combine Rules with AI
             </Button>
           </div>
+
           {/* Combined rules output */}
           {(combinedRules || combiningRules || combineError) && (
             <div className="mt-4">

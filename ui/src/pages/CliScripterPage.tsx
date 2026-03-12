@@ -43,6 +43,7 @@ import {
   Shield,
   Map,
   Zap,
+  RefreshCw,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { validateGitHubToken, createGitHubRepo } from '@/lib/api'
@@ -639,6 +640,13 @@ export function CliScripterPage() {
     }
     // Run only on mount
   }, [])
+
+  // Auto-populate phase assignments from AI phase split result
+  useEffect(() => {
+    if (phaseAiResult) {
+      setPhaseAssignments(phaseAiResult)
+    }
+  }, [phaseAiResult])
 
   // ---- Rule block handlers ----
   const addRuleBlock = () => setRuleBlocks((prev) => [...prev, ''])
@@ -1641,17 +1649,45 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
           </div>
         </SectionCard>
 
-        {/* Section 5: Phase Assignments */}
+        {/* Section 5: Phase Assignments (read-only — populated by AI phase split) */}
         <SectionCard
           icon={<Layers size={18} className="text-indigo-400" />}
           title="Phase Assignments"
         >
-          <TextArea
-            value={phaseAssignments}
-            onChange={setPhaseAssignments}
-            rows={5}
-            placeholder={"Phase 1: Project setup, Auth system\nPhase 2: Dashboard, API endpoints\nPhase 3: Settings page, User management\n..."}
-          />
+          {phaseAssignments ? (
+            <div className="space-y-3">
+              <div className="bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-3 max-h-96 overflow-y-auto">
+                <pre className="text-sm text-zinc-300 whitespace-pre-wrap font-mono text-xs leading-relaxed">
+                  {phaseAssignments}
+                </pre>
+              </div>
+              <button
+                onClick={() => {
+                  setPhaseAssignments('')
+                  setPhaseAiResult('')
+                  generatePhaseSplit()
+                }}
+                disabled={phaseAiLoading}
+                className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-orange-400 transition-colors px-3 py-1.5 rounded-lg border border-zinc-700 hover:border-orange-500/50 disabled:opacity-50"
+              >
+                {phaseAiLoading ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <RefreshCw size={12} />
+                )}
+                Regenerate Split
+              </button>
+            </div>
+          ) : (
+            <div className="bg-zinc-950/50 border border-dashed border-zinc-700 rounded-lg px-4 py-8 text-center">
+              <p className="text-sm text-zinc-500">
+                Phase assignments will appear here after generating the phase split.
+              </p>
+              <p className="text-xs text-zinc-600 mt-1">
+                Click "Generate Phase-Split Prompt" or "Generate All" to populate.
+              </p>
+            </div>
+          )}
         </SectionCard>
 
         {/* Section: Build Estimate */}

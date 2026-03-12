@@ -16,7 +16,9 @@ The CLI Scripter is a tool that generates bash scripts for building apps using C
 
 ### Your Job
 
-This PRD contains 24 implementation phases across 8 systems plus cross-cutting fixes. You will NOT build all 24 in one session. Work through them in the priority order listed in the "Recommended Build Priority" section at the bottom. Each phase is scoped to fit under 50% context window. Build as many as you can, commit after each one, and note where the next agent picks up.
+This PRD contains 24 implementation phases split into **3 agent packages**. Each agent gets a specific assignment. Do NOT skip ahead to another package. Do NOT pick and choose. Build exactly the phases in your package, in order, then stop.
+
+**Check which package you are assigned to in the "Agent Packages" section below.** If you were not told which package to run, start with Package 1.
 
 ### Key Files
 
@@ -48,20 +50,70 @@ This PRD contains 24 implementation phases across 8 systems plus cross-cutting f
 - Don't skip the build check after each phase
 - Don't try to build all 24 phases — focus on doing a few phases well rather than rushing through many
 
-### Build Priority (work IN THIS ORDER)
+### Agent Packages — EXACT ASSIGNMENTS
 
-1. **Phase 20-22** — Persistence + Clear buttons + Phase Assignments read-only fix *(most critical — nothing persists right now)*
-2. **Phase 23** — Project directory file browser in two spots
-3. **Phase 16-19** — Build Rules Library & Combiner (the biggest feature)
-4. **Phase 7-9** — Build Storage & Queue (SQLite configs)
-5. **Phase 12-13** — Prompt Visibility (PromptBar component)
-6. **Phase 14** — Card-Based Build Estimate display
-7. **Phase 15** — Parallel Wave building
-8. **Phase 1-6** — Live Dashboard + Terminal Integration
-9. **Phase 10-11** — Boilerplate Prep (only needed for dual builds)
-10. **FIX** — Deterministic script templates (replace LLM with Python string formatting)
+Each package is ~90K tokens. Build every phase in your package, in order. Commit after each phase. Run `cd ui && npm run build` after each phase. Stop when your package is done.
 
-Start with #1. When done, move to #2. Keep going until you hit 40% context, then commit and stop.
+---
+
+#### 📦 PACKAGE 1: Foundation & UX Fixes (8 phases)
+
+**Run this first.** Fixes the most painful daily-use gaps: nothing persists, rules can't be managed, no project visibility.
+
+| Order | Phase | System | What | Difficulty |
+|-------|-------|--------|------|-----------|
+| 1 | Phase 20 | Fix | `usePersistedState` hook + migrate ~30 useState calls to localStorage | 2/10 |
+| 2 | Phase 21 | Fix | Clear buttons (✕ icon) on all text inputs and textareas | 1/10 |
+| 3 | Phase 22 | Fix | Phase Assignments → read-only output + Regenerate button | 1/10 |
+| 4 | Phase 23 | Fix | ProjectFileBrowser component in 2 spots + backend git endpoint | 3/10 |
+| 5 | Phase 16 | System 8 | RuleBlock component (named blocks, tags, checkboxes, sidebar rail) | 3/10 |
+| 6 | Phase 17 | System 8 | Combiner component + two-way checkbox binding with RuleBlocks | 3/10 |
+| 7 | Phase 18 | System 8 | Gate popup (single vs split phase) + Send-to-Combiner flow | 2/10 |
+| 8 | Phase 19 | System 8 | Backend rule persistence (SQLite or JSON) + load/save endpoints | 2/10 |
+
+**After completing:** Commit with message "Package 1 complete — persistence, UX fixes, rules library done." Next agent runs Package 2.
+
+---
+
+#### 📦 PACKAGE 2: Storage, Prompts & Display Systems (8 phases)
+
+**Run this second.** Adds build storage/queue, prompt visibility, build estimate cards, parallel waves, and deterministic script fixes.
+
+| Order | Phase | System | What | Difficulty |
+|-------|-------|--------|------|-----------|
+| 1 | Phase 7 | System 3 | SQLite config storage (build configs with full state snapshots) | 2/10 |
+| 2 | Phase 8 | System 3 | Build Library UI (save/load/delete build configs, search, timestamps) | 3/10 |
+| 3 | Phase 9 | System 3 | Queue management upgrade (reorder, status badges, dependency handling) | 3/10 |
+| 4 | Phase 12 | System 5 | PromptBar component (lock icon, inline edit, collapse/expand per prompt) | 2/10 |
+| 5 | Phase 13 | System 5 | Prompt persistence in Build Storage (save edited prompts with configs) | 1/10 |
+| 6 | Phase 14 | System 6 | Pipeline card component (replace unusable text list with visual cards) | 2/10 |
+| 7 | Phase 15 | System 7 | Parallel wave parser + CLI script generation for concurrent phases | 3/10 |
+| 8 | FIX | — | Deterministic script templates (Python string formatting, no LLM) | 2/10 |
+
+**After completing:** Commit with message "Package 2 complete — storage, prompts, estimate cards, parallel waves, deterministic fix done." Next agent runs Package 3.
+
+---
+
+#### 📦 PACKAGE 3: Live Dashboard, Terminal & Boilerplate (8 phases)
+
+**Run this last.** Adds live build monitoring, embedded terminal, and boilerplate prep for dual builds.
+
+| Order | Phase | System | What | Difficulty |
+|-------|-------|--------|------|-----------|
+| 1 | Phase 1 | System 1 | Backend process manager (subprocess lifecycle, PID tracking) | 3/10 |
+| 2 | Phase 2 | System 1 | Progress parser (regex extraction from Claude CLI stdout) | 2/10 |
+| 3 | Phase 3 | System 1 | Dashboard UI strip (progress bars, agent status, phase indicators) | 3/10 |
+| 4 | Phase 4 | System 2 | Embedded terminal panel (xterm.js, WebSocket to pty) | 3/10 |
+| 5 | Phase 5 | System 2 | Phase status sidebar (clickable phase list with live status icons) | 2/10 |
+| 6 | Phase 6 | System 2 | Refresh interval selector (auto-refresh rate control) | 1/10 |
+| 7 | Phase 10 | System 4 | Boilerplate analysis docs (framework detection, structure templates) | 1/10 |
+| 8 | Phase 11 | System 4 | Prep phase for dual builds (boilerplate + fresh project support) | 2/10 |
+
+**After completing:** Commit with message "Package 3 complete — live dashboard, terminal, boilerplate done. All 24 phases built."
+
+---
+
+**IMPORTANT:** Agents do NOT choose what to build. Each package is a fixed assignment. Build all 8 phases in your package, in order. Do not skip. Do not reorganize. Do not "decide" what's important. The priority was decided by the product owner.
 
 ---
 
@@ -1241,16 +1293,12 @@ Returns: `{ files: [...], recent_commits: [...], has_previous_builds: boolean }`
 
 Each phase is under 50% context window. Total: ~24 phases across 3-4 weeks.
 
-### Recommended Build Priority
+### Agent Package Summary
 
-Build persistence, UX fixes, and the rules library FIRST — these are the most painful gaps for daily use:
+All 24 phases are divided into 3 fixed agent packages (~90K tokens each, ~8 phases each). See "Agent Packages — EXACT ASSIGNMENTS" in the briefing section above for the full breakdown.
 
-1. **Phase 20-22 (Persistence + Clear buttons + Phase Assignments fix)** — do this immediately, affects everything
-2. **Phase 23 (File browser)** — know what you're building into before you start
-3. **Phase 16-19 (System 8: Rules Library)** — the core workflow improvement
-4. **Phase 7-9 (System 3: Build Storage)** — save/load/queue configs
-5. **Phase 12-13 (System 5: Prompt Visibility)** — surface hidden prompts
-6. **Phase 14 (System 6: Card Build Estimate)** — fix the unusable display
-7. **Phase 15 (System 7: Parallel Waves)** — optional optimization
-8. **Phase 1-6 (Systems 1-2: Live Dashboard + Terminal)** — nice to have, not blocking
-9. **Phase 10-11 (System 4: Boilerplate)** — only needed for dual builds
+| Package | Phases | Focus | Priority |
+|---------|--------|-------|----------|
+| **Package 1** | 20, 21, 22, 23, 16, 17, 18, 19 | Persistence, UX fixes, Rules Library | 🔴 Critical — run first |
+| **Package 2** | 7, 8, 9, 12, 13, 14, 15, FIX | Storage, Prompts, Estimate, Waves | 🟡 Important — run second |
+| **Package 3** | 1, 2, 3, 4, 5, 6, 10, 11 | Live Dashboard, Terminal, Boilerplate | 🟢 Nice-to-have — run last |

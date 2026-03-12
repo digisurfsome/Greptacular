@@ -25,6 +25,7 @@ from .factory import presets_router as factory_presets_router
 from .factory import router as factory_router
 from .features import router as features_router
 from .filesystem import router as filesystem_router
+from .github import router as github_router
 from .notifications import router as notifications_router
 from .projects import boilerplate_router, styles_router
 from .projects import router as projects_router
@@ -57,6 +58,7 @@ __all__ = [
     "spec_creation_router",
     "expand_project_router",
     "filesystem_router",
+    "github_router",
     "assistant_chat_router",
     "settings_router",
     "terminal_router",

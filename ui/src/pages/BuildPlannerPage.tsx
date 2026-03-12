@@ -10,7 +10,7 @@
  * - Prompt generation for PRD, phase splitting, and build scripts
  */
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import {
   ArrowLeft,
   Plus,
@@ -26,8 +26,13 @@ import {
   Loader2,
   Check,
   ChevronDown,
+  Eye,
+  EyeOff,
+  Github,
+  ExternalLink,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { validateGitHubToken, createGitHubRepo } from '@/lib/api'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -43,13 +48,43 @@ interface FeatureRow {
 // Constants
 // ---------------------------------------------------------------------------
 
-const TECH_STACKS = [
-  'React + Python',
-  'React + Node',
-  'Next.js',
-  'React Only',
-  'Vue + Python',
-  'Other',
+interface Boilerplate {
+  id: string
+  label: string
+  tech: string
+  templateOwner: string | null
+  templateRepo: string | null
+}
+
+const BOILERPLATES: Boilerplate[] = [
+  {
+    id: 'web-supabase-stripe',
+    label: 'Web App (Supabase + Stripe)',
+    tech: 'Next.js + TypeScript + Supabase + Stripe + PostHog + Loops.so + Netlify',
+    templateOwner: 'digisurfsome',
+    templateRepo: 'Web-BoilerPlate-D2D',
+  },
+  {
+    id: 'mobile-flutter-firebase',
+    label: 'Flutter Starter (Firebase)',
+    tech: 'Flutter + Dart + Firebase + Riverpod + RevenueCat + Mixpanel + Sentry + GoRouter',
+    templateOwner: 'digisurfsome',
+    templateRepo: 'apparence-kit-firebase',
+  },
+  {
+    id: 'web-mobile-supabase',
+    label: 'Full Stack (Web + Mobile)',
+    tech: 'Next.js + Flutter + Dart + TypeScript + Supabase + Stripe + PostHog',
+    templateOwner: 'digisurfsome',
+    templateRepo: 'Web-BoilerPlate-D2D',
+  },
+  {
+    id: 'scratch',
+    label: 'From Scratch',
+    tech: 'You decide during spec creation',
+    templateOwner: null,
+    templateRepo: null,
+  },
 ]
 
 const MODELS = [
@@ -313,7 +348,19 @@ export function BuildPlannerPage() {
   // ---- Project Basics ----
   const [appName, setAppName] = useState('')
   const [appDescription, setAppDescription] = useState('')
-  const [techStack, setTechStack] = useState(TECH_STACKS[0])
+  const [boilerplate, setBoilerplate] = useState<string>(BOILERPLATES[0].id)
+
+  // ---- GitHub Repo Creation ----
+  const [createRepo, setCreateRepo] = useState(false)
+  const [repoName, setRepoName] = useState('')
+  const [githubToken, setGithubToken] = useState('')
+  const [showToken, setShowToken] = useState(false)
+  const [githubUser, setGithubUser] = useState<{ login: string; name: string; avatar_url: string } | null>(null)
+  const [githubValidating, setGithubValidating] = useState(false)
+  const [githubError, setGithubError] = useState<string | null>(null)
+  const [repoCreating, setRepoCreating] = useState(false)
+  const [repoUrl, setRepoUrl] = useState<string | null>(null)
+  const [repoError, setRepoError] = useState<string | null>(null)
 
   // ---- Rule Blocks ----
   const [ruleBlocks, setRuleBlocks] = useState<string[]>(['', '', ''])
@@ -351,6 +398,62 @@ export function BuildPlannerPage() {
   const [prdAiLoading, setPrdAiLoading] = useState(false)
   const [phaseAiLoading, setPhaseAiLoading] = useState(false)
   const [buildAiLoading, setBuildAiLoading] = useState(false)
+
+  const selectedBoilerplate = BOILERPLATES.find((b) => b.id === boilerplate) || BOILERPLATES[0]
+
+  // ---- GitHub helpers ----
+  const slugifyName = (name: string) =>
+    name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+
+  const effectiveRepoName = repoName.trim() || slugifyName(appName)
+
+  const handleValidateToken = async (token: string) => {
+    if (!token.trim()) return
+    setGithubValidating(true)
+    setGithubError(null)
+    setGithubUser(null)
+    try {
+      const user = await validateGitHubToken(token)
+      setGithubUser(user)
+      localStorage.setItem('github_pat', token)
+    } catch (err) {
+      setGithubError(err instanceof Error ? err.message : 'Token validation failed')
+    } finally {
+      setGithubValidating(false)
+    }
+  }
+
+  const handleCreateRepo = async () => {
+    if (!githubToken || !effectiveRepoName) return
+    setRepoCreating(true)
+    setRepoError(null)
+    setRepoUrl(null)
+    try {
+      const result = await createGitHubRepo({
+        token: githubToken,
+        repo_name: effectiveRepoName,
+        private: true,
+        description: appDescription || undefined,
+        template_owner: selectedBoilerplate.templateOwner || undefined,
+        template_repo: selectedBoilerplate.templateRepo || undefined,
+      })
+      setRepoUrl(result.repo_url)
+    } catch (err) {
+      setRepoError(err instanceof Error ? err.message : 'Repo creation failed')
+    } finally {
+      setRepoCreating(false)
+    }
+  }
+
+  // Load saved GitHub token on mount and auto-validate
+  useEffect(() => {
+    const saved = localStorage.getItem('github_pat')
+    if (saved) {
+      setGithubToken(saved)
+      handleValidateToken(saved)
+    }
+    // Run only on mount
+  }, [])
 
   // ---- Rule block handlers ----
   const addRuleBlock = () => setRuleBlocks((prev) => [...prev, ''])
@@ -416,7 +519,8 @@ export function BuildPlannerPage() {
 
 App: ${appName || '[App Name]'}
 Description: ${appDescription || '[App Description]'}
-Tech Stack: ${techStack}
+Boilerplate: ${selectedBoilerplate.label}
+Tech Stack: ${selectedBoilerplate.tech}${selectedBoilerplate.id !== 'scratch' ? `\n\nNote: This project uses the ${selectedBoilerplate.label} boilerplate. Many foundational features are already built. Focus the PRD on NEW features the user wants to add on top.` : ''}
 
 Features:
 ${getFeatureListText() || '[No features defined]'}
@@ -573,11 +677,122 @@ Generate:
               placeholder="A brief description of what your app does, who it's for, and what makes it special..."
             />
             <SelectInput
-              label="Tech Stack"
-              value={techStack}
-              onChange={setTechStack}
-              options={TECH_STACKS}
+              label="Boilerplate"
+              value={boilerplate}
+              onChange={setBoilerplate}
+              options={BOILERPLATES.map((b) => ({ label: b.label, value: b.id }))}
             />
+            {selectedBoilerplate && (
+              <p className="text-xs text-zinc-500 -mt-2">
+                {selectedBoilerplate.tech}
+              </p>
+            )}
+
+            {/* GitHub Repo — checkbox + name + token */}
+            <div className="border-t border-zinc-800 pt-4 mt-2 space-y-3">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={createRepo}
+                  onChange={(e) => setCreateRepo(e.target.checked)}
+                  className="w-4 h-4 rounded border-zinc-600 bg-zinc-900 text-purple-500 focus:ring-purple-500 focus:ring-offset-0"
+                />
+                <Github size={16} className="text-zinc-400" />
+                <span className="text-sm text-zinc-300">Create GitHub repo</span>
+              </label>
+
+              {createRepo && (
+                <div className="space-y-3 pl-6">
+                  {/* Repo name */}
+                  <div>
+                    <label className="block text-xs text-zinc-500 mb-1">Repo Name</label>
+                    <input
+                      type="text"
+                      value={repoName}
+                      onChange={(e) => setRepoName(e.target.value)}
+                      placeholder={appName ? slugifyName(appName) : 'my-app'}
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:border-purple-500 focus:outline-none transition-colors"
+                    />
+                  </div>
+
+                  {/* Token */}
+                  <div>
+                    <label className="block text-xs text-zinc-500 mb-1">GitHub Token</label>
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <input
+                          type={showToken ? 'text' : 'password'}
+                          value={githubToken}
+                          onChange={(e) => {
+                            setGithubToken(e.target.value)
+                            setGithubUser(null)
+                            setGithubError(null)
+                          }}
+                          placeholder="ghp_..."
+                          className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:border-purple-500 focus:outline-none transition-colors pr-9"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowToken(!showToken)}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors"
+                        >
+                          {showToken ? <EyeOff size={14} /> : <Eye size={14} />}
+                        </button>
+                      </div>
+                      <Button
+                        onClick={() => handleValidateToken(githubToken)}
+                        disabled={githubValidating || !githubToken.trim()}
+                        size="sm"
+                        className="gap-1 border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-500 bg-transparent border disabled:opacity-40"
+                      >
+                        {githubValidating ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                        Save
+                      </Button>
+                    </div>
+                    {githubError && (
+                      <p className="text-xs text-red-400 mt-1">{githubError}</p>
+                    )}
+                    {githubUser && (
+                      <div className="flex items-center gap-2 mt-1.5 text-xs text-green-400">
+                        <img src={githubUser.avatar_url} alt={githubUser.login} className="w-4 h-4 rounded-full" />
+                        <span>{githubUser.login}</span>
+                        <Check size={12} />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Create button + result */}
+                  <div>
+                    <Button
+                      onClick={handleCreateRepo}
+                      disabled={repoCreating || !githubUser || !effectiveRepoName}
+                      size="sm"
+                      className="gap-1 bg-gradient-to-r from-purple-600 to-cyan-500 text-white hover:opacity-90 transition-opacity border-0 disabled:opacity-40"
+                    >
+                      {repoCreating ? <Loader2 size={14} className="animate-spin" /> : <Github size={14} />}
+                      Create Repo
+                    </Button>
+                    {selectedBoilerplate.templateRepo && !repoUrl && (
+                      <p className="text-xs text-zinc-600 mt-1">
+                        From template: {selectedBoilerplate.templateOwner}/{selectedBoilerplate.templateRepo}
+                      </p>
+                    )}
+                    {repoError && <p className="text-xs text-red-400 mt-1">{repoError}</p>}
+                    {repoUrl && (
+                      <a
+                        href={repoUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 text-xs text-green-400 hover:text-green-300 mt-1.5 transition-colors"
+                      >
+                        <ExternalLink size={12} />
+                        {repoUrl}
+                      </a>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </SectionCard>
 

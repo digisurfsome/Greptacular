@@ -11,6 +11,7 @@ boilerplate repositories and persist project configuration.
 import asyncio
 import json
 import logging
+import re
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
@@ -30,20 +31,20 @@ BOILERPLATE_REGISTRY: dict[str, dict] = {
         "options": [
             {
                 "id": "web-supabase-stripe",
-                "name": "SaaS Starter (Supabase + Stripe)",
-                "description": "Full-stack SaaS with auth, payments, credits, admin panel, email",
-                "tech_summary": "React 18 + TypeScript + Vite + Supabase + Stripe + Vercel",
-                "repo_url": "https://github.com/digisurfsome/Gen-Ai",
+                "name": "Web App (Supabase + Stripe)",
+                "description": "Full-stack web SaaS with auth, payments, analytics, email — Next.js + Supabase + Stripe",
+                "tech_summary": "Next.js + TypeScript + Supabase + Stripe + PostHog + Loops.so + Netlify",
+                "repo_url": "https://github.com/digisurfsome/Web-BoilerPlate-D2D",
                 "available": True,
                 "pre_built": [
-                    "Authentication (email/password + OAuth)",
+                    "Authentication (Supabase Auth)",
                     "Stripe subscriptions and one-time payments",
-                    "Credit system with atomic operations",
-                    "Admin dashboard (11 tabs)",
-                    "User profiles and settings",
-                    "Email system via Resend",
+                    "PostHog analytics tracking",
+                    "Transactional emails via Loops.so",
+                    "Account management and settings",
                     "Dark/light theme",
-                    "49 shadcn/ui components",
+                    "CI/CD with GitHub Actions",
+                    "Netlify deployment ready",
                 ],
             },
         ],
@@ -111,7 +112,27 @@ BOILERPLATE_REGISTRY: dict[str, dict] = {
     },
     "web_mobile": {
         "label": "Web + Mobile",
-        "options": [],
+        "options": [
+            {
+                "id": "web-mobile-supabase",
+                "name": "Full Stack (Web + Mobile)",
+                "description": "Complete web and mobile app with shared Supabase backend — Next.js + Flutter + Supabase + Stripe",
+                "tech_summary": "Next.js + Flutter + Dart + TypeScript + Supabase + Stripe + PostHog",
+                "repo_url": "https://github.com/digisurfsome/Web-BoilerPlate-D2D",
+                "available": True,
+                "pre_built": [
+                    "Next.js web application with TypeScript",
+                    "Flutter mobile app (iOS, Android, Web, macOS)",
+                    "Shared Supabase backend (auth, database, storage)",
+                    "Stripe payment integration",
+                    "PostHog analytics",
+                    "Supabase edge functions (Deno)",
+                    "State management (Riverpod)",
+                    "Routing (GoRouter)",
+                    "CI/CD with GitHub Actions",
+                ],
+            },
+        ],
     },
     "scratch": {
         "label": "From Scratch",
@@ -356,3 +377,27 @@ def load_project_config(project_dir: Path) -> dict | None:
     except OSError as e:
         logger.warning("Failed to read project config at %s: %s", config_path, e)
         return None
+
+
+# =============================================================================
+# GitHub URL Parsing
+# =============================================================================
+
+
+def parse_github_repo_url(url: str) -> tuple[str, str] | None:
+    """Extract owner and repo name from a GitHub URL.
+
+    Parses standard GitHub repository URLs and returns the owner and
+    repository name components.  Handles optional ``.git`` suffix.
+
+    Args:
+        url: A GitHub repository URL (e.g., "https://github.com/owner/repo").
+
+    Returns:
+        A (owner, repo) tuple if the URL is a valid GitHub repo URL,
+        or None if the URL does not match the expected pattern.
+    """
+    match = re.match(r'https?://github\.com/([^/]+)/([^/]+?)(?:\.git)?$', url)
+    if match:
+        return match.group(1), match.group(2)
+    return None

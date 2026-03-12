@@ -50,6 +50,7 @@ from .routers import (
     factory_router,
     features_router,
     filesystem_router,
+    github_router,
     notifications_router,
     projects_router,
     role_library_router,
@@ -314,6 +315,7 @@ app.include_router(spec_creation_router)
 app.include_router(design_guide_router)
 app.include_router(expand_project_router)
 app.include_router(filesystem_router)
+app.include_router(github_router)
 app.include_router(assistant_chat_router)
 app.include_router(settings_router)
 app.include_router(terminal_router)

@@ -31,7 +31,7 @@ import { ResetProjectModal } from './components/ResetProjectModal'
 import { ProjectSetupRequired } from './components/ProjectSetupRequired'
 import { GitActivityWidget } from './components/GitActivityWidget'
 import { getDependencyGraph, startAgent } from './lib/api'
-import { Loader2, Settings, Moon, Sun, RotateCcw, BookOpen, MessageSquare, Layers, LayoutDashboard, FlaskConical, Monitor, Search, Rocket, Wrench } from 'lucide-react'
+import { Loader2, Settings, Moon, Sun, RotateCcw, BookOpen, MessageSquare, Layers, LayoutDashboard, FlaskConical, Monitor, Search, Wrench, Terminal } from 'lucide-react'
 import type { Feature } from './lib/types'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -434,16 +434,16 @@ function App() {
                 <span className="hidden sm:inline text-xs">SEO Tools</span>
               </Button>
 
-              {/* Build Planner link */}
+              {/* CLI Scripter link */}
               <Button
                 variant="ghost"
                 size="sm"
                 className="gap-1.5"
-                onClick={() => { window.location.hash = '#/build-planner' }}
-                title="Build Planner"
+                onClick={() => { window.location.hash = '#/cli-scripter' }}
+                title="CLI Scripter"
               >
-                <Rocket size={16} />
-                <span className="hidden sm:inline text-xs">Planner</span>
+                <Terminal size={16} />
+                <span className="hidden sm:inline text-xs">Scripter</span>
               </Button>
 
               {/* Tool Manager link */}

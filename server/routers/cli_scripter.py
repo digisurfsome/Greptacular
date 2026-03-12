@@ -15,13 +15,21 @@ Endpoints:
   PUT  /api/cli-scripter/configs/{id}         — Update a build config
   DELETE /api/cli-scripter/configs/{id}       — Delete a build config
   PUT  /api/cli-scripter/queue/reorder        — Reorder queue items
+  POST /api/cli-scripter/start-build          — Start run_all.sh as subprocess
+  GET  /api/cli-scripter/build-status         — Current phase, tokens, timing
+  GET  /api/cli-scripter/build-log            — Last N lines of build output
+  POST /api/cli-scripter/stop-build           — Kill the subprocess
 """
 import asyncio
 import json
 import logging
 import os
+import re
+import signal
 import sqlite3
 import subprocess
+import time
+from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -974,4 +982,362 @@ async def delete_config(config_id: int):
         raise
     except Exception as e:
         logger.error("Failed to delete config %d: %s", config_id, e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Build Process Manager — subprocess lifecycle + PID tracking (Phase 1)
+# ---------------------------------------------------------------------------
+
+# In-memory state for the active build process. Only one build can run at a time.
+_build_process: subprocess.Popen | None = None
+_build_pid: int | None = None
+_build_status: str = "idle"  # idle | running | completed | failed | stopped
+_build_start_time: float | None = None
+_build_project_dir: str | None = None
+_build_log_lines: deque[str] = deque(maxlen=500)
+_build_log_file: Path | None = None
+
+# Progress parser state (Phase 2) — extracted from build output
+_build_current_phase: int = 0
+_build_total_phases: int = 0
+_build_phase_statuses: dict[int, str] = {}  # phase_num -> pending|active|completed|failed
+_build_total_tokens: int = 0
+_build_phase_timings: dict[int, dict[str, float]] = {}  # phase_num -> {start, end}
+
+
+def _reset_build_state() -> None:
+    """Reset all build tracking state to idle defaults."""
+    global _build_process, _build_pid, _build_status, _build_start_time
+    global _build_project_dir, _build_log_file
+    global _build_current_phase, _build_total_phases, _build_phase_statuses
+    global _build_total_tokens, _build_phase_timings
+    _build_process = None
+    _build_pid = None
+    _build_status = "idle"
+    _build_start_time = None
+    _build_project_dir = None
+    _build_log_file = None
+    _build_log_lines.clear()
+    _build_current_phase = 0
+    _build_total_phases = 0
+    _build_phase_statuses = {}
+    _build_total_tokens = 0
+    _build_phase_timings = {}
+
+
+# ---------------------------------------------------------------------------
+# Progress Parser — regex extraction from CLI stdout (Phase 2)
+# ---------------------------------------------------------------------------
+
+# Patterns to detect in build output:
+#   ">>> [2/8] Phase 1 — Build..."  -> phase started
+#   ">>> Architect complete"         -> architect done
+#   "=== Phase 1 complete ==="      -> phase finished
+#   "Total tokens: 12345"           -> token usage
+#   "Error:" or non-zero exit       -> failure
+
+_RE_STEP_START = re.compile(
+    r">>>\s*\[(\d+)/(\d+)\]\s*(Wave\s+\d+\s*—\s*)?Phase\s+(\d+)\s*—?\s*(Build|Review)",
+    re.IGNORECASE,
+)
+_RE_ARCHITECT_START = re.compile(
+    r">>>\s*\[(\d+)/(\d+)\]\s*Architect",
+    re.IGNORECASE,
+)
+_RE_PHASE_COMPLETE = re.compile(
+    r"===\s*(Architect|Phase\s+(\d+))\s*complete\s*===",
+    re.IGNORECASE,
+)
+_RE_BUILD_COMPLETE = re.compile(
+    r"BUILD\s+COMPLETE",
+    re.IGNORECASE,
+)
+_RE_TOKEN_COUNT = re.compile(
+    r"Total\s+tokens?:?\s*([\d,]+)",
+    re.IGNORECASE,
+)
+_RE_ERROR = re.compile(
+    r"^(Error:|FATAL|Traceback|failed|BUILD FAILED)",
+    re.IGNORECASE | re.MULTILINE,
+)
+_RE_STEP_COUNT = re.compile(
+    r"(\d+)\s+steps?\s*\((\d+)\s+phases?",
+    re.IGNORECASE,
+)
+_RE_VERIFICATION_START = re.compile(
+    r">>>\s*\[\d+/\d+\]\s*Post-Build\s+Verification",
+    re.IGNORECASE,
+)
+_RE_CARTOGRAPHER_START = re.compile(
+    r">>>\s*\[\d+/\d+\]\s*Documenting",
+    re.IGNORECASE,
+)
+
+
+def _parse_build_line(line: str) -> None:
+    """Parse a single line of build output to update progress state.
+
+    This is 100% deterministic — pure regex, no LLM.
+    """
+    global _build_current_phase, _build_total_phases, _build_total_tokens
+
+    # Detect total step count from the build header
+    m = _RE_STEP_COUNT.search(line)
+    if m:
+        _build_total_phases = int(m.group(2))
+        return
+
+    # Detect architect start
+    m = _RE_ARCHITECT_START.search(line)
+    if m:
+        _build_phase_statuses[0] = "active"
+        _build_phase_timings[0] = {"start": time.time()}
+        return
+
+    # Detect phase step start (build or review)
+    m = _RE_STEP_START.search(line)
+    if m:
+        phase_num = int(m.group(4))
+        step_type = m.group(5).lower()
+        if step_type == "build":
+            _build_current_phase = phase_num
+            _build_phase_statuses[phase_num] = "active"
+            if phase_num not in _build_phase_timings:
+                _build_phase_timings[phase_num] = {"start": time.time()}
+        return
+
+    # Detect phase/architect complete
+    m = _RE_PHASE_COMPLETE.search(line)
+    if m:
+        if m.group(1).lower().startswith("architect"):
+            _build_phase_statuses[0] = "completed"
+            if 0 in _build_phase_timings:
+                _build_phase_timings[0]["end"] = time.time()
+        elif m.group(2):
+            phase_num = int(m.group(2))
+            _build_phase_statuses[phase_num] = "completed"
+            if phase_num in _build_phase_timings:
+                _build_phase_timings[phase_num]["end"] = time.time()
+        return
+
+    # Detect verification start
+    if _RE_VERIFICATION_START.search(line):
+        _build_phase_statuses[-1] = "active"  # -1 = verifier
+        _build_phase_timings[-1] = {"start": time.time()}
+        return
+
+    # Detect cartographer start
+    if _RE_CARTOGRAPHER_START.search(line):
+        _build_phase_statuses[-2] = "active"  # -2 = cartographer
+        _build_phase_timings[-2] = {"start": time.time()}
+        return
+
+    # Detect build complete
+    if _RE_BUILD_COMPLETE.search(line):
+        # Mark any active special phases as completed
+        for key in [-1, -2]:
+            if _build_phase_statuses.get(key) == "active":
+                _build_phase_statuses[key] = "completed"
+                if key in _build_phase_timings:
+                    _build_phase_timings[key]["end"] = time.time()
+        return
+
+    # Detect token count
+    m = _RE_TOKEN_COUNT.search(line)
+    if m:
+        _build_total_tokens = int(m.group(1).replace(",", ""))
+        return
+
+
+async def _stream_build_output(proc: subprocess.Popen) -> None:
+    """Read build stdout line-by-line in a background task, parsing progress."""
+    global _build_status
+
+    loop = asyncio.get_event_loop()
+
+    def _read_lines():
+        """Blocking reader for subprocess stdout."""
+        assert proc.stdout is not None
+        for raw_line in proc.stdout:
+            line = raw_line.rstrip("\n").rstrip("\r")
+            _build_log_lines.append(line)
+            _parse_build_line(line)
+            # Also write to log file if configured
+            if _build_log_file:
+                try:
+                    with open(_build_log_file, "a", encoding="utf-8") as f:
+                        f.write(line + "\n")
+                except OSError:
+                    pass
+
+    try:
+        await loop.run_in_executor(None, _read_lines)
+    except Exception as e:
+        logger.error("Build output reader failed: %s", e)
+
+    # Process has finished — check exit code
+    proc.wait()
+    if proc.returncode == 0:
+        _build_status = "completed"
+    elif _build_status != "stopped":
+        _build_status = "failed"
+        # Mark current active phase as failed
+        for phase_num, status in list(_build_phase_statuses.items()):
+            if status == "active":
+                _build_phase_statuses[phase_num] = "failed"
+
+
+class StartBuildRequest(BaseModel):
+    """Request to start a build subprocess."""
+    project_dir: str
+    scripts_subdir: str = "scripts/cli-scripter"
+
+
+@router.post("/start-build")
+async def start_build(request: StartBuildRequest):
+    """Start run_all.sh as a subprocess, tracking PID and streaming output."""
+    global _build_process, _build_pid, _build_status, _build_start_time
+    global _build_project_dir, _build_log_file
+
+    # Prevent multiple concurrent builds
+    if _build_process is not None and _build_process.poll() is None:
+        raise HTTPException(
+            status_code=409,
+            detail="A build is already running. Stop it first.",
+        )
+
+    project_path = Path(request.project_dir)
+    scripts_path = project_path / request.scripts_subdir / "run_all.sh"
+
+    if not scripts_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Build script not found: {scripts_path}",
+        )
+
+    # Reset state for new build
+    _reset_build_state()
+    _build_project_dir = request.project_dir
+    _build_start_time = time.time()
+    _build_status = "running"
+
+    # Create log file in the scripts directory
+    _build_log_file = project_path / request.scripts_subdir / "build.log"
+
+    try:
+        # Start the build subprocess
+        _build_process = subprocess.Popen(
+            ["bash", str(scripts_path)],
+            cwd=str(project_path),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,  # Line-buffered
+            env={**os.environ, "PYTHONUNBUFFERED": "1"},
+        )
+        _build_pid = _build_process.pid
+
+        # Start background output reader
+        asyncio.create_task(_stream_build_output(_build_process))
+
+        return {
+            "status": "started",
+            "pid": _build_pid,
+            "project_dir": request.project_dir,
+            "log_file": str(_build_log_file),
+        }
+
+    except Exception as e:
+        _build_status = "failed"
+        logger.error("Failed to start build: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/build-status")
+async def build_status():
+    """Return current build status, phase progress, tokens, and timing."""
+    elapsed = 0.0
+    if _build_start_time:
+        elapsed = time.time() - _build_start_time
+
+    # Compute per-phase timing summaries
+    phase_timing_summary = {}
+    for phase_num, timing in _build_phase_timings.items():
+        start = timing.get("start", 0)
+        end = timing.get("end", time.time() if _build_phase_statuses.get(phase_num) == "active" else start)
+        phase_timing_summary[str(phase_num)] = {
+            "elapsed_seconds": round(end - start, 1),
+            "status": _build_phase_statuses.get(phase_num, "pending"),
+        }
+
+    return {
+        "status": _build_status,
+        "pid": _build_pid,
+        "project_dir": _build_project_dir,
+        "elapsed_seconds": round(elapsed, 1),
+        "current_phase": _build_current_phase,
+        "total_phases": _build_total_phases,
+        "phase_statuses": _build_phase_statuses,
+        "phase_timings": phase_timing_summary,
+        "total_tokens": _build_total_tokens,
+        "log_lines_count": len(_build_log_lines),
+    }
+
+
+@router.get("/build-log")
+async def build_log(
+    last_n: int = Query(100, ge=1, le=500, description="Number of recent log lines to return"),
+):
+    """Return the last N lines of build output."""
+    lines = list(_build_log_lines)[-last_n:]
+    return {
+        "lines": lines,
+        "total": len(_build_log_lines),
+        "status": _build_status,
+    }
+
+
+@router.post("/stop-build")
+async def stop_build():
+    """Stop the currently running build subprocess."""
+    global _build_status
+
+    if _build_process is None or _build_process.poll() is not None:
+        return {"status": "no_build_running", "build_status": _build_status}
+
+    _build_status = "stopped"
+
+    try:
+        # Try SIGTERM first (graceful shutdown)
+        if os.name == "nt":
+            # Windows: use taskkill for process tree
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(_build_process.pid)],
+                capture_output=True,
+                timeout=5,
+            )
+        else:
+            os.killpg(os.getpgid(_build_process.pid), signal.SIGTERM)
+
+        # Wait briefly for graceful shutdown
+        try:
+            _build_process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            # Force kill if still running
+            _build_process.kill()
+            _build_process.wait(timeout=3)
+
+        # Mark any active phases as failed
+        for phase_num, status in list(_build_phase_statuses.items()):
+            if status == "active":
+                _build_phase_statuses[phase_num] = "failed"
+
+        return {
+            "status": "stopped",
+            "pid": _build_pid,
+        }
+
+    except Exception as e:
+        logger.error("Failed to stop build: %s", e)
         raise HTTPException(status_code=500, detail=str(e))

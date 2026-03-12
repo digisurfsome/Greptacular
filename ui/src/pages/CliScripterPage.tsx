@@ -23,6 +23,7 @@ import { GatePopup, NEW_BUILD_PREFIX, EDIT_PATCH_PREFIX, type BuildMode, type Ph
 import { BuildLibrary, type BuildConfigFull } from '@/components/cli-scripter/BuildLibrary'
 import { PromptBar } from '@/components/cli-scripter/PromptBar'
 import { BuildDashboard } from '@/components/cli-scripter/BuildDashboard'
+import { BuildLogPanel } from '@/components/cli-scripter/BuildLogPanel'
 import { parseWaves, sequentialWaves } from '@/lib/waveParser'
 import {
   ArrowLeft,
@@ -1249,10 +1250,13 @@ Output a detailed phase plan with feature assignments, estimated token usage per
         </div>
       </header>
 
-      {/* Build Dashboard — shows during active builds */}
-      <div className="max-w-4xl mx-auto px-4 pt-4">
+      {/* Build Dashboard + Log Panel — shows during active builds */}
+      <div className="max-w-4xl mx-auto px-4 pt-4 space-y-2">
         <BuildDashboard
           projectDir={projectDir}
+          refreshInterval={buildRefreshInterval}
+        />
+        <BuildLogPanel
           refreshInterval={buildRefreshInterval}
         />
       </div>

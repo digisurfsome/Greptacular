@@ -1871,39 +1871,76 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
                   </div>
                 </div>
 
-                {/* Phase breakdown */}
+                {/* Pipeline card visualization */}
                 <div className="bg-zinc-900/40 rounded-lg p-3 space-y-2">
-                  <p className="text-xs text-zinc-400 font-medium">Phase Breakdown</p>
-                  <div className="space-y-1">
-                    {oneTimeRoles.filter(r => r.runsWhen === 'once_before').map(r => (
-                      <div key={r.id} className="flex items-center justify-between text-xs">
-                        <span className="text-purple-400">Pre-build: {r.name}</span>
-                        <span className="text-zinc-500">~{Math.round(roleEstimate(r) / 1000)}K tokens ({r.model})</span>
+                  <p className="text-xs text-zinc-400 font-medium">Pipeline</p>
+                  <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto pb-1">
+                    {/* Pre-build roles */}
+                    {oneTimeRoles.filter(r => r.runsWhen === 'once_before').map((r, idx) => (
+                      <div key={r.id} className="flex items-center gap-1.5 shrink-0">
+                        {idx > 0 && <span className="text-orange-500 text-xs">→</span>}
+                        <div className="bg-zinc-900/60 border border-purple-700/50 rounded-lg p-2 min-w-[100px] text-center">
+                          <p className="text-xs font-medium text-purple-300 truncate">{r.name}</p>
+                          <p className="text-orange-400 text-xs font-bold mt-0.5">~{Math.round(roleEstimate(r) / 1000)}K ⚡</p>
+                          <p className="text-zinc-600 text-[10px]">{r.model}</p>
+                        </div>
                       </div>
                     ))}
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-orange-400">Phase 1 (setup + foundation)</span>
-                      <span className="text-zinc-500">~{Math.round(phase1Total / 1000)}K tokens</span>
-                    </div>
-                    {numPhases > 1 && (
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-cyan-400">Phases 2-{numPhases} (features) x {numPhases - 1}</span>
-                        <span className="text-zinc-500">~{Math.round(phase2Total / 1000)}K each</span>
-                      </div>
+
+                    {/* Arrow from pre-build to phases */}
+                    {oneTimeRoles.filter(r => r.runsWhen === 'once_before').length > 0 && (
+                      <span className="text-orange-500 text-xs shrink-0">→</span>
                     )}
-                    {oneTimeRoles.filter(r => r.runsWhen === 'once_after').map(r => (
-                      <div key={r.id} className="flex items-center justify-between text-xs">
-                        <span className="text-red-400">Post-build: {r.name}</span>
-                        <span className="text-zinc-500">~{Math.round(roleEstimate(r) / 1000)}K tokens ({r.model})</span>
+
+                    {/* Phase 1 */}
+                    <div className="bg-zinc-900/60 border border-orange-700/50 rounded-lg p-2 min-w-[100px] text-center shrink-0">
+                      <p className="text-xs font-medium text-orange-300">Phase 1</p>
+                      <p className="text-orange-400 text-xs font-bold mt-0.5">~{Math.round(phase1Total / 1000)}K ⚡</p>
+                      <p className="text-zinc-600 text-[10px]">sonnet</p>
+                    </div>
+
+                    {/* Phase 2+ */}
+                    {numPhases > 1 && Array.from({ length: Math.min(numPhases - 1, 4) }, (_, i) => i + 2).map(phaseNum => (
+                      <div key={phaseNum} className="flex items-center gap-1.5 shrink-0">
+                        <span className="text-orange-500 text-xs">→</span>
+                        <div className="bg-zinc-900/60 border border-cyan-700/50 rounded-lg p-2 min-w-[100px] text-center">
+                          <p className="text-xs font-medium text-cyan-300">Phase {phaseNum}</p>
+                          <p className="text-orange-400 text-xs font-bold mt-0.5">~{Math.round(phase2Total / 1000)}K ⚡</p>
+                          <p className="text-zinc-600 text-[10px]">sonnet</p>
+                        </div>
                       </div>
                     ))}
-                    {oneTimeRoles.filter(r => r.runsWhen === 'once_final').map(r => (
-                      <div key={r.id} className="flex items-center justify-between text-xs">
-                        <span className="text-green-400">Final: {r.name}</span>
-                        <span className="text-zinc-500">~{Math.round(roleEstimate(r) / 1000)}K tokens ({r.model})</span>
+
+                    {/* Ellipsis if more phases */}
+                    {numPhases > 5 && (
+                      <>
+                        <span className="text-orange-500 text-xs shrink-0">→</span>
+                        <div className="bg-zinc-900/40 border border-zinc-700/40 rounded-lg p-2 min-w-[60px] text-center shrink-0">
+                          <p className="text-xs text-zinc-500">+{numPhases - 5} more</p>
+                        </div>
+                      </>
+                    )}
+
+                    {/* Post-build roles */}
+                    {oneTimeRoles.filter(r => r.runsWhen === 'once_after' || r.runsWhen === 'once_final').map(r => (
+                      <div key={r.id} className="flex items-center gap-1.5 shrink-0">
+                        <span className="text-orange-500 text-xs">→</span>
+                        <div className={`bg-zinc-900/60 rounded-lg p-2 min-w-[100px] text-center ${
+                          r.runsWhen === 'once_after' ? 'border border-red-700/50' : 'border border-green-700/50'
+                        }`}>
+                          <p className={`text-xs font-medium truncate ${r.runsWhen === 'once_after' ? 'text-red-300' : 'text-green-300'}`}>
+                            {r.name}
+                          </p>
+                          <p className="text-orange-400 text-xs font-bold mt-0.5">~{Math.round(roleEstimate(r) / 1000)}K ⚡</p>
+                          <p className="text-zinc-600 text-[10px]">{r.model}</p>
+                        </div>
                       </div>
                     ))}
                   </div>
+                  <p className="text-xs text-zinc-600">
+                    Total: ~{Math.round(grandTotal / 1000)}K tokens • {numPhases + oneTimeRoles.length} CLI sessions
+                    {grandTotal > 0 && ` • Est. ~${(grandTotal / 200000).toFixed(1)} hrs`}
+                  </p>
                 </div>
 
                 {/* Warnings */}

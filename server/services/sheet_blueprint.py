@@ -275,7 +275,8 @@ async def convert_single_prompt(
 ) -> str:
     """[AGENT] Convert a video-style prompt to a chain-executable prompt.
 
-    Uses Claude Sonnet. ~1-2k tokens per call.
+    Uses Claude Haiku for speed (~3x faster than Sonnet, ~4x cheaper).
+    This is a straightforward rewrite task — Haiku handles it well.
     Includes retry logic (max 2 retries) and output validation.
     """
     from ..services.yt_processor import YTProcessor
@@ -294,7 +295,9 @@ async def convert_single_prompt(
         f'Return ONLY the converted prompt, no explanation.'
     )
 
-    processor = YTProcessor(model="claude-sonnet-4-6")
+    # Haiku for prompt conversion — it's a rewrite task, not reasoning
+    prompt_model = "claude-haiku-4-5"
+    processor = YTProcessor(model=prompt_model)
     max_retries = 2
 
     for attempt in range(max_retries + 1):
@@ -302,8 +305,8 @@ async def convert_single_prompt(
             result = await processor._call_via_sdk(
                 PROMPT_CONVERSION_SYSTEM,
                 user_message if attempt == 0 else f"{user_message}\n\nPlease provide the converted prompt.",
-                "claude-sonnet-4-6",
-                timeout=60,
+                prompt_model,
+                timeout=30,
             )
 
             if not result or not result.strip():
@@ -458,23 +461,32 @@ async def generate_blueprint(
         raise ValueError("No valid steps found after filtering")
 
     if on_progress:
-        on_progress(f"Processing {len(valid_steps)} valid steps...")
+        on_progress(f"Validated {len(valid_steps)} steps")
 
-    # [ROBOT] steps — all zero tokens
-    detected_api_list = detect_apis(valid_steps)
-    user_variables = extract_user_variables(valid_steps)
-
+    # [ROBOT] steps — all zero tokens, instant
     if on_progress:
-        on_progress(f"Detected {len(detected_api_list)} APIs, {len(user_variables)} variables")
+        on_progress("Classifying step types...")
+    # Classification happens inside assemble, but we can report detection here
+    detected_api_list = detect_apis(valid_steps)
+    if on_progress:
+        on_progress(f"Detected {len(detected_api_list)} API{'s' if len(detected_api_list) != 1 else ''}")
 
-    # [AGENT] prompt conversion (or skip for testing)
+    user_variables = extract_user_variables(valid_steps)
+    if on_progress:
+        on_progress(f"Found {len(user_variables)} variable{'s' if len(user_variables) != 1 else ''}")
+
+    # [AGENT] prompt conversion via Haiku (or skip for testing)
     if skip_prompt_conversion:
         converted_prompts = [s.get("prompt", "") for s in valid_steps]
+        if on_progress:
+            on_progress("Skipped prompt conversion (test mode)")
     else:
+        if on_progress:
+            on_progress(f"Converting {len(valid_steps)} prompts via Haiku...")
         converted_prompts = await convert_prompts(valid_steps, project_name, on_progress)
 
     if on_progress:
-        on_progress("Assembling blueprint...")
+        on_progress("Assembling final blueprint...")
 
     # [ROBOT] final assembly
     blueprint = assemble_blueprint(

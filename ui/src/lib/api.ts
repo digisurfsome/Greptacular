@@ -2639,6 +2639,65 @@ export async function generateBlueprint(
   })
 }
 
+/**
+ * Stream blueprint generation via SSE. Calls the /generate-stream endpoint
+ * which sends real-time progress events from the backend pipeline.
+ */
+export async function generateBlueprintStream(
+  params: GenerateBlueprintParams,
+  onProgress: (message: string, elapsed: number) => void,
+): Promise<{ blueprint: TFSheetBlueprint; tool_id: string }> {
+  const response = await fetch(`${API_BASE}/tool-factory/generate-stream`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  })
+
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(text || `Generation failed (${response.status})`)
+  }
+
+  const reader = response.body?.getReader()
+  if (!reader) throw new Error('No response body')
+
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let result: { blueprint: TFSheetBlueprint; tool_id: string } | null = null
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+
+    buffer += decoder.decode(value, { stream: true })
+
+    // Parse SSE lines: "data: {...}\n\n"
+    const lines = buffer.split('\n\n')
+    buffer = lines.pop() || ''
+
+    for (const line of lines) {
+      const match = line.match(/^data:\s*(.+)$/m)
+      if (!match) continue
+
+      try {
+        const event = JSON.parse(match[1])
+        if (event.type === 'log') {
+          onProgress(event.message, event.elapsed)
+        } else if (event.type === 'result') {
+          result = event.data
+        } else if (event.type === 'error') {
+          throw new Error(event.message)
+        }
+      } catch (e) {
+        if (e instanceof Error && e.message !== match[1]) throw e
+      }
+    }
+  }
+
+  if (!result) throw new Error('Stream ended without a result')
+  return result
+}
+
 export async function uploadPRD(
   content: string,
   filename: string,

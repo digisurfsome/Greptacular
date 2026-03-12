@@ -1032,6 +1032,7 @@ SPLITTING RULES:
 - Respect dependencies: if B depends on A, A goes in an earlier phase
 - Each phase must be testable on its own — find natural break points
 - NEVER split in the middle of a tightly coupled feature group
+- IMPORTANT: After splitting, state which phases can run IN PARALLEL (no cross-dependencies). Format: "Wave 1: [Phase 1] → Wave 2: [Phase 2, Phase 3] (parallel) → Wave 3: [Phase 4]"
 
 TESTING PHASE SIZING:
 - If the build has 3+ feature phases, the post-build verification (Verifier role) needs its OWN dedicated phase at the end.
@@ -1043,30 +1044,14 @@ Settings:
 - Turns per phase: ${turns}
 - Phase transition: ${transition}
 
-Output a detailed phase plan with feature assignments and estimated token usage per phase.`
+Output a detailed phase plan with feature assignments, estimated token usage per phase, and execution wave groupings.`
       const phaseResult = await callGenerate(phasePromptText, model)
       setPhaseAiResult(phaseResult)
-      setGenerateAllStep(3)
 
-      // Step 3: Build Scripts
-      const buildPromptText = `Generate bash scripts for a phased Claude Code build.
-
-Phase Plan:
-${phaseResult}
-
-Settings:
-- Model: ${MODELS.find((m) => m.value === model)?.label || model}
-- Max turns: ${turns}
-- Between phases: ${transition}
-- On error: ${errorHandling}
-- Git: ${gitCommits}
-
-Build Rules:
-${getRulesText() || '[No rules defined]'}
-
-Generate phase1.sh through phaseN.sh and run_all.sh.`
-      const buildResult = await callGenerate(buildPromptText, model)
-      setBuildAiResult(buildResult)
+      // Step 3 is now DETERMINISTIC — no LLM needed for script assembly.
+      // Scripts are generated via the "Save Scripts to Disk" button which calls /write-scripts.
+      // Show a note instead of a spinner for step 3.
+      setBuildAiResult('Scripts ready for generation. Click "Save Scripts to Disk" to write deterministic bash scripts — no tokens used.')
       setGenerateAllStep(0)
     } catch (err) {
       setGenerateAllError(err instanceof Error ? err.message : 'Generation failed')
@@ -2036,12 +2021,12 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
             {generateAllLoading ? (
               <>
                 <Loader2 size={20} className="animate-spin" />
-                Step {generateAllStep} of 3: {generateAllStep === 1 ? 'Generating PRD...' : generateAllStep === 2 ? 'Splitting phases...' : 'Creating scripts...'}
+                Step {generateAllStep} of 2: {generateAllStep === 1 ? 'Generating PRD...' : 'Splitting phases...'}
               </>
             ) : (
               <>
                 <Rocket size={20} />
-                Generate All (PRD &rarr; Phases &rarr; Scripts)
+                Generate All (PRD &rarr; Phases)
               </>
             )}
           </button>

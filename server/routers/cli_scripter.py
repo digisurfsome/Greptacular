@@ -450,36 +450,35 @@ async def generate(request: GenerateRequest):
 
 @router.post("/generate-all")
 async def generate_all(request: GenerateAllRequest):
-    """Chain all 3 generation steps: PRD → Phase Split → Build Scripts.
+    """Chain generation steps: PRD → Phase Split.
 
-    Each step feeds its output into the next step's prompt template.
-    Templates should contain {previous_output} as a placeholder.
+    Step 3 (build scripts) is now DETERMINISTIC — use /write-scripts instead.
+    build_scripts_prompt_template is kept for backwards compatibility but ignored.
     """
     results = {}
 
     try:
         # Step 1: Generate PRD
-        logger.info("CLI Scripter: Step 1/3 — Generating PRD...")
+        logger.info("CLI Scripter: Step 1/2 — Generating PRD...")
         prd_result = await _run_claude_cli(request.prd_prompt, request.model)
         results["prd"] = prd_result
 
         # Step 2: Phase Split (inject PRD)
-        logger.info("CLI Scripter: Step 2/3 — Splitting into phases...")
+        logger.info("CLI Scripter: Step 2/2 — Splitting into phases...")
         phase_prompt = request.phase_split_prompt_template.replace(
             "{previous_output}", prd_result
         )
         phase_result = await _run_claude_cli(phase_prompt, request.model)
         results["phase_split"] = phase_result
 
-        # Step 3: Build Scripts (inject phases)
-        logger.info("CLI Scripter: Step 3/3 — Generating build scripts...")
-        build_prompt = request.build_scripts_prompt_template.replace(
-            "{previous_output}", phase_result
+        # Step 3: Script generation is now DETERMINISTIC via /write-scripts endpoint.
+        # No LLM call needed — scripts are pure string templates.
+        results["build_scripts"] = (
+            "Scripts are generated deterministically via the 'Save Scripts to Disk' button. "
+            "No LLM tokens used for script assembly."
         )
-        build_result = await _run_claude_cli(build_prompt, request.model)
-        results["build_scripts"] = build_result
 
-        return {"results": results, "steps_completed": 3}
+        return {"results": results, "steps_completed": 2}
 
     except HTTPException:
         raise

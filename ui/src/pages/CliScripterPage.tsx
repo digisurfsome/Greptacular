@@ -15,6 +15,7 @@
 
 import { useState, useCallback, useEffect } from 'react'
 import { usePersistedState } from '@/hooks/usePersistedState'
+import { ClearButton } from '@/components/cli-scripter/ClearButton'
 import {
   ArrowLeft,
   Plus,
@@ -313,13 +314,20 @@ function TextInput({
   return (
     <div>
       <label className="block text-sm text-zinc-400 mb-1.5">{label}</label>
-      <input
-        type="text"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:border-orange-500 focus:outline-none transition-colors"
-      />
+      <div className="relative">
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 pr-8 text-white text-sm focus:border-orange-500 focus:outline-none transition-colors"
+        />
+        <ClearButton
+          value={value}
+          onClear={() => onChange('')}
+          className="absolute right-2 top-1/2 -translate-y-1/2"
+        />
+      </div>
     </div>
   )
 }
@@ -341,7 +349,14 @@ function TextArea({
 }) {
   return (
     <div>
-      {label && <label className="block text-sm text-zinc-400 mb-1.5">{label}</label>}
+      {label && (
+        <div className="flex items-center justify-between mb-1.5">
+          <label className="text-sm text-zinc-400">{label}</label>
+          {onChange && !readOnly && (
+            <ClearButton value={value} onClear={() => onChange('')} />
+          )}
+        </div>
+      )}
       <textarea
         value={value}
         onChange={onChange ? (e) => onChange(e.target.value) : undefined}
@@ -1211,9 +1226,12 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
           <div className="space-y-3">
             {ruleBlocks.map((block, i) => (
               <div key={i}>
-                <label className="block text-xs text-zinc-500 mb-1">
-                  Rule Block {i + 1}
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs text-zinc-500">
+                    Rule Block {i + 1}
+                  </label>
+                  <ClearButton value={block} onClear={() => updateRuleBlock(i, '')} />
+                </div>
                 <textarea
                   value={block}
                   onChange={(e) => updateRuleBlock(i, e.target.value)}
@@ -1338,11 +1356,14 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="text-sm text-orange-400 font-medium">Phase 1 Rules (Full)</label>
-                  <span className="text-xs text-zinc-600">
-                    ~{estimateTokens(phase1Rules).toLocaleString()} tokens
-                    {' '}• Cab ride: ~{getPhase1CabRide().toLocaleString()}
-                    {' '}({Math.round(getPhase1CabRide() / TOKEN_BUDGET * 100)}% of budget)
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-zinc-600">
+                      ~{estimateTokens(phase1Rules).toLocaleString()} tokens
+                      {' '}• Cab ride: ~{getPhase1CabRide().toLocaleString()}
+                      {' '}({Math.round(getPhase1CabRide() / TOKEN_BUDGET * 100)}% of budget)
+                    </span>
+                    <ClearButton value={phase1Rules} onClear={() => setPhase1Rules('')} />
+                  </div>
                 </div>
                 <textarea
                   value={phase1Rules}
@@ -1357,11 +1378,14 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="text-sm text-cyan-400 font-medium">Phase 2+ Rules (Condensed)</label>
-                  <span className="text-xs text-zinc-600">
-                    ~{estimateTokens(phase2PlusRules).toLocaleString()} tokens
-                    {' '}• Cab ride: ~{getPhase2PlusCabRide().toLocaleString()}
-                    {' '}({Math.round(getPhase2PlusCabRide() / TOKEN_BUDGET * 100)}% of budget)
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-zinc-600">
+                      ~{estimateTokens(phase2PlusRules).toLocaleString()} tokens
+                      {' '}• Cab ride: ~{getPhase2PlusCabRide().toLocaleString()}
+                      {' '}({Math.round(getPhase2PlusCabRide() / TOKEN_BUDGET * 100)}% of budget)
+                    </span>
+                    <ClearButton value={phase2PlusRules} onClear={() => setPhase2PlusRules('')} />
+                  </div>
                 </div>
                 <textarea
                   value={phase2PlusRules}
@@ -1582,7 +1606,10 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
                       </div>
                     </div>
                     <div>
-                      <label className="block text-xs text-zinc-500 mb-1">Prompt Template</label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-xs text-zinc-500">Prompt Template</label>
+                        <ClearButton value={role.prompt} onClear={() => updateRole(role.id, { prompt: '' })} />
+                      </div>
                       <textarea
                         value={role.prompt}
                         onChange={(e) => updateRole(role.id, { prompt: e.target.value })}

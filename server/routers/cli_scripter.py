@@ -79,6 +79,51 @@ class QueueRequest(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Rule block persistence (~/.autoforge/cli_scripter_rules.json)
+# ---------------------------------------------------------------------------
+
+RULES_FILE = Path.home() / ".autoforge" / "cli_scripter_rules.json"
+
+
+class RuleBlock(BaseModel):
+    """A single named rule block in the library."""
+    id: str
+    name: str
+    content: str
+    tags: list[str] = []
+    label: str = ""
+    order: int = 0
+    combiner_main: bool = False
+    combiner_p1: bool = False
+    combiner_p2plus: bool = False
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class RulesPayload(BaseModel):
+    """Full rules state for save/load."""
+    version: int = 1
+    blocks: list[RuleBlock] = []
+    last_phase_mode: str = "single"
+
+
+def _load_rules() -> dict:
+    """Load rules from disk, returning a raw dict."""
+    if RULES_FILE.exists():
+        try:
+            return json.loads(RULES_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            return {"version": 1, "blocks": [], "last_phase_mode": "single"}
+    return {"version": 1, "blocks": [], "last_phase_mode": "single"}
+
+
+def _save_rules(data: dict) -> None:
+    """Save rules to disk."""
+    RULES_FILE.parent.mkdir(parents=True, exist_ok=True)
+    RULES_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
 # In-memory queue (persisted to ~/.autoforge/build_queue.json)
 # ---------------------------------------------------------------------------
 
@@ -432,6 +477,56 @@ async def write_scripts(request: WriteScriptsRequest):
     except Exception as e:
         logger.error("Failed to write scripts: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Rule block endpoints
+# ---------------------------------------------------------------------------
+
+@router.get("/rules")
+async def get_rules():
+    """Load all rule blocks from disk."""
+    data = _load_rules()
+    return data
+
+
+@router.post("/rules")
+async def save_rules(payload: RulesPayload):
+    """Save all rule blocks to disk (full replace)."""
+    data = payload.model_dump()
+    _save_rules(data)
+    return {"status": "saved", "block_count": len(payload.blocks)}
+
+
+@router.get("/rules/combined")
+async def get_combined_rules(slot: str = Query("main", description="Slot to merge: main, p1, or p2plus")):
+    """Get merged text for a specific combiner slot.
+
+    Merges all blocks that have the corresponding combiner checkbox set,
+    in order of their 'order' field.
+    """
+    if slot not in ("main", "p1", "p2plus"):
+        raise HTTPException(status_code=400, detail="slot must be 'main', 'p1', or 'p2plus'")
+
+    data = _load_rules()
+    blocks = data.get("blocks", [])
+
+    key_map = {"main": "combiner_main", "p1": "combiner_p1", "p2plus": "combiner_p2plus"}
+    slot_key = key_map[slot]
+
+    # Filter and sort by order
+    checked = [b for b in blocks if b.get(slot_key, False) and b.get("content", "").strip()]
+    checked.sort(key=lambda b: b.get("order", 0))
+
+    merged = "\n\n".join(b["content"].strip() for b in checked)
+    token_estimate = len(merged) // 4
+
+    return {
+        "slot": slot,
+        "text": merged,
+        "block_count": len(checked),
+        "token_estimate": token_estimate,
+    }
 
 
 # ---------------------------------------------------------------------------

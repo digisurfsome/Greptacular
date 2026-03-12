@@ -13,7 +13,7 @@
  * - Build queue for multi-app runs
  */
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { usePersistedState } from '@/hooks/usePersistedState'
 import { ClearButton } from '@/components/cli-scripter/ClearButton'
 import { ProjectFileBrowser } from '@/components/cli-scripter/ProjectFileBrowser'
@@ -539,6 +539,55 @@ export function CliScripterPage() {
   // ---- Phase-Specific Rules ("Top Bun") (persisted) ----
   // splitPhaseRules is now driven by phaseMode from the gate popup
   const splitPhaseRules = phaseMode === 'split'
+
+  // ---- Backend sync for rule blocks ----
+  const rulesLoadedRef = useRef(false)
+  const rulesSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Load rules from backend on mount
+  useEffect(() => {
+    if (rulesLoadedRef.current) return
+    rulesLoadedRef.current = true
+
+    fetch(`${API_BASE}/api/cli-scripter/rules`)
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => {
+        if (data && Array.isArray(data.blocks) && data.blocks.length > 0) {
+          setRuleBlocks(data.blocks as RuleBlockData[])
+        }
+      })
+      .catch(() => {
+        // Backend unavailable — fall back to localStorage (already loaded)
+      })
+  }, [])
+
+  // Debounced save to backend on every ruleBlocks change (1 second)
+  useEffect(() => {
+    if (!rulesLoadedRef.current) return // Don't save during initial load
+
+    if (rulesSaveTimerRef.current) {
+      clearTimeout(rulesSaveTimerRef.current)
+    }
+    rulesSaveTimerRef.current = setTimeout(() => {
+      fetch(`${API_BASE}/api/cli-scripter/rules`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          version: 1,
+          blocks: ruleBlocks,
+          last_phase_mode: phaseMode,
+        }),
+      }).catch(() => {
+        // Backend unavailable — localStorage still has the data
+      })
+    }, 1000)
+
+    return () => {
+      if (rulesSaveTimerRef.current) {
+        clearTimeout(rulesSaveTimerRef.current)
+      }
+    }
+  }, [ruleBlocks, phaseMode])
   const [phase1Rules, setPhase1Rules] = usePersistedState('cli_scripter_phase1_rules', '')
   const [phase2PlusRules, setPhase2PlusRules] = usePersistedState('cli_scripter_phase2plus_rules', '')
 

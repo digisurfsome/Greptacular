@@ -3,18 +3,19 @@
  * Route: /#/tools
  */
 
-import { useState, useMemo } from 'react'
-import { ArrowLeft, BookOpen, ChevronRight, Search, Wrench, Plus, BarChart3 } from 'lucide-react'
+import { useState, useMemo, useCallback } from 'react'
+import { ArrowLeft, BookOpen, ChevronRight, Search, Wrench, Plus, BarChart3, Layers, CheckCircle2, Circle, Loader2, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { ToolCard } from './ToolCard'
 import { ToolDetailView } from './ToolDetailView'
 import { ThemePicker } from './ThemePicker'
 import { AnalyticsDashboard } from './AnalyticsDashboard'
 import { ToolFactoryGuidePanel } from './ToolFactoryGuidePanel'
-import { useTools, useToolStats } from '@/hooks/useToolFactory'
+import { useTools, useToolStats, useStartBatch, useBatchStatus } from '@/hooks/useToolFactory'
 import { useSwapTheme } from '@/hooks/useToolThemes'
-import type { TFToolStatus, TFThemeConfig } from '@/lib/types'
+import type { TFToolStatus, TFThemeConfig, YTStrategyProject } from '@/lib/types'
 
 type SortOption = 'created' | 'last_run' | 'name'
 type ViewTab = 'tools' | 'analytics'
@@ -35,10 +36,65 @@ export function ToolManagerPage() {
   const [showThemePicker, setShowThemePicker] = useState(false)
   const [activeTab, setActiveTab] = useState<ViewTab>('tools')
   const [showGuide, setShowGuide] = useState(false)
+  const [showBatchModal, setShowBatchModal] = useState(false)
+  const [batchSelectedIds, setBatchSelectedIds] = useState<Set<string>>(new Set())
+  const [batchAutoDeploy, setBatchAutoDeploy] = useState(false)
+  const [activeBatchId, setActiveBatchId] = useState<string | null>(null)
 
   const { data: tools, isLoading } = useTools(statusFilter === 'all' ? undefined : statusFilter)
   const { data: stats } = useToolStats()
   const swapTheme = useSwapTheme()
+  const startBatch = useStartBatch()
+  const { data: batchStatus } = useBatchStatus(activeBatchId)
+
+  /** Read YT Lab projects from localStorage, filter to those with steps. */
+  const ytLabProjects = useMemo((): YTStrategyProject[] => {
+    try {
+      const raw = localStorage.getItem('yt-lab-projects')
+      if (!raw) return []
+      const all: YTStrategyProject[] = JSON.parse(raw)
+      return all.filter((p) => {
+        const stepsRaw = localStorage.getItem(`yt-lab-steps-${p.id}`)
+        if (!stepsRaw) return false
+        const steps = JSON.parse(stepsRaw)
+        return Array.isArray(steps) && steps.length > 0
+      })
+    } catch {
+      return []
+    }
+  }, [])
+
+  const handleToggleBatchProject = useCallback((projectId: string) => {
+    setBatchSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(projectId)) {
+        next.delete(projectId)
+      } else {
+        next.add(projectId)
+      }
+      return next
+    })
+  }, [])
+
+  const handleStartBatch = useCallback(async () => {
+    if (batchSelectedIds.size === 0) return
+    try {
+      const result = await startBatch.mutateAsync({
+        project_ids: Array.from(batchSelectedIds),
+        auto_deploy: batchAutoDeploy,
+      })
+      setActiveBatchId(result.batch_id)
+    } catch (err) {
+      console.error('Batch start failed:', err)
+    }
+  }, [batchSelectedIds, batchAutoDeploy, startBatch])
+
+  const handleCloseBatchModal = useCallback(() => {
+    setShowBatchModal(false)
+    setBatchSelectedIds(new Set())
+    setBatchAutoDeploy(false)
+    setActiveBatchId(null)
+  }, [])
 
   const filteredTools = useMemo(() => {
     if (!tools) return []
@@ -147,7 +203,7 @@ export function ToolManagerPage() {
           <ChevronRight size={12} className="text-muted-foreground" />
           <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
             <Wrench size={12} />
-            Tool Manager
+            YT Lab Tools
           </span>
         </nav>
       </div>
@@ -157,7 +213,7 @@ export function ToolManagerPage() {
           {/* Page header */}
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-semibold text-foreground">Tool Manager</h1>
+              <h1 className="text-2xl font-semibold text-foreground">YT Lab Tools</h1>
               {stats && (
                 <p className="text-sm text-muted-foreground mt-1">
                   {stats.total_tools} tools &middot; {stats.active_tools} active &middot; {stats.total_runs} total runs
@@ -199,11 +255,21 @@ export function ToolManagerPage() {
                 <BookOpen size={14} />
               </Button>
               <Button
+                variant="outline"
+                className="gap-1.5"
+                onClick={() => setShowBatchModal(true)}
+                disabled={ytLabProjects.length === 0}
+                title={ytLabProjects.length === 0 ? 'No YT Lab projects with steps found' : 'Batch generate tools from multiple YT Lab projects'}
+              >
+                <Layers size={14} />
+                Batch Generate
+              </Button>
+              <Button
                 className="gap-1.5"
                 onClick={() => { window.location.hash = '#/yt-lab' }}
               >
                 <Plus size={14} />
-                New Tool
+                New Tool (YT Lab)
               </Button>
             </div>
           </div>
@@ -287,6 +353,148 @@ export function ToolManagerPage() {
       </main>
 
       {showGuide && <ToolFactoryGuidePanel onClose={() => setShowGuide(false)} />}
+
+      {/* Batch Generate Modal */}
+      <Dialog open={showBatchModal} onOpenChange={(open) => { if (!open) handleCloseBatchModal() }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Batch Generate Tools</DialogTitle>
+            <DialogDescription>
+              Select YT Lab projects to generate tools from in bulk.
+            </DialogDescription>
+          </DialogHeader>
+
+          {!activeBatchId ? (
+            <>
+              {/* Project selection view */}
+              <div className="space-y-3 max-h-[400px] overflow-y-auto">
+                {ytLabProjects.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-8">
+                    No YT Lab projects with steps found. Create projects in YT Strategy Lab first.
+                  </p>
+                ) : (
+                  ytLabProjects.map((project) => (
+                    <label
+                      key={project.id}
+                      className="flex items-center gap-3 p-3 rounded-lg border border-border hover:bg-muted/50 cursor-pointer transition-colors"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={batchSelectedIds.has(project.id)}
+                        onChange={() => handleToggleBatchProject(project.id)}
+                        className="w-4 h-4 rounded border-border"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{project.name}</p>
+                        {project.description && (
+                          <p className="text-xs text-muted-foreground truncate">{project.description}</p>
+                        )}
+                      </div>
+                    </label>
+                  ))
+                )}
+              </div>
+
+              {/* Auto-deploy toggle */}
+              <label className="flex items-center gap-2 pt-2">
+                <input
+                  type="checkbox"
+                  checked={batchAutoDeploy}
+                  onChange={(e) => setBatchAutoDeploy(e.target.checked)}
+                  className="w-4 h-4 rounded border-border"
+                />
+                <span className="text-sm">Auto-deploy to Google Sheets</span>
+              </label>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={handleCloseBatchModal}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleStartBatch}
+                  disabled={batchSelectedIds.size === 0 || startBatch.isPending}
+                  className="gap-1.5"
+                >
+                  {startBatch.isPending ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <Layers size={14} />
+                  )}
+                  Start Batch ({batchSelectedIds.size})
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              {/* Progress view */}
+              <div className="space-y-4">
+                {/* Progress bar */}
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">
+                      {batchStatus?.status === 'completed' ? 'Completed' : 'Generating...'}
+                    </span>
+                    <span className="font-medium">
+                      {batchStatus ? `${batchStatus.completed + batchStatus.failed}/${batchStatus.total}` : '0/0'}
+                    </span>
+                  </div>
+                  <div className="h-2 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-primary rounded-full transition-all duration-300"
+                      style={{
+                        width: batchStatus
+                          ? `${((batchStatus.completed + batchStatus.failed) / Math.max(batchStatus.total, 1)) * 100}%`
+                          : '0%',
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Per-tool results */}
+                <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                  {batchStatus?.results.map((result, i) => (
+                    <div key={i} className="flex items-center gap-2 p-2 rounded-lg border border-border">
+                      {result.status === 'success' ? (
+                        <CheckCircle2 size={16} className="text-green-500 shrink-0" />
+                      ) : result.status === 'error' ? (
+                        <AlertCircle size={16} className="text-red-500 shrink-0" />
+                      ) : (
+                        <Circle size={16} className="text-muted-foreground shrink-0" />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{result.tool_name}</p>
+                        {result.error && (
+                          <p className="text-xs text-red-500 truncate">{result.error}</p>
+                        )}
+                      </div>
+                      <span className="text-xs text-muted-foreground shrink-0">
+                        {result.duration_seconds > 0 ? `${result.duration_seconds.toFixed(1)}s` : ''}
+                      </span>
+                    </div>
+                  ))}
+
+                  {/* Current tool being processed */}
+                  {batchStatus?.current_tool && batchStatus.status === 'running' && (
+                    <div className="flex items-center gap-2 p-2 rounded-lg border border-border bg-muted/30">
+                      <Loader2 size={16} className="animate-spin text-primary shrink-0" />
+                      <p className="text-sm text-muted-foreground truncate">{batchStatus.current_tool}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={handleCloseBatchModal}
+                >
+                  {batchStatus?.status === 'completed' ? 'Close' : 'Close'}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

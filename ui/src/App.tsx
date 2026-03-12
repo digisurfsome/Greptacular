@@ -446,16 +446,16 @@ function App() {
                 <span className="hidden sm:inline text-xs">Scripter</span>
               </Button>
 
-              {/* Tool Manager link */}
+              {/* YT Lab Tools link */}
               <Button
                 variant="ghost"
                 size="sm"
                 className="gap-1.5"
                 onClick={() => { window.location.hash = '#/tools' }}
-                title="Tool Manager"
+                title="YT Lab Tools"
               >
                 <Wrench size={16} />
-                <span className="hidden sm:inline text-xs">Tools</span>
+                <span className="hidden sm:inline text-xs">YT Lab Tools</span>
               </Button>
 
               {/* Agent Monitor link — opens in new window */}

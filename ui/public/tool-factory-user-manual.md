@@ -21,10 +21,10 @@
 
 ## Getting There
 
-Two entry points:
+Two pages work together:
 
-- **Tool Manager** — Go to `/#/tools` (or click "Tool Factory" in the sidebar). This is the home base where all your tools live.
-- **YT Strategy Lab** — Go to `/#/yt-lab`. This is where you define strategies from YouTube videos, then generate tools from them.
+- **YT Strategy Lab** — Go to `/#/yt-lab` (or click "YT Lab" in the sidebar). This is where you define strategies from YouTube videos, import PRDs, and generate tools from your steps.
+- **YT Lab Tools** — Go to `/#/tools` (or click "YT Lab Tools" in the sidebar). This is where all your generated tools live — browse, search, filter, and manage them.
 
 ---
 
@@ -50,7 +50,7 @@ This is the main flow — you watched a YouTube video (or several), captured the
 
 ### Step 2: Generate the Tool
 
-1. Click the **"Generate Tool"** button on your project
+1. In the strategy detail view, click the **"Generate Tool"** button in the left sidebar (below "Add Step")
 2. The system processes your steps:
    - Validates and cleans up your steps
    - Detects which APIs/services your tool needs (OpenAI, Google Ads, etc.)
@@ -77,16 +77,15 @@ See [Deploying to Google Sheets](#deploying-to-google-sheets) below.
 
 Already have a written document describing what the tool should do? Skip the YouTube step.
 
-1. Open **Tool Manager** (`/#/tools`)
-2. Click **"New Tool"** → **"From PRD"**
-3. The PRD Upload modal opens
-4. Paste your document into the text area
-5. Give it a filename (just for your reference)
-6. Optionally add context — tell the system anything extra about what you want
-7. Click **Upload**
-8. Claude reads your PRD and extracts the steps automatically
-9. You'll see the extracted steps — review them, edit if needed
-10. From here, the flow is the same: Blueprint Preview → Theme → Deploy
+1. Open **YT Strategy Lab** (`/#/yt-lab`)
+2. Click the **"From PRD"** button in the header bar (next to the Batch Import button)
+3. The PRD Upload modal opens with two tabs:
+   - **Upload File** — Click to upload a `.md`, `.txt`, or `.pdf` file
+   - **Paste Content** — Paste your document text directly (minimum 100 characters)
+4. Click **"Extract Steps"**
+5. Claude reads your PRD and extracts the strategy steps automatically
+6. A new project is created in YT Lab with the extracted steps
+7. From there, open the project and click **"Generate Tool"** in the sidebar — same flow as YouTube strategy: Blueprint Preview → Theme → Deploy
 
 **What makes a good PRD for this?** Anything with a clear sequence of steps. Bullet lists work great. Something like:
 - Step 1: Research the topic using Google Trends
@@ -189,14 +188,14 @@ Your Google Sheet has **5 tabs**:
 
 - The sheet opens in a new tab
 - The tool status changes from **Draft** → **Active**
-- You can find it anytime in the Tool Manager
+- You can find it anytime in **YT Lab Tools** (`/#/tools`)
 - The sheet URL is saved — click "Open Sheet" to go back to it
 
 ---
 
 ## Managing Your Tools
 
-### Tool Manager Home (`/#/tools`)
+### YT Lab Tools Home (`/#/tools`)
 
 This is where all your tools live. You see a grid of cards, one per tool.
 
@@ -256,9 +255,9 @@ Have multiple YouTube strategy projects you want to turn into tools at once? Bat
 ### How to Run a Batch
 
 1. Make sure you have multiple projects in YT Lab with strategies defined
-2. Go to **Tool Manager** → Click **"New Tool"** → **"Batch"**
-3. Select the projects you want to generate tools from
-4. Optionally pick a default theme (applied to all tools)
+2. Go to **YT Lab Tools** (`/#/tools`) → Click the **"Batch Generate"** button in the header
+3. A modal opens showing all your YT Lab projects that have steps defined
+4. Check the projects you want to generate tools from
 5. Toggle **"Auto-deploy"** if you want them deployed to Google Sheets immediately
 6. Click **"Start Batch"**
 
@@ -266,14 +265,14 @@ Have multiple YouTube strategy projects you want to turn into tools at once? Bat
 
 - Tools are generated **one at a time** (sequential, not parallel) to respect API limits
 - Each tool is independent — if one fails, the others still complete
-- You see a progress modal with real-time updates:
+- You see a progress view in the modal with real-time updates:
   - Which tool is currently being generated
   - Success/error status for each
-  - Overall progress bar
+  - Overall progress
 
 ### After the Batch
 
-- All generated tools appear in the Tool Manager
+- All generated tools appear in YT Lab Tools
 - If auto-deploy was on, each one has a Google Sheet link
 - Failed tools show an error message — you can retry them individually
 
@@ -281,7 +280,7 @@ Have multiple YouTube strategy projects you want to turn into tools at once? Bat
 
 ## Analytics Dashboard
 
-The analytics tab (in Tool Manager) shows your usage stats.
+The analytics tab (in YT Lab Tools) shows your usage stats.
 
 ### What You See
 
@@ -311,7 +310,7 @@ The backend needs an API key to run Claude for prompt conversion and PRD extract
 - If prompts are very long, try shortening them — there's a token limit per request
 
 ### Google Sheets deployment fails
-- Re-authenticate: go to Tool Manager → any tool → Deploy. If auth expired, it'll prompt you again
+- Re-authenticate: go to any tool → Deploy. If auth expired, it'll prompt you again
 - Check your Google account has permission to create spreadsheets
 - If you get a quota error, wait a minute and try again (Google limits 100 requests per 100 seconds)
 
@@ -338,14 +337,14 @@ The backend needs an API key to run Claude for prompt conversion and PRD extract
 
 | Action | Where | How |
 |--------|-------|-----|
-| Create tool from YouTube | YT Lab → Generate Tool | Define steps, click generate |
-| Create tool from PRD | Tool Manager → New → From PRD | Paste document, upload |
+| Create tool from YouTube | YT Lab → project → Generate Tool (sidebar) | Define steps, click Generate Tool |
+| Create tool from PRD | YT Lab → From PRD (header button) | Paste or upload document, extract steps |
 | Preview blueprint | Auto-shown after generation | Review chain, edit prompts |
 | Pick theme | Auto-shown after blueprint | Click preset or upload image |
-| Deploy to Sheets | Blueprint preview → Deploy | Authenticate Google, click deploy |
-| View all tools | Tool Manager (`/#/tools`) | Browse grid, search, filter |
+| Deploy to Sheets | Deploy confirmation overlay | Authenticate Google, click deploy |
+| View all tools | YT Lab Tools (`/#/tools`) | Browse grid, search, filter |
 | Change theme | Tool Detail → Theme tab | Click "Change Theme" |
 | View run history | Tool Detail → History tab | See all executions |
-| Batch generate | Tool Manager → New → Batch | Select projects, start |
-| Check usage | Tool Manager → Analytics tab | View stats and tier |
+| Batch generate | YT Lab Tools → Batch Generate (header) | Select projects, start |
+| Check usage | YT Lab Tools → Analytics tab | View stats and tier |
 | Archive a tool | Tool Detail → Settings tab | Click "Archive" |

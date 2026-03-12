@@ -61,9 +61,17 @@ import { ScreenshotGallery } from '@/components/yt-lab/ScreenshotGallery'
 import { ExecutionViewer } from '@/components/yt-lab/ExecutionViewer'
 import { DiscoveryPanel } from '@/components/yt-lab/DiscoveryPanel'
 import { processVideoStream, startExecution } from '@/lib/api'
-import type { ProcessingLogEntry } from '@/lib/api'
+import type { ProcessingLogEntry, GenerateBlueprintParams } from '@/lib/api'
 import { BatchImportView } from '@/components/yt-lab/BatchImportView'
 import { ToolFactoryGuidePanel } from '@/components/tool-factory/ToolFactoryGuidePanel'
+import { GenerationProgress } from '@/components/tool-factory/GenerationProgress'
+import { BlueprintPreview } from '@/components/tool-factory/BlueprintPreview'
+import { ThemePicker } from '@/components/tool-factory/ThemePicker'
+import { DeployConfirmation } from '@/components/tool-factory/DeployConfirmation'
+import { DeploymentSuccess } from '@/components/tool-factory/DeploymentSuccess'
+import { PRDUploadModal } from '@/components/tool-factory/PRDUploadModal'
+import { useDeployTool, useGoogleAuthStatus, useGoogleAuthUrl } from '@/hooks/useToolFactory'
+import type { TFSheetBlueprint, TFThemeConfig, TFPRDExtractionResult } from '@/lib/types'
 
 // ============================================================================
 // Constants
@@ -1369,8 +1377,148 @@ function StrategyBuilder({
 
   const completedCount = steps.filter(s => s.status === 'complete').length
 
+  // ---- Tool Generation Flow state ----
+  type ToolGenPhase = 'idle' | 'generating' | 'blueprint' | 'theme' | 'deploy-confirm' | 'success'
+  const [toolGenPhase, setToolGenPhase] = useState<ToolGenPhase>('idle')
+  const [generatedBlueprint, setGeneratedBlueprint] = useState<TFSheetBlueprint | null>(null)
+  const [generatedToolId, setGeneratedToolId] = useState<string | null>(null)
+  const [selectedTheme, setSelectedTheme] = useState<TFThemeConfig | null>(null)
+  const [deployedSheetUrl, setDeployedSheetUrl] = useState<string | null>(null)
+  const [deployedSheetTitle, setDeployedSheetTitle] = useState<string | null>(null)
+
+  const deployTool = useDeployTool()
+  const { data: googleAuthData } = useGoogleAuthStatus()
+  const { refetch: fetchGoogleAuthUrl } = useGoogleAuthUrl()
+
+  /** Build the params for the generate blueprint API call. */
+  const buildGenerateParams = useCallback((): GenerateBlueprintParams => {
+    return {
+      project_name: project.name,
+      project_description: project.description || project.niche || '',
+      steps: steps.map(s => ({
+        order: s.order,
+        title: s.title,
+        description: s.description,
+        prompt: s.prompt,
+        expectedOutput: s.expectedOutput,
+        notes: s.notes,
+        model: s.model,
+        role: s.role,
+        subSteps: s.subSteps.map(ss => ({
+          order: ss.order,
+          title: ss.title,
+          description: ss.description,
+          prompt: ss.prompt,
+        })),
+      })),
+      source_project_id: project.id,
+      source_video_id: ingestResult?.video_id,
+      source_video_title: ingestResult?.title,
+      source_video_channel: ingestResult?.channel,
+    }
+  }, [project, steps, ingestResult])
+
+  /** Kick off the generation flow. */
+  const handleStartGenerate = useCallback(() => {
+    setToolGenPhase('generating')
+  }, [])
+
+  /** Generation completed — show blueprint preview. */
+  const handleGenerationComplete = useCallback((blueprint: TFSheetBlueprint, toolId: string) => {
+    setGeneratedBlueprint(blueprint)
+    setGeneratedToolId(toolId)
+    setToolGenPhase('blueprint')
+  }, [])
+
+  /** User confirmed blueprint — open theme picker. */
+  const handleBlueprintConfirm = useCallback((blueprint: TFSheetBlueprint) => {
+    setGeneratedBlueprint(blueprint)
+    setToolGenPhase('theme')
+  }, [])
+
+  /** User picked a theme (or skipped) — show deploy confirmation. */
+  const handleThemeSelect = useCallback((theme: TFThemeConfig | null) => {
+    setSelectedTheme(theme)
+    setToolGenPhase('deploy-confirm')
+  }, [])
+
+  /** User confirmed deploy. */
+  const handleDeploy = useCallback(async (_sheetName: string) => {
+    if (!generatedToolId) return
+    try {
+      const result = await deployTool.mutateAsync({ toolId: generatedToolId })
+      setDeployedSheetUrl(result.sheet_url)
+      setDeployedSheetTitle(result.sheet_title)
+      setToolGenPhase('success')
+    } catch (err) {
+      console.error('Deploy failed:', err)
+    }
+  }, [generatedToolId, deployTool])
+
+  /** Connect Google account. */
+  const handleConnectGoogle = useCallback(async () => {
+    const { data } = await fetchGoogleAuthUrl()
+    if (data?.auth_url) {
+      window.open(data.auth_url, '_blank', 'width=500,height=600')
+    }
+  }, [fetchGoogleAuthUrl])
+
+  /** Reset tool generation flow. */
+  const handleToolGenReset = useCallback(() => {
+    setToolGenPhase('idle')
+    setGeneratedBlueprint(null)
+    setGeneratedToolId(null)
+    setSelectedTheme(null)
+    setDeployedSheetUrl(null)
+    setDeployedSheetTitle(null)
+  }, [])
+
   return (
     <div className="flex flex-1 overflow-hidden">
+      {/* Tool Generation Flow Overlays */}
+      {toolGenPhase === 'generating' && (
+        <GenerationProgress
+          params={buildGenerateParams()}
+          onComplete={handleGenerationComplete}
+          onCancel={handleToolGenReset}
+        />
+      )}
+      {toolGenPhase === 'blueprint' && generatedBlueprint && (
+        <BlueprintPreview
+          blueprint={generatedBlueprint}
+          onConfirm={handleBlueprintConfirm}
+          onBack={() => setToolGenPhase('idle')}
+        />
+      )}
+      {toolGenPhase === 'theme' && (
+        <ThemePicker
+          isOpen
+          onSelect={handleThemeSelect}
+          onClose={() => setToolGenPhase('blueprint')}
+        />
+      )}
+      {toolGenPhase === 'deploy-confirm' && generatedBlueprint && (
+        <DeployConfirmation
+          isOpen
+          blueprint={generatedBlueprint}
+          theme={selectedTheme}
+          googleConnected={googleAuthData?.authenticated ?? false}
+          isDeploying={deployTool.isPending}
+          onDeploy={handleDeploy}
+          onClose={() => setToolGenPhase('theme')}
+          onConnectGoogle={handleConnectGoogle}
+        />
+      )}
+      {toolGenPhase === 'success' && deployedSheetUrl && deployedSheetTitle && generatedToolId && (
+        <DeploymentSuccess
+          sheetUrl={deployedSheetUrl}
+          sheetTitle={deployedSheetTitle}
+          toolId={generatedToolId}
+          onGenerateAnother={handleToolGenReset}
+          onGoToToolManager={() => { window.location.hash = '#/tools' }}
+        />
+      )}
+
       {/* Left sidebar */}
       {!sidebarCollapsed ? (
         <div className="w-72 border-r border-border flex flex-col shrink-0 bg-card">
@@ -1420,8 +1568,8 @@ function StrategyBuilder({
             ))}
           </div>
 
-          {/* Add step button */}
-          <div className="p-3 border-t border-border">
+          {/* Add step + Generate Tool buttons */}
+          <div className="p-3 border-t border-border space-y-2">
             <Button
               variant="outline"
               size="sm"
@@ -1430,6 +1578,16 @@ function StrategyBuilder({
             >
               <Plus size={14} />
               Add Step
+            </Button>
+            <Button
+              size="sm"
+              className="w-full gap-1.5"
+              onClick={handleStartGenerate}
+              disabled={steps.length === 0 || toolGenPhase !== 'idle'}
+              title={steps.length === 0 ? 'Add steps first' : 'Generate a Google Sheets tool from this strategy'}
+            >
+              <Sparkles size={14} />
+              Generate Tool
             </Button>
           </div>
         </div>
@@ -1651,6 +1809,48 @@ export function YTStrategyLabPage(): React.JSX.Element {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [showGuide, setShowGuide] = useState(false)
+  const [showPRDModal, setShowPRDModal] = useState(false)
+
+  /** Handle PRD extraction complete — create a project from extracted steps. */
+  const handlePRDExtractionComplete = useCallback((result: TFPRDExtractionResult) => {
+    const now = new Date().toISOString()
+    const newProject: YTStrategyProject = {
+      id: generateId(),
+      name: result.project_name || 'PRD Import',
+      sourceUrl: '',
+      niche: result.niche || '',
+      description: result.project_description || '',
+      tags: result.tags || [],
+      status: 'draft',
+      createdAt: now,
+      updatedAt: now,
+    }
+    // Save the project
+    setProjects(prev => [newProject, ...prev])
+
+    // Save extracted steps for this project
+    const newSteps: YTStrategyStep[] = (result.steps || []).map((s, i) => ({
+      id: generateId(),
+      projectId: newProject.id,
+      order: s.order ?? i + 1,
+      title: s.title || '',
+      description: s.description || '',
+      prompt: s.prompt || '',
+      expectedOutput: s.expectedOutput || '',
+      notes: s.notes || '',
+      aiOutput: '',
+      status: 'pending' as const,
+      model: s.model || 'claude-opus-4-6',
+      role: 'none',
+      subSteps: [],
+    }))
+    saveSteps(newProject.id, newSteps)
+
+    // Navigate to the new project
+    setSelectedProjectId(newProject.id)
+    setView('detail')
+    setShowPRDModal(false)
+  }, [])
 
   // Register save error callback so persistence helpers can show errors
   useEffect(() => {
@@ -2009,6 +2209,10 @@ export function YTStrategyLabPage(): React.JSX.Element {
                 >
                   <BookOpen size={14} />
                 </Button>
+                <Button variant="outline" onClick={() => setShowPRDModal(true)} className="gap-1.5 shrink-0">
+                  <FileText size={16} />
+                  From PRD
+                </Button>
                 <Button variant="outline" onClick={() => setView('batch')} className="gap-1.5 shrink-0">
                   <Layers size={16} />
                   Batch Import
@@ -2179,6 +2383,13 @@ export function YTStrategyLabPage(): React.JSX.Element {
       )}
 
       {showGuide && <ToolFactoryGuidePanel onClose={() => setShowGuide(false)} />}
+
+      {/* PRD Upload Modal */}
+      <PRDUploadModal
+        isOpen={showPRDModal}
+        onClose={() => setShowPRDModal(false)}
+        onExtractionComplete={handlePRDExtractionComplete}
+      />
     </div>
   )
 }

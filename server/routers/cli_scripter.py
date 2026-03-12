@@ -3,18 +3,22 @@ CLI Scripter Router — AI-powered prompt generation via Claude CLI.
 Uses subscription auth (claude -p) — zero API credits.
 
 Endpoints:
-  POST /api/cli-scripter/generate      — Single prompt generation
+  POST /api/cli-scripter/generate       — Single prompt generation
   POST /api/cli-scripter/generate-all   — Chained PRD → Phase Split → Build Scripts
   POST /api/cli-scripter/write-scripts  — Write generated scripts to disk
   POST /api/cli-scripter/queue          — Manage app build queue
   GET  /api/cli-scripter/queue          — Get current queue
+  GET  /api/cli-scripter/project-info   — Directory listing + git log for a project path
 """
 import asyncio
 import json
 import logging
+import os
+import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -428,6 +432,125 @@ async def write_scripts(request: WriteScriptsRequest):
     except Exception as e:
         logger.error("Failed to write scripts: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Project info endpoint (file listing + git log)
+# ---------------------------------------------------------------------------
+
+def _relative_time(dt: datetime) -> str:
+    """Convert a datetime to a human-readable relative time string."""
+    now = datetime.now(timezone.utc)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    diff = now - dt
+    seconds = int(diff.total_seconds())
+    if seconds < 60:
+        return "just now"
+    minutes = seconds // 60
+    if minutes < 60:
+        return f"{minutes} min ago"
+    hours = minutes // 60
+    if hours < 24:
+        return f"{hours} hour{'s' if hours != 1 else ''} ago"
+    days = hours // 24
+    if days < 30:
+        return f"{days} day{'s' if days != 1 else ''} ago"
+    months = days // 30
+    return f"{months} month{'s' if months != 1 else ''} ago"
+
+
+@router.get("/project-info")
+async def project_info(path: str = Query(..., description="Absolute path to the project directory")):
+    """Return top-level file listing and recent git commits for a project directory.
+
+    Used by the ProjectFileBrowser component to show what's in the selected directory.
+    """
+    project_path = Path(path)
+
+    if not project_path.is_absolute():
+        raise HTTPException(status_code=400, detail="Path must be absolute")
+
+    if not project_path.exists():
+        raise HTTPException(status_code=404, detail="Directory not found")
+
+    if not project_path.is_dir():
+        raise HTTPException(status_code=400, detail="Path is not a directory")
+
+    # List top-level entries
+    files = []
+    try:
+        for entry in sorted(project_path.iterdir(), key=lambda e: (not e.is_dir(), e.name.lower())):
+            # Skip hidden files except .autoforge and .claude
+            if entry.name.startswith('.') and entry.name not in ('.autoforge', '.claude'):
+                continue
+            try:
+                stat = entry.stat()
+                mtime = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)
+                files.append({
+                    "name": entry.name,
+                    "is_dir": entry.is_dir(),
+                    "size": stat.st_size if entry.is_file() else None,
+                    "modified": mtime.isoformat(),
+                    "modified_relative": _relative_time(mtime),
+                })
+            except (OSError, PermissionError):
+                # Skip entries we can't stat
+                continue
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Permission denied reading directory")
+
+    # Check for previous CLI Scripter builds
+    scripts_dir = project_path / "scripts" / "cli-scripter"
+    has_previous_builds = scripts_dir.exists() and scripts_dir.is_dir()
+
+    # Get recent git commits (last 5)
+    recent_commits: list[dict] = []
+    git_dir = project_path / ".git"
+    if git_dir.exists():
+        try:
+            result = subprocess.run(
+                ["git", "log", "--oneline", "--format=%H|%s|%ai", "-5"],
+                cwd=str(project_path),
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0:
+                for line in result.stdout.strip().split("\n"):
+                    if not line.strip():
+                        continue
+                    parts = line.split("|", 2)
+                    if len(parts) >= 3:
+                        commit_hash, message, date_str = parts
+                        try:
+                            commit_dt = datetime.fromisoformat(date_str.strip())
+                            if commit_dt.tzinfo is None:
+                                commit_dt = commit_dt.replace(tzinfo=timezone.utc)
+                            recent_commits.append({
+                                "hash": commit_hash[:8],
+                                "message": message.strip(),
+                                "date": commit_dt.isoformat(),
+                                "date_relative": _relative_time(commit_dt),
+                            })
+                        except (ValueError, IndexError):
+                            recent_commits.append({
+                                "hash": commit_hash[:8],
+                                "message": message.strip(),
+                                "date": date_str.strip(),
+                                "date_relative": "",
+                            })
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+            # git not available or timeout — skip commits
+            pass
+
+    return {
+        "path": str(project_path),
+        "files": files,
+        "recent_commits": recent_commits,
+        "has_previous_builds": has_previous_builds,
+        "is_git_repo": git_dir.exists(),
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -16,6 +16,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import { usePersistedState } from '@/hooks/usePersistedState'
 import { ClearButton } from '@/components/cli-scripter/ClearButton'
+import { ProjectFileBrowser } from '@/components/cli-scripter/ProjectFileBrowser'
 import {
   ArrowLeft,
   Plus,
@@ -1220,6 +1221,9 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
                 </div>
               )}
             </div>
+
+            {/* Project file browser (synced with Generate section's project directory) */}
+            <ProjectFileBrowser projectDir={projectDir} />
           </div>
         </SectionCard>
 
@@ -1808,6 +1812,8 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
               onChange={setProjectDir}
               placeholder="C:/Projects/my-app"
             />
+            {/* File browser below directory input */}
+            <ProjectFileBrowser projectDir={projectDir} />
           </div>
 
           {/* Generate All button */}

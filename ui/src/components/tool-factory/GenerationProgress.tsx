@@ -1,9 +1,12 @@
 /**
  * Full-screen overlay showing real-time pipeline generation progress.
  * Connects to the backend SSE /generate-stream endpoint for live updates.
+ *
+ * Shows each completed step with a checkmark, the active step with a spinner,
+ * and auto-scrolls to keep the latest step visible.
  */
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Loader2, CheckCircle2, AlertCircle, Clock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { generateBlueprintStream, type GenerateBlueprintParams } from '@/lib/api'
@@ -18,8 +21,10 @@ interface GenerationProgressProps {
 
 interface LogEntry {
   message: string
-  elapsed: number
-  timestamp: number
+  /** Seconds since pipeline start (cumulative) */
+  pipelineElapsed: number
+  /** Seconds this individual step took */
+  stepDuration: number
 }
 
 export function GenerationProgress({ params, onComplete, onCancel }: GenerationProgressProps) {
@@ -29,6 +34,14 @@ export function GenerationProgress({ params, onComplete, onCancel }: GenerationP
   const [done, setDone] = useState(false)
   const startTimeRef = useRef(Date.now())
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  // Auto-scroll log container to bottom when new entries arrive
+  const scrollToBottom = useCallback(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    }
+  }, [])
 
   // Live elapsed timer
   useEffect(() => {
@@ -49,10 +62,17 @@ export function GenerationProgress({ params, onComplete, onCancel }: GenerationP
       params,
       (message, sseElapsed) => {
         if (cancelled) return
-        setLogs((prev) => [
-          ...prev,
-          { message, elapsed: sseElapsed, timestamp: Date.now() },
-        ])
+        setLogs((prev) => {
+          // Calculate step duration: time between this event and the previous one
+          const prevCumulative = prev.length > 0
+            ? prev[prev.length - 1].pipelineElapsed
+            : 0
+          const stepDuration = Math.max(0, Math.round((sseElapsed - prevCumulative) * 10) / 10)
+          return [
+            ...prev,
+            { message, pipelineElapsed: sseElapsed, stepDuration },
+          ]
+        })
       },
     )
       .then((result) => {
@@ -75,8 +95,30 @@ export function GenerationProgress({ params, onComplete, onCancel }: GenerationP
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params])
 
-  // Determine the latest log message for the "currently doing" label
+  // Auto-scroll whenever logs change
+  useEffect(() => {
+    scrollToBottom()
+  }, [logs, scrollToBottom])
+
+  // Determine the latest log message for the active step indicator
   const latestLog = logs.length > 0 ? logs[logs.length - 1].message : 'Starting pipeline...'
+
+  // Format elapsed as M:SS (e.g. "3:35" not "215s")
+  const formatElapsed = (totalSeconds: number) => {
+    const mins = Math.floor(totalSeconds / 60)
+    const secs = totalSeconds % 60
+    return `${mins}:${secs.toString().padStart(2, '0')}`
+  }
+
+  // Format step duration for display (short form for individual steps)
+  const formatDuration = (seconds: number) => {
+    if (seconds < 0.1) return '<0.1s'
+    if (seconds < 10) return `${seconds.toFixed(1)}s`
+    if (seconds < 60) return `${Math.round(seconds)}s`
+    const m = Math.floor(seconds / 60)
+    const s = Math.round(seconds % 60)
+    return `${m}:${s.toString().padStart(2, '0')}`
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/95 backdrop-blur-sm">
@@ -89,11 +131,11 @@ export function GenerationProgress({ params, onComplete, onCancel }: GenerationP
           {/* Elapsed timer */}
           <div className="flex items-center justify-center gap-1.5 text-sm text-muted-foreground mb-6">
             <Clock size={14} />
-            <span>{elapsed}s elapsed</span>
+            <span>{formatElapsed(elapsed)} elapsed</span>
           </div>
 
-          {/* Live log feed */}
-          <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+          {/* Live log feed — auto-scrolls to keep latest visible */}
+          <div ref={scrollRef} className="space-y-2 max-h-72 overflow-y-auto pr-1 scroll-smooth">
             {logs.map((entry, i) => {
               const isLatest = i === logs.length - 1
               const isDone = !isLatest || done
@@ -110,7 +152,7 @@ export function GenerationProgress({ params, onComplete, onCancel }: GenerationP
                     </span>
                   </div>
                   <span className="text-xs text-muted-foreground/60 shrink-0 tabular-nums">
-                    {entry.elapsed}s
+                    {formatDuration(entry.stepDuration)}
                   </span>
                 </div>
               )
@@ -125,12 +167,12 @@ export function GenerationProgress({ params, onComplete, onCancel }: GenerationP
             )}
           </div>
 
-          {/* Active step indicator */}
+          {/* Active step indicator — always visible below the scroll area */}
           {!done && !error && logs.length > 0 && (
             <div className="mt-4 pt-3 border-t border-border">
               <div className="flex items-center gap-2">
-                <div className="h-1.5 w-1.5 rounded-full bg-[var(--color-neo-progress)] animate-pulse" />
-                <span className="text-xs text-muted-foreground">{latestLog}</span>
+                <Loader2 size={14} className="animate-spin text-[var(--color-neo-progress)] shrink-0" />
+                <span className="text-sm text-muted-foreground">{latestLog}</span>
               </div>
             </div>
           )}
@@ -140,7 +182,7 @@ export function GenerationProgress({ params, onComplete, onCancel }: GenerationP
             <div className="mt-4 pt-3 border-t border-border">
               <div className="flex items-center justify-center gap-2 text-[var(--color-neo-done)]">
                 <CheckCircle2 size={18} />
-                <span className="text-sm font-medium">Blueprint complete — {elapsed}s total</span>
+                <span className="text-sm font-medium">Blueprint complete — {formatElapsed(elapsed)} total</span>
               </div>
             </div>
           )}

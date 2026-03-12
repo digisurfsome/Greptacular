@@ -22,6 +22,7 @@ import { Combiner, getMergedText } from '@/components/cli-scripter/Combiner'
 import { GatePopup, NEW_BUILD_PREFIX, EDIT_PATCH_PREFIX, type BuildMode, type PhaseMode } from '@/components/cli-scripter/GatePopup'
 import { BuildLibrary, type BuildConfigFull } from '@/components/cli-scripter/BuildLibrary'
 import { PromptBar } from '@/components/cli-scripter/PromptBar'
+import { parseWaves, sequentialWaves } from '@/lib/waveParser'
 import {
   ArrowLeft,
   Plus,
@@ -609,6 +610,7 @@ export function CliScripterPage() {
   const [errorHandling, setErrorHandling] = usePersistedState('cli_scripter_error_handling', ERROR_OPTIONS[0])
   const [gitCommits, setGitCommits] = usePersistedState('cli_scripter_git_commits', GIT_OPTIONS[0])
   const [phaseCount, setPhaseCount] = usePersistedState('cli_scripter_phase_count', 'Auto')
+  const [parallelMode, setParallelMode] = usePersistedState('cli_scripter_parallel_mode', false)
 
   // ---- Phase Assignments ----
   const [phaseAssignments, setPhaseAssignments] = useState('')
@@ -649,6 +651,14 @@ export function CliScripterPage() {
 
   // ---- Build Library ----
   const [libraryOpen, setLibraryOpen] = usePersistedState('cli_scripter_library_open', false)
+
+  // ---- Parsed wave structure (derived from phase AI result) ----
+  const parsedWaves = useCallback(() => {
+    const src = phaseAiResult || phaseAssignments
+    if (!src) return []
+    const waves = parseWaves(src)
+    return waves.length > 0 ? waves : []
+  }, [phaseAiResult, phaseAssignments])
 
   const selectedBoilerplate = BOILERPLATES.find((b) => b.id === boilerplate) || BOILERPLATES[0]
 
@@ -1090,6 +1100,9 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
         }
       }
 
+      const waves = parsedWaves()
+      const effectiveWaves = waves.length > 0 ? waves : sequentialWaves(phases.length)
+
       const res = await fetch(`${API_BASE}/api/cli-scripter/write-scripts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1108,6 +1121,8 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
             runs_when: r.runsWhen,
           })),
           include_verification: includeVerification,
+          waves: effectiveWaves,
+          parallel_mode: parallelMode,
         }),
       })
       if (!res.ok) {
@@ -1679,6 +1694,28 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
               <p className="text-xs text-zinc-600 mt-1">Auto calculates from token budget. Override if needed.</p>
             </div>
           </div>
+
+          {/* Parallel phases toggle */}
+          <div className="mt-4 pt-3 border-t border-zinc-800 space-y-2">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={parallelMode}
+                onChange={(e) => setParallelMode(e.target.checked)}
+                className="w-4 h-4 rounded border-zinc-600 bg-zinc-900 text-orange-500"
+              />
+              <span className="text-sm text-zinc-300">Parallel phases (run independent phases simultaneously)</span>
+            </label>
+            {parallelMode && (
+              <div className="ml-6 bg-amber-900/20 border border-amber-700/40 rounded-lg px-3 py-2 text-xs text-amber-300">
+                ⚠️ Parallel mode uses tokens ~2x faster per wall-clock hour. Each phase needs its own log file.
+                Phases in the same wave from the AI's output will run concurrently.
+              </div>
+            )}
+            <p className="text-xs text-zinc-600">
+              Phases with no cross-dependencies run simultaneously. Requires the AI to output wave groups in the phase split.
+            </p>
+          </div>
         </SectionCard>
 
         {/* Section: Agent Roles */}
@@ -1873,7 +1910,18 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
 
                 {/* Pipeline card visualization */}
                 <div className="bg-zinc-900/40 rounded-lg p-3 space-y-2">
-                  <p className="text-xs text-zinc-400 font-medium">Pipeline</p>
+                  {(() => {
+                    const waves = parsedWaves()
+                    const hasWaves = waves.length > 0 && waves.some(w => w.length > 1)
+                    return hasWaves ? (
+                      <div className="flex items-center gap-2">
+                        <p className="text-xs text-zinc-400 font-medium">Pipeline</p>
+                        <span className="text-xs text-cyan-400 bg-cyan-900/30 border border-cyan-700/40 rounded px-1.5 py-0.5">
+                          {waves.length} waves • parallel
+                        </span>
+                      </div>
+                    ) : <p className="text-xs text-zinc-400 font-medium">Pipeline</p>
+                  })()}
                   <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto pb-1">
                     {/* Pre-build roles */}
                     {oneTimeRoles.filter(r => r.runsWhen === 'once_before').map((r, idx) => (
@@ -1940,6 +1988,9 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
                   <p className="text-xs text-zinc-600">
                     Total: ~{Math.round(grandTotal / 1000)}K tokens • {numPhases + oneTimeRoles.length} CLI sessions
                     {grandTotal > 0 && ` • Est. ~${(grandTotal / 200000).toFixed(1)} hrs`}
+                    {parallelMode && parsedWaves().some(w => w.length > 1) && (
+                      <span className="text-cyan-500"> • parallel waves active</span>
+                    )}
                   </p>
                 </div>
 

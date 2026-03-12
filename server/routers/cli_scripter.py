@@ -68,6 +68,8 @@ class WriteScriptsRequest(BaseModel):
     phases: list[str]  # Phase descriptions
     agent_roles: list[AgentRole]
     include_verification: bool = True
+    waves: list[list[int]] | None = None       # Parallel wave groups e.g. [[1], [2, 3], [4]]
+    parallel_mode: bool = False                # Enable parallel execution in master script
 
 
 class QueueItem(BaseModel):
@@ -286,8 +288,14 @@ def _generate_master_script(
     project_name: str,
     script_files: list[str],
     phase_count: int,
+    waves: list[list[int]] | None = None,
+    parallel_mode: bool = False,
 ) -> str:
-    """Generate the run_all.sh master script."""
+    """Generate the run_all.sh master script.
+
+    If waves is provided and parallel_mode is True, phases in the same wave
+    run concurrently using bash background jobs + wait.
+    """
     total = len(script_files)
 
     # Build the body
@@ -303,8 +311,56 @@ if [ -f "$SCRIPT_DIR/architect.sh" ]; then
   echo ""
 fi''')
 
-    # Phase loop
-    steps.append(f'''# Build + Review per phase
+    # Determine wave structure for phases
+    if parallel_mode and waves and any(len(w) > 1 for w in waves):
+        # Wave-based parallel execution
+        wave_steps = []
+        for wave_idx, wave_phases in enumerate(waves):
+            wave_num = wave_idx + 1
+            if len(wave_phases) == 1:
+                # Sequential phase
+                p = wave_phases[0]
+                wave_steps.append(f'''# Wave {wave_num}: Phase {p} (sequential)
+CURRENT=$((CURRENT + 1))
+echo ">>> [$CURRENT/$TOTAL_STEPS] Wave {wave_num} — Phase {p} Build..."
+bash "$SCRIPT_DIR/phase{p}_build.sh"
+if [ -f "$SCRIPT_DIR/phase{p}_review.sh" ]; then
+  CURRENT=$((CURRENT + 1))
+  echo ">>> [$CURRENT/$TOTAL_STEPS] Wave {wave_num} — Phase {p} Review..."
+  bash "$SCRIPT_DIR/phase{p}_review.sh"
+fi
+echo ""''')
+            else:
+                # Parallel phases
+                phase_list = ', '.join(str(p) for p in wave_phases)
+                parallel_block = [f'echo "=== Wave {wave_num} (parallel: Phases {phase_list}) ==="']
+                pid_vars = []
+                for p in wave_phases:
+                    pid_var = f"PID_phase{p}"
+                    parallel_block.append(f'bash "$SCRIPT_DIR/phase{p}_build.sh" > "$SCRIPT_DIR/phase{p}.log" 2>&1 &')
+                    parallel_block.append(f'{pid_var}=$!')
+                    pid_vars.append((p, pid_var))
+                # Wait for all
+                status_checks = []
+                for p, pid_var in pid_vars:
+                    parallel_block.append(f'wait ${pid_var}')
+                    parallel_block.append(f'STATUS{p}=$?')
+                    status_checks.append(f'[ $STATUS{p} -ne 0 ]')
+                # Check failures
+                fail_check = ' || '.join(status_checks)
+                phase_log_lines = ' '.join(f'"$SCRIPT_DIR/phase{p}.log"' for p, _ in pid_vars)
+                parallel_block.append(f'''if {fail_check}; then
+  echo "Wave {wave_num} failed — check logs: {phase_log_lines}"
+  exit 1
+fi
+echo "Wave {wave_num} complete"
+echo ""''')
+                wave_steps.append('\n'.join(parallel_block))
+
+        steps.append('\n\n'.join(wave_steps))
+    else:
+        # Standard sequential phase loop
+        steps.append(f'''# Build + Review per phase
 for i in $(seq 1 {phase_count}); do
   CURRENT=$((CURRENT + 1))
   echo ">>> [$CURRENT/$TOTAL_STEPS] Phase $i — Build..."
@@ -338,11 +394,13 @@ fi''')
 
     body = "\n\n".join(steps)
 
+    parallel_note = " (parallel waves enabled)" if parallel_mode and waves else ""
+
     return f'''#!/bin/bash
 # ===========================================
 # CLI SCRIPTER — Master Build Pipeline
 # Project: {project_name}
-# Total steps: {total}
+# Total steps: {total}{parallel_note}
 # ===========================================
 set -e
 
@@ -355,7 +413,7 @@ CURRENT=0
 
 echo "=========================================="
 echo "  BUILD PIPELINE — {project_name}"
-echo "  {total} steps ({phase_count} phases + roles)"
+echo "  {total} steps ({phase_count} phases + roles){parallel_note}"
 echo "=========================================="
 echo ""
 
@@ -524,7 +582,11 @@ async def write_scripts(request: WriteScriptsRequest):
 
         # Generate master script
         master = _generate_master_script(
-            request.project_name, all_script_names, len(request.phases)
+            request.project_name,
+            all_script_names,
+            len(request.phases),
+            waves=request.waves,
+            parallel_mode=request.parallel_mode,
         )
         (scripts_dir / "run_all.sh").write_text(master, encoding="utf-8")
         written_files.append("run_all.sh")

@@ -16,7 +16,7 @@ The CLI Scripter is a tool that generates bash scripts for building apps using C
 
 ### Your Job
 
-This PRD contains 24 implementation phases split into **3 agent packages**. Each agent gets a specific assignment. Do NOT skip ahead to another package. Do NOT pick and choose. Build exactly the phases in your package, in order, then stop.
+This PRD contains 27 implementation phases split into **3 build packages + 1 verification package**. Each agent gets a specific assignment. Do NOT skip ahead to another package. Do NOT pick and choose. Build exactly the phases in your package, in order, then stop.
 
 **Check which package you are assigned to in the "Agent Packages" section below.** If you were not told which package to run, start with Package 1.
 
@@ -68,7 +68,7 @@ Each package is ~90K tokens. Build every phase in your package, in order. Commit
 | 4 | Phase 23 | Fix | ProjectFileBrowser component in 2 spots + backend git endpoint | 3/10 |
 | 5 | Phase 16 | System 8 | RuleBlock component (named blocks, tags, checkboxes, sidebar rail) | 3/10 |
 | 6 | Phase 17 | System 8 | Combiner component + two-way checkbox binding with RuleBlocks | 3/10 |
-| 7 | Phase 18 | System 8 | Gate popup (single vs split phase) + Send-to-Combiner flow | 2/10 |
+| 7 | Phase 18 | System 8 | Gate popup (single/split + new build/edit mode) + Send-to-Combiner | 3/10 |
 | 8 | Phase 19 | System 8 | Backend rule persistence (SQLite or JSON) + load/save endpoints | 2/10 |
 
 **After completing:** Commit with message "Package 1 complete — persistence, UX fixes, rules library done." Next agent runs Package 2.
@@ -94,9 +94,9 @@ Each package is ~90K tokens. Build every phase in your package, in order. Commit
 
 ---
 
-#### 📦 PACKAGE 3: Live Dashboard, Terminal & Boilerplate (8 phases)
+#### 📦 PACKAGE 3: Live Dashboard, Terminal, Boilerplate & Sketches (10 phases)
 
-**Run this last.** Adds live build monitoring, embedded terminal, and boilerplate prep for dual builds.
+**Run this third.** Adds live build monitoring, embedded terminal, boilerplate prep, and post-build architectural sketch system.
 
 | Order | Phase | System | What | Difficulty |
 |-------|-------|--------|------|-----------|
@@ -108,12 +108,39 @@ Each package is ~90K tokens. Build every phase in your package, in order. Commit
 | 6 | Phase 6 | System 2 | Refresh interval selector (auto-refresh rate control) | 1/10 |
 | 7 | Phase 10 | System 4 | Boilerplate analysis docs (framework detection, structure templates) | 1/10 |
 | 8 | Phase 11 | System 4 | Prep phase for dual builds (boilerplate + fresh project support) | 2/10 |
+| 9 | Phase 24 | System 9 | Cartographer prompt enhancement — ASCII wireframe sketches for all pages | 2/10 |
+| 10 | Phase 25 | System 9 | Verifier prompt enhancement — sketch-aware testing + visual match report | 1/10 |
 
-**After completing:** Commit with message "Package 3 complete — live dashboard, terminal, boilerplate done. All 24 phases built."
+**After completing:** Commit with message "Package 3 complete — live dashboard, terminal, boilerplate, architectural sketches done."
 
 ---
 
-**IMPORTANT:** Agents do NOT choose what to build. Each package is a fixed assignment. Build all 8 phases in your package, in order. Do not skip. Do not reorganize. Do not "decide" what's important. The priority was decided by the product owner.
+#### 🔵 PACKAGE 4: Post-Build Verification & Testing (standalone)
+
+**Run this AFTER all 3 build packages are complete.** This agent doesn't build anything — it tests everything, finds bugs, and fixes what it can.
+
+| Order | Phase | What | Difficulty |
+|-------|-------|------|-----------|
+| 1 | V1 | Investigation: application mapping, DB schema, bug hunting (code analysis) | 3/10 |
+| 2 | V2 | Static verification: lint, type check, test suites, dependency audit | 2/10 |
+| 3 | V3 | Functional verification: start app, test every user journey, DB validation | 4/10 |
+| 4 | V4 | Edge cases & error states | 3/10 |
+| 5 | V5 | Cross-feature integration testing | 3/10 |
+| 6 | V6 | Responsive & visual check (3 viewports) | 2/10 |
+| 7 | V7 | Issue handling: fix critical/high, document medium/low | 3/10 |
+| 8 | V8 | Final verification pass + structured report | 2/10 |
+
+**Context this agent receives:**
+- The full PRD (this document)
+- Git log of ALL commits from Packages 1-3
+- SPEC_CURRENT.md (including wireframe sketches from the Cartographer)
+- The detailed verification protocol (see "Package 4: Post-Build Verification & Testing" section below)
+
+**After completing:** Commit with message "Package 4 complete — full verification done. [X] issues found, [Y] fixed, [Z] remaining."
+
+---
+
+**IMPORTANT:** Agents do NOT choose what to build. Each package is a fixed assignment. Build all phases in your package, in order. Do not skip. Do not reorganize. Do not "decide" what's important. The priority was decided by the product owner.
 
 ---
 
@@ -1076,12 +1103,59 @@ GET  /api/cli-scripter/rules/combined — Get merged text for a slot (main|p1|p2
 - Preview text + token count
 - Merge order follows library drag order
 
-**Phase 18: Gate popup + Send flow (2/10)**
+**Phase 18: Gate popup + Build Mode toggle + Send flow (3/10)**
 - Gate popup component: two-button modal (Single Phase / Split Phase)
 - Intercepts Generate All button click
 - Routes combined text to correct Phase Rules fields
 - Persists last choice to localStorage
 - Remove old `splitPhaseRules` toggle from Build Settings
+- **New Build vs Edit Mode toggle** — adds a second dimension to the gate popup (see below)
+
+#### New Build vs Edit Mode Toggle
+
+The gate popup gets a SECOND choice row: **"New Build"** vs **"Edit/Patch"**. This controls which rule set template gets injected.
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  What kind of build is this?                             │
+│                                                          │
+│  ┌─────────────────────┐  ┌──────────────────────────┐   │
+│  │   🏗️ New Build       │  │   🔧 Edit / Patch        │   │
+│  │                     │  │                          │   │
+│  │ Full architecture   │  │ Respect existing code    │   │
+│  │ File structure      │  │ Don't restructure        │   │
+│  │ Testing frameworks  │  │ Minimal, surgical edits  │   │
+│  │ Naming conventions  │  │ Match existing patterns  │   │
+│  └─────────────────────┘  └──────────────────────────┘   │
+│                                                          │
+│  How are you splitting phases?                           │
+│                                                          │
+│  ┌──────────────┐  ┌───────────────────┐                 │
+│  │ Single Phase │  │   Split Phase     │                 │
+│  │  142 tokens  │  │ 218 + 89 tokens   │                 │
+│  └──────────────┘  └───────────────────┘                 │
+│                                                          │
+│  Last used: Edit / Patch • Split Phase                   │
+└──────────────────────────────────────────────────────────┘
+```
+
+**What each mode injects:**
+
+| | New Build | Edit / Patch |
+|---|---|---|
+| **Architect prompt prefix** | "Design the full architecture from scratch. Define file structure, naming conventions, testing framework, DB schema." | "Study the EXISTING codebase first. Preserve all working code. Only modify what's needed for the requested changes." |
+| **Coder prompt prefix** | "Create all files and infrastructure. Follow the architect's plan exactly." | "Read existing files before editing. Match existing patterns (imports, naming, indentation). Do NOT create new pages unless explicitly told to." |
+| **Build rules injection** | Full rules (architecture, naming, file structure, testing) | Condensed rules (respect existing patterns, don't restructure, surgical edits only) |
+| **Cartographer scope** | Full documentation (ARCHITECTURE.md, CONVENTIONS.md, SPEC_CURRENT.md, all sketches) | Update existing docs only. Add "Changes Made" section. Update affected sketches. |
+| **Verifier scope** | Test everything end-to-end | Focus testing on changed features + regression on adjacent features |
+
+**Implementation:** Two string templates stored in the codebase (not user-editable — these are structural):
+- `NEW_BUILD_PREFIX` — injected before each role prompt when "New Build" is selected
+- `EDIT_PATCH_PREFIX` — injected before each role prompt when "Edit/Patch" is selected
+
+These prefixes get prepended to the role prompts BEFORE the user's custom rules. The user's custom rules (from the Combiner) come after, so they can override specific behaviors.
+
+**Persistence:** Last used mode saved to localStorage key `cli_scripter_build_mode` (value: `"new"` or `"edit"`)
 
 **Phase 19: Backend persistence (2/10)**
 - JSON file at `~/.autoforge/cli_scripter_rules.json`
@@ -1262,6 +1336,343 @@ Returns: `{ files: [...], recent_commits: [...], has_previous_builds: boolean }`
 
 ---
 
+## System 9: Post-Build Architectural Sketches (2/10 difficulty)
+
+### The Problem
+
+When an agent finishes building, the next agent (or the owner doing edits) has NO visual reference for what exists. They only have code. This leads to:
+1. Agents creating duplicate pages when everything should be on one page
+2. Agents restructuring layouts they don't understand
+3. The owner having no quick way to verify "does this match what I asked for?"
+4. Wasted hours fixing things that would've been caught with a 30-second visual check
+
+Screenshots can't be taken during the build phase (the app isn't running yet). But agents CAN produce ASCII wireframe sketches of what they just built, based on the code they wrote.
+
+### What the Cartographer Produces
+
+At the end of every build (New Build or Edit), the Cartographer agent produces **architectural sketches** as part of SPEC_CURRENT.md. These are living blueprints — they get updated with every edit, just like architectural drawings for a building.
+
+#### Per-Page Wireframe Sketches
+
+For EVERY page/view in the application, produce a detailed ASCII wireframe showing:
+
+```
+## Page: Dashboard (/dashboard)
+
+┌─────────────────────────────────────────────────────────┐
+│  [Logo]  Dashboard  Settings  Profile          [Logout] │
+├──────────┬──────────────────────────────────────────────┤
+│          │                                              │
+│ Sidebar  │  ┌─ Stats Cards ──────────────────────────┐  │
+│          │  │ [Users: 142] [Revenue: $4.2K] [Active] │  │
+│ • Home   │  └────────────────────────────────────────┘  │
+│ • Users  │                                              │
+│ • Reports│  ┌─ Recent Activity ──────────────────────┐  │
+│ • Config │  │ Row: User | Action | Time | Status     │  │
+│          │  │ Row: ...                               │  │
+│          │  │ Row: ...                               │  │
+│          │  │ [Load More]                            │  │
+│          │  └────────────────────────────────────────┘  │
+│          │                                              │
+├──────────┴──────────────────────────────────────────────┤
+│  Footer: © 2026 AppName  |  Terms  |  Privacy          │
+└─────────────────────────────────────────────────────────┘
+
+Components on this page:
+- Navbar (shared) — Logo, nav links, logout button
+- Sidebar (shared) — Navigation, active state highlight
+- StatsCards — 3 metric cards, fetches from GET /api/stats
+- RecentActivity — Table with pagination, fetches from GET /api/activity
+- Footer (shared) — Static links
+
+State:
+- Stats data loaded via React Query (useStats hook)
+- Activity table has pagination state (page, limit)
+- Sidebar highlight synced with current route
+```
+
+#### What Each Sketch Must Include
+
+1. **ASCII box layout** — every major section visible with approximate proportions
+2. **Component labels** — what React component renders each section
+3. **Interactive elements** — buttons, forms, toggles, dropdowns labeled with their function
+4. **Data sources** — which API endpoints feed which sections
+5. **Shared components** — mark which components appear on multiple pages (navbar, sidebar, footer)
+6. **State notes** — what state management drives the page (hooks, context, query keys)
+
+#### Route Map
+
+```
+## Routes
+
+| Path | Page Component | Auth Required | Layout |
+|------|---------------|---------------|--------|
+| / | LandingPage | No | PublicLayout |
+| /login | LoginPage | No | PublicLayout |
+| /dashboard | DashboardPage | Yes | AppLayout |
+| /users | UsersPage | Yes | AppLayout |
+| /settings | SettingsPage | Yes | AppLayout |
+```
+
+#### Component Inventory
+
+```
+## Component Inventory
+
+| Component | File | Used On | Props | Shared |
+|-----------|------|---------|-------|--------|
+| Navbar | src/components/Navbar.tsx | All pages | user, onLogout | ✅ |
+| Sidebar | src/components/Sidebar.tsx | App pages | activeRoute | ✅ |
+| StatsCard | src/components/StatsCard.tsx | Dashboard | label, value, icon | No |
+| DataTable | src/components/DataTable.tsx | Users, Activity | columns, data, onSort | ✅ |
+```
+
+#### Decisions Made Log
+
+```
+## Decisions Made
+
+- Used tabs instead of separate pages for Settings (owner specified single-page layout)
+- Chose React Query over Redux for server state (project already uses TanStack)
+- Sidebar collapses on mobile (hamburger menu) — don't add fixed-width elements
+- Auth uses JWT stored in httpOnly cookie, not localStorage
+```
+
+### When Sketches Get Updated
+
+- **New Build:** Full sketches for every page, every component, every route
+- **Edit/Patch:** Only update sketches for CHANGED pages. Add a "Last Updated" timestamp. If a new component was added to an existing page, update that page's wireframe.
+- **Never delete old sketches** — if a page is removed, move its sketch to an "Archived Pages" section at the bottom
+
+### Why This Matters
+
+Think of it like architectural blueprints for a building. The initial build creates the full set of drawings. Every renovation updates the affected drawings. Any contractor (agent) coming in to do work pulls out the blueprints first to understand the structure before cutting a single wall.
+
+Without these sketches, agents make assumptions. Assumptions lead to duplicate pages, broken layouts, and hours of rework.
+
+### Implementation Phases
+
+**Phase 24: Cartographer prompt enhancement — architectural sketches (2/10)**
+- Update the Cartographer role prompt template to require ASCII wireframe sketches
+- Add the wireframe format, component inventory, route map, and decisions log to the prompt
+- The Cartographer already runs as the final agent role (`runsWhen: 'once_final'`) — this just expands what it produces
+- Add to SPEC_CURRENT.md template: "Page Wireframes" section, "Route Map" section, "Component Inventory" section, "Decisions Made" section
+- For Edit/Patch mode: prompt instructs to update only affected sketches, add "Last Updated" timestamps
+
+**Phase 25: Verification prompt enhancement — sketch-aware testing (1/10)**
+- Update the Verifier role prompt to reference the Cartographer's sketches
+- Verifier checks: "Does the running app match the wireframe sketches?"
+- If wireframes exist from a previous build, the Verifier compares actual UI against the sketches
+- Adds a "Visual Match" section to the verification report: which pages match, which don't
+
+---
+
+## Package 4: Post-Build Verification & Testing (standalone agent)
+
+### Purpose
+
+After all 3 implementation packages are complete, a SEPARATE agent runs the full verification protocol. This agent doesn't build anything — it only tests, finds bugs, and fixes what it can.
+
+This agent needs to understand EVERYTHING that was built across Packages 1-3, so it receives a comprehensive context briefing.
+
+### Context Briefing for the Verification Agent
+
+The verification agent receives:
+1. **This PRD** — so it knows what was supposed to be built
+2. **Git log of all commits from Packages 1-3** — so it sees every change made
+3. **The current state of SPEC_CURRENT.md** — the Cartographer's output including wireframe sketches
+4. **The verification protocol below** — its step-by-step testing procedure
+
+### Verification Protocol (8 phases)
+
+#### PHASE 1: INVESTIGATION
+
+**Investigation 1: Application Mapping**
+
+Document the following:
+1. Startup commands — exact commands to install dependencies and run the dev server, including URL and port
+2. Authentication — if the app has protected routes, how to create a test account or log in
+3. Every user-facing route/page — each URL path and what it renders
+4. Every user journey — complete flows a user can take (e.g., "open CLI Scripter → configure build → generate scripts → run build"). For each journey, list specific steps, interactions (clicks, form fills, navigation), and expected outcomes
+5. Key UI components — forms, modals, dropdowns, pickers, toggles, and other interactive elements. Be exhaustive — testing will only cover what you identify here.
+
+**Investigation 2: Database Schema & Data Flows**
+
+6. Database type and connection — what database is used and the connection config
+7. Full schema — every table, columns, types, and relationships
+8. Data flows per user action — for each user-facing action, document what records are created/updated/deleted
+9. Validation queries — for each data flow, provide the exact query to verify records are correct
+
+**Investigation 3: Bug Hunting (Code Analysis)**
+
+Analyze the codebase for:
+10. Logic errors — incorrect conditionals, off-by-one errors, missing null checks, race conditions
+11. UI/UX issues — missing error handling in forms, no loading states, broken layouts, accessibility problems
+12. Data integrity risks — missing validation, potential orphaned records, incorrect cascade behavior
+13. Security concerns — injection vulnerabilities, XSS, missing auth checks, exposed secrets
+
+Return a prioritized list with file paths and line numbers.
+
+#### PHASE 2: STATIC VERIFICATION
+
+Before touching the browser, verify the code compiles and passes static analysis.
+
+**2a. Lint & Type Check**
+```bash
+cd ui && npm run lint && npm run build    # TypeScript/React
+ruff check .                              # Python backend
+```
+If errors exist — fix them. Do not proceed with broken code.
+
+**2b. Run Existing Test Suites**
+```bash
+npm test                                  # Unit tests
+npx playwright test tests/e2e/           # E2E tests (if they exist)
+```
+Document every failure. Fix what you can.
+
+**2c. Dependency & Import Audit**
+1. Check for unused imports in modified files
+2. Verify no circular dependencies were introduced
+3. Confirm all new dependencies are in package.json / requirements.txt
+4. Run `npm ls` or `pip check` to verify dependency tree is clean
+
+#### PHASE 3: FUNCTIONAL VERIFICATION
+
+For each feature built across Packages 1-3, verify it works end-to-end.
+
+**3a. Start the Application**
+- Install dependencies if needed
+- Start the dev server
+- Confirm it starts without errors
+- Check console/terminal output for warnings
+
+**3b. Test Every User Journey**
+
+For each journey identified in Phase 1:
+- Navigate to the starting point
+- Execute each step
+- Verify expected outcome at each step
+- Check for errors — console errors, network failures, unexpected behavior
+
+If browser automation tools are available (Playwright MCP), use them to:
+- Take screenshots at key steps
+- Capture console output
+- Monitor network requests
+- Interact with forms and buttons
+
+**3c. Database Validation**
+
+After any interaction that modifies data:
+- Query the database to verify records were created/updated/deleted correctly
+- Verify relationships between records are correct
+- No orphaned or duplicate records
+- Timestamps are reasonable, default values applied correctly
+
+**3d. Edge Cases & Error States**
+- Empty states — what happens with no data?
+- Invalid input — submit forms with missing/malformed data
+- Boundary values — very long strings, zero values, negative numbers
+- Concurrent operations — rapid clicks, duplicate submissions
+- Network failures — what happens when API calls fail?
+
+#### PHASE 4: CROSS-FEATURE INTEGRATION
+
+Features don't exist in isolation. Test interactions between them:
+- Data dependencies — does the Build Library correctly read data from the Rule Block Library?
+- UI state — does navigating between sections maintain correct state?
+- Side effects — does modifying data in one feature break another?
+- Shared components — do shared UI components (PromptBar, ClearButton, etc.) behave consistently across all uses?
+- Persistence — does localStorage data survive page reloads? Does backend data survive server restarts?
+
+#### PHASE 5: RESPONSIVE & VISUAL CHECK
+
+Check key pages at these viewports:
+
+| Device | Width | Height |
+|--------|-------|--------|
+| Mobile | 375 | 812 |
+| Tablet | 768 | 1024 |
+| Desktop | 1440 | 900 |
+
+Look for:
+- Layout overflow or horizontal scrolling
+- Overlapping elements
+- Unreadable text sizes
+- Touch targets too small on mobile
+- Missing responsive breakpoints
+
+If browser tools are NOT available, review CSS/Tailwind classes for responsive patterns.
+
+#### PHASE 6: ISSUE HANDLING
+
+When you find an issue:
+1. Document it — expected vs actual behavior, file path, line number
+2. Classify severity:
+   - **Critical** — app crashes, data loss, security vulnerability
+   - **High** — feature doesn't work, wrong data displayed
+   - **Medium** — UI glitch, poor UX, missing error message
+   - **Low** — cosmetic, minor text issue
+3. Fix critical and high issues immediately
+4. Re-verify the fix works
+5. Document medium/low issues for follow-up
+
+#### PHASE 7: FINAL VERIFICATION PASS
+
+After all fixes:
+1. Re-run lint and type check — confirm still clean
+2. Re-run test suites — confirm nothing broke
+3. Restart the dev server fresh — confirm clean startup
+4. Quick smoke test of each feature — confirm still working
+5. Check git status — no untracked files that should be committed
+
+#### PHASE 8: REPORT
+
+Output a structured summary:
+
+```
+## Verification Report
+
+**Features Verified:** [count]
+**User Journeys Tested:** [count]
+**Issues Found:** [count] ([count] fixed, [count] remaining)
+
+### Static Analysis
+- Lint: PASS/FAIL
+- Type Check: PASS/FAIL
+- Tests: [X] passing, [Y] failing
+
+### Issues Fixed
+- [Description] — [file:line] — [severity]
+
+### Remaining Issues
+- [Description] — [file:line] — [severity]
+
+### Bug Hunt Findings (Code Analysis)
+- [Description] — [severity] — [file:line]
+
+### Database Validation
+- [Table/query results summary]
+
+### Visual Match (vs Wireframe Sketches)
+- [Page]: MATCH / MISMATCH — [details]
+
+### Notes
+- [Anything the next agent or developer should know]
+```
+
+### Important Rules for the Verification Agent
+
+1. **Fix as you go** — don't just document issues, fix them
+2. **Never skip database validation** — the UI looking right doesn't mean the data is right
+3. **Test with real data** — not mocks, not empty states (unless testing empty states)
+4. **Check console output** — zero errors, zero unhandled warnings
+5. **Commit your fixes** — verification that finds bugs and fixes them is worth nothing if you don't save
+6. **Be thorough** — every part of the application should be exercised and verified
+7. **Compare against wireframe sketches** — if SPEC_CURRENT.md has wireframes, verify the UI matches them
+
+---
+
 ## Build Order (all systems)
 
 | Phase | System | What | Difficulty | Tokens Saved |
@@ -1283,22 +1694,26 @@ Returns: `{ files: [...], recent_commits: [...], has_previous_builds: boolean }`
 | 15 | System 7 | Parallel wave parsing + CLI script generation | 3/10 | — |
 | 16 | System 8 | Rule Block Library component | 3/10 | — |
 | 17 | System 8 | Combiner + two-way binding | 3/10 | — |
-| 18 | System 8 | Gate popup + Send flow | 2/10 | — |
+| 18 | System 8 | Gate popup + Build Mode toggle + Send flow | 3/10 | — |
 | 19 | System 8 | Backend rule persistence | 2/10 | — |
 | 20 | Fix | localStorage persistence layer | 2/10 | — |
 | 21 | Fix | Clear buttons on all inputs | 1/10 | — |
 | 22 | Fix | Phase Assignments → read-only output | 1/10 | — |
 | 23 | Fix | Project directory file browser (×2 spots) | 3/10 | — |
+| 24 | System 9 | Cartographer prompt — architectural sketches | 2/10 | — |
+| 25 | System 9 | Verifier prompt — sketch-aware testing | 1/10 | — |
 | FIX | — | Deterministic script templates | 2/10 | ~5K/build |
+| V1-V8 | Pkg 4 | Full verification protocol (8 test phases) | 4/10 | — |
 
-Each phase is under 50% context window. Total: ~24 phases across 3-4 weeks.
+Each phase is under 50% context window. Total: ~27 phases across 4 agent packages.
 
 ### Agent Package Summary
 
-All 24 phases are divided into 3 fixed agent packages (~90K tokens each, ~8 phases each). See "Agent Packages — EXACT ASSIGNMENTS" in the briefing section above for the full breakdown.
+All 27 phases are divided into **3 build packages + 1 verification package**. See "Agent Packages — EXACT ASSIGNMENTS" in the briefing section above for the full breakdown.
 
 | Package | Phases | Focus | Priority |
 |---------|--------|-------|----------|
 | **Package 1** | 20, 21, 22, 23, 16, 17, 18, 19 | Persistence, UX fixes, Rules Library | 🔴 Critical — run first |
 | **Package 2** | 7, 8, 9, 12, 13, 14, 15, FIX | Storage, Prompts, Estimate, Waves | 🟡 Important — run second |
-| **Package 3** | 1, 2, 3, 4, 5, 6, 10, 11 | Live Dashboard, Terminal, Boilerplate | 🟢 Nice-to-have — run last |
+| **Package 3** | 1, 2, 3, 4, 5, 6, 10, 11, 24, 25 | Dashboard, Terminal, Boilerplate, Sketches | 🟢 Build last |
+| **Package 4** | V1-V8 | Full post-build verification & testing | 🔵 Test — run after all builds |

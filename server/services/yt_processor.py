@@ -145,6 +145,13 @@ class YTProcessor:
         # (only outside of already double-quoted strings)
         text = re.sub(r"(?<![\\])'\s*:", '":', text)
         text = re.sub(r":\s*'([^']*)'", r': "\1"', text)
+        # Fix unescaped newlines inside string values (common in LLM output)
+        text = re.sub(r'(?<=": ")(.*?)(?=")', lambda m: m.group(0).replace("\n", "\\n"), text)
+        # Fix missing comma between objects in arrays: }{ -> },{
+        text = re.sub(r"}\s*{", "},{", text)
+        # Fix JavaScript-style comments (// and /* */)
+        text = re.sub(r"//[^\n]*", "", text)
+        text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
         return text
 
     @classmethod
@@ -161,6 +168,43 @@ class YTProcessor:
             return [cls._normalize_keys(item) for item in obj]
         return obj
 
+    @staticmethod
+    def _extract_balanced_json(text: str) -> str | None:
+        """Extract the first balanced JSON object from text using brace-depth counting.
+
+        Walks forward from the first ``{`` and tracks brace depth, respecting
+        quoted strings so that braces inside string values are not counted.
+        Returns the balanced substring or ``None`` if no balanced object is found.
+        """
+        start = text.find("{")
+        if start < 0:
+            return None
+
+        depth = 0
+        in_string = False
+        escape = False
+
+        for i in range(start, len(text)):
+            ch = text[i]
+            if escape:
+                escape = False
+                continue
+            if ch == "\\":
+                escape = True
+                continue
+            if ch == '"':
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    return text[start:i + 1]
+        return None
+
     def _parse_ai_response(self, raw_text: str) -> dict:
         """Parse JSON from the AI response, handling various wrapper formats.
 
@@ -172,6 +216,14 @@ class YTProcessor:
 
         Includes JSON repair for trailing commas, missing values, and
         key normalization for common misspellings.
+
+        Strategies attempted in order:
+        1. Direct parse
+        2. Markdown code fence extraction
+        3. First-brace / last-brace substring extraction
+        4. Brace-depth balanced extraction (handles unbalanced trailing text)
+        5. JSON repair + brace extraction
+        6. JSON repair + balanced extraction
         """
         text = raw_text.strip()
         logger.info(
@@ -191,49 +243,106 @@ class YTProcessor:
         if "```" in text:
             fence_match = re.search(r"```(?:json)?\s*\n?(.*?)```", text, re.DOTALL)
             if fence_match:
+                fenced = fence_match.group(1).strip()
                 try:
-                    result = json.loads(fence_match.group(1).strip())
+                    result = json.loads(fenced)
                     logger.info("Parse strategy: markdown fence")
                     return self._normalize_keys(result)
                 except (json.JSONDecodeError, ValueError):
                     pass
+                # Markdown fence content might itself need brace extraction
+                balanced = self._extract_balanced_json(fenced)
+                if balanced:
+                    try:
+                        result = json.loads(balanced)
+                        logger.info("Parse strategy: markdown fence + balanced extraction")
+                        return self._normalize_keys(result)
+                    except (json.JSONDecodeError, ValueError):
+                        pass
 
-        # Try 3: find the outermost JSON object { ... }
+        # Try 3: strip everything before first { and after last } (aggressive)
         first_brace = text.find("{")
         last_brace = text.rfind("}")
         if first_brace >= 0 and last_brace > first_brace:
             json_candidate = text[first_brace:last_brace + 1]
+            if first_brace > 0 or last_brace < len(text) - 1:
+                stripped_prefix = text[:first_brace].strip()
+                stripped_suffix = text[last_brace + 1:].strip()
+                if stripped_prefix or stripped_suffix:
+                    logger.info(
+                        "Stripped preamble (%d chars) and suffix (%d chars) from response",
+                        len(stripped_prefix), len(stripped_suffix),
+                    )
             try:
                 result = json.loads(json_candidate)
-                logger.info("Parse strategy: brace extraction")
+                logger.info("Parse strategy: brace extraction (first/last)")
                 return self._normalize_keys(result)
             except (json.JSONDecodeError, ValueError):
                 pass
 
-        # Try 4: repair common LLM JSON mistakes then re-extract
+        # Try 4: brace-depth balanced extraction (handles cases where last }
+        # is NOT the correct closing brace — e.g., trailing commentary with braces)
+        balanced = self._extract_balanced_json(text)
+        if balanced:
+            try:
+                result = json.loads(balanced)
+                logger.info("Parse strategy: balanced brace-depth extraction")
+                return self._normalize_keys(result)
+            except (json.JSONDecodeError, ValueError):
+                pass
+
+        # Try 5: repair common LLM JSON mistakes then re-extract via first/last
         if first_brace is not None and first_brace >= 0 and last_brace > first_brace:
             repaired = self._repair_json(text[first_brace:last_brace + 1])
             try:
                 result = json.loads(repaired)
-                logger.info("Parse strategy: JSON repair")
+                logger.info("Parse strategy: JSON repair (first/last)")
+                return self._normalize_keys(result)
+            except (json.JSONDecodeError, ValueError):
+                pass
+
+        # Try 6: repair + balanced extraction (repair the whole text then balance)
+        repaired_full = self._repair_json(text)
+        balanced_repaired = self._extract_balanced_json(repaired_full)
+        if balanced_repaired:
+            try:
+                result = json.loads(balanced_repaired)
+                logger.info("Parse strategy: JSON repair + balanced extraction")
                 return self._normalize_keys(result)
             except (json.JSONDecodeError, ValueError):
                 pass
 
         # Nothing worked — log full response for debugging and raise
-        logger.error("All parse strategies failed. Full response:\n%s", text)
+        logger.error("All 6 parse strategies failed. Full response:\n%s", text)
         preview = text[:500] if text else "(empty)"
         raise ValueError(f"Could not extract valid JSON from AI response (length={len(text)}). Preview: {preview}")
 
-    async def _call_via_sdk(self, system_prompt: str, user_message: str, model: str) -> str:
+    # SDK timeout: 5 minutes handles Opus on 50KB+ payloads (typical: 90-180s)
+    SDK_TIMEOUT_SECONDS = 300
+
+    async def _call_via_sdk(
+        self,
+        system_prompt: str,
+        user_message: str,
+        model: str,
+        timeout: float | None = None,
+    ) -> str:
         """Call Claude via the Agent SDK using subscription auth.
 
-        Uses ``ClaudeSDKClient`` — the same pattern used by workspace chat,
+        Uses ``ClaudeSDKClient`` -- the same pattern used by workspace chat,
         assistant chat, spec chat, and all AutoForge coding agents.  The SDK
         handles subscription OAuth internally so we never burn API credits.
 
+        Args:
+            system_prompt: System prompt for the conversation.
+            user_message: User message content.
+            model: Model identifier (e.g. ``claude-opus-4-6``).
+            timeout: Maximum seconds to wait for a response. Defaults to
+                ``SDK_TIMEOUT_SECONDS`` (300s / 5 minutes).
+
         Returns the raw text response from Claude.
         Raises RuntimeError if the CLI is not available or the call fails.
+        Raises asyncio.TimeoutError if the SDK does not respond in time.
         """
         from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 
@@ -245,7 +354,7 @@ class YTProcessor:
 
         sdk_env = get_effective_sdk_env(force_subscription=True)
 
-        # Use a temp directory as cwd — we don't need file access
+        # Use a temp directory as cwd -- we don't need file access
         scratch = tempfile.mkdtemp(prefix="yt_processor_")
 
         client = ClaudeSDKClient(
@@ -261,7 +370,13 @@ class YTProcessor:
             )
         )
 
-        try:
+        effective_timeout = timeout if timeout is not None else self.SDK_TIMEOUT_SECONDS
+        logger.info(
+            "SDK call starting: model=%s, payload=%d chars, timeout=%ds",
+            model, len(user_message), effective_timeout,
+        )
+
+        async def _run_sdk() -> str:
             await client.__aenter__()
             await client.query(user_message)
 
@@ -294,7 +409,6 @@ class YTProcessor:
                 len(full_text), msg_types_seen, full_text[:200],
             )
 
-            # If the SDK flagged an error, raise so the caller can fall back
             if sdk_error:
                 raise RuntimeError(sdk_error)
 
@@ -303,11 +417,72 @@ class YTProcessor:
                     f"Claude SDK returned empty response. Message types seen: {msg_types_seen}"
                 )
             return full_text.strip()
+
+        try:
+            return await asyncio.wait_for(_run_sdk(), timeout=effective_timeout)
+        except asyncio.TimeoutError:
+            logger.error(
+                "SDK call timed out after %ds (model=%s, payload=%d chars)",
+                effective_timeout, model, len(user_message),
+            )
+            raise RuntimeError(
+                f"Claude SDK timed out after {effective_timeout}s. "
+                f"Large payloads may need the API fallback."
+            )
         finally:
             try:
                 await client.__aexit__(None, None, None)
             except Exception:
                 pass
+
+    async def _call_via_api(self, system_prompt: str, user_message: str, model: str) -> str:
+        """Call Claude via the Anthropic API (uses API key, costs money).
+
+        This is a lightweight fallback used for short retry prompts (e.g., JSON
+        repair) where the SDK proved too slow. For small payloads the API
+        responds in seconds and costs fractions of a cent.
+
+        Returns the raw text response.
+        Raises RuntimeError if the anthropic package is missing or the call fails.
+        """
+        try:
+            import anthropic
+        except ImportError:
+            raise RuntimeError(
+                "The anthropic package is required for API fallback. "
+                "Install it with: pip install anthropic"
+            )
+
+        client_kwargs: dict = {}
+        try:
+            from registry import get_effective_sdk_env
+            sdk_env = get_effective_sdk_env()
+            api_key = sdk_env.get("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_API_KEY")
+            base_url = sdk_env.get("ANTHROPIC_BASE_URL")
+            if api_key:
+                client_kwargs["api_key"] = api_key
+            if base_url:
+                client_kwargs["base_url"] = base_url
+        except Exception:
+            logger.debug("Could not load SDK env from registry for API retry, using env vars")
+
+        client = anthropic.Anthropic(**client_kwargs)
+        logger.info("API retry call: model=%s, payload=%d chars", model, len(user_message))
+
+        def _call_api():
+            return client.messages.create(
+                model=model,
+                max_tokens=8192,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_message}],
+            )
+
+        loop = asyncio.get_running_loop()
+        response = await loop.run_in_executor(None, _call_api)
+        raw = response.content[0].text if response.content else ""
+        if not raw.strip():
+            raise RuntimeError("Anthropic API returned empty response during retry")
+        return raw.strip()
 
     async def process(
         self,
@@ -442,22 +617,39 @@ class YTProcessor:
                 "Here is the malformed response to fix:\n\n"
                 + raw_text[:6000]
             )
+            # Use the direct API for the retry — it's a short prompt so it's fast
+            # and cheap, and avoids the SDK which may have already proven slow on
+            # the original large payload.
             try:
-                retry_text = await self._call_via_sdk(
+                log("Retrying via API (fast path for short repair prompt)...")
+                retry_text = await self._call_via_api(
                     "You are a JSON repair assistant. Output ONLY valid JSON, nothing else.",
                     retry_prompt,
                     use_model,
                 )
                 result = self._parse_ai_response(retry_text)
                 log("Retry succeeded — parsed repaired JSON")
-                logger.info("JSON retry succeeded for video %s", video_id)
+                logger.info("JSON retry succeeded for video %s (via API)", video_id)
             except Exception as retry_exc:
-                logger.error("Retry also failed: %s", retry_exc)
-                raise ValueError(
-                    "The AI response had formatting issues that couldn't be automatically repaired. "
-                    "This sometimes happens with complex videos. Please try again — "
-                    "the next response will likely be formatted correctly."
-                ) from first_exc
+                logger.error("API retry also failed: %s — trying SDK as last resort", retry_exc)
+                # Last resort: try SDK in case the API key isn't configured
+                try:
+                    retry_text = await self._call_via_sdk(
+                        "You are a JSON repair assistant. Output ONLY valid JSON, nothing else.",
+                        retry_prompt,
+                        use_model,
+                        timeout=120,  # Shorter timeout — retry prompt is small
+                    )
+                    result = self._parse_ai_response(retry_text)
+                    log("Retry succeeded via SDK — parsed repaired JSON")
+                    logger.info("JSON retry succeeded for video %s (via SDK fallback)", video_id)
+                except Exception as sdk_retry_exc:
+                    logger.error("All retry attempts failed: API=%s, SDK=%s", retry_exc, sdk_retry_exc)
+                    raise ValueError(
+                        "The AI response had formatting issues that couldn't be automatically repaired. "
+                        "This sometimes happens with complex videos. Please try again — "
+                        "the next response will likely be formatted correctly."
+                    ) from first_exc
 
         # Detect API error responses — the SDK or Anthropic API may return
         # a valid JSON object with {error, type, request_id} instead of

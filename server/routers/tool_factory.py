@@ -306,7 +306,7 @@ async def deploy_tool(tool_id: str, body: dict = None):
             active_theme=theme,
         )
 
-        return result
+        return {**result, "tool_id": tool_id}
 
     except Exception as e:
         await _registry.update_tool(tool_id, status=ToolStatus.ERROR)
@@ -403,20 +403,23 @@ async def batch_generate(body: BatchGenerateRequest):
 
     Starts batch in a background task and returns the batch_id immediately.
     """
+    import uuid as _uuid
+
+    # Generate batch_id upfront so we can return it immediately
+    batch_id = f"batch_{_uuid.uuid4().hex[:12]}"
+
     async def _run() -> None:
         await _batch_generator.generate_batch(
             project_ids=body.project_ids,
             default_theme_id=body.default_theme_id,
             auto_deploy=body.auto_deploy,
+            batch_id=batch_id,
         )
 
     asyncio.create_task(_run())
 
-    # The generate_batch call stores itself in _batches. Return a placeholder
-    # status while the background task spins up. The batch will appear in
-    # get_batch_status once generate_batch enters its loop.
     return BatchGenerateResponse(
-        batch_id="pending",
+        batch_id=batch_id,
         total=len(body.project_ids),
         status="running",
     )

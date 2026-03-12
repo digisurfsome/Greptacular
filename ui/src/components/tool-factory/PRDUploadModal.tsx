@@ -60,7 +60,7 @@ export function PRDUploadModal({ isOpen, onClose, onExtractionComplete }: PRDUpl
 
     try {
       const result = await uploadPRD.mutateAsync({ content: content.trim(), filename: name })
-      onExtractionComplete(result)
+      onExtractionComplete(result.extraction)
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Extraction failed')

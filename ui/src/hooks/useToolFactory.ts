@@ -4,7 +4,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import * as api from '../lib/api'
-import type { TFToolStatus, TFThemeConfig } from '../lib/types'
+import type { TFToolStatus } from '../lib/types'
 
 // ============================================================================
 // Tool CRUD
@@ -49,8 +49,8 @@ export function useToolStats() {
 
 export function useGenerateBlueprint() {
   return useMutation({
-    mutationFn: ({ projectId, theme }: { projectId: string; theme?: TFThemeConfig | null }) =>
-      api.generateBlueprint(projectId, theme),
+    mutationFn: (params: api.GenerateBlueprintParams) =>
+      api.generateBlueprint(params),
   })
 }
 

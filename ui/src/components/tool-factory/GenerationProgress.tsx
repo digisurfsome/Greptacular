@@ -7,12 +7,13 @@ import { useState, useEffect } from 'react'
 import { Loader2, CheckCircle2, Circle, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useGenerateBlueprint } from '@/hooks/useToolFactory'
-import type { TFSheetBlueprint, TFThemeConfig } from '@/lib/types'
+import type { GenerateBlueprintParams } from '@/lib/api'
+import type { TFSheetBlueprint } from '@/lib/types'
 
 interface GenerationProgressProps {
-  projectId: string
-  theme: TFThemeConfig | null
-  onComplete: (blueprint: TFSheetBlueprint) => void
+  /** Parameters matching the backend GenerateBlueprintRequest schema */
+  params: GenerateBlueprintParams
+  onComplete: (blueprint: TFSheetBlueprint, toolId: string) => void
   onCancel: () => void
 }
 
@@ -29,7 +30,7 @@ const PIPELINE_LABELS = [
   'Applying theme...',
 ]
 
-export function GenerationProgress({ projectId, theme, onComplete, onCancel }: GenerationProgressProps) {
+export function GenerationProgress({ params, onComplete, onCancel }: GenerationProgressProps) {
   const [steps, setSteps] = useState<PipelineStep[]>(
     PIPELINE_LABELS.map((label) => ({ label, status: 'pending' }))
   )
@@ -61,13 +62,13 @@ export function GenerationProgress({ projectId, theme, onComplete, onCancel }: G
 
     // Kick off actual generation
     generateBlueprint
-      .mutateAsync({ projectId, theme })
-      .then((blueprint) => {
+      .mutateAsync(params)
+      .then((result) => {
         if (cancelled) return
         // Mark all steps done
         setSteps((prev) => prev.map((s) => ({ ...s, status: 'done' })))
         setTimeout(() => {
-          if (!cancelled) onComplete(blueprint)
+          if (!cancelled) onComplete(result.blueprint, result.tool_id)
         }, 500)
       })
       .catch((err) => {
@@ -83,7 +84,7 @@ export function GenerationProgress({ projectId, theme, onComplete, onCancel }: G
       clearInterval(interval)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId])
+  }, [params])
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/95 backdrop-blur-sm">

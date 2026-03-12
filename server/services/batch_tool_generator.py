@@ -78,6 +78,7 @@ class BatchToolGenerator:
         auto_deploy: bool = False,
         on_progress: Optional[Callable[[str, int, int], None]] = None,
         credentials=None,
+        batch_id: Optional[str] = None,
     ) -> BatchStatus:
         """[ROBOT] Main entry. Loops through projects, generates tool for each.
 
@@ -87,11 +88,13 @@ class BatchToolGenerator:
             auto_deploy: If True, deploy each tool to Google Sheets after generation.
             on_progress: Callback(message, completed, total) after each tool.
             credentials: Google OAuth credentials (required if auto_deploy=True).
+            batch_id: Pre-generated batch ID. If None, one is created internally.
 
         Returns:
             BatchStatus with per-tool results.
         """
-        batch_id = f"batch_{uuid.uuid4().hex[:12]}"
+        if batch_id is None:
+            batch_id = f"batch_{uuid.uuid4().hex[:12]}"
         now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
         batch = BatchStatus(
@@ -240,24 +243,34 @@ class BatchToolGenerator:
     async def _load_project_data(self, project_id: str) -> Optional[dict]:
         """[ROBOT] Load project data for blueprint generation.
 
-        Looks up YT Lab project by ID and returns the steps + metadata
-        needed by generate_blueprint().
+        Looks up tool registry for a previously generated tool whose
+        source_project_id matches, and extracts the blueprint metadata.
+        YT Lab projects live in client-side localStorage and are not
+        directly accessible server-side; this method works with data
+        that has already been processed and registered.
         """
         try:
-            from ..services.yt_processor import YTProcessor
-            processor = YTProcessor()
-            project = processor.get_project(project_id)
-            if not project:
-                return None
+            # Look up by source_project_id in existing tools
+            tools = await self.registry.list_tools(limit=500)
+            for tool in tools:
+                bp = tool.blueprint
+                if bp.source_project_id == project_id:
+                    return {
+                        "name": bp.tool_name,
+                        "description": bp.tool_description,
+                        "steps": [row.model_dump() for row in bp.chain_config],
+                        "video_id": bp.source_video_id,
+                        "video_title": bp.source_video_title,
+                        "video_channel": bp.source_video_channel,
+                    }
 
-            return {
-                "name": project.get("title", project_id),
-                "description": project.get("description", ""),
-                "steps": project.get("steps", []),
-                "video_id": project.get("video_id", ""),
-                "video_title": project.get("title", ""),
-                "video_channel": project.get("channel", ""),
-            }
+            logger.warning(
+                "No tool found with source_project_id=%s. "
+                "YT Lab projects are stored client-side; the project must be "
+                "processed individually before it can be included in a batch.",
+                project_id,
+            )
+            return None
         except Exception as e:
             logger.warning("Failed to load project data for %s: %s", project_id, e)
             return None

@@ -3,8 +3,12 @@
 ALL functions are [ROBOT] — pure Google Sheets API calls, no LLM calls.
 Uses batched API calls to stay within quota (100 req / 100 sec per user).
 Typical deployment uses 3-4 API calls total.
+
+All Google Sheets API calls are synchronous and run via asyncio.to_thread()
+to avoid blocking the event loop.
 """
 
+import asyncio
 import logging
 from typing import Optional
 
@@ -48,13 +52,13 @@ def _get_sheets_service(credentials):
     return build("sheets", "v4", credentials=credentials)
 
 
-async def deploy_sheet(
+def _deploy_sheet_sync(
     blueprint: SheetBlueprint,
     theme: ThemeConfig,
     credentials,
     folder_id: Optional[str] = None,
 ) -> dict:
-    """Main entry: create sheet, populate 5 tabs, apply theme.
+    """Synchronous core of deploy_sheet. Runs all Google API calls.
 
     Args:
         blueprint: The SheetBlueprint to deploy.
@@ -98,6 +102,31 @@ async def deploy_sheet(
         "sheet_url": sheet_url,
         "sheet_title": sheet_title,
     }
+
+
+async def deploy_sheet(
+    blueprint: SheetBlueprint,
+    theme: ThemeConfig,
+    credentials,
+    folder_id: Optional[str] = None,
+) -> dict:
+    """Main entry: create sheet, populate 5 tabs, apply theme.
+
+    All synchronous Google API calls are offloaded to a thread pool
+    via asyncio.to_thread() to avoid blocking the event loop.
+
+    Args:
+        blueprint: The SheetBlueprint to deploy.
+        theme: Theme to apply.
+        credentials: Google OAuth credentials.
+        folder_id: Optional Google Drive folder ID to place the sheet in.
+
+    Returns:
+        Dict with sheet_id, sheet_url, sheet_title.
+    """
+    return await asyncio.to_thread(
+        _deploy_sheet_sync, blueprint, theme, credentials, folder_id
+    )
 
 
 def _create_sheet_structure(service, blueprint: SheetBlueprint) -> tuple[str, str, dict[str, int]]:
@@ -380,17 +409,8 @@ def _build_data_validation(chain_tab_id: int) -> list[dict]:
     return requests
 
 
-async def redeploy_theme(sheet_id: str, theme: ThemeConfig, credentials) -> bool:
-    """Re-apply theme to an existing deployed sheet.
-
-    Args:
-        sheet_id: Google Sheets document ID.
-        theme: New theme to apply.
-        credentials: Google OAuth credentials.
-
-    Returns:
-        True if successful.
-    """
+def _redeploy_theme_sync(sheet_id: str, theme: ThemeConfig, credentials) -> bool:
+    """Synchronous core of redeploy_theme. Runs all Google API calls."""
     try:
         service = _get_sheets_service(credentials)
 
@@ -414,3 +434,20 @@ async def redeploy_theme(sheet_id: str, theme: ThemeConfig, credentials) -> bool
     except Exception as e:
         logger.error("Failed to redeploy theme to sheet %s: %s", sheet_id, e)
         return False
+
+
+async def redeploy_theme(sheet_id: str, theme: ThemeConfig, credentials) -> bool:
+    """Re-apply theme to an existing deployed sheet.
+
+    All synchronous Google API calls are offloaded to a thread pool
+    via asyncio.to_thread() to avoid blocking the event loop.
+
+    Args:
+        sheet_id: Google Sheets document ID.
+        theme: New theme to apply.
+        credentials: Google OAuth credentials.
+
+    Returns:
+        True if successful.
+    """
+    return await asyncio.to_thread(_redeploy_theme_sync, sheet_id, theme, credentials)

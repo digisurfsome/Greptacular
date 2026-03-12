@@ -2575,7 +2575,7 @@ export interface TFToolFactoryStats {
   total_tokens: number
   total_tools_created?: number
   total_tools_deployed?: number
-  by_status?: Record<string, number>
+  by_status: Record<string, number>
 }
 
 export interface TFDeployResult {
@@ -2586,13 +2586,19 @@ export interface TFDeployResult {
 }
 
 export interface TFThemePreview {
-  preview_html: string
   theme: TFThemeConfig
+  sample_cells: Array<{ label: string; value: string; format: Record<string, unknown> }>
+  color_swatches: Array<{ name: string; hex: string }>
+  font_preview: {
+    heading: { font: string; weight: string }
+    body: { font: string; weight: string }
+  }
 }
 
 export async function fetchTools(status?: TFToolStatus): Promise<TFGeneratedTool[]> {
   const params = status ? `?status=${status}` : ''
-  return fetchJSON(`/tool-factory/tools${params}`)
+  const data = await fetchJSON<{ tools: TFGeneratedTool[]; count: number }>(`/tool-factory/tools${params}`)
+  return data.tools
 }
 
 export async function fetchTool(toolId: string): Promise<TFGeneratedTool> {
@@ -2606,26 +2612,42 @@ export async function archiveTool(toolId: string): Promise<void> {
 }
 
 export async function fetchToolStats(): Promise<TFToolFactoryStats> {
-  return fetchJSON('/tool-factory/stats')
+  const data = await fetchJSON<Omit<TFToolFactoryStats, 'active_tools'> & { by_status: Record<string, number> }>('/tool-factory/stats')
+  return {
+    ...data,
+    active_tools: data.by_status?.active ?? 0,
+  }
+}
+
+export interface GenerateBlueprintParams {
+  project_name: string
+  project_description?: string
+  steps: Record<string, unknown>[]
+  source_video_id?: string
+  source_video_title?: string
+  source_video_channel?: string
+  source_project_id?: string
+  skip_prompt_conversion?: boolean
 }
 
 export async function generateBlueprint(
-  projectId: string,
-  theme?: TFThemeConfig | null
-): Promise<TFSheetBlueprint> {
+  params: GenerateBlueprintParams
+): Promise<{ blueprint: TFSheetBlueprint; tool_id: string }> {
   return fetchJSON('/tool-factory/generate', {
     method: 'POST',
-    body: JSON.stringify({ project_id: projectId, theme: theme ?? null }),
+    body: JSON.stringify(params),
   })
 }
 
 export async function uploadPRD(
   content: string,
-  filename: string
-): Promise<TFPRDExtractionResult> {
-  return fetchJSON('/tool-factory/upload-prd', {
+  filename: string,
+  userContext?: string
+): Promise<{ prd_id: string; extraction: TFPRDExtractionResult; blueprint: TFSheetBlueprint; tool_id: string }> {
+  // Paste-in PRDs use /generate-from-prd which accepts JSON
+  return fetchJSON('/tool-factory/generate-from-prd', {
     method: 'POST',
-    body: JSON.stringify({ content, filename }),
+    body: JSON.stringify({ content, filename, user_context: userContext ?? '' }),
   })
 }
 
@@ -2643,7 +2665,7 @@ export async function fetchGoogleAuthStatus(): Promise<{ authenticated: boolean 
   return fetchJSON('/tool-factory/google/status')
 }
 
-export async function fetchGoogleAuthUrl(): Promise<{ url: string }> {
+export async function fetchGoogleAuthUrl(): Promise<{ auth_url: string }> {
   return fetchJSON('/tool-factory/google/auth-url')
 }
 
@@ -2652,7 +2674,8 @@ export async function fetchGoogleAuthUrl(): Promise<{ url: string }> {
 // ============================================================================
 
 export async function fetchThemes(): Promise<TFThemeConfig[]> {
-  return fetchJSON('/tool-factory/themes')
+  const data = await fetchJSON<{ themes: TFThemeConfig[]; count: number }>('/tool-factory/themes')
+  return data.themes
 }
 
 export async function fetchTheme(themeId: string): Promise<TFThemeConfig> {
@@ -2660,22 +2683,28 @@ export async function fetchTheme(themeId: string): Promise<TFThemeConfig> {
 }
 
 export async function extractTheme(imageFile: File): Promise<TFThemeConfig> {
-  const formData = new FormData()
-  formData.append('image', imageFile)
-  const response = await fetch(`${API_BASE}/tool-factory/themes/extract`, {
-    method: 'POST',
-    body: formData,
+  // Backend expects JSON with image_base64, not FormData
+  const base64 = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = reader.result as string
+      // Strip the data:image/...;base64, prefix
+      const base64Data = result.includes(',') ? result.split(',')[1] : result
+      resolve(base64Data)
+    }
+    reader.onerror = () => reject(new Error('Failed to read image file'))
+    reader.readAsDataURL(imageFile)
   })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Unknown error' }))
-    throw new Error(error.detail || `HTTP ${response.status}`)
-  }
-  return response.json()
+  return fetchJSON('/tool-factory/themes/extract', {
+    method: 'POST',
+    body: JSON.stringify({ image_base64: base64 }),
+  })
 }
 
 export async function previewTheme(themeId: string): Promise<TFThemePreview> {
-  return fetchJSON(`/tool-factory/themes/${encodeURIComponent(themeId)}/preview`, {
+  return fetchJSON('/tool-factory/themes/preview', {
     method: 'POST',
+    body: JSON.stringify({ theme_id: themeId }),
   })
 }
 

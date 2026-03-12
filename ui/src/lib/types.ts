@@ -1885,3 +1885,134 @@ export interface Commit {
   } | null
   feature_ids: number[]
 }
+
+// ============================================================================
+// Tool Factory Types (Video-to-Tool Factory)
+// ============================================================================
+
+export type TFStepType = 'research' | 'generation' | 'action' | 'manual'
+export type TFToolStatus = 'draft' | 'deploying' | 'active' | 'error' | 'archived'
+export type TFThemeSource = 'preset' | 'extracted' | 'custom'
+export type TFIngestionSource = 'youtube' | 'prd_upload' | 'manual'
+
+export interface TFThemeColors {
+  brand_light: string
+  brand_default: string
+  brand_dark: string
+  surface_canvas: string
+  surface_base: string
+  surface_muted: string
+  text_primary: string
+  text_secondary: string
+  text_tertiary: string
+  border_subtle: string
+  status_success: string
+  status_error: string
+  status_warning: string
+}
+
+export interface TFThemeTypography {
+  font_family_heading: string
+  font_family_body: string
+  font_weight_heading: number
+  font_weight_body: number
+  base_size_px: number
+}
+
+export interface TFThemeComponents {
+  card_radius_px: number
+  button_radius_px: number
+  input_radius_px: number
+  shadow_card: string
+  spacing_unit_px: number
+  density: 'cozy' | 'compact'
+}
+
+export interface TFThemeConfig {
+  theme_id: string
+  theme_name: string
+  source: TFThemeSource
+  colors: TFThemeColors
+  typography: TFThemeTypography
+  components: TFThemeComponents
+  tailwind_config: Record<string, unknown>
+  style_classification: string | null
+  source_image_path: string | null
+}
+
+export interface TFDetectedAPI {
+  service_name: string
+  service_key: string
+  detection_pattern: string
+  signup_url: string
+  required_env_vars: string[]
+}
+
+export interface TFChainConfigRow {
+  row_number: number
+  step_type: TFStepType
+  title: string
+  prompt_template: string
+  expected_output: string
+  input_source: string
+  output_destination: string
+  model_recommendation: string
+  apis_required: string[]
+  is_gate: boolean
+  max_retries: number
+  timeout_seconds: number
+  notes: string
+  original_step_id: string
+  original_step_order: number
+}
+
+export interface TFSheetBlueprint {
+  blueprint_id: string
+  tool_name: string
+  tool_description: string
+  source_video_id: string
+  source_video_title: string
+  source_video_channel: string
+  source_project_id: string
+  chain_config: TFChainConfigRow[]
+  detected_apis: TFDetectedAPI[]
+  user_input_variables: string[]
+  theme: TFThemeConfig | null
+  created_at: string
+  ingestion_source: TFIngestionSource
+  source_prd_id: string | null
+}
+
+export interface TFGeneratedTool {
+  tool_id: string
+  blueprint: TFSheetBlueprint
+  status: TFToolStatus
+  sheet_id: string | null
+  sheet_url: string | null
+  sheet_title: string | null
+  active_theme: TFThemeConfig | null
+  times_run: number
+  last_run_at: string | null
+  total_tokens_used: number
+  created_at: string
+  updated_at: string
+  tags: string[]
+}
+
+export interface TFPRDUpload {
+  prd_id: string
+  filename: string
+  content: string
+  source: 'upload'
+  uploaded_at: string
+}
+
+export interface TFPRDExtractionResult {
+  project_name: string
+  project_description: string
+  niche: string
+  tags: string[]
+  steps: YTProcessStepData[]
+  extraction_model: string
+  extraction_time: number
+}

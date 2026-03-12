@@ -63,6 +63,7 @@ from .routers import (
     terminal_router,
     verifications_router,
     workspace_router,
+    tool_factory_router,
     yt_batch_router,
     yt_ingestion_router,
     yt_processing_router,
@@ -339,6 +340,7 @@ app.include_router(verifications_router)
 app.include_router(approvals_router)
 app.include_router(checkpoints_router)
 app.include_router(build_planner_router)
+app.include_router(tool_factory_router)
 
 
 # ============================================================================

@@ -41,6 +41,7 @@ from .workspace import router as workspace_router
 from .yt_batch import router as yt_batch_router
 from .yt_ingestion import router as yt_ingestion_router
 from .yt_processing import router as yt_processing_router
+from .tool_factory import router as tool_factory_router
 
 __all__ = [
     "actions_router",
@@ -77,6 +78,7 @@ __all__ = [
     "yt_batch_router",
     "execution_router",
     "execution_websocket",
+    "tool_factory_router",
     "factory_router",
     "factory_presets_router",
     "verifications_router",

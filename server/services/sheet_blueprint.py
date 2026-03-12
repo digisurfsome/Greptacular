@@ -1,0 +1,499 @@
+"""Blueprint Engine — transforms YTStrategyStep[] → SheetBlueprint.
+
+Pipeline:
+  [1] filter_and_validate()       [ROBOT]
+  [2] classify_step()             [ROBOT]
+  [3] detect_apis()               [ROBOT]
+  [4] extract_user_variables()    [ROBOT]
+  [5] compute_input_source()      [ROBOT]
+  [6] convert_prompts()           [AGENT] — Claude Sonnet rewrites prompts
+  [7] assemble_blueprint()        [ROBOT]
+"""
+
+import logging
+import re
+import uuid
+from typing import Optional
+
+from ..models.tool_factory import (
+    ChainConfigRow,
+    DetectedAPI,
+    IngestionSource,
+    SheetBlueprint,
+    StepType,
+    ThemeConfig,
+)
+
+logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# [ROBOT] Step Classification Signals
+# ---------------------------------------------------------------------------
+
+ACTION_SIGNALS = [
+    "upload", "send", "deploy", "publish", "post to", "push to",
+    "submit", "create campaign", "launch", "import to", "export to",
+    "sync", "connect to", "integrate with", "call api", "webhook",
+]
+
+MANUAL_SIGNALS = [
+    "review", "approve", "select", "decide", "choose", "manually",
+    "hand-pick", "curate", "evaluate", "compare and pick", "sign off",
+]
+
+GENERATION_SIGNALS = [
+    "generate", "create", "write", "build", "design", "draft",
+    "compose", "produce", "make", "craft", "develop", "format",
+]
+
+
+# ---------------------------------------------------------------------------
+# [ROBOT] API Detection Patterns (13 services)
+# ---------------------------------------------------------------------------
+
+API_PATTERNS: dict[str, dict] = {
+    "openai": {
+        "patterns": ["gpt", "openai", "chatgpt", "dall-e", "whisper"],
+        "service_name": "OpenAI",
+        "signup_url": "https://platform.openai.com/api-keys",
+        "env_vars": ["OPENAI_API_KEY"],
+    },
+    "anthropic": {
+        "patterns": ["claude", "anthropic"],
+        "service_name": "Anthropic (Claude)",
+        "signup_url": "https://console.anthropic.com/",
+        "env_vars": ["ANTHROPIC_API_KEY"],
+    },
+    "meta_marketing": {
+        "patterns": ["facebook ads", "meta ads", "instagram ads", "meta campaign", "meta marketing"],
+        "service_name": "Meta Marketing API",
+        "signup_url": "https://developers.facebook.com/",
+        "env_vars": ["META_APP_ID", "META_APP_SECRET", "META_ACCESS_TOKEN"],
+    },
+    "google_ads": {
+        "patterns": ["google ads", "adwords", "ppc campaign"],
+        "service_name": "Google Ads",
+        "signup_url": "https://ads.google.com/",
+        "env_vars": ["GOOGLE_ADS_CLIENT_ID", "GOOGLE_ADS_CLIENT_SECRET"],
+    },
+    "phantombuster": {
+        "patterns": ["phantombuster", "phantom"],
+        "service_name": "PhantomBuster",
+        "signup_url": "https://phantombuster.com/",
+        "env_vars": ["PHANTOMBUSTER_API_KEY"],
+    },
+    "apollo": {
+        "patterns": ["apollo.io", "apollo", "lead enrichment"],
+        "service_name": "Apollo.io",
+        "signup_url": "https://app.apollo.io/",
+        "env_vars": ["APOLLO_API_KEY"],
+    },
+    "instantly": {
+        "patterns": ["instantly", "cold email", "email warmup"],
+        "service_name": "Instantly",
+        "signup_url": "https://instantly.ai/",
+        "env_vars": ["INSTANTLY_API_KEY"],
+    },
+    "canva": {
+        "patterns": ["canva", "design template"],
+        "service_name": "Canva",
+        "signup_url": "https://www.canva.com/developers/",
+        "env_vars": ["CANVA_API_KEY"],
+    },
+    "airtable": {
+        "patterns": ["airtable", "airtable base"],
+        "service_name": "Airtable",
+        "signup_url": "https://airtable.com/developers",
+        "env_vars": ["AIRTABLE_API_KEY", "AIRTABLE_BASE_ID"],
+    },
+    "zapier": {
+        "patterns": ["zapier", "zap", "automation webhook"],
+        "service_name": "Zapier",
+        "signup_url": "https://zapier.com/developer",
+        "env_vars": ["ZAPIER_WEBHOOK_URL"],
+    },
+    "stripe": {
+        "patterns": ["stripe", "payment processing", "checkout"],
+        "service_name": "Stripe",
+        "signup_url": "https://dashboard.stripe.com/apikeys",
+        "env_vars": ["STRIPE_API_KEY", "STRIPE_WEBHOOK_SECRET"],
+    },
+    "twilio": {
+        "patterns": ["twilio", "sms api", "whatsapp api"],
+        "service_name": "Twilio",
+        "signup_url": "https://www.twilio.com/console",
+        "env_vars": ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN"],
+    },
+    "sendgrid": {
+        "patterns": ["sendgrid", "transactional email"],
+        "service_name": "SendGrid",
+        "signup_url": "https://app.sendgrid.com/settings/api_keys",
+        "env_vars": ["SENDGRID_API_KEY"],
+    },
+}
+
+# System variables to exclude from user variable extraction
+_SYSTEM_VARIABLES = {"previousOutput", "row_number", "total_steps"}
+
+
+# ---------------------------------------------------------------------------
+# [ROBOT] Pipeline Functions
+# ---------------------------------------------------------------------------
+
+def filter_and_validate(steps: list[dict]) -> list[dict]:
+    """[ROBOT] Remove steps with empty title or prompt. Returns valid steps."""
+    valid = []
+    for step in steps:
+        title = (step.get("title") or "").strip()
+        prompt = (step.get("prompt") or "").strip()
+        if title and prompt:
+            valid.append(step)
+        else:
+            logger.debug("Filtered out step (empty title/prompt): %s", step.get("title", "<no title>"))
+    return valid
+
+
+def classify_step(step: dict) -> StepType:
+    """[ROBOT] Classify a step by keyword matching.
+
+    Priority: ACTION > MANUAL > GENERATION > RESEARCH (default).
+    """
+    text = f"{step.get('title', '')} {step.get('prompt', '')} {step.get('description', '')}".lower()
+
+    for signal in ACTION_SIGNALS:
+        if signal in text:
+            return StepType.ACTION
+
+    for signal in MANUAL_SIGNALS:
+        if signal in text:
+            return StepType.MANUAL
+
+    for signal in GENERATION_SIGNALS:
+        if signal in text:
+            return StepType.GENERATION
+
+    return StepType.RESEARCH
+
+
+def detect_apis(steps: list[dict]) -> list[DetectedAPI]:
+    """[ROBOT] Scan all step prompts and detect required external APIs."""
+    detected: dict[str, DetectedAPI] = {}
+    for step in steps:
+        text = f"{step.get('title', '')} {step.get('prompt', '')} {step.get('expectedOutput', '')}".lower()
+        for service_key, config in API_PATTERNS.items():
+            if service_key in detected:
+                continue
+            for pattern in config["patterns"]:
+                if pattern in text:
+                    detected[service_key] = DetectedAPI(
+                        service_name=config["service_name"],
+                        service_key=service_key,
+                        detection_pattern=pattern,
+                        signup_url=config["signup_url"],
+                        required_env_vars=config["env_vars"],
+                    )
+                    break
+    return list(detected.values())
+
+
+def extract_user_variables(steps: list[dict]) -> list[str]:
+    """[ROBOT] Find all {variable} placeholders across all step prompts."""
+    variables: set[str] = set()
+    pattern = re.compile(r"\{(\w+)\}")
+
+    for step in steps:
+        prompt = step.get("prompt", "")
+        for match in pattern.finditer(prompt):
+            var_name = match.group(1)
+            if var_name not in _SYSTEM_VARIABLES:
+                variables.add(var_name)
+
+    return sorted(variables)
+
+
+def detect_prior_references(prompt: str, row_number: int) -> list[int]:
+    """[ROBOT] Find references to prior steps in prompt text.
+
+    Looks for patterns like 'step 3', 'row 2', 'previous step', etc.
+    """
+    refs: set[int] = set()
+    lower = prompt.lower()
+
+    # Match "step N" or "row N"
+    for m in re.finditer(r"(?:step|row)\s+(\d+)", lower):
+        ref = int(m.group(1))
+        if 1 <= ref < row_number:
+            refs.add(ref)
+
+    # "previous" / "prior" → row_number - 1
+    if row_number > 1 and any(w in lower for w in ("previous", "prior", "last step", "preceding")):
+        refs.add(row_number - 1)
+
+    return sorted(refs)
+
+
+def compute_input_source(row_number: int, step: dict, all_steps: list[dict]) -> str:
+    """[ROBOT] Compute input_source for a chain row."""
+    if row_number == 1:
+        return "user_input"
+
+    references = detect_prior_references(step.get("prompt", ""), row_number)
+    if len(references) > 1:
+        return "+".join(f"row_{r}" for r in references)
+
+    return f"row_{row_number - 1}"
+
+
+def _normalize_model(model_str: str) -> str:
+    """[ROBOT] Normalize model string to short form."""
+    lower = model_str.lower()
+    if "opus" in lower:
+        return "opus"
+    if "haiku" in lower:
+        return "haiku"
+    return "sonnet"
+
+
+# ---------------------------------------------------------------------------
+# [AGENT] Prompt Conversion (Claude Sonnet)
+# ---------------------------------------------------------------------------
+
+PROMPT_CONVERSION_SYSTEM = (
+    "You are a prompt conversion specialist. You convert video-extracted prompts "
+    "into structured chain-executable prompts. Return ONLY the converted prompt, "
+    "no explanation, no markdown fences."
+)
+
+
+async def convert_single_prompt(
+    original_prompt: str,
+    step_number: int,
+    total_steps: int,
+    tool_name: str,
+    expected_output: str,
+) -> str:
+    """[AGENT] Convert a video-style prompt to a chain-executable prompt.
+
+    Uses Claude Sonnet. ~1-2k tokens per call.
+    Includes retry logic (max 2 retries) and output validation.
+    """
+    from ..services.yt_processor import YTProcessor
+
+    user_message = (
+        f'Given this video-extracted step prompt:\n'
+        f'"{original_prompt}"\n\n'
+        f'Context: This is Step {step_number} of {total_steps} in a "{tool_name}" workflow.\n'
+        f'Expected output: {expected_output}\n\n'
+        f'Convert it to a structured chain prompt that:\n'
+        f'1. Is self-contained (doesn\'t reference "the video" or "what we just did")\n'
+        f'2. Uses {{{{previousOutput}}}} to reference the prior step\'s result\n'
+        f'3. Uses {{{{variable_name}}}} for user-configurable inputs\n'
+        f'4. Specifies the expected output format clearly\n'
+        f'5. Is under 500 words\n\n'
+        f'Return ONLY the converted prompt, no explanation.'
+    )
+
+    processor = YTProcessor(model="claude-sonnet-4-6")
+    max_retries = 2
+
+    for attempt in range(max_retries + 1):
+        try:
+            result = await processor._call_via_sdk(
+                PROMPT_CONVERSION_SYSTEM,
+                user_message if attempt == 0 else f"{user_message}\n\nPlease provide the converted prompt.",
+                "claude-sonnet-4-6",
+                timeout=60,
+            )
+
+            if not result or not result.strip():
+                if attempt < max_retries:
+                    continue
+                return f"[UNCONVERTED] {original_prompt}"
+
+            # Truncate if too long (>500 words ~ 3000 chars)
+            if len(result.split()) > 500:
+                words = result.split()[:500]
+                result = " ".join(words) + "\n\n[Output format: " + expected_output + "]"
+
+            return result.strip()
+
+        except Exception as e:
+            logger.warning("Prompt conversion attempt %d failed: %s", attempt + 1, e)
+            if attempt >= max_retries:
+                return f"[UNCONVERTED] {original_prompt}"
+
+    return f"[UNCONVERTED] {original_prompt}"
+
+
+async def convert_prompts(
+    steps: list[dict],
+    tool_name: str,
+    on_progress: Optional[callable] = None,
+) -> list[str]:
+    """[AGENT] Batch wrapper — calls convert_single_prompt for each step."""
+    converted = []
+    total = len(steps)
+
+    for i, step in enumerate(steps):
+        if on_progress:
+            on_progress(f"Converting prompt {i + 1}/{total}...")
+
+        result = await convert_single_prompt(
+            original_prompt=step.get("prompt", ""),
+            step_number=i + 1,
+            total_steps=total,
+            tool_name=tool_name,
+            expected_output=step.get("expectedOutput", ""),
+        )
+        converted.append(result)
+
+    return converted
+
+
+# ---------------------------------------------------------------------------
+# [ROBOT] Blueprint Assembly
+# ---------------------------------------------------------------------------
+
+def assemble_blueprint(
+    project_name: str,
+    project_description: str,
+    source_video_id: str,
+    source_video_title: str,
+    source_video_channel: str,
+    source_project_id: str,
+    steps: list[dict],
+    converted_prompts: list[str],
+    detected_api_list: list[DetectedAPI],
+    user_variables: list[str],
+    theme: Optional[ThemeConfig] = None,
+    ingestion_source: IngestionSource = IngestionSource.YOUTUBE,
+    source_prd_id: Optional[str] = None,
+) -> SheetBlueprint:
+    """[ROBOT] Combine all computed fields into final SheetBlueprint."""
+    chain_rows: list[ChainConfigRow] = []
+
+    for i, step in enumerate(steps):
+        row_number = i + 1
+        step_type = classify_step(step)
+        input_source = compute_input_source(row_number, step, steps)
+
+        # Build per-row API requirements
+        step_text = f"{step.get('title', '')} {step.get('prompt', '')} {step.get('expectedOutput', '')}".lower()
+        row_apis: list[str] = []
+        for service_key, config in API_PATTERNS.items():
+            for pattern in config["patterns"]:
+                if pattern in step_text:
+                    row_apis.append(service_key)
+                    break
+
+        title = (step.get("title", "") or "")[:60].strip()
+        if not title:
+            title = f"Step {row_number}"
+
+        row = ChainConfigRow(
+            row_number=row_number,
+            step_type=step_type,
+            title=title,
+            prompt_template=converted_prompts[i] if i < len(converted_prompts) else step.get("prompt", ""),
+            expected_output=step.get("expectedOutput", ""),
+            input_source=input_source,
+            output_destination=f"row_{row_number}_output",
+            model_recommendation=_normalize_model(step.get("model", "sonnet")),
+            apis_required=row_apis,
+            is_gate=(step_type == StepType.MANUAL),
+            max_retries=1,
+            timeout_seconds=120,
+            notes=step.get("notes", ""),
+            original_step_id=step.get("id", str(uuid.uuid4().hex[:8])),
+            original_step_order=step.get("order", row_number),
+        )
+        chain_rows.append(row)
+
+    return SheetBlueprint(
+        blueprint_id=f"bp_{uuid.uuid4().hex[:12]}",
+        tool_name=project_name,
+        tool_description=project_description,
+        source_video_id=source_video_id,
+        source_video_title=source_video_title,
+        source_video_channel=source_video_channel,
+        source_project_id=source_project_id,
+        chain_config=chain_rows,
+        detected_apis=detected_api_list,
+        user_input_variables=user_variables,
+        theme=theme,
+        ingestion_source=ingestion_source,
+        source_prd_id=source_prd_id,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Main Entry Point
+# ---------------------------------------------------------------------------
+
+async def generate_blueprint(
+    project_name: str,
+    project_description: str,
+    steps: list[dict],
+    source_video_id: str = "",
+    source_video_title: str = "",
+    source_video_channel: str = "",
+    source_project_id: str = "",
+    theme: Optional[ThemeConfig] = None,
+    skip_prompt_conversion: bool = False,
+    on_progress: Optional[callable] = None,
+    ingestion_source: IngestionSource = IngestionSource.YOUTUBE,
+    source_prd_id: Optional[str] = None,
+) -> SheetBlueprint:
+    """Generate a complete SheetBlueprint from extracted steps.
+
+    Orchestrates the full pipeline:
+    filter → classify → detect APIs → extract vars → convert prompts → assemble.
+    """
+    if on_progress:
+        on_progress("Filtering and validating steps...")
+
+    valid_steps = filter_and_validate(steps)
+    if not valid_steps:
+        raise ValueError("No valid steps found after filtering")
+
+    if on_progress:
+        on_progress(f"Processing {len(valid_steps)} valid steps...")
+
+    # [ROBOT] steps — all zero tokens
+    detected_api_list = detect_apis(valid_steps)
+    user_variables = extract_user_variables(valid_steps)
+
+    if on_progress:
+        on_progress(f"Detected {len(detected_api_list)} APIs, {len(user_variables)} variables")
+
+    # [AGENT] prompt conversion (or skip for testing)
+    if skip_prompt_conversion:
+        converted_prompts = [s.get("prompt", "") for s in valid_steps]
+    else:
+        converted_prompts = await convert_prompts(valid_steps, project_name, on_progress)
+
+    if on_progress:
+        on_progress("Assembling blueprint...")
+
+    # [ROBOT] final assembly
+    blueprint = assemble_blueprint(
+        project_name=project_name,
+        project_description=project_description,
+        source_video_id=source_video_id,
+        source_video_title=source_video_title,
+        source_video_channel=source_video_channel,
+        source_project_id=source_project_id,
+        steps=valid_steps,
+        converted_prompts=converted_prompts,
+        detected_api_list=detected_api_list,
+        user_variables=user_variables,
+        theme=theme,
+        ingestion_source=ingestion_source,
+        source_prd_id=source_prd_id,
+    )
+
+    if on_progress:
+        on_progress(f"Blueprint complete: {len(blueprint.chain_config)} chain rows")
+
+    return blueprint

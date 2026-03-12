@@ -20,6 +20,7 @@ import { ProjectFileBrowser } from '@/components/cli-scripter/ProjectFileBrowser
 import { RuleBlockLibrary, createEmptyBlock, type RuleBlockData } from '@/components/cli-scripter/RuleBlock'
 import { Combiner, getMergedText } from '@/components/cli-scripter/Combiner'
 import { GatePopup, NEW_BUILD_PREFIX, EDIT_PATCH_PREFIX, type BuildMode, type PhaseMode } from '@/components/cli-scripter/GatePopup'
+import { BuildLibrary, type BuildConfigFull } from '@/components/cli-scripter/BuildLibrary'
 import {
   ArrowLeft,
   Plus,
@@ -645,6 +646,9 @@ export function CliScripterPage() {
   // ---- Build Queue (persisted) ----
   const [queueItems, setQueueItems] = usePersistedState<Array<{name: string, project_dir: string, scripts_dir?: string, status: string}>>('cli_scripter_queue', [])
 
+  // ---- Build Library ----
+  const [libraryOpen, setLibraryOpen] = usePersistedState('cli_scripter_library_open', false)
+
   const selectedBoilerplate = BOILERPLATES.find((b) => b.id === boilerplate) || BOILERPLATES[0]
 
   // ---- GitHub helpers ----
@@ -1130,6 +1134,61 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
 
   const removeFromQueue = (index: number) => {
     setQueueItems(prev => prev.filter((_, i) => i !== index))
+  }
+
+  // ---- Build Library handlers ----
+  const handleLibrarySaveRequest = async () => {
+    return {
+      name: appName || 'Untitled Build',
+      config_json: {
+        appName,
+        appDescription,
+        boilerplate,
+        ruleBlocks,
+        combinedRules,
+        phase1Rules,
+        phase2PlusRules,
+        features,
+        dependencies,
+        turns,
+        transition,
+        errorHandling,
+        gitCommits,
+        phaseCount,
+        agentRoles,
+        includeVerification,
+        phaseAssignments,
+        projectDir,
+        buildMode,
+        phaseMode,
+      },
+      project_dir: projectDir || undefined,
+      phase_count: phaseCount === 'Auto' ? undefined : parseInt(phaseCount) || undefined,
+    }
+  }
+
+  const handleLibraryLoad = (config: BuildConfigFull) => {
+    const c = config.config_json as Record<string, unknown>
+    if (typeof c.appName === 'string') setAppName(c.appName)
+    if (typeof c.appDescription === 'string') setAppDescription(c.appDescription)
+    if (typeof c.boilerplate === 'string') setBoilerplate(c.boilerplate)
+    if (Array.isArray(c.ruleBlocks)) setRuleBlocks(c.ruleBlocks as RuleBlockData[])
+    if (typeof c.combinedRules === 'string') setCombinedRules(c.combinedRules)
+    if (typeof c.phase1Rules === 'string') setPhase1Rules(c.phase1Rules)
+    if (typeof c.phase2PlusRules === 'string') setPhase2PlusRules(c.phase2PlusRules)
+    if (Array.isArray(c.features)) setFeatures(c.features as FeatureRow[])
+    if (typeof c.dependencies === 'string') setDependencies(c.dependencies)
+    if (typeof c.turns === 'string') setTurns(c.turns)
+    if (typeof c.transition === 'string') setTransition(c.transition)
+    if (typeof c.errorHandling === 'string') setErrorHandling(c.errorHandling)
+    if (typeof c.gitCommits === 'string') setGitCommits(c.gitCommits)
+    if (typeof c.phaseCount === 'string') setPhaseCount(c.phaseCount)
+    if (Array.isArray(c.agentRoles)) setAgentRoles(c.agentRoles as AgentRole[])
+    if (typeof c.includeVerification === 'boolean') setIncludeVerification(c.includeVerification)
+    if (typeof c.phaseAssignments === 'string') setPhaseAssignments(c.phaseAssignments)
+    if (typeof c.projectDir === 'string') setProjectDir(c.projectDir)
+    if (typeof c.buildMode === 'string') setBuildMode(c.buildMode as BuildMode)
+    if (typeof c.phaseMode === 'string') setPhaseMode(c.phaseMode as PhaseMode)
   }
 
   return (
@@ -2019,6 +2078,14 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
             </div>
           )}
         </SectionCard>
+
+        {/* Build Library — save/load configs */}
+        <BuildLibrary
+          open={libraryOpen}
+          onToggle={() => setLibraryOpen(!libraryOpen)}
+          onLoad={handleLibraryLoad}
+          onSaveRequest={handleLibrarySaveRequest}
+        />
 
         {/* Section: Build Queue */}
         <SectionCard

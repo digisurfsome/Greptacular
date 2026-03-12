@@ -347,57 +347,114 @@ Replace the existing `callGenerate` with a version that uses `fetchJSON` from `@
 
 ---
 
-## PHASE 3: Write Scripts to Disk [ROBOT]
+## PHASE 3: Write Scripts to Disk + Auto-Append Verification Phase [ROBOT]
 
 ### Task
-After "Generate All" completes, parse the build scripts output and write actual .sh files to a project directory.
+After "Generate All" completes:
+1. Parse the build scripts output and write actual .sh files to a project directory
+2. **Automatically generate a `verify.sh` script** as the FINAL phase of every build
 
-### Changes
+### Script Generation Logic
 
-**File: `server/routers/build_planner.py`** — Already has `/write-script` endpoint from Phase 1.
+When writing phase scripts to disk, the backend should:
+1. Write `phase1.sh` through `phaseN.sh` (from AI-generated output)
+2. **Auto-generate `verify.sh`** — This reads the verification protocol template from `.claude/templates/e2e_verification_prompt.template.md` and wraps it in a Claude CLI call
+3. Write `run_all.sh` master script that runs all phases in order, ending with `verify.sh`
+
+### The Verification Phase Script (`verify.sh`)
+
+```bash
+#!/bin/bash
+# ===========================================
+# VERIFICATION PHASE — Post-Build Protocol
+# Runs automatically after all build phases complete.
+# Based on Cole Medin's E2E Verification Protocol.
+# ===========================================
+set -e
+
+PROJECT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
+cd "$PROJECT_DIR"
+
+echo "============================================"
+echo "  POST-BUILD VERIFICATION"
+echo "  Testing everything the build agents made"
+echo "============================================"
+echo ""
+
+# Read the verification template
+VERIFY_TEMPLATE="$PROJECT_DIR/.claude/templates/e2e_verification_prompt.template.md"
+if [ ! -f "$VERIFY_TEMPLATE" ]; then
+  # Fallback: use inline verification prompt
+  VERIFY_PROMPT="You have just finished building features. Run lint, type checks, and all tests. Fix any failures. Then review the code for logic errors, missing error handling, and integration mismatches between frontend and backend. Fix critical and high severity issues. Commit your fixes."
+else
+  VERIFY_PROMPT=$(cat "$VERIFY_TEMPLATE")
+fi
+
+claude -p --model opus --dangerously-skip-permissions "$VERIFY_PROMPT"
+
+echo ""
+echo "=== Verification complete ==="
+```
+
+**Key design decisions:**
+- Uses **Opus** for verification (smarter model catches more bugs)
+- Reads the template file so the user can update the protocol without regenerating scripts
+- Falls back to inline prompt if template doesn't exist
+- Auto-generated for every build — not optional by default
+
+### Light Per-Phase Verification (Build Rules)
+
+The script generator should also inject this into **every phase script's prompt** as a closing instruction:
+
+```
+BEFORE YOU FINISH:
+1. Run ruff check on all Python files you created/modified
+2. Run npm run build in ui/ to verify TypeScript compiles
+3. Run npm run lint in ui/ to verify ESLint passes
+4. Run any tests you wrote — all must pass
+5. Fix any failures before committing
+Do not mark this phase as complete until all checks pass.
+```
+
+This is the "light check" that catches dumb mistakes per-phase. The heavy verification (verify.sh) runs once at the end and catches cross-phase integration bugs.
+
+### UI Changes
 
 **File: `ui/src/pages/BuildPlannerPage.tsx`** — Add a "Save Scripts" button below the build scripts output:
 
 1. After build scripts AI result renders, show a "Save to Disk" button
 2. Button calls `POST /api/build-planner/write-script` with each script
 3. Show success message with the file path
+4. **Show a ✅ indicator that `verify.sh` was auto-generated**
+
+**File: `ui/src/pages/BuildPlannerPage.tsx`** — Add checkbox in Build Settings section:
 
 ```tsx
-{buildAiResult && (
-  <div className="mt-3 flex gap-2">
-    <Button
-      onClick={async () => {
-        // Write the full output as a markdown file
-        const res = await fetch(`${API_BASE}/api/build-planner/write-script`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            project_dir: '/path/to/project', // TODO: get from form or folder browser
-            filename: 'build_scripts.md',
-            content: buildAiResult,
-          }),
-        })
-        if (res.ok) {
-          // Show success toast
-        }
-      }}
-      size="sm"
-      className="gap-1 bg-green-600 text-white hover:bg-green-500"
-    >
-      <Download size={14} />
-      Save Scripts to Disk
-    </Button>
-  </div>
-)}
+{/* Verification toggle */}
+<div className="col-span-2 flex items-center gap-2 pt-2 border-t border-zinc-800">
+  <input
+    type="checkbox"
+    checked={includeVerification}
+    onChange={(e) => setIncludeVerification(e.target.checked)}
+    className="w-4 h-4 rounded border-zinc-600 bg-zinc-900 text-purple-500"
+  />
+  <span className="text-sm text-zinc-300">Include post-build verification phase (Opus)</span>
+  <span className="text-xs text-zinc-600">— runs full test protocol after all phases complete</span>
+</div>
 ```
+
+Default: **checked ON**. This generates `verify.sh`. If unchecked, `run_all.sh` skips it.
 
 ### Test Plan
 1. [ROBOT] Complete a full "Generate All" flow
 2. [ROBOT] Click "Save Scripts to Disk"
 3. [ROBOT] Verify files written to `{project_dir}/scripts/build-planner/`
-4. [ROBOT] Verify .sh files have execute permission (chmod 755)
-5. [ROBOT] `npm run build` — clean
-6. [ROBOT] `ruff check server/routers/build_planner.py` — clean
+4. [ROBOT] Verify `verify.sh` exists and has execute permission
+5. [ROBOT] Verify `run_all.sh` includes verification as final step
+6. [ROBOT] Verify the light per-phase check text appears in phase script prompts
+7. [ROBOT] Uncheck "Include verification", regenerate — verify `verify.sh` is NOT generated
+8. [ROBOT] `npm run build` — clean
+9. [ROBOT] `ruff check server/routers/build_planner.py` — clean
 
 ---
 

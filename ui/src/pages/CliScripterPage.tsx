@@ -19,6 +19,7 @@ import { ClearButton } from '@/components/cli-scripter/ClearButton'
 import { ProjectFileBrowser } from '@/components/cli-scripter/ProjectFileBrowser'
 import { RuleBlockLibrary, createEmptyBlock, type RuleBlockData } from '@/components/cli-scripter/RuleBlock'
 import { Combiner, getMergedText } from '@/components/cli-scripter/Combiner'
+import { GatePopup, NEW_BUILD_PREFIX, EDIT_PATCH_PREFIX, type BuildMode, type PhaseMode } from '@/components/cli-scripter/GatePopup'
 import {
   ArrowLeft,
   Plus,
@@ -530,8 +531,14 @@ export function CliScripterPage() {
   const [combiningRules, setCombiningRules] = useState(false)
   const [combineError, setCombineError] = useState<string | null>(null)
 
+  // ---- Gate popup (build mode + phase mode) ----
+  const [gateOpen, setGateOpen] = useState(false)
+  const [buildMode, setBuildMode] = usePersistedState<BuildMode>('cli_scripter_build_mode', 'new')
+  const [phaseMode, setPhaseMode] = usePersistedState<PhaseMode>('cli_scripter_last_phase_mode', 'single')
+
   // ---- Phase-Specific Rules ("Top Bun") (persisted) ----
-  const [splitPhaseRules, setSplitPhaseRules] = usePersistedState('cli_scripter_phase_mode', false)
+  // splitPhaseRules is now driven by phaseMode from the gate popup
+  const splitPhaseRules = phaseMode === 'split'
   const [phase1Rules, setPhase1Rules] = usePersistedState('cli_scripter_phase1_rules', '')
   const [phase2PlusRules, setPhase2PlusRules] = usePersistedState('cli_scripter_phase2plus_rules', '')
 
@@ -881,7 +888,9 @@ Generate:
 
   // ---- Helper to build PRD prompt text without setting state ----
   const buildPrdPromptText = () => {
-    return `You are a senior software architect. Create a detailed PRD for:
+    return `${getBuildModePrefix()}
+
+You are a senior software architect. Create a detailed PRD for:
 
 App: ${appName || '[App Name]'}
 Description: ${appDescription || '[App Description]'}
@@ -903,6 +912,20 @@ Create a comprehensive PRD with:
 3. Data models and API endpoints
 4. UI/UX flow descriptions
 5. Edge cases and error handling`
+  }
+
+  // ---- Gate popup handler ----
+  const handleGateConfirm = (selectedBuildMode: BuildMode, selectedPhaseMode: PhaseMode) => {
+    setBuildMode(selectedBuildMode)
+    setPhaseMode(selectedPhaseMode)
+    setGateOpen(false)
+    // Proceed with generation
+    runGenerateAll()
+  }
+
+  // ---- Get build mode prefix for prompt injection ----
+  const getBuildModePrefix = () => {
+    return buildMode === 'new' ? NEW_BUILD_PREFIX : EDIT_PATCH_PREFIX
   }
 
   // ---- Generate All handler ----
@@ -1319,7 +1342,7 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
               <input
                 type="checkbox"
                 checked={splitPhaseRules}
-                onChange={(e) => setSplitPhaseRules(e.target.checked)}
+                onChange={(e) => setPhaseMode(e.target.checked ? 'split' : 'single')}
                 className="w-4 h-4 rounded border-zinc-600 bg-zinc-900 text-orange-500"
               />
               <span className="text-sm text-zinc-300">
@@ -1792,7 +1815,7 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
 
           {/* Generate All button */}
           <button
-            onClick={runGenerateAll}
+            onClick={() => setGateOpen(true)}
             disabled={generateAllLoading}
             className="w-full flex items-center justify-center gap-3 bg-gradient-to-r from-orange-500 via-amber-500 to-orange-600 rounded-xl px-6 py-4 text-white font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 mb-4 shadow-lg shadow-orange-500/20"
           >
@@ -2015,6 +2038,18 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
         {/* Footer spacing */}
         <div className="h-12" />
       </main>
+
+      {/* Gate Popup — intercepts Generate All */}
+      <GatePopup
+        open={gateOpen}
+        onConfirm={handleGateConfirm}
+        onCancel={() => setGateOpen(false)}
+        mainTokens={estimateTokens(getMergedText(ruleBlocks, 'main') || getRulesText())}
+        p1Tokens={estimateTokens(getMergedText(ruleBlocks, 'p1') || phase1Rules || getRulesText())}
+        p2PlusTokens={estimateTokens(getMergedText(ruleBlocks, 'p2plus') || phase2PlusRules || getRulesText())}
+        lastBuildMode={buildMode}
+        lastPhaseMode={phaseMode}
+      />
     </div>
   )
 }

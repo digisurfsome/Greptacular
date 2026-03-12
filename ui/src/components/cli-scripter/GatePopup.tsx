@@ -5,11 +5,12 @@
  * 1. Build Mode: New Build vs Edit/Patch
  * 2. Phase Mode: Single Phase (Main Combined) vs Split Phase (P1 + P2+ Combos)
  *
- * One click proceeds — the choice IS the confirmation.
+ * User selects both options, then clicks Confirm to proceed.
  * Last used choices are persisted to localStorage.
  */
 
-import { Layers, Wrench, Hammer } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Layers, Wrench, Hammer, Check } from 'lucide-react'
 
 // ---------------------------------------------------------------------------
 // Build mode prefixes — injected before role prompts
@@ -42,7 +43,7 @@ export type PhaseMode = 'single' | 'split'
 interface GatePopupProps {
   /** Whether the popup is visible */
   open: boolean
-  /** Called when user makes their choice */
+  /** Called when user confirms their choices */
   onConfirm: (buildMode: BuildMode, phaseMode: PhaseMode) => void
   /** Called when user dismisses */
   onCancel: () => void
@@ -65,6 +66,17 @@ export function GatePopup({
   lastBuildMode,
   lastPhaseMode,
 }: GatePopupProps) {
+  const [selectedBuild, setSelectedBuild] = useState<BuildMode>(lastBuildMode)
+  const [selectedPhase, setSelectedPhase] = useState<PhaseMode>(lastPhaseMode)
+
+  // Sync with props when popup opens
+  useEffect(() => {
+    if (open) {
+      setSelectedBuild(lastBuildMode)
+      setSelectedPhase(lastPhaseMode)
+    }
+  }, [open, lastBuildMode, lastPhaseMode])
+
   if (!open) return null
 
   return (
@@ -78,9 +90,9 @@ export function GatePopup({
         {/* Row 1: Build Mode */}
         <div className="grid grid-cols-2 gap-3">
           <button
-            onClick={() => onConfirm('new', lastPhaseMode)}
+            onClick={() => setSelectedBuild('new')}
             className={`flex flex-col items-center gap-2 px-4 py-4 rounded-lg border-2 transition-all hover:bg-zinc-800/50 ${
-              lastBuildMode === 'new'
+              selectedBuild === 'new'
                 ? 'border-orange-500/60 bg-orange-500/5'
                 : 'border-zinc-700 bg-zinc-800/20'
             }`}
@@ -95,9 +107,9 @@ export function GatePopup({
             </div>
           </button>
           <button
-            onClick={() => onConfirm('edit', lastPhaseMode)}
+            onClick={() => setSelectedBuild('edit')}
             className={`flex flex-col items-center gap-2 px-4 py-4 rounded-lg border-2 transition-all hover:bg-zinc-800/50 ${
-              lastBuildMode === 'edit'
+              selectedBuild === 'edit'
                 ? 'border-cyan-500/60 bg-cyan-500/5'
                 : 'border-zinc-700 bg-zinc-800/20'
             }`}
@@ -118,9 +130,9 @@ export function GatePopup({
           <p className="text-xs text-zinc-500 mb-2 text-center">How are you splitting phases?</p>
           <div className="grid grid-cols-2 gap-3">
             <button
-              onClick={() => onConfirm(lastBuildMode, 'single')}
+              onClick={() => setSelectedPhase('single')}
               className={`flex flex-col items-center gap-1.5 px-4 py-3 rounded-lg border-2 transition-all hover:bg-zinc-800/50 ${
-                lastPhaseMode === 'single'
+                selectedPhase === 'single'
                   ? 'border-orange-500/60 bg-orange-500/5'
                   : 'border-zinc-700 bg-zinc-800/20'
               }`}
@@ -130,9 +142,9 @@ export function GatePopup({
               <span className="text-[10px] text-zinc-500">{mainTokens.toLocaleString()} tokens</span>
             </button>
             <button
-              onClick={() => onConfirm(lastBuildMode, 'split')}
+              onClick={() => setSelectedPhase('split')}
               className={`flex flex-col items-center gap-1.5 px-4 py-3 rounded-lg border-2 transition-all hover:bg-zinc-800/50 ${
-                lastPhaseMode === 'split'
+                selectedPhase === 'split'
                   ? 'border-cyan-500/60 bg-cyan-500/5'
                   : 'border-zinc-700 bg-zinc-800/20'
               }`}
@@ -146,16 +158,18 @@ export function GatePopup({
           </div>
         </div>
 
-        {/* Last used indicator */}
-        <p className="text-[10px] text-zinc-600 text-center">
-          Last used: {lastBuildMode === 'new' ? 'New Build' : 'Edit / Patch'} &bull; {lastPhaseMode === 'single' ? 'Single Phase' : 'Split Phase'}
-        </p>
-
-        {/* Cancel */}
-        <div className="text-center">
+        {/* Confirm + Cancel */}
+        <div className="flex items-center justify-center gap-3 pt-1">
+          <button
+            onClick={() => onConfirm(selectedBuild, selectedPhase)}
+            className="flex items-center gap-1.5 bg-orange-500/80 hover:bg-orange-500 text-white text-sm font-medium rounded-lg px-5 py-2 transition-colors"
+          >
+            <Check size={14} />
+            Confirm &amp; Generate
+          </button>
           <button
             onClick={onCancel}
-            className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+            className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors px-3 py-2"
           >
             Cancel
           </button>

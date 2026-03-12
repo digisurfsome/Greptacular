@@ -55,6 +55,12 @@ export function usePersistedState<T>(
     return () => {
       if (timerRef.current) {
         clearTimeout(timerRef.current)
+        // Flush pending write on unmount instead of losing it
+        try {
+          localStorage.setItem(key, JSON.stringify(latestValue.current))
+        } catch {
+          // Storage full or unavailable
+        }
       }
     }
   }, [key, value])

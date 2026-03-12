@@ -109,8 +109,9 @@ export function RuleBlockCard({ block, onUpdate, onDelete }: RuleBlockCardProps)
           type="text"
           value={block.name}
           onChange={(e) => onUpdate(block.id, { name: e.target.value })}
+          readOnly={!editing}
           placeholder="Rule block name..."
-          className="flex-1 bg-transparent text-sm font-medium text-white placeholder-zinc-600 outline-none min-w-0"
+          className={`flex-1 bg-transparent text-sm font-medium text-white placeholder-zinc-600 outline-none min-w-0 ${!editing ? 'cursor-default' : ''}`}
         />
 
         {/* Combiner checkboxes — right rail */}

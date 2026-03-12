@@ -266,10 +266,10 @@ export function BuildLibrary({ onLoad, onSaveRequest, open, onToggle }: BuildLib
                   </div>
                   <div className="flex items-center gap-3 text-xs text-zinc-500">
                     <span>{relativeTime(config.updated_at)}</span>
-                    {config.phase_count && <span>{config.phase_count} phases</span>}
+                    {config.phase_count != null && config.phase_count > 0 && <span>{config.phase_count} phases</span>}
                     {config.project_dir && (
                       <span className="truncate max-w-[140px]" title={config.project_dir}>
-                        {config.project_dir.split('/').pop() || config.project_dir.split('\\').pop()}
+                        {config.project_dir.split(/[/\\]/).pop()}
                       </span>
                     )}
                   </div>

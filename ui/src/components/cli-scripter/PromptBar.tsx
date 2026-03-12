@@ -49,7 +49,7 @@ export function PromptBar({
   const [editing, setEditing] = useState(false)
   const [confirmReset, setConfirmReset] = useState(false)
 
-  const tokenCount = estimateTokens(value || defaultValue)
+  const tokenCount = estimateTokens(value ?? defaultValue)
   const isModified = value !== defaultValue
 
   const handleLock = () => {
@@ -135,7 +135,7 @@ export function PromptBar({
       {editing && (
         <div className="px-3 pb-3 pt-0 space-y-2 border-t border-zinc-800">
           <textarea
-            value={value || defaultValue}
+            value={value ?? defaultValue}
             onChange={e => onChange(e.target.value)}
             rows={8}
             placeholder={placeholder || `${label} prompt...`}

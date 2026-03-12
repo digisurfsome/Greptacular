@@ -13,7 +13,7 @@
  * - Build queue for multi-app runs
  */
 
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { usePersistedState } from '@/hooks/usePersistedState'
 import { ClearButton } from '@/components/cli-scripter/ClearButton'
 import { ProjectFileBrowser } from '@/components/cli-scripter/ProjectFileBrowser'
@@ -669,7 +669,7 @@ export function CliScripterPage() {
       .catch(() => {
         // Backend unavailable — fall back to localStorage (already loaded)
       })
-  }, [])
+  }, [setRuleBlocks])
 
   // Debounced save to backend on every ruleBlocks change (1 second)
   useEffect(() => {
@@ -707,7 +707,7 @@ export function CliScripterPage() {
   ])
   const [dependencies, setDependencies] = usePersistedState('cli_scripter_dependencies', '')
   const [showFeatures, setShowFeatures] = usePersistedState('cli_scripter_show_features', false)
-  let nextFeatureId = features.length > 0 ? Math.max(...features.map((f) => f.id)) + 1 : 1
+  // nextFeatureId computed inside functional updater to avoid stale/duplicate IDs
 
   // ---- Build Settings ----
   // Model defaults to sonnet; each agent role has its own model selector
@@ -784,11 +784,11 @@ export function CliScripterPage() {
   const [buildRefreshInterval, setBuildRefreshInterval] = usePersistedState('cli_scripter_refresh_interval', 30000)
 
   // ---- Parsed wave structure (derived from phase AI result) ----
-  const parsedWaves = useCallback(() => {
+  const parsedWaves = useMemo(() => {
     const src = phaseAiResult || phaseAssignments
-    if (!src) return []
+    if (!src) return [] as number[][]
     const waves = parseWaves(src)
-    return waves.length > 0 ? waves : []
+    return waves.length > 0 ? waves : [] as number[][]
   }, [phaseAiResult, phaseAssignments])
 
   const selectedBoilerplate = BOILERPLATES.find((b) => b.id === boilerplate) || BOILERPLATES[0]
@@ -875,7 +875,10 @@ export function CliScripterPage() {
 
   // ---- Feature handlers ----
   const addFeature = () => {
-    setFeatures((prev) => [...prev, { id: nextFeatureId++, name: '', size: 'M' }])
+    setFeatures((prev) => {
+      const nextId = prev.length > 0 ? Math.max(...prev.map(f => f.id)) + 1 : 1
+      return [...prev, { id: nextId, name: '', size: 'M' }]
+    })
   }
   const removeFeature = (id: number) => {
     setFeatures((prev) => prev.filter((f) => f.id !== id))
@@ -1087,15 +1090,21 @@ Generate:
   }
 
   // ---- Helper to build PRD prompt text without setting state ----
-  const buildPrdPromptText = () => {
-    return `${getBuildModePrefix()}
+  const buildPrdPromptText = (overrideBuildMode?: BuildMode) => {
+    const prefix = (overrideBuildMode || buildMode) === 'new' ? NEW_BUILD_PREFIX : EDIT_PATCH_PREFIX
+    // Include boilerplate analysis docs as context if available
+    const boilerplateSection = boilerplateContext
+      ? `\n\nBOILERPLATE ANALYSIS (what's already built — do NOT recreate these):\n${boilerplateContext}`
+      : ''
+
+    return `${prefix}
 
 You are a senior software architect. Create a detailed PRD for:
 
 App: ${appName || '[App Name]'}
 Description: ${appDescription || '[App Description]'}
 Boilerplate: ${selectedBoilerplate.label}
-Tech Stack: ${selectedBoilerplate.tech}
+Tech Stack: ${selectedBoilerplate.tech}${selectedBoilerplate.id !== 'scratch' ? `\n\nNote: This project uses the ${selectedBoilerplate.label} boilerplate. Many foundational features are already built. Focus the PRD on NEW features the user wants to add on top.` : ''}${boilerplateSection}
 
 Features:
 ${getFeatureListText() || '[No features defined]'}
@@ -1119,25 +1128,23 @@ Create a comprehensive PRD with:
     setBuildMode(selectedBuildMode)
     setPhaseMode(selectedPhaseMode)
     setGateOpen(false)
-    // Proceed with generation
-    runGenerateAll()
-  }
-
-  // ---- Get build mode prefix for prompt injection ----
-  const getBuildModePrefix = () => {
-    return buildMode === 'new' ? NEW_BUILD_PREFIX : EDIT_PATCH_PREFIX
+    // Pass selected values directly to avoid stale closure reads
+    runGenerateAll(selectedBuildMode, selectedPhaseMode)
   }
 
   // ---- Generate All handler ----
-  const runGenerateAll = async () => {
+  const runGenerateAll = async (overrideBuildMode?: BuildMode, overridePhaseMode?: PhaseMode) => {
+    const effectivePhaseMode = overridePhaseMode || phaseMode
+    const useSplitRules = effectivePhaseMode === 'split'
     setGenerateAllLoading(true)
     setGenerateAllStep(1)
     setGenerateAllError(null)
 
     try {
-      // Step 1: Generate PRD
-      generatePRD()
-      const prdResult = await callGenerate(prdPrompt || buildPrdPromptText(), model)
+      // Step 1: Generate PRD (use buildPrdPromptText directly to avoid stale prdPrompt read)
+      const prdPromptText = buildPrdPromptText(overrideBuildMode)
+      setPrdPrompt(prdPromptText)
+      const prdResult = await callGenerate(prdPromptText, model)
       setPrdAiResult(prdResult)
       setGenerateAllStep(2)
 
@@ -1160,7 +1167,7 @@ TOKEN BUDGET CONSTRAINTS (CRITICAL):
 - Phase 1 "cab ride" (overhead: rules + prompts): ~${p1Cab.toLocaleString()} tokens → ${p1Available.toLocaleString()} tokens available for feature content
 - Phase 2+ "cab ride": ~${p2Cab.toLocaleString()} tokens → ${p2Available.toLocaleString()} tokens available for feature content
 - ${Math.round(BUFFER_PCT * 100)}% safety buffer is already subtracted
-${splitPhaseRules ? '- Phase 1 uses FULL rules. Phase 2+ uses CONDENSED rules referencing what Phase 1 built.' : '- All phases use the same rules.'}
+${useSplitRules ? '- Phase 1 uses FULL rules. Phase 2+ uses CONDENSED rules referencing what Phase 1 built.' : '- All phases use the same rules.'}
 
 SPLITTING RULES:
 - Phase 1 = project setup + foundation (2-3 features max, gets the full rules overhead)
@@ -1221,7 +1228,7 @@ Output a detailed phase plan with feature assignments, estimated token usage per
         }
       }
 
-      const waves = parsedWaves()
+      const waves = parsedWaves
       const effectiveWaves = waves.length > 0 ? waves : sequentialWaves(phases.length)
 
       const res = await fetch(`${API_BASE}/api/cli-scripter/write-scripts`, {
@@ -1305,6 +1312,7 @@ Output a detailed phase plan with feature assignments, estimated token usage per
         phaseCount,
         agentRoles,
         includeVerification,
+        parallelMode,
         phaseAssignments,
         projectDir,
         buildMode,
@@ -1339,6 +1347,7 @@ Output a detailed phase plan with feature assignments, estimated token usage per
     if (typeof c.phaseCount === 'string') setPhaseCount(c.phaseCount)
     if (Array.isArray(c.agentRoles)) setAgentRoles(c.agentRoles as AgentRole[])
     if (typeof c.includeVerification === 'boolean') setIncludeVerification(c.includeVerification)
+    if (typeof c.parallelMode === 'boolean') setParallelMode(c.parallelMode)
     if (typeof c.phaseAssignments === 'string') setPhaseAssignments(c.phaseAssignments)
     if (typeof c.projectDir === 'string') setProjectDir(c.projectDir)
     if (typeof c.buildMode === 'string') setBuildMode(c.buildMode as BuildMode)
@@ -2059,7 +2068,7 @@ Output a detailed phase plan with feature assignments, estimated token usage per
                 {/* Pipeline card visualization */}
                 <div className="bg-zinc-900/40 rounded-lg p-3 space-y-2">
                   {(() => {
-                    const waves = parsedWaves()
+                    const waves = parsedWaves
                     const hasWaves = waves.length > 0 && waves.some(w => w.length > 1)
                     return hasWaves ? (
                       <div className="flex items-center gap-2">
@@ -2147,7 +2156,7 @@ Output a detailed phase plan with feature assignments, estimated token usage per
                   <p className="text-xs text-zinc-600">
                     Total: ~{Math.round(grandTotal / 1000)}K tokens • {numPhases + oneTimeRoles.length} CLI sessions
                     {grandTotal > 0 && ` • Est. ~${(grandTotal / 200000).toFixed(1)} hrs`}
-                    {parallelMode && parsedWaves().some(w => w.length > 1) && (
+                    {parallelMode && parsedWaves.some(w => w.length > 1) && (
                       <span className="text-cyan-500"> • parallel waves active</span>
                     )}
                   </p>

@@ -210,15 +210,45 @@ Do NOT refactor working code for style. Only fix actual bugs.`,
     model: 'opus',
     enabled: true,
     runsWhen: 'once_after',
-    description: 'Full post-build verification — integration testing, bug hunting, edge cases',
+    description: 'Full post-build verification — integration testing, bug hunting, sketch-aware visual checks',
     prompt: `Run full post-build verification:
-1. Run all linters and type checkers
-2. Run full test suite
-3. Review all code for integration bugs
-4. Check API contract consistency between frontend and backend
-5. Test error handling and edge cases
-6. Fix all Critical and High issues found
-7. Commit all fixes`,
+
+## Step 1: Static Analysis
+1. Run all linters (ruff, eslint) and type checkers (mypy, tsc)
+2. Run full test suite — all tests must pass
+3. Fix any failures before proceeding
+
+## Step 2: Code Review
+4. Review all code for integration bugs, missing null checks, off-by-one errors
+5. Check API contract consistency between frontend and backend
+6. Verify error handling and edge cases
+7. Check for unused imports, dead code, missing error boundaries
+
+## Step 3: Visual Match Report (Sketch-Aware Testing)
+If SPEC_CURRENT.md exists with wireframe sketches from the Cartographer:
+8. Read SPEC_CURRENT.md and locate the "Page Wireframes" section
+9. For EACH page wireframe, verify the actual code matches the sketch:
+   - Does the page contain all sections shown in the wireframe?
+   - Are all interactive elements (buttons, forms, toggles) present and functional?
+   - Do data sources match (correct API endpoints, correct query hooks)?
+   - Are shared components (navbar, sidebar, footer) consistent across pages?
+10. Produce a "Visual Match Report" section in your output:
+
+### Visual Match Report
+| Page | Route | Matches Sketch? | Discrepancies |
+|------|-------|-----------------|---------------|
+| Dashboard | /dashboard | Yes | None |
+| Settings | /settings | Partial | Missing dark mode toggle shown in sketch |
+| ... | ... | ... | ... |
+
+If NO wireframe sketches exist, skip this step and note:
+"No wireframe sketches found in SPEC_CURRENT.md — visual match check skipped."
+
+## Step 4: Fix and Report
+11. Fix all Critical and High issues found
+12. Document Medium and Low issues as TODO comments
+13. Commit all fixes with descriptive messages
+14. Produce a final summary: issues found, issues fixed, issues remaining`,
   },
   {
     id: 'cartographer',

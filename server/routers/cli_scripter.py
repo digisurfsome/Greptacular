@@ -3,17 +3,24 @@ CLI Scripter Router — AI-powered prompt generation via Claude CLI.
 Uses subscription auth (claude -p) — zero API credits.
 
 Endpoints:
-  POST /api/cli-scripter/generate       — Single prompt generation
-  POST /api/cli-scripter/generate-all   — Chained PRD → Phase Split → Build Scripts
-  POST /api/cli-scripter/write-scripts  — Write generated scripts to disk
-  POST /api/cli-scripter/queue          — Manage app build queue
-  GET  /api/cli-scripter/queue          — Get current queue
-  GET  /api/cli-scripter/project-info   — Directory listing + git log for a project path
+  POST /api/cli-scripter/generate             — Single prompt generation
+  POST /api/cli-scripter/generate-all         — Chained PRD → Phase Split → Build Scripts
+  POST /api/cli-scripter/write-scripts        — Write generated scripts to disk
+  POST /api/cli-scripter/queue                — Manage app build queue
+  GET  /api/cli-scripter/queue                — Get current queue
+  GET  /api/cli-scripter/project-info         — Directory listing + git log for a project path
+  GET  /api/cli-scripter/configs              — List all saved build configs
+  POST /api/cli-scripter/configs              — Save new build config
+  GET  /api/cli-scripter/configs/{id}         — Load a specific build config
+  PUT  /api/cli-scripter/configs/{id}         — Update a build config
+  DELETE /api/cli-scripter/configs/{id}       — Delete a build config
+  PUT  /api/cli-scripter/queue/reorder        — Reorder queue items
 """
 import asyncio
 import json
 import logging
 import os
+import sqlite3
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -121,6 +128,60 @@ def _save_rules(data: dict) -> None:
     """Save rules to disk."""
     RULES_FILE.parent.mkdir(parents=True, exist_ok=True)
     RULES_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# Build config storage (~/.autoforge/cli_scripter_configs.db)
+# ---------------------------------------------------------------------------
+
+CONFIGS_DB = Path.home() / ".autoforge" / "cli_scripter_configs.db"
+
+
+def _get_db_conn() -> sqlite3.Connection:
+    """Get a SQLite connection, creating the DB and table if needed."""
+    CONFIGS_DB.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(CONFIGS_DB))
+    conn.row_factory = sqlite3.Row
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS build_configs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            status TEXT DEFAULT 'draft',
+            config_json TEXT NOT NULL,
+            scripts_dir TEXT,
+            project_dir TEXT,
+            total_tokens_used INTEGER,
+            build_duration_seconds INTEGER,
+            phase_count INTEGER,
+            notes TEXT
+        )
+    """)
+    conn.commit()
+    return conn
+
+
+class BuildConfigSave(BaseModel):
+    """Request to save a build configuration."""
+    name: str
+    config_json: dict
+    scripts_dir: str | None = None
+    project_dir: str | None = None
+    status: str = "draft"
+    phase_count: int | None = None
+    notes: str | None = None
+
+
+class BuildConfigUpdate(BaseModel):
+    """Request to update a build configuration."""
+    name: str | None = None
+    config_json: dict | None = None
+    scripts_dir: str | None = None
+    project_dir: str | None = None
+    status: str | None = None
+    phase_count: int | None = None
+    notes: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -694,3 +755,162 @@ async def manage_queue(request: QueueRequest):
 
     else:
         raise HTTPException(status_code=400, detail=f"Unknown action: {request.action}")
+
+
+class QueueReorderRequest(BaseModel):
+    """Reorder queue by providing a new ordered list of item names."""
+    order: list[str]  # app names in desired order
+
+
+@router.put("/queue/reorder")
+async def reorder_queue(request: QueueReorderRequest):
+    """Reorder the build queue by providing a new ordered list of names."""
+    global _queue
+    _load_queue()
+    # Build a name -> item lookup
+    lookup = {item.get("name", ""): item for item in _queue}
+    # Reorder, preserving items not in the request order at the end
+    new_order = [lookup[name] for name in request.order if name in lookup]
+    remaining = [item for item in _queue if item.get("name", "") not in request.order]
+    _queue = new_order + remaining
+    _save_queue()
+    return {"queue": _queue}
+
+
+# ---------------------------------------------------------------------------
+# Build config CRUD endpoints
+# ---------------------------------------------------------------------------
+
+@router.get("/configs")
+async def list_configs():
+    """List all saved build configurations."""
+    try:
+        conn = _get_db_conn()
+        rows = conn.execute(
+            "SELECT id, name, created_at, updated_at, status, scripts_dir, project_dir, phase_count, notes "
+            "FROM build_configs ORDER BY updated_at DESC"
+        ).fetchall()
+        conn.close()
+        return {"configs": [dict(row) for row in rows]}
+    except Exception as e:
+        logger.error("Failed to list configs: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/configs")
+async def save_config(request: BuildConfigSave):
+    """Save a new build configuration."""
+    try:
+        now = datetime.now(timezone.utc).isoformat()
+        conn = _get_db_conn()
+        cursor = conn.execute(
+            """INSERT INTO build_configs
+               (name, created_at, updated_at, status, config_json, scripts_dir, project_dir, phase_count, notes)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                request.name,
+                now,
+                now,
+                request.status,
+                json.dumps(request.config_json),
+                request.scripts_dir,
+                request.project_dir,
+                request.phase_count,
+                request.notes,
+            ),
+        )
+        conn.commit()
+        config_id = cursor.lastrowid
+        conn.close()
+        return {"id": config_id, "name": request.name, "created_at": now}
+    except Exception as e:
+        logger.error("Failed to save config: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/configs/{config_id}")
+async def load_config(config_id: int):
+    """Load a saved build configuration by ID."""
+    try:
+        conn = _get_db_conn()
+        row = conn.execute(
+            "SELECT * FROM build_configs WHERE id = ?", (config_id,)
+        ).fetchone()
+        conn.close()
+        if not row:
+            raise HTTPException(status_code=404, detail="Config not found")
+        result = dict(row)
+        # Parse config_json back to dict
+        result["config_json"] = json.loads(result["config_json"])
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to load config %d: %s", config_id, e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/configs/{config_id}")
+async def update_config(config_id: int, request: BuildConfigUpdate):
+    """Update an existing build configuration."""
+    try:
+        conn = _get_db_conn()
+        row = conn.execute("SELECT * FROM build_configs WHERE id = ?", (config_id,)).fetchone()
+        if not row:
+            conn.close()
+            raise HTTPException(status_code=404, detail="Config not found")
+
+        now = datetime.now(timezone.utc).isoformat()
+        updates: list[str] = ["updated_at = ?"]
+        values: list = [now]
+
+        if request.name is not None:
+            updates.append("name = ?")
+            values.append(request.name)
+        if request.config_json is not None:
+            updates.append("config_json = ?")
+            values.append(json.dumps(request.config_json))
+        if request.scripts_dir is not None:
+            updates.append("scripts_dir = ?")
+            values.append(request.scripts_dir)
+        if request.project_dir is not None:
+            updates.append("project_dir = ?")
+            values.append(request.project_dir)
+        if request.status is not None:
+            updates.append("status = ?")
+            values.append(request.status)
+        if request.phase_count is not None:
+            updates.append("phase_count = ?")
+            values.append(request.phase_count)
+        if request.notes is not None:
+            updates.append("notes = ?")
+            values.append(request.notes)
+
+        values.append(config_id)
+        conn.execute(f"UPDATE build_configs SET {', '.join(updates)} WHERE id = ?", values)
+        conn.commit()
+        conn.close()
+        return {"id": config_id, "updated_at": now}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to update config %d: %s", config_id, e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/configs/{config_id}")
+async def delete_config(config_id: int):
+    """Delete a saved build configuration."""
+    try:
+        conn = _get_db_conn()
+        result = conn.execute("DELETE FROM build_configs WHERE id = ?", (config_id,))
+        conn.commit()
+        conn.close()
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Config not found")
+        return {"deleted": config_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to delete config %d: %s", config_id, e)
+        raise HTTPException(status_code=500, detail=str(e))

@@ -227,12 +227,23 @@ _load_queue()
 # ---------------------------------------------------------------------------
 
 async def _run_claude_cli(prompt: str, model: str = "sonnet", timeout: int = 300) -> str:
-    """Run Claude CLI in print mode using subscription auth. Zero API credits."""
+    """Run Claude CLI in print mode using subscription auth. Zero API credits.
+
+    Strips ANTHROPIC_API_KEY from the subprocess environment so the CLI
+    falls back to subscription OAuth (~/.claude/.credentials.json) instead
+    of burning pay-per-use API credits.
+    """
+    # Build env that forces subscription auth (clears API key + auth token)
+    from registry import get_effective_sdk_env
+    sdk_env = get_effective_sdk_env(force_subscription=True)
+    cli_env = {**os.environ, **sdk_env}
+
     proc = await asyncio.create_subprocess_exec(
         "claude", "-p", "--model", model, "--output-format", "text",
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        env=cli_env,
     )
     try:
         stdout, stderr = await asyncio.wait_for(
@@ -1398,6 +1409,12 @@ async def start_build(request: StartBuildRequest):
     _build_log_file = project_path / request.scripts_subdir / "build.log"
 
     try:
+        # Build env that forces subscription auth for the build subprocess.
+        # The generated bash scripts already `unset ANTHROPIC_API_KEY` as a
+        # safety net, but stripping it from the env is the correct fix.
+        from registry import get_effective_sdk_env
+        build_env = {**os.environ, **get_effective_sdk_env(force_subscription=True), "PYTHONUNBUFFERED": "1"}
+
         # Start the build subprocess
         _build_process = subprocess.Popen(
             ["bash", str(scripts_path)],
@@ -1406,7 +1423,7 @@ async def start_build(request: StartBuildRequest):
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,  # Line-buffered
-            env={**os.environ, "PYTHONUNBUFFERED": "1"},
+            env=build_env,
         )
         _build_pid = _build_process.pid
 

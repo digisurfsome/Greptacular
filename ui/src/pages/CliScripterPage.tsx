@@ -18,6 +18,7 @@ import { usePersistedState } from '@/hooks/usePersistedState'
 import { ClearButton } from '@/components/cli-scripter/ClearButton'
 import { ProjectFileBrowser } from '@/components/cli-scripter/ProjectFileBrowser'
 import { RuleBlockLibrary, createEmptyBlock, type RuleBlockData } from '@/components/cli-scripter/RuleBlock'
+import { Combiner, getMergedText } from '@/components/cli-scripter/Combiner'
 import {
   ArrowLeft,
   Plus,
@@ -684,8 +685,14 @@ export function CliScripterPage() {
   }
 
   // ---- Rules text helper ----
+  // Uses combiner slots if blocks have combiner checkboxes set, otherwise falls back
+  // to AI-combined text or raw concatenation of all blocks
   const getRulesText = () => {
     if (combinedRules) return combinedRules
+    // Try Main Combined slot first
+    const mainMerged = getMergedText(ruleBlocks, 'main')
+    if (mainMerged) return mainMerged
+    // Fallback: concatenate all non-empty blocks
     const nonEmpty = ruleBlocks.filter((b) => b.content.trim()).map((b) => b.content.trim())
     return nonEmpty.join('\n\n')
   }
@@ -693,7 +700,14 @@ export function CliScripterPage() {
   // ---- Phase-specific rules helper ----
   const getRulesForPhase = (phaseNum: number) => {
     if (!splitPhaseRules) return getRulesText() // all phases same
-    return phaseNum === 1 ? (phase1Rules || getRulesText()) : (phase2PlusRules || getRulesText())
+    if (phaseNum === 1) {
+      // Try P1 combiner slot first, then phase1Rules, then general rules
+      const p1Merged = getMergedText(ruleBlocks, 'p1')
+      return p1Merged || phase1Rules || getRulesText()
+    }
+    // Phase 2+: Try P2+ combiner slot first, then phase2PlusRules, then general rules
+    const p2Merged = getMergedText(ruleBlocks, 'p2plus')
+    return p2Merged || phase2PlusRules || getRulesText()
   }
 
   // ---- Token estimation (rough: 1 token ≈ 4 chars) ----
@@ -1229,6 +1243,13 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
 
           {/* Rule Block Library */}
           <RuleBlockLibrary blocks={ruleBlocks} onBlocksChange={setRuleBlocks} />
+
+          {/* Combiner slots — two-way bound with block checkboxes */}
+          {ruleBlocks.length > 0 && (
+            <div className="mt-4 pt-3 border-t border-zinc-800">
+              <Combiner blocks={ruleBlocks} onBlocksChange={setRuleBlocks} />
+            </div>
+          )}
 
           {/* Combine button + output */}
           <div className="mt-4 pt-3 border-t border-zinc-800">

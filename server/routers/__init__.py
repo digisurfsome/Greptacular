@@ -11,10 +11,10 @@ from .agent import router as agent_router
 from .agent_os import router as agent_os_router
 from .approvals import router as approvals_router
 from .assistant_chat import router as assistant_chat_router
-from .build_planner import router as build_planner_router
 from .captures import router as captures_router
 from .checkpoints import router as checkpoints_router
 from .ci_status import router as ci_status_router
+from .cli_scripter import router as cli_scripter_router
 from .design_guide import router as design_guide_router
 from .devserver import router as devserver_router
 from .dunkstack import router as dunkstack_router
@@ -36,18 +36,18 @@ from .settings import router as settings_router
 from .spec_creation import router as spec_creation_router
 from .swarm import router as swarm_router
 from .terminal import router as terminal_router
+from .tool_factory import router as tool_factory_router
+from .tool_themes import router as tool_themes_router
 from .verifications import router as verifications_router
 from .workspace import router as workspace_router
 from .yt_batch import router as yt_batch_router
 from .yt_ingestion import router as yt_ingestion_router
 from .yt_processing import router as yt_processing_router
-from .tool_factory import router as tool_factory_router
-from .tool_themes import router as tool_themes_router
 
 __all__ = [
     "actions_router",
     "approvals_router",
-    "build_planner_router",
+    "cli_scripter_router",
     "checkpoints_router",
     "commits_router",
     "ci_status_router",

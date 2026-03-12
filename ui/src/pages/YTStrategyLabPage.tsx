@@ -14,6 +14,7 @@ import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import {
   AlertCircle,
   ArrowLeft,
+  BookOpen,
   ChevronRight,
   Plus,
   Search,
@@ -62,6 +63,7 @@ import { DiscoveryPanel } from '@/components/yt-lab/DiscoveryPanel'
 import { processVideoStream, startExecution } from '@/lib/api'
 import type { ProcessingLogEntry } from '@/lib/api'
 import { BatchImportView } from '@/components/yt-lab/BatchImportView'
+import { ToolFactoryGuidePanel } from '@/components/tool-factory/ToolFactoryGuidePanel'
 
 // ============================================================================
 // Constants
@@ -1648,6 +1650,7 @@ export function YTStrategyLabPage(): React.JSX.Element {
   const [sortBy, setSortBy] = useState<SortOption>('date-desc')
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [showGuide, setShowGuide] = useState(false)
 
   // Register save error callback so persistence helpers can show errors
   useEffect(() => {
@@ -1997,6 +2000,15 @@ export function YTStrategyLabPage(): React.JSX.Element {
                 </p>
               </div>
               <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowGuide(prev => !prev)}
+                  title="User Guide"
+                  className="h-8 w-8 p-0"
+                >
+                  <BookOpen size={14} />
+                </Button>
                 <Button variant="outline" onClick={() => setView('batch')} className="gap-1.5 shrink-0">
                   <Layers size={16} />
                   Batch Import
@@ -2165,6 +2177,8 @@ export function YTStrategyLabPage(): React.JSX.Element {
           </Card>
         </div>
       )}
+
+      {showGuide && <ToolFactoryGuidePanel onClose={() => setShowGuide(false)} />}
     </div>
   )
 }

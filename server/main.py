@@ -35,10 +35,10 @@ from .routers import (
     approvals_router,
     assistant_chat_router,
     boilerplate_router,
-    build_planner_router,
     captures_router,
     checkpoints_router,
     ci_status_router,
+    cli_scripter_router,
     commits_router,
     design_guide_router,
     devserver_router,
@@ -61,10 +61,10 @@ from .routers import (
     styles_router,
     swarm_router,
     terminal_router,
-    verifications_router,
-    workspace_router,
     tool_factory_router,
     tool_themes_router,
+    verifications_router,
+    workspace_router,
     yt_batch_router,
     yt_ingestion_router,
     yt_processing_router,
@@ -340,7 +340,7 @@ app.include_router(commits_router)
 app.include_router(verifications_router)
 app.include_router(approvals_router)
 app.include_router(checkpoints_router)
-app.include_router(build_planner_router)
+app.include_router(cli_scripter_router)
 app.include_router(tool_factory_router)
 app.include_router(tool_themes_router)
 

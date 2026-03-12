@@ -4,13 +4,14 @@
  */
 
 import { useState, useMemo } from 'react'
-import { ArrowLeft, ChevronRight, Search, Wrench, Plus, BarChart3 } from 'lucide-react'
+import { ArrowLeft, BookOpen, ChevronRight, Search, Wrench, Plus, BarChart3 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ToolCard } from './ToolCard'
 import { ToolDetailView } from './ToolDetailView'
 import { ThemePicker } from './ThemePicker'
 import { AnalyticsDashboard } from './AnalyticsDashboard'
+import { ToolFactoryGuidePanel } from './ToolFactoryGuidePanel'
 import { useTools, useToolStats } from '@/hooks/useToolFactory'
 import { useSwapTheme } from '@/hooks/useToolThemes'
 import type { TFToolStatus, TFThemeConfig } from '@/lib/types'
@@ -33,6 +34,7 @@ export function ToolManagerPage() {
   const [sortBy, setSortBy] = useState<SortOption>('created')
   const [showThemePicker, setShowThemePicker] = useState(false)
   const [activeTab, setActiveTab] = useState<ViewTab>('tools')
+  const [showGuide, setShowGuide] = useState(false)
 
   const { data: tools, isLoading } = useTools(statusFilter === 'all' ? undefined : statusFilter)
   const { data: stats } = useToolStats()
@@ -188,6 +190,15 @@ export function ToolManagerPage() {
                 </button>
               </div>
               <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowGuide(prev => !prev)}
+                title="User Guide"
+                className="h-8 w-8 p-0"
+              >
+                <BookOpen size={14} />
+              </Button>
+              <Button
                 className="gap-1.5"
                 onClick={() => { window.location.hash = '#/yt-lab' }}
               >
@@ -274,6 +285,8 @@ export function ToolManagerPage() {
           )}
         </div>
       </main>
+
+      {showGuide && <ToolFactoryGuidePanel onClose={() => setShowGuide(false)} />}
     </div>
   )
 }

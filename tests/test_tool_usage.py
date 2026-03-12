@@ -1,16 +1,15 @@
 """Unit tests for ToolUsageTracker — Phase 8."""
 
 import json
-import pytest
-from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from server.services.tool_usage import (
-    ToolUsageTracker,
-    MonthlyUsage,
-    AllTimeUsage,
-    TIER_LIMITS,
     DEFAULT_USER_ID,
+    AllTimeUsage,
+    MonthlyUsage,
+    ToolUsageTracker,
 )
 
 

@@ -1,16 +1,12 @@
 """Unit tests for BatchToolGenerator — Phase 7."""
 
-import asyncio
+from unittest.mock import AsyncMock, patch
+
 import pytest
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from server.services.batch_tool_generator import (
     BatchToolGenerator,
-    BatchStatus,
-    BatchToolResult,
     _batches,
-    MAX_BATCH_SIZE,
 )
 from server.services.tool_registry import ToolRegistryService
 

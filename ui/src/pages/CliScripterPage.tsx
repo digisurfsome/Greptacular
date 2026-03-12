@@ -1,13 +1,16 @@
 /**
- * BuildPlannerPage - AI-powered build planning tool.
+ * CliScripterPage - AI-powered CLI script generation tool.
  *
- * Full-page layout at /#/build-planner providing:
+ * Full-page layout at /#/cli-scripter providing:
  * - Project basics (name, description, tech stack)
  * - Dynamic rule blocks with AI-powered combination
  * - Feature list with size estimation
  * - Build settings (model, turns, phase transitions, error handling)
+ * - Agent roles with customizable prompts per pipeline step
  * - Phase assignments
- * - Prompt generation for PRD, phase splitting, and build scripts
+ * - Generate All (PRD -> Phases -> Scripts) plus individual generation
+ * - Write scripts to disk
+ * - Build queue for multi-app runs
  */
 
 import { useState, useCallback, useEffect } from 'react'
@@ -30,6 +33,14 @@ import {
   EyeOff,
   Github,
   ExternalLink,
+  Users,
+  ListOrdered,
+  ChevronUp,
+  Terminal,
+  FileText,
+  Shield,
+  Map,
+  Zap,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { validateGitHubToken, createGitHubRepo } from '@/lib/api'
@@ -42,6 +53,16 @@ interface FeatureRow {
   id: number
   name: string
   size: 'S' | 'M' | 'L'
+}
+
+interface AgentRole {
+  id: string
+  name: string
+  model: string
+  enabled: boolean
+  prompt: string
+  description: string
+  runsWhen: string // once_before | per_phase | per_phase_after | once_after | once_final
 }
 
 // ---------------------------------------------------------------------------
@@ -88,9 +109,9 @@ const BOILERPLATES: Boilerplate[] = [
 ]
 
 const MODELS = [
-  { label: 'Sonnet', value: 'claude-sonnet-4-6-20250514' },
-  { label: 'Opus', value: 'claude-opus-4-6-20250514' },
-  { label: 'Haiku', value: 'claude-haiku-4-5-20250414' },
+  { label: 'Sonnet', value: 'sonnet' },
+  { label: 'Opus', value: 'opus' },
+  { label: 'Haiku', value: 'haiku' },
 ]
 
 const TURNS_OPTIONS = ['10', '25', '50', 'Unlimited']
@@ -98,6 +119,126 @@ const TRANSITION_OPTIONS = ['Pause', 'Auto-continue', 'Prompt me']
 const ERROR_OPTIONS = ['Retry once then skip', 'Stop everything', 'Skip immediately']
 const GIT_OPTIONS = ['After each feature', 'After each phase', 'Never']
 const PHASE_COUNT_OPTIONS = ['2', '3', '4', '5', '6+']
+
+const DEFAULT_AGENT_ROLES: AgentRole[] = [
+  {
+    id: 'architect',
+    name: 'Architect',
+    model: 'opus',
+    enabled: true,
+    runsWhen: 'once_before',
+    description: 'Creates ARCHITECTURE.md before coding — file structure, API contracts, data models',
+    prompt: `You are a senior software architect. Read the PRD and build rules below, then create ARCHITECTURE.md in the project root.
+
+ARCHITECTURE.md must contain:
+1. **File Structure** — every file that will be created, organized by directory
+2. **Data Models** — every database table/model with fields and types
+3. **API Contracts** — every endpoint with method, path, request body, response body
+4. **Component Tree** — every React component with props and parent-child relationships
+5. **Shared Constants** — enums, config values, type names that multiple files reference
+6. **Naming Conventions** — how files, functions, variables, and endpoints are named
+
+This document is the single source of truth. Every coding agent will read it before writing code.
+
+{build_rules}
+
+{prd_content}`,
+  },
+  {
+    id: 'coder',
+    name: 'Coder',
+    model: 'sonnet',
+    enabled: true,
+    runsWhen: 'per_phase',
+    description: 'Implements features for each phase — reads ARCHITECTURE.md to stay aligned',
+    prompt: `You are building Phase {phase_number} of {total_phases}.
+
+FIRST: Read ARCHITECTURE.md in the project root. Follow its file structure, API contracts, data models, and naming conventions EXACTLY.
+
+{build_rules}
+
+{phase_spec}
+
+BEFORE YOU FINISH:
+1. Run ruff check on all Python files you created/modified
+2. Run npm run build in ui/ to verify TypeScript compiles
+3. Run npm run lint in ui/ to verify ESLint passes
+4. Run any tests you wrote — all must pass
+5. Fix any failures before committing
+6. Commit your work with a descriptive message`,
+  },
+  {
+    id: 'reviewer',
+    name: 'Reviewer',
+    model: 'opus',
+    enabled: true,
+    runsWhen: 'per_phase_after',
+    description: 'Reviews code after each phase — catches bugs before the next phase starts',
+    prompt: `You are a code reviewer. Phase {phase_number} of {total_phases} was just completed.
+
+Review ALL code written in this phase:
+1. Run ruff check on all Python files
+2. Run npm run build to check TypeScript
+3. Run npm run lint for ESLint
+4. Run all tests
+5. Read every new/modified file and check for:
+   - Logic errors, missing null checks, off-by-one
+   - Missing error handling
+   - Integration mismatches with ARCHITECTURE.md
+   - Security issues
+   - Unused imports, dead code
+
+Fix any Critical or High issues. Commit fixes with: "review(phase-{phase_number}): [description]"
+Do NOT refactor working code for style. Only fix actual bugs.`,
+  },
+  {
+    id: 'verifier',
+    name: 'Verifier',
+    model: 'opus',
+    enabled: true,
+    runsWhen: 'once_after',
+    description: 'Full post-build verification — integration testing, bug hunting, edge cases',
+    prompt: `Run full post-build verification:
+1. Run all linters and type checkers
+2. Run full test suite
+3. Review all code for integration bugs
+4. Check API contract consistency between frontend and backend
+5. Test error handling and edge cases
+6. Fix all Critical and High issues found
+7. Commit all fixes`,
+  },
+  {
+    id: 'cartographer',
+    name: 'Cartographer',
+    model: 'sonnet',
+    enabled: true,
+    runsWhen: 'once_final',
+    description: 'Documents the codebase after build — creates the map for future agents',
+    prompt: `You are a technical documentation specialist. The build is complete and verified.
+
+Create or update:
+1. **ARCHITECTURE.md** — Update with what was ACTUALLY built (final file structure, real API endpoints, DB schema)
+2. **CONVENTIONS.md** — Document patterns: naming, imports, error handling, state management
+3. **CLAUDE.md** — Add "## Codebase Map" with project summary, key directories, how to run, common gotchas
+
+Read every source file. Document what's actually in the code, not what the PRD planned.`,
+  },
+]
+
+// Role icon mapping
+const ROLE_ICONS: Record<string, React.ReactNode> = {
+  architect: <FileText size={16} className="text-purple-400" />,
+  coder: <Terminal size={16} className="text-cyan-400" />,
+  reviewer: <Shield size={16} className="text-orange-400" />,
+  verifier: <Zap size={16} className="text-red-400" />,
+  cartographer: <Map size={16} className="text-green-400" />,
+}
+
+const ROLE_MODEL_OPTIONS = [
+  { label: 'Opus', value: 'opus' },
+  { label: 'Sonnet', value: 'sonnet' },
+  { label: 'Haiku', value: 'haiku' },
+]
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -108,7 +249,7 @@ const API_BASE = import.meta.env.DEV
   : ''
 
 async function callGenerate(prompt: string, model: string): Promise<string> {
-  const res = await fetch(`${API_BASE}/api/build-planner/generate`, {
+  const res = await fetch(`${API_BASE}/api/cli-scripter/generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ prompt, model }),
@@ -344,7 +485,7 @@ function OutputArea({
 // Main Component
 // ---------------------------------------------------------------------------
 
-export function BuildPlannerPage() {
+export function CliScripterPage() {
   // ---- Project Basics ----
   const [appName, setAppName] = useState('')
   const [appDescription, setAppDescription] = useState('')
@@ -398,6 +539,27 @@ export function BuildPlannerPage() {
   const [prdAiLoading, setPrdAiLoading] = useState(false)
   const [phaseAiLoading, setPhaseAiLoading] = useState(false)
   const [buildAiLoading, setBuildAiLoading] = useState(false)
+
+  // ---- Agent Roles ----
+  const [agentRoles, setAgentRoles] = useState<AgentRole[]>(DEFAULT_AGENT_ROLES)
+  const [expandedRole, setExpandedRole] = useState<string | null>(null)
+
+  // ---- Include verification ----
+  const [includeVerification, setIncludeVerification] = useState(true)
+
+  // ---- Generate All ----
+  const [generateAllLoading, setGenerateAllLoading] = useState(false)
+  const [generateAllStep, setGenerateAllStep] = useState(0)
+  const [generateAllError, setGenerateAllError] = useState<string | null>(null)
+
+  // ---- Script writing ----
+  const [scriptsWritten, setScriptsWritten] = useState<string[] | null>(null)
+  const [writingScripts, setWritingScripts] = useState(false)
+  const [writeError, setWriteError] = useState<string | null>(null)
+  const [projectDir, setProjectDir] = useState('')
+
+  // ---- Build Queue ----
+  const [queueItems, setQueueItems] = useState<Array<{name: string, project_dir: string, scripts_dir?: string, status: string}>>([])
 
   const selectedBoilerplate = BOILERPLATES.find((b) => b.id === boilerplate) || BOILERPLATES[0]
 
@@ -511,6 +673,11 @@ export function BuildPlannerPage() {
       .filter((f) => f.name.trim())
       .map((f, i) => `${i + 1}. ${f.name} [${f.size}]`)
       .join('\n')
+  }
+
+  // ---- Agent role handler ----
+  const updateRole = (roleId: string, updates: Partial<AgentRole>) => {
+    setAgentRoles(prev => prev.map(r => r.id === roleId ? { ...r, ...updates } : r))
   }
 
   // ---- Prompt assembly ----
@@ -627,6 +794,164 @@ Generate:
     }
   }
 
+  // ---- Helper to build PRD prompt text without setting state ----
+  const buildPrdPromptText = () => {
+    return `You are a senior software architect. Create a detailed PRD for:
+
+App: ${appName || '[App Name]'}
+Description: ${appDescription || '[App Description]'}
+Boilerplate: ${selectedBoilerplate.label}
+Tech Stack: ${selectedBoilerplate.tech}
+
+Features:
+${getFeatureListText() || '[No features defined]'}
+
+Dependencies:
+${dependencies || '[No dependencies defined]'}
+
+Build Rules:
+${getRulesText() || '[No rules defined]'}
+
+Create a comprehensive PRD with:
+1. Every feature with detailed acceptance criteria
+2. Technical architecture
+3. Data models and API endpoints
+4. UI/UX flow descriptions
+5. Edge cases and error handling`
+  }
+
+  // ---- Generate All handler ----
+  const runGenerateAll = async () => {
+    setGenerateAllLoading(true)
+    setGenerateAllStep(1)
+    setGenerateAllError(null)
+
+    try {
+      // Step 1: Generate PRD
+      generatePRD()
+      const prdResult = await callGenerate(prdPrompt || buildPrdPromptText(), model)
+      setPrdAiResult(prdResult)
+      setGenerateAllStep(2)
+
+      // Step 2: Phase Split
+      const phasePromptText = `Split this PRD into ${phaseCount} build phases for Claude Code sessions.
+
+PRD:
+${prdResult}
+
+Rules:
+- Phase 1 = project setup + foundation (2-3 features max)
+- Phase 2+ = feature building (3-5 features per phase)
+- Respect dependencies
+- Each phase gets a fresh context window
+
+Settings:
+- Turns per phase: ${turns}
+- Phase transition: ${transition}
+
+Output a detailed phase plan with feature assignments.`
+      const phaseResult = await callGenerate(phasePromptText, model)
+      setPhaseAiResult(phaseResult)
+      setGenerateAllStep(3)
+
+      // Step 3: Build Scripts
+      const buildPromptText = `Generate bash scripts for a phased Claude Code build.
+
+Phase Plan:
+${phaseResult}
+
+Settings:
+- Model: ${MODELS.find((m) => m.value === model)?.label || model}
+- Max turns: ${turns}
+- Between phases: ${transition}
+- On error: ${errorHandling}
+- Git: ${gitCommits}
+
+Build Rules:
+${getRulesText() || '[No rules defined]'}
+
+Generate phase1.sh through phaseN.sh and run_all.sh.`
+      const buildResult = await callGenerate(buildPromptText, model)
+      setBuildAiResult(buildResult)
+      setGenerateAllStep(0)
+    } catch (err) {
+      setGenerateAllError(err instanceof Error ? err.message : 'Generation failed')
+      setGenerateAllStep(0)
+    } finally {
+      setGenerateAllLoading(false)
+    }
+  }
+
+  // ---- Write Scripts handler ----
+  const handleWriteScripts = async () => {
+    if (!projectDir.trim()) {
+      setWriteError('Please enter a project directory path')
+      return
+    }
+    setWritingScripts(true)
+    setWriteError(null)
+    setScriptsWritten(null)
+
+    try {
+      const phases = phaseAssignments
+        .split('\n')
+        .filter(l => l.trim())
+        .map(l => l.trim())
+
+      if (phases.length === 0) {
+        // Fall back to generating numbered phases
+        for (let i = 1; i <= parseInt(phaseCount); i++) {
+          phases.push(`Phase ${i}`)
+        }
+      }
+
+      const res = await fetch(`${API_BASE}/api/cli-scripter/write-scripts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          project_dir: projectDir,
+          project_name: appName || 'my-app',
+          build_rules: getRulesText(),
+          phases,
+          agent_roles: agentRoles.map(r => ({
+            id: r.id,
+            name: r.name,
+            model: r.model,
+            enabled: r.enabled,
+            prompt: r.prompt,
+            description: r.description,
+            runs_when: r.runsWhen,
+          })),
+          include_verification: includeVerification,
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }))
+        throw new Error(err.detail || 'Failed to write scripts')
+      }
+      const data = await res.json()
+      setScriptsWritten(data.files)
+    } catch (err) {
+      setWriteError(err instanceof Error ? err.message : 'Failed to write scripts')
+    } finally {
+      setWritingScripts(false)
+    }
+  }
+
+  // ---- Queue handlers ----
+  const addToQueue = () => {
+    if (!appName.trim() || !projectDir.trim()) return
+    setQueueItems(prev => [...prev, {
+      name: appName,
+      project_dir: projectDir,
+      status: 'pending',
+    }])
+  }
+
+  const removeFromQueue = (index: number) => {
+    setQueueItems(prev => prev.filter((_, i) => i !== index))
+  }
+
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white">
       {/* Header */}
@@ -642,7 +967,7 @@ Generate:
             </button>
             <div>
               <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-400 via-purple-300 to-cyan-400 bg-clip-text text-transparent">
-                Build Planner
+                CLI Scripter
               </h1>
               <p className="text-xs text-zinc-500 mt-0.5">
                 Design your build. Generate your scripts. Ship your app.
@@ -650,7 +975,7 @@ Generate:
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Rocket size={20} className="text-purple-400" />
+            <Terminal size={20} className="text-purple-400" />
           </div>
         </div>
       </header>
@@ -998,6 +1323,104 @@ Generate:
           </div>
         </SectionCard>
 
+        {/* Section: Agent Roles */}
+        <SectionCard
+          icon={<Users size={18} className="text-orange-400" />}
+          title="Agent Roles"
+        >
+          <p className="text-sm text-zinc-500 mb-4">
+            Each build uses specialized agents. Toggle roles on/off and customize their prompts.
+            Pipeline: Architect &rarr; Coder (per phase) &rarr; Reviewer (per phase) &rarr; Verifier &rarr; Cartographer.
+          </p>
+
+          <div className="space-y-2">
+            {agentRoles.map((role) => (
+              <div key={role.id} className="border border-zinc-800 rounded-lg overflow-hidden">
+                {/* Header row */}
+                <div
+                  className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-zinc-800/30 transition-colors"
+                  onClick={() => setExpandedRole(expandedRole === role.id ? null : role.id)}
+                >
+                  <input
+                    type="checkbox"
+                    checked={role.enabled}
+                    onChange={(e) => {
+                      e.stopPropagation()
+                      updateRole(role.id, { enabled: e.target.checked })
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    className="w-4 h-4 rounded border-zinc-600 bg-zinc-900 text-purple-500"
+                  />
+                  {ROLE_ICONS[role.id] || <Cpu size={16} className="text-zinc-400" />}
+                  <span className="font-medium text-white text-sm flex-1">{role.name}</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                    role.model === 'opus' ? 'bg-purple-900/50 text-purple-300' :
+                    role.model === 'sonnet' ? 'bg-cyan-900/50 text-cyan-300' :
+                    'bg-zinc-800 text-zinc-400'
+                  }`}>
+                    {role.model}
+                  </span>
+                  <span className="text-xs text-zinc-600">
+                    {role.runsWhen === 'once_before' ? 'Before build' :
+                     role.runsWhen === 'per_phase' ? 'Each phase' :
+                     role.runsWhen === 'per_phase_after' ? 'After each phase' :
+                     role.runsWhen === 'once_after' ? 'After all phases' :
+                     'Final step'}
+                  </span>
+                  {expandedRole === role.id ? <ChevronUp size={14} className="text-zinc-500" /> : <ChevronDown size={14} className="text-zinc-500" />}
+                </div>
+
+                {/* Expanded content */}
+                {expandedRole === role.id && (
+                  <div className="px-4 pb-4 pt-2 border-t border-zinc-800 space-y-3">
+                    <p className="text-xs text-zinc-500">{role.description}</p>
+                    <div className="flex gap-3">
+                      <div className="w-32">
+                        <label className="block text-xs text-zinc-500 mb-1">Model</label>
+                        <select
+                          value={role.model}
+                          onChange={(e) => updateRole(role.id, { model: e.target.value })}
+                          className="w-full appearance-none bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-1.5 text-white text-sm focus:border-purple-500 focus:outline-none"
+                        >
+                          {ROLE_MODEL_OPTIONS.map(opt => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-zinc-500 mb-1">Prompt Template</label>
+                      <textarea
+                        value={role.prompt}
+                        onChange={(e) => updateRole(role.id, { prompt: e.target.value })}
+                        rows={8}
+                        className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-300 text-xs font-mono focus:border-purple-500 focus:outline-none resize-y"
+                      />
+                    </div>
+                    {role.id === 'verifier' && (
+                      <p className="text-xs text-zinc-600">
+                        Reads from .claude/templates/e2e_verification_prompt.template.md if it exists.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Verification toggle */}
+          <div className="flex items-center gap-2 mt-4 pt-3 border-t border-zinc-800">
+            <input
+              type="checkbox"
+              checked={includeVerification}
+              onChange={(e) => setIncludeVerification(e.target.checked)}
+              className="w-4 h-4 rounded border-zinc-600 bg-zinc-900 text-purple-500"
+            />
+            <span className="text-sm text-zinc-300">Include post-build verification phase (Opus)</span>
+            <span className="text-xs text-zinc-600">&mdash; runs full test protocol after all phases</span>
+          </div>
+        </SectionCard>
+
         {/* Section 5: Phase Assignments */}
         <SectionCard
           icon={<Layers size={18} className="text-indigo-400" />}
@@ -1011,14 +1434,49 @@ Generate:
           />
         </SectionCard>
 
-        {/* Section 6: Generate */}
+        {/* Section: Generate */}
         <SectionCard
           icon={<Rocket size={18} className="text-purple-400" />}
           title="Generate"
         >
-          <p className="text-sm text-zinc-500 mb-5">
-            Generate prompts step-by-step: PRD first, then phase split, then build scripts. Each button assembles the prompt and shows it below so you can copy or run it with AI.
-          </p>
+          {/* Project Directory for script output */}
+          <div className="mb-5">
+            <TextInput
+              label="Project Directory (for saving scripts)"
+              value={projectDir}
+              onChange={setProjectDir}
+              placeholder="C:/Projects/my-app"
+            />
+          </div>
+
+          {/* Generate All button */}
+          <button
+            onClick={runGenerateAll}
+            disabled={generateAllLoading}
+            className="w-full flex items-center justify-center gap-3 bg-gradient-to-r from-purple-600 via-cyan-500 to-green-500 rounded-xl px-6 py-4 text-white font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 mb-4"
+          >
+            {generateAllLoading ? (
+              <>
+                <Loader2 size={20} className="animate-spin" />
+                Step {generateAllStep} of 3: {generateAllStep === 1 ? 'Generating PRD...' : generateAllStep === 2 ? 'Splitting phases...' : 'Creating scripts...'}
+              </>
+            ) : (
+              <>
+                <Rocket size={20} />
+                Generate All (PRD &rarr; Phases &rarr; Scripts)
+              </>
+            )}
+          </button>
+
+          {generateAllError && (
+            <div className="text-sm text-red-400 bg-red-900/20 border border-red-800/50 rounded-lg px-3 py-2 mb-4">
+              {generateAllError}
+            </div>
+          )}
+
+          <p className="text-xs text-zinc-600 text-center mb-4">&mdash; or generate individually &mdash;</p>
+
+          {/* Original 3 buttons */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <button
               onClick={generatePRD}
@@ -1078,6 +1536,100 @@ Generate:
             aiResult={buildAiResult}
             aiLoading={buildAiLoading}
           />
+
+          {/* Write Scripts to Disk */}
+          {(buildAiResult || prdAiResult) && projectDir && (
+            <div className="mt-4 border-t border-zinc-800 pt-4">
+              <button
+                onClick={handleWriteScripts}
+                disabled={writingScripts}
+                className="flex items-center gap-2 bg-green-600/20 border border-green-700/40 rounded-lg px-4 py-2.5 text-green-300 hover:border-green-500/60 hover:bg-green-600/30 transition-all disabled:opacity-50"
+              >
+                {writingScripts ? <Loader2 size={16} className="animate-spin" /> : <FileText size={16} />}
+                {writingScripts ? 'Writing scripts...' : 'Save Scripts to Disk'}
+              </button>
+              {writeError && (
+                <p className="text-xs text-red-400 mt-2">{writeError}</p>
+              )}
+              {scriptsWritten && (
+                <div className="mt-2 text-xs text-green-400">
+                  <p className="font-medium mb-1">Scripts written ({scriptsWritten.length} files):</p>
+                  <ul className="space-y-0.5 text-zinc-400">
+                    {scriptsWritten.map(f => (
+                      <li key={f} className="flex items-center gap-1">
+                        <Check size={10} className="text-green-500" />
+                        {f}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+        </SectionCard>
+
+        {/* Section: Build Queue */}
+        <SectionCard
+          icon={<ListOrdered size={18} className="text-amber-400" />}
+          title="Build Queue"
+        >
+          <p className="text-sm text-zinc-500 mb-4">
+            Queue up multiple apps. When one finishes, the next starts automatically.
+          </p>
+
+          {/* Add current app to queue */}
+          <div className="flex gap-2 mb-4">
+            <button
+              onClick={addToQueue}
+              disabled={!appName.trim() || !projectDir.trim()}
+              className="flex items-center gap-2 bg-amber-600/20 border border-amber-700/40 rounded-lg px-4 py-2 text-amber-300 hover:border-amber-500/60 hover:bg-amber-600/30 transition-all disabled:opacity-30 text-sm"
+            >
+              <Plus size={14} />
+              Add Current App to Queue
+            </button>
+            {queueItems.length > 0 && (
+              <button
+                onClick={() => setQueueItems([])}
+                className="flex items-center gap-2 text-zinc-500 hover:text-red-400 text-xs transition-colors"
+              >
+                <X size={12} />
+                Clear Queue
+              </button>
+            )}
+          </div>
+
+          {/* Queue list */}
+          {queueItems.length === 0 ? (
+            <div className="text-center py-6 text-zinc-600 text-sm">
+              No apps queued. Fill out the form above and click "Add Current App to Queue."
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {queueItems.map((item, i) => (
+                <div key={i} className="flex items-center gap-3 bg-zinc-900/50 border border-zinc-800 rounded-lg px-4 py-3">
+                  <span className="text-xs text-zinc-600 w-6">{i + 1}.</span>
+                  <div className="flex-1">
+                    <p className="text-sm text-white font-medium">{item.name}</p>
+                    <p className="text-xs text-zinc-500">{item.project_dir}</p>
+                  </div>
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${
+                    item.status === 'pending' ? 'bg-zinc-800 text-zinc-400' :
+                    item.status === 'running' ? 'bg-cyan-900/50 text-cyan-300' :
+                    item.status === 'completed' ? 'bg-green-900/50 text-green-300' :
+                    'bg-red-900/50 text-red-300'
+                  }`}>
+                    {item.status}
+                  </span>
+                  <button
+                    onClick={() => removeFromQueue(i)}
+                    className="text-zinc-600 hover:text-red-400 transition-colors"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </SectionCard>
 
         {/* Footer spacing */}

@@ -4,9 +4,8 @@ Tests the usage endpoints (synchronous, no background tasks).
 Batch endpoints are tested via unit tests since they use asyncio.create_task.
 """
 
-import pytest
-
 import httpx
+import pytest
 from fastapi import FastAPI
 
 from server.routers.tool_factory import router

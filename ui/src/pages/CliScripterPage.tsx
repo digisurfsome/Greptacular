@@ -768,6 +768,7 @@ SPLITTING RULES:
 - Respect dependencies: if B depends on A, A goes first
 - Each phase must be testable on its own
 - Find natural break points between feature groups
+- IMPORTANT: After splitting, state which phases can run IN PARALLEL (no cross-dependencies) vs which must run sequentially. Format your answer with execution waves, e.g.: "Wave 1: [Phase 1] → Wave 2: [Phase 2, Phase 3] (parallel, no dependencies between them) → Wave 3: [Phase 4] (depends on Phase 2 and 3)"
 
 TESTING PHASE SIZING:
 - If the build has 3+ feature phases, the post-build verification (Verifier role) needs its OWN dedicated phase at the end.

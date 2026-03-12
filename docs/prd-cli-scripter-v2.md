@@ -419,6 +419,343 @@ This saves ~5,000 tokens per build and eliminates hallucination risk on the scri
 
 ---
 
+## System 5: Prompt Visibility & Edit Controls (3/10 difficulty)
+
+### The Problem
+
+The CLI Scripter has **8 prompts** that drive the entire build pipeline, but users don't know they exist. The role prompts (Architect, Coder, Reviewer, Verifier, Cartographer) are hidden inside expandable role cards. The generation prompts (PRD, Phase Split, Build Scripts) are in textareas but look like output fields, not editable inputs. Nothing says "you can change this."
+
+Worse: all prompt edits are **lost on page reload** because they live in React state with no persistence.
+
+### Current State
+
+| Prompt | Where It Lives | Editable? | Discoverable? | Persisted? |
+|--------|---------------|-----------|---------------|------------|
+| Architect role prompt | CliScripterPage.tsx DEFAULT_AGENT_ROLES | Yes (textarea in expanded card) | No — hidden | No |
+| Coder role prompt | Same | Yes | No — hidden | No |
+| Reviewer role prompt | Same | Yes | No — hidden | No |
+| Verifier role prompt | Same (+ template file fallback) | Yes | No — hidden | No |
+| Cartographer role prompt | Same | Yes | No — hidden | No |
+| PRD generation prompt | Built dynamically in generatePRD() | Yes | Barely | No |
+| Phase split prompt | Built dynamically in generatePhaseSplit() | Yes | Barely | No |
+| Build scripts prompt | Built dynamically in generateBuildScripts() | Yes | Barely | No |
+
+### What It Should Look Like
+
+Each prompt gets a **collapsible prompt bar** — a single-line strip that shows the prompt name and a lock/edit toggle. Default state: locked (read-only, collapsed). User clicks "Edit" to unlock and expand.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  📝 Architect Prompt                    [🔒 Locked] [Edit]  │
+└─────────────────────────────────────────────────────────────┘
+
+User clicks [Edit]:
+
+┌─────────────────────────────────────────────────────────────┐
+│  📝 Architect Prompt                   [🔓 Editing] [Lock]  │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │ You are a senior software architect. Before any     │    │
+│  │ code is written, create a detailed PRD that...      │    │
+│  │                                                     │    │
+│  │ (editable textarea)                                 │    │
+│  └─────────────────────────────────────────────────────┘    │
+│  [Reset to Default]                          142 tokens     │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Design Rules
+
+1. **Default = Locked + Collapsed.** Show only the prompt name in a slim bar. No textarea visible. This keeps the page clean — most users will never edit prompts.
+
+2. **Edit button unlocks.** Click "Edit" → bar expands to show the full prompt in an editable textarea. Border changes from zinc to orange to signal edit mode.
+
+3. **Lock button saves.** Click "Lock" → textarea becomes read-only, bar collapses back to slim. Changes are preserved in state (and in saved configs if Build Storage is built).
+
+4. **Reset to Default.** Small link that restores the original hardcoded prompt. Confirmation required ("Reset to default? Your changes will be lost.").
+
+5. **Token count badge.** Each prompt bar shows its token count (chars/4) so users can see the cost of their prompt modifications.
+
+6. **Placement:** Prompt bars appear directly under their parent section:
+   - Role prompts → inside each role card (replace current hidden textarea)
+   - PRD prompt → below the "Generate PRD" button
+   - Phase split prompt → below the "Split into Phases" button
+   - Build scripts prompt → below the "Generate Scripts" button
+
+### Component: PromptBar
+
+```typescript
+interface PromptBarProps {
+  label: string              // "Architect Prompt"
+  value: string              // Current prompt text
+  defaultValue: string       // Original default for reset
+  onChange: (value: string) => void
+  icon?: React.ReactNode     // Optional icon
+}
+```
+
+Reusable across all 8 prompts. Single component, used 8 times.
+
+### Persistence (ties into System 3: Build Storage)
+
+When Build Storage (System 3) is built, prompt edits get saved as part of the `config_json`:
+
+```json
+{
+  "prompts": {
+    "architect": "You are a senior software architect...",
+    "coder": "You are building Phase {phase_number}...",
+    "reviewer": "You are a code reviewer...",
+    "verifier": "Run full post-build verification...",
+    "cartographer": "You are a technical documentat...",
+    "prd_generation": null,       // null = use auto-generated default
+    "phase_split": null,          // null = use auto-generated default
+    "build_scripts": null         // null = use auto-generated default
+  }
+}
+```
+
+Until Build Storage exists, prompts live in React state (lost on reload). That's acceptable for v1 — power users who edit prompts will also save configs.
+
+### Implementation Phases
+
+**Phase 12: PromptBar component (2/10)**
+- Build the PromptBar component (lock/edit toggle, collapsible, token count, reset)
+- Integrate into role cards (replace current raw textareas)
+- Integrate below generation buttons
+
+**Phase 13: Prompt persistence in Build Storage (1/10)**
+- Add `prompts` field to `config_json` in Build Storage data model
+- Load/save prompt overrides with config
+- Null = use default, string = use override
+
+---
+
+## System 6: Card-Based Build Estimate Display (2/10 difficulty)
+
+### The Problem
+
+The current Build Estimate "Phase Breakdown" section has phase names on the far left and token counts on the far right of the page. On a wide monitor, your eye has to travel the entire screen width to connect a label to its number. It's unusable.
+
+### Solution: Pipeline Card Visualization
+
+Replace the flex-row phase breakdown with a card-based pipeline where each phase is a compact card, connected with orange lines showing the flow.
+
+```
+┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
+│ Architect │───▶│ Phase 1  │───▶│ Phase 2  │───▶│ Phase 3  │───▶ ...
+│  ~12K ⚡  │    │  ~85K ⚡  │    │  ~92K ⚡  │    │  ~92K ⚡  │
+│   opus    │    │  sonnet  │    │  sonnet  │    │  sonnet  │
+└──────────┘    └──────────┘    └──────────┘    └──────────┘
+```
+
+### Card Contents
+
+Each card shows:
+- **Phase name** (bold, top line)
+- **Token estimate** (e.g., "~85K" — prominent, orange text)
+- **Model** (opus/sonnet — small, muted text)
+
+### Status Indicators (during active build)
+
+- Gray border = pending (default)
+- Cyan pulse border = currently running (uses existing `animate-pulse-neo`)
+- Green border = completed successfully
+- Red border = failed
+
+### Connecting Lines
+
+- Orange arrows (───▶) between cards
+- If parallel phases exist (from dependency detection), show fork/merge:
+
+```
+                ┌──────────┐
+           ───▶│ Phase 2  │───┐
+          │    │  ~92K    │   │
+          │    └──────────┘   │    ┌──────────┐
+Phase 1 ──┤                   ├───▶│ Phase 4  │
+          │    ┌──────────┐   │    └──────────┘
+          │    │ Phase 3  │───┘
+           ───▶│  ~92K    │
+               └──────────┘
+```
+
+### Responsive Behavior
+
+- Desktop (>1024px): Horizontal flow, cards in a row with wrapping
+- Mobile (<768px): Vertical stack with downward arrows (↓)
+
+### What Stays
+
+Keep the 4-stat summary grid above (Phases, Active Roles, Est Total, CLI Sessions) — that part is compact and readable.
+
+Keep the single summary line below: "Total: ~380K tokens • 6 CLI sessions • Est. 2.5 hours"
+
+### Implementation
+
+**Phase 14: Pipeline card component (2/10)**
+- Replace the "Phase Breakdown" div (lines ~1682-1715 in CliScripterPage.tsx)
+- PhaseCard component: rounded-lg, border, p-3, min-w-[120px]
+- Connecting arrows: CSS pseudo-elements or inline arrow spans
+- Container: flex flex-wrap gap-2 items-center
+- Color scheme: bg-zinc-900/60, border-zinc-700/60, text-orange-400 for tokens
+
+---
+
+## System 7: Parallel Phase Building via Prompt-Driven Waves (3/10 difficulty)
+
+### The Problem
+
+Phases currently run strictly sequential: Phase 1 → 2 → 3 → 4. But often Phase 2 and Phase 3 have no dependencies on each other — they both only depend on Phase 1. Running them simultaneously cuts wall-clock time nearly in half.
+
+### How It Works (Prompt-Driven, No Dependency Graph)
+
+Instead of building a formal dependency resolution system, we let the **phase-splitting LLM** handle it. The LLM already thinks about dependencies when splitting a PRD — we just need it to **say the quiet part out loud** in a structured format.
+
+**Step 1: Phase-split prompt already updated (DONE)**
+
+The phase-splitting prompt now includes:
+```
+IMPORTANT: After splitting, state which phases can run IN PARALLEL
+(no cross-dependencies) vs which must run sequentially. Format your
+answer with execution waves, e.g.:
+"Wave 1: [Phase 1] → Wave 2: [Phase 2, Phase 3] (parallel) → Wave 3: [Phase 4]"
+```
+
+**Step 2: LLM outputs a wave diagram in its phase plan**
+
+The phase-split output will now include something like:
+
+```
+EXECUTION ORDER:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Session 1:  ┌─────────┐
+            │ Phase 1  │  (setup + auth + DB)
+            └────┬────┘
+                 │
+Session 2:  ┌────┴────┐  ┌─────────┐
+            │ Phase 2  │  │ Phase 3  │  ← run in parallel
+            │ (API)    │  │ (UI)     │
+            └────┬────┘  └────┬────┘
+                 │            │
+Session 3:  ┌────┴────────────┴────┐
+            │      Phase 4          │  (integration + polish)
+            └──────────────────────┘
+
+Wave 1: [Phase 1]
+Wave 2: [Phase 2, Phase 3] — parallel, no cross-dependencies
+Wave 3: [Phase 4] — depends on Phase 2 and Phase 3
+```
+
+**Step 3: Parse the wave structure from the LLM output**
+
+After the phase split returns, parse the "Wave X: [...]" lines:
+
+```typescript
+// Parse wave structure from LLM phase-split output
+function parseWaves(phaseOutput: string): number[][] {
+  const waves: number[][] = []
+  const waveRegex = /Wave\s+(\d+):\s*\[([^\]]+)\]/gi
+  let match
+  while ((match = waveRegex.exec(phaseOutput)) !== null) {
+    const phaseNums = match[2]
+      .split(',')
+      .map(s => parseInt(s.replace(/[^0-9]/g, '')))
+      .filter(n => !isNaN(n))
+    waves.push(phaseNums)
+  }
+  return waves  // e.g., [[1], [2, 3], [4]]
+}
+```
+
+If parsing fails (LLM didn't output wave format), fall back to sequential: `[[1], [2], [3], [4]]`
+
+**Step 4: Generate parallel `run_all.sh`**
+
+Current sequential script:
+```bash
+bash phase1_build.sh
+bash phase2_build.sh
+bash phase3_build.sh
+bash phase4_build.sh
+```
+
+New wave-based script:
+```bash
+echo "=== Wave 1 ==="
+bash phase1_build.sh
+if [ $? -ne 0 ]; then echo "Wave 1 failed"; exit 1; fi
+
+echo "=== Wave 2 (parallel) ==="
+bash phase2_build.sh &
+PID_phase2=$!
+bash phase3_build.sh &
+PID_phase3=$!
+wait $PID_phase2
+STATUS2=$?
+wait $PID_phase3
+STATUS3=$?
+if [ $STATUS2 -ne 0 ] || [ $STATUS3 -ne 0 ]; then
+  echo "Wave 2 failed (phase2=$STATUS2, phase3=$STATUS3)"
+  exit 1
+fi
+
+echo "=== Wave 3 ==="
+bash phase4_build.sh
+```
+
+**Step 5: Show waves in the Build Estimate card display (ties into System 6)**
+
+The pipeline card visualization groups cards by wave:
+
+```
+Wave 1                Wave 2                    Wave 3
+┌──────────┐    ┌──────────┐              ┌──────────┐
+│ Phase 1  │───▶│ Phase 2  │──────┐──────▶│ Phase 4  │
+│  ~85K    │    │  ~92K    │      │       │  ~92K    │
+└──────────┘    └──────────┘      │       └──────────┘
+                ┌──────────┐      │
+                │ Phase 3  │──────┘
+                │  ~92K    │
+                └──────────┘
+```
+
+Parallel phases are stacked vertically within the same wave column. A bracket or merge arrow shows where they rejoin.
+
+### Where This Plugs In
+
+| Component | Change |
+|-----------|--------|
+| Phase-split prompt (CliScripterPage.tsx) | ✅ Already updated — tells LLM to output waves |
+| Phase plan display (UI) | Parse and show wave groupings |
+| `_generate_master_script()` (cli_scripter.py) | Generate parallel bash with `&` and `wait` |
+| Build Estimate cards (System 6) | Group cards by wave, show parallel stacking |
+| Build Settings (UI) | Add toggle: "Parallel phases: [On] [Off]" — default Off |
+
+### Rate Limit Warning
+
+Running 2+ Claude CLI sessions simultaneously burns through the 5-hour token window faster. When parallel is enabled, show:
+```
+⚠️ Parallel mode uses tokens ~2x faster per wall-clock hour.
+```
+
+### Safety
+
+- Each parallel phase writes to its own log file (phase2.log, phase3.log)
+- If any phase in a wave fails, subsequent waves don't start
+- Toggle defaults to Off — user opts in to parallel execution
+- Fall back to sequential if wave parsing fails
+
+### Implementation
+
+**Phase 15: Wave parsing + parallel script generation (3/10)**
+- Parse "Wave X: [...]" from LLM phase-split output
+- Update `_generate_master_script()` to support wave-based execution
+- Add parallel toggle to Build Settings
+- Update Build Estimate to show wave groupings
+- Add rate limit warning when parallel is enabled
+
+---
+
 ## Build Order (all systems)
 
 | Phase | System | What | Difficulty | Tokens Saved |
@@ -434,6 +771,10 @@ This saves ~5,000 tokens per build and eliminates hallucination risk on the scri
 | 9 | System 3 | Queue management upgrade | 3/10 | — |
 | 10 | System 4 | Boilerplate analysis docs | 1/10 | — |
 | 11 | System 4 | Prep phase for dual builds | 2/10 | — |
+| 12 | System 5 | PromptBar component (lock/edit/collapse) | 2/10 | — |
+| 13 | System 5 | Prompt persistence in Build Storage | 1/10 | — |
+| 14 | System 6 | Pipeline card component (Build Estimate) | 2/10 | — |
+| 15 | System 7 | Parallel wave parsing + CLI script generation | 3/10 | — |
 | FIX | — | Deterministic script templates | 2/10 | ~5K/build |
 
-Each phase is under 50% context window. Total: ~12 sessions across 1-2 weeks.
+Each phase is under 50% context window. Total: ~16 sessions across 2-3 weeks.

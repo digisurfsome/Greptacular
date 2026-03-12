@@ -137,10 +137,10 @@ const DEFAULT_AGENT_ROLES: AgentRole[] = [
   {
     id: 'architect',
     name: 'Architect',
-    model: 'opus',
+    model: 'sonnet',
     enabled: true,
     runsWhen: 'once_before',
-    description: 'Creates ARCHITECTURE.md before coding — file structure, API contracts, data models',
+    description: 'Creates ARCHITECTURE.md before coding — file structure, API contracts, data models (Sonnet default, Opus checkpoint reviews after)',
     prompt: `You are a senior software architect. Read the PRD and build rules below, then create ARCHITECTURE.md in the project root.
 
 ARCHITECTURE.md must contain:
@@ -183,10 +183,10 @@ BEFORE YOU FINISH:
   {
     id: 'reviewer',
     name: 'Reviewer',
-    model: 'opus',
+    model: 'sonnet',
     enabled: true,
     runsWhen: 'per_phase_after',
-    description: 'Reviews code after each phase — catches bugs before the next phase starts',
+    description: 'Reviews code after each phase — catches bugs before the next phase starts (Sonnet default, Opus batch checkpoint every 3-4 phases)',
     prompt: `You are a code reviewer. Phase {phase_number} of {total_phases} was just completed.
 
 Review ALL code written in this phase:
@@ -207,10 +207,10 @@ Do NOT refactor working code for style. Only fix actual bugs.`,
   {
     id: 'verifier',
     name: 'Verifier',
-    model: 'opus',
+    model: 'sonnet',
     enabled: true,
     runsWhen: 'once_after',
-    description: 'Full post-build verification — integration testing, bug hunting, sketch-aware visual checks',
+    description: 'Full post-build verification — Sonnet first pass, then Opus targeted final sign-off',
     prompt: `Run full post-build verification:
 
 ## Step 1: Static Analysis

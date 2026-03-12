@@ -6,6 +6,14 @@
 
 ---
 
+## ⚠️ MANDATORY: Sonnet/Opus Build Optimization
+
+**Before working on this PRD, read `docs/SONNET_OPUS_OPTIMIZATION.md`.**
+
+The CLI Scripter generates build scripts that assign models to roles. The default model assignments MUST follow the optimization standard: Sonnet builds, Sonnet reviews per-phase, Opus batch checkpoints every 3-4 phases. Never default Opus for the per-phase Reviewer role.
+
+---
+
 ## AGENT BRIEFING — READ THIS FIRST
 
 You are implementing upgrades to the CLI Scripter page in AutoForge. This is an existing React + Python (FastAPI) application with a neobrutalism design system.

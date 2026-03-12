@@ -46,6 +46,12 @@ Then **Ctrl+Shift+R** in browser. Once `reset.bat` is merged, just double-click 
 - `start_ui.bat` auto-rebuilds dist when source is newer, so merging to main is enough
 - **Never** re-enable a component you disabled to fix a bug without testing the full build
 
+## MANDATORY: Sonnet/Opus Build Optimization
+
+**Read `docs/SONNET_OPUS_OPTIMIZATION.md` before designing ANY build pipeline.**
+
+Summary: Sonnet builds everything. Opus only does targeted checkpoints every 3-4 phases. Never assign Opus to the Reviewer role per-phase. This is the standard — not a suggestion. Details and math in the full doc.
+
 ## Prerequisites
 
 - Python 3.11+

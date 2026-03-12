@@ -83,9 +83,10 @@ run_agent() {
         4) AGENT_DESC="Package 4: Post-Build Verification & Testing" ;;
     esac
 
+    local TOTAL_AGENTS=4
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    log_info "AGENT ${AGENT_NUM}: ${AGENT_DESC}"
+    log_info "AGENT ${AGENT_NUM} of ${TOTAL_AGENTS}: ${AGENT_DESC}"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
     if [ ! -f "$BRIEF_FILE" ]; then
@@ -141,16 +142,16 @@ CRITICAL: Match existing patterns — neobrutalism design, Tailwind CSS v4, Reac
         local MINUTES=$(( DURATION / 60 ))
         local SECONDS=$(( DURATION % 60 ))
 
-        log_ok "Agent ${AGENT_NUM} completed in ${MINUTES}m ${SECONDS}s"
-        echo "${AGENT_NUM}: SUCCESS (${MINUTES}m ${SECONDS}s)" >> "${LOG_DIR}/cli-scripter-summary_${TIMESTAMP}.txt"
+        log_ok "Agent ${AGENT_NUM} of ${TOTAL_AGENTS} completed in ${MINUTES}m ${SECONDS}s"
+        echo "${AGENT_NUM}: SUCCESS (${MINUTES}m ${SECONDS}s) [model: ${AGENT_MODEL}]" >> "${LOG_DIR}/cli-scripter-summary_${TIMESTAMP}.txt"
         return 0
     else
         local EXIT_CODE=$?
         local END_TIME=$(date +%s)
         local DURATION=$(( END_TIME - START_TIME ))
 
-        log_error "Agent ${AGENT_NUM} failed with exit code ${EXIT_CODE} after ${DURATION}s"
-        echo "${AGENT_NUM}: FAILED (exit code ${EXIT_CODE})" >> "${LOG_DIR}/cli-scripter-summary_${TIMESTAMP}.txt"
+        log_error "Agent ${AGENT_NUM} of ${TOTAL_AGENTS} failed with exit code ${EXIT_CODE} after ${DURATION}s"
+        echo "${AGENT_NUM}: FAILED (exit code ${EXIT_CODE}) [model: ${AGENT_MODEL}]" >> "${LOG_DIR}/cli-scripter-summary_${TIMESTAMP}.txt"
         return $EXIT_CODE
     fi
 }
@@ -213,12 +214,15 @@ echo "Build completed: $(date)" >> "${LOG_DIR}/cli-scripter-summary_${TIMESTAMP}
 
 echo ""
 echo "╔══════════════════════════════════════════════════════════════════════════╗"
-echo "║                    BUILD PIPELINE COMPLETE                              ║"
+echo "║              ✅  ALL 4 AGENTS FINISHED — BUILD COMPLETE  ✅            ║"
 echo "╚══════════════════════════════════════════════════════════════════════════╝"
 echo ""
 log_ok "Total time: ${TOTAL_MINUTES}m ${TOTAL_SECONDS}s"
-log_info "Summary: ${LOG_DIR}/cli-scripter-summary_${TIMESTAMP}.txt"
-log_info "Logs: ${LOG_DIR}/cli-scripter-agent-*_${TIMESTAMP}.log"
+echo ""
+echo "=== AGENT SUMMARY ==="
+cat "${LOG_DIR}/cli-scripter-summary_${TIMESTAMP}.txt"
+echo ""
+log_info "Full logs: ${LOG_DIR}/cli-scripter-agent-*_${TIMESTAMP}.log"
 echo ""
 
 # Show latest files and git log
@@ -229,4 +233,8 @@ echo ""
 echo "=== GIT LOG ==="
 cd "$PROJECT_DIR"
 git log --oneline -15
+echo ""
+echo "╔══════════════════════════════════════════════════════════════════════════╗"
+echo "║  Next: Deploy chain — npm build, git push, pull to live, restart       ║"
+echo "╚══════════════════════════════════════════════════════════════════════════╝"
 echo ""

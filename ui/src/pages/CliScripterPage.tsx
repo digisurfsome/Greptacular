@@ -24,6 +24,7 @@ import { BuildLibrary, type BuildConfigFull } from '@/components/cli-scripter/Bu
 import { PromptBar } from '@/components/cli-scripter/PromptBar'
 import { BuildDashboard } from '@/components/cli-scripter/BuildDashboard'
 import { BuildLogPanel } from '@/components/cli-scripter/BuildLogPanel'
+import { PhaseStatusSidebar } from '@/components/cli-scripter/PhaseStatusSidebar'
 import { parseWaves, sequentialWaves } from '@/lib/waveParser'
 import {
   ArrowLeft,
@@ -1250,15 +1251,24 @@ Output a detailed phase plan with feature assignments, estimated token usage per
         </div>
       </header>
 
-      {/* Build Dashboard + Log Panel — shows during active builds */}
+      {/* Build Dashboard + Log/Status Panels — shows during active builds */}
       <div className="max-w-4xl mx-auto px-4 pt-4 space-y-2">
         <BuildDashboard
           projectDir={projectDir}
           refreshInterval={buildRefreshInterval}
         />
-        <BuildLogPanel
-          refreshInterval={buildRefreshInterval}
-        />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
+          <div className="lg:col-span-2">
+            <BuildLogPanel
+              refreshInterval={buildRefreshInterval}
+            />
+          </div>
+          <div>
+            <PhaseStatusSidebar
+              refreshInterval={buildRefreshInterval}
+            />
+          </div>
+        </div>
       </div>
 
       {/* Content */}

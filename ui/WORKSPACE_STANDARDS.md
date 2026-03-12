@@ -3,6 +3,16 @@
 > Permanent build standards for all new workspace pages and components.
 > Every agent building workspace UI **must** follow these patterns.
 
+## 🚨🚨🚨 READ BEFORE WRITING ANY CODE 🚨🚨🚨
+
+**Two absolute rules. Violating either is a critical bug.**
+
+1. **SUBSCRIPTION AUTH ONLY for 200K models.** Never use API keys for Opus/Sonnet/Haiku. Always `force_subscription=True`. See `docs/SUBSCRIPTION_AND_WEBSOCKET_GUIDE.md`.
+
+2. **ONE WebSocket per page.** Use the existing `useWorkspaceChat.ts` hook. Do NOT create additional WebSocket connections. Do NOT modify the hook or `WorkspaceChat.tsx`. See `docs/SUBSCRIPTION_AND_WEBSOCKET_GUIDE.md`.
+
+---
+
 ## Stack (Mandatory)
 
 - React 19 + TypeScript

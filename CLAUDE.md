@@ -52,6 +52,43 @@ Then **Ctrl+Shift+R** in browser. Once `reset.bat` is merged, just double-click 
 
 Summary: Sonnet builds everything. Opus only does targeted checkpoints every 3-4 phases. Never assign Opus to the Reviewer role per-phase. This is the standard — not a suggestion. Details and math in the full doc.
 
+## 🚨🚨🚨 SUBSCRIPTION AUTH — NON-NEGOTIABLE 🚨🚨🚨
+
+**⚠️ STOP. READ THIS BEFORE WRITING ANY CODE THAT CALLS AN AI MODEL. ⚠️**
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  ALL 200K MODELS → SUBSCRIPTION ONLY (force_subscription=True)     │
+│  ONLY 1M TOKEN MODELS → API KEY                                    │
+│  NO EXCEPTIONS. NO API KEYS FOR 200K MODELS. EVER.                 │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Before you write a single line that calls Claude, Codex, or Gemini, confirm:**
+1. Are you using a 200K context model? → Subscription auth. `unset ANTHROPIC_API_KEY`.
+2. Are you using a 1M context model? → API key is fine.
+3. Not sure? → Subscription. Default safe.
+
+**How it works:** `get_effective_sdk_env()` in `registry.py` (line ~792) is the single source of truth. When `force_subscription=True`, it clears `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` so the CLI falls back to `~/.claude/.credentials.json` (subscription OAuth). Every Claude call in the system goes through this function.
+
+**If you skip this, the user burns API credits on their subscription models. That is a bug.**
+
+Full details: `docs/SUBSCRIPTION_AND_WEBSOCKET_GUIDE.md`
+
+## 🚨 ONE WEBSOCKET PER PAGE 🚨
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  ONE WebSocket connection per chat page. NOT multiple. ONE.         │
+│  Connect to: ws://localhost:8888/api/workspace/ws                   │
+│  Do NOT create additional WebSocket connections on the same page.   │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**The WebSocket hook (`useWorkspaceChat.ts`) and chat component (`WorkspaceChat.tsx`) already exist. Do NOT modify them. Do NOT create parallel connections. Build your page layout around the single existing connection.**
+
+Full protocol details: `docs/SUBSCRIPTION_AND_WEBSOCKET_GUIDE.md`
+
 ## Prerequisites
 
 - Python 3.11+

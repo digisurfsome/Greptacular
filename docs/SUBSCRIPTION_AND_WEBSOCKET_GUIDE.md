@@ -67,6 +67,88 @@ Every Claude call in the entire system goes through this function. Here's what i
    → This COSTS MONEY (burns API credits)
 ```
 
+### ❌ WRONG vs ✅ RIGHT — Copy-Paste Examples
+
+**When writing Python code that calls Claude:**
+
+❌ **WRONG — burns API credits:**
+```python
+import anthropic
+client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+response = client.messages.create(model="claude-sonnet-4-6", ...)
+```
+
+❌ **ALSO WRONG — hardcoded key:**
+```python
+client = anthropic.Anthropic(api_key="sk-ant-api03-...")
+```
+
+❌ **ALSO WRONG — reading key from settings/env directly:**
+```python
+api_key = settings.get("api_auth_token") or os.getenv("ANTHROPIC_API_KEY")
+client = anthropic.Anthropic(api_key=api_key)
+```
+
+✅ **RIGHT — uses subscription via SDK:**
+```python
+from registry import get_global_settings
+from client import ClaudeSDKClient
+
+# For subprocess-based calls (most common in AutoForge):
+env = get_effective_sdk_env(provider="claude", force_subscription=True)
+# Pass env to subprocess — subscription OAuth kicks in automatically
+
+# For direct SDK calls:
+# Use ClaudeSDKClient which handles auth correctly
+```
+
+✅ **RIGHT — for new workspace features:**
+```python
+# In your router/service, get env vars the correct way:
+from registry import get_effective_sdk_env
+
+sdk_env = get_effective_sdk_env(
+    provider="claude",
+    model="claude-sonnet-4-6",
+    force_subscription=True  # THIS IS THE KEY LINE
+)
+# Pass sdk_env to your subprocess or SDK client
+```
+
+**When writing bash scripts:**
+
+❌ **WRONG:**
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."
+claude -p "do something"
+```
+
+✅ **RIGHT:**
+```bash
+unset ANTHROPIC_API_KEY 2>/dev/null || true
+claude -p "do something"
+```
+
+### Pre-Commit Self-Check (MANDATORY)
+
+Before committing ANY code that touches AI model calls, run these checks:
+
+```bash
+# Check 1: Search for raw API key usage in your new/modified files
+grep -rn "ANTHROPIC_API_KEY" your_new_file.py
+# If it appears WITHOUT force_subscription=True nearby → YOU HAVE A BUG
+
+# Check 2: Search for direct anthropic client creation
+grep -rn "anthropic.Anthropic(" your_new_file.py
+# If it appears with api_key= parameter → YOU HAVE A BUG
+
+# Check 3: Search for hardcoded keys
+grep -rn "sk-ant-" your_new_file.py
+# If ANYTHING matches → YOU HAVE A CRITICAL BUG
+```
+
+**If any check fails, fix it before committing. No exceptions.**
+
 ### For CLI Build Scripts
 
 Always include this at the top of any bash build script:

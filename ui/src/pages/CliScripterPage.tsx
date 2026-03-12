@@ -1136,6 +1136,16 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
     setQueueItems(prev => prev.filter((_, i) => i !== index))
   }
 
+  const moveQueueItem = (index: number, direction: 'up' | 'down') => {
+    setQueueItems(prev => {
+      const next = [...prev]
+      const swapIdx = direction === 'up' ? index - 1 : index + 1
+      if (swapIdx < 0 || swapIdx >= next.length) return prev
+      ;[next[index], next[swapIdx]] = [next[swapIdx], next[index]]
+      return next
+    })
+  }
+
   // ---- Build Library handlers ----
   const handleLibrarySaveRequest = async () => {
     return {
@@ -2125,28 +2135,68 @@ Generate phase1.sh through phaseN.sh and run_all.sh.`
           ) : (
             <div className="space-y-2">
               {queueItems.map((item, i) => (
-                <div key={i} className="flex items-center gap-3 bg-zinc-900/50 border border-zinc-800 rounded-lg px-4 py-3">
-                  <span className="text-xs text-zinc-600 w-6">{i + 1}.</span>
-                  <div className="flex-1">
-                    <p className="text-sm text-white font-medium">{item.name}</p>
-                    <p className="text-xs text-zinc-500">{item.project_dir}</p>
+                <div key={i} className="flex items-center gap-2 bg-zinc-900/50 border border-zinc-800 rounded-lg px-3 py-2.5">
+                  {/* Position + reorder */}
+                  <div className="flex flex-col items-center gap-0.5 shrink-0">
+                    <button
+                      onClick={() => moveQueueItem(i, 'up')}
+                      disabled={i === 0}
+                      className="text-zinc-600 hover:text-zinc-300 transition-colors disabled:opacity-20"
+                      title="Move up"
+                    >
+                      <ChevronUp size={13} />
+                    </button>
+                    <span className="text-xs text-zinc-600 leading-none">{i + 1}</span>
+                    <button
+                      onClick={() => moveQueueItem(i, 'down')}
+                      disabled={i === queueItems.length - 1}
+                      className="text-zinc-600 hover:text-zinc-300 transition-colors disabled:opacity-20"
+                      title="Move down"
+                    >
+                      <ChevronDown size={13} />
+                    </button>
                   </div>
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${
+
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-white font-medium truncate">{item.name}</p>
+                    <p className="text-xs text-zinc-500 truncate">{item.project_dir}</p>
+                  </div>
+
+                  {/* Status badge */}
+                  <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${
                     item.status === 'pending' ? 'bg-zinc-800 text-zinc-400' :
-                    item.status === 'running' ? 'bg-cyan-900/50 text-cyan-300' :
+                    item.status === 'running' ? 'bg-cyan-900/50 text-cyan-300 animate-pulse' :
                     item.status === 'completed' ? 'bg-green-900/50 text-green-300' :
                     'bg-red-900/50 text-red-300'
                   }`}>
                     {item.status}
                   </span>
+
                   <button
                     onClick={() => removeFromQueue(i)}
-                    className="text-zinc-600 hover:text-red-400 transition-colors"
+                    className="text-zinc-600 hover:text-red-400 transition-colors shrink-0"
+                    title="Remove from queue"
                   >
                     <X size={14} />
                   </button>
                 </div>
               ))}
+
+              {/* Total estimate */}
+              {queueItems.length > 1 && (() => {
+                const numPhases = phaseCount === 'Auto' ? Math.max(2, Math.ceil(features.filter(f => f.name.trim()).length / 4) || 3) : parseInt(phaseCount) || 3
+                const enabledRoles = agentRoles.filter(r => r.enabled)
+                const perPhaseCount = enabledRoles.filter(r => r.runsWhen === 'per_phase' || r.runsWhen === 'per_phase_after').length
+                const approxPerBuild = (numPhases * perPhaseCount + 2) * 60000 // rough token estimate
+                const totalTokens = Math.round(approxPerBuild * queueItems.filter(q => q.status === 'pending').length / 1000)
+                return (
+                  <div className="text-xs text-zinc-500 border-t border-zinc-800 pt-2 mt-1">
+                    {queueItems.filter(q => q.status === 'pending').length} pending builds •{' '}
+                    est. ~{totalTokens}K tokens total
+                  </div>
+                )
+              })()}
             </div>
           )}
         </SectionCard>

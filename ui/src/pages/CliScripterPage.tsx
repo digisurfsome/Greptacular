@@ -226,15 +226,88 @@ Do NOT refactor working code for style. Only fix actual bugs.`,
     model: 'sonnet',
     enabled: true,
     runsWhen: 'once_final',
-    description: 'Documents the codebase after build — creates the map for future agents',
-    prompt: `You are a technical documentation specialist. The build is complete and verified.
+    description: 'Documents the codebase after build — creates the map for future agents, including ASCII wireframe sketches',
+    prompt: `You are a technical documentation specialist and architectural cartographer. The build is complete and verified.
 
-Create or update:
-1. **ARCHITECTURE.md** — Update with what was ACTUALLY built (final file structure, real API endpoints, DB schema)
-2. **CONVENTIONS.md** — Document patterns: naming, imports, error handling, state management
-3. **CLAUDE.md** — Add "## Codebase Map" with project summary, key directories, how to run, common gotchas
+Read every source file. Document what's ACTUALLY in the code, not what the PRD planned.
 
-Read every source file. Document what's actually in the code, not what the PRD planned.`,
+Create or update these documents:
+
+## 1. ARCHITECTURE.md
+- Final file structure (every file, organized by directory)
+- Real API endpoints (method, path, request/response)
+- Database schema (tables, fields, types)
+- Component tree (React components with props and parent-child relationships)
+
+## 2. CONVENTIONS.md
+- Naming patterns (files, functions, variables, endpoints)
+- Import/export styles
+- Error handling approach
+- State management patterns
+- Testing patterns
+
+## 3. CLAUDE.md
+- Add "## Codebase Map" section with project summary
+- Key directories and what they contain
+- How to run the project (install, dev, build, test)
+- Common gotchas and known issues
+
+## 4. SPEC_CURRENT.md — Architectural Sketches (REQUIRED)
+This is the most important deliverable. Create detailed ASCII wireframe sketches.
+
+### Per-Page Wireframe Sketches
+For EVERY page/view in the application, create a detailed ASCII wireframe:
+
+\`\`\`
+## Page: [PageName] (/route)
+
++-----------------------------------------------------+
+|  [Logo]  NavItem1  NavItem2          [UserMenu]      |
++----------+------------------------------------------+
+|          |                                           |
+| Sidebar  |  +- Section Title ----------------------+ |
+|          |  | [Component description]              | |
+| - Link1  |  | [Interactive elements labeled]       | |
+| - Link2  |  +-------------------------------------+ |
+|          |                                           |
++----------+------------------------------------------+
+|  Footer: Links | Copyright                           |
++-----------------------------------------------------+
+
+Components on this page:
+- ComponentName (shared/local) - description, API endpoint it uses
+- ...
+
+State:
+- Hook/context that drives this page
+- Key query keys or state variables
+\`\`\`
+
+### Include for each sketch:
+1. ASCII box layout showing every major section with approximate proportions
+2. Component labels — what React component renders each section
+3. Interactive elements — buttons, forms, toggles, dropdowns with their function
+4. Data sources — which API endpoints feed which sections
+5. Shared components — mark which appear on multiple pages (navbar, sidebar, footer)
+6. State notes — hooks, context, query keys that drive the page
+
+### Route Map
+| Path | Page Component | Auth Required | Layout |
+|------|---------------|---------------|--------|
+| /    | ...           | ...           | ...    |
+
+### Component Inventory
+| Component | File | Used On | Props | Shared |
+|-----------|------|---------|-------|--------|
+| ...       | ...  | ...     | ...   | ...    |
+
+### Decisions Made
+Document architectural decisions made during the build:
+- Why certain patterns were chosen over alternatives
+- Trade-offs that were accepted
+- Anything a future agent needs to know before making changes
+
+{build_rules}`,
   },
 ]
 

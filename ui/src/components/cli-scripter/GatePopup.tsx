@@ -18,7 +18,8 @@ import { Layers, Wrench, Hammer } from 'lucide-react'
 export const NEW_BUILD_PREFIX = `MODE: NEW BUILD
 Design the full architecture from scratch. Define file structure, naming conventions, testing framework, DB schema.
 Create all files and infrastructure. Follow the architect's plan exactly.
-Full documentation: ARCHITECTURE.md, CONVENTIONS.md, SPEC_CURRENT.md.
+Full documentation: ARCHITECTURE.md, CONVENTIONS.md, SPEC_CURRENT.md with all wireframe sketches.
+Cartographer: Create FULL wireframe sketches for EVERY page, component inventory, route map, decisions log.
 Test everything end-to-end.`
 
 export const EDIT_PATCH_PREFIX = `MODE: EDIT / PATCH
@@ -28,7 +29,8 @@ Match existing patterns (imports, naming, indentation).
 Do NOT create new pages unless explicitly told to.
 Do NOT restructure working code for style.
 Focus testing on changed features + regression on adjacent features.
-Update existing docs only. Add "Changes Made" section.`
+Update existing docs only. Add "Changes Made" section.
+Cartographer: Only update sketches for CHANGED pages. Add "Last Updated" timestamp to modified sketches. Do NOT delete old sketches — move removed pages to "Archived Pages" section.`
 
 // ---------------------------------------------------------------------------
 // Types

@@ -4,10 +4,11 @@ Pipeline:
   [1] filter_and_validate()       [ROBOT]
   [2] classify_step()             [ROBOT]
   [3] detect_apis()               [ROBOT]
-  [4] extract_user_variables()    [ROBOT]
-  [5] compute_input_source()      [ROBOT]
-  [6] convert_prompts()           [AGENT] — Claude Sonnet rewrites prompts
-  [7] assemble_blueprint()        [ROBOT]
+  [4] research_api_pricing()      [AGENT] — Sonnet + WebSearch researches pricing
+  [5] extract_user_variables()    [ROBOT]
+  [6] compute_input_source()      [ROBOT]
+  [7] convert_prompts()           [AGENT] — Claude Sonnet rewrites prompts
+  [8] assemble_blueprint()        [ROBOT]
 """
 
 import logging
@@ -453,7 +454,8 @@ async def generate_blueprint(
     """Generate a complete SheetBlueprint from extracted steps.
 
     Orchestrates the full pipeline:
-    filter → classify → detect APIs → extract vars → convert prompts → assemble.
+    filter → classify → detect APIs → research pricing → extract vars →
+    convert prompts → assemble.
     """
     if on_progress:
         on_progress("Filtering and validating steps...")
@@ -472,6 +474,29 @@ async def generate_blueprint(
     detected_api_list = detect_apis(valid_steps)
     if on_progress:
         on_progress(f"Detected {len(detected_api_list)} API{'s' if len(detected_api_list) != 1 else ''}")
+
+    # [AGENT] API pricing research — Sonnet + WebSearch with static DB fallback.
+    # Runs after detection so we know which APIs to research. Errors are non-fatal;
+    # if the entire research step fails, api_research stays None on the blueprint.
+    api_research_result = None
+    if detected_api_list:
+        try:
+            from .api_research import research_api_pricing
+
+            if on_progress:
+                on_progress(f"Researching pricing for {len(detected_api_list)} APIs...")
+            api_research_result = await research_api_pricing(
+                detected_apis=detected_api_list,
+                progress_callback=on_progress,
+            )
+            if on_progress:
+                on_progress(
+                    f"API research complete ({api_research_result.research_duration_seconds:.1f}s)"
+                )
+        except Exception as e:
+            logger.warning("API pricing research failed (non-fatal): %s", e)
+            if on_progress:
+                on_progress("API pricing research failed — continuing without it")
 
     user_variables = extract_user_variables(valid_steps)
     if on_progress:
@@ -506,6 +531,10 @@ async def generate_blueprint(
         ingestion_source=ingestion_source,
         source_prd_id=source_prd_id,
     )
+
+    # Attach API research results to the blueprint (if research succeeded)
+    if api_research_result is not None:
+        blueprint.api_research = api_research_result
 
     if on_progress:
         on_progress(f"Blueprint complete: {len(blueprint.chain_config)} chain rows")

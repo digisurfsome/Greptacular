@@ -6,6 +6,8 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
+from ..services.api_research import BlueprintAPIResearch
+
 # ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
@@ -152,6 +154,12 @@ class SheetBlueprint(BaseModel):
 
     theme: Optional[ThemeConfig] = Field(default=None, description="Selected theme")
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+    # API pricing research (None if research was skipped or failed entirely)
+    api_research: Optional[BlueprintAPIResearch] = Field(
+        default=None,
+        description="Pricing research results for detected APIs",
+    )
 
     # PRD input path additions
     ingestion_source: IngestionSource = Field(default=IngestionSource.YOUTUBE)

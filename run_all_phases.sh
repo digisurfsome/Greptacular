@@ -100,14 +100,16 @@ YOUR BRIEF (implement everything in this document):
 ${BRIEF_CONTENT}
 
 INSTRUCTIONS:
-1. Read the full PRD at docs/prd-video-to-tool-factory.md for additional context
-2. Read the existing code files mentioned in 'EXISTING CODE REFERENCES' section of your brief
-3. Create all files listed in 'FILES TO CREATE/MODIFY'
-4. Every function labeled [ROBOT] must be pure Python/TypeScript with ZERO LLM calls
-5. Every function labeled [AGENT] must include error handling, retries, and output validation
-6. Run the test plan at the end to verify everything works
-7. Run ruff check on Python files and npm run lint + npm run build on UI files
-8. If tests fail, fix the issues before finishing
+1. Read the existing code files mentioned in 'EXISTING CODE REFERENCES' section of your brief
+2. Create all files listed in 'FILES TO CREATE/MODIFY'
+3. Every function labeled [ROBOT] must be pure Python/TypeScript with ZERO LLM calls
+4. Every function labeled [AGENT] must include error handling, retries, and output validation
+5. Run the test plan at the end to verify everything works
+6. Run ruff check on Python files and npm run lint + npm run build on UI files
+7. If tests fail, fix the issues before finishing
+8. When all tests pass, commit ALL your changes to git with a descriptive message. Stage only the files you created or modified — do not use 'git add -A'. Use this format:
+   git commit -m 'feat(tool-factory): Agent ${AGENT_NUM} — [short description of what was built]'
+9. Do NOT push to remote — just commit locally
 
 CRITICAL: Stay under 50% context window (100k tokens). If you're running low, commit what you have and note what's remaining."
 
@@ -262,8 +264,13 @@ log_info "Logs: ${LOG_DIR}/agent-*_${TIMESTAMP}.log"
 echo ""
 echo "Next steps:"
 echo "  1. Review the build logs for any warnings"
-echo "  2. Run the full test suite:"
+echo "  2. Check git log for the 4 commits:"
+echo "     git log --oneline -6"
+echo "  3. Run the full test suite:"
 echo "     python -m pytest tests/test_tool_factory*.py tests/test_sheet*.py tests/test_batch*.py -v"
 echo "     cd ui && npm run lint && npm run build"
-echo "  3. Deploy: cd ui && npm run build && git push"
+echo "  4. Push everything to remote:"
+echo "     git push origin main"
+echo "  5. Deploy to live:"
+echo "     cd C:/Users/lober/Greptacular && git pull origin main --no-edit"
 echo ""

@@ -22,6 +22,10 @@
 
 set -euo pipefail
 
+# ─── Auth Fix ────────────────────────────────────────────────────────────────
+# Unset API key so Claude CLI uses the Max subscription instead of API credits
+unset ANTHROPIC_API_KEY 2>/dev/null || true
+
 # ─── Config ──────────────────────────────────────────────────────────────────
 PROJECT_DIR="C:/Users/lober/GitHub/Greptacular - AutoForge Build/Greptacular"
 BRIEFS_DIR="${PROJECT_DIR}/docs/agent-briefs"

@@ -151,6 +151,9 @@ def _generate_script_content(
 # ===========================================
 set -e
 
+# Use Max subscription, not API credits
+unset ANTHROPIC_API_KEY 2>/dev/null || true
+
 PROJECT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$PROJECT_DIR"
 
@@ -232,6 +235,9 @@ fi''')
 # Total steps: {total}
 # ===========================================
 set -e
+
+# Use Max subscription, not API credits
+unset ANTHROPIC_API_KEY 2>/dev/null || true
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TOTAL_STEPS={total}

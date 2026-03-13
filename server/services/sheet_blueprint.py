@@ -519,11 +519,9 @@ async def _ai_consulting_assessment(
         for i, s in enumerate(steps)
     )
 
-    prompt = f"""You are a senior consultant evaluating a strategy extracted from a YouTube video.
+    prompt = f"""You are a senior business consultant AND automation strategist evaluating a strategy extracted from a YouTube video. You're not just evaluating — you're ADDING to the equation. You've studied more business strategy, marketing, funnels, and automation than any human ever could. Use that knowledge.
 
-MISSION CONTEXT: This tool exists to simplify the ideas in videos into the most automated,
-least-friction, easiest-to-template strategy that can run on autopilot. The user wants to know:
-Can I template this? Can I run it regularly with minimal effort? How close to autopilot can this get?
+MISSION CONTEXT: This tool simplifies video ideas into the most automated, least-friction, easiest-to-template strategy that can run on autopilot. Think end-to-end: from conception of what needs to be produced, all the way through to the conversion — the sale, the lead, whatever the end goal is.
 
 Plan: "{project_name}"
 Steps: {metrics['total_steps']} total ({metrics['automated_steps']} automated, {metrics['manual_steps']} require human input)
@@ -536,20 +534,36 @@ Variables user must provide: {', '.join(metrics['user_variables']) or 'None'}
 Step breakdown:
 {step_summary}
 
-Write a 2-3 paragraph consulting assessment covering:
-1. **Autopilot potential**: How close can this get to running on autopilot? What parts can be fully templated and reused? What still needs human touch each time?
-2. **Simplification opportunities**: Where can steps be combined, removed, or automated further? What's the minimum viable version that still delivers the core value?
-3. **Implementation path**: What's the fastest way to get this running as a repeatable template? Flag any friction points or gotchas.
+Write your assessment in these sections. Use markdown headers (##) for each:
 
-VALUE FRAMEWORK: Content generation, copy creation, and framework building via AI are HIGH-value automation — they save real hours. Don't dismiss workflows just because they don't call external APIs. A templated strategy that generates tailored content on demand IS automation. Rate ideas on how repeatable and low-friction they can become, not on engineering complexity.
+## Assessment
+2-3 sentences. How good is this idea as a business play? How close to autopilot can it get? Don't hold back — if it's brilliant, say so. If it has gaps, name them.
 
-Be direct. No fluff. Plain language — the reader is NOT a coder."""
+## Simplification & Automation
+Where can steps be combined, removed, or automated further? What's the minimum viable version that delivers the core value with the least friction? Think templates, AI content generation, batch processing.
 
-    system = "You are a direct, no-nonsense automation strategist. You evaluate how close a plan can get to autopilot — templatable, repeatable, minimal friction. Short paragraphs, plain language."
+## AI Two Cents
+THIS IS THE MOST IMPORTANT SECTION. Add YOUR ideas to make this strategy better. Think like a business consultant who's seen thousands of strategies across every industry. What would YOU add?
+- What angles is the video missing?
+- What would make this 10x more effective as a business play?
+- Think end-to-end: conception → production → distribution → conversion
+- Are there monetization angles, funnel improvements, or audience-building tactics that would amplify the results?
+- Be specific and actionable — not generic advice. Tailor every suggestion to THIS specific strategy.
+
+Give 3-5 concrete ideas, numbered. These should be the kind of ideas that make someone go "damn, I didn't think of that." You know more about business strategy than the reader does — prove it.
+
+## Quick-Start Path
+What's the fastest way to get version 1 running as a repeatable template? 3-5 bullet points. Focus on "do this TODAY" energy, not theory.
+
+VALUE FRAMEWORK: Content generation, copy creation, and framework building via AI are HIGH-value automation — they save real hours. Don't dismiss workflows just because they don't call external APIs. A templated strategy that generates tailored content on demand IS automation. Rate ideas on how repeatable and low-friction they can become, not on engineering complexity. Lead magnets, trust-building funnels, and "give away the sauce" strategies are often the BEST business plays — evaluate them as such.
+
+Be direct. No fluff. Plain language — the reader is NOT a coder. Talk like a senior business partner, not a cautious analyst."""
+
+    system = "You are a senior business consultant and automation strategist. You don't just evaluate plans — you make them better. You think end-to-end from idea to conversion. You've seen every business model, every funnel, every monetization strategy. You give your honest two cents and your ideas are consistently better than what most humans come up with. Short paragraphs, plain language, no corporate speak."
 
     processor = YTProcessor(model="claude-sonnet-4-6")
     try:
-        result = await processor._call_via_sdk(system, prompt, "claude-sonnet-4-6", timeout=60)
+        result = await processor._call_via_sdk(system, prompt, "claude-sonnet-4-6", timeout=90)
         return result.strip()
     except Exception as e:
         logger.warning("AI consulting assessment failed: %s", e)

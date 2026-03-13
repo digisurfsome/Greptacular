@@ -26,6 +26,7 @@ import {
   Layers,
   Search,
 } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { generateBlueprintStream, type GenerateBlueprintParams, type EarlyConsultingReport } from '@/lib/api'
@@ -298,9 +299,9 @@ function ConsultingReportPanel({ report }: { report: EarlyConsultingReport }) {
         {/* AI Assessment */}
         {assessment && (
           <div className="space-y-1.5">
-            <span className="text-xs font-medium text-muted-foreground">AI Assessment</span>
-            <div className="text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap">
-              {assessment}
+            <span className="text-xs font-medium text-muted-foreground">AI Consulting Assessment</span>
+            <div className="prose prose-sm max-w-none text-foreground/80 [&_h2]:text-sm [&_h2]:font-bold [&_h2]:text-foreground [&_h2]:mt-4 [&_h2]:mb-2 [&_h2]:first:mt-0 [&_ol]:pl-5 [&_ol]:space-y-1 [&_ul]:pl-5 [&_ul]:space-y-1 [&_p]:leading-relaxed [&_strong]:text-foreground">
+              <ReactMarkdown>{assessment}</ReactMarkdown>
             </div>
           </div>
         )}

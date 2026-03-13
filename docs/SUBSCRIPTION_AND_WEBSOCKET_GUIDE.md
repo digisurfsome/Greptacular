@@ -41,7 +41,7 @@ Every Claude call in the entire system goes through this function. Here's what i
 | Component | Auth Method | Calls `get_effective_sdk_env()`? |
 |---|---|---|
 | Coding Agent (`client.py`) | Subscription (`force_subscription=True`) | Yes, indirectly via `ClaudeSDKClient` |
-| YT Lab (`yt_processor.py`, `yt_discovery.py`) | SDK first → API key fallback | Yes — `_call_via_sdk()` uses it |
+| YT Lab (`yt_processor.py`, `yt_discovery.py`) | **Subscription ONLY** (`force_subscription=True`) — NO fallback | Yes — `_call_via_sdk()` uses it |
 | Workspace Chat | Multi-provider (Claude/Codex/Gemini) | Yes, via `workspace_chat_session` |
 | Assistant Chat | Claude SDK subprocess | Yes |
 | DunkStack | NONE — doesn't make API calls | No |

@@ -351,23 +351,51 @@ class YTProcessor:
 
         from registry import get_effective_sdk_env
 
+        t0 = time.time()
+
         system_cli = shutil.which("claude")
         if not system_cli:
             raise RuntimeError("Claude CLI not found on PATH")
 
         sdk_env = get_effective_sdk_env(force_subscription=True)
 
-        # Verify subscription is active — API key must be cleared
-        if sdk_env.get("ANTHROPIC_API_KEY"):
+        # ============================================================
+        # SUBSCRIPTION BILLING VERIFICATION — SCREAMING LOUD ON PURPOSE
+        # ============================================================
+        api_key_val = sdk_env.get("ANTHROPIC_API_KEY", "(NOT SET)")
+        auth_token_val = sdk_env.get("ANTHROPIC_AUTH_TOKEN", "(NOT SET)")
+        has_api_key = bool(api_key_val and api_key_val not in ("", "(NOT SET)"))
+        has_auth_token = bool(auth_token_val and auth_token_val not in ("", "(NOT SET)"))
+
+        if has_api_key:
             logger.error(
-                "!!! BUG: force_subscription=True but ANTHROPIC_API_KEY is set: '%s'. "
-                "This means get_effective_sdk_env is broken. !!!",
-                sdk_env["ANTHROPIC_API_KEY"][:10] + "..." if sdk_env["ANTHROPIC_API_KEY"] else "(empty)",
+                "🚨🚨🚨 BUG! force_subscription=True but ANTHROPIC_API_KEY='%s' "
+                "— THIS WILL BURN API CREDITS! get_effective_sdk_env() is broken! 🚨🚨🚨",
+                api_key_val[:10] + "..." if api_key_val else "(empty)",
             )
+        else:
+            logger.info(
+                "✅ SUBSCRIPTION VERIFIED: ANTHROPIC_API_KEY='%s' (cleared=good), "
+                "ANTHROPIC_AUTH_TOKEN='%s' (cleared=good). "
+                "CLI will use ~/.claude/.credentials.json → $0 cost.",
+                api_key_val, auth_token_val,
+            )
+
+        # Check credentials file exists
+        import pathlib
+        creds_path = pathlib.Path.home() / ".claude" / ".credentials.json"
+        if creds_path.exists():
+            logger.info("✅ Credentials file found: %s", creds_path)
+        else:
+            logger.warning(
+                "⚠️ ~/.claude/.credentials.json NOT FOUND — "
+                "subscription auth may fail! Run 'claude login' first."
+            )
+
+        t1 = time.time()
         logger.info(
-            ">>> SUBSCRIPTION AUTH CONFIRMED: ANTHROPIC_API_KEY='%s', ANTHROPIC_AUTH_TOKEN='%s' <<<",
-            sdk_env.get("ANTHROPIC_API_KEY", "(not set)"),
-            sdk_env.get("ANTHROPIC_AUTH_TOKEN", "(not set)"),
+            "⏱️ Auth setup took %.1fs | API key present: %s | Auth token present: %s",
+            t1 - t0, has_api_key, has_auth_token,
         )
 
         # Use a temp directory as cwd -- we don't need file access
@@ -386,25 +414,47 @@ class YTProcessor:
             )
         )
 
+        t2 = time.time()
+        logger.info("⏱️ ClaudeSDKClient created in %.1fs", t2 - t1)
+
         effective_timeout = timeout if timeout is not None else self.SDK_TIMEOUT_SECONDS
         logger.info(
-            "SDK call starting: model=%s, payload=%d chars, timeout=%ds",
+            "🚀 SDK call starting: model=%s, payload=%d chars, timeout=%ds",
             model, len(user_message), effective_timeout,
         )
 
         async def _run_sdk() -> str:
+            sdk_t0 = time.time()
+            logger.info("⏱️ [SDK] Entering client context (spawning CLI subprocess)...")
             await client.__aenter__()
-            await client.query(user_message)
+            sdk_t1 = time.time()
+            logger.info("⏱️ [SDK] CLI subprocess ready in %.1fs", sdk_t1 - sdk_t0)
 
+            logger.info("⏱️ [SDK] Sending query (%d chars)...", len(user_message))
+            await client.query(user_message)
+            sdk_t2 = time.time()
+            logger.info("⏱️ [SDK] Query sent in %.1fs", sdk_t2 - sdk_t1)
+
+            logger.info("⏱️ [SDK] Waiting for response from %s (subscription billing)...", model)
             full_text = ""
-            msg_types_seen = []
+            msg_types_seen: list[str] = []
             sdk_error: str | None = None
+            first_content_time: float | None = None
+
             async for msg in client.receive_response():
                 msg_type = type(msg).__name__
                 msg_types_seen.append(msg_type)
+
                 if msg_type in ("RateLimitEvent", "rate_limit_event"):
+                    logger.info("⏱️ [SDK] Rate limit event at %.1fs (informational, skipping)", time.time() - sdk_t2)
                     continue  # Skip SDK informational events
                 elif msg_type == "AssistantMessage" and hasattr(msg, "content"):
+                    if first_content_time is None:
+                        first_content_time = time.time()
+                        logger.info(
+                            "⏱️ [SDK] First content arrived in %.1fs (time-to-first-token from query)",
+                            first_content_time - sdk_t2,
+                        )
                     for block in msg.content:
                         block_type = type(block).__name__
                         if block_type == "TextBlock" and hasattr(block, "text"):
@@ -416,13 +466,23 @@ class YTProcessor:
                     if is_error:
                         sdk_error = f"SDK ResultMessage reported an error (model={model})"
                     logger.info(
-                        "YT processor SDK ResultMessage: is_error=%s, model=%s",
-                        is_error, getattr(msg, "model", "unknown"),
+                        "⏱️ [SDK] ResultMessage: is_error=%s, model=%s, total_time=%.1fs",
+                        is_error, getattr(msg, "model", "unknown"), time.time() - sdk_t0,
                     )
 
+            sdk_done = time.time()
             logger.info(
-                "YT processor SDK response: %d chars, msg_types=%s, preview=%.200s",
-                len(full_text), msg_types_seen, full_text[:200],
+                "✅ [SDK] DONE: %d chars in %.1fs total | "
+                "Subprocess start: %.1fs | Query send: %.1fs | "
+                "Time-to-first-token: %.1fs | Streaming: %.1fs | "
+                "msg_types=%s",
+                len(full_text),
+                sdk_done - sdk_t0,
+                sdk_t1 - sdk_t0,
+                sdk_t2 - sdk_t1,
+                (first_content_time - sdk_t2) if first_content_time else -1,
+                (sdk_done - first_content_time) if first_content_time else -1,
+                msg_types_seen,
             )
 
             if sdk_error:
@@ -533,14 +593,20 @@ class YTProcessor:
         # See docs/SUBSCRIPTION_AND_WEBSOCKET_GUIDE.md
         # =====================================================================
         log("SUBSCRIPTION BILLING: Calling Claude SDK (no API key, no fallback)...")
+        log(f"Using {use_model} via subscription (force_subscription=True)")
         logger.info(
             ">>> SUBSCRIPTION BILLING: Processing video %s via SDK (force_subscription=True). "
             "If this fails, it fails — NO API key fallback. <<<",
             video_id,
         )
+        sdk_start = time.time()
         raw_text = await self._call_via_sdk(STRATEGY_EXTRACTION_PROMPT, user_message, use_model)
-        log("SUBSCRIPTION BILLING: Claude SDK responded — $0 API cost")
-        logger.info(">>> SUBSCRIPTION BILLING: Video %s processing complete — $0 API cost <<<", video_id)
+        sdk_elapsed = time.time() - sdk_start
+        log(f"SUBSCRIPTION BILLING: Claude SDK responded in {sdk_elapsed:.1f}s — $0 API cost")
+        logger.info(
+            ">>> SUBSCRIPTION BILLING: Video %s complete in %.1fs — $0 API cost <<<",
+            video_id, sdk_elapsed,
+        )
 
         elapsed = time.time() - start_time
 

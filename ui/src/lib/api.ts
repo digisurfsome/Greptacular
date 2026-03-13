@@ -92,6 +92,9 @@ import type {
   TFThemeConfig,
   TFPRDExtractionResult,
   TFToolStatus,
+  TokenBudgetStatus,
+  TokenBudgetHistory,
+  TokenBudgetSettings,
 } from './types'
 
 const API_BASE = '/api'
@@ -2936,4 +2939,35 @@ export async function fetchToolUsageHistory(
 ): Promise<{ history: TFMonthlyUsage[] }> {
   const params = months ? `?months=${months}` : ''
   return fetchJSON(`/tool-factory/usage/history${params}`)
+}
+
+// ============================================================================
+// Token Budget API
+// ============================================================================
+
+export async function getTokenBudgetStatus(): Promise<TokenBudgetStatus> {
+  return fetchJSON('/token-budget/status')
+}
+
+export async function getTokenBudgetHistory(limit?: number): Promise<TokenBudgetHistory> {
+  const params = limit ? `?limit=${limit}` : ''
+  return fetchJSON(`/token-budget/history${params}`)
+}
+
+export async function calibrateTokenBudget(windowType: string, notes?: string): Promise<{ id: number; status: string }> {
+  return fetchJSON('/token-budget/calibrate', {
+    method: 'POST',
+    body: JSON.stringify({ window_type: windowType, notes }),
+  })
+}
+
+export async function getTokenBudgetSettings(): Promise<TokenBudgetSettings> {
+  return fetchJSON('/token-budget/settings')
+}
+
+export async function updateTokenBudgetSettings(settings: Record<string, string>): Promise<TokenBudgetSettings> {
+  return fetchJSON('/token-budget/settings', {
+    method: 'PUT',
+    body: JSON.stringify({ settings }),
+  })
 }

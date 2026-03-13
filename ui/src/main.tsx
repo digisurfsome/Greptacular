@@ -13,6 +13,7 @@ import { MonitorPage } from './pages/MonitorPage'
 import { SEOToolsPage } from './pages/SEOToolsPage'
 import { CliScripterPage } from './pages/CliScripterPage'
 import { ToolManagerPage } from './components/tool-factory/ToolManagerPage'
+import { TokenBudgetPage } from './pages/TokenBudgetPage'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import './styles/globals.css'
 
@@ -74,6 +75,9 @@ function Root() {
   }
   if (hash === '#/tools' || hash.startsWith('#/tools/')) {
     return <ToolManagerPage />
+  }
+  if (hash === '#/token-budget' || hash.startsWith('#/token-budget/')) {
+    return <TokenBudgetPage />
   }
   return <App />
 }

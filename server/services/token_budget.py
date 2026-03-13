@@ -8,7 +8,6 @@ so the owner can see how much of their Anthropic Max subscription is being used.
 
 import logging
 import sqlite3
-import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional

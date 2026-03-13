@@ -2055,3 +2055,56 @@ export interface TFPRDExtractionResult {
   extraction_model: string
   extraction_time: number
 }
+
+// Token Budget types
+export interface TokenBudgetWindow {
+  input_tokens: number
+  output_tokens: number
+  cache_creation_tokens: number
+  cache_read_tokens: number
+  total_tokens: number
+  cost_usd: number
+  duration_seconds: number
+  session_count: number
+}
+
+export interface TokenBudgetStatus {
+  five_hour: TokenBudgetWindow
+  weekly: TokenBudgetWindow
+  monthly: TokenBudgetWindow
+  timestamp: string
+}
+
+export interface TokenBudgetSession {
+  id: number
+  timestamp: string
+  session_type: string
+  model: string
+  input_tokens: number
+  output_tokens: number
+  cache_creation_tokens: number
+  cache_read_tokens: number
+  total_tokens: number
+  cost_usd: number
+  duration_seconds: number
+  project_name: string | null
+  phase: string | null
+  source: string
+}
+
+export interface TokenBudgetCalibration {
+  id: number
+  timestamp: string
+  window_type: string
+  tracked_total: number
+  notes: string | null
+}
+
+export interface TokenBudgetHistory {
+  sessions: TokenBudgetSession[]
+  calibrations: TokenBudgetCalibration[]
+}
+
+export interface TokenBudgetSettings {
+  [key: string]: string
+}

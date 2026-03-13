@@ -28,10 +28,11 @@ import { DependencyGraph } from './components/DependencyGraph'
 import { KeyboardShortcutsHelp } from './components/KeyboardShortcutsHelp'
 import { ThemeSelector } from './components/ThemeSelector'
 import { ResetProjectModal } from './components/ResetProjectModal'
+import { TokenBudgetBadge } from './components/TokenBudgetBadge'
 import { ProjectSetupRequired } from './components/ProjectSetupRequired'
 import { GitActivityWidget } from './components/GitActivityWidget'
 import { getDependencyGraph, startAgent } from './lib/api'
-import { Loader2, Settings, Moon, Sun, RotateCcw, BookOpen, MessageSquare, Layers, LayoutDashboard, FlaskConical, Monitor, Search, Wrench, Terminal } from 'lucide-react'
+import { Loader2, Settings, Moon, Sun, RotateCcw, BookOpen, MessageSquare, Layers, LayoutDashboard, FlaskConical, Monitor, Search, Wrench, Terminal, Zap } from 'lucide-react'
 import type { Feature } from './lib/types'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -359,6 +360,9 @@ function App() {
                 </>
               )}
 
+              {/* Token Budget Badge — always visible (not project-gated) */}
+              <TokenBudgetBadge />
+
               {/* Build timestamp — hidden on mobile, diagnostic only */}
               <span
                 className="hidden lg:inline text-xs text-amber-400 font-mono font-bold select-all border border-amber-400/50 px-2 py-0.5 rounded"
@@ -444,6 +448,18 @@ function App() {
               >
                 <Terminal size={16} />
                 <span className="hidden sm:inline text-xs">Scripter</span>
+              </Button>
+
+              {/* Token Budget link */}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => { window.location.hash = '#/token-budget' }}
+                title="Token Budget Dashboard"
+              >
+                <Zap size={16} />
+                <span className="hidden sm:inline text-xs">Budget</span>
               </Button>
 
               {/* YT Lab Tools link */}

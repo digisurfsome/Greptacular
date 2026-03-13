@@ -7,14 +7,20 @@ Pipeline:
   [4] research_api_pricing()      [AGENT] — Sonnet + WebSearch researches pricing
   [5] extract_user_variables()    [ROBOT]
   [6] compute_input_source()      [ROBOT]
+  [6.5] early_report              [ROBOT+AGENT] — consulting report emitted via SSE
   [7] convert_prompts()           [AGENT] — Claude Sonnet rewrites prompts
   [8] assemble_blueprint()        [ROBOT]
 """
 
+from __future__ import annotations
+
 import logging
 import re
 import uuid
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from ..services.api_research import BlueprintAPIResearch
 
 from ..models.tool_factory import (
     ChainConfigRow,
@@ -143,15 +149,21 @@ _SYSTEM_VARIABLES = {"previousOutput", "row_number", "total_steps"}
 # ---------------------------------------------------------------------------
 
 def filter_and_validate(steps: list[dict]) -> list[dict]:
-    """[ROBOT] Remove steps with empty title or prompt. Returns valid steps."""
+    """[ROBOT] Remove steps with empty title/description or prompt. Returns valid steps.
+
+    Falls back to 'description' if 'title' is missing (video processor may omit title).
+    """
     valid = []
     for step in steps:
-        title = (step.get("title") or "").strip()
+        title = (step.get("title") or step.get("description") or "").strip()
         prompt = (step.get("prompt") or "").strip()
         if title and prompt:
+            # Backfill title from description if missing so downstream sees it
+            if not (step.get("title") or "").strip() and title:
+                step["title"] = title[:120]  # Cap at reasonable length
             valid.append(step)
         else:
-            logger.debug("Filtered out step (empty title/prompt): %s", step.get("title", "<no title>"))
+            logger.debug("Filtered out step (empty title+desc/prompt): %s", step.get("title", "<no title>"))
     return valid
 
 
@@ -309,7 +321,7 @@ async def convert_single_prompt(
                 PROMPT_CONVERSION_SYSTEM,
                 user_message if attempt == 0 else f"{user_message}\n\nPlease provide the converted prompt.",
                 prompt_model,
-                timeout=60,
+                timeout=120,  # 60s was too tight — CLI startup overhead + Sonnet response
             )
 
             if not result or not result.strip():
@@ -434,6 +446,117 @@ def assemble_blueprint(
 
 
 # ---------------------------------------------------------------------------
+# [ROBOT + AGENT] Consulting Report (emitted before slow prompt conversion)
+# ---------------------------------------------------------------------------
+
+def _build_consulting_metrics(
+    steps: list[dict],
+    detected_apis: list[DetectedAPI],
+    user_variables: list[str],
+    api_research: "BlueprintAPIResearch | None",
+) -> dict:
+    """[ROBOT] Compute data-driven metrics for the consulting report. Zero tokens."""
+    # Count step types
+    type_counts: dict[str, int] = {"manual": 0, "generation": 0, "action": 0, "research": 0}
+    model_counts: dict[str, int] = {"opus": 0, "sonnet": 0, "haiku": 0}
+    for step in steps:
+        stype = classify_step(step).value
+        type_counts[stype] = type_counts.get(stype, 0) + 1
+        model = _normalize_model(step.get("model", "sonnet"))
+        model_counts[model] = model_counts.get(model, 0) + 1
+
+    # Aggregate red flags from API research
+    red_flags: list[str] = []
+    if api_research:
+        for r in api_research.results:
+            red_flags.extend(r.red_flags)
+
+    # Complexity score (1-10)
+    score = 1
+    score += min(len(steps), 3)  # more steps = harder (up to +3)
+    score += min(type_counts.get("action", 0), 2)  # API actions add complexity (+2 max)
+    score += min(type_counts.get("manual", 0), 2)  # manual gates add friction (+2 max)
+    score += 1 if len(detected_apis) >= 3 else 0  # 3+ APIs = complex
+    score += 1 if len(red_flags) >= 2 else 0  # multiple red flags
+    score = min(score, 10)
+
+    # Verdict
+    if score <= 3:
+        verdict = "Simple — straightforward to automate"
+    elif score <= 5:
+        verdict = "Moderate — some setup work needed"
+    elif score <= 7:
+        verdict = "Complex — expect significant configuration"
+    else:
+        verdict = "Very complex — consider simplifying first"
+
+    return {
+        "total_steps": len(steps),
+        "manual_steps": type_counts.get("manual", 0),
+        "automated_steps": len(steps) - type_counts.get("manual", 0),
+        "step_types": type_counts,
+        "model_breakdown": model_counts,
+        "api_count": len(detected_apis),
+        "api_names": [a.service_name for a in detected_apis],
+        "red_flags": red_flags,
+        "user_variables": user_variables,
+        "complexity_score": score,
+        "verdict": verdict,
+        "estimated_monthly_cost": api_research.total_estimated_monthly_cost if api_research else "Unknown",
+    }
+
+
+async def _ai_consulting_assessment(
+    project_name: str,
+    metrics: dict,
+    steps: list[dict],
+) -> str:
+    """[AGENT] Ask Sonnet for a consulting-style assessment of the plan."""
+    from ..services.yt_processor import YTProcessor
+
+    step_summary = "\n".join(
+        f"  {i+1}. [{classify_step(s).value.upper()}] {s.get('title', 'Untitled')}"
+        for i, s in enumerate(steps)
+    )
+
+    prompt = f"""You are a senior consultant evaluating a strategy extracted from a YouTube video.
+
+MISSION CONTEXT: This tool exists to simplify the ideas in videos into the most automated,
+least-friction, easiest-to-template strategy that can run on autopilot. The user wants to know:
+Can I template this? Can I run it regularly with minimal effort? How close to autopilot can this get?
+
+Plan: "{project_name}"
+Steps: {metrics['total_steps']} total ({metrics['automated_steps']} automated, {metrics['manual_steps']} require human input)
+APIs needed: {', '.join(metrics['api_names']) or 'None'}
+Red flags from API research: {'; '.join(metrics['red_flags']) or 'None'}
+Complexity: {metrics['complexity_score']}/10
+Estimated monthly API cost: {metrics['estimated_monthly_cost']}
+Variables user must provide: {', '.join(metrics['user_variables']) or 'None'}
+
+Step breakdown:
+{step_summary}
+
+Write a 2-3 paragraph consulting assessment covering:
+1. **Autopilot potential**: How close can this get to running on autopilot? What parts can be fully templated and reused? What still needs human touch each time?
+2. **Simplification opportunities**: Where can steps be combined, removed, or automated further? What's the minimum viable version that still delivers the core value?
+3. **Implementation path**: What's the fastest way to get this running as a repeatable template? Flag any friction points or gotchas.
+
+VALUE FRAMEWORK: Content generation, copy creation, and framework building via AI are HIGH-value automation — they save real hours. Don't dismiss workflows just because they don't call external APIs. A templated strategy that generates tailored content on demand IS automation. Rate ideas on how repeatable and low-friction they can become, not on engineering complexity.
+
+Be direct. No fluff. Plain language — the reader is NOT a coder."""
+
+    system = "You are a direct, no-nonsense automation strategist. You evaluate how close a plan can get to autopilot — templatable, repeatable, minimal friction. Short paragraphs, plain language."
+
+    processor = YTProcessor(model="claude-sonnet-4-6")
+    try:
+        result = await processor._call_via_sdk(system, prompt, "claude-sonnet-4-6", timeout=60)
+        return result.strip()
+    except Exception as e:
+        logger.warning("AI consulting assessment failed: %s", e)
+        return f"Could not generate AI assessment: {e}"
+
+
+# ---------------------------------------------------------------------------
 # Main Entry Point
 # ---------------------------------------------------------------------------
 
@@ -501,6 +624,32 @@ async def generate_blueprint(
     user_variables = extract_user_variables(valid_steps)
     if on_progress:
         on_progress(f"Found {len(user_variables)} variable{'s' if len(user_variables) != 1 else ''}")
+
+    # [AGENT + ROBOT] Consulting report — emitted before slow prompt conversion
+    if on_progress:
+        on_progress("Building consulting report...")
+
+    consulting_metrics = _build_consulting_metrics(
+        valid_steps, detected_api_list, user_variables, api_research_result,
+    )
+
+    # AI consulting assessment (Sonnet, ~15-30s)
+    if on_progress:
+        on_progress("Getting AI consulting assessment...")
+    ai_assessment = await _ai_consulting_assessment(
+        project_name, consulting_metrics, valid_steps,
+    )
+
+    # Emit early report as structured event (frontend catches this)
+    if on_progress:
+        on_progress({
+            "type": "early_report",
+            "data": {
+                "metrics": consulting_metrics,
+                "assessment": ai_assessment,
+                "api_research": api_research_result.model_dump() if api_research_result else None,
+            },
+        })
 
     # [AGENT] prompt conversion via Haiku (or skip for testing)
     if skip_prompt_conversion:

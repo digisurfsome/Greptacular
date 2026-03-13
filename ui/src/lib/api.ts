@@ -2639,6 +2639,46 @@ export async function generateBlueprint(
   })
 }
 
+/** Consulting report emitted early in the pipeline, before prompt conversion. */
+export interface EarlyConsultingReport {
+  metrics: {
+    total_steps: number
+    manual_steps: number
+    automated_steps: number
+    step_types: Record<string, number>
+    model_breakdown: Record<string, number>
+    api_count: number
+    api_names: string[]
+    red_flags: string[]
+    user_variables: string[]
+    complexity_score: number
+    verdict: string
+    estimated_monthly_cost: string
+  }
+  assessment: string
+  api_research: {
+    results: Array<{
+      service_key: string
+      service_name: string
+      category: string
+      pricing_summary: string
+      pricing_tiers: string[]
+      free_tier: string
+      api_access_cost: string
+      per_unit_cost: string
+      alternatives: Array<{
+        service_name: string
+        pricing_summary: string
+        tradeoff: string
+      }>
+      red_flags: string[]
+      research_source: string
+    }>
+    total_estimated_monthly_cost: string
+    research_duration_seconds: number
+  } | null
+}
+
 /**
  * Stream blueprint generation via SSE. Calls the /generate-stream endpoint
  * which sends real-time progress events from the backend pipeline.
@@ -2646,6 +2686,7 @@ export async function generateBlueprint(
 export async function generateBlueprintStream(
   params: GenerateBlueprintParams,
   onProgress: (message: string, elapsed: number) => void,
+  onEarlyReport?: (report: EarlyConsultingReport) => void,
 ): Promise<{ blueprint: TFSheetBlueprint; tool_id: string }> {
   const response = await fetch(`${API_BASE}/tool-factory/generate-stream`, {
     method: 'POST',
@@ -2683,6 +2724,8 @@ export async function generateBlueprintStream(
         const event = JSON.parse(match[1])
         if (event.type === 'log') {
           onProgress(event.message, event.elapsed)
+        } else if (event.type === 'early_report' && onEarlyReport) {
+          onEarlyReport(event.data)
         } else if (event.type === 'result') {
           result = event.data
         } else if (event.type === 'error') {

@@ -124,15 +124,24 @@ class YTProcessor:
             lines.append(f"[{minutes}:{seconds:02d}] {seg.get('text', '')}")
         return "\n".join(lines)
 
-    # Known key misspellings/variants the model has produced
+    # Known key misspellings/variants the model has produced.
+    # NOTE: Do NOT map "title" → "name" here — steps use "title" as a real field.
+    # The project-level "title"→"name" fix is handled in _fix_project_title().
     _KEY_ALIASES: dict[str, str] = {
         "frame": "name",
         "project_name": "name",
-        "title": "name",
-        "step_name": "name",
+        "step_name": "title",
         "desc": "description",
         "summary": "description",
     }
+
+    @staticmethod
+    def _fix_project_title(result: dict) -> dict:
+        """If the project dict has 'title' instead of 'name', rename it."""
+        project = result.get("project")
+        if isinstance(project, dict) and "title" in project and "name" not in project:
+            project["name"] = project.pop("title")
+        return result
 
     @staticmethod
     def _repair_json(text: str) -> str:
@@ -546,58 +555,12 @@ class YTProcessor:
 
         log(f"Sending to Claude AI ({use_model})...")
 
-        # Try Claude CLI first (uses subscription auth, no API credits).
-        # Falls back to Anthropic SDK if CLI is not available.
-        raw_text = ""
-        try:
-            log("Using Claude SDK (subscription billing)...")
-            raw_text = await self._call_via_sdk(STRATEGY_EXTRACTION_PROMPT, user_message, use_model)
-            log("Claude SDK responded successfully (subscription billing)")
-            logger.info("Video %s: used Claude SDK (subscription billing)", video_id)
-        except Exception as cli_err:
-            logger.info("Claude SDK unavailable (%s), falling back to Anthropic SDK", cli_err)
-            log("SDK unavailable — falling back to API key billing...")
-
-            try:
-                import anthropic
-            except ImportError:
-                raise RuntimeError(
-                    "The anthropic package is required for video processing. "
-                    "Install it with: pip install anthropic"
-                )
-
-            # Build client using the shared auth system (respects Settings UI + .env)
-            client_kwargs: dict = {}
-            try:
-                from registry import get_effective_sdk_env
-                sdk_env = get_effective_sdk_env()
-                api_key = sdk_env.get("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_API_KEY")
-                base_url = sdk_env.get("ANTHROPIC_BASE_URL")
-                if api_key:
-                    client_kwargs["api_key"] = api_key
-                if base_url:
-                    client_kwargs["base_url"] = base_url
-            except Exception:
-                logger.debug("Could not load SDK env from registry, falling back to env vars")
-
-            client = anthropic.Anthropic(**client_kwargs)
-
-            key_source = "API key" if client_kwargs.get("api_key") else "environment"
-            log(f"Calling Anthropic API ({key_source}) — this takes 60-90s...")
-
-            # Run the synchronous Anthropic API call in a thread pool
-            def _call_api():
-                return client.messages.create(
-                    model=use_model,
-                    max_tokens=8192,
-                    system=STRATEGY_EXTRACTION_PROMPT,
-                    messages=[{"role": "user", "content": user_message}],
-                )
-
-            loop = asyncio.get_running_loop()
-            response = await loop.run_in_executor(None, _call_api)
-            raw_text = response.content[0].text if response.content else ""
-            log("Anthropic SDK responded")
+        # Use Claude SDK with subscription auth — never falls back to API key.
+        # This matches how tool-factory/generate works. No API credits burned.
+        log("Using Claude SDK (subscription billing)...")
+        raw_text = await self._call_via_sdk(STRATEGY_EXTRACTION_PROMPT, user_message, use_model)
+        log("Claude SDK responded successfully (subscription billing)")
+        logger.info("Video %s: used Claude SDK (subscription billing)", video_id)
 
         elapsed = time.time() - start_time
 
@@ -617,39 +580,29 @@ class YTProcessor:
                 "Here is the malformed response to fix:\n\n"
                 + raw_text[:6000]
             )
-            # Use the direct API for the retry — it's a short prompt so it's fast
-            # and cheap, and avoids the SDK which may have already proven slow on
-            # the original large payload.
+            # Use SDK for retry too — subscription billing, no API credits.
             try:
-                log("Retrying via API (fast path for short repair prompt)...")
-                retry_text = await self._call_via_api(
+                log("Retrying via SDK (subscription billing)...")
+                retry_text = await self._call_via_sdk(
                     "You are a JSON repair assistant. Output ONLY valid JSON, nothing else.",
                     retry_prompt,
                     use_model,
+                    timeout=120,  # Shorter timeout — retry prompt is small
                 )
                 result = self._parse_ai_response(retry_text)
                 log("Retry succeeded — parsed repaired JSON")
-                logger.info("JSON retry succeeded for video %s (via API)", video_id)
-            except Exception as retry_exc:
-                logger.error("API retry also failed: %s — trying SDK as last resort", retry_exc)
-                # Last resort: try SDK in case the API key isn't configured
-                try:
-                    retry_text = await self._call_via_sdk(
-                        "You are a JSON repair assistant. Output ONLY valid JSON, nothing else.",
-                        retry_prompt,
-                        use_model,
-                        timeout=120,  # Shorter timeout — retry prompt is small
-                    )
-                    result = self._parse_ai_response(retry_text)
-                    log("Retry succeeded via SDK — parsed repaired JSON")
-                    logger.info("JSON retry succeeded for video %s (via SDK fallback)", video_id)
-                except Exception as sdk_retry_exc:
-                    logger.error("All retry attempts failed: API=%s, SDK=%s", retry_exc, sdk_retry_exc)
-                    raise ValueError(
-                        "The AI response had formatting issues that couldn't be automatically repaired. "
-                        "This sometimes happens with complex videos. Please try again — "
-                        "the next response will likely be formatted correctly."
-                    ) from first_exc
+                logger.info("JSON retry succeeded for video %s (via SDK)", video_id)
+            except Exception as sdk_retry_exc:
+                logger.error("SDK retry also failed: %s", sdk_retry_exc)
+                raise ValueError(
+                    "The AI response had formatting issues that couldn't be automatically repaired. "
+                    "This sometimes happens with complex videos. Please try again — "
+                    "the next response will likely be formatted correctly."
+                ) from first_exc
+
+        # Fix project-level "title" → "name" (can't do it in _KEY_ALIASES
+        # because steps legitimately use "title").
+        result = self._fix_project_title(result)
 
         # Detect API error responses — the SDK or Anthropic API may return
         # a valid JSON object with {error, type, request_id} instead of

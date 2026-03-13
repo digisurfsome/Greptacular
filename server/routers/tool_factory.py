@@ -139,9 +139,14 @@ async def generate_blueprint_stream(body: GenerateBlueprintRequest):
     queue: asyncio.Queue = asyncio.Queue()
     start_time = time.time()
 
-    def on_progress(message: str) -> None:
+    def on_progress(message_or_event) -> None:
         elapsed = round(time.time() - start_time, 1)
-        queue.put_nowait({"type": "log", "message": message, "elapsed": elapsed})
+        if isinstance(message_or_event, dict):
+            # Structured event (e.g. early_report) — pass through with elapsed timestamp
+            queue.put_nowait({**message_or_event, "elapsed": elapsed})
+        else:
+            # Simple log message
+            queue.put_nowait({"type": "log", "message": str(message_or_event), "elapsed": elapsed})
 
     async def run_generation() -> None:
         try:

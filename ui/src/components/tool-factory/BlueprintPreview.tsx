@@ -4,12 +4,12 @@
  */
 
 import { useState, useCallback } from 'react'
-import { ArrowLeft, ArrowDown, Check, Pencil, X, Key, Zap } from 'lucide-react'
+import { ArrowLeft, ArrowDown, Check, Pencil, X, Key, Zap, ChevronDown, ChevronRight, AlertTriangle, ExternalLink, DollarSign, Clock, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
-import type { TFSheetBlueprint, TFChainConfigRow, TFStepType } from '@/lib/types'
+import type { TFSheetBlueprint, TFChainConfigRow, TFStepType, TFAPIResearchResult, TFBlueprintAPIResearch } from '@/lib/types'
 
 interface BlueprintPreviewProps {
   blueprint: TFSheetBlueprint
@@ -124,6 +124,258 @@ function StepCard({
   )
 }
 
+/**
+ * Collapsible card for a single API research result showing pricing,
+ * red flags, and cheaper alternatives. Expanded by default when red
+ * flags exist so the user sees warnings immediately.
+ */
+function APIResearchCard({ result }: { result: TFAPIResearchResult }) {
+  const hasRedFlags = result.red_flags.length > 0
+  const [isExpanded, setIsExpanded] = useState(hasRedFlags)
+
+  const isStatic = result.research_source === 'static_database'
+  const isNotFound = result.research_source === 'not_found'
+
+  return (
+    <div className="border-2 border-border rounded-lg overflow-hidden">
+      {/* Clickable header */}
+      <button
+        type="button"
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="w-full flex items-center justify-between p-4 text-left hover:bg-muted/30 transition-colors"
+      >
+        <div className="flex items-center gap-2 flex-wrap">
+          <Search size={14} className="text-muted-foreground shrink-0" />
+          <span className="text-sm font-semibold text-foreground">{result.service_name}</span>
+          <Badge variant="outline" className="text-xs">
+            {result.category}
+          </Badge>
+          {hasRedFlags && (
+            <Badge className="bg-orange-500/10 text-orange-600 border-orange-500/30 text-xs">
+              <AlertTriangle size={10} className="mr-0.5" />
+              {result.red_flags.length} warning{result.red_flags.length > 1 ? 's' : ''}
+            </Badge>
+          )}
+          {isStatic && (
+            <Badge variant="outline" className="text-xs text-muted-foreground">
+              <Clock size={10} className="mr-0.5" />
+              Cached
+            </Badge>
+          )}
+        </div>
+        {isExpanded
+          ? <ChevronDown size={16} className="text-muted-foreground shrink-0" />
+          : <ChevronRight size={16} className="text-muted-foreground shrink-0" />
+        }
+      </button>
+
+      {/* Expanded detail body */}
+      {isExpanded && (
+        <div className="border-t border-border p-4 space-y-4">
+          {/* Pricing details */}
+          <div className="space-y-1.5">
+            <p className="text-sm text-foreground">
+              <span className="font-medium">Pricing:</span>{' '}
+              {result.pricing_summary}
+            </p>
+            <p className="text-sm text-foreground">
+              <span className="font-medium">API Access:</span>{' '}
+              <span className={
+                result.api_access_cost.toLowerCase().includes('free')
+                  ? 'text-green-600'
+                  : 'text-orange-600 font-medium'
+              }>
+                {result.api_access_cost}
+              </span>
+            </p>
+            <p className="text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">Per-use:</span>{' '}
+              {result.per_unit_cost}
+            </p>
+          </div>
+
+          {/* Pricing tiers (if available) */}
+          {result.pricing_tiers.length > 0 && (
+            <div className="space-y-1">
+              <span className="text-xs font-medium text-muted-foreground">Pricing Tiers</span>
+              <ul className="text-xs text-muted-foreground space-y-0.5 list-disc list-inside">
+                {result.pricing_tiers.map((tier, i) => (
+                  <li key={i}>{tier}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Red flags */}
+          {hasRedFlags && (
+            <div className="space-y-1.5">
+              <span className="text-xs font-medium text-orange-600 flex items-center gap-1">
+                <AlertTriangle size={12} />
+                Red Flags
+              </span>
+              <ul className="space-y-1">
+                {result.red_flags.map((flag, i) => (
+                  <li key={i} className="flex items-start gap-2 text-xs text-orange-700">
+                    <span className="text-orange-500 mt-0.5 shrink-0">&#x2022;</span>
+                    {flag}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Alternatives table */}
+          {result.alternatives.length > 0 ? (
+            <div className="space-y-1.5">
+              <span className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                <DollarSign size={12} />
+                Cheaper Alternatives
+              </span>
+              <div className="border border-border rounded-lg overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-muted/50">
+                      <th className="text-left p-2 font-medium text-muted-foreground">Service</th>
+                      <th className="text-left p-2 font-medium text-muted-foreground">Price</th>
+                      <th className="text-left p-2 font-medium text-muted-foreground hidden sm:table-cell">Tradeoff</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.alternatives.map((alt) => (
+                      <tr key={alt.service_name} className="border-t border-border">
+                        <td className="p-2">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="font-medium text-foreground">{alt.service_name}</span>
+                            {alt.free_tier.toLowerCase().startsWith('yes') && (
+                              <span className="text-green-600 text-[10px]">Free tier available</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="p-2 text-muted-foreground">{alt.monthly_cost}</td>
+                        <td className="p-2 text-muted-foreground hidden sm:table-cell">{alt.tradeoff}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground italic">No alternatives found</p>
+          )}
+
+          {/* Static data disclaimer */}
+          {isStatic && (
+            <p className="text-[10px] text-muted-foreground italic">
+              Cached data -- may not reflect current pricing
+            </p>
+          )}
+          {isNotFound && (
+            <p className="text-[10px] text-orange-600 italic">
+              Pricing data could not be retrieved -- verify manually
+            </p>
+          )}
+
+          {/* Action buttons: signup links for main service + alternatives */}
+          <div className="flex flex-wrap gap-2">
+            {result.alternatives.map((alt) => (
+              alt.signup_url && (
+                <a
+                  key={alt.service_name}
+                  href={alt.signup_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                >
+                  <ExternalLink size={10} />
+                  Try {alt.service_name}
+                </a>
+              )
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * API Cost Analysis section for the blueprint preview.
+ * Shows a collapsible card per API with pricing, alternatives, and red flags.
+ * Returns null if no research data is available, hiding the section entirely.
+ */
+function APICostAnalysis({ research }: { research: TFBlueprintAPIResearch }) {
+  const [isSectionExpanded, setIsSectionExpanded] = useState(true)
+  const totalRedFlags = research.results.reduce(
+    (sum, r) => sum + r.red_flags.length, 0
+  )
+
+  // Determine the primary research source for the badge label
+  const hasWebResearch = research.results.some(
+    (r) => r.research_source === 'web_research'
+  )
+  const researchLabel = hasWebResearch ? 'Live research' : 'Cached data'
+
+  return (
+    <Card className="mt-6 border-2">
+      <CardContent className="p-4 space-y-4">
+        {/* Section header */}
+        <button
+          type="button"
+          onClick={() => setIsSectionExpanded(!isSectionExpanded)}
+          className="w-full flex items-center justify-between"
+        >
+          <div className="flex items-center gap-2 flex-wrap">
+            <DollarSign size={16} className="text-foreground" />
+            <h3 className="text-sm font-semibold text-foreground">API Cost Analysis</h3>
+            <Badge variant="outline" className="text-xs">
+              {research.results.length} API{research.results.length !== 1 ? 's' : ''}
+            </Badge>
+            {totalRedFlags > 0 && (
+              <Badge className="bg-orange-500/10 text-orange-600 border-orange-500/30 text-xs">
+                <AlertTriangle size={10} />
+                {totalRedFlags} warning{totalRedFlags !== 1 ? 's' : ''}
+              </Badge>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="text-xs text-muted-foreground">
+              {researchLabel}
+            </Badge>
+            {isSectionExpanded
+              ? <ChevronDown size={14} className="text-muted-foreground" />
+              : <ChevronRight size={14} className="text-muted-foreground" />
+            }
+          </div>
+        </button>
+
+        {isSectionExpanded && (
+          <div className="space-y-4">
+            {/* Total cost summary */}
+            <div className="bg-muted/50 rounded-lg p-3">
+              <p className="text-xs text-muted-foreground">
+                <span className="font-medium text-foreground">Estimated monthly cost: </span>
+                {research.total_estimated_monthly_cost}
+              </p>
+              {research.research_duration_seconds > 0 && (
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  Research completed in {research.research_duration_seconds.toFixed(1)}s
+                </p>
+              )}
+            </div>
+
+            {/* Individual API cards */}
+            <div className="space-y-2">
+              {research.results.map((result) => (
+                <APIResearchCard key={result.service_key} result={result} />
+              ))}
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 export function BlueprintPreview({ blueprint, onConfirm, onBack }: BlueprintPreviewProps) {
   const [editedBlueprint, setEditedBlueprint] = useState(blueprint)
 
@@ -178,6 +430,11 @@ export function BlueprintPreview({ blueprint, onConfirm, onBack }: BlueprintPrev
               )}
             </div>
           ))}
+
+          {/* API Cost Analysis — only rendered when research data is available */}
+          {editedBlueprint.api_research && editedBlueprint.api_research.results.length > 0 && (
+            <APICostAnalysis research={editedBlueprint.api_research} />
+          )}
 
           {/* Detected APIs summary */}
           {editedBlueprint.detected_apis.length > 0 && (

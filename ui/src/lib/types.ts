@@ -1948,6 +1948,40 @@ export interface TFDetectedAPI {
   required_env_vars: string[]
 }
 
+/** A cheaper or comparable alternative to a detected API. */
+export interface TFAPIAlternative {
+  service_name: string
+  category: string
+  pricing_summary: string
+  free_tier: string
+  monthly_cost: string
+  tradeoff: string
+  signup_url: string
+}
+
+/** Research results for a single detected API (pricing, alternatives, red flags). */
+export interface TFAPIResearchResult {
+  service_key: string
+  service_name: string
+  category: string
+  pricing_summary: string
+  pricing_tiers: string[]
+  free_tier: string
+  api_access_cost: string
+  per_unit_cost: string
+  alternatives: TFAPIAlternative[]
+  red_flags: string[]
+  research_source: string   // "web_research" | "static_database" | "not_found"
+  researched_at: string     // ISO timestamp
+}
+
+/** Complete API research for all detected APIs in a blueprint. */
+export interface TFBlueprintAPIResearch {
+  results: TFAPIResearchResult[]
+  total_estimated_monthly_cost: string
+  research_duration_seconds: number
+}
+
 export interface TFChainConfigRow {
   row_number: number
   step_type: TFStepType
@@ -1981,6 +2015,7 @@ export interface TFSheetBlueprint {
   created_at: string
   ingestion_source: TFIngestionSource
   source_prd_id: string | null
+  api_research?: TFBlueprintAPIResearch | null
 }
 
 export interface TFGeneratedTool {

@@ -61,6 +61,7 @@ from .routers import (
     styles_router,
     swarm_router,
     terminal_router,
+    token_budget_router,
     tool_factory_router,
     tool_themes_router,
     verifications_router,
@@ -341,6 +342,7 @@ app.include_router(verifications_router)
 app.include_router(approvals_router)
 app.include_router(checkpoints_router)
 app.include_router(cli_scripter_router)
+app.include_router(token_budget_router)
 app.include_router(tool_factory_router)
 app.include_router(tool_themes_router)
 

@@ -226,12 +226,35 @@ _load_queue()
 # Claude CLI subprocess helper
 # ---------------------------------------------------------------------------
 
-async def _run_claude_cli(prompt: str, model: str = "sonnet", timeout: int = 600) -> str:
+class CliResult:
+    """Result from a Claude CLI call with token usage info."""
+    __slots__ = ("text", "input_tokens", "output_tokens", "cache_creation_tokens",
+                 "cache_read_tokens", "cost_usd", "duration_seconds", "model")
+
+    def __init__(self, text: str, usage: dict | None = None,
+                 cost_usd: float = 0.0, duration_seconds: float = 0.0,
+                 model: str = "sonnet"):
+        self.text = text
+        self.model = model
+        self.duration_seconds = duration_seconds
+        self.cost_usd = cost_usd
+        u = usage or {}
+        self.input_tokens = u.get("input_tokens", 0) or 0
+        self.output_tokens = u.get("output_tokens", 0) or 0
+        self.cache_creation_tokens = u.get("cache_creation_input_tokens", 0) or 0
+        self.cache_read_tokens = u.get("cache_read_input_tokens", 0) or 0
+
+    @property
+    def total_tokens(self) -> int:
+        return self.input_tokens + self.output_tokens + self.cache_creation_tokens + self.cache_read_tokens
+
+
+async def _run_claude_cli(prompt: str, model: str = "sonnet", timeout: int = 600) -> CliResult:
     """Run Claude CLI in print mode using subscription auth. Zero API credits.
 
-    Strips ANTHROPIC_API_KEY from the subprocess environment so the CLI
-    falls back to subscription OAuth (~/.claude/.credentials.json) instead
-    of burning pay-per-use API credits.
+    Returns a CliResult with the text output and token usage from the JSON
+    response.  Uses ``--output-format json`` so we can capture token counts
+    for the token budget ledger.
     """
     # Build env that forces subscription auth (clears API key + auth token)
     from registry import get_effective_sdk_env
@@ -252,7 +275,7 @@ async def _run_claude_cli(prompt: str, model: str = "sonnet", timeout: int = 600
     start_time = time.time()
 
     proc = await asyncio.create_subprocess_exec(
-        "claude", "-p", "--model", model, "--output-format", "text",
+        "claude", "-p", "--model", model, "--output-format", "json",
         "--dangerously-skip-permissions",
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
@@ -273,11 +296,47 @@ async def _run_claude_cli(prompt: str, model: str = "sonnet", timeout: int = 600
         logger.error("Claude CLI failed (rc=%d): %s", proc.returncode, error_msg)
         raise HTTPException(status_code=502, detail=f"Claude CLI error: {error_msg}")
 
-    result = stdout.decode().strip()
+    elapsed = time.time() - start_time
+    raw = stdout.decode().strip()
+
+    # Parse JSON response — extract text + usage
+    try:
+        data = json.loads(raw)
+        text = data.get("result", raw)
+        usage = data.get("usage")
+        cost_usd = data.get("total_cost_usd", 0.0)
+    except (json.JSONDecodeError, KeyError):
+        # Fallback: treat entire output as plain text (shouldn't happen)
+        logger.warning("_run_claude_cli: Could not parse JSON, using raw output")
+        text = raw
+        usage = None
+        cost_usd = 0.0
+
+    result = CliResult(text=text, usage=usage, cost_usd=cost_usd,
+                       duration_seconds=elapsed, model=model)
     logger.info(
-        "_run_claude_cli: Completed in %.1fs, output_len=%d",
-        time.time() - start_time, len(result),
+        "_run_claude_cli: Completed in %.1fs — in=%d out=%d cache_create=%d cache_read=%d cost=$%.4f",
+        elapsed, result.input_tokens, result.output_tokens,
+        result.cache_creation_tokens, result.cache_read_tokens, result.cost_usd,
     )
+
+    # Auto-log to token budget ledger
+    try:
+        from ..services import token_budget as tb
+        tb.log_session(
+            session_type="cli_scripter",
+            model=model,
+            input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens,
+            cache_creation_tokens=result.cache_creation_tokens,
+            cache_read_tokens=result.cache_read_tokens,
+            cost_usd=result.cost_usd,
+            duration_seconds=elapsed,
+            source="autoforge",
+        )
+    except Exception as e:
+        logger.warning("token_budget: failed to log session: %s", e)
+
     return result
 
 
@@ -587,7 +646,17 @@ async def generate(request: GenerateRequest):
     """Process a single prompt through Claude CLI. Subscription auth — $0."""
     try:
         result = await _run_claude_cli(request.prompt, request.model)
-        return {"result": result}
+        return {
+            "result": result.text,
+            "usage": {
+                "input_tokens": result.input_tokens,
+                "output_tokens": result.output_tokens,
+                "total_tokens": result.total_tokens,
+                "cost_usd": result.cost_usd,
+                "duration_seconds": result.duration_seconds,
+                "model": result.model,
+            },
+        }
     except HTTPException:
         raise
     except Exception as e:
@@ -607,16 +676,16 @@ async def generate_all(request: GenerateAllRequest):
     try:
         # Step 1: Generate PRD
         logger.info("CLI Scripter: Step 1/2 — Generating PRD...")
-        prd_result = await _run_claude_cli(request.prd_prompt, request.model)
-        results["prd"] = prd_result
+        prd_cli = await _run_claude_cli(request.prd_prompt, request.model)
+        results["prd"] = prd_cli.text
 
         # Step 2: Phase Split (inject PRD)
         logger.info("CLI Scripter: Step 2/2 — Splitting into phases...")
         phase_prompt = request.phase_split_prompt_template.replace(
-            "{previous_output}", prd_result
+            "{previous_output}", prd_cli.text
         )
-        phase_result = await _run_claude_cli(phase_prompt, request.model)
-        results["phase_split"] = phase_result
+        phase_cli = await _run_claude_cli(phase_prompt, request.model)
+        results["phase_split"] = phase_cli.text
 
         # Step 3: Script generation is now DETERMINISTIC via /write-scripts endpoint.
         # No LLM call needed — scripts are pure string templates.
@@ -625,7 +694,33 @@ async def generate_all(request: GenerateAllRequest):
             "No LLM tokens used for script assembly."
         )
 
-        return {"results": results, "steps_completed": 2}
+        # Combine token usage from both CLI calls
+        combined_usage = {
+            "input_tokens": prd_cli.input_tokens + phase_cli.input_tokens,
+            "output_tokens": prd_cli.output_tokens + phase_cli.output_tokens,
+            "total_tokens": prd_cli.total_tokens + phase_cli.total_tokens,
+            "cost_usd": prd_cli.cost_usd + phase_cli.cost_usd,
+            "duration_seconds": prd_cli.duration_seconds + phase_cli.duration_seconds,
+            "model": request.model,
+            "steps": {
+                "prd": {
+                    "input_tokens": prd_cli.input_tokens,
+                    "output_tokens": prd_cli.output_tokens,
+                    "total_tokens": prd_cli.total_tokens,
+                    "cost_usd": prd_cli.cost_usd,
+                    "duration_seconds": prd_cli.duration_seconds,
+                },
+                "phase_split": {
+                    "input_tokens": phase_cli.input_tokens,
+                    "output_tokens": phase_cli.output_tokens,
+                    "total_tokens": phase_cli.total_tokens,
+                    "cost_usd": phase_cli.cost_usd,
+                    "duration_seconds": phase_cli.duration_seconds,
+                },
+            },
+        }
+
+        return {"results": results, "steps_completed": 2, "usage": combined_usage}
 
     except HTTPException:
         raise

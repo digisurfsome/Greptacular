@@ -36,6 +36,7 @@ from .settings import router as settings_router
 from .spec_creation import router as spec_creation_router
 from .swarm import router as swarm_router
 from .terminal import router as terminal_router
+from .token_budget import router as token_budget_router
 from .tool_factory import router as tool_factory_router
 from .tool_themes import router as tool_themes_router
 from .verifications import router as verifications_router
@@ -79,6 +80,7 @@ __all__ = [
     "yt_batch_router",
     "execution_router",
     "execution_websocket",
+    "token_budget_router",
     "tool_factory_router",
     "factory_router",
     "factory_presets_router",

@@ -2,7 +2,7 @@
  * Full tool detail view with 4 tabs: Blueprint, Theme, History, Settings.
  */
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { ArrowLeft, ExternalLink, Palette, RefreshCw, Archive, Share2, Pencil, Check, X, Loader2, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -114,17 +114,37 @@ export function ToolDetailView({ toolId, onBack, onOpenThemePicker }: ToolDetail
     }
   }, [tool, deployTool, refetch])
 
-  /** Open Google OAuth flow. */
+  // Poll for Google auth status after opening OAuth window
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const { refetch: recheckGoogleAuth } = useGoogleAuthStatus()
+
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
+  }, [])
+
+  useEffect(() => () => stopPolling(), [stopPolling])
+
+  /** Open Google OAuth flow — auto-redirect, no code pasting. */
   const handleConnectGoogle = useCallback(async () => {
     try {
       const result = await fetchAuthUrl()
       if (result.data?.auth_url) {
         window.open(result.data.auth_url, '_blank')
+        // Poll every 2s to detect when Google auth completes
+        stopPolling()
+        pollRef.current = setInterval(async () => {
+          const status = await recheckGoogleAuth()
+          if (status.data?.authenticated) {
+            stopPolling()
+          }
+        }, 2000)
+        // Stop polling after 2 minutes regardless
+        setTimeout(stopPolling, 120_000)
       }
     } catch (err) {
       setDeployError(err instanceof Error ? err.message : 'Failed to get Google auth URL')
     }
-  }, [fetchAuthUrl])
+  }, [fetchAuthUrl, recheckGoogleAuth, stopPolling])
 
   if (isLoading || !tool) {
     return (

@@ -13,7 +13,7 @@ import time
 from typing import Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from ..models.tool_factory import IngestionSource, ToolStatus
@@ -233,19 +233,56 @@ async def generate_from_prd(body: PRDUploadRequest):
 
 @router.get("/google/auth-url")
 async def google_auth_url():
-    """Get OAuth URL for Google authorization. [ROBOT]"""
+    """Get OAuth URL for Google authorization. [ROBOT]
+
+    Uses localhost redirect so the browser auto-returns the code —
+    no copy-paste needed.
+    """
     from ..services.google_auth import start_oauth_flow
 
     try:
-        url = start_oauth_flow()
+        redirect_uri = "http://localhost:8888/api/tool-factory/google/oauth2callback"
+        url = start_oauth_flow(redirect_uri=redirect_uri)
         return {"auth_url": url}
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
 
+@router.get("/google/oauth2callback")
+async def google_oauth2callback(code: str = "", error: str = ""):
+    """Auto-redirect OAuth callback — Google sends the code here directly. [ROBOT]
+
+    After exchanging the token, redirects the browser back to AutoForge UI.
+    """
+    from ..services.google_auth import handle_oauth_callback
+
+    if error:
+        return HTMLResponse(f"""<html><body style="background:#1a1a2e;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh">
+            <div style="text-align:center"><h2>Google Auth Failed</h2><p>{error}</p>
+            <a href="http://localhost:8888" style="color:#0ff">Back to AutoForge</a></div></body></html>""")
+
+    if not code:
+        return HTMLResponse("""<html><body style="background:#1a1a2e;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh">
+            <div style="text-align:center"><h2>Missing Code</h2><p>No authorization code received.</p>
+            <a href="http://localhost:8888" style="color:#0ff">Back to AutoForge</a></div></body></html>""")
+
+    redirect_uri = "http://localhost:8888/api/tool-factory/google/oauth2callback"
+    success = handle_oauth_callback(code, redirect_uri=redirect_uri)
+
+    if success:
+        # Redirect back to AutoForge — Google is now connected
+        return HTMLResponse("""<html><body style="background:#1a1a2e;color:#0f0;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh">
+            <div style="text-align:center"><h2>✅ Google Connected!</h2><p>Redirecting back to AutoForge...</p></div>
+            <script>setTimeout(() => window.close(), 1500)</script></body></html>""")
+    else:
+        return HTMLResponse("""<html><body style="background:#1a1a2e;color:#f55;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh">
+            <div style="text-align:center"><h2>Token Exchange Failed</h2><p>Could not complete Google authentication.</p>
+            <a href="http://localhost:8888" style="color:#0ff">Back to AutoForge</a></div></body></html>""")
+
+
 @router.post("/google/callback")
 async def google_callback(body: dict):
-    """Handle OAuth callback with authorization code. [ROBOT]"""
+    """Handle OAuth callback with authorization code (legacy manual flow). [ROBOT]"""
     from ..services.google_auth import handle_oauth_callback
 
     code = body.get("code")

@@ -290,15 +290,20 @@ function ProjectCard({
           {!project.thumbnailUrl && <ProjectStatusBadge status={project.status} />}
         </div>
 
-        {/* Niche + source inline */}
-        <div className="flex items-center gap-2 text-[11px] text-muted-foreground truncate">
-          {project.niche && (
-            <span className="flex items-center gap-0.5 shrink-0">
-              <Hash size={10} />
-              {project.niche}
-            </span>
-          )}
-        </div>
+        {/* User's strategy statement — as loud as the title */}
+        {project.description && (
+          <p className="text-sm font-semibold text-foreground/90 leading-snug line-clamp-3">
+            {project.description}
+          </p>
+        )}
+
+        {/* Niche inline */}
+        {project.niche && (
+          <span className="text-[11px] text-muted-foreground flex items-center gap-0.5">
+            <Hash size={10} />
+            {project.niche}
+          </span>
+        )}
 
         {/* Progress + Parse inline */}
         <div className="flex items-center gap-2">

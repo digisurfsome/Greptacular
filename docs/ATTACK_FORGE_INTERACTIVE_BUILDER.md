@@ -211,45 +211,163 @@ The "AI: Fill What You Can" button is key. When clicked:
 
 ---
 
-## The Selection Tool (Lasso / Box Select)
+## The Selection System (Multi-Mode)
 
-This is the key interaction pattern for targeted refinement.
+This is the key interaction pattern for targeted refinement. Three ways to select what you're talking about:
 
-### How It Works
+### Selection Methods
 
-1. You're looking at the canvas — nodes, connections, the whole map
-2. You draw a box (or lasso) around a section you want to work on
-3. A mini chat panel opens, scoped to JUST those selected nodes
-4. You have a conversation with AI about that specific section
-5. AI proposes changes — shown as a preview overlay on the canvas
-6. You approve, modify, or reject
-7. Changes apply, mini chat closes, you're back to the full canvas
+**1. Checkbox Select (Primary)**
+Every node has a checkbox. Click to check nodes — "I'm talking about THESE three things." Fastest, most precise, works at any zoom level.
 
-### Why This Matters
+```
+┌──────────────────────────────────────────────────────┐
+│                                                      │
+│  ☑ YouTube Channel                                   │
+│  ☐ Products & Tools                                  │
+│  ☑ Affiliate Pipeline                                │
+│  ☐ Email System                                      │
+│  ☐ Lead Magnet Funnel                                │
+│                                                      │
+│  Selected: 2 nodes                                   │
+│  [Open Chat About These]                             │
+│                                                      │
+│  "Okay, YouTube connecting to the offer — let's      │
+│   talk about just this part."                        │
+└──────────────────────────────────────────────────────┘
+```
 
-Traditional approach: "AI, change the video production pipeline to use screen recordings instead of rendered video."
+This is the workhorse. Check, check, now you're scoped. The AI knows exactly what you're focused on.
 
-Problem: AI might misinterpret which pipeline, what you mean by screen recordings, how that affects downstream nodes.
+**2. Freehand Lasso**
+Draw a freeform shape around a cluster of nodes on the canvas. Good for grabbing a visual region when nodes are spatially grouped — circle around an area, everything inside gets selected.
 
-Selection tool approach:
-1. **You visually select** the exact nodes you mean (no ambiguity about WHICH part)
-2. **You describe the change** in the context of what you can both see
-3. **AI shows the change as a preview** before applying (no surprises)
-4. **You iterate in-place** if the preview isn't right
+**3. Box Select**
+Click and drag a rectangle. Same as lasso but for rectangular regions.
 
-It's like pointing at something on a whiteboard and saying "change THIS" versus describing it over the phone.
+All three methods do the same thing: scope the conversation to JUST those nodes. The mini chat opens with context about what's selected.
+
+### Why This Matters — The Focus Problem
+
+Human brains can't hold everything at once. AI context windows have limits too. A 200K context window is like 50 LOL compared to the full picture of a complex system. So you HAVE to be able to:
+
+1. **Build the big framework first** — just the top-level nodes
+2. **Drill down and focus** — check a few boxes, now we're ONLY talking about those
+3. **Go deep on the small piece** — full detail conversation
+4. **Pop back up** — uncheck, look at the big picture again
+
+The checkbox/lasso system is what makes this possible. Without it, you're trying to describe "that part over there" in words and hoping the AI gets it. With it, you POINT at the things and say "these."
+
+### Two Levels of Precision
+
+**Rant Mode (Loose)**: Just talk. Stream of consciousness. AI listens and tries to organize your input into the right nodes on the map. Works okay for rough ideas. Gets you 60-70% of the way.
+
+**Selection Mode (Precise)**: Check the specific nodes you're talking about. Now the AI KNOWS what you mean. No ambiguity. Gets you 90-100% of the way. For people who want to guarantee the pieces land in the right place.
+
+Both work. Both are valid. Some people will never use checkboxes — they'll just rant and let AI sort it out. Others will click-click-click "I mean THESE three things" and get surgical precision. The system supports both, but the precision path is there for when it matters.
 
 ### Interaction Modes
 
 | Mode | How | When |
 |------|-----|------|
-| **Select + Chat** | Draw box around nodes, type in mini chat | When you need to explain a change |
+| **Checkbox + Chat** | Check nodes, open scoped chat | When you need to precisely scope what you're discussing |
+| **Freehand Lasso + Chat** | Draw around a region, chat about it | When nodes are visually clustered and you want that whole area |
+| **Box Select + Chat** | Drag rectangle, chat about selection | Same as lasso for rectangular regions |
 | **Direct Drag** | Grab a node, move it, connect to another node | When it's faster to just show it |
 | **Quick Add** | Double-click empty space, type node name | When you know exactly what to add |
 | **Quick Delete** | Select node, press Delete | When something doesn't belong |
 | **Quick Connect** | Drag from one node's port to another | When you need to wire things together |
 | **AI Expand** | Right-click a node → "AI: Break this down" | When you want AI to detail a node's internals |
 | **AI Suggest** | Right-click empty space → "AI: What's missing?" | When you want AI to find gaps |
+
+---
+
+## The Puzzle Piece Pattern
+
+Building a complex system works exactly like building a jigsaw puzzle.
+
+### How Humans Actually Build Puzzles
+
+You don't start top-left and go pixel by pixel. You:
+1. **Dump all the pieces out** — see what you're working with
+2. **Build islands** — the face, the sky, the tree. Little clusters that make sense on their own
+3. **Connect the islands** — slowly the clusters join together into bigger chunks
+4. **Fill in the gaps** — the connecting tissue between the big chunks
+5. **Complete the edges** — frame the whole thing
+
+Attack Forge works the same way:
+
+### Phase A: Dump The Pieces (Big Concepts)
+Throw in everything you know. YouTube channel, products, email system, affiliate pipeline, lead magnets. Just get them on the canvas as top-level nodes. No connections yet. Just pieces on the table.
+
+### Phase B: Build Islands (Detail The Components)
+Pick one node — say YouTube Channel. Drill in. Build out everything IT needs: branding, scripts, video pipeline, SEO, thumbnails, upload automation. That's one island. Complete and self-contained. You KNOW what a YouTube channel needs — YouTube already tells you (channel art, description, videos, playlists, etc.).
+
+Now do the same for Products & Tools. Another island. Same for Email System. Each one gets fully fleshed out on its own.
+
+### Phase C: Connect The Islands (Wire The Relationships)
+Now the interesting part. How does YouTube Channel connect to Affiliate Pipeline? Where does the lead magnet sit between the content and the offer? Where does the email capture happen? You start drawing lines between the islands.
+
+This is where the TWO TYPES OF WORK become clear:
+
+| Type | What You're Doing | Example |
+|------|-------------------|---------|
+| **Component Building** | Filling out what's INSIDE a node | "A YouTube channel needs: logo, banner, description, upload schedule..." |
+| **Connection Wiring** | Defining how nodes RELATE to each other | "The YouTube video links to the landing page, which captures email, which feeds the email sequence..." |
+
+You need the components first — you need to know what the pieces ARE before you can wire them together. But the wiring is where the real system design happens.
+
+### Phase D: Fill The Gaps
+Once islands are connected, you see what's missing. "Wait, there's no step between the YouTube video and the landing page — I need a lead magnet in between." Add the node, wire it in. The puzzle gets more complete.
+
+### Phase E: Lock It In
+When everything connects, every node has its components defined, and the flow makes sense end-to-end — that's when you have a complete blueprint. Now it becomes a template.
+
+---
+
+## The AI Conversation Loop
+
+The AI doesn't just passively receive instructions. It asks questions back.
+
+### How The Back-and-Forth Works
+
+```
+┌──────────────────────────────────────────────────────┐
+│                                                      │
+│   1. HUMAN DESCRIBES (rant, explain, dump ideas)     │
+│          ↓                                           │
+│   2. AI ORGANIZES (sorts rant into nodes/structure)  │
+│          ↓                                           │
+│   3. AI ASKS BACK (clarifying questions)             │
+│      "You mentioned lead magnets — are these free    │
+│       tools, free content, or both?"                 │
+│      "When you say 'my products' — are these         │
+│       the same tools from the Tool Library, or       │
+│       separate offerings?"                           │
+│          ↓                                           │
+│   4. HUMAN ANSWERS (teaches the AI)                  │
+│          ↓                                           │
+│   5. AI ADJUSTS (updates the map with new info)      │
+│          ↓                                           │
+│   6. AI ASKS NEXT LEVEL (deeper questions)           │
+│      "Got it. So the lead magnet is a free tool.     │
+│       Does the user get it immediately, or do they   │
+│       need to opt in with their email first?"        │
+│          ↓                                           │
+│   7. REPEAT until both sides agree it's complete     │
+│                                                      │
+└──────────────────────────────────────────────────────┘
+```
+
+### Three Conversation Outcomes
+
+**A) AI totally gets it** — it asks smart follow-up questions that show it understands. It's essentially filling in the gaps by asking the right questions. The human just confirms or corrects. Fast.
+
+**B) AI mostly gets it** — it's close but asking slightly off-base questions. The human redirects: "No, you're thinking about it wrong. It's more like THIS." The selection tool helps here — check the nodes, point at the part that's wrong.
+
+**C) AI doesn't get it** — it's asking questions way outside the scope. Human says "No, you don't even get what I'm talking about." This is where the human TEACHES the AI. You explain the concept differently, give examples, show connections manually. The AI learns from this context and tries again.
+
+**The key**: The AI teaching itself by asking in-between questions. Each question it asks either confirms it understands or reveals where it's confused. Either way, progress happens. The human doesn't have to anticipate every detail — the AI's questions pull the details out.
 
 ---
 
@@ -260,15 +378,15 @@ Building a full system is NOT a single pass. It's this loop, repeated at every z
 ```
 ┌──────────────────────────────────────────────────────┐
 │                                                      │
-│   1. DESCRIBE (human gives concepts/ideas)           │
+│   1. DESCRIBE (human gives concepts/ideas/rant)      │
 │          ↓                                           │
-│   2. AI BUILDS (first pass — 60-80% right)           │
+│   2. AI ORGANIZES (builds structure from input)      │
 │          ↓                                           │
-│   3. HUMAN REVIEWS (zoom in, look at what AI made)   │
+│   3. AI ASKS (clarifying questions back)             │
 │          ↓                                           │
-│   4. CORRECT (select area, chat, drag, rewire)       │
+│   4. HUMAN ANSWERS (teaches, corrects, confirms)     │
 │          ↓                                           │
-│   5. AI ADJUSTS (applies changes, fills gaps)        │
+│   5. AI ADJUSTS (updates map, fills gaps)            │
 │          ↓                                           │
 │   6. REPEAT until this level is solid                │
 │          ↓                                           │
@@ -283,21 +401,132 @@ Building a full system is NOT a single pass. It's this loop, repeated at every z
 
 **Pass 1 — Objective level**: "I want to make money through affiliate marketing and my own products using automated YouTube content."
 → AI creates: YouTube Channel, Products, Lead Funnel, Email System, Affiliate Pipeline
-→ Human: "Looks right. Let me drill into YouTube Channel."
+→ AI asks: "Are these all running simultaneously, or is there a sequence — like YouTube first, then products?"
+→ Human: "YouTube first to drive traffic. Products come later as upsells."
+→ AI adjusts connections to show sequence. Human approves.
 
 **Pass 2 — Strategy level (YouTube Channel)**: AI breaks it down into Branding, Content Strategy, Video Pipeline, SEO, Upload, Analytics.
-→ Human selects Video Pipeline: "I'm doing AI-generated tutorials, not traditional video. Screen recording style with voiceover."
-→ AI adjusts. Human approves.
+→ Human checks ☑ Video Pipeline: "I'm doing AI-generated tutorials, not traditional video. Screen recording style with voiceover."
+→ AI asks: "Are the screen recordings automated, or is that a manual step for now?"
+→ Human: "Manual for now, with a checkpoint."
+→ AI adjusts, adds Checkpoint node.
 
 **Pass 3 — Process level (Video Pipeline)**: AI breaks down into Script Gen, Voice Gen, Screen Recording, Assembly, Thumbnails.
-→ Human: "Add a B-roll library. And the screen recording isn't automated yet — that's a manual step for now with a CHECKPOINT."
-→ AI adjusts, adds B-roll node and Checkpoint node.
+→ Human: "Add a B-roll library."
+→ AI asks: "Is the B-roll stock footage, AI-generated, or screen recordings you've already made?"
+→ Human: "Mix of stock and my own screen recordings."
+→ AI creates B-Roll Library node with two sub-sources.
 
 **Pass 4 — Component level (Script Gen)**: AI shows the prompt template, the keyword input, the output format.
 → Human: "The prompt needs to focus on tutorial walkthroughs, not reviews. Here's an example of the tone I want: [pastes example]"
-→ AI updates the prompt asset.
+→ AI asks: "Should every script follow this tone, or do you want variations for different video types?"
+→ Human: "Same tone for tutorials. Different tone for comparison videos. Let me add that as a second template."
+→ AI creates two prompt template assets.
 
 Each pass goes deeper. Each pass is a conversation. The system builds layer by layer.
+
+---
+
+## Known Structure Pre-Population
+
+Some modules have **known requirements**. YouTube already defines what a channel needs. An email system already has standard components. When the AI creates one of these well-known module types, it should pre-populate the structure based on what's already known.
+
+### How It Works
+
+When you create a "YouTube Channel" node, AI doesn't start blank. It KNOWS:
+
+```
+YouTube Channel (pre-populated from known structure)
+├── Required by YouTube:
+│   ├── Channel Name
+│   ├── Channel Art (banner 2560x1440)
+│   ├── Profile Picture (800x800)
+│   ├── Channel Description
+│   ├── Channel Keywords
+│   ├── Default Upload Settings
+│   ├── Channel Sections / Playlists
+│   └── About Page + Links
+├── Required for Growth:
+│   ├── Content Calendar
+│   ├── SEO Strategy
+│   ├── Thumbnail Style Guide
+│   ├── Upload Schedule
+│   └── Analytics Setup
+└── Required for Automation:
+    ├── Script Generation Pipeline
+    ├── Video Production Pipeline
+    ├── Upload Automation
+    └── Performance Monitoring
+```
+
+This becomes a TEMPLATE. Once you build it out fully and prove it works, it's locked in as the "YouTube Channel Template." Every future YouTube channel you create starts from this template.
+
+### Template Categories
+
+| Category | What AI Pre-Populates |
+|----------|----------------------|
+| **YouTube Channel** | Channel setup, content pipeline, SEO, automation |
+| **Landing Page** | Headline, CTA, form, thank you page, tracking |
+| **Email Sequence** | Welcome email, value emails, offer email, follow-ups |
+| **Product Launch** | Sales page, checkout, delivery, onboarding |
+| **Lead Magnet** | Opt-in page, delivery mechanism, follow-up sequence |
+| **Affiliate Campaign** | Tracking links, content strategy, promotion calendar |
+
+When these templates exist, you don't rebuild from scratch each time. Clone the template, fill in the specifics, customize what's different. The structure is already proven.
+
+---
+
+## Two Types of Work (Components vs. Connections)
+
+This is a critical distinction. When you're building a system, you're always doing one of two things:
+
+### 1. Component Building (What's INSIDE a node)
+
+"What does this thing need to function?"
+
+- YouTube Channel needs: logo, banner, description, scripts, thumbnails, upload schedule
+- Landing Page needs: headline, subheadline, CTA button, form fields, social proof
+- Email Sequence needs: subject lines, body copy, timing, segmentation rules
+
+This is the **asset checklist** work. Fill out each node's internals.
+
+### 2. Connection Wiring (How nodes RELATE)
+
+"How do the pieces work together? In what sequence? What triggers what?"
+
+- YouTube video → links to → Landing Page
+- Landing Page → captures email → Email System
+- Email System → sends offer → Affiliate Link
+- Affiliate conversion → triggers → Upsell Sequence
+
+This is the **flow design** work. Draw the lines, define the triggers, map the data flow.
+
+### You Need Both
+
+Components without connections = a pile of parts that don't do anything.
+Connections without components = a flowchart with empty boxes.
+
+**Build components first** (you need to know what exists), **then wire connections** (now make them work together). But you'll go back and forth — wiring connections often reveals missing components ("Wait, I need a thank-you page between the opt-in and the email sequence").
+
+### Sequence vs. Concert
+
+Once all nodes are wired, two questions:
+
+**Sequence**: What order do things happen in? What triggers what? (The linear flow)
+**Concert**: What runs in parallel? What's always on? (The simultaneous operations)
+
+```
+SEQUENCE (one triggers the next):
+  Video uploaded → SEO tags applied → Promoted on social → Analytics tracking starts
+
+CONCERT (running simultaneously):
+  Keyword engine (always scanning)
+  Analytics monitor (always tracking)
+  Email nurture (always dripping)
+  Content calendar (always scheduling)
+```
+
+The canvas shows both — sequence as directional arrows, concert as parallel lanes.
 
 ---
 

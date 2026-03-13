@@ -1448,6 +1448,10 @@ export interface YTStrategyProject {
   status: YTProjectStatus
   createdAt: string
   updatedAt: string
+  /** YouTube video thumbnail URL — saved on ingestion */
+  thumbnailUrl?: string
+  /** YouTube channel name — saved on ingestion */
+  channel?: string
 }
 
 // ============================================================================

@@ -17,11 +17,8 @@ import {
   CheckCircle2,
   Circle,
   Link2,
-  Clock,
   Camera,
-  FileText,
   AlertCircle,
-  ExternalLink,
   ChevronDown,
   ChevronUp,
   Youtube,
@@ -38,6 +35,8 @@ interface VideoIngestPanelProps {
   onIngestComplete?: (result: YTIngestResponse) => void
   /** Pre-populate the URL field (e.g. from the project creation form) */
   initialUrl?: string
+  /** Extracted strategy steps — used for the Game Plan view */
+  steps?: Array<{ title: string; description: string; order: number }>
 }
 
 type IngestStep = 'idle' | 'fetching_metadata' | 'fetching_transcript' | 'analyzing' | 'done' | 'error'
@@ -148,7 +147,7 @@ function StatusStep({
 // Main Component
 // ---------------------------------------------------------------------------
 
-export function VideoIngestPanel({ onIngestComplete, initialUrl }: VideoIngestPanelProps): React.JSX.Element {
+export function VideoIngestPanel({ onIngestComplete, initialUrl, steps }: VideoIngestPanelProps): React.JSX.Element {
   const [url, setUrl] = useState(initialUrl ?? '')
   const [captureScreenshots, setCaptureScreenshots] = useState(false)
   const [currentStep, setCurrentStep] = useState<IngestStep>('idle')
@@ -156,6 +155,7 @@ export function VideoIngestPanel({ onIngestComplete, initialUrl }: VideoIngestPa
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [result, setResult] = useState<YTIngestResponse | null>(null)
   const [showTranscript, setShowTranscript] = useState(false)
+  const [showGamePlan, setShowGamePlan] = useState(false)
 
   const isProcessing = currentStep !== 'idle' && currentStep !== 'done' && currentStep !== 'error'
 
@@ -220,6 +220,108 @@ export function VideoIngestPanel({ onIngestComplete, initialUrl }: VideoIngestPa
     setShowTranscript(false)
   }, [])
 
+  // ---- Compact mode: ingestion is complete ----
+  if (result) {
+    return (
+      <div className="rounded-lg border border-border bg-card">
+        {/* Compact header: thumbnail + title + stats inline */}
+        <div className="flex items-center gap-3 px-4 py-3">
+          {result.thumbnail_url && (
+            <img
+              src={result.thumbnail_url}
+              alt={result.title}
+              className="w-24 h-14 rounded border border-border object-cover shrink-0"
+            />
+          )}
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-foreground leading-snug truncate">
+              {result.title}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {result.channel} &middot; {formatDuration(result.duration)} &middot;{' '}
+              {countTranscriptWords(result.transcript).toLocaleString()} words
+              {result.extracted_urls.length > 0 && (
+                <> &middot; {result.extracted_urls.length} links</>
+              )}
+            </p>
+          </div>
+          <button
+            onClick={handleReset}
+            className="shrink-0 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Reset
+          </button>
+        </div>
+
+        {/* Expandable content: links, transcript, game plan */}
+        <div className="border-t border-border px-4 py-2 space-y-2">
+          {/* Action buttons row */}
+          <div className="flex items-center gap-3 flex-wrap">
+            {result.transcript.length > 0 && (
+              <button
+                onClick={() => { setShowTranscript(!showTranscript); if (!showTranscript) setShowGamePlan(false) }}
+                className="flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+              >
+                {showTranscript ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                {showTranscript ? 'Hide Transcript' : 'View Transcript'}
+              </button>
+            )}
+            {steps && steps.length > 0 && (
+              <button
+                onClick={() => { setShowGamePlan(!showGamePlan); if (!showGamePlan) setShowTranscript(false) }}
+                className="flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+              >
+                {showGamePlan ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                {showGamePlan ? 'Hide Game Plan' : 'View Game Plan'}
+              </button>
+            )}
+            {result.extracted_urls.length > 0 && (
+              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                <Link2 size={10} />
+                {result.extracted_urls.map((link, i) => (
+                  <a
+                    key={i}
+                    href={link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline truncate max-w-48 inline-block align-bottom"
+                  >
+                    {new URL(link).hostname.replace('www.', '')}
+                  </a>
+                )).reduce<React.ReactNode[]>((acc, el, i) => i === 0 ? [el] : [...acc, <span key={`sep-${i}`}>, </span>, el], [])}
+              </span>
+            )}
+          </div>
+
+          {/* Clean transcript — no timestamps */}
+          {showTranscript && result.transcript.length > 0 && (
+            <div className="max-h-72 overflow-y-auto rounded-md border border-border bg-muted/30 p-3 text-xs text-foreground leading-relaxed">
+              {result.transcript.map((seg) => seg.text).join(' ')}
+            </div>
+          )}
+
+          {/* Game Plan — structured step list */}
+          {showGamePlan && steps && steps.length > 0 && (
+            <div className="max-h-72 overflow-y-auto rounded-md border border-border bg-muted/30 p-3 space-y-2">
+              {[...steps].sort((a, b) => a.order - b.order).map((step, i) => (
+                <div key={i} className="flex gap-2">
+                  <span className="text-xs font-bold text-primary shrink-0 w-5 text-right">{i + 1}.</span>
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-foreground">{step.title}</p>
+                    {step.description && (
+                      <p className="text-xs text-muted-foreground leading-relaxed">{step.description}</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // ---- Import mode: no result yet ----
   return (
     <div className="rounded-lg border border-border bg-card">
       {/* Header */}
@@ -230,79 +332,64 @@ export function VideoIngestPanel({ onIngestComplete, initialUrl }: VideoIngestPa
 
       <div className="p-4 space-y-4">
         {/* URL Input */}
-        <div className="space-y-2">
-          <label htmlFor="yt-url-input" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            YouTube URL
-          </label>
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <Youtube
-                size={16}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-              />
-              <input
-                id="yt-url-input"
-                type="url"
-                value={url}
-                onChange={(e) => {
-                  setUrl(e.target.value)
-                  if (errorMessage) setErrorMessage(null)
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !isProcessing) handleImport()
-                }}
-                placeholder="https://youtube.com/watch?v=..."
-                disabled={isProcessing}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 pl-9 text-sm
-                  text-foreground placeholder:text-muted-foreground
-                  focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent
-                  disabled:opacity-50 disabled:cursor-not-allowed"
-              />
-            </div>
-            {currentStep === 'done' ? (
-              <button
-                onClick={handleReset}
-                className="shrink-0 rounded-md bg-secondary px-4 py-2 text-sm font-medium
-                  text-secondary-foreground hover:bg-secondary/80 transition-colors"
-              >
-                Reset
-              </button>
-            ) : (
-              <button
-                onClick={handleImport}
-                disabled={isProcessing || !url.trim()}
-                aria-label="Import YouTube video"
-                className="shrink-0 rounded-md bg-primary px-4 py-2 text-sm font-medium
-                  text-primary-foreground hover:bg-primary/90 transition-colors
-                  disabled:opacity-50 disabled:cursor-not-allowed
-                  flex items-center gap-2"
-              >
-                {isProcessing ? (
-                  <>
-                    <Loader2 size={14} className="animate-spin" />
-                    Importing
-                  </>
-                ) : (
-                  'Import'
-                )}
-              </button>
-            )}
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Youtube
+              size={16}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+            />
+            <input
+              id="yt-url-input"
+              type="url"
+              value={url}
+              onChange={(e) => {
+                setUrl(e.target.value)
+                if (errorMessage) setErrorMessage(null)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !isProcessing) handleImport()
+              }}
+              placeholder="https://youtube.com/watch?v=..."
+              disabled={isProcessing}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 pl-9 text-sm
+                text-foreground placeholder:text-muted-foreground
+                focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent
+                disabled:opacity-50 disabled:cursor-not-allowed"
+            />
           </div>
+          <button
+            onClick={handleImport}
+            disabled={isProcessing || !url.trim()}
+            aria-label="Import YouTube video"
+            className="shrink-0 rounded-md bg-primary px-4 py-2 text-sm font-medium
+              text-primary-foreground hover:bg-primary/90 transition-colors
+              disabled:opacity-50 disabled:cursor-not-allowed
+              flex items-center gap-2"
+          >
+            {isProcessing ? (
+              <>
+                <Loader2 size={14} className="animate-spin" />
+                Importing
+              </>
+            ) : (
+              'Import'
+            )}
+          </button>
         </div>
 
-        {/* Screenshot toggle */}
+        {/* Screenshot toggle — inline, compact */}
         <label className="flex items-center gap-2 cursor-pointer select-none">
           <input
             type="checkbox"
             checked={captureScreenshots}
             onChange={(e) => setCaptureScreenshots(e.target.checked)}
             disabled={isProcessing}
-            className="h-4 w-4 rounded border-input text-primary focus:ring-ring
+            className="h-3.5 w-3.5 rounded border-input text-primary focus:ring-ring
               disabled:opacity-50 disabled:cursor-not-allowed accent-primary"
           />
-          <span className="text-sm text-muted-foreground flex items-center gap-1.5">
-            <Camera size={14} />
-            Capture screenshots at key moments
+          <span className="text-xs text-muted-foreground flex items-center gap-1">
+            <Camera size={12} />
+            Capture screenshots
           </span>
         </label>
 
@@ -314,137 +401,16 @@ export function VideoIngestPanel({ onIngestComplete, initialUrl }: VideoIngestPa
           </div>
         )}
 
-        {/* Status steps — shown during/after processing */}
-        {currentStep !== 'idle' && (
-          <div className="space-y-1.5 border-t border-border pt-3">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Status</p>
+        {/* Status steps — shown during processing only (not after done) */}
+        {currentStep !== 'idle' && currentStep !== 'done' && (
+          <div className="space-y-1.5">
             {STEP_ORDER.map((step) => (
               <StatusStep key={step} step={step} currentStep={currentStep} errorAtStep={errorAtStep} />
             ))}
           </div>
         )}
-
-        {/* Result preview */}
-        {result && (
-          <div className="space-y-3 border-t border-border pt-3">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Preview</p>
-
-            {/* Thumbnail + title */}
-            <div className="flex gap-3">
-              {result.thumbnail_url && (
-                <img
-                  src={result.thumbnail_url}
-                  alt={`Thumbnail for ${result.title}`}
-                  className="w-28 h-auto rounded-md border border-border object-cover shrink-0"
-                />
-              )}
-              <div className="min-w-0 space-y-1">
-                <p className="text-sm font-semibold text-foreground leading-snug line-clamp-2">
-                  {result.title}
-                </p>
-                <p className="text-xs text-muted-foreground">{result.channel}</p>
-              </div>
-            </div>
-
-            {/* Stats grid */}
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <StatCard
-                icon={<Clock size={14} />}
-                label="Duration"
-                value={formatDuration(result.duration)}
-              />
-              <StatCard
-                icon={<FileText size={14} />}
-                label="Transcript"
-                value={result.transcript.length > 0
-                  ? `${countTranscriptWords(result.transcript).toLocaleString()} words`
-                  : 'Not available'}
-              />
-              <StatCard
-                icon={<Link2 size={14} />}
-                label="Links found"
-                value={String(result.extracted_urls.length)}
-              />
-              <StatCard
-                icon={<Camera size={14} />}
-                label="Screenshot moments"
-                value={String(result.screenshot_suggestions.length)}
-              />
-            </div>
-
-            {/* Extracted URLs */}
-            {result.extracted_urls.length > 0 && (
-              <div className="space-y-1.5">
-                <p className="text-xs font-medium text-muted-foreground">Links from description</p>
-                <div className="max-h-24 overflow-y-auto space-y-1 rounded-md border border-border bg-muted/30 p-2">
-                  {result.extracted_urls.map((link, i) => (
-                    <a
-                      key={i}
-                      href={link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 text-xs text-primary hover:underline truncate"
-                    >
-                      <ExternalLink size={10} className="shrink-0" />
-                      <span className="truncate">{link}</span>
-                    </a>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Transcript preview / toggle */}
-            {result.transcript.length > 0 && (
-              <div className="space-y-1.5">
-                <button
-                  onClick={() => setShowTranscript(!showTranscript)}
-                  className="flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
-                  aria-label={showTranscript ? 'Hide transcript' : 'Show full transcript'}
-                >
-                  {showTranscript ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                  {showTranscript ? 'Hide Transcript' : 'View Full Transcript'}
-                </button>
-                {showTranscript && (
-                  <div className="max-h-64 overflow-y-auto rounded-md border border-border bg-muted/30 p-3 text-xs text-foreground leading-relaxed space-y-1">
-                    {result.transcript.map((seg, i) => (
-                      <span key={i}>
-                        <span className="text-muted-foreground font-mono text-[10px]">
-                          [{formatDuration(Math.floor(seg.start))}]
-                        </span>{' '}
-                        {seg.text}{' '}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
       </div>
     </div>
   )
 }
 
-// ---------------------------------------------------------------------------
-// Stat Card (internal)
-// ---------------------------------------------------------------------------
-
-function StatCard({
-  icon,
-  label,
-  value,
-}: {
-  icon: React.ReactNode
-  label: string
-  value: string
-}) {
-  return (
-    <div className="rounded-md border border-border bg-muted/30 px-3 py-2">
-      <div className="flex items-center gap-1.5 text-muted-foreground mb-0.5">
-        {icon}
-        <span className="text-[10px] uppercase tracking-wider">{label}</span>
-      </div>
-      <p className="text-sm font-semibold text-foreground">{value}</p>
-    </div>
-  )
-}

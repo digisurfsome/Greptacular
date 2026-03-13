@@ -27,7 +27,6 @@ import {
   GripVertical,
   X,
   ClipboardCopy,
-  ExternalLink,
   Hash,
   FileText,
   ListOrdered,
@@ -233,7 +232,7 @@ function ProjectStatusBadge({ status }: { status: YTProjectStatus }): React.JSX.
   )
 }
 
-/** Single project card in the list view. */
+/** Single project card in the list view — compact with thumbnail. */
 function ProjectCard({
   project,
   stepsCompleted,
@@ -254,102 +253,112 @@ function ProjectCard({
   const isYouTubeUrl = project.sourceUrl && (
     project.sourceUrl.includes('youtube.com') || project.sourceUrl.includes('youtu.be')
   )
+  const pct = totalSteps > 0 ? Math.round((stepsCompleted / totalSteps) * 100) : 0
 
   return (
     <Card
-      className="cursor-pointer hover:shadow-md transition-shadow group relative"
+      className="cursor-pointer hover:shadow-md transition-shadow group relative overflow-hidden"
       onClick={onClick}
     >
-      <CardContent className="p-5 space-y-3">
-        {/* Header row: name + status */}
-        <div className="flex items-start justify-between gap-2">
-          <h3 className="text-base font-medium text-foreground leading-tight line-clamp-2">
+      {/* Thumbnail banner */}
+      {project.thumbnailUrl ? (
+        <div className="relative w-full h-24 bg-muted">
+          <img
+            src={project.thumbnailUrl}
+            alt={project.name}
+            className="w-full h-full object-cover"
+          />
+          {/* Status badge overlaid on thumbnail */}
+          <div className="absolute top-1.5 right-1.5">
+            <ProjectStatusBadge status={project.status} />
+          </div>
+          {/* Channel name on thumbnail */}
+          {project.channel && (
+            <span className="absolute bottom-1 left-1.5 text-[10px] text-white bg-black/60 px-1.5 py-0.5 rounded">
+              {project.channel}
+            </span>
+          )}
+        </div>
+      ) : null}
+
+      <CardContent className="p-3 space-y-1.5">
+        {/* Title + status (status only if no thumbnail to overlay on) */}
+        <div className="flex items-start justify-between gap-1.5">
+          <h3 className="text-sm font-medium text-foreground leading-tight line-clamp-2">
             {project.name}
           </h3>
-          <ProjectStatusBadge status={project.status} />
+          {!project.thumbnailUrl && <ProjectStatusBadge status={project.status} />}
         </div>
 
-        {/* Source + niche */}
-        {project.niche && (
-          <p className="text-xs text-muted-foreground flex items-center gap-1">
-            <Hash size={12} />
-            {project.niche}
-          </p>
-        )}
-        {project.sourceUrl && (
-          <p className="text-xs text-muted-foreground flex items-center gap-1 truncate">
-            <ExternalLink size={12} />
-            <span className="truncate">{project.sourceUrl}</span>
-          </p>
-        )}
-
-        {/* Parse Video button - shown when source is a YouTube URL */}
-        {isYouTubeUrl && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full gap-1.5 text-xs"
-            onClick={(e) => { e.stopPropagation(); onParse() }}
-            aria-label={`Parse video for ${project.name}`}
-          >
-            <CirclePlay size={14} />
-            Parse Video
-          </Button>
-        )}
-
-        {/* Progress bar */}
-        <div className="space-y-1">
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>{stepsCompleted} / {totalSteps} steps</span>
-            <span>{totalSteps > 0 ? Math.round((stepsCompleted / totalSteps) * 100) : 0}%</span>
-          </div>
-          <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-            <div
-              className="h-full bg-primary rounded-full transition-all duration-300"
-              style={{ width: totalSteps > 0 ? `${(stepsCompleted / totalSteps) * 100}%` : '0%' }}
-            />
-          </div>
+        {/* Niche + source inline */}
+        <div className="flex items-center gap-2 text-[11px] text-muted-foreground truncate">
+          {project.niche && (
+            <span className="flex items-center gap-0.5 shrink-0">
+              <Hash size={10} />
+              {project.niche}
+            </span>
+          )}
         </div>
 
-        {/* Tags */}
-        {project.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1">
-            {project.tags.slice(0, 4).map((tag) => (
-              <span
-                key={tag}
-                className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground"
-              >
-                {tag}
-              </span>
-            ))}
-            {project.tags.length > 4 && (
-              <span className="text-[10px] text-muted-foreground">
-                +{project.tags.length - 4}
-              </span>
-            )}
+        {/* Progress + Parse inline */}
+        <div className="flex items-center gap-2">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              <span>{stepsCompleted}/{totalSteps}</span>
+              <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-primary rounded-full transition-all duration-300"
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              <span>{pct}%</span>
+            </div>
           </div>
-        )}
+          {isYouTubeUrl && (
+            <button
+              className="shrink-0 flex items-center gap-1 text-[11px] text-primary hover:text-primary/80 font-medium"
+              onClick={(e) => { e.stopPropagation(); onParse() }}
+            >
+              <CirclePlay size={12} />
+              Parse
+            </button>
+          )}
+        </div>
 
-        {/* Date */}
-        <p className="text-xs text-muted-foreground">
-          {new Date(project.createdAt).toLocaleDateString()}
-        </p>
+        {/* Tags + date inline */}
+        <div className="flex items-center justify-between gap-1">
+          {project.tags.length > 0 ? (
+            <div className="flex flex-wrap gap-0.5 min-w-0 overflow-hidden max-h-4">
+              {project.tags.slice(0, 3).map((tag) => (
+                <span key={tag} className="text-[9px] px-1 py-0 rounded bg-muted text-muted-foreground whitespace-nowrap">
+                  {tag}
+                </span>
+              ))}
+              {project.tags.length > 3 && (
+                <span className="text-[9px] text-muted-foreground">+{project.tags.length - 3}</span>
+              )}
+            </div>
+          ) : <span />}
+          <span className="text-[10px] text-muted-foreground shrink-0">
+            {new Date(project.createdAt).toLocaleDateString()}
+          </span>
+        </div>
 
-        {/* Action buttons (appear on hover) */}
-        <div className="absolute top-2 right-2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+        {/* Hover action buttons */}
+        <div className="absolute top-1 right-1 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity z-10">
           <button
-            className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted"
+            className="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted/80 bg-card/80"
             onClick={(e) => { e.stopPropagation(); onEdit() }}
-            aria-label={`Edit project ${project.name}`}
+            aria-label={`Edit ${project.name}`}
           >
-            <Pencil size={14} />
+            <Pencil size={12} />
           </button>
           <button
-            className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+            className="p-0.5 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 bg-card/80"
             onClick={(e) => { e.stopPropagation(); onDelete() }}
-            aria-label={`Delete project ${project.name}`}
+            aria-label={`Delete ${project.name}`}
           >
-            <Trash2 size={14} />
+            <Trash2 size={12} />
           </button>
         </div>
       </CardContent>
@@ -1308,7 +1317,14 @@ function StrategyBuilder({
     } catch {
       console.warn('Failed to persist ingest result to localStorage')
     }
-  }, [project.id])
+    // Save thumbnail + channel to project for card display
+    if (result.thumbnail_url || result.channel) {
+      onUpdateProject({
+        thumbnailUrl: result.thumbnail_url,
+        channel: result.channel,
+      })
+    }
+  }, [project.id, onUpdateProject])
 
   /** Process ingested video through AI to generate steps (with real-time log). */
   const handleProcessVideo = useCallback(async () => {
@@ -1616,6 +1632,7 @@ function StrategyBuilder({
             (project.sourceUrl.includes('youtube.com') || project.sourceUrl.includes('youtu.be')) && (
             <VideoIngestPanel
               initialUrl={project.sourceUrl}
+              steps={steps.map(s => ({ title: s.title, description: s.description, order: s.order }))}
               onIngestComplete={(result) => {
                 handleIngestComplete(result)
                 if (result.analyzed_screenshots?.length > 0) {
@@ -1733,7 +1750,7 @@ function StrategyBuilder({
                 {/* Process button */}
                 <Button
                   onClick={handleProcessVideo}
-                  disabled={isProcessing || !ingestResult.transcript.length}
+                  disabled={isProcessing || !ingestResult?.transcript?.length}
                   className="w-full gap-2"
                 >
                   {isProcessing ? (
@@ -1768,7 +1785,7 @@ function StrategyBuilder({
                   </div>
                 )}
 
-                {!ingestResult.transcript.length && (
+                {!ingestResult?.transcript?.length && (
                   <p className="text-xs text-muted-foreground text-center">
                     No transcript available — video processing requires a transcript.
                   </p>

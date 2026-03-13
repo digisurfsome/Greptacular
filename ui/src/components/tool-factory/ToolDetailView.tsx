@@ -3,7 +3,7 @@
  */
 
 import { useState, useCallback } from 'react'
-import { ArrowLeft, ExternalLink, Palette, RefreshCw, Archive, Share2, Pencil, Check, X } from 'lucide-react'
+import { ArrowLeft, ExternalLink, Palette, RefreshCw, Archive, Share2, Pencil, Check, X, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -11,7 +11,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { ChainVisualizer } from './ChainVisualizer'
 import { ExecutionHistory } from './ExecutionHistory'
 import { ShareToolModal } from './ShareToolModal'
-import { useTool, useArchiveTool } from '@/hooks/useToolFactory'
+import { useTool, useArchiveTool, useGenerateBlueprint } from '@/hooks/useToolFactory'
 import type { TFToolStatus } from '@/lib/types'
 
 interface ToolDetailViewProps {
@@ -44,14 +44,55 @@ export function ToolDetailView({ toolId, onBack, onOpenThemePicker }: ToolDetail
   const [showShare, setShowShare] = useState(false)
   const [isEditingName, setIsEditingName] = useState(false)
   const [editName, setEditName] = useState('')
-  const { data: tool, isLoading } = useTool(toolId)
+  const { data: tool, isLoading, refetch } = useTool(toolId)
   const archiveTool = useArchiveTool()
+  const regenerateBlueprint = useGenerateBlueprint()
+  const [isRegenerating, setIsRegenerating] = useState(false)
+  const [regenError, setRegenError] = useState<string | null>(null)
 
   const handleArchive = useCallback(async () => {
     if (!tool) return
     await archiveTool.mutateAsync(tool.tool_id)
     onBack()
   }, [tool, archiveTool, onBack])
+
+  /** Re-generate the blueprint by calling the generate endpoint with the tool's existing data. */
+  const handleRegenerate = useCallback(async () => {
+    if (!tool) return
+    setIsRegenerating(true)
+    setRegenError(null)
+    try {
+      // Rebuild params from the existing blueprint chain_config
+      const steps = tool.blueprint.chain_config.map((s, i) => ({
+        order: s.original_step_order || i + 1,
+        title: s.title,
+        description: s.notes || s.title,
+        prompt: s.prompt_template,
+        expectedOutput: s.expected_output,
+        notes: s.notes,
+        model: s.model_recommendation,
+        role: 'none',
+        subSteps: [],
+      }))
+
+      await regenerateBlueprint.mutateAsync({
+        project_name: tool.blueprint.tool_name,
+        project_description: tool.blueprint.tool_description,
+        steps,
+        source_video_id: tool.blueprint.source_video_id,
+        source_video_title: tool.blueprint.source_video_title,
+        source_video_channel: tool.blueprint.source_video_channel,
+        source_project_id: tool.blueprint.source_project_id,
+      })
+
+      // Refresh tool data to show new blueprint
+      await refetch()
+    } catch (err) {
+      setRegenError(err instanceof Error ? err.message : 'Re-generation failed')
+    } finally {
+      setIsRegenerating(false)
+    }
+  }, [tool, regenerateBlueprint, refetch])
 
   if (isLoading || !tool) {
     return (
@@ -286,11 +327,29 @@ export function ToolDetailView({ toolId, onBack, onOpenThemePicker }: ToolDetail
                 <Archive size={14} />
                 Archive Tool
               </Button>
-              <Button variant="outline" size="sm" className="gap-1.5">
-                <RefreshCw size={14} />
-                Re-generate
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={handleRegenerate}
+                disabled={isRegenerating}
+              >
+                {isRegenerating ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    Re-generating...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw size={14} />
+                    Re-generate
+                  </>
+                )}
               </Button>
             </div>
+            {regenError && (
+              <p className="text-sm text-destructive mt-2">{regenError}</p>
+            )}
           </div>
         </div>
       )}

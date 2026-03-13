@@ -272,6 +272,10 @@ class YTDiscovery:
         API key so the CLI falls back to ``~/.claude/.credentials.json``
         (subscription OAuth).  NO API CREDITS BURNED.
 
+        IMPORTANT: Uses ``permission_mode="acceptEdits"`` to match ALL
+        working SDK clients in this codebase.  ``"bypassPermissions"`` caused
+        exit code 3 (Bun runtime crash) on Windows.
+
         AGENTS: DO NOT add an API key fallback here or anywhere that calls
         this method.  If this fails, the caller should let it fail — not
         silently switch to ``anthropic.Anthropic(api_key=...)``.
@@ -284,60 +288,57 @@ class YTDiscovery:
         t0 = time.time()
 
         # CRITICAL: Remove CLAUDECODE env var — it blocks nested Claude CLI sessions.
-        # If the server was started from a Claude Code terminal, this var leaks into
-        # subprocess spawns and causes "Cannot launch inside another session" (exit code 1).
-        # workspace_chat_session.py already does this (line 857). This was MISSING here.
         os.environ.pop("CLAUDECODE", None)
 
         system_cli = shutil.which("claude")
         if not system_cli:
             raise RuntimeError("Claude CLI not found on PATH")
+        logger.info("✅ Claude CLI found at: %s", system_cli)
 
         sdk_env = get_effective_sdk_env(force_subscription=True)
-        # Belt-and-suspenders: also clear it from the env dict passed to subprocess
         sdk_env.pop("CLAUDECODE", None)
 
         # ============================================================
-        # SUBSCRIPTION BILLING VERIFICATION — SCREAMING LOUD ON PURPOSE
+        # SUBSCRIPTION BILLING VERIFICATION
         # ============================================================
         api_key_val = sdk_env.get("ANTHROPIC_API_KEY", "(NOT SET)")
         auth_token_val = sdk_env.get("ANTHROPIC_AUTH_TOKEN", "(NOT SET)")
         has_api_key = bool(api_key_val and api_key_val not in ("", "(NOT SET)"))
-        has_auth_token = bool(auth_token_val and auth_token_val not in ("", "(NOT SET)"))
 
         if has_api_key:
             logger.error(
                 "🚨🚨🚨 BUG! force_subscription=True but ANTHROPIC_API_KEY='%s' "
-                "— THIS WILL BURN API CREDITS! get_effective_sdk_env() is broken! 🚨🚨🚨",
+                "— THIS WILL BURN API CREDITS! 🚨🚨🚨",
                 api_key_val[:10] + "..." if api_key_val else "(empty)",
             )
         else:
             logger.info(
-                "✅ SUBSCRIPTION VERIFIED: ANTHROPIC_API_KEY='%s' (cleared=good), "
-                "ANTHROPIC_AUTH_TOKEN='%s' (cleared=good). "
-                "CLI will use ~/.claude/.credentials.json → $0 cost.",
+                "✅ SUBSCRIPTION VERIFIED: API_KEY='%s', AUTH_TOKEN='%s' (both cleared=good)",
                 api_key_val, auth_token_val,
             )
 
-        # Check credentials file exists
         import pathlib
         creds_path = pathlib.Path.home() / ".claude" / ".credentials.json"
         if creds_path.exists():
             logger.info("✅ Credentials file found: %s", creds_path)
         else:
-            logger.warning(
-                "⚠️ ~/.claude/.credentials.json NOT FOUND — "
-                "subscription auth may fail! Run 'claude login' first."
-            )
+            logger.warning("⚠️ ~/.claude/.credentials.json NOT FOUND — run 'claude login' first.")
 
         t1 = time.time()
-        logger.info(
-            "⏱️ Auth setup took %.1fs | API key present: %s | Auth token present: %s",
-            t1 - t0, has_api_key, has_auth_token,
-        )
 
         # Use a temp directory as cwd — we don't need file access
         scratch = tempfile.mkdtemp(prefix="yt_discovery_")
+
+        # Create a settings file matching the proven working pattern from
+        # workspace_chat_session.py and client.py.
+        import pathlib as _pl
+        settings_file = _pl.Path(scratch) / ".claude-yt-settings.json"
+        settings_file.write_text(json.dumps({
+            "permissions": {
+                "defaultMode": "acceptEdits",
+                "allow": [],
+            },
+        }))
 
         client = ClaudeSDKClient(
             options=ClaudeAgentOptions(
@@ -346,19 +347,35 @@ class YTDiscovery:
                 system_prompt=system_prompt,
                 env=sdk_env,
                 max_turns=2,
-                permission_mode="bypassPermissions",
+                # CRITICAL: Use "acceptEdits" — NOT "bypassPermissions"!
+                # bypassPermissions caused exit code 3 (Bun crash) on Windows.
+                permission_mode="acceptEdits",
                 allowed_tools=[],
                 cwd=scratch,
+                settings=str(settings_file.resolve()),
+                setting_sources=["user"],
             )
         )
 
         t2 = time.time()
-        logger.info("⏱️ ClaudeSDKClient created in %.1fs", t2 - t1)
+        logger.info("⏱️ SDK client created in %.1fs (permission_mode=acceptEdits)", t2 - t1)
 
         try:
             sdk_t0 = time.time()
             logger.info("⏱️ [SDK] Entering client context (spawning CLI subprocess)...")
-            await client.__aenter__()
+            try:
+                await client.__aenter__()
+            except Exception as enter_err:
+                err_str = str(enter_err)
+                logger.error(
+                    "🚨 [SDK] CLI subprocess FAILED to start: %s | cli=%s | model=%s",
+                    err_str, system_cli, model,
+                )
+                raise RuntimeError(
+                    f"Claude CLI failed to start (model={model}): {err_str}. "
+                    f"CLI path: {system_cli}"
+                ) from enter_err
+
             sdk_t1 = time.time()
             logger.info("⏱️ [SDK] CLI subprocess ready in %.1fs", sdk_t1 - sdk_t0)
 
@@ -378,43 +395,40 @@ class YTDiscovery:
                 msg_types_seen.append(msg_type)
 
                 if msg_type in ("RateLimitEvent", "rate_limit_event"):
-                    logger.info("⏱️ [SDK] Rate limit event at %.1fs (informational, skipping)", time.time() - sdk_t2)
-                    continue  # Skip SDK informational events
+                    logger.info("⏱️ [SDK] Rate limit event (skipping)")
+                    continue
                 elif msg_type == "AssistantMessage" and hasattr(msg, "content"):
                     if first_content_time is None:
                         first_content_time = time.time()
                         logger.info(
-                            "⏱️ [SDK] First content arrived in %.1fs (time-to-first-token from query)",
+                            "⏱️ [SDK] First content in %.1fs",
                             first_content_time - sdk_t2,
                         )
                     for block in msg.content:
                         block_type = type(block).__name__
                         if block_type == "TextBlock" and hasattr(block, "text"):
                             full_text += block.text
-                        else:
-                            logger.debug("YT discovery SDK: non-text block type=%s", block_type)
                 elif msg_type == "ResultMessage":
                     is_error = getattr(msg, "is_error", False)
                     if is_error:
-                        sdk_error = f"SDK ResultMessage reported an error (model={model})"
+                        result_text = ""
+                        if hasattr(msg, "result") and msg.result:
+                            result_text = str(msg.result)[:500]
+                        sdk_error = (
+                            f"SDK error (model={model}): {result_text}"
+                            if result_text
+                            else f"SDK ResultMessage error (model={model})"
+                        )
+                        logger.error("🚨 [SDK] Error: %s", sdk_error)
                     logger.info(
-                        "⏱️ [SDK] ResultMessage: is_error=%s, model=%s, total_time=%.1fs",
-                        is_error, getattr(msg, "model", "unknown"), time.time() - sdk_t0,
+                        "⏱️ [SDK] ResultMessage: is_error=%s, total=%.1fs",
+                        is_error, time.time() - sdk_t0,
                     )
 
             sdk_done = time.time()
             logger.info(
-                "✅ [SDK] DONE: %d chars in %.1fs total | "
-                "Subprocess start: %.1fs | Query send: %.1fs | "
-                "Time-to-first-token: %.1fs | Streaming: %.1fs | "
-                "msg_types=%s",
-                len(full_text),
-                sdk_done - sdk_t0,
-                sdk_t1 - sdk_t0,
-                sdk_t2 - sdk_t1,
-                (first_content_time - sdk_t2) if first_content_time else -1,
-                (sdk_done - first_content_time) if first_content_time else -1,
-                msg_types_seen,
+                "✅ [SDK] DONE: %d chars in %.1fs | msg_types=%s",
+                len(full_text), sdk_done - sdk_t0, msg_types_seen,
             )
 
             if sdk_error:
@@ -422,12 +436,16 @@ class YTDiscovery:
 
             if not full_text.strip():
                 raise RuntimeError(
-                    f"Claude SDK returned empty response. Message types seen: {msg_types_seen}"
+                    f"Claude SDK returned empty response. Types seen: {msg_types_seen}"
                 )
             return full_text.strip()
         finally:
             try:
                 await client.__aexit__(None, None, None)
+            except Exception:
+                pass
+            try:
+                shutil.rmtree(scratch, ignore_errors=True)
             except Exception:
                 pass
 

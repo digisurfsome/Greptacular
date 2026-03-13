@@ -342,6 +342,11 @@ class YTProcessor:
         API key so the CLI falls back to ``~/.claude/.credentials.json``
         (subscription OAuth).  NO API CREDITS BURNED.
 
+        IMPORTANT: Uses ``permission_mode="acceptEdits"`` to match ALL
+        working SDK clients in this codebase (workspace_chat_session.py,
+        spec_chat_session.py, client.py).  ``"bypassPermissions"`` caused
+        exit code 3 (Bun runtime crash) on Windows.
+
         AGENTS: DO NOT add an API key fallback here or anywhere that calls
         this method.  If this fails, the caller should let it fail — not
         silently switch to ``anthropic.Anthropic(api_key=...)``.
@@ -362,6 +367,7 @@ class YTProcessor:
         system_cli = shutil.which("claude")
         if not system_cli:
             raise RuntimeError("Claude CLI not found on PATH")
+        logger.info("✅ Claude CLI found at: %s", system_cli)
 
         sdk_env = get_effective_sdk_env(force_subscription=True)
         # Belt-and-suspenders: also clear it from the env dict passed to subprocess
@@ -409,6 +415,19 @@ class YTProcessor:
         # Use a temp directory as cwd -- we don't need file access
         scratch = tempfile.mkdtemp(prefix="yt_processor_")
 
+        # Create a settings file matching the proven working pattern from
+        # workspace_chat_session.py and client.py.  This is the ONLY pattern
+        # that reliably avoids exit code 3 (Bun runtime crash) on Windows.
+        import pathlib as _pl
+        settings_file = _pl.Path(scratch) / ".claude-yt-settings.json"
+        settings_file.write_text(json.dumps({
+            "permissions": {
+                "defaultMode": "acceptEdits",
+                "allow": [],  # No tools needed — text-only analysis
+            },
+        }))
+        logger.info("✅ Settings file written: %s", settings_file)
+
         client = ClaudeSDKClient(
             options=ClaudeAgentOptions(
                 model=model,
@@ -416,25 +435,51 @@ class YTProcessor:
                 system_prompt=system_prompt,
                 env=sdk_env,
                 max_turns=2,
-                permission_mode="bypassPermissions",
+                # CRITICAL: Use "acceptEdits" — NOT "bypassPermissions"!
+                # Every working SDK client in AutoForge uses acceptEdits.
+                # bypassPermissions caused exit code 3 (Bun crash) on Windows.
+                permission_mode="acceptEdits",
                 allowed_tools=[],
                 cwd=scratch,
+                settings=str(settings_file.resolve()),
+                # Load user settings so CLI picks up ~/.claude config
+                setting_sources=["user"],
             )
         )
 
         t2 = time.time()
-        logger.info("⏱️ ClaudeSDKClient created in %.1fs", t2 - t1)
+        logger.info("⏱️ ClaudeSDKClient created in %.1fs (permission_mode=acceptEdits)", t2 - t1)
 
         effective_timeout = timeout if timeout is not None else self.SDK_TIMEOUT_SECONDS
         logger.info(
-            "🚀 SDK call starting: model=%s, payload=%d chars, timeout=%ds",
-            model, len(user_message), effective_timeout,
+            "🚀 SDK call starting: model=%s, payload=%d chars, timeout=%ds, cli=%s",
+            model, len(user_message), effective_timeout, system_cli,
         )
 
         async def _run_sdk() -> str:
             sdk_t0 = time.time()
             logger.info("⏱️ [SDK] Entering client context (spawning CLI subprocess)...")
-            await client.__aenter__()
+            try:
+                await client.__aenter__()
+            except Exception as enter_err:
+                # Capture detailed error info for debugging CLI crashes
+                err_str = str(enter_err)
+                logger.error(
+                    "🚨 [SDK] CLI subprocess FAILED to start: %s | cli=%s | model=%s | cwd=%s",
+                    err_str, system_cli, model, scratch,
+                )
+                if "exit code 3" in err_str.lower() or "exit code 1" in err_str.lower():
+                    logger.error(
+                        "🚨 [SDK] EXIT CODE DETAILS: "
+                        "code 1 = CLAUDECODE env var leak (nested session block). "
+                        "code 3 = Bun runtime crash (use system CLI, not bundled). "
+                        "CLI path: %s", system_cli,
+                    )
+                raise RuntimeError(
+                    f"Claude CLI failed to start (model={model}): {err_str}. "
+                    f"CLI path: {system_cli}"
+                ) from enter_err
+
             sdk_t1 = time.time()
             logger.info("⏱️ [SDK] CLI subprocess ready in %.1fs", sdk_t1 - sdk_t0)
 
@@ -472,7 +517,20 @@ class YTProcessor:
                 elif msg_type == "ResultMessage":
                     is_error = getattr(msg, "is_error", False)
                     if is_error:
-                        sdk_error = f"SDK ResultMessage reported an error (model={model})"
+                        # Try to get the actual error text from the result
+                        result_text = ""
+                        if hasattr(msg, "result") and msg.result:
+                            result_text = str(msg.result)[:500]
+                        elif hasattr(msg, "content"):
+                            for block in getattr(msg, "content", []):
+                                if hasattr(block, "text"):
+                                    result_text += block.text
+                        sdk_error = (
+                            f"SDK error (model={model}): {result_text}"
+                            if result_text
+                            else f"SDK ResultMessage reported an error (model={model})"
+                        )
+                        logger.error("🚨 [SDK] Error result: %s", sdk_error)
                     logger.info(
                         "⏱️ [SDK] ResultMessage: is_error=%s, model=%s, total_time=%.1fs",
                         is_error, getattr(msg, "model", "unknown"), time.time() - sdk_t0,
@@ -511,11 +569,16 @@ class YTProcessor:
             )
             raise RuntimeError(
                 f"Claude SDK timed out after {effective_timeout}s. "
-                f"Large payloads may need the API fallback."
+                f"The model may be overloaded — try again."
             )
         finally:
             try:
                 await client.__aexit__(None, None, None)
+            except Exception:
+                pass
+            # Clean up temp directory
+            try:
+                shutil.rmtree(scratch, ignore_errors=True)
             except Exception:
                 pass
 

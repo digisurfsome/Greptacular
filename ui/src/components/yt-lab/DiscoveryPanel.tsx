@@ -29,7 +29,6 @@ import {
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
-import { Textarea } from '@/components/ui/textarea'
 import type {
   YTDiscoverResponse,
   YTAppOpportunity,
@@ -317,23 +316,25 @@ interface DiscoveryPanelProps {
   ingestResult: YTIngestResponse
   onOpportunitySelected: (opportunity: YTAppOpportunity | null) => void
   selectedOpportunity: YTAppOpportunity | null
-  /** Pre-populate the context field (e.g. from project description) */
-  initialContext?: string
+  /** Shared context from the parent — replaces the old internal textarea. */
+  userContext: string
   /** Pre-loaded discovery result from localStorage persistence. */
   discoveryResult?: YTDiscoverResponse | null
   /** Called when discovery completes so parent can persist to localStorage. */
   onDiscoveryComplete?: (result: YTDiscoverResponse) => void
+  /** Notifies parent when discovery starts/stops so it can disable the shared textarea. */
+  onDiscoveringChange?: (isDiscovering: boolean) => void
 }
 
 export function DiscoveryPanel({
   ingestResult,
   onOpportunitySelected,
   selectedOpportunity,
-  initialContext,
+  userContext,
   discoveryResult,
   onDiscoveryComplete,
+  onDiscoveringChange,
 }: DiscoveryPanelProps) {
-  const [userContext, setUserContext] = useState(initialContext ?? '')
   const [model, setModel] = useState('claude-sonnet-4-6')
   const [isDiscovering, setIsDiscovering] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -358,6 +359,7 @@ export function DiscoveryPanel({
 
   const handleDiscover = useCallback(async () => {
     setIsDiscovering(true)
+    onDiscoveringChange?.(true)
     setError(null)
     setDiscoveryTime(null)
     setDiscoveryLogs([])
@@ -399,8 +401,9 @@ export function DiscoveryPanel({
       setError(err instanceof Error ? err.message : 'Discovery failed')
     } finally {
       setIsDiscovering(false)
+      onDiscoveringChange?.(false)
     }
-  }, [ingestResult, userContext, model, onOpportunitySelected])
+  }, [ingestResult, userContext, model, onOpportunitySelected, onDiscoveringChange])
 
   const handleSelectOpportunity = useCallback(
     (opp: YTAppOpportunity) => {
@@ -429,28 +432,8 @@ export function DiscoveryPanel({
 
       <div className="p-4 space-y-4">
         {!result ? (
-          /* Pre-discovery: context input + discover button */
+          /* Pre-discovery: model selector + discover button (context is now in the shared section above) */
           <>
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                What are you looking for? (optional)
-              </label>
-              <Textarea
-                value={userContext}
-                onChange={(e) => setUserContext(e.target.value)}
-                placeholder="e.g., I want to find app opportunities from this video — especially simple companion apps that could get users engaged quickly. I'm interested in consumer apps, not B2B."
-                className="min-h-16 text-sm"
-                disabled={isDiscovering}
-              />
-              <p className={`text-xs mt-1 text-right tabular-nums ${
-                userContext.length > 100_000 ? 'text-red-500 font-medium' :
-                userContext.length > 90_000 ? 'text-yellow-500 font-medium' :
-                'text-muted-foreground'
-              }`}>
-                {userContext.length.toLocaleString()} / 100,000
-              </p>
-            </div>
-
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                 Analysis Model

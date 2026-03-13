@@ -39,6 +39,7 @@ import {
   Loader2,
   Wand2,
   Layers,
+  MessageSquare,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -1083,6 +1084,9 @@ function StrategyBuilder({
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const logEndRef = useRef<HTMLDivElement>(null)
 
+  // Track whether DiscoveryPanel is currently running (used to disable shared textarea)
+  const [isDiscovering, setIsDiscovering] = useState(false)
+
   // --- Elapsed timer for processing ---
   useEffect(() => {
     if (!isProcessing) return
@@ -1641,15 +1645,46 @@ function StrategyBuilder({
             </div>
           )}
 
+          {/* Shared Context — single input that feeds both Discovery and Strategy Extraction */}
+          {ingestResult && (
+            <div className="rounded-lg border border-border bg-card">
+              <div className="flex items-center gap-2 border-b border-border px-4 py-3">
+                <MessageSquare size={18} className="text-primary" />
+                <h3 className="text-sm font-semibold text-foreground">Your Context</h3>
+                <span className="text-xs text-muted-foreground ml-1">Feeds both discovery and strategy extraction</span>
+              </div>
+              <div className="p-4 space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  What do you want from this video?
+                </label>
+                <Textarea
+                  value={userContext}
+                  onChange={(e) => setUserContext(e.target.value)}
+                  placeholder="Tell me what you want — what caught your eye, what you want to build, what strategy you want to extract. This context feeds both discovery and strategy extraction."
+                  className="min-h-20 text-sm"
+                  disabled={isDiscovering || isProcessing}
+                />
+                <p className={`text-xs text-right tabular-nums ${
+                  userContext.length > 100_000 ? 'text-red-500 font-medium' :
+                  userContext.length > 90_000 ? 'text-yellow-500 font-medium' :
+                  'text-muted-foreground'
+                }`}>
+                  {userContext.length.toLocaleString()} / 100,000
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Discovery Panel — analyze before building */}
           {ingestResult && (
             <DiscoveryPanel
               ingestResult={ingestResult}
               onOpportunitySelected={handleOpportunitySelected}
               selectedOpportunity={selectedOpportunity}
-              initialContext={project.description}
+              userContext={userContext}
               discoveryResult={discoveryResult}
               onDiscoveryComplete={handleDiscoveryComplete}
+              onDiscoveringChange={setIsDiscovering}
             />
           )}
 
@@ -1667,33 +1702,6 @@ function StrategyBuilder({
               </div>
 
               <div className="p-4 space-y-4">
-                {/* User context textarea */}
-                <div className="space-y-1.5">
-                  <label htmlFor="user-context" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                    What do you want to extract from this video?
-                  </label>
-                  <Textarea
-                    id="user-context"
-                    value={userContext}
-                    onChange={(e) => setUserContext(e.target.value)}
-                    placeholder="e.g., I want the step-by-step process for building an AI ad agency. Focus on the automation workflow and computer-use prompts."
-                    className="min-h-20 text-sm"
-                    disabled={isProcessing}
-                  />
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs text-muted-foreground">
-                      Providing context helps the AI focus on what matters to you. Leave blank to extract the full strategy.
-                    </p>
-                    <p className={`text-xs mt-1 text-right tabular-nums ${
-                      userContext.length > 100_000 ? 'text-red-500 font-medium' :
-                      userContext.length > 90_000 ? 'text-yellow-500 font-medium' :
-                      'text-muted-foreground'
-                    }`}>
-                      {userContext.length.toLocaleString()} / 100,000
-                    </p>
-                  </div>
-                </div>
-
                 {/* Model selection */}
                 <div className="space-y-1.5">
                   <label htmlFor="processing-model" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">

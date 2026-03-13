@@ -353,11 +353,19 @@ class YTProcessor:
 
         t0 = time.time()
 
+        # CRITICAL: Remove CLAUDECODE env var — it blocks nested Claude CLI sessions.
+        # If the server was started from a Claude Code terminal, this var leaks into
+        # subprocess spawns and causes "Cannot launch inside another session" (exit code 1).
+        # workspace_chat_session.py already does this (line 857). This was MISSING here.
+        os.environ.pop("CLAUDECODE", None)
+
         system_cli = shutil.which("claude")
         if not system_cli:
             raise RuntimeError("Claude CLI not found on PATH")
 
         sdk_env = get_effective_sdk_env(force_subscription=True)
+        # Belt-and-suspenders: also clear it from the env dict passed to subprocess
+        sdk_env.pop("CLAUDECODE", None)
 
         # ============================================================
         # SUBSCRIPTION BILLING VERIFICATION — SCREAMING LOUD ON PURPOSE

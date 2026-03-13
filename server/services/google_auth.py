@@ -19,6 +19,12 @@ AUTOFORGE_DIR = Path.home() / ".autoforge"
 CREDENTIALS_PATH = AUTOFORGE_DIR / "google_credentials.json"
 TOKEN_PATH = AUTOFORGE_DIR / "google_token.json"
 
+# Module-level flow storage — keeps the flow instance alive between
+# start_oauth_flow() and handle_oauth_callback() so the PKCE code_verifier
+# matches. Without this, each call creates a new flow with a different
+# verifier and the token exchange fails.
+_active_flow = None
+
 
 def get_credentials():
     """Load stored OAuth token, auto-refresh if expired.
@@ -60,6 +66,8 @@ def start_oauth_flow(redirect_uri: str = "urn:ietf:wg:oauth:2.0:oob") -> str:
     Raises:
         FileNotFoundError: If google_credentials.json doesn't exist.
     """
+    global _active_flow
+
     if not CREDENTIALS_PATH.exists():
         raise FileNotFoundError(
             f"Google credentials not found at {CREDENTIALS_PATH}. "
@@ -69,13 +77,13 @@ def start_oauth_flow(redirect_uri: str = "urn:ietf:wg:oauth:2.0:oob") -> str:
 
     from google_auth_oauthlib.flow import InstalledAppFlow
 
-    flow = InstalledAppFlow.from_client_secrets_file(
+    _active_flow = InstalledAppFlow.from_client_secrets_file(
         str(CREDENTIALS_PATH),
         scopes=SCOPES,
         redirect_uri=redirect_uri,
     )
 
-    auth_url, _ = flow.authorization_url(
+    auth_url, _ = _active_flow.authorization_url(
         access_type="offline",
         include_granted_scopes="true",
         prompt="consent",
@@ -87,6 +95,9 @@ def start_oauth_flow(redirect_uri: str = "urn:ietf:wg:oauth:2.0:oob") -> str:
 def handle_oauth_callback(code: str, redirect_uri: str = "urn:ietf:wg:oauth:2.0:oob") -> bool:
     """Exchange authorization code for token and save.
 
+    Uses the stored flow from start_oauth_flow() to preserve the PKCE
+    code_verifier. Falls back to creating a new flow if none exists.
+
     Args:
         code: Authorization code from OAuth redirect.
         redirect_uri: Must match the redirect_uri used in start_oauth_flow.
@@ -94,18 +105,27 @@ def handle_oauth_callback(code: str, redirect_uri: str = "urn:ietf:wg:oauth:2.0:
     Returns:
         True if token saved successfully, False otherwise.
     """
+    global _active_flow
+
     if not CREDENTIALS_PATH.exists():
         logger.error("Cannot handle callback: credentials file missing")
         return False
 
     try:
-        from google_auth_oauthlib.flow import InstalledAppFlow
+        # Use the stored flow (has matching PKCE code_verifier)
+        if _active_flow is not None:
+            flow = _active_flow
+            _active_flow = None  # Clear after use
+        else:
+            # Fallback: create new flow (won't work with PKCE but try anyway)
+            logger.warning("No stored OAuth flow — creating new instance (PKCE may fail)")
+            from google_auth_oauthlib.flow import InstalledAppFlow
+            flow = InstalledAppFlow.from_client_secrets_file(
+                str(CREDENTIALS_PATH),
+                scopes=SCOPES,
+                redirect_uri=redirect_uri,
+            )
 
-        flow = InstalledAppFlow.from_client_secrets_file(
-            str(CREDENTIALS_PATH),
-            scopes=SCOPES,
-            redirect_uri=redirect_uri,
-        )
         flow.fetch_token(code=code)
         creds = flow.credentials
         _save_token(creds)
@@ -113,6 +133,7 @@ def handle_oauth_callback(code: str, redirect_uri: str = "urn:ietf:wg:oauth:2.0:
         return True
     except Exception as e:
         logger.error("OAuth callback failed: %s", e)
+        _active_flow = None  # Clear on failure too
         return False
 
 

@@ -464,86 +464,99 @@ class YTProcessor:
             rate_limit_count = 0
             last_progress_time = time.time()
 
-            async for msg in client.receive_response():
-                now = time.time()
-                elapsed = now - sdk_t2
-                msg_type = type(msg).__name__
-                msg_types_seen.append(msg_type)
-                msg_count += 1
+            # The SDK may THROW "Unknown message type: rate_limit_event"
+            # instead of yielding it.  If we already have content, catch
+            # the exception and use what we collected.
+            try:
+                async for msg in client.receive_response():
+                    now = time.time()
+                    elapsed = now - sdk_t2
+                    msg_type = type(msg).__name__
+                    msg_types_seen.append(msg_type)
+                    msg_count += 1
 
-                # Periodic heartbeat every 15s so user knows it's alive
-                if now - last_progress_time >= 15:
-                    _log(
-                        f"[SDK] Still waiting... {elapsed:.0f}s elapsed | "
-                        f"{msg_count} msgs | {len(full_text):,} chars received | "
-                        f"rate_limits: {rate_limit_count}"
-                    )
-                    last_progress_time = now
-
-                if msg_type in ("RateLimitEvent", "rate_limit_event"):
-                    rate_limit_count += 1
-                    # Extract whatever info is available from the rate limit event
-                    rl_detail = ""
-                    for attr in ("retry_after", "retry_after_seconds", "message", "error"):
-                        val = getattr(msg, attr, None)
-                        if val is not None:
-                            rl_detail += f" {attr}={val}"
-                    _log(
-                        f"⚠️ RATE LIMIT #{rate_limit_count} at {elapsed:.0f}s{rl_detail} "
-                        f"— SDK will retry automatically"
-                    )
-                    continue
-
-                elif msg_type == "SystemMessage" or msg_type == "system":
-                    # System messages from the CLI (auth errors, warnings, etc.)
-                    sys_text = ""
-                    if hasattr(msg, "message"):
-                        sys_text = str(msg.message)[:300]
-                    elif hasattr(msg, "content"):
-                        sys_text = str(msg.content)[:300]
-                    elif hasattr(msg, "text"):
-                        sys_text = str(msg.text)[:300]
-                    _log(f"📢 SYSTEM MSG at {elapsed:.0f}s: {sys_text or '(no text)'}")
-
-                elif msg_type == "AssistantMessage" and hasattr(msg, "content"):
-                    if first_content_time is None:
-                        first_content_time = now
-                        _log(f"🟢 FIRST CONTENT at {elapsed:.0f}s (time-to-first-token)")
-                    for block in msg.content:
-                        block_type = type(block).__name__
-                        if block_type == "TextBlock" and hasattr(block, "text"):
-                            chunk_len = len(block.text)
-                            full_text += block.text
-                            _log(f"[SDK] Received {chunk_len:,} chars (total: {len(full_text):,}) at {elapsed:.0f}s")
-                        elif block_type == "ToolUseBlock":
-                            tool_name = getattr(block, "name", "unknown")
-                            _log(f"⚠️ Tool call attempted: {tool_name} at {elapsed:.0f}s (tools disabled, will be rejected)")
-                        else:
-                            _log(f"[SDK] Non-text block: {block_type} at {elapsed:.0f}s")
-
-                elif msg_type == "ResultMessage":
-                    is_error = getattr(msg, "is_error", False)
-                    result_model = getattr(msg, "model", "unknown")
-                    if is_error:
-                        result_text = ""
-                        if hasattr(msg, "result") and msg.result:
-                            result_text = str(msg.result)[:500]
-                        elif hasattr(msg, "content"):
-                            for block in getattr(msg, "content", []):
-                                if hasattr(block, "text"):
-                                    result_text += block.text
-                        sdk_error = (
-                            f"SDK error (model={model}): {result_text}"
-                            if result_text
-                            else f"SDK ResultMessage error (model={model})"
+                    # Periodic heartbeat every 15s so user knows it's alive
+                    if now - last_progress_time >= 15:
+                        _log(
+                            f"[SDK] Still waiting... {elapsed:.0f}s elapsed | "
+                            f"{msg_count} msgs | {len(full_text):,} chars received | "
+                            f"rate_limits: {rate_limit_count}"
                         )
-                        _log(f"🚨 ERROR RESULT at {elapsed:.0f}s: {sdk_error}")
+                        last_progress_time = now
+
+                    if msg_type in ("RateLimitEvent", "rate_limit_event"):
+                        rate_limit_count += 1
+                        rl_detail = ""
+                        for attr in ("retry_after", "retry_after_seconds", "message", "error"):
+                            val = getattr(msg, attr, None)
+                            if val is not None:
+                                rl_detail += f" {attr}={val}"
+                        _log(
+                            f"⚠️ RATE LIMIT #{rate_limit_count} at {elapsed:.0f}s{rl_detail} "
+                            f"— SDK will retry automatically"
+                        )
+                        continue
+
+                    elif msg_type == "SystemMessage" or msg_type == "system":
+                        sys_text = ""
+                        if hasattr(msg, "message"):
+                            sys_text = str(msg.message)[:300]
+                        elif hasattr(msg, "content"):
+                            sys_text = str(msg.content)[:300]
+                        elif hasattr(msg, "text"):
+                            sys_text = str(msg.text)[:300]
+                        _log(f"📢 SYSTEM MSG at {elapsed:.0f}s: {sys_text or '(no text)'}")
+
+                    elif msg_type == "AssistantMessage" and hasattr(msg, "content"):
+                        if first_content_time is None:
+                            first_content_time = now
+                            _log(f"🟢 FIRST CONTENT at {elapsed:.0f}s (time-to-first-token)")
+                        for block in msg.content:
+                            block_type = type(block).__name__
+                            if block_type == "TextBlock" and hasattr(block, "text"):
+                                chunk_len = len(block.text)
+                                full_text += block.text
+                                _log(f"[SDK] Received {chunk_len:,} chars (total: {len(full_text):,}) at {elapsed:.0f}s")
+                            elif block_type == "ToolUseBlock":
+                                tool_name = getattr(block, "name", "unknown")
+                                _log(f"⚠️ Tool call attempted: {tool_name} at {elapsed:.0f}s (tools disabled, will be rejected)")
+                            else:
+                                _log(f"[SDK] Non-text block: {block_type} at {elapsed:.0f}s")
+
+                    elif msg_type == "ResultMessage":
+                        is_error = getattr(msg, "is_error", False)
+                        result_model = getattr(msg, "model", "unknown")
+                        if is_error:
+                            result_text = ""
+                            if hasattr(msg, "result") and msg.result:
+                                result_text = str(msg.result)[:500]
+                            elif hasattr(msg, "content"):
+                                for block in getattr(msg, "content", []):
+                                    if hasattr(block, "text"):
+                                        result_text += block.text
+                            sdk_error = (
+                                f"SDK error (model={model}): {result_text}"
+                                if result_text
+                                else f"SDK ResultMessage error (model={model})"
+                            )
+                            _log(f"🚨 ERROR RESULT at {elapsed:.0f}s: {sdk_error}")
+                        else:
+                            _log(f"✅ DONE at {elapsed:.0f}s | model={result_model} | {len(full_text):,} chars total")
                     else:
-                        _log(f"✅ DONE at {elapsed:.0f}s | model={result_model} | {len(full_text):,} chars total")
+                        attrs = {k: str(v)[:100] for k, v in vars(msg).items() if not k.startswith("_")} if hasattr(msg, "__dict__") else {}
+                        _log(f"❓ UNKNOWN MSG TYPE '{msg_type}' at {elapsed:.0f}s | attrs: {attrs}")
+            except Exception as stream_exc:
+                # The SDK throws "Unknown message type: rate_limit_event"
+                # instead of yielding it. If we already collected text,
+                # treat this as a successful (albeit noisy) completion.
+                exc_str = str(stream_exc)
+                _log(f"⚠️ SDK stream exception: {exc_str}")
+                if full_text.strip() and "unknown message type" in exc_str.lower():
+                    _log(f"✅ Recovered: already have {len(full_text):,} chars — using collected text despite SDK error")
+                elif full_text.strip():
+                    _log(f"⚠️ Stream error after receiving {len(full_text):,} chars — attempting to use collected text")
                 else:
-                    # Log ANY unknown message type with all available attributes
-                    attrs = {k: str(v)[:100] for k, v in vars(msg).items() if not k.startswith("_")} if hasattr(msg, "__dict__") else {}
-                    _log(f"❓ UNKNOWN MSG TYPE '{msg_type}' at {elapsed:.0f}s | attrs: {attrs}")
+                    raise
 
             sdk_done = time.time()
             total = sdk_done - sdk_t0

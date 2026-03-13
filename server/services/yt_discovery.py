@@ -266,14 +266,16 @@ class YTDiscovery:
         raise ValueError(f"Could not extract valid JSON from AI response (length={len(text)}). Preview: {preview}")
 
     async def _call_via_sdk(self, system_prompt: str, user_message: str, model: str) -> str:
-        """Call Claude via the Agent SDK using subscription auth.
+        """Call Claude via the Agent SDK using SUBSCRIPTION auth ONLY.
 
-        Uses ``ClaudeSDKClient`` — the same pattern used by workspace chat,
-        assistant chat, spec chat, and all AutoForge coding agents.  The SDK
-        handles subscription OAuth internally so we never burn API credits.
+        Uses ``ClaudeSDKClient`` with ``force_subscription=True`` — clears
+        API key so the CLI falls back to ``~/.claude/.credentials.json``
+        (subscription OAuth).  NO API CREDITS BURNED.
 
-        Returns the raw text response from Claude.
-        Raises RuntimeError if the CLI is not available or the call fails.
+        AGENTS: DO NOT add an API key fallback here or anywhere that calls
+        this method.  If this fails, the caller should let it fail — not
+        silently switch to ``anthropic.Anthropic(api_key=...)``.
+        See ``docs/SUBSCRIPTION_AND_WEBSOCKET_GUIDE.md``.
         """
         from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 
@@ -284,6 +286,19 @@ class YTDiscovery:
             raise RuntimeError("Claude CLI not found on PATH")
 
         sdk_env = get_effective_sdk_env(force_subscription=True)
+
+        # Verify subscription is active — API key must be cleared
+        if sdk_env.get("ANTHROPIC_API_KEY"):
+            logger.error(
+                "!!! BUG: force_subscription=True but ANTHROPIC_API_KEY is set: '%s'. "
+                "This means get_effective_sdk_env is broken. !!!",
+                sdk_env["ANTHROPIC_API_KEY"][:10] + "..." if sdk_env["ANTHROPIC_API_KEY"] else "(empty)",
+            )
+        logger.info(
+            ">>> SUBSCRIPTION AUTH CONFIRMED: ANTHROPIC_API_KEY='%s', ANTHROPIC_AUTH_TOKEN='%s' <<<",
+            sdk_env.get("ANTHROPIC_API_KEY", "(not set)"),
+            sdk_env.get("ANTHROPIC_AUTH_TOKEN", "(not set)"),
+        )
 
         # Use a temp directory as cwd — we don't need file access
         scratch = tempfile.mkdtemp(prefix="yt_discovery_")
@@ -412,58 +427,27 @@ class YTDiscovery:
 
         log(f"Sending to Claude AI ({use_model})...")
 
-        # Try Claude CLI first (uses subscription auth, no API credits).
-        # Falls back to Anthropic SDK if CLI is not available.
-        raw_text = ""
-        try:
-            log("Using Claude SDK (subscription billing)...")
-            raw_text = await self._call_via_sdk(DISCOVERY_PROMPT, user_message, use_model)
-            log("Claude SDK responded successfully (subscription billing)")
-            logger.info("Video %s: used Claude SDK (subscription billing)", video_id)
-        except Exception as cli_err:
-            logger.info("Claude SDK unavailable (%s), falling back to Anthropic SDK", cli_err)
-            log("SDK unavailable — falling back to API key billing...")
-
-            try:
-                import anthropic
-            except ImportError:
-                raise RuntimeError(
-                    "The anthropic package is required for video discovery. "
-                    "Install it with: pip install anthropic"
-                )
-
-            # Build client using the shared auth system (respects Settings UI + .env)
-            client_kwargs: dict = {}
-            try:
-                from registry import get_effective_sdk_env
-                sdk_env = get_effective_sdk_env()
-                api_key = sdk_env.get("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_API_KEY")
-                base_url = sdk_env.get("ANTHROPIC_BASE_URL")
-                if api_key:
-                    client_kwargs["api_key"] = api_key
-                if base_url:
-                    client_kwargs["base_url"] = base_url
-            except Exception:
-                logger.debug("Could not load SDK env from registry, falling back to env vars")
-
-            client = anthropic.Anthropic(**client_kwargs)
-
-            key_source = "API key" if client_kwargs.get("api_key") else "environment"
-            log(f"Calling Anthropic API ({key_source}) — this takes 60-90s...")
-
-            # Run the synchronous Anthropic API call in a thread pool
-            def _call_api():
-                return client.messages.create(
-                    model=use_model,
-                    max_tokens=8192,
-                    system=DISCOVERY_PROMPT,
-                    messages=[{"role": "user", "content": user_message}],
-                )
-
-            loop = asyncio.get_running_loop()
-            response = await loop.run_in_executor(None, _call_api)
-            raw_text = response.content[0].text if response.content else ""
-            log("Anthropic SDK responded")
+        # =====================================================================
+        # SUBSCRIPTION ONLY — NO API KEY FALLBACK — DO NOT ADD ONE
+        # =====================================================================
+        # This uses ClaudeSDKClient with force_subscription=True.
+        # If it fails, it FAILS. We do NOT silently fall back to API key.
+        # See docs/SUBSCRIPTION_AND_WEBSOCKET_GUIDE.md
+        #
+        # AGENTS: If you are reading this and thinking about adding an API key
+        # fallback "just in case" — DO NOT. The owner pays $200/month for
+        # subscription. Falling back to API key burns EXTRA money on top of
+        # that. Every previous agent who added a fallback here created a bug.
+        # =====================================================================
+        log("SUBSCRIPTION BILLING: Calling Claude SDK (no API key, no fallback)...")
+        logger.info(
+            ">>> SUBSCRIPTION BILLING: Discovery for video %s via SDK (force_subscription=True). "
+            "If this fails, it fails — NO API key fallback. <<<",
+            video_id,
+        )
+        raw_text = await self._call_via_sdk(DISCOVERY_PROMPT, user_message, use_model)
+        log("SUBSCRIPTION BILLING: Claude SDK responded — $0 API cost")
+        logger.info(">>> SUBSCRIPTION BILLING: Video %s discovery complete — $0 API cost <<<", video_id)
 
         elapsed = time.time() - start_time
 

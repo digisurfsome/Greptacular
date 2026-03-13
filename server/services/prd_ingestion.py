@@ -157,24 +157,18 @@ async def extract_steps_from_prd(
     processor = YTProcessor(model="claude-sonnet-4-6")
     start_time = time.time()
 
-    raw_text = ""
-    try:
-        raw_text = await processor._call_via_sdk(
-            PRD_EXTRACTION_SYSTEM,
-            user_message,
-            "claude-sonnet-4-6",
-            timeout=120,
-        )
-    except Exception as sdk_err:
-        logger.warning("SDK call failed for PRD extraction: %s, trying API", sdk_err)
-        try:
-            raw_text = await processor._call_via_api(
-                PRD_EXTRACTION_SYSTEM,
-                user_message,
-                "claude-sonnet-4-6",
-            )
-        except Exception as api_err:
-            raise RuntimeError(f"PRD extraction failed: SDK={sdk_err}, API={api_err}")
+    # =====================================================================
+    # SUBSCRIPTION ONLY — NO API KEY FALLBACK
+    # _call_via_api was REMOVED from YTProcessor. Do not re-add it.
+    # See docs/SUBSCRIPTION_AND_WEBSOCKET_GUIDE.md
+    # =====================================================================
+    logger.info(">>> SUBSCRIPTION BILLING: PRD extraction via SDK (force_subscription=True) <<<")
+    raw_text = await processor._call_via_sdk(
+        PRD_EXTRACTION_SYSTEM,
+        user_message,
+        "claude-sonnet-4-6",
+        timeout=120,
+    )
 
     elapsed = time.time() - start_time
 

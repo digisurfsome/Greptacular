@@ -336,22 +336,16 @@ class YTProcessor:
         model: str,
         timeout: float | None = None,
     ) -> str:
-        """Call Claude via the Agent SDK using subscription auth.
+        """Call Claude via the Agent SDK using SUBSCRIPTION auth ONLY.
 
-        Uses ``ClaudeSDKClient`` -- the same pattern used by workspace chat,
-        assistant chat, spec chat, and all AutoForge coding agents.  The SDK
-        handles subscription OAuth internally so we never burn API credits.
+        Uses ``ClaudeSDKClient`` with ``force_subscription=True`` — clears
+        API key so the CLI falls back to ``~/.claude/.credentials.json``
+        (subscription OAuth).  NO API CREDITS BURNED.
 
-        Args:
-            system_prompt: System prompt for the conversation.
-            user_message: User message content.
-            model: Model identifier (e.g. ``claude-opus-4-6``).
-            timeout: Maximum seconds to wait for a response. Defaults to
-                ``SDK_TIMEOUT_SECONDS`` (300s / 5 minutes).
-
-        Returns the raw text response from Claude.
-        Raises RuntimeError if the CLI is not available or the call fails.
-        Raises asyncio.TimeoutError if the SDK does not respond in time.
+        AGENTS: DO NOT add an API key fallback here or anywhere that calls
+        this method.  If this fails, the caller should let it fail — not
+        silently switch to ``anthropic.Anthropic(api_key=...)``.
+        See ``docs/SUBSCRIPTION_AND_WEBSOCKET_GUIDE.md``.
         """
         from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 
@@ -362,6 +356,19 @@ class YTProcessor:
             raise RuntimeError("Claude CLI not found on PATH")
 
         sdk_env = get_effective_sdk_env(force_subscription=True)
+
+        # Verify subscription is active — API key must be cleared
+        if sdk_env.get("ANTHROPIC_API_KEY"):
+            logger.error(
+                "!!! BUG: force_subscription=True but ANTHROPIC_API_KEY is set: '%s'. "
+                "This means get_effective_sdk_env is broken. !!!",
+                sdk_env["ANTHROPIC_API_KEY"][:10] + "..." if sdk_env["ANTHROPIC_API_KEY"] else "(empty)",
+            )
+        logger.info(
+            ">>> SUBSCRIPTION AUTH CONFIRMED: ANTHROPIC_API_KEY='%s', ANTHROPIC_AUTH_TOKEN='%s' <<<",
+            sdk_env.get("ANTHROPIC_API_KEY", "(not set)"),
+            sdk_env.get("ANTHROPIC_AUTH_TOKEN", "(not set)"),
+        )
 
         # Use a temp directory as cwd -- we don't need file access
         scratch = tempfile.mkdtemp(prefix="yt_processor_")
@@ -444,54 +451,17 @@ class YTProcessor:
             except Exception:
                 pass
 
-    async def _call_via_api(self, system_prompt: str, user_message: str, model: str) -> str:
-        """Call Claude via the Anthropic API (uses API key, costs money).
-
-        This is a lightweight fallback used for short retry prompts (e.g., JSON
-        repair) where the SDK proved too slow. For small payloads the API
-        responds in seconds and costs fractions of a cent.
-
-        Returns the raw text response.
-        Raises RuntimeError if the anthropic package is missing or the call fails.
-        """
-        try:
-            import anthropic
-        except ImportError:
-            raise RuntimeError(
-                "The anthropic package is required for API fallback. "
-                "Install it with: pip install anthropic"
-            )
-
-        client_kwargs: dict = {}
-        try:
-            from registry import get_effective_sdk_env
-            sdk_env = get_effective_sdk_env()
-            api_key = sdk_env.get("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_API_KEY")
-            base_url = sdk_env.get("ANTHROPIC_BASE_URL")
-            if api_key:
-                client_kwargs["api_key"] = api_key
-            if base_url:
-                client_kwargs["base_url"] = base_url
-        except Exception:
-            logger.debug("Could not load SDK env from registry for API retry, using env vars")
-
-        client = anthropic.Anthropic(**client_kwargs)
-        logger.info("API retry call: model=%s, payload=%d chars", model, len(user_message))
-
-        def _call_api():
-            return client.messages.create(
-                model=model,
-                max_tokens=8192,
-                system=system_prompt,
-                messages=[{"role": "user", "content": user_message}],
-            )
-
-        loop = asyncio.get_running_loop()
-        response = await loop.run_in_executor(None, _call_api)
-        raw = response.content[0].text if response.content else ""
-        if not raw.strip():
-            raise RuntimeError("Anthropic API returned empty response during retry")
-        return raw.strip()
+    # ==================================================================
+    # NO _call_via_api METHOD — REMOVED ON PURPOSE
+    # ==================================================================
+    # There used to be a _call_via_api() here that used anthropic.Anthropic()
+    # with an API key. It was REMOVED because it burns API credits.
+    #
+    # AGENTS: DO NOT re-add a _call_via_api method. DO NOT add any code
+    # that creates anthropic.Anthropic(api_key=...). ALL calls go through
+    # _call_via_sdk() which uses subscription billing (force_subscription=True).
+    # See docs/SUBSCRIPTION_AND_WEBSOCKET_GUIDE.md
+    # ==================================================================
 
     async def process(
         self,
@@ -555,12 +525,22 @@ class YTProcessor:
 
         log(f"Sending to Claude AI ({use_model})...")
 
-        # Use Claude SDK with subscription auth — never falls back to API key.
-        # This matches how tool-factory/generate works. No API credits burned.
-        log("Using Claude SDK (subscription billing)...")
+        # =====================================================================
+        # SUBSCRIPTION ONLY — NO API KEY FALLBACK — DO NOT ADD ONE
+        # =====================================================================
+        # AGENTS: Do NOT add a try/except here that falls back to API key.
+        # See the giant warning in _call_via_api's tombstone above.
+        # See docs/SUBSCRIPTION_AND_WEBSOCKET_GUIDE.md
+        # =====================================================================
+        log("SUBSCRIPTION BILLING: Calling Claude SDK (no API key, no fallback)...")
+        logger.info(
+            ">>> SUBSCRIPTION BILLING: Processing video %s via SDK (force_subscription=True). "
+            "If this fails, it fails — NO API key fallback. <<<",
+            video_id,
+        )
         raw_text = await self._call_via_sdk(STRATEGY_EXTRACTION_PROMPT, user_message, use_model)
-        log("Claude SDK responded successfully (subscription billing)")
-        logger.info("Video %s: used Claude SDK (subscription billing)", video_id)
+        log("SUBSCRIPTION BILLING: Claude SDK responded — $0 API cost")
+        logger.info(">>> SUBSCRIPTION BILLING: Video %s processing complete — $0 API cost <<<", video_id)
 
         elapsed = time.time() - start_time
 
@@ -580,9 +560,9 @@ class YTProcessor:
                 "Here is the malformed response to fix:\n\n"
                 + raw_text[:6000]
             )
-            # Use SDK for retry too — subscription billing, no API credits.
+            # Retry also uses SDK — SUBSCRIPTION ONLY, no API key.
             try:
-                log("Retrying via SDK (subscription billing)...")
+                log("SUBSCRIPTION BILLING: Retrying JSON repair via SDK (no API key)...")
                 retry_text = await self._call_via_sdk(
                     "You are a JSON repair assistant. Output ONLY valid JSON, nothing else.",
                     retry_prompt,

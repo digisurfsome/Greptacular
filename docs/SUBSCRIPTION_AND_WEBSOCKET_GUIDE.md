@@ -54,18 +54,43 @@ Every Claude call in the entire system goes through this function. Here's what i
 | `~/.claude/.credentials.json` | OAuth tokens from `claude login` (subscription) |
 | Settings UI → SQLite registry | `api_auth_token` field (saved via gear icon) |
 
-### The SDK → API Fallback in YT Lab
+### BANNED: API Key Fallback Pattern
 
 ```
-1. Try _call_via_sdk()
-   → Uses ClaudeSDKClient (subscription auth)
-   → If fails: logs "SDK unavailable" and falls back
-
-2. Fallback: _call_via_api()
-   → Uses anthropic.Anthropic(api_key=...)
-   → Reads ANTHROPIC_API_KEY from env or Settings
-   → This COSTS MONEY (burns API credits)
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!  THERE IS NO API KEY FALLBACK. THERE MUST NEVER BE ONE.     !!
+!!  If _call_via_sdk() fails, it FAILS. Let it crash.          !!
+!!  DO NOT catch the exception and fall back to API key.        !!
+!!  DO NOT create anthropic.Anthropic(api_key=...) ANYWHERE     !!
+!!  in YT Lab code. 6+ agents have added fallbacks here and    !!
+!!  EVERY SINGLE ONE caused the owner to burn API credits.     !!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ```
+
+**What was here before (DELETED, DO NOT RESTORE):**
+There used to be a `_call_via_api()` fallback that created `anthropic.Anthropic(api_key=...)`.
+It was removed because:
+- ANY exception from the SDK (timeout, rate limit, network blip) triggered the fallback
+- The fallback called `get_effective_sdk_env()` WITHOUT `force_subscription=True`
+- That returned the API key from env or Settings UI
+- Result: silent switch from $0 subscription to paid API credits
+- The owner has been burned by this pattern repeatedly
+
+**The rule is simple:**
+- `_call_via_sdk()` uses `force_subscription=True` → subscription OAuth → $0
+- If it fails, raise the error. Do not catch it and use `anthropic.Anthropic()`
+- `_call_via_api()` was REMOVED from `yt_processor.py` (see tombstone comment in code)
+- `yt_discovery.py` API fallback was REMOVED (was lines 415-466)
+- `prd_ingestion.py` API fallback was REMOVED
+
+**How to verify it's working:**
+Check the server logs. You should see lines like:
+```
+>>> SUBSCRIPTION AUTH CONFIRMED: ANTHROPIC_API_KEY='', ANTHROPIC_AUTH_TOKEN='' <<<
+>>> SUBSCRIPTION BILLING: Processing video xyz via SDK (force_subscription=True) <<<
+>>> SUBSCRIPTION BILLING: Video xyz processing complete — $0 API cost <<<
+```
+If you see `ANTHROPIC_API_KEY` with a non-empty value, there's a bug in `get_effective_sdk_env()`.
 
 ### ❌ WRONG vs ✅ RIGHT — Copy-Paste Examples
 

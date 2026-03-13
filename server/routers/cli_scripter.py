@@ -226,7 +226,7 @@ _load_queue()
 # Claude CLI subprocess helper
 # ---------------------------------------------------------------------------
 
-async def _run_claude_cli(prompt: str, model: str = "sonnet", timeout: int = 300) -> str:
+async def _run_claude_cli(prompt: str, model: str = "sonnet", timeout: int = 600) -> str:
     """Run Claude CLI in print mode using subscription auth. Zero API credits.
 
     Strips ANTHROPIC_API_KEY from the subprocess environment so the CLI
@@ -238,8 +238,22 @@ async def _run_claude_cli(prompt: str, model: str = "sonnet", timeout: int = 300
     sdk_env = get_effective_sdk_env(force_subscription=True)
     cli_env = {**os.environ, **sdk_env}
 
+    # Prevent "nested session" detection when the server was launched
+    # from inside a Claude Code session.  CLAUDECODE=1 causes the child
+    # `claude` process to refuse to start.
+    cli_env.pop("CLAUDECODE", None)
+    cli_env.pop("CLAUDE_CODE_ENTRYPOINT", None)
+    cli_env.pop("CLAUDE_CODE_OAUTH_TOKEN", None)
+
+    logger.info(
+        "_run_claude_cli: Starting claude -p (model=%s, timeout=%ds, prompt_len=%d)",
+        model, timeout, len(prompt),
+    )
+    start_time = time.time()
+
     proc = await asyncio.create_subprocess_exec(
         "claude", "-p", "--model", model, "--output-format", "text",
+        "--dangerously-skip-permissions",
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
@@ -259,7 +273,12 @@ async def _run_claude_cli(prompt: str, model: str = "sonnet", timeout: int = 300
         logger.error("Claude CLI failed (rc=%d): %s", proc.returncode, error_msg)
         raise HTTPException(status_code=502, detail=f"Claude CLI error: {error_msg}")
 
-    return stdout.decode().strip()
+    result = stdout.decode().strip()
+    logger.info(
+        "_run_claude_cli: Completed in %.1fs, output_len=%d",
+        time.time() - start_time, len(result),
+    )
+    return result
 
 
 # ---------------------------------------------------------------------------

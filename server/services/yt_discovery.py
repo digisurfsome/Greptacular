@@ -265,7 +265,14 @@ class YTDiscovery:
         preview = text[:500] if text else "(empty)"
         raise ValueError(f"Could not extract valid JSON from AI response (length={len(text)}). Preview: {preview}")
 
-    async def _call_via_sdk(self, system_prompt: str, user_message: str, model: str) -> str:
+    async def _call_via_sdk(
+        self,
+        system_prompt: str,
+        user_message: str,
+        model: str,
+        timeout: float | None = None,
+        on_progress: Optional[Callable[[str], None]] = None,
+    ) -> str:
         """Call Claude via the Agent SDK using SUBSCRIPTION auth ONLY.
 
         Uses ``ClaudeSDKClient`` with ``force_subscription=True`` — clears
@@ -273,7 +280,8 @@ class YTDiscovery:
         (subscription OAuth).  NO API CREDITS BURNED.
 
         IMPORTANT: Uses ``permission_mode="acceptEdits"`` to match ALL
-        working SDK clients in this codebase.  ``"bypassPermissions"`` caused
+        working SDK clients in this codebase (workspace_chat_session.py,
+        spec_chat_session.py, client.py).  ``"bypassPermissions"`` caused
         exit code 3 (Bun runtime crash) on Windows.
 
         AGENTS: DO NOT add an API key fallback here or anywhere that calls
@@ -285,7 +293,15 @@ class YTDiscovery:
 
         from registry import get_effective_sdk_env
 
+        SDK_TIMEOUT = 300  # seconds
+
         t0 = time.time()
+
+        def _log(msg: str) -> None:
+            """Log to BOTH server terminal AND browser UI log panel."""
+            logger.info(msg)
+            if on_progress:
+                on_progress(msg)
 
         # CRITICAL: Remove CLAUDECODE env var — it blocks nested Claude CLI sessions.
         os.environ.pop("CLAUDECODE", None)
@@ -293,44 +309,36 @@ class YTDiscovery:
         system_cli = shutil.which("claude")
         if not system_cli:
             raise RuntimeError("Claude CLI not found on PATH")
-        logger.info("✅ Claude CLI found at: %s", system_cli)
+        _log(f"[SDK] CLI binary: {system_cli}")
 
         sdk_env = get_effective_sdk_env(force_subscription=True)
         sdk_env.pop("CLAUDECODE", None)
 
-        # ============================================================
-        # SUBSCRIPTION BILLING VERIFICATION
-        # ============================================================
+        # Subscription verification
         api_key_val = sdk_env.get("ANTHROPIC_API_KEY", "(NOT SET)")
         auth_token_val = sdk_env.get("ANTHROPIC_AUTH_TOKEN", "(NOT SET)")
         has_api_key = bool(api_key_val and api_key_val not in ("", "(NOT SET)"))
 
         if has_api_key:
-            logger.error(
-                "🚨🚨🚨 BUG! force_subscription=True but ANTHROPIC_API_KEY='%s' "
-                "— THIS WILL BURN API CREDITS! 🚨🚨🚨",
-                api_key_val[:10] + "..." if api_key_val else "(empty)",
-            )
+            _log(f"🚨 BUG: API key present despite force_subscription=True! Key starts with: {api_key_val[:10]}...")
         else:
-            logger.info(
-                "✅ SUBSCRIPTION VERIFIED: API_KEY='%s', AUTH_TOKEN='%s' (both cleared=good)",
-                api_key_val, auth_token_val,
-            )
+            _log(f"✅ Subscription auth: API_KEY='{api_key_val}' AUTH_TOKEN='{auth_token_val}' (both cleared = subscription)")
 
         import pathlib
         creds_path = pathlib.Path.home() / ".claude" / ".credentials.json"
         if creds_path.exists():
-            logger.info("✅ Credentials file found: %s", creds_path)
+            creds_size = creds_path.stat().st_size
+            _log(f"✅ Credentials file: {creds_path} ({creds_size} bytes)")
         else:
-            logger.warning("⚠️ ~/.claude/.credentials.json NOT FOUND — run 'claude login' first.")
+            _log(f"⚠️ NO credentials file at {creds_path} — run 'claude login' first!")
 
         t1 = time.time()
+        _log(f"[SDK] Auth setup: {t1 - t0:.1f}s")
 
         # Use a temp directory as cwd — we don't need file access
         scratch = tempfile.mkdtemp(prefix="yt_discovery_")
 
-        # Create a settings file matching the proven working pattern from
-        # workspace_chat_session.py and client.py.
+        # Create a settings file matching the proven working pattern
         import pathlib as _pl
         settings_file = _pl.Path(scratch) / ".claude-yt-settings.json"
         settings_file.write_text(json.dumps({
@@ -348,7 +356,6 @@ class YTDiscovery:
                 env=sdk_env,
                 max_turns=2,
                 # CRITICAL: Use "acceptEdits" — NOT "bypassPermissions"!
-                # bypassPermissions caused exit code 3 (Bun crash) on Windows.
                 permission_mode="acceptEdits",
                 allowed_tools=[],
                 cwd=scratch,
@@ -358,87 +365,150 @@ class YTDiscovery:
         )
 
         t2 = time.time()
-        logger.info("⏱️ SDK client created in %.1fs (permission_mode=acceptEdits)", t2 - t1)
+        _log(f"[SDK] Client created: {t2 - t1:.1f}s | model={model} | mode=acceptEdits")
 
-        try:
+        effective_timeout = timeout if timeout is not None else SDK_TIMEOUT
+        _log(f"[SDK] Timeout: {effective_timeout}s | Payload: {len(user_message):,} chars")
+
+        async def _run_sdk() -> str:
             sdk_t0 = time.time()
-            logger.info("⏱️ [SDK] Entering client context (spawning CLI subprocess)...")
+            _log("[SDK] Spawning CLI subprocess...")
+
             try:
                 await client.__aenter__()
             except Exception as enter_err:
                 err_str = str(enter_err)
-                logger.error(
-                    "🚨 [SDK] CLI subprocess FAILED to start: %s | cli=%s | model=%s",
-                    err_str, system_cli, model,
-                )
+                _log(f"🚨 CLI FAILED TO START: {err_str}")
+                _log(f"🚨 CLI path: {system_cli} | model: {model} | cwd: {scratch}")
+                if "exit code" in err_str.lower():
+                    _log("🚨 Exit code 1 = nested session block | Exit code 3 = Bun crash")
                 raise RuntimeError(
-                    f"Claude CLI failed to start (model={model}): {err_str}. "
-                    f"CLI path: {system_cli}"
+                    f"Claude CLI failed to start (model={model}): {err_str}"
                 ) from enter_err
 
             sdk_t1 = time.time()
-            logger.info("⏱️ [SDK] CLI subprocess ready in %.1fs", sdk_t1 - sdk_t0)
+            _log(f"[SDK] CLI subprocess ready: {sdk_t1 - sdk_t0:.1f}s")
 
-            logger.info("⏱️ [SDK] Sending query (%d chars)...", len(user_message))
+            _log(f"[SDK] Sending query ({len(user_message):,} chars)...")
             await client.query(user_message)
             sdk_t2 = time.time()
-            logger.info("⏱️ [SDK] Query sent in %.1fs", sdk_t2 - sdk_t1)
+            _log(f"[SDK] Query sent: {sdk_t2 - sdk_t1:.1f}s — now waiting for {model} to respond...")
 
-            logger.info("⏱️ [SDK] Waiting for response from %s (subscription billing)...", model)
             full_text = ""
+            msg_count = 0
             msg_types_seen: list[str] = []
             sdk_error: str | None = None
             first_content_time: float | None = None
+            rate_limit_count = 0
+            last_progress_time = time.time()
 
             async for msg in client.receive_response():
+                now = time.time()
+                elapsed = now - sdk_t2
                 msg_type = type(msg).__name__
                 msg_types_seen.append(msg_type)
+                msg_count += 1
+
+                # Periodic heartbeat every 15s so user knows it's alive
+                if now - last_progress_time >= 15:
+                    _log(
+                        f"[SDK] Still waiting... {elapsed:.0f}s elapsed | "
+                        f"{msg_count} msgs | {len(full_text):,} chars received | "
+                        f"rate_limits: {rate_limit_count}"
+                    )
+                    last_progress_time = now
 
                 if msg_type in ("RateLimitEvent", "rate_limit_event"):
-                    logger.info("⏱️ [SDK] Rate limit event (skipping)")
+                    rate_limit_count += 1
+                    rl_detail = ""
+                    for attr in ("retry_after", "retry_after_seconds", "message", "error"):
+                        val = getattr(msg, attr, None)
+                        if val is not None:
+                            rl_detail += f" {attr}={val}"
+                    _log(
+                        f"⚠️ RATE LIMIT #{rate_limit_count} at {elapsed:.0f}s{rl_detail} "
+                        f"— SDK will retry automatically"
+                    )
                     continue
+
+                elif msg_type == "SystemMessage" or msg_type == "system":
+                    sys_text = ""
+                    if hasattr(msg, "message"):
+                        sys_text = str(msg.message)[:300]
+                    elif hasattr(msg, "content"):
+                        sys_text = str(msg.content)[:300]
+                    elif hasattr(msg, "text"):
+                        sys_text = str(msg.text)[:300]
+                    _log(f"📢 SYSTEM MSG at {elapsed:.0f}s: {sys_text or '(no text)'}")
+
                 elif msg_type == "AssistantMessage" and hasattr(msg, "content"):
                     if first_content_time is None:
-                        first_content_time = time.time()
-                        logger.info(
-                            "⏱️ [SDK] First content in %.1fs",
-                            first_content_time - sdk_t2,
-                        )
+                        first_content_time = now
+                        _log(f"🟢 FIRST CONTENT at {elapsed:.0f}s (time-to-first-token)")
                     for block in msg.content:
                         block_type = type(block).__name__
                         if block_type == "TextBlock" and hasattr(block, "text"):
+                            chunk_len = len(block.text)
                             full_text += block.text
+                            _log(f"[SDK] Received {chunk_len:,} chars (total: {len(full_text):,}) at {elapsed:.0f}s")
+                        elif block_type == "ToolUseBlock":
+                            tool_name = getattr(block, "name", "unknown")
+                            _log(f"⚠️ Tool call attempted: {tool_name} at {elapsed:.0f}s (tools disabled, will be rejected)")
+                        else:
+                            _log(f"[SDK] Non-text block: {block_type} at {elapsed:.0f}s")
+
                 elif msg_type == "ResultMessage":
                     is_error = getattr(msg, "is_error", False)
+                    result_model = getattr(msg, "model", "unknown")
                     if is_error:
                         result_text = ""
                         if hasattr(msg, "result") and msg.result:
                             result_text = str(msg.result)[:500]
+                        elif hasattr(msg, "content"):
+                            for block in getattr(msg, "content", []):
+                                if hasattr(block, "text"):
+                                    result_text += block.text
                         sdk_error = (
                             f"SDK error (model={model}): {result_text}"
                             if result_text
                             else f"SDK ResultMessage error (model={model})"
                         )
-                        logger.error("🚨 [SDK] Error: %s", sdk_error)
-                    logger.info(
-                        "⏱️ [SDK] ResultMessage: is_error=%s, total=%.1fs",
-                        is_error, time.time() - sdk_t0,
-                    )
+                        _log(f"🚨 ERROR RESULT at {elapsed:.0f}s: {sdk_error}")
+                    else:
+                        _log(f"✅ DONE at {elapsed:.0f}s | model={result_model} | {len(full_text):,} chars total")
+                else:
+                    attrs = {k: str(v)[:100] for k, v in vars(msg).items() if not k.startswith("_")} if hasattr(msg, "__dict__") else {}
+                    _log(f"❓ UNKNOWN MSG TYPE '{msg_type}' at {elapsed:.0f}s | attrs: {attrs}")
 
             sdk_done = time.time()
-            logger.info(
-                "✅ [SDK] DONE: %d chars in %.1fs | msg_types=%s",
-                len(full_text), sdk_done - sdk_t0, msg_types_seen,
+            total = sdk_done - sdk_t0
+            _log(
+                f"[SDK] Stream ended: {len(full_text):,} chars in {total:.1f}s | "
+                f"{msg_count} messages | {rate_limit_count} rate limits | "
+                f"types: {msg_types_seen}"
             )
 
             if sdk_error:
                 raise RuntimeError(sdk_error)
 
             if not full_text.strip():
+                _log(f"🚨 EMPTY RESPONSE! {msg_count} messages received but no text content. Types: {msg_types_seen}")
                 raise RuntimeError(
-                    f"Claude SDK returned empty response. Types seen: {msg_types_seen}"
+                    f"Claude SDK returned empty response after {total:.0f}s. "
+                    f"Messages: {msg_count}, Types: {msg_types_seen}, "
+                    f"Rate limits: {rate_limit_count}"
                 )
             return full_text.strip()
+
+        try:
+            return await asyncio.wait_for(_run_sdk(), timeout=effective_timeout)
+        except asyncio.TimeoutError:
+            elapsed = time.time() - t0
+            _log(f"🚨 TIMEOUT after {elapsed:.0f}s (limit: {effective_timeout}s) | model={model}")
+            raise RuntimeError(
+                f"Claude SDK timed out after {effective_timeout}s. "
+                f"The model may be overloaded or rate-limited — try again."
+            )
         finally:
             try:
                 await client.__aexit__(None, None, None)
@@ -532,7 +602,7 @@ class YTDiscovery:
             video_id,
         )
         sdk_start = time.time()
-        raw_text = await self._call_via_sdk(DISCOVERY_PROMPT, user_message, use_model)
+        raw_text = await self._call_via_sdk(DISCOVERY_PROMPT, user_message, use_model, on_progress=log)
         sdk_elapsed = time.time() - sdk_start
         log(f"SUBSCRIPTION BILLING: Claude SDK responded in {sdk_elapsed:.1f}s — $0 API cost")
         logger.info(
@@ -559,10 +629,13 @@ class YTDiscovery:
                 + raw_text[:6000]
             )
             try:
+                log("SUBSCRIPTION BILLING: Retrying JSON repair via SDK (no API key)...")
                 retry_text = await self._call_via_sdk(
                     "You are a JSON repair assistant. Output ONLY valid JSON, nothing else.",
                     retry_prompt,
                     use_model,
+                    timeout=120,
+                    on_progress=log,
                 )
                 result = self._parse_ai_response(retry_text)
                 log("Retry succeeded — parsed repaired JSON")

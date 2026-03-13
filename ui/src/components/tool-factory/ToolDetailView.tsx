@@ -3,7 +3,7 @@
  */
 
 import { useState, useCallback } from 'react'
-import { ArrowLeft, ExternalLink, Palette, RefreshCw, Archive, Share2, Pencil, Check, X, Loader2 } from 'lucide-react'
+import { ArrowLeft, ExternalLink, Palette, RefreshCw, Archive, Share2, Pencil, Check, X, Loader2, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -11,7 +11,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { ChainVisualizer } from './ChainVisualizer'
 import { ExecutionHistory } from './ExecutionHistory'
 import { ShareToolModal } from './ShareToolModal'
-import { useTool, useArchiveTool, useGenerateBlueprint } from '@/hooks/useToolFactory'
+import { useTool, useArchiveTool, useGenerateBlueprint, useDeployTool, useGoogleAuthStatus, useGoogleAuthUrl } from '@/hooks/useToolFactory'
 import type { TFToolStatus } from '@/lib/types'
 
 interface ToolDetailViewProps {
@@ -49,6 +49,11 @@ export function ToolDetailView({ toolId, onBack, onOpenThemePicker }: ToolDetail
   const regenerateBlueprint = useGenerateBlueprint()
   const [isRegenerating, setIsRegenerating] = useState(false)
   const [regenError, setRegenError] = useState<string | null>(null)
+  const deployTool = useDeployTool()
+  const { data: googleAuthData } = useGoogleAuthStatus()
+  const { refetch: fetchAuthUrl } = useGoogleAuthUrl()
+  const [isDeploying, setIsDeploying] = useState(false)
+  const [deployError, setDeployError] = useState<string | null>(null)
 
   const handleArchive = useCallback(async () => {
     if (!tool) return
@@ -94,6 +99,33 @@ export function ToolDetailView({ toolId, onBack, onOpenThemePicker }: ToolDetail
     }
   }, [tool, regenerateBlueprint, refetch])
 
+  /** Deploy tool to Google Sheets. */
+  const handleDeploy = useCallback(async () => {
+    if (!tool) return
+    setIsDeploying(true)
+    setDeployError(null)
+    try {
+      await deployTool.mutateAsync({ toolId: tool.tool_id })
+      await refetch()
+    } catch (err) {
+      setDeployError(err instanceof Error ? err.message : 'Deploy failed')
+    } finally {
+      setIsDeploying(false)
+    }
+  }, [tool, deployTool, refetch])
+
+  /** Open Google OAuth flow. */
+  const handleConnectGoogle = useCallback(async () => {
+    try {
+      const result = await fetchAuthUrl()
+      if (result.data?.auth_url) {
+        window.open(result.data.auth_url, '_blank')
+      }
+    } catch (err) {
+      setDeployError(err instanceof Error ? err.message : 'Failed to get Google auth URL')
+    }
+  }, [fetchAuthUrl])
+
   if (isLoading || !tool) {
     return (
       <div className="flex items-center justify-center py-24">
@@ -121,12 +153,41 @@ export function ToolDetailView({ toolId, onBack, onOpenThemePicker }: ToolDetail
           </div>
         </div>
         <div className="flex gap-2 shrink-0">
-          {tool.sheet_url && (
+          {tool.sheet_url ? (
             <Button variant="outline" size="sm" asChild>
               <a href={tool.sheet_url} target="_blank" rel="noopener noreferrer" className="gap-1.5">
                 <ExternalLink size={14} />
                 Open Sheet
               </a>
+            </Button>
+          ) : googleAuthData?.authenticated ? (
+            <Button
+              size="sm"
+              className="gap-1.5"
+              onClick={handleDeploy}
+              disabled={isDeploying}
+            >
+              {isDeploying ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  Deploying...
+                </>
+              ) : (
+                <>
+                  <Upload size={14} />
+                  Deploy to Sheets
+                </>
+              )}
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={handleConnectGoogle}
+            >
+              <Upload size={14} />
+              Connect Google &amp; Deploy
             </Button>
           )}
           <Button variant="outline" size="sm" onClick={() => setShowShare(true)} className="gap-1.5">
@@ -134,6 +195,9 @@ export function ToolDetailView({ toolId, onBack, onOpenThemePicker }: ToolDetail
             Share
           </Button>
         </div>
+        {deployError && (
+          <p className="text-sm text-destructive mt-1">{deployError}</p>
+        )}
       </div>
 
       {/* Tabs */}

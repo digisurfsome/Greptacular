@@ -459,7 +459,7 @@ export function DiscoveryPanel({
 
             <Button
               onClick={handleDiscover}
-              disabled={isDiscovering || !ingestResult.transcript.length}
+              disabled={isDiscovering || !ingestResult?.transcript?.length}
               className="w-full gap-2"
               variant="outline"
             >

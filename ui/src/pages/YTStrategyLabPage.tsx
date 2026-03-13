@@ -241,6 +241,7 @@ function ProjectCard({
   onEdit,
   onParse,
   onDelete,
+  onUpdateDescription,
 }: {
   project: YTStrategyProject
   stepsCompleted: number
@@ -249,7 +250,10 @@ function ProjectCard({
   onEdit: () => void
   onParse: () => void
   onDelete: () => void
+  onUpdateDescription: (desc: string) => void
 }): React.JSX.Element {
+  const [editingDesc, setEditingDesc] = useState(false)
+  const [descDraft, setDescDraft] = useState(project.description)
   const isYouTubeUrl = project.sourceUrl && (
     project.sourceUrl.includes('youtube.com') || project.sourceUrl.includes('youtu.be')
   )
@@ -290,11 +294,53 @@ function ProjectCard({
           {!project.thumbnailUrl && <ProjectStatusBadge status={project.status} />}
         </div>
 
-        {/* User's strategy statement — as loud as the title */}
-        {project.description && (
-          <p className="text-sm font-semibold text-foreground/90 leading-snug line-clamp-3">
-            {project.description}
-          </p>
+        {/* User's strategy statement — editable inline */}
+        {(project.description || editingDesc) && (
+          editingDesc ? (
+            <div className="space-y-1" onClick={(e) => e.stopPropagation()}>
+              <textarea
+                value={descDraft}
+                onChange={(e) => setDescDraft(e.target.value)}
+                autoFocus
+                className="w-full rounded border border-input bg-background px-2 py-1 text-sm font-semibold text-foreground resize-none focus:outline-none focus:ring-1 focus:ring-ring"
+                rows={2}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    onUpdateDescription(descDraft)
+                    setEditingDesc(false)
+                  }
+                  if (e.key === 'Escape') {
+                    setDescDraft(project.description)
+                    setEditingDesc(false)
+                  }
+                }}
+              />
+              <div className="flex gap-1 justify-end">
+                <button
+                  className="text-[10px] px-1.5 py-0.5 rounded bg-primary text-primary-foreground hover:bg-primary/90"
+                  onClick={() => { onUpdateDescription(descDraft); setEditingDesc(false) }}
+                >Save</button>
+                <button
+                  className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground hover:bg-muted/80"
+                  onClick={() => { setDescDraft(project.description); setEditingDesc(false) }}
+                >Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-start gap-1 group/desc rounded-md bg-primary/5 border-l-2 border-primary/30 px-2 py-1.5">
+              <p className="text-sm font-semibold text-foreground/90 leading-snug line-clamp-3 flex-1 italic">
+                {project.description}
+              </p>
+              <button
+                className="shrink-0 mt-0.5 p-0.5 rounded text-muted-foreground hover:text-foreground opacity-0 group-hover/desc:opacity-100 transition-opacity"
+                onClick={(e) => { e.stopPropagation(); setDescDraft(project.description); setEditingDesc(true) }}
+                aria-label="Edit strategy statement"
+              >
+                <Pencil size={11} />
+              </button>
+            </div>
+          )
         )}
 
         {/* Niche inline */}
@@ -2314,6 +2360,13 @@ export function YTStrategyLabPage(): React.JSX.Element {
                       onEdit={() => handleEditProject(project.id)}
                       onParse={() => handleParseVideo(project.id)}
                       onDelete={() => setConfirmDeleteId(project.id)}
+                      onUpdateDescription={(desc) => {
+                        setProjects(prev => prev.map(p =>
+                          p.id === project.id
+                            ? { ...p, description: desc, updatedAt: new Date().toISOString() }
+                            : p
+                        ))
+                      }}
                     />
                   )
                 })}

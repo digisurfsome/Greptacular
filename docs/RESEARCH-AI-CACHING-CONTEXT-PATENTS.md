@@ -1,422 +1,603 @@
 # Research Report: AI Caching, Context Management, and Patent Landscape
 
 **Date:** 2026-03-14
-**Methodology:** 80+ web searches across 5 parallel research agents covering official documentation, patents, academic papers, open-source projects, and industry blogs.
+**Methodology:** 150+ web searches across 10 parallel research agents (5 initial + 5 gap-fill) covering official documentation, patents, academic papers, open-source projects, and industry blogs. All three major providers (Anthropic, Google, OpenAI) researched for every topic.
 
 ---
 
 ## Table of Contents
-1. [Anthropic — Tool Result Offloading & Caching](#topic-1-anthropic--tool-result-offloading--caching)
-2. [Google Gemini — 1M Context Architecture](#topic-2-google-gemini--1m-context-architecture)
-3. [OpenAI — Context Window Management](#topic-3-openai--context-window-management)
-4. [Patent Landscape](#topic-4-patent-landscape)
-5. [Prior Art](#topic-5-prior-art)
-6. [Cross-Topic Summary & Conclusions](#cross-topic-summary--conclusions)
+1. [Tool Result Offloading & Caching (All Providers)](#topic-1-tool-result-offloading--caching)
+2. [Large Context Window Architecture (All Providers)](#topic-2-large-context-window-architecture)
+3. [Context Window Management (All Providers)](#topic-3-context-window-management)
+4. [Patent Landscape (All Providers)](#topic-4-patent-landscape)
+5. [Prior Art — File-Based Agent Communication](#topic-5-prior-art)
+6. [Master Comparison Tables & Conclusions](#master-comparison-tables--conclusions)
 
 ---
 
-## TOPIC 1: Anthropic — Tool Result Offloading & Caching
+## TOPIC 1: Tool Result Offloading & Caching
 
-### How Prompt Caching Works
+### Anthropic
 
-Anthropic's prompt caching stores **KV-cache representations** (not raw text) and cryptographic hashes of cached content server-side. It allows subsequent API calls with identical prompt prefixes to skip recomputation.
+**How prompt caching works:**
+Stores **KV-cache representations** (not raw text) and cryptographic hashes server-side. Subsequent API calls with identical prompt prefixes skip recomputation.
 
-**What gets cached:**
-- Tool definitions in the `tools` array
-- System message content blocks
-- Text messages (user and assistant turns)
-- Images and documents in user turns
-- Tool use blocks and tool result blocks in `messages.content`
+**What gets cached:** Tool definitions, system messages, text messages (user/assistant), images, documents, tool use/result blocks.
 
-**What does NOT get cached:**
-- Thinking blocks cannot be explicitly marked with `cache_control` (though implicitly cached when passed back)
-- Empty text blocks
-- Sub-content blocks like citations
+**What does NOT get cached:** Thinking blocks (can't be explicitly marked), empty text blocks, citation sub-blocks.
 
-**Cache hierarchy (strict order):** `tools` → `system` → `messages`. Changes at any level invalidate that level and everything below. Adding a new MCP tool mid-session invalidates the entire cache.
+**Cache hierarchy:** `tools` → `system` → `messages`. Changes at any level invalidate that level and below. Adding a new MCP tool mid-session invalidates the entire cache.
 
-**Cache matching:** Requires 100% identical content from the start of the prompt up to and including the `cache_control` breakpoint. Even minor formatting changes break the cache.
+**TTL & pricing:**
+- 5-min TTL (default): writes 1.25x, reads 0.1x base input
+- 1-hour TTL: writes 2x, reads 0.1x base input
+- Min tokens: 4,096 (Opus 4.6/4.5), 2,048 (Sonnet 4.6), 1,024 (Sonnet 4/3.7)
 
-**TTL options:**
-- **5-minute TTL (default):** Cache writes cost 1.25x base input price. Cache reads cost 0.1x base input price.
-- **1-hour TTL:** Cache writes cost 2x base input price. Cache reads still 0.1x.
+**SDK auto-caching:** YES. "Content that stays the same across turns (system prompt, tool definitions, CLAUDE.md) is automatically prompt cached." Known issue: SDK default TTL changed from 5min to 1hr (2x write cost). ([GitHub Issue #188](https://github.com/anthropics/claude-agent-sdk-typescript/issues/188))
 
-**Minimum token requirements:**
-- Claude Opus 4.6/4.5: 4,096 tokens per cache checkpoint
-- Claude Sonnet 4.6: 2,048 tokens
-- Claude Sonnet 4/3.7, Opus 4.1/4/3: 1,024 tokens
+**Tool result offloading:** NO. Every API call requires the full messages array. Prompt caching reduces compute cost but NOT transfer cost.
+
+**Context editing (beta):** `clear_tool_uses_20250919` clears old tool results server-side, replacing with placeholder text. Data is destroyed, not offloaded. Performance: 29% improvement alone, 39% with memory tool. ([Anthropic Engineering](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents))
+
+**Compaction (beta):** `compact_20260112` summarizes entire conversation. Destructive — originals replaced.
+
+**Micro-compaction (Claude Code client-side):** Introduced v1.0.68. Selectively removes outdated tool results. Third-party claims disk offloading with path references ("hot tail" / "cold storage") but Anthropic docs don't confirm this.
 
 **Sources:**
 - [Prompt Caching — Claude API Docs](https://platform.claude.com/docs/en/build-with-claude/prompt-caching)
-- [Prompt Caching Announcement — Anthropic Blog](https://www.anthropic.com/news/prompt-caching)
-
-### Does the Claude Agent SDK Automatically Cache the System Prompt?
-
-**YES.** The official documentation states: "Content that stays the same across turns (system prompt, tool definitions, CLAUDE.md) is automatically prompt cached, which reduces cost and latency for repeated prefixes."
-
-Two approaches exist:
-- **Automatic caching:** Add `cache_control: {"type": "ephemeral"}` at the top level. The system automatically places cache breakpoints at the last cacheable block and moves them forward as the conversation grows. Recommended for multi-turn conversations.
-- **Explicit breakpoints:** Manually place `cache_control` on specific content blocks.
-
-**Known issue:** The Agent SDK reportedly changed its default cache TTL from 5 minutes to 1 hour, meaning all cache writes now cost 2x instead of 1.25x.
-
-**Sources:**
-- [How Prompt Caching Elevates Claude Code Agents — Walturn](https://www.walturn.com/insights/how-prompt-caching-elevates-claude-code-agents)
-- [Agent SDK 1-hour cache TTL — GitHub Issue #188](https://github.com/anthropics/claude-agent-sdk-typescript/issues/188)
-
-### Is There a Mechanism to Offload Tool Results to Files or Cache Them Server-Side?
-
-**NO — not in the API.** There is no Anthropic API feature that stores tool results in a separate file store or server-side cache so they don't need to be re-sent. Every API call requires the full messages array. Prompt caching reduces the **compute cost** of reprocessing that content but does **NOT** eliminate the need to send it.
-
-However, two API mechanisms deal with stale tool results:
-
-**A) Context Editing (API-level, beta):**
-- The `clear_tool_uses_20250919` strategy clears old tool results server-side **before** the prompt reaches Claude
-- Cleared content is replaced with **placeholder text** (not offloaded to disk)
-- Configurable: trigger threshold, number of recent tool uses to keep, tool exclusions
-- Clearing invalidates prompt cache at the clearing point
-- This is "garbage collection," not offloading — the data is gone
-
-**B) Server-Side Compaction (API-level, beta):**
-- The `compact_20260112` strategy summarizes the entire conversation when it approaches a token threshold
-- Replaces full message history with a `compaction` block containing a summary
-- Destructive — original messages are replaced, not stored elsewhere
-
-**Sources:**
 - [Context Editing — Claude API Docs](https://platform.claude.com/docs/en/build-with-claude/context-editing)
 - [Compaction — Claude API Docs](https://platform.claude.com/docs/en/build-with-claude/compaction)
-
-### What is "Micro-Compaction" in Claude Code?
-
-**Micro-compaction is a Claude Code CLIENT-SIDE feature** (introduced in v1.0.68), not an Anthropic API feature. It sits between normal operation and full auto-compaction.
-
-**What it does (confirmed):**
-- Automatically identifies old tool calls no longer immediately relevant
-- Selectively removes outdated tool results while preserving recent context
-- Maintains critical project information (current file states, ongoing tasks)
-- Triggers automatically when context grows long, before full auto-compaction
-
-**Does it offload to disk?** Evidence is mixed:
-- **Decode Claude (third-party)** claims: "When tool outputs get large, Claude Code saves them to disk and keeps only a reference in the model context." Describes "hot tail" (recent results inline) and "cold storage" (older results referenced by path).
-- **Anthropic's official documentation** does not describe this mechanism. The closest feature is Context Editing, which replaces results with placeholders.
-- **Assessment:** The "cold storage" description likely refers to Claude Code's client-side implementation, not an API feature.
-
-**Sources:**
-- [Inside Claude Code's Compaction System — Decode Claude](https://decodeclaude.com/compaction-deep-dive/)
-- [What is Micro-Compact — ClaudeLog](https://claudelog.com/faqs/what-is-micro-compact/)
-
-### Are Tool Results Cached Server-Side So They Don't Need Re-Sending?
-
-**NO.** This is the clearest finding:
-
-| Mechanism | What Happens | Tool Results Re-Sent? |
-|-----------|-------------|----------------------|
-| **Prompt Caching** | Server caches KV representations of prompt prefix | YES — must be sent every time |
-| **Context Editing** | Server drops old tool results, replaces with placeholders | YES — you still send them, server strips before processing |
-| **Compaction** | Server summarizes entire conversation | NO — but original content is destroyed |
-
-**The critical distinction:** Prompt caching is a **compute optimization**, not a **transfer optimization**. You must send the full messages array every time. The bytes still go over the wire.
+- [Decode Claude — Compaction Deep Dive](https://decodeclaude.com/compaction-deep-dive/)
 
 ---
 
-## TOPIC 2: Google Gemini — 1M Context Architecture
+### Google Gemini
 
-### How Gemini Achieves 1M Token Context
-
-**Confirmed: Sparse Mixture-of-Experts (MoE) Architecture.** The Gemini 1.5 technical report ([arXiv:2403.05530](https://arxiv.org/abs/2403.05530)) confirms Gemini 1.5 Pro is a "sparse mixture-of-expert (MoE) Transformer-based model." MoE activates only a subset of parameters per token, decoupling total model capacity from per-token compute cost.
-
-**The report states** it "incorporates a series of significant architecture changes that enable long-context understanding of inputs up to 10 million tokens without degrading performance" — but **deliberately does not specify what those changes are**. Model size, number of experts, and specific attention modifications are all withheld.
-
-**Near-perfect retrieval:** >99.7% recall on needle-in-a-haystack tasks up to 1M tokens, 99.2% at 10M tokens in research settings.
-
-### Likely But Unconfirmed Techniques
-
-Google has published research on multiple efficient attention approaches but **never confirmed which powers Gemini:**
-
-- **Infini-Attention** ([arXiv:2404.07143](https://arxiv.org/abs/2404.07143)) — Compressive memory storing past KV states instead of discarding them. 114x compression ratio. Published by Google researchers April 2024.
-- **Ring Attention** ([arXiv:2310.01889](https://arxiv.org/abs/2310.01889)) — Distributes sequences across devices in a ring topology. Published by UC Berkeley (Liu, Zaharia, Abbeel), not Google. Enables context length proportional to device count.
-- **MELODI** ([DeepMind](https://deepmind.google/research/publications/121073/)) — Hierarchical compression for long documents. 8x memory footprint reduction.
-- **LongT5** — Transient Global attention combining local sliding-window with global attention.
-
-**Sources:**
-- [Gemini 1.5 Technical Report (arXiv)](https://arxiv.org/abs/2403.05530)
-- [Google Blog: Introducing Gemini 1.5](https://blog.google/innovation-and-ai/products/google-gemini-next-generation-model-february-2024/)
-
-### Is 1M Context Enabled by Custom TPU Hardware?
-
-**YES, partially — hardware and software are co-designed.**
-
-| Generation | HBM/Chip | HBM Bandwidth | ICI/Chip | Max Pod | Topology |
-|-----------|----------|---------------|---------|---------|----------|
-| TPU v5e | 16 GB | 819 GB/s | 1,600 Gbps | 256 chips | 2D torus |
-| TPU v5p | 95 GB | 2,765 GB/s | 4,800 Gbps | 8,960 chips | 3D torus |
-| TPU v6e (Trillium) | 32 GB | 1,600 GB/s | 3,200 Gbps | 256 chips | 2D torus |
-| **TPU v7 (Ironwood)** | **192 GB** | **7,400 GB/s** | **9,600 Gbps** | **9,216 chips** | **3D torus** |
-
-**Why this matters:**
-1. **HBM capacity determines KV cache size.** A 70B model at 300K tokens needs ~93 GB of KV cache — more than an H100's 80 GB. Ironwood at 192 GB/chip handles much larger caches.
-2. **HBM bandwidth determines throughput.** Reading the KV cache at every attention step requires enormous bandwidth.
-3. **Inter-chip interconnect (ICI) enables distributed attention.** If attention is distributed (ring attention etc.), ICI determines whether communication overlaps with computation.
-4. **Ironwood was explicitly designed for long context** — Google's docs state the architecture was "designed specifically for long-context applications approaching million-token windows."
-
-**However, hardware alone is insufficient.** Standard quadratic attention at 1M tokens requires computing a 1M × 1M attention matrix (1 trillion entries). Algorithmic innovations are essential complements.
-
-**Sources:**
-- [Google TPU Architecture Guide — Introl](https://introl.com/blog/google-tpu-architecture-complete-guide-7-generations)
-- [Cloud TPU v5p — Google Cloud Blog](https://cloud.google.com/blog/products/ai-machine-learning/introducing-cloud-tpu-v5p-and-ai-hypercomputer)
-
-### Did Google Patent the Long Context Approach?
-
-**Primarily trade secrecy, not patents.**
-
-**What Google HAS patented:**
-1. **The Transformer itself** — US10,452,978 ("Attention-Based Sequence Transduction Neural Networks"). Foundational patent from "Attention Is All You Need." 7+ continuation applications. NOT in Google's Open Source Non-Assertion Pledge.
-2. **Sparse attention** — US20230022151A1 ("Full Attention with Sparse Computation Cost"). Directly addresses quadratic complexity limitation.
-3. **Universal Transformers** — US10,740,433. Adaptive computation time.
-
-**What Google has NOT publicly patented:**
-- No specific patent on "1M context window" technique
-- No patent on Gemini's MoE configuration
-- No patent on whatever attention modification enables the long context
-
-**Protection strategy:**
-1. **Trade secrecy** — Technical report deliberately omits specifics
-2. **Custom silicon moat** — TPUs not sold commercially; only via Google Cloud
-3. **Broad foundational patents** — Transformer patent as legal backstop
-
-**Sources:**
-- [Google's Transformer Patents — PI IP LAW](https://piip.co.kr/en/blog/google-transformer-llm-patent-risk-and-strategy)
-- [US10,452,978 — Google Patents](https://patents.google.com/patent/US10452978B2/en)
-- [US20230022151A1 — Google Patents](https://patents.google.com/patent/US20230022151A1/en)
-
-### Gemini's Context Caching
-
-**Two types:**
+**Two caching mechanisms:**
 
 **Implicit Caching (automatic, since May 2025):**
-- Enabled by default on Gemini 2.5+ models
-- No developer action required
-- Cache reads cost 10% of base input price (90% savings)
+- Enabled by default on Gemini 2.5+ models, no code changes
+- 90% discount on cached reads (Gemini 2.5+), 75% (Gemini 2.0)
 - No storage costs
+- Response includes `cachedContentTokenCount` for verification
 
-**Explicit Caching (manual):**
-- Developer creates cache object with TTL (default 60 min)
-- Storage costs: $1–$4.50 per million tokens per hour
-- Warning: A 10M token cache costs $45/hour or $1,080/day
+**Explicit Caching (developer-controlled):**
+- Create named cache objects via API with configurable TTL
+- Min cache size: 4,096 tokens
+- Storage billed by TTL × token count ($1–$4.50/M tokens/hr)
+- Warning: 10M token cache = $1,080/day
+
+**What gets cached:** System instructions, documents, media files. Tool definitions count if in stable prefix.
+
+**Tool result offloading:** NO. Tool results (`FunctionResponse` parts) sit in the `contents` array and consume tokens every turn. No mechanism to externalize dynamic tool outputs.
+
+**ADK system prompt caching:** YES, but requires explicit configuration via `ContextCacheConfig`:
+- `static_instruction` parameter enforces immutability for system prompts
+- `ContextCacheConfig` set at App level: `min_tokens`, `ttl_seconds` (default 1800), `cache_intervals` (default 10)
+- Context window divided into "stable prefixes" and "variable suffixes"
+- Most architecturally clean approach of the three providers
+
+**ADK compaction:** `EventsCompactionConfig` summarizes older conversation events:
+- Turn-based triggers (every N invocations), NOT token-threshold
+- Configurable overlap to prevent info loss at boundaries
+- Claims 60-80% token reduction
+- Token-based triggers are an open feature request ([GitHub #4146](https://github.com/google/adk-python/issues/4146))
+
+**Growing context strategy:** "Big window + developer responsibility." Gemini does NOT auto-truncate at API level — exceeding the window returns a 400 error (which still consumes rate limit quota).
 
 **Sources:**
-- [Context Caching — Gemini API](https://ai.google.dev/gemini-api/docs/caching)
-- [Gemini 2.5 Implicit Caching — Google Developers Blog](https://developers.googleblog.com/en/gemini-2-5-models-now-support-implicit-caching/)
+- [Gemini API Context Caching](https://ai.google.dev/gemini-api/docs/caching)
+- [ADK Context Caching Docs](https://google.github.io/adk-docs/context/caching/)
+- [ADK Context Compression](https://google.github.io/adk-docs/context/compaction/)
+- [Vertex AI Context Caching](https://cloud.google.com/blog/products/ai-machine-learning/vertex-ai-context-caching)
 
 ---
 
-## TOPIC 3: OpenAI — Context Window Management
+### OpenAI
 
-### Prompt Caching
+**Prompt caching:** Fully automatic, free, no code changes on all models GPT-4o+.
 
-**Automatic and free** on all models GPT-4o and newer. No code changes required.
+- Caches exact prefix starting at 1,024 tokens (128-token increments)
+- Requests routed by prefix hash (~256 tokens)
+- Up to 80% latency reduction, 50% input cost reduction (NOT 90% — less than Anthropic/Google)
+- Cache writes are FREE (no surcharge, unlike Anthropic)
+- Default TTL: 5-10 min. **Extended 24-hour TTL** on GPT-5.x and GPT-4.1 via `prompt_cache_retention` (offloads KV tensors to GPU-local SSDs — longest TTL of any provider)
+- Hit reliability is probabilistic (~50%), unlike Anthropic's deterministic matching
+- Optional `prompt_cache_key` parameter influences routing for shared prefixes
 
-- Caches exact prefix match starting at 1,024 tokens, increasing in 128-token increments
-- Requests routed to machines based on hash of initial prefix (~256 tokens)
-- Up to **80% latency reduction** and **90% input cost reduction**
-- **In-memory (default):** 5–10 min inactivity TTL, max 1 hour
-- **Extended (24-hour):** Available for GPT-5.x and GPT-4.1. Configured via `prompt_cache_retention` parameter
-- **Everything is cacheable:** messages array, tool definitions, images, audio, structured output schemas
+**Tool result offloading:** NO dedicated mechanism. Tool results sit in messages array.
+
+**File Search (vector store) as quasi-offloading:**
+- Documents in vector stores, chunked/embedded/indexed server-side
+- Only relevant chunks enter context (default 20 for GPT-4/o-series)
+- Pricing: $0.10/GB/day + $2.50/1K searches
+- This IS effectively document offloading, but NOT for dynamic tool outputs
+
+**Compaction:** `/responses/compact` endpoint (since Dec 2025):
+- Replaces prior assistant messages, tool calls, tool results with **opaque encrypted item**
+- User messages kept verbatim
+- Trigger: `compact_threshold` in `context_management`
+- NOT human-readable — encrypted black box
+- GPT-5.1-Codex-Max: compaction is a **natively trained capability**, not just summarization. Model prunes its own context while preserving critical state. Sessions span millions of tokens across multiple windows (24+ hour sessions observed).
+
+**SDK auto-caching:** The Agents SDK adds no caching layer — relies on API-level automatic caching. `ModelSettings` exposes `prompt_cache_retention` for extended TTL. MCP `cache_tools_list=True` caches tool schemas locally.
 
 **Sources:**
 - [OpenAI Prompt Caching Guide](https://developers.openai.com/api/docs/guides/prompt-caching/)
-- [OpenAI Prompt Caching 201](https://developers.openai.com/cookbook/examples/prompt_caching_201/)
+- [OpenAI Compaction Guide](https://developers.openai.com/api/docs/guides/compaction/)
+- [OpenAI File Search Guide](https://platform.openai.com/docs/guides/tools-file-search)
+- [PromptHub Caching Comparison](https://www.prompthub.us/blog/prompt-caching-with-openai-anthropic-and-google-models)
 
-### Tool Result Handling
+---
 
-Tool results are part of the messages array and part of the cacheable prefix. **No evidence of automatic offloading or summarization of tool results** separately from general context management.
+### Caching Comparison Table
 
-**File Search (Vector Store Offloading)** — OpenAI's mechanism for keeping large document content OUT of the context window:
-- Files uploaded to vector stores, automatically chunked, embedded, indexed
-- Default: up to 20 chunks injected for GPT-4/o-series models
-- Pricing: $0.10/GB/day storage + $2.50 per 1,000 search calls
-- **This is effectively file-based offloading** — large documents never enter context directly
+| Feature | Anthropic | Google Gemini | OpenAI |
+|---------|-----------|---------------|--------|
+| **Activation** | Manual `cache_control` breakpoints | Implicit (auto) + Explicit (named) | Fully automatic |
+| **Cache read discount** | 90% | 90% (2.5+) / 75% (2.0) | 50% |
+| **Cache write cost** | 1.25x–2x | Free (implicit) / storage-based | Free |
+| **Max TTL** | 1 hour | Configurable (no max) | **24 hours** (GPT-5.x) |
+| **Hit reliability** | Deterministic (100%) | Automatic | Probabilistic (~50%) |
+| **Min cache tokens** | 1,024–4,096 | 4,096 | 1,024 |
+| **Storage fees** | None | $1–$4.50/M tokens/hr | None |
+| **Tool result offloading** | No | No | File Search (documents only) |
+| **Server-side compaction** | Yes (beta, LLM summary) | ADK only (turn-based) | Yes (encrypted blob) |
+| **Context editing** | Yes (clear tool uses/thinking) | No API equivalent | Compaction serves this role |
+| **SDK auto-caching** | Yes (with header) | Yes (if configured) | Yes (automatic) |
+
+**Key trade-off:** Anthropic saves most per hit (90%) but charges for writes and requires engineering. OpenAI is zero-effort but saves less (50%). Google is in between — automatic with deep savings but storage costs for explicit caches.
+
+---
+
+## TOPIC 2: Large Context Window Architecture
+
+### Google Gemini — 1M+
+
+**Architecture:** Sparse Mixture-of-Experts (MoE) Transformer. The [technical report](https://arxiv.org/abs/2403.05530) confirms this but deliberately withholds specifics (model size, expert count, attention modifications).
+
+**Likely techniques (published but unconfirmed for Gemini):**
+- **Infini-Attention** ([arXiv:2404.07143](https://arxiv.org/abs/2404.07143)) — Compressive memory, 114x compression ratio
+- **Ring Attention** ([arXiv:2310.01889](https://arxiv.org/abs/2310.01889)) — Distributes across devices in ring topology (UC Berkeley)
+- **MELODI** — Hierarchical compression, 8x memory reduction (DeepMind)
+
+**Hardware — TPU co-design:**
+
+| Generation | HBM/Chip | HBM BW | ICI/Chip | Max Pod |
+|-----------|----------|--------|---------|---------|
+| TPU v5p | 95 GB | 2,765 GB/s | 4,800 Gbps | 8,960 chips |
+| **TPU v7 (Ironwood)** | **192 GB** | **7,400 GB/s** | **9,600 Gbps** | **9,216 chips** |
+
+Ironwood "designed specifically for long-context applications approaching million-token windows." 3.2 bytes/FLOP ratio chosen to prevent memory bottleneck.
+
+**Protection strategy:** Trade secrecy (withheld details) + custom silicon moat (TPUs not sold commercially).
+
+**Retrieval quality at 1M:** >99.7% on single-needle NIAH. But **26.3% on MRCR v2 (8-needle)** — multi-hop retrieval degrades severely.
+
+**Tiered pricing:** Higher rates for inputs >200K tokens, confirming long context is genuinely more expensive internally.
 
 **Sources:**
-- [OpenAI File Search Guide](https://platform.openai.com/docs/guides/tools-file-search)
+- [Gemini 1.5 Technical Report](https://arxiv.org/abs/2403.05530)
+- [Google TPU Architecture Guide](https://introl.com/blog/google-tpu-architecture-complete-guide-7-generations)
 
-### Stateless Problem Solutions
+---
 
-The core API is stateless. OpenAI provides five mechanisms:
+### OpenAI — 1M (GPT-4.1, GPT-5.4)
+
+**Timeline:**
+- GPT-4.1 (April 2025): First OpenAI model at 1,047,576 tokens
+- GPT-5.4 (March 2026): 272K standard, up to 1.05M (2x input pricing above 272K)
+
+**Technical approach (revealed via open-source GPT-OSS):**
+- **Attention sinks:** Learnable sink token absorbs disproportionate attention on first tokens, preventing sliding-window degradation
+- **Alternating dense/banded window attention:** Some layers use full attention, others use local sliding window (descends from 2019 Sparse Transformer)
+- **Scaled RoPE:** Additional training stage extends positional encodings beyond initial training length
+- **Flex Attention:** Customizable score modifiers with auto-generated Triton kernels
+
+**Compaction as beyond-window strategy:** GPT-5.1-Codex-Max (Nov 2025) introduced natively trained compaction — the model prunes its own interaction history while preserving critical state. NOT just summarization — a trained capability. Enables 24+ hour sessions spanning millions of tokens across multiple windows.
+
+**Hardware:**
+- NVIDIA H100/Blackwell (primary)
+- Custom "Titan" chip with Broadcom (3nm, HBM3E/HBM4) — inference-only, delayed to H2 2026
+- AMD MI300X (~10% AMD stake, Dec 2025)
+- Cerebras: 750 MW inference compute through 2028
+
+**Retrieval quality at 1M:** 100% on simple NIAH but only 56.72% on LongMemEval. Benchmarks vs reality gap is significant.
+
+**Sources:**
+- [Introducing GPT-4.1 — OpenAI](https://openai.com/index/gpt-4-1/)
+- [GPT-OSS Technical Analysis](https://trickle.so/blog/inside-gpt-4-1-technical-analysis)
+- [GPT-5.1-Codex-Max — OpenAI](https://openai.com/index/gpt-5-1-codex-max/)
+- [Zep — GPT-4.1 Long Context Analysis](https://blog.getzep.com/gpt-4-1-and-o4-mini-is-openai-overselling-long-context/)
+
+---
+
+### Anthropic Claude — 200K → 1M
+
+**Timeline:**
+- March 2024: Claude 3 launched at 200K (architecturally capable of 1M+)
+- August 2025: 1M preview on Bedrock (beta header, tier 4 only, premium pricing)
+- **March 13, 2026: 1M GA** for Opus 4.6 and Sonnet 4.6. **No long-context pricing premium** — flat rate across entire 1M window
+
+**Pricing advantage:** Opus 4.6 at $5/$25 per million tokens (input/output). No surcharge beyond 200K, unlike Gemini and GPT-5.4.
+
+**Hardware — multi-cloud, multi-chip (most diversified of any lab):**
+- Google Cloud TPUs: Up to 1M TPUs (Oct 2025 deal, tens of billions). ~600K rented, ~400K Ironwood purchased outright
+- AWS Trainium (Project Rainier): Custom supercomputer
+- NVIDIA GPUs: Continued significant use
+- Three-chip, two-cloud strategy provides resilience (AWS outage did not impact Claude)
+
+**No published architecture paper** for long-context techniques. Dario Amodei (July 2024): "There's no reason we can't make the context length 100 million words today" — suggesting constraint is economic, not technical.
+
+**Retrieval quality at 1M:** Claude Opus 4.6 scores **76% on MRCR v2 (8-needle)** — highest among all frontier models. vs Gemini 3 Pro at 26.3% and Opus 4.5 at 18.5%.
+
+**Beyond-window strategy:** Application-layer compaction (Claude Code), multi-agent architectures, context engineering. NOT natively trained compaction like OpenAI.
+
+**Sources:**
+- [Anthropic Context Windows Docs](https://platform.claude.com/docs/en/build-with-claude/context-windows)
+- [Claude 1M GA — Beri.net](https://www.beri.net/article/claude-1m-context-window-ga-enterprise-2026)
+- [Anthropic TPU Expansion](https://www.anthropic.com/news/expanding-our-use-of-google-cloud-tpus-and-services)
+- [Long-Context Retrieval Rankings](https://awesomeagents.ai/capabilities/long-context-retrieval/)
+- [Context Rot Research — Chroma](https://research.trychroma.com/context-rot)
+
+---
+
+### Context Window Comparison Table
+
+| Dimension | Anthropic | Google Gemini | OpenAI |
+|-----------|-----------|---------------|--------|
+| **Max context** | 1M (GA March 2026) | 1M+ (2.5 Pro/Flash) | 1.05M (GPT-4.1, GPT-5.4) |
+| **First 1M GA** | March 13, 2026 | Mid 2024 | April 2025 (GPT-4.1) |
+| **Long-context premium** | **None (flat rate)** | Yes (>200K) | Yes (GPT-5.4: 2x >272K) |
+| **MRCR v2 at 1M (8-needle)** | **76%** (Opus 4.6) | 26.3% (Gemini 3 Pro) | ~70% (GPT-5.2 Thinking) |
+| **Architecture** | Undisclosed | Sparse MoE (details withheld) | Attention sinks + alternating dense/window |
+| **Primary hardware** | TPUs + Trainium + NVIDIA | TPUs (custom) | NVIDIA H100/Blackwell |
+| **Custom chip** | None (multi-vendor) | TPU v7 Ironwood | Titan (delayed H2 2026) |
+| **Beyond-window strategy** | App-layer compaction + multi-agent | Developer-managed | Natively trained compaction |
+| **Protection** | No published research | Trade secrecy + custom silicon | Sparse Transformer (2019) + GPT-OSS |
+
+---
+
+## TOPIC 3: Context Window Management
+
+### Anthropic
+
+**Base API:** Fully stateless. Client sends full `messages` array every call. Strict alternating user/assistant turns enforced.
+
+**Session management (Agent SDK):** Session IDs stored as local JSONL files at `~/.claude/projects/<encoded-cwd>/*.jsonl`. `resume=<session_id>` continues with full context. Sessions can be forked. NO server-side state — sessions are client-local files.
+
+**No `previous_response_id` equivalent.** No Assistants/Threads API. Philosophical choice: modular approach via MCP (model-agnostic) + Agent SDK + prompt caching instead of monolithic managed state.
+
+**Compaction (API beta, `compact-2026-01-12`):**
+- Configurable `trigger_tokens` threshold
+- LLM generates summary, replaces prior messages with `compaction` block
+- Custom `instructions` for summarization prompt
+- Extra sampling step billed separately
+- Available on Opus 4.6, Sonnet 4.6
+
+**Context editing (API beta):**
+- `clear_tool_uses_20250919` — drops old tool results, keeps N most recent
+- `clear_thinking_20251015` — clears extended thinking from earlier turns
+- Performance: 29% improvement alone, 39% with memory tool
+
+**Claude Code context management (most sophisticated of any coding agent):**
+- Auto-compaction at ~80-95% capacity
+- Manual `/compact` (best at ~60% utilization for quality)
+- Micro-compaction: selectively removes outdated tool results
+- CLAUDE.md survives compaction (re-read from disk)
+- Subagents: fresh independent context windows
+- Session Memory: background continuous summary writing
+- PreCompact hooks: git diff safety net
+- `/context` command shows what's consuming space
+
+**Sources:**
+- [Messages API Reference](https://docs.claude.com/en/api/messages)
+- [Agent SDK Sessions](https://platform.claude.com/docs/en/agent-sdk/sessions)
+- [Compaction — Claude API Docs](https://platform.claude.com/docs/en/build-with-claude/compaction)
+- [Claude Code Context Management — SitePoint](https://www.sitepoint.com/claude-code-context-management/)
+- [Session Memory Compaction Cookbook](https://platform.claude.com/cookbook/misc-session-memory-compaction)
+
+---
+
+### Google Gemini
+
+**Base API:** Stateless (`generateContent`). SDK provides `ChatSession` wrapper that tracks history locally.
+
+**Interactions API (beta, Feb 2026):** Server-side state via `previous_interaction_id` — closest analog to OpenAI's `previous_response_id`. Only conversation history preserved; tool definitions and system instructions must be re-sent each call. Storage: 55 days (paid), 1 day (free).
+
+**ADK three-tier architecture:**
+- **Session:** Container for conversation events, state, metadata. Backends: InMemory, Database (PostgreSQL/MySQL/SQLite), VertexAI
+- **State:** Key-value store with scoping prefixes: `temp:` (per-invocation), no prefix (session lifetime), `app:`/`user:` (cross-session)
+- **Memory:** Long-term knowledge via `add_session_to_memory()` / `search_memory()`. Backends: InMemory (keyword) or VertexAiMemoryBankService (RAG/embeddings)
+- **Artifacts:** Named, versioned binary data. Only references go into context, not full data
+
+**ADK compaction:** `EventsCompactionConfig` — sliding-window event summarization. Turn-based triggers only (every N invocations). Claims 60-80% token reduction. Custom summarizer model configurable.
+
+**No API-level truncation:** Exceeding the context window returns 400 error (still consumes rate limit quota). No auto-truncation at API level.
+
+**Sources:**
+- [Interactions API](https://ai.google.dev/gemini-api/docs/interactions)
+- [ADK Sessions](https://google.github.io/adk-docs/sessions/)
+- [ADK Memory](https://google.github.io/adk-docs/sessions/memory/)
+- [ADK Context Compression](https://google.github.io/adk-docs/context/compaction/)
+
+---
+
+### OpenAI
+
+**Base API:** Stateless (Chat Completions). Five state management mechanisms:
 
 | Approach | How It Works | Status |
 |----------|-------------|--------|
-| **Client-side array chaining** | Developer maintains full history, sends with every request | Active (Chat Completions) |
-| **`previous_response_id`** | Server reconstructs conversation chain. Preserves reasoning traces. | Active (Responses API) |
-| **Conversation objects** | Server automatically maintains history | Active (Responses API) |
-| **Compaction** | `/responses/compact` replaces prior assistant messages, tool calls, tool results with opaque encrypted item. User messages kept verbatim. | Active (since Dec 2025) |
-| **Threads** | Automatic server-side truncation | **Deprecated** — shutting down Aug 26, 2026 |
+| Client-side array | Developer manages full history | Active |
+| `previous_response_id` | Server reconstructs chain, preserves reasoning traces | Active |
+| Conversation objects | Server auto-maintains history | Active |
+| **Compaction** | `/responses/compact` — opaque encrypted blob. User messages kept. | Active (Dec 2025) |
+| Threads | Auto server-side truncation | **Deprecated** — dies Aug 2026 |
 
-**Key insight about Compaction:** OpenAI's compaction is opaque and encrypted. Developers cannot inspect, debug, or verify what was preserved. It's a black box.
+**Compaction details:** Encrypted, not human-readable. Proven at scale: 5M tokens, 150 tool calls (Triple Whale case study). GPT-5.1-Codex-Max: natively trained, not just summarization. Tension: compaction breaks prompt cache prefixes.
+
+**Codex CLI auto-compaction:** `auto_compact_limit` triggers `/responses/compact`. Achieves linear-time model sampling despite quadratic request growth.
+
+**Agents SDK session backends:** In-memory (default), SQLite, AsyncSQLite, Redis, SQLAlchemy, Dapr (30+ cloud backends), OpenAI-hosted. Short-term: Last-N sliding window or compaction. Long-term cross-session: requires explicit `RunContextWrapper` implementation.
 
 **Sources:**
 - [OpenAI Compaction Guide](https://developers.openai.com/api/docs/guides/compaction/)
-- [OpenAI Conversation State Guide](https://platform.openai.com/docs/guides/conversation-state)
-- [Sean Goedecke — The Responses API](https://www.seangoedecke.com/responses-api/)
+- [Conversation State Guide](https://platform.openai.com/docs/guides/conversation-state)
+- [Responses API — Sean Goedecke](https://www.seangoedecke.com/responses-api/)
+- [Codex Agent Loop — OpenAI](https://openai.com/index/unrolling-the-codex-agent-loop/)
+- [Agents SDK Sessions](https://openai.github.io/openai-agents-python/sessions/)
 
-### OpenAI Patents
+---
 
-**US 11,886,826 B1** — "Systems and Methods for Language Model-Based Text Insertion" (granted Jan 30, 2024). Covers context-aware text generation/insertion. **NOT about context window management, compression, or caching.**
+### Context Management Comparison Table
 
-**No patents found specifically about prompt caching, KV-cache management, context compression, or truncation strategies.**
-
-OpenAI's portfolio: 110 patents globally, 42 granted. Uses defensive patent pledge.
-
-**Sources:**
-- [Google Patents — US11886826B1](https://patents.google.com/patent/US11886826B1/en)
-- [GreyB — OpenAI Patents Insights](https://insights.greyb.com/openai-patents/)
+| Feature | Anthropic | Google Gemini | OpenAI |
+|---------|-----------|---------------|--------|
+| **Base API** | Stateless (Messages) | Stateless (generateContent) | Stateless (Chat Completions) |
+| **Server-side state** | No (client-side JSONL) | Yes — Interactions API (beta) | Yes — Responses API |
+| **State chaining** | `resume=<session_id>` (local) | `previous_interaction_id` | `previous_response_id` |
+| **Managed threads** | No (MCP + SDK) | No (ADK sessions client-managed) | Yes (Assistants, deprecated) |
+| **Compaction** | LLM summary (beta) | ADK turn-based summarization | Encrypted opaque blob |
+| **Context editing** | Clear tool uses / thinking (beta) | No API equivalent | Compaction serves this |
+| **Overflow behavior** | Compaction or error | 400 error (API) | Truncation or error |
+| **Long-term memory** | CLAUDE.md + MEMORY.md | ADK Memory (RAG-based) | Assistants file storage |
+| **Agent framework** | Agent SDK (sessions, subagents) | ADK (sessions, state, memory) | Agents SDK (pluggable backends) |
 
 ---
 
 ## TOPIC 4: Patent Landscape
 
-### Critical Finding: No Patent Covers the Core Concepts
+### Anthropic Patents
 
-After 16+ targeted searches across Google Patents, USPTO, Justia, and patent-specific resources:
+**Portfolio:** ~61 patents across 18 families in 8 jurisdictions. **60 of 61 were acquired** (primarily from IBM), only ~5 originally filed by Anthropic.
 
-| Concept | Patent Found? | Closest Match | Notes |
-|---------|:------------:|---------------|-------|
-| File-based agent communication to reduce token costs | **NO** | None | Widely practiced, no patent identified |
-| Offloading conversation history to persistent storage | **NO** | US 7,024,656 (generic agent persistence, pre-LLM) | Prior art in academic papers |
-| Agent session chaining through file persistence | **NO** | None | Telephony chaining patents exist but unrelated |
-| Reducing LLM API costs through file-based message passing | **NO** | None | Engineering best practice, not patented |
-| Context window extension through agent chaining | **NO** | US 12,387,050 (thought caching, different mechanism) | Adjacent but mechanistically different |
-| Multi-agent session persistence with shared files | **NO** | US 12,111,859 (C3.AI orchestration, broader scope) | Enterprise orchestration, not file-specific |
+**Original filings (all focused on computer use / GUI automation):**
+- **US 12,387,036 B1** — First US patent. 234 pages. "Magnitude-invariant image-text agentic interface automation." Core computer use technology.
+- **US 12,437,238** — Training data generation for agent interface automation. Inventors include David Luan (former Adept CEO).
+- **US 2025/0299023** — Prompt construction for multimodal interface workflows.
 
-### Closest Existing Patents
+**Most-cited acquired patent:** US11,361,571B1 ("Term extraction in highly technical domains") — acquired from IBM.
 
-**US 12,387,050 — "Multi-stage LLM with unlimited context"** (Issued Aug 12, 2025)
-- Combines large and small LLMs with a "thought cache." Router directs prompts to large LLM or cached thoughts. Cached thoughts combined with new prompts through smaller LLM.
-- **Key distinction:** Operates at model inference level (thought caching between model tiers), NOT at agent/session level through files. Does not cover file-based communication between sessions or reducing API token costs by passing information through files.
-- Source: [Justia Patents](https://patents.justia.com/patent/12387050)
+**What Anthropic has NOT patented:**
+- Prompt caching / cache_control mechanism
+- Context editing or compaction
+- Tool result handling / tool use protocol
+- Agent SDK architecture or session management
+- Multi-session agents or agent chaining
+- MCP (Model Context Protocol)
 
-**US 12,111,859 B2 — "Enterprise generative artificial intelligence architecture"** (C3.AI, issued Oct 8, 2024)
-- Orchestrator managing multiple AI agents with context management across enterprise data sources.
-- Does NOT specifically cover file-based communication to reduce token costs.
-- Source: [Google Patents](https://patents.google.com/patent/US12111859B2/en)
+**Strategy:** Acquisition-heavy defensive portfolio + narrow original filings on computer use. No defensive patent pledge published. No litigation history.
 
-**US 7,024,656 B1 — "Persistent agents"**
-- Object persistence for software agents using persistent stores (filesystem or database).
-- Pre-LLM era patent about object-relational mapping. Not specific to LLM context management.
-- Source: [Google Patents](https://patents.google.com/patent/US7024656B1/en)
+**Sources:**
+- [Lumenci — Anthropic Patent Portfolio](https://lumenci.com/patent-portfolio/anthropic/)
+- [Justia — Anthropic Patents](https://patents.justia.com/assignee/anthropic-pbc)
+- [The Best Practice Podcast — Anthropic's Agentic AI Patent](https://thebestpractice.podigee.io/35-the-secret-behind-anthropic-s-agentic-ai-patent-claude-adept-amazon)
 
-### Important Caveat
+---
 
-Patent applications have an **18-month publication delay**. Applications filed in 2025 or early 2026 may not yet be publicly visible. A professional patent search through USPTO PAIR and WIPO databases would be needed to identify unpublished applications.
+### Google Patents
+
+**What Google HAS patented:**
+1. **The Transformer** — US10,452,978 ("Attention-Based Sequence Transduction Neural Networks"). 7+ continuations. NOT in Open Source Non-Assertion Pledge.
+2. **Sparse attention** — US20230022151A1 ("Full Attention with Sparse Computation Cost"). Directly addresses quadratic limitation.
+3. **Universal Transformers** — US10,740,433. Adaptive computation time.
+4. **Merged linear layers** — App #20250190798 (Dec 2024). Inference efficiency.
+
+**What Google has NOT patented:** No specific patent on 1M context technique, Gemini's MoE configuration, or the attention modification enabling long context.
+
+**Protection strategy:** Trade secrecy (withheld architecture details) + custom silicon moat (TPUs not commercially available) + broad foundational patents. 1,837 AI-related applications globally (~50% more than Microsoft).
+
+**Sources:**
+- [Google Transformer Patents — PI IP LAW](https://piip.co.kr/en/blog/google-transformer-llm-patent-risk-and-strategy)
+- [US10,452,978 — Google Patents](https://patents.google.com/patent/US10452978B2/en)
+- [US20230022151A1 — Google Patents](https://patents.google.com/patent/US20230022151A1/en)
+
+---
+
+### OpenAI Patents
+
+**Portfolio:** ~110 patents globally, 42 granted, 93%+ active. Filed under OpenAI Opco LLC. Accelerated prosecution: 11-month average (industry: 24 months). Primarily US-only (96 of 110).
+
+**Key granted patents:**
+
+| Patent | Title | Area |
+|--------|-------|------|
+| US 11,886,826 B1 | Language Model-based Text Insertion | Text generation |
+| US 11,922,144 B1 | Schema-based Integration of External APIs | API/tool integration |
+| US 11,922,550 B1 | Hierarchical Text-conditional Image Generation | DALL-E |
+| US 12,079,587 B1 | Multi-task Automatic Speech Recognition | Whisper |
+| **US 12,405,822 B1** | **Multi-Agent Interactions Using a Shared Workspace** | **Multi-agent orchestration** |
+| **US 12,406,207 B2** | **Generating Customized AI Models** | **Custom GPTs / RAG pipeline** |
+
+**US 12,405,822 is significant:** Covers shared digital workspace as command ledger where agents can view state, post commands, or **yield** (abstain when another agent is better suited). Broad claims covering general multi-agent coordination protocols. **Anyone building multi-agent systems should review this patent.**
+
+**US 12,406,207 covers RAG broadly:** Chunking documents, embedding, storing in vector databases, retrieving for augmented generation.
+
+**What OpenAI has NOT patented:**
+- Context compression / compaction
+- Assistants/Threads architecture
+- Prompt caching mechanism
+- Streaming protocols
+- Conversation threading
+
+**Defensive patent pledge:** Published Oct 2024 — "only use our patents defensively." BUT: legally non-binding website statement, unilaterally revocable, does not travel with asset sales, and the "harm" exception is broad enough to cover competitors. ([MBHB analysis](https://www.mbhb.com/intelligence/snippets/openais-patent-licensing-promise-is-not-what-it-seems/))
+
+**Sources:**
+- [Originality.AI — OpenAI Patent List](https://originality.ai/blog/openai-patent-list)
+- [GreyB — OpenAI Patents](https://insights.greyb.com/openai-patents/)
+- [BESTPATENT — Two New OpenAI Patents](https://bestpatent.eu/two-new-openai-patents-you-should-know-about/)
+- [OpenAI — Our Approach to Patents](https://openai.com/approach-to-patents/)
+
+---
+
+### Third-Party Patents (Adjacent)
+
+| Patent | Title | Relevance |
+|--------|-------|-----------|
+| **US 12,387,050** | Multi-stage LLM with unlimited context | Thought caching between model tiers. **Different mechanism** than file-based communication. |
+| **US 12,111,859 B2** (C3.AI) | Enterprise generative AI architecture | Multi-agent orchestration. Does NOT cover file-based token cost reduction. |
+| US 7,024,656 B1 | Persistent agents | Pre-LLM object persistence. Not specific to LLM context. |
+
+---
+
+### THE BIG FINDING: No Patent Covers the Core Concepts
+
+| Concept | Anthropic | Google | OpenAI | Any Company |
+|---------|:---------:|:------:|:------:|:-----------:|
+| File-based agent communication to reduce token costs | NO | NO | NO | **NO** |
+| Offloading conversation history to persistent storage | NO | NO | NO | **NO** |
+| Agent session chaining through file persistence | NO | NO | NO | **NO** |
+| Reducing LLM API costs via file-based message passing | NO | NO | NO | **NO** |
+| Context window extension through agent chaining | NO | NO | NO | **NO** (closest: US 12,387,050) |
+| Prompt caching mechanism | NO | NO | NO | **NO** |
+| Context compaction/compression | NO | NO | NO | **NO** |
+
+**All three companies protect these capabilities as trade secrets, not patents.**
+
+**Caveat:** 18-month patent publication delay means applications filed after Sept 2024 may not yet be visible. Professional USPTO PAIR/WIPO search needed for unpublished applications.
 
 ---
 
 ## TOPIC 5: Prior Art
 
-### File-Based Communication Instead of API Messages
+### File-Based Agent Communication
 
-**EXTENSIVE PRIOR ART EXISTS.**
+**EXTENSIVE PRIOR ART EXISTS:**
 
-**Blackboard Architecture (1980s — present)**
-The pattern of agents reading from and writing to a central shared space dates to the 1980s. Google Research and UMass Amherst published a 2025 paper applying this to LLM multi-agent data science, showing 13%–57% improvements over baselines.
-- Source: [arXiv:2510.01285 — LLM-Based Multi-Agent Blackboard System](https://arxiv.org/abs/2510.01285)
-- Source: [github.com/claudioed/agent-blackboard](https://github.com/claudioed/agent-blackboard)
+- **Blackboard Architecture (1980s+)** — Agents read/write to shared space. Google Research 2025 paper applied to LLM agents ([arXiv:2510.01285](https://arxiv.org/abs/2510.01285))
+- **Manus (2024-2025)** — File system as "infinite memory," 100:1 compression ([Manus Blog](https://manus.im/blog/Context-Engineering-for-AI-Agents-Lessons-from-Building-Manus))
+- **LangChain Deep Agents (2025)** — Auto-offloads tool results >20K tokens to filesystem with path references ([LangChain Blog](https://blog.langchain.com/context-management-for-deepagents/))
+- **Fast.io** — Shared file workspaces, 35% processing time reduction ([Fast.io](https://fast.io/resources/agent-to-agent-file-communication-protocols/))
 
-**Manus (2024–2025)**
-Pioneered treating the file system as "infinite memory." Agents write intermediate results to files, load only summaries into context. Claims 100:1 compression ratios.
-- Source: [Manus Blog — Context Engineering](https://manus.im/blog/Context-Engineering-for-AI-Agents-Lessons-from-Building-Manus)
+### Session Chaining Concepts
 
-**LangChain Deep Agents (2025)**
-When tool responses exceed 20,000 tokens, automatically offloads to filesystem and substitutes with file path reference plus 10-line preview. When context crosses 85% capacity, truncates older tool calls and replaces with file pointers.
-- Source: [LangChain Blog — Context Management for Deep Agents](https://blog.langchain.com/context-management-for-deepagents/)
+- **Chain-of-Agents (CoA)** — Google Research, NeurIPS 2024. Sequential agents passing context. ([arXiv:2406.02818](https://arxiv.org/abs/2406.02818))
+- **Git Context Controller (GCC)** — COMMIT/BRANCH/MERGE for agent memory, 80%+ SWE-Bench ([arXiv:2508.00031](https://arxiv.org/abs/2508.00031))
+- **Graph of Agents** — Extends CoA to graph topologies ([arXiv:2509.21848](https://arxiv.org/html/2509.21848v1))
+- **MemGPT/Letta (2023)** — Context as "RAM," external storage as "disk" ([arXiv:2310.08560](https://arxiv.org/abs/2310.08560))
 
-**Fast.io — Shared File Protocols**
-Detailed guide on using shared file workspaces as a "blackboard" for agent coordination. Claims 35% processing time reduction vs. streaming through API layers.
-- Source: [Fast.io — Agent-to-Agent File Communication Protocols](https://fast.io/resources/agent-to-agent-file-communication-protocols/)
+### Company-Specific Implementations
 
-### "Super Agent Chain" — Agents Reading Previous Agents' Files
+**Anthropic — Claude Code:**
+- JSONL session files at `~/.claude/projects/<encoded-path>/`
+- Three-tier CLAUDE.md hierarchy (Global > Project > Local)
+- Auto-generated MEMORY.md (200-line limit, topic files)
+- Session Memory: background continuous summarization
+- `--continue` / `--resume <id>` for session chaining
+- `compact_boundary` records link parent/child sessions
+- Published "Effective Context Engineering" blog (Sep 2025)
 
-**The concept exists under different names.** No one uses the exact term "super agent chain."
+**OpenAI — Codex CLI:**
+- JSONL rollout files at `~/.codex/sessions/YYYY/MM/DD/`
+- AGENTS.md hierarchy (AGENTS.override.md > AGENTS.md, root-to-CWD walk)
+- 32 KiB size limit for instruction files
+- `codex resume` / `codex resume --last` / `codex resume <id>`
+- SQLite-backed state for resumable runtime
+- Published multiple cookbook resources on context engineering
 
-**Chain-of-Agents (CoA) — Google Research (NeurIPS 2024)**
-Worker agents sequentially process different portions of text, each receiving the message from the previous worker. A manager agent synthesizes the final output. 10% improvement over RAG and full-context approaches.
-- Source: [arXiv:2406.02818](https://arxiv.org/abs/2406.02818)
-- Source: [Google Research Blog — Chain of Agents](https://research.google/blog/chain-of-agents-large-language-models-collaborating-on-long-context-tasks/)
+**Google — ADK / Gemini CLI:**
+- GEMINI.md files (Gemini CLI only, not ADK framework)
+- ADK: pluggable session backends (InMemory, SQLite, Vertex AI, GCS)
+- Three-tier architecture: Session + State + Memory
+- `user:` / `app:` state prefixes for cross-session persistence
+- Published "Context-Aware Multi-Agent Framework" blog (Dec 2025)
 
-**Git Context Controller (GCC) — arXiv 2025**
-Structures agent memory as a persistent file system with COMMIT, BRANCH, MERGE, and CONTEXT operations. Enables cross-session and cross-agent context reuse. 80%+ SWE-Bench resolution rate.
-- Source: [arXiv:2508.00031](https://arxiv.org/abs/2508.00031)
-- Source: [github.com/swadhinbiswas/contexa](https://github.com/swadhinbiswas/contexa)
+### Cross-Company Convergence
 
-**Graph of Agents — arXiv 2025**
-Extends Chain-of-Agents to graph topologies for structured context sharing.
-- Source: [arXiv:2509.21848](https://arxiv.org/html/2509.21848v1)
+All three have independently converged on the same pattern:
+1. Markdown instruction file loaded at session start (CLAUDE.md / AGENTS.md / GEMINI.md)
+2. Structured session logs (JSONL) with resume capability
+3. Compaction/summarization for long-running tasks
+4. Some form of persistent memory across sessions
 
-### Open-Source Session Chaining Projects
+### What Has NO Prior Art
 
-| Project | Mechanism | Source |
-|---------|-----------|--------|
-| **Claude Code** | JSONL session files; `--continue` / `--resume` flags; auto-compact with summary | [Claude Code Docs](https://code.claude.com/docs/en/how-claude-code-works) |
-| **Aider** | `--restore-chat-history`; `.aider.llm.history` logs; git diff injection | [Aider FAQ](https://aider.chat/docs/faq.html) |
-| **OpenHands** | Event-sourced state; `LLMSummarizingCondenser` for compression | [OpenHands Docs](https://docs.openhands.dev/sdk/guides/convo-persistence) |
-| **Letta (MemGPT)** | Agent File (.af) format; persistent memory blocks across sessions | [github.com/letta-ai/agent-file](https://github.com/letta-ai/agent-file) |
-| **Contexa (GCC)** | `.GCC/` directory with markdown + YAML; COMMIT/BRANCH/MERGE operations | [github.com/swadhinbiswas/contexa](https://github.com/swadhinbiswas/contexa) |
-| **LangGraph** | Thread-scoped checkpoints persisted to database; long-term memory via files | [LangChain Memory Docs](https://docs.langchain.com/oss/python/langgraph/memory) |
-| **AutoGen** | `save_state()` / `load_state()` for JSON serialization | [GitHub Issue #6466](https://github.com/microsoft/autogen/issues/6466) |
-| **Session-Handoff Skill** | Structured markdown handoff docs chained via `--continues-from` links | [skills.sh](https://skills.sh/softaworks/agent-toolkit/session-handoff) |
+- **"Walkie-talkie"** as a metaphor for file-based agent communication — term not used anywhere
+- **"Super agent chain"** as a named concept — underlying mechanism well-established under other names
 
-### MemGPT/Letta — The Foundational Prior Art
-
-The most mature prior art for extending context beyond model windows. Treats the context window as "RAM" and external storage as "disk," paging information in and out via tool calls. The LLM itself serves as the memory manager.
-- Source: [arXiv:2310.08560 — MemGPT](https://arxiv.org/abs/2310.08560)
-- Source: [Letta Docs](https://docs.letta.com/concepts/letta/)
-
-### "Walkie-Talkie" Agent Communication
-
-**NO PRIOR ART FOUND** for file-based "walkie-talkie" communication between AI agents. The term is not used in any published research, blog post, or open-source project for this concept. A GitHub project called "Walkie" exists but uses P2P network sockets, not files.
+**Sources:**
+- [Claude Code Session Continuation](https://blog.fsck.com/releases/2026/02/22/claude-code-session-continuation/)
+- [Codex CLI Reference](https://developers.openai.com/codex/cli/reference)
+- [Gemini CLI Configuration](https://google-gemini.github.io/gemini-cli/docs/get-started/configuration.html)
+- [Anthropic Context Engineering](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents)
+- [Google Developers Blog — Multi-Agent Framework](https://developers.googleblog.com/architecting-efficient-context-aware-multi-agent-framework-for-production/)
 
 ---
 
-## Cross-Topic Summary & Conclusions
+## Master Comparison Tables & Conclusions
 
-### How the Big 3 Compare on Caching
+### Complete Provider Comparison
 
-| Feature | Anthropic | Google | OpenAI |
-|---------|-----------|--------|--------|
-| **Automatic caching** | Yes (with `cache_control` header) | Yes (implicit since May 2025) | Yes (fully automatic, no changes) |
-| **Cache read discount** | 90% (0.1x base) | 90% (Gemini 2.5+) | Up to 90% |
-| **Cache write cost** | 1.25x–2x base | Standard input rate | Free |
-| **Extended TTL** | 1 hour (2x cost) | Configurable (explicit) | 24 hour (GPT-5.x, 4.1) |
-| **Cache storage fees** | None | $1–$4.50/M tokens/hr (explicit) | None |
-| **Tool result offloading** | No | No | File Search (vector store) |
-| **Compaction** | Yes (beta, lossy) | Not announced | Yes (opaque encrypted) |
-| **Context editing** | Yes (beta, clears tool results) | Not announced | Compaction serves this role |
+| Capability | Anthropic Claude | Google Gemini | OpenAI |
+|---|---|---|---|
+| **Max context** | 1M (GA Mar 2026) | 1M+ (2.5 Pro/Flash) | 1.05M (GPT-4.1/5.4) |
+| **Long-ctx premium** | **None (flat)** | Yes (>200K) | Yes (>272K) |
+| **MRCR v2 1M** | **76%** | 26.3% | ~70% |
+| **Caching type** | Manual breakpoints | Auto + Explicit | Fully automatic |
+| **Cache read savings** | 90% | 90% | 50% |
+| **Cache write cost** | 1.25x–2x | Free | Free |
+| **Max cache TTL** | 1 hour | Configurable | **24 hours** |
+| **Server-side state** | No | Yes (Interactions beta) | Yes (Responses API) |
+| **Compaction** | LLM summary (beta) | ADK turn-based | Encrypted blob |
+| **Tool result offload** | No | No | File Search only |
+| **Agent framework** | Agent SDK | ADK | Agents SDK |
+| **Instruction file** | CLAUDE.md (3-tier) | GEMINI.md (CLI) | AGENTS.md (2-tier) |
+| **Session format** | JSONL (local) | Pluggable backends | JSONL rollouts + backends |
+| **Patents (total)** | ~61 (60 acquired) | 1,837+ AI-related | ~110 (42 granted) |
+| **Patents on caching/context** | None | Sparse attention only | None |
+| **Defensive pledge** | None | Open Source pledge (partial) | Published (non-binding) |
+| **Hardware** | TPU + Trainium + NVIDIA | TPU (custom) | NVIDIA + Titan (delayed) |
 
-### What IS Known (High Confidence)
+### Key Conclusions
 
-1. **No provider truly offloads tool results server-side.** All three cache KV representations to reduce compute, but the full messages array must be sent every time. This is a compute optimization, not a transfer optimization.
-2. **Google protects its 1M context approach through trade secrecy and custom silicon**, not primarily through patents. The specific technique is unknown.
-3. **Compaction/summarization is destructive everywhere.** Anthropic, OpenAI, and client-side tools like Claude Code all replace original content with summaries. There is no transparent "cold storage with retrieval."
-4. **File-based agent communication is widely practiced but unpatented.** Manus, LangChain, Claude Code, and many others use it. No patent covers it.
-5. **Session chaining through files is widely practiced but unpatented.** Multiple frameworks implement it. No patent covers it.
+1. **No provider truly offloads tool results server-side.** All cache KV representations for compute savings, but the full messages array must be sent every time. This is a compute optimization, not a transfer optimization.
 
-### What COULD NOT Be Found (Gaps in Evidence)
+2. **No company has patented prompt caching, context compaction, or tool result handling.** These are all protected as trade secrets. The patent landscape for file-based agent communication is entirely empty.
 
-1. **No patent exists** covering "communicating with an AI agent through files instead of the API message array to reduce token costs"
-2. **No patent exists** covering "chaining multiple AI agent sessions through shared files to extend effective context beyond the model's window"
-3. **No one uses the term "super agent chain"** — the concept exists under names like "Chain-of-Agents," "agent relay," and "session handoff chain"
-4. **No one uses "walkie-talkie"** as a metaphor for file-based, half-duplex agent communication
-5. **The exact attention mechanism in Gemini** is deliberately undisclosed
-6. **Whether Claude Code's micro-compaction actually writes to disk** is only claimed by third-party analysis, not Anthropic
+3. **All three companies converged on the same file-based context pattern** (instruction file + session logs + compaction) independently, confirming it as a natural engineering solution.
 
-### Patent Gap Analysis
+4. **Context quality matters more than context size.** Claude Opus 4.6 at 1M scores 76% on multi-hop retrieval vs Gemini 3 Pro at 26.3% — nearly 3x better despite similar window sizes.
 
-The specific combination of these ideas appears to be in a **patent gap**:
-- File-based communication between agent sessions to reduce API token costs
-- Session chaining through persistent files to extend effective context
+5. **The "file-based communication to reduce token costs" concept has extensive prior art** but no patent coverage. Manus (2024), LangChain (2025), MemGPT (2023), Chain-of-Agents (2024), and GCC (2025) all describe variants.
 
-**However, prior art is substantial** (Manus 2024, LangChain 2025, MemGPT 2023, Chain-of-Agents 2024, GCC 2025). Any patent application would need to claim something more specific than what is already public.
+6. **OpenAI's multi-agent shared workspace patent (US 12,405,822) is the broadest threat** to the multi-agent ecosystem. Its "yielding" mechanism and shared command ledger claims are broadly written.
 
-The closest existing patent (**US 12,387,050** — "Multi-stage LLM with unlimited context") covers thought-caching between model tiers, a **different mechanism** than file-based inter-session communication.
+7. **Google protects via hardware moat + trade secrecy.** The specific technique enabling 1M context is unknown. TPUs are not commercially available.
 
-**Caveat:** Patent applications filed after September 2024 may not yet be publicly visible due to the 18-month publication delay.
+8. **Anthropic's patent portfolio is almost entirely acquired.** Original filings cover only computer use (GUI automation), not the API/SDK/agent infrastructure.
+
+### Patent Gap Summary
+
+The following concepts appear to exist in a **patent gap** — widely practiced but unpatented:
+
+| Concept | Status |
+|---------|--------|
+| File-based agent communication to reduce API token costs | **UNPATENTED** — extensive prior art |
+| Session chaining through persistent files | **UNPATENTED** — extensive prior art |
+| Prompt caching / KV-cache management | **UNPATENTED** by any provider |
+| Context compaction / compression | **UNPATENTED** by any provider |
+| Tool result offloading to external storage | **UNPATENTED** — no one does it |
+| Markdown instruction files for agents | **UNPATENTED** — convergent evolution |
+| "Walkie-talkie" file-based agent communication | **NO PRIOR ART** — term unused |
+| "Super agent chain" concept | **NO PRIOR ART for the name** — mechanism well-established |

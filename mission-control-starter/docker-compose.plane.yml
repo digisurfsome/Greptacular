@@ -1,0 +1,20 @@
+# Step 5 — we'll configure this together
+#
+# This file will contain the Docker Compose setup for self-hosted Plane.
+# Plane is the project management tool that Mission Control integrates with.
+#
+# When we're ready:
+# 1. We'll pull the official Plane docker-compose from https://github.com/makeplane/plane
+# 2. Configure it to send webhooks to Mission Control
+# 3. Set up the AI user/label that triggers automation
+#
+# For now, this is a placeholder.
+
+version: "3.8"
+
+services:
+  # TODO: Plane services will go here
+  # See: https://docs.plane.so/self-hosting/docker-compose
+  placeholder:
+    image: alpine:latest
+    command: echo "Plane services not yet configured"

@@ -50,6 +50,141 @@ class MetaprogramScore:
             return "weak"
         return "undetected"
 
+    # ═══════════════════════════════════════════════════════════
+    # 4-LEVEL DOMINANCE SPECTRUM
+    # ═══════════════════════════════════════════════════════════
+    #
+    # People are rarely 100% one pole. Most are dominant one way
+    # with a secondary lean the other way. The 4 levels:
+    #
+    #   Level 1: PURE pole_a      — 85%+ ratio, talk ONLY in pole_a frame
+    #   Level 2: DOMINANT pole_a  — 60-85% ratio, LEAD with pole_a, FOLLOW with pole_b
+    #   Level 3: DOMINANT pole_b  — 60-85% ratio (pole_b side), LEAD pole_b, FOLLOW pole_a
+    #   Level 4: PURE pole_b      — 85%+ ratio (pole_b side), talk ONLY in pole_b frame
+    #
+    # Levels 2 & 3 are where most people live. The messaging pattern:
+    #   "Here's what you'll gain [toward] — and you'll never deal with X again [away]"
+    #   vs
+    #   "Stop dealing with X [away] — and start building Y [toward]"
+    #
+    # The LEAD/FOLLOW order is what makes it click. Same words,
+    # different sequence = completely different feeling.
+
+    @property
+    def dominance_ratio(self) -> float:
+        """
+        Ratio of the dominant pole's score to total.
+        1.0 = pure dominant (extreme), 0.5 = perfectly split.
+        """
+        total = self.score_a + self.score_b
+        if total == 0:
+            return 0.5
+        return max(self.score_a, self.score_b) / total
+
+    @property
+    def dominance_level(self) -> int:
+        """
+        4-level dominance spectrum:
+            1 = Pure pole_a (>85% pole_a)
+            2 = Dominant pole_a, secondary pole_b (60-85% pole_a)
+            3 = Dominant pole_b, secondary pole_a (60-85% pole_b)
+            4 = Pure pole_b (>85% pole_b)
+
+        Most people are level 2 or 3.
+        Extremes (1 and 4) are rare but easy to close when spotted.
+        """
+        total = self.score_a + self.score_b
+        if total == 0:
+            return 2  # Default to dominant pole_a when no data
+
+        ratio_a = self.score_a / total
+
+        if ratio_a >= 0.85:
+            return 1   # Pure pole_a
+        elif ratio_a >= 0.60:
+            return 2   # Dominant pole_a, secondary pole_b
+        elif ratio_a >= 0.15:
+            return 3   # Dominant pole_b, secondary pole_a
+        else:
+            return 4   # Pure pole_b
+
+    @property
+    def dominance_label(self) -> str:
+        """Human-readable dominance description."""
+        level = self.dominance_level
+        if level == 1:
+            return f"pure_{self.pole_a}"
+        elif level == 2:
+            return f"dominant_{self.pole_a}_secondary_{self.pole_b}"
+        elif level == 3:
+            return f"dominant_{self.pole_b}_secondary_{self.pole_a}"
+        else:
+            return f"pure_{self.pole_b}"
+
+    @property
+    def lead_follow(self) -> tuple[str, str | None]:
+        """
+        Returns (lead_pole, follow_pole) for messaging.
+
+        Level 1: ("toward", None)      — only speak toward
+        Level 2: ("toward", "away")    — LEAD toward, FOLLOW away
+        Level 3: ("away", "toward")    — LEAD away, FOLLOW toward
+        Level 4: ("away", None)        — only speak away
+
+        The order matters more than the words.
+        """
+        level = self.dominance_level
+        if level == 1:
+            return (self.pole_a, None)
+        elif level == 2:
+            return (self.pole_a, self.pole_b)
+        elif level == 3:
+            return (self.pole_b, self.pole_a)
+        else:
+            return (self.pole_b, None)
+
+    @property
+    def messaging_instruction(self) -> str:
+        """
+        Plain-English instruction for how to talk to this person.
+        This is what an earpiece coach would tell you in real time.
+        """
+        lead, follow = self.lead_follow
+        level = self.dominance_level
+
+        # Build readable pole names
+        pole_names = {
+            "toward": "moving toward / gains / goals",
+            "away_from": "moving away from / pain / problems to solve",
+            "internal": "their own judgment / 'you decide'",
+            "external": "social proof / what others did / expert opinions",
+            "options": "choices and flexibility / 'here are your options'",
+            "procedures": "steps and structure / 'here's exactly what to do'",
+            "big_picture": "high level / bottom line / the gist",
+            "detail": "specifics / numbers / breakdown",
+            "proactive": "action now / let's go / making moves",
+            "reactive": "when it comes up / handle as needed / respond to",
+        }
+
+        lead_desc = pole_names.get(lead, lead)
+        follow_desc = pole_names.get(follow, follow) if follow else None
+
+        if level in (1, 4):
+            return (
+                f"PURE {lead.upper()}: Talk ONLY in {lead_desc} frame. "
+                f"Don't mix in the other side at all — they process everything "
+                f"through this one lens."
+            )
+        else:
+            return (
+                f"DOMINANT {lead.upper()}: LEAD with {lead_desc}, "
+                f"then FOLLOW with {follow_desc}. "
+                f"The first thing they hear should be {lead} framing. "
+                f"Then add the {follow} angle as a secondary hook. "
+                f"Order matters — same words, different sequence = "
+                f"completely different feeling."
+            )
+
 
 @dataclass
 class MetaprogramProfile:
@@ -122,6 +257,14 @@ class MetaprogramProfile:
                     "strength": score.strength,
                     "score_a": round(score.score_a, 1),
                     "score_b": round(score.score_b, 1),
+                    "dominance_level": score.dominance_level,
+                    "dominance_label": score.dominance_label,
+                    "dominance_ratio": round(score.dominance_ratio, 2),
+                    "lead_follow": {
+                        "lead": score.lead_follow[0],
+                        "follow": score.lead_follow[1],
+                    },
+                    "messaging_instruction": score.messaging_instruction,
                 }
                 for name, score in self.scores.items()
             },

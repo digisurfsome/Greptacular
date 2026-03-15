@@ -919,6 +919,146 @@ Every agent in the stack gets smarter about people, not just topics.
 
 ---
 
+## Core Concept 5: Firehose Ingestion — Saturate Then Maintain
+
+### The Usage Pattern
+
+There are two modes of operation:
+
+**Mode 1: Saturation Sprint (first 1-2 weeks)**
+- User dumps EVERYTHING they've been collecting — 50-100 videos, articles, bookmarks, notes
+- The system ingests at scale, builds 20-30 truth documents, routes knowledge everywhere
+- After the sprint, the system is "caught up" to everything the user knows
+- This is the "filling the storage unit" phase — but with capacity management so it stays organized
+
+**Mode 2: Maintenance Drip (ongoing)**
+- User pastes 1-3 new things per day as they find them
+- System matches to existing truth docs, sharpens, routes
+- Most new content adds 5-10% new value — quick merge, done
+- Occasional new topic creates a new truth document
+- This is the "keeping the edge sharp" phase
+
+### Firehose Ingestion Interface
+
+The saturation sprint needs to be FAST. No friction. Multiple input methods:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  TIMONACCI LABS — INGEST                                 │
+│                                                          │
+│  ┌────────────────────────────────────────────────────┐  │
+│  │  Paste URLs, text, or drag files here              │  │
+│  │                                                    │  │
+│  │  https://youtube.com/watch?v=abc123                │  │
+│  │  https://youtube.com/watch?v=def456                │  │
+│  │  https://blog.example.com/ai-seo-guide             │  │
+│  │  https://twitter.com/elonmusk/status/123456        │  │
+│  │                                                    │  │
+│  │  (paste as many as you want — one per line)        │  │
+│  └────────────────────────────────────────────────────┘  │
+│                                                          │
+│  Or: [Upload PDF/TXT files]  [Paste raw text]            │
+│                                                          │
+│  [🔥 Ingest All]                                        │
+│                                                          │
+│  QUEUE: 47 items                                         │
+│  ✅ Processed: 12  🔄 Processing: 1  ⏳ Waiting: 34    │
+│                                                          │
+│  Recent:                                                 │
+│  ✅ "AI SEO Masterclass" → matched to AI SEO truth doc  │
+│     → 3 new insights merged, 2 were duplicates           │
+│  ✅ "Cold Email That Works" → NEW truth doc created     │
+│     → routed to: skill, 2 ref files, 1 prompt            │
+│  🔄 "Advanced Playwright Tips" → processing...          │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Input Methods
+
+| Method | How | What It Handles |
+|---|---|---|
+| **Multi-URL paste** | Paste 1-50 URLs, one per line | YouTube, articles, blog posts, tweets |
+| **File drag-and-drop** | Drag PDFs, TXT, MD files onto the page | Documents, reports, exported notes |
+| **Raw text paste** | Paste text directly into a text box | Meeting notes, copy-pasted content, ideas |
+| **Bookmarks import** | Upload browser bookmarks HTML export | Batch import saved articles |
+| **Watch folder** | Drop files into `~/.autoforge/ingest/` | Automated — anything in the folder gets processed |
+| **API endpoint** | `POST /api/ingest` with content | Programmatic — other tools can feed the system |
+
+### Processing Pipeline Per Item
+
+```
+INPUT (URL / file / text)
+    ↓
+[ROBOT] Detect type:
+  YouTube URL → yt-dlp + transcript API
+  Article URL → web scrape + readability extract
+  PDF file → text extraction (pdftotext)
+  Raw text → use as-is
+    ↓
+[ROBOT] Clean + normalize to plain text
+    ↓
+[ROBOT] Keyword extract → check against existing truth doc tags
+    ↓
+[AGENT] If ambiguous match → semantic similarity check
+    ↓
+MATCH RESULT:
+  ├── Strong match (>80%) → Sword Sharpener (diff + merge)
+  ├── Weak match (50-80%) → suggest to user: "Match to X?"
+  └── No match (<50%) → create new truth document
+    ↓
+[AGENT] Extract value (new insights only if matching)
+    ↓
+[ROBOT] Update truth document + version
+    ↓
+[AGENT] Diverter: "What can we do with this?"
+    ↓
+[ROBOT] Route to destinations (with capacity checks)
+    ↓
+DONE — next item in queue
+```
+
+### Rate Limit Strategy for Saturation Sprint
+
+During a sprint, you might ingest 50 items. Each one needs 1-3 AI calls. That's 50-150 Claude calls.
+
+**Strategy:**
+- Process items in priority order (not FIFO — smart ordering)
+- [ROBOT] steps (scraping, cleaning, keyword matching) run instantly, no rate limit
+- [AGENT] steps (semantic matching, extraction, diverting) are rate-limited
+- Space AI calls with rate limit awareness (same pattern as PRD Shredder)
+- Batch overnight: queue 50 items before bed, wake up to all processed
+- Status dashboard shows estimated completion time
+
+**Smart ordering:**
+1. Items that match existing truth docs → process first (quick merge, low AI cost)
+2. Items that are clearly new topics → process second (need full extraction)
+3. Ambiguous matches → process last (need more AI reasoning)
+
+### The Saturation Dashboard
+
+Shows how "caught up" the system is:
+
+```
+SATURATION STATUS
+═══════════════════════════════════════════
+Total ingested:     127 items
+Truth documents:    23 topics
+Coverage estimate:  ~85% of known topics
+
+TOPIC HEALTH:
+AI SEO           ████████████████████  12 sources  [Saturated]
+Cold Outreach    ████████████░░░░░░░░   7 sources  [Strong]
+Playwright       ████████░░░░░░░░░░░░   4 sources  [Growing]
+Email Marketing  ██████░░░░░░░░░░░░░░   3 sources  [Needs more]
+Pricing Strategy ████░░░░░░░░░░░░░░░░   2 sources  [Early]
+
+RECENT INGESTION:
+Last 24h: 8 items → 5 merges, 2 new docs, 1 no-new-value skip
+Last 7d:  34 items → 22 merges, 9 new docs, 3 skips
+```
+
+---
+
 ## The End State
 
 After 3 months of feeding content:

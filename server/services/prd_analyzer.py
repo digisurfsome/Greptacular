@@ -264,8 +264,8 @@ def _parse_json_response(raw_text: str) -> dict:
 # SDK caller (subscription auth — copied from yt_processor._call_via_sdk)
 # ---------------------------------------------------------------------------
 
-# SDK timeout: 5 minutes
-SDK_TIMEOUT_SECONDS = 300
+# SDK timeout: 15 minutes (PRD analysis is multi-stage and can stall on rate limits)
+SDK_TIMEOUT_SECONDS = 900
 
 # Retry config for rate limit recovery
 MAX_SDK_RETRIES = 3

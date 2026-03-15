@@ -51,37 +51,45 @@ CONFIG_PATH = Path.home() / ".autoforge" / "shredder_config.json"
 EXECUTION_PROMPT_CONFIG = Path.home() / ".autoforge" / "prd_shredder_execution_prompt.json"
 
 DEFAULT_EXECUTION_PROMPT = (
-    "You are a coding agent executing a PRD. Follow the Stripe Blueprint Pattern: "
-    "alternate between robot steps (exact commands) and agent steps (creative coding).\n\n"
-    "## YOUR TASK LIST\n{task_list}\n\n"
-    "## CODEBASE CONTEXT\n{codebase_context}\n\n"
+    "You are a senior coding agent. You receive a PRD (product requirements document) "
+    "and you implement it directly. Read the PRD, read the codebase, write the code.\n\n"
+    "## PRD\n{prd_text}\n\n"
     "## BUILD RULES\n{build_rules}\n\n"
-    "## EXECUTION RULES\n\n"
-    "1. Execute tasks in order. Do NOT skip ahead.\n"
-    "2. After each file create/modify:\n"
-    "   - [ROBOT] Run lint: ruff check {{file}} --fix (Python) or npx tsc --noEmit (TypeScript)\n"
-    "   - Fix any errors BEFORE moving to the next task\n"
-    "3. After completing all tasks:\n"
-    "   - [ROBOT] Run full lint: ruff check . && cd ui && npm run build\n"
-    "   - [ROBOT] Run tests if any exist for modified code\n"
-    "4. Maximum 2 retry attempts on any single error\n"
-    "5. If a task is impossible (missing dependency, wrong assumption in PRD):\n"
-    "   - Document why in a comment\n"
-    "   - Skip it\n"
-    "   - Continue with remaining tasks\n"
-    "6. When done:\n"
-    "   - [ROBOT] git add (specific files only)\n"
-    "   - [ROBOT] git commit with message describing all changes\n"
-    "   - Report: what was done, what was skipped, what needs human attention\n"
+    "## INSTRUCTIONS\n\n"
+    "1. Read the PRD above carefully.\n"
+    "2. Explore the codebase to understand existing patterns, imports, and structure.\n"
+    "3. Implement everything the PRD describes. Create files, modify files, add imports.\n"
+    "4. After each major change, run lint to catch errors early:\n"
+    "   - Python: ruff check {{file}} --fix\n"
+    "   - TypeScript: cd ui && npx tsc --noEmit\n"
+    "5. When all changes are complete, run full verification:\n"
+    "   - ruff check . --fix\n"
+    "   - cd ui && npm run build (if UI changes were made)\n"
+    "6. Fix any errors before finishing.\n"
+    "7. Do NOT commit — the system handles commits automatically.\n"
+    "8. When done, summarize what you built and any issues encountered.\n"
 )
 
 
 def _load_execution_prompt() -> str:
-    """Load execution prompt from config, creating default if missing."""
+    """Load execution prompt from config, creating default if missing.
+
+    If the saved prompt uses old placeholders ({task_list}, {codebase_context}),
+    reset to the new default that uses {prd_text} + {build_rules}.
+    """
     if EXECUTION_PROMPT_CONFIG.exists():
         try:
             data = json.loads(EXECUTION_PROMPT_CONFIG.read_text(encoding="utf-8"))
-            return data.get("prompt", DEFAULT_EXECUTION_PROMPT)
+            prompt = data.get("prompt", DEFAULT_EXECUTION_PROMPT)
+            # Detect old-format prompt and upgrade
+            if "{task_list}" in prompt or "{codebase_context}" in prompt:
+                logger.info("Upgrading execution prompt from old 4-stage format to direct mode")
+                prompt = DEFAULT_EXECUTION_PROMPT
+                EXECUTION_PROMPT_CONFIG.write_text(
+                    json.dumps({"prompt": prompt}, indent=2),
+                    encoding="utf-8",
+                )
+            return prompt
         except Exception:
             pass
     EXECUTION_PROMPT_CONFIG.parent.mkdir(parents=True, exist_ok=True)
@@ -497,23 +505,10 @@ class PRDShredder:
             repo_dir = await self._clone_or_pull(item, on_progress)
             on_progress(f"Repository ready at {repo_dir}")
 
-            # Phase 2: Analysis
-            await self.queue.update(item_id, status=PRDStatus.ANALYZING)
-            on_progress("Starting 4-stage PRD analysis...")
-            from .prd_analyzer import PRDAnalyzer
-            analyzer = PRDAnalyzer()
-            analysis = await analyzer.analyze(item.prd_text, repo_dir, on_progress=on_progress)
-            await self.queue.update(
-                item_id,
-                analysis=analysis,
-                tasks_total=len(analysis.tasks),
-            )
-            on_progress(f"Analysis complete: {len(analysis.tasks)} tasks extracted")
-
-            # Phase 3: Execution
+            # Phase 2: SKIP analysis — go straight to coding
             await self.queue.update(item_id, status=PRDStatus.BUILDING)
-            on_progress("Starting code execution via claude -p...")
-            await self._execute(item, analysis, repo_dir, on_progress)
+            on_progress("Starting fresh coding agent — no analysis overhead, straight to code...")
+            await self._execute_direct(item, repo_dir, on_progress)
 
             # Verification
             await self.queue.update(item_id, status=PRDStatus.TESTING)
@@ -523,7 +518,7 @@ class PRDShredder:
             # Commit and push
             await self.queue.update(item_id, status=PRDStatus.COMMITTING)
             on_progress("Committing and pushing...")
-            commit_hash = await self._commit_and_push(item, analysis, repo_dir, on_progress)
+            commit_hash = await self._commit_and_push_direct(item, repo_dir, on_progress)
 
             # Playwright QA — test the running app
             await self.queue.update(item_id, status=PRDStatus.QA_TESTING, commit_hash=commit_hash)
@@ -742,6 +737,145 @@ class PRDShredder:
             on_progress(f"Warning: claude -p returned exit code {return_code}")
 
         await self.queue.update(item.id, tasks_done=tasks_done)
+
+    # ----- Direct Execution (Option B — skip analysis, code immediately) -----
+
+    async def _execute_direct(
+        self,
+        item: PRDQueueItem,
+        repo_dir: Path,
+        on_progress: Callable[[str], None],
+    ) -> None:
+        """Execute PRD directly — fresh agent, no analysis overhead.
+
+        Hands the PRD text + build rules straight to a fresh claude -p session.
+        The agent reads the codebase itself and starts coding immediately.
+        """
+        # Load build rules
+        build_rules = self.rules.get_rules_text()
+        if build_rules:
+            on_progress(f"Injecting {len(self.rules.list_enabled())} build rules")
+        else:
+            if BUILD_RULES_PATH.exists():
+                try:
+                    build_rules = BUILD_RULES_PATH.read_text(encoding="utf-8")
+                except Exception:
+                    build_rules = ""
+
+        # Build the prompt — PRD + rules, let the agent figure out the rest
+        execution_prompt = _load_execution_prompt()
+        full_prompt = execution_prompt.format(
+            prd_text=item.prd_text,
+            build_rules=build_rules or "(no build rules configured)",
+        )
+
+        on_progress(f"Prompt: {len(full_prompt):,} chars | Fresh agent starting...")
+
+        # Run via claude -p — fresh agent, fresh context
+        claude_cli = shutil.which("claude")
+        if not claude_cli:
+            raise RuntimeError("Claude CLI not found on PATH")
+
+        env = os.environ.copy()
+        env.pop("CLAUDECODE", None)
+
+        on_progress("Agent coding now...")
+        process = await asyncio.create_subprocess_exec(
+            claude_cli, "-p", full_prompt,
+            "--model", "claude-sonnet-4-6",
+            cwd=str(repo_dir),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=env,
+        )
+
+        # Stream ALL output — no skipping lines
+        stdout_lines: list[str] = []
+
+        async def _read_stream(stream: asyncio.StreamReader, label: str) -> None:
+            while True:
+                line_bytes = await stream.readline()
+                if not line_bytes:
+                    break
+                line = line_bytes.decode("utf-8", errors="replace").rstrip()
+                if not line:
+                    continue
+                stdout_lines.append(line)
+                on_progress(f"[{label}] {line[:300]}")
+
+        await asyncio.gather(
+            _read_stream(process.stdout, "agent"),
+            _read_stream(process.stderr, "stderr"),
+        )
+
+        return_code = await process.wait()
+        on_progress(f"Agent finished — exit code {return_code} | {len(stdout_lines)} output lines")
+
+        if return_code != 0:
+            on_progress(f"Warning: agent exited with code {return_code}")
+
+    # ----- Commit (direct mode — no analysis object) -----
+
+    async def _commit_and_push_direct(
+        self,
+        item: PRDQueueItem,
+        repo_dir: Path,
+        on_progress: Callable[[str], None],
+    ) -> str:
+        """Commit changes and push — works without analysis object."""
+        on_progress("Staging changes...")
+        subprocess.run(
+            ["git", "add", "-A"],
+            cwd=str(repo_dir),
+            capture_output=True,
+            timeout=30,
+        )
+
+        status = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=str(repo_dir),
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if not status.stdout.strip():
+            on_progress("No changes to commit — agent may have already committed")
+            hash_result = subprocess.run(
+                ["git", "rev-parse", "--short", "HEAD"],
+                cwd=str(repo_dir),
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            return hash_result.stdout.strip() or "unknown"
+
+        message = f"PRD Shredder: {item.title}\n\nAuto-built from PRD (direct mode)."
+        subprocess.run(
+            ["git", "commit", "-m", message],
+            cwd=str(repo_dir),
+            capture_output=True,
+            timeout=30,
+        )
+
+        on_progress(f"Pushing to origin/{item.target_branch}...")
+        push_result = subprocess.run(
+            ["git", "push", "origin", item.target_branch],
+            cwd=str(repo_dir),
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if push_result.returncode != 0:
+            on_progress(f"Push warning: {push_result.stderr.strip()}")
+
+        hash_result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=str(repo_dir),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        return hash_result.stdout.strip() or "unknown"
 
     # ----- Verification Gate -----
 

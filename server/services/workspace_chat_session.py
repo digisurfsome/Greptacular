@@ -595,15 +595,11 @@ class WorkspaceChatSession:
 
         try:
             from registry import DEFAULT_MODEL, get_effective_sdk_env
-            # Route billing based on the context-mode toggle:
-            #   1M  → keep API key (1M beta requires API billing)
-            #   200K → strip API key so CLI uses subscription OAuth
-            force_sub = self.context_mode != "1m"
+            # ALL Claude models (200K and 1M) use subscription billing.
+            # As of March 2026, the Max plan includes 1M context — no API key needed.
+            force_sub = True
             sdk_env = get_effective_sdk_env(force_subscription=force_sub)
-            if force_sub:
-                logger.info("Workspace billing: Subscription (200K context, context_mode=%s)", self.context_mode)
-            else:
-                logger.info("Workspace billing: API key (1M context, context_mode=%s)", self.context_mode)
+            logger.info("Workspace billing: Subscription (context_mode=%s)", self.context_mode)
         except Exception as e:
             logger.exception("Failed to load registry/SDK environment")
             yield {"type": "error", "content": f"Failed to load configuration: {str(e)}"}

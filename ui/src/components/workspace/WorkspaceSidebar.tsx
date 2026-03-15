@@ -67,7 +67,7 @@ const CLAUDE_MODEL_PRESETS: ModelPreset[] = [
 /** Build model presets from a provider definition. Claude gets context modes; others use supports_1m. */
 function buildPresetsForProvider(providerId: string, providerDef: WorkspaceProviderDef): ModelPreset[] {
   if (providerId === 'claude') {
-    // Claude: 200K (subscription) variants for all, plus 1M (API key) for models that support it
+    // Claude: 200K and 1M variants (all subscription billing) for models that support each
     const presets200k = providerDef.models.map(m => ({ model: m.id, context: '200k' as const, label: `${m.name} · 200K` }))
     const presets1m = providerDef.models
       .filter(m => m.id !== 'haiku') // Haiku doesn't support 1M context beta

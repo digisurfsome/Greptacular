@@ -190,4 +190,139 @@ Based on commission, relevance to the AI automation trend, and ease of selling:
 
 ---
 
+## Category 6: Agency Referral & Partner Programs (Layer 4 — "They Need Hands-On Help")
+
+For leads who can't/won't DIY. These are reputable agencies that pay you for sending clients who need full-service hand-holding.
+
+### AI Automation Agencies
+
+| Agency | Reputation | Program Type | Commission/Payout | Notes |
+|--------|-----------|-------------|-------------------|-------|
+| **Morningside AI** | Top-rated on DesignRush, praised for delivering practical AI roadmaps in 9 weeks | ⚠️ Contact directly | Inquiry-based | Full-cycle AI development & automation. Enterprise clients. Reach out about referral arrangement. |
+| **Synthflow (Agency Partner)** | Established, PartnerStack-backed | ✅ Tiered Partner Program | Silver/Gold/Platinum tiers with leads, co-marketing, priority support | White-label available from $1,400/mo. You can refer clients who need voice AI setup. |
+| **Instantly.ai** | Well-known cold email platform | ✅ Tiered Affiliate | 20% Silver → 30% Gold (50+ refs) → 40% Platinum (75+ refs) | Recurring. Great for referring agencies who do outbound. |
+
+### AI SEO & GEO Agencies (Generative Engine Optimization — the NEW SEO)
+
+| Agency | Reputation | Program Type | Commission/Payout | Notes |
+|--------|-----------|-------------|-------------------|-------|
+| **NP Digital (Neil Patel)** | Co-founded by Neil Patel. NYT bestselling author. Wall Street Journal "top influencer." | ✅ Referral Partner Program | Up to **15% revenue share** (quarterly payout) OR 5-15% client discount | Dedicated Partner Manager. Monthly calls. Cross-promotional opportunities. White-label channel reseller option available. Contact: partners@npaccel.com |
+| **SimpleTiger** | Leading SaaS-specialized SEO agency | ✅ SEO Partners Program | Earn on referrals sent + receive referrals back | Two-way referral relationship. They refer work to you too. |
+| **Directive Consulting** | Top B2B performance marketing. Pipeline-focused. | ⚠️ Contact directly | Inquiry-based | Specializes in SaaS/enterprise. Strong reputation. Worth reaching out for referral arrangement. |
+
+### SEO Agencies with Formal Referral/Affiliate Programs
+
+| Agency | Reputation | Program Type | Commission/Payout | Notes |
+|--------|-----------|-------------|-------------------|-------|
+| **RankPay** | Established SEO agency, performance-based | ✅ Affiliate Program | **10% → 15% → 20% lifetime recurring** (scales with referral count) | Also offers white-label & reseller options. |
+| **Sure Oak** | Respected SEO agency | ✅ Affiliate Program | **5% monthly for 12 months** per referred client | No cap on earnings. |
+| **Acute SEO** | Good reputation | ✅ Referral Program | **50% of client's first month bill** (one-time) | Higher one-time payout. Scales with client billing size. |
+| **Semrush** | Industry-leading SEO platform | ✅ Affiliate | **40% recurring** per sale | 120-day cookie. Also has Agency Partners Program. |
+| **SE Ranking** | Strong reviews, growing platform | ✅ Affiliate | **30% lifetime recurring** | 120-day cookie. $50 minimum payout via PayPal. |
+
+### Digital Marketing Agencies (Full-Service — SEO, PPC, Social, Web)
+
+| Agency | Reputation | Program Type | Commission/Payout | Notes |
+|--------|-----------|-------------|-------------------|-------|
+| **DiscoverMyBusiness** | Established digital agency | ✅ Referral Program | **20% recurring** as long as client stays | Example: $2K/mo PPC client = $400/mo to you. |
+| **Creative Click Media** | "Top digital marketing agency" recognition | ✅ Affiliate & Referral | One-time bonus OR recurring (plan-dependent) | Open to agency owners, freelancers, influencers. |
+| **Rise Marketing** | Google Premier Partner (top 3% in US) | ✅ Referral Program | **10% of agency revenue** for that client, 12 months | Monthly payouts once client is invoiced. |
+| **WebFX** | $10B+ in client revenue, 1,100+ reviews, 750+ team | ✅ Agency Referral | Contact for terms | Major reputation. Worth reaching out directly. |
+| **impact.com** | Leading partnership platform | ✅ Referral Partner | Up to **$30K per referral** (agencies) OR revenue share | For referring brands who need partnership management. |
+
+### White-Label Agency Partners (You Resell Their Services Under Your Brand)
+
+These are for when YOU want to act as the agency without doing the fulfillment work.
+
+| Provider | Services | Why It Matters |
+|----------|----------|---------------|
+| **Vendasta** | 200+ white-label products (SEO, PPC, social, web) | Single dashboard. Flexible margins. Huge product catalog. |
+| **DashClicks** | SEO, PPC, reputation management | Great for small-to-large agencies. Training + support included. |
+| **The HOTH** | White-label SEO, content, link building | Scalable. Strong retention. Proven track record. |
+| **Semify** | White-label SEO, PPC, Facebook Ads, TikTok Ads | 100% US-based team. Handles 5-client shops to enterprise. |
+| **SharpNet Solutions** | Wholesale SEO, PPC, social, web design, hosting | Full package at wholesale pricing. Recurring revenue model. |
+| **SEOReseller** | Local SEO, audits, link building | White-label dashboards for client reporting. |
+| **Advirtis** | White-label PPC, SEO, web design, landing pages | $500M+ revenue generated for partners since 2021. |
+
+---
+
+## Additional High-Commission AI Tool Programs (Quick Reference)
+
+| Tool | What It Does | Commission | Notes |
+|------|-------------|------------|-------|
+| **Copy.ai** | AI content writing | **45%** per sale | 60-day cookie |
+| **Instantly.ai** | Cold email automation | **20-40% tiered recurring** | Perfect audience overlap |
+| **Reclaim.ai** | AI scheduling | **40% recurring** + $1/signup | Work email referrals |
+| **Bitskout** | Document automation | **30% lifetime recurring** | $199/mo plans = $597/mo per 10 refs |
+| **AdCreative AI** | AI ad creative generation | **22.5% recurring** + $100 bonus per 10 refs | Great for marketing audience |
+| **SmartReach AI** | Sales engagement | **30% lifetime revenue share** | Avg annual value $2,900/customer |
+| **Buzz AI** | Sales automation | **37.5% revenue share** | Per referred sale |
+| **Outranking** | AI SEO content | **25% lifetime recurring** | 90-day cookie |
+| **Rankability** | SEO tool | **40% recurring** (up to 36 months) | $149/mo minimum plan |
+| **Surfer SEO** | SEO optimization | **30% recurring** | Up to $195/mo per referral |
+| **GetResponse** | Email + automation | **40-60% recurring** (12 months) | Also has landing pages, webinars |
+| **vidIQ** | YouTube SEO | **45% per sale** | Hot niche — video content |
+
+---
+
+## Updated Offer Layering Stack (With Agencies)
+
+```
+COLD EMAIL HOOK: "AI is changing everything. Here's what your competitors are already doing."
+
+Layer 1 — AWARENESS (Free content / Lead magnets)
+  → "5 AI tools your competitors are using right now"
+  → "Is your business ready for AI? [Quiz/Assessment]"
+  → "AI vs Agency: What can you actually do yourself?"
+  → Captures email
+
+Layer 2 — EASY WINS (Low-friction SaaS, instant value)
+  → Tidio (chatbot — $29/mo, 30% commission)
+  → Bardeen (browser automation — 20% for 2 years)
+  → Make.com (connect tools — 35% for 12 months)
+  → Instantly.ai (cold email — 20-40% recurring)
+
+Layer 3 — BIGGER MOVES (Higher ticket SaaS)
+  → GoHighLevel (replace entire stack — 40% recurring forever)
+  → Synthflow (AI phone system — 20% for 15 months)
+  → HubSpot (enterprise CRM + AI — 30% for 1 year)
+  → Semrush (SEO platform — 40% recurring)
+
+Layer 4a — AGENCY REFERRAL: AI & Automation
+  → NP Digital (up to 15% revenue share, quarterly)
+  → Synthflow Agency Partners (tiered, white-label)
+  → Morningside AI (contact for referral terms)
+  → Directive Consulting (contact for referral terms)
+
+Layer 4b — AGENCY REFERRAL: SEO & Digital Marketing
+  → DiscoverMyBusiness (20% recurring)
+  → Rise Marketing (10% for 12 months, Google Premier)
+  → RankPay (10-20% lifetime recurring)
+  → Sure Oak (5% for 12 months)
+  → Acute SEO (50% of first month — big one-time hit)
+  → Creative Click Media (one-time or recurring)
+  → WebFX (contact for terms — huge reputation)
+
+Layer 4c — WHITE-LABEL (You ARE the agency)
+  → Vendasta, DashClicks, The HOTH, Semify
+  → You resell services under your brand
+  → Set your own margins
+```
+
+---
+
+## Where to Find MORE Agencies with Referral Programs
+
+| Method | How |
+|--------|-----|
+| **DesignRush** | designrush.com — Top agency rankings by category. Many listed agencies have partner programs. |
+| **Clutch** | clutch.co — B2B agency reviews. Filter by AI, SEO, digital marketing. Contact top-rated agencies about referrals. |
+| **PartnerBase** | partnerbase.com — Database of agency partnerships |
+| **Agency Vista** | agencyvista.com — Verified agency directory |
+| **UpCity** | upcity.com — Local agency marketplace |
+| **Google "agency name + referral program"** | Most established agencies have one — they just don't always advertise it publicly. Cold email THEM. |
+| **Direct outreach** | Many agencies will create a custom referral arrangement if you can send qualified leads. Just ask. |
+
+---
+
 *Research compiled: March 15, 2026*

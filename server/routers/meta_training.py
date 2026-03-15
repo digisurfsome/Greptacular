@@ -38,6 +38,10 @@ from server.services.meta_training_ingestor import (
     TEXT_EXTENSIONS,
     ingest_source,
 )
+from server.services.meta_output_router import (
+    CopyTag,
+    OutputRouter,
+)
 from server.services.meta_writing_engine import (
     WritingRequest,
     generate_all_combos,
@@ -46,6 +50,9 @@ from server.services.meta_writing_engine import (
 
 router = APIRouter(prefix="/api/meta-training", tags=["meta-training"])
 logger = logging.getLogger(__name__)
+
+# Singleton output router
+_output_router = OutputRouter()
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -363,6 +370,183 @@ async def write_all_combos(request: AllCombosRequest):
             cta=request.cta,
             metaprograms=request.metaprograms,
         )
+
+        # Auto-route all variants through the output router
+        for combo_key, variant in result.get("variants", {}).items():
+            _output_router.route_writing_result(
+                result=variant,
+                topic=request.topic,
+                channel=request.channel,
+                copy_type="adapted",
+            )
+
         return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ═══════════════════════════════════════════════════════════════
+# OUTPUT ROUTER ENDPOINTS
+# ═══════════════════════════════════════════════════════════════
+
+class RouteRequest(BaseModel):
+    content: str = Field(..., description="The copy to route")
+    topic: str = Field(..., description="Topic this copy is about")
+    channel: str = Field(default="general")
+    copy_type: str = Field(default="custom", description="hook, detection, adapted, cta, etc")
+    profile: dict = Field(default_factory=dict, description="Metaprogram profile")
+    dominance_levels: dict = Field(default_factory=dict)
+    sequence_position: int = Field(default=0)
+    sequence_branch: str = Field(default="")
+    is_leaf: bool = Field(default=False)
+    destinations: list[str] = Field(
+        default=["files", "manifest"],
+        description='Where to send: "files", "manifest", "webhook:https://..."',
+    )
+
+
+@router.post("/route")
+async def route_copy(request: RouteRequest):
+    """
+    Route a piece of copy to its destinations with proper tags.
+
+    Every piece of output gets tagged with full metadata so any
+    downstream system (email tool, social scheduler, CRM, ad manager,
+    landing page builder) knows exactly what it's looking at.
+
+    Destinations:
+    - "files" — save to organized file structure
+    - "manifest" — update master index for this topic
+    - "webhook:https://..." — POST to external system
+    """
+    tags = CopyTag(
+        topic=request.topic,
+        copy_type=request.copy_type,
+        channel=request.channel,
+        profile=request.profile,
+        dominance_levels=request.dominance_levels,
+        sequence_position=request.sequence_position,
+        sequence_branch=request.sequence_branch,
+        is_leaf=request.is_leaf,
+    )
+    result = _output_router.route(request.content, tags, request.destinations)
+    return result.to_dict()
+
+
+class RouteSequenceRequest(BaseModel):
+    sequence: dict = Field(..., description="Full sequence tree from /ingestion-sequences/generate")
+    topic: str = Field(...)
+    channel: str = Field(...)
+
+
+@router.post("/route/sequence")
+async def route_sequence(request: RouteSequenceRequest):
+    """
+    Route an entire decision tree through the output router.
+
+    Takes the output from /api/ingestion-sequences/generate and saves
+    every node as a properly tagged file. The full sequence is also
+    saved as a single JSON file.
+    """
+    results = _output_router.route_sequence(request.sequence, request.topic, request.channel)
+    return {
+        "routed": len(results),
+        "topic": request.topic,
+        "channel": request.channel,
+        "files": [r.file_path for r in results if r.file_path],
+    }
+
+
+# ─── TOPIC MANAGEMENT ───
+
+@router.get("/output/topics")
+async def list_output_topics():
+    """List all topics that have routed output."""
+    return {"topics": _output_router.list_topics()}
+
+
+@router.get("/output/{topic_slug}")
+async def get_topic_manifest(topic_slug: str):
+    """Get the full manifest for a topic — all tagged copy pieces."""
+    from server.services.meta_output_router import OUTPUT_BASE_DIR, OutputManifest
+    manifest_path = OUTPUT_BASE_DIR / "by_topic" / topic_slug / "manifest.json"
+    if not manifest_path.exists():
+        raise HTTPException(status_code=404, detail=f"No output found for topic: {topic_slug}")
+    manifest = OutputManifest.load(manifest_path)
+    return {
+        "topic": manifest.topic,
+        "total_pieces": manifest.total_pieces,
+        "channels": manifest.channels,
+        "profiles": manifest.profiles,
+        "updated_at": manifest.updated_at,
+        "pieces": manifest.pieces,
+    }
+
+
+@router.delete("/output/{topic_slug}")
+async def delete_topic_output(topic_slug: str):
+    """Delete all output for a topic."""
+    deleted = _output_router.delete_topic(topic_slug)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"No output found for topic: {topic_slug}")
+    return {"status": "deleted", "topic_slug": topic_slug}
+
+
+# ─── QUERY / FIND ───
+
+@router.get("/output/find")
+async def find_copy(
+    topic_slug: Optional[str] = None,
+    channel: Optional[str] = None,
+    profile_code: Optional[str] = None,
+    copy_type: Optional[str] = None,
+):
+    """
+    Find copy by tags. This is how downstream systems query.
+
+    Examples:
+    - Email tool: ?channel=email&profile_code=toward_external
+    - CRM: ?copy_type=coach_prompt
+    - Ad manager: ?channel=ad&topic_slug=keto_app
+    - Social scheduler: ?channel=instagram
+    """
+    results = _output_router.find_copy(
+        topic_slug=topic_slug,
+        channel=channel,
+        profile_code=profile_code,
+        copy_type=copy_type,
+    )
+    return {"count": len(results), "results": results}
+
+
+# ─── EXPORTS ───
+
+@router.get("/output/{topic_slug}/export/csv")
+async def export_csv(topic_slug: str):
+    """Export all copy for a topic as CSV. Ready for spreadsheets, CRMs, email tools."""
+    from fastapi.responses import PlainTextResponse
+    try:
+        csv_content = _output_router.export_csv(topic_slug)
+        return PlainTextResponse(content=csv_content, media_type="text/csv")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/output/{topic_slug}/export/json")
+async def export_json(topic_slug: str):
+    """Export all copy as structured JSON. Organized by channel → profile."""
+    try:
+        return _output_router.export_json(topic_slug)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/output/{topic_slug}/export/html")
+async def export_html(topic_slug: str):
+    """Export all copy as a browseable HTML page. Open in browser to preview all variants."""
+    from fastapi.responses import HTMLResponse
+    try:
+        html = _output_router.export_html(topic_slug)
+        return HTMLResponse(content=html)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

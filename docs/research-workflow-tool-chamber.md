@@ -710,6 +710,124 @@ This is the Stripe Blueprint pattern (deterministic hallways) PLUS Karpathy's au
 
 ---
 
+## ACTION ITEM: SkillForge Loop — Build This First
+
+### What It Is
+
+A single-command tool that takes a `skill.md` + `eval.json` and autonomously runs the Karpathy improvement loop until the skill hits target pass rate. No invention required — the architecture is fully specified by the video. Just clean implementation of a proven loop.
+
+### Why Build This Before the Tool Chamber
+
+The tool chamber is a multi-week effort (orchestrator + connectors + skill capture + execution layer). SkillForge is a **few-day build** that delivers immediate value:
+
+- **Every skill in AutoForge's stack becomes self-maintaining** — from 18 skills today to 50+ tomorrow, maintenance cost stays flat
+- **Direct ROI on every skill** — the marketing copywriting skill went from 95.8% to 100% in 2 runs
+- **Infrastructure, not a utility** — this is the refinement engine that the tool chamber's skill capture layer feeds INTO
+
+### The Full Pipeline
+
+```
+INPUT:
+  skill.md          — the skill instructions to improve
+  eval.json         — binary assertions (true/false) across test prompts
+
+LOOP:
+  1. Read skill.md
+  2. Run N test prompts through the live skill (e.g., 5 prompts)
+  3. Check M binary assertions per prompt (e.g., 5 assertions × 5 prompts = 25 checks)
+  4. Calculate pass rate (e.g., 23/25 = 92%)
+  5. If pass_rate == target → DONE, log success
+  6. If pass_rate < target:
+     a. AI analyzes failed assertions
+     b. Makes ONE targeted change to skill.md
+     c. Reruns all tests
+     d. If score improved → git commit, continue loop
+     e. If score dropped → git reset, try different change
+  7. NEVER stop. NEVER ask human. Keep looping until target or interrupted.
+
+OUTPUT:
+  - Improved skill.md (committed per improvement)
+  - run_log.json — per-iteration scores, diffs, assertion results
+  - Summary: v1 score → vN score, total iterations, time elapsed
+```
+
+### Eval.json Format
+
+```json
+{
+  "skill_name": "marketing-copywriting",
+  "target_pass_rate": 1.0,
+  "max_iterations": 20,
+  "tests": [
+    {
+      "prompt": "Write a LinkedIn post about why simple automations beat complex ones",
+      "expected_output_type": "linkedin_post",
+      "assertions": [
+        {"id": "standalone_first_line", "check": "First line is a standalone sentence, not part of a paragraph", "type": "binary"},
+        {"id": "has_statistic", "check": "Contains at least one specific number or statistic", "type": "binary"},
+        {"id": "no_question_ending", "check": "Final line is NOT a question", "type": "binary"},
+        {"id": "under_300_words", "check": "Total word count is under 300", "type": "binary"},
+        {"id": "no_em_dashes", "check": "Does not contain em-dashes (—)", "type": "binary"}
+      ]
+    },
+    {
+      "prompt": "Write email subject lines for a product launch campaign",
+      "expected_output_type": "email_subjects",
+      "assertions": [
+        {"id": "under_60_chars", "check": "Each subject line is under 60 characters", "type": "binary"},
+        {"id": "no_all_caps", "check": "No subject line is in ALL CAPS", "type": "binary"},
+        {"id": "has_urgency", "check": "At least one subject line creates urgency", "type": "binary"},
+        {"id": "has_curiosity", "check": "At least one subject line uses an open loop or curiosity gap", "type": "binary"},
+        {"id": "count_is_five_plus", "check": "At least 5 subject lines provided", "type": "binary"}
+      ]
+    }
+  ]
+}
+```
+
+### Implementation Plan
+
+**Where it lives:** `server/services/skill_forge.py` + `server/routers/skill_forge.py`
+
+**How it runs:**
+- Option A: CLI command — `python -m skill_forge --skill path/to/skill.md --evals path/to/eval.json`
+- Option B: API endpoint — `POST /api/skill-forge/run` with skill path + eval path
+- Option C: UI page — queue skills for overnight refinement (like PRD Shredder)
+
+**All three options use the same core loop.** Start with CLI (Option A) for testing, add API + UI later.
+
+**Dependencies:**
+- Claude subscription auth (same pattern as YT Lab — `force_subscription=True`)
+- Git for commit/reset (already available)
+- The skill must be runnable via Claude Code
+
+**Rate limit awareness:**
+- Each iteration = 1 Claude call (run skill) + 1 Claude call (analyze failures + suggest change)
+- 20 iterations = ~40 Claude calls
+- Space iterations with rate limit checks (same pattern as PRD Shredder)
+- Schedule for overnight when rate limits are less constrained
+
+### Strategic Compound Value
+
+```
+Today:     18 skills × manual improvement = weeks of tweaking per skill
+SkillForge: 18 skills × overnight loop = all refined by morning
+Next month: 50 skills × overnight loop = zero additional maintenance cost
+
+When Tool Chamber ships:
+  Tool executes step → captures skill → SkillForge refines skill overnight
+  → next execution uses refined skill → faster, cheaper, more reliable
+  → SkillForge is the REFINEMENT ENGINE for the entire tool chamber
+```
+
+This is the first thing to build because it's:
+1. **Proven pattern** — Karpathy validated it, the video validated it for skills
+2. **Immediate ROI** — every existing skill gets better overnight
+3. **Foundation** — the tool chamber's skill capture layer feeds directly into it
+4. **Few days** — fully specified, no design decisions needed
+
+---
+
 ### Stripe Minion Blog Articles
 - [Part 1: Minions: Stripe's one-shot, end-to-end coding agents](https://stripe.dev/blog/minions-stripes-one-shot-end-to-end-coding-agents)
 - [Part 2: Minions Part 2](https://stripe.dev/blog/minions-stripes-one-shot-end-to-end-coding-agents-part-2)

@@ -1,70 +1,46 @@
 @echo off
-setlocal
+setlocal enabledelayedexpansion
 
 echo ========================================
-echo   AutoForge Deploy Script
+echo   AutoForge Auto-Deploy (hands-free)
 echo ========================================
 echo.
 
-:: Step 1: Update dev repo
-echo [1/5] Updating dev repo...
-cd /d "C:\Users\lober\GitHub\Greptacular - AutoForge Build\Greptacular"
-if errorlevel 1 (
-    echo ERROR: Dev repo not found!
-    pause
-    exit /b 1
-)
+:: Step 1: Kill any running AutoForge server
+echo [1/4] Stopping running servers...
+taskkill /f /im python.exe 2>nul
+taskkill /f /im node.exe 2>nul
+timeout /t 2 /nobreak >nul
 
-git fetch origin main
-git pull origin main --no-edit
-
-:: Step 2: Check for feature branches to merge
-echo.
-echo [2/5] Checking for feature branches...
-for /f "tokens=*" %%b in ('git branch -r --list "origin/claude/*" 2^>nul') do (
-    echo Found: %%b
-    set /p MERGE="Merge %%b? (y/n): "
-    if /i "!MERGE!"=="y" (
-        git merge %%b --no-edit
-    )
-)
-
-:: Step 3: Build UI
-echo.
-echo [3/5] Building UI...
-cd ui
-call npm run build
-if errorlevel 1 (
-    echo ERROR: UI build failed!
-    pause
-    exit /b 1
-)
-cd ..
-
-:: Step 4: Push to main
-echo.
-echo [4/5] Pushing to main...
-git push origin main
-if errorlevel 1 (
-    echo ERROR: Push failed!
-    pause
-    exit /b 1
-)
-
-:: Step 5: Update live install
-echo.
-echo [5/5] Updating live install...
+:: Step 2: Pull latest main on live install
+echo [2/4] Pulling latest to live install...
 cd /d "C:\Users\lober\Greptacular"
-git pull origin main --no-edit
 if errorlevel 1 (
-    echo ERROR: Live pull failed!
-    pause
+    echo ERROR: Live install not found at C:\Users\lober\Greptacular
+    echo Press any key to exit...
+    pause >nul
     exit /b 1
 )
+git stash 2>nul
+git checkout main 2>nul
+git pull origin main --no-edit
+if errorlevel 1 (
+    echo WARN: Pull failed, retrying in 3s...
+    timeout /t 3 /nobreak >nul
+    git pull origin main --no-edit
+)
+
+:: Step 3: Clean and rebuild UI
+echo [3/4] Rebuilding UI...
+if exist "ui\dist" rmdir /s /q "ui\dist"
+
+:: Step 4: Restart server
+echo [4/4] Starting AutoForge...
+start "" "C:\Users\lober\Greptacular\start_ui.bat"
 
 echo.
 echo ========================================
-echo   Deploy complete!
-echo   Now restart start_ui.bat and Ctrl+Shift+R
+echo   Done! AutoForge is starting up.
+echo   Do Ctrl+Shift+R in browser to refresh.
 echo ========================================
-pause
+timeout /t 5

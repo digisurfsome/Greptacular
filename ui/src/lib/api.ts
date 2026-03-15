@@ -2971,3 +2971,75 @@ export async function updateTokenBudgetSettings(settings: Record<string, string>
     body: JSON.stringify({ settings }),
   })
 }
+
+// ---------------------------------------------------------------------------
+// PRD Shredder
+// ---------------------------------------------------------------------------
+
+export interface ShredderQueueItem {
+  id: string
+  title: string
+  status: string
+  prd_text: string
+  target_repo: string
+  target_branch: string
+  created_at: string
+  started_at: string | null
+  completed_at: string | null
+  error: string | null
+  commit_hash: string | null
+  build_log: string[]
+  tasks_total: number
+  tasks_done: number
+  playwright_errors: Array<Record<string, unknown>>
+  bugfix_prd_id: string | null
+}
+
+export interface ShredderStats {
+  total: number
+  queued: number
+  building: number
+  done: number
+  failed: number
+}
+
+export async function getShredderQueue(status?: string): Promise<{ items: ShredderQueueItem[]; count: number }> {
+  const params = status ? `?status=${status}` : ''
+  return fetchJSON(`/prd-shredder/queue${params}`)
+}
+
+export async function getShredderStats(): Promise<ShredderStats> {
+  return fetchJSON('/prd-shredder/stats')
+}
+
+export async function getShredderStatus(): Promise<{ running: boolean; stats: ShredderStats }> {
+  return fetchJSON('/prd-shredder/status')
+}
+
+export async function getShredderItemLogs(itemId: string): Promise<{ logs: string[]; total: number; offset: number }> {
+  return fetchJSON(`/prd-shredder/items/${itemId}/logs`)
+}
+
+export async function enqueueShredderPRD(body: {
+  title: string
+  prd_text: string
+  target_repo: string
+  target_branch?: string
+}): Promise<{ id: string; title: string; status: string; position: number }> {
+  return fetchJSON('/prd-shredder/enqueue', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+}
+
+export async function retryShredderItem(itemId: string): Promise<{ retried: boolean }> {
+  return fetchJSON(`/prd-shredder/items/${itemId}/retry`, { method: 'POST' })
+}
+
+export async function retryAllFailedShredder(): Promise<{ retried: number; message: string }> {
+  return fetchJSON('/prd-shredder/retry-all-failed', { method: 'POST' })
+}
+
+export async function deleteShredderItem(itemId: string): Promise<{ deleted: boolean }> {
+  return fetchJSON(`/prd-shredder/items/${itemId}`, { method: 'DELETE' })
+}

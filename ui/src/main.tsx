@@ -14,6 +14,7 @@ import { SEOToolsPage } from './pages/SEOToolsPage'
 import { CliScripterPage } from './pages/CliScripterPage'
 import { ToolManagerPage } from './components/tool-factory/ToolManagerPage'
 import { TokenBudgetPage } from './pages/TokenBudgetPage'
+import { PRDShredderPage } from './pages/PRDShredderPage'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import './styles/globals.css'
 
@@ -78,6 +79,9 @@ function Root() {
   }
   if (hash === '#/token-budget' || hash.startsWith('#/token-budget/')) {
     return <TokenBudgetPage />
+  }
+  if (hash === '#/prd-shredder' || hash.startsWith('#/prd-shredder/')) {
+    return <ErrorBoundary><PRDShredderPage /></ErrorBoundary>
   }
   return <App />
 }

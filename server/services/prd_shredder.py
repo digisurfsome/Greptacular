@@ -471,8 +471,15 @@ class PRDShredder:
                 if next_item:
                     await self._process(next_item)
                     # Cooldown between items to avoid rate limit cascades
-                    logger.info("Shredder cooldown: 120s before next item")
-                    await asyncio.sleep(120)
+                    remaining = 120
+                    while remaining > 0:
+                        msg = f"[Queue cooldown] {remaining}s before next PRD..."
+                        logger.info(msg)
+                        asyncio.create_task(self.queue.append_log(next_item.id, msg))
+                        self._notify_progress(next_item.id, msg)
+                        step = min(10, remaining)
+                        await asyncio.sleep(step)
+                        remaining -= step
                 else:
                     await asyncio.sleep(5)
             except asyncio.CancelledError:

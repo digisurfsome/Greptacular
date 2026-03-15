@@ -272,6 +272,16 @@ MAX_SDK_RETRIES = 5
 RETRY_DELAYS = [60, 120, 180, 300, 300]  # Aggressive backoff for rate limits
 
 
+async def _countdown(seconds: int, label: str, log_fn: Callable[[str], None], interval: int = 5) -> None:
+    """Sleep with countdown logging every `interval` seconds."""
+    remaining = seconds
+    while remaining > 0:
+        log_fn(f"[{label}] {remaining}s remaining...")
+        step = min(interval, remaining)
+        await asyncio.sleep(step)
+        remaining -= step
+
+
 async def _call_via_sdk(
     system_prompt: str,
     user_message: str,
@@ -429,7 +439,7 @@ async def _call_via_sdk(
             delay = RETRY_DELAYS[attempt]
             _log(f"[PRD Analyzer] Rate limited — waiting {delay}s before retry "
                  f"(attempt {attempt + 2}/{MAX_SDK_RETRIES})")
-            await asyncio.sleep(delay)
+            await _countdown(delay, f"Retry {attempt + 2}/{MAX_SDK_RETRIES}", _log)
 
             # Re-create client for next attempt
             client = ClaudeSDKClient(
@@ -494,8 +504,7 @@ class PRDAnalyzer:
              f"{len(stage1.get('target_files', []))} target files")
 
         # Cooldown between stages to avoid rate limit cascades
-        _log("[Cooldown] 15s between stages...")
-        await asyncio.sleep(15)
+        await _countdown(15, "Stage cooldown", _log)
 
         # ---- Stage 2: Codebase Discovery ----
         _log("[Stage 2/4] Scanning codebase...")
@@ -518,8 +527,7 @@ class PRDAnalyzer:
         _log(f"[Stage 2/4] Done — {len(stage2.get('files_to_create', []))} to create, "
              f"{len(stage2.get('files_to_modify', []))} to modify")
 
-        _log("[Cooldown] 15s between stages...")
-        await asyncio.sleep(15)
+        await _countdown(15, "Stage cooldown", _log)
 
         # ---- Stage 3: Task Extraction ----
         _log("[Stage 3/4] Extracting tasks...")
@@ -537,8 +545,7 @@ class PRDAnalyzer:
         raw_tasks = stage3.get("tasks", [])
         _log(f"[Stage 3/4] Done — {len(raw_tasks)} tasks extracted")
 
-        _log("[Cooldown] 15s between stages...")
-        await asyncio.sleep(15)
+        await _countdown(15, "Stage cooldown", _log)
 
         # ---- Stage 4: Consulting Review ----
         _log("[Stage 4/4] Consulting review...")

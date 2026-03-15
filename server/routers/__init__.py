@@ -27,6 +27,7 @@ from .features import router as features_router
 from .filesystem import router as filesystem_router
 from .github import router as github_router
 from .notifications import router as notifications_router
+from .prd_shredder import router as prd_shredder_router
 from .projects import boilerplate_router, styles_router
 from .projects import router as projects_router
 from .role_library import router as role_library_router
@@ -81,6 +82,7 @@ __all__ = [
     "execution_router",
     "execution_websocket",
     "token_budget_router",
+    "prd_shredder_router",
     "tool_factory_router",
     "factory_router",
     "factory_presets_router",

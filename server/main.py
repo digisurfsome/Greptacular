@@ -52,6 +52,7 @@ from .routers import (
     filesystem_router,
     github_router,
     notifications_router,
+    prd_shredder_router,
     projects_router,
     role_library_router,
     schedules_router,
@@ -220,6 +221,11 @@ async def lifespan(app: FastAPI):
     # Recover any factory sessions that were running before server restart
     await _recover_factory_sessions()
 
+    # Start the PRD Shredder background processing loop
+    from .services.prd_shredder import get_shredder
+    _prd_shredder = get_shredder()
+    await _prd_shredder.start_loop()
+
     yield
 
     # Shutdown - cleanup scheduler first to stop triggering new starts
@@ -238,6 +244,7 @@ async def lifespan(app: FastAPI):
     cleanup_all_agent_os_sessions()
     await cleanup_all_sessions()
     await cleanup_all_capture_managers()
+    await _prd_shredder.stop_loop()
 
 
 # Create FastAPI app
@@ -345,6 +352,7 @@ app.include_router(cli_scripter_router)
 app.include_router(token_budget_router)
 app.include_router(tool_factory_router)
 app.include_router(tool_themes_router)
+app.include_router(prd_shredder_router)
 
 
 # ============================================================================

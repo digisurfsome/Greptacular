@@ -367,10 +367,193 @@ This log feeds back into the analyzer — next time a similar step is encountere
 
 ---
 
+## Phase 6: Self-Building — The System That Builds Its Own Tools
+
+### 6.1 The Core Idea
+
+When the analyzer discovers a missing component, it doesn't just write a PRD and wait. **It spawns a coding agent to build the missing component right now.** The discovering agent already has full context — it knows what's missing, why it's needed, and exactly how it plugs into the existing system. That context is the most expensive thing to rebuild. Use it.
+
+**This is the flywheel at full speed:** YouTube video → extract steps → analyzer finds gap → agent builds component → component goes live → next video benefits automatically. No human in the loop except a server restart notification.
+
+### 6.2 The Build Flow
+
+```
+Analyzer discovers missing component
+        │
+        ▼
+┌──────────────────────────────────────────┐
+│  SELF-BUILD DECISION                     │
+│                                          │
+│  Difficulty ≤ 5/10?  → Auto-build        │
+│  Difficulty 6-7/10?  → Build with review │
+│  Difficulty ≥ 8/10?  → PRD only (human)  │
+│                                          │
+│  Context window > 50%? → Hand off         │
+│  Context window ≤ 50%? → Build in-place  │
+└──────────────────────────────────────────┘
+        │
+        ▼ (Auto-build path)
+┌──────────────────────────────────────────┐
+│  BUILD AGENT                             │
+│                                          │
+│  1. Generate component spec from gap     │
+│     analysis (already has full context)  │
+│                                          │
+│  2. Write the code                       │
+│     - Component implementation           │
+│     - Registration in component_registry │
+│     - Integration point (Tool Runner     │
+│       execute_step() routing)            │
+│                                          │
+│  3. Run lint + type check                │
+│                                          │
+│  4. git add + git commit                 │
+│     "Auto-built component: {name}        │
+│      Triggered by: {tool_name} step {N}  │
+│      Unblocks: {count} steps across      │
+│      {count} tools"                      │
+│                                          │
+│  5. git push origin main                 │
+│                                          │
+│  6. Notify user:                         │
+│     "Built {component_name}. Restart     │
+│      server to activate. {N} tools       │
+│      now have full coverage."            │
+└──────────────────────────────────────────┘
+```
+
+### 6.3 Who Builds — The Discovering Agent vs. A Fresh Agent
+
+**Option A: Discovering agent builds (preferred when context ≤ 50%)**
+- The analyzer agent already knows: what's missing, which steps need it, how existing components work, where integration points are
+- Rebuilding that context in a fresh agent costs tokens and risks information loss
+- If context window is under 50%, the discovering agent IS the builder
+- After building, it returns to analyzer duties OR hands off to a fresh analyzer agent
+
+**Option B: Fresh agent builds (when context > 50%)**
+- If the discovering agent is deep in a multi-tool analysis and context is filling up
+- The discovering agent writes a build spec file: `~/.autoforge/build_queue/{component_name}.json`
+- A fresh agent picks it up, builds, commits, pushes
+- The discovering agent continues analyzing remaining tools
+
+**Build spec file format:**
+```json
+{
+  "component_name": "file_creation",
+  "triggered_by": {"tool": "AI-Fulfilled Agency Builder", "step": 3},
+  "difficulty": 4,
+  "description": "Takes AI-generated content and writes to disk or Google Drive",
+  "integration_point": "tool_runner.execute_step() → when step.type == 'file_create'",
+  "files_to_create": [
+    "server/services/execution/file_creator.py"
+  ],
+  "files_to_modify": [
+    "server/services/component_registry.py"
+  ],
+  "dependencies": ["google_drive_oauth"],
+  "test_scenario": "Generate HTML content via Claude, write to local disk, verify file exists",
+  "context_from_analyzer": "Full gap analysis output + component registry state at time of discovery"
+}
+```
+
+### 6.4 Context Window Control
+
+The build agent operates under strict context rules:
+
+| Context % | Action |
+|---|---|
+| 0-40% | Build freely |
+| 40-45% | Wrap up current file, commit what's done |
+| 45-50% | COLD STOP — commit, push, write handoff note |
+| 50%+ | Do NOT start a build — write spec file for fresh agent |
+
+**The handoff note** (written to `~/.autoforge/build_queue/{component_name}_handoff.md`):
+- What was built so far
+- What's left to build
+- Files created/modified
+- The commit hash of progress so far
+- Enough context for a fresh agent to finish
+
+### 6.5 Safety Rails
+
+**What the build agent CAN do:**
+- Create new files in `server/services/execution/` and `server/services/api_adapters/`
+- Modify `component_registry.py` (add new component entries)
+- Modify `tool_runner.py` (add routing for new step types)
+- Run lint, type check
+- Git commit and push to main
+
+**What the build agent CANNOT do:**
+- Modify UI code (UI changes require user review + `npm run build`)
+- Delete existing files
+- Modify core pipeline files (`sheet_blueprint.py`, `yt_processor.py`, etc.)
+- Run the full test suite (takes too long, wastes context)
+- Push to any branch other than main
+
+**Why no UI changes:** Backend components are safe to auto-build — they're isolated, testable, and won't break the existing UI. UI changes need visual review. The build agent adds backend capability; a future human session adds the UI to expose it.
+
+### 6.6 Notification System
+
+After a successful auto-build, the system notifies the user:
+
+**In-app notification (if AutoForge is running):**
+```
+┌─────────────────────────────────────────────────┐
+│  🔧 New Component Built Automatically           │
+│                                                  │
+│  Component: file_creation                        │
+│  Triggered by: "AI-Fulfilled Agency Builder"     │
+│  What it does: Writes AI-generated content to    │
+│  disk or Google Drive                            │
+│                                                  │
+│  Impact:                                         │
+│  • 7 steps across 3 tools now executable         │
+│  • Global coverage: 78% → 91%                   │
+│                                                  │
+│  Commit: abc1234                                 │
+│  Status: Ready — restart server to activate      │
+│                                                  │
+│  [View Commit]  [Restart Server]  [Dismiss]      │
+└─────────────────────────────────────────────────┘
+```
+
+**Build log** (persisted to `~/.autoforge/auto_builds/`):
+```json
+{
+  "component": "file_creation",
+  "built_at": "2026-03-15T02:34:00Z",
+  "triggered_by": "AI-Fulfilled Agency Builder, step 3",
+  "commit_hash": "abc1234",
+  "files_created": ["server/services/execution/file_creator.py"],
+  "files_modified": ["server/services/component_registry.py"],
+  "steps_unblocked": 7,
+  "tools_affected": ["agency-builder", "listicle-forge", "seo-engine"],
+  "context_used": "38%",
+  "build_duration_seconds": 180
+}
+```
+
+### 6.7 The Overnight Factory
+
+The ultimate vision: the user queues up 10 YouTube videos before bed. Overnight:
+
+1. Each video goes through ingestion → discovery → strategy extraction → steps
+2. Analyzer runs Quick Check on each tool
+3. First tool has 2 missing components → auto-build kicks in, builds both
+4. Second tool needs a component that was just built → passes Quick Check
+5. Third tool needs a new component → auto-build
+6. By morning: 10 tools ready, 4 new components built, global coverage at 95%
+
+The user wakes up to a notification: "Processed 10 videos. Built 4 new components. All 10 tools are ready to generate."
+
+**This is software that builds its own tools. Each video it can't fully process makes it more capable for the next one. The gap shrinks to zero over time.**
+
+---
+
 ## Implementation Order
 
 ```
-Phase 1 (Registry)  →  Phase 2 (Quick Check)  →  Phase 3 (Gap Analysis)  →  Phase 4 (Dashboard)  →  Phase 5 (Auto-Fix)
+Phase 1 (Registry)  →  Phase 2 (Quick Check)  →  Phase 3 (Gap Analysis)  →  Phase 4 (Dashboard)  →  Phase 5 (Auto-Fix)  →  Phase 6 (Self-Build)
 ```
 
 | Phase | Difficulty | What It Gets You |
@@ -380,8 +563,9 @@ Phase 1 (Registry)  →  Phase 2 (Quick Check)  →  Phase 3 (Gap Analysis)  →
 | 3: Gap Analysis | 5/10 | Prioritized build plans + auto-generated PRDs |
 | 4: Dashboard | 3/10 | Global view of component coverage across all tools |
 | 5: Auto-Fix Loop | 6/10 | Self-healing execution with learning |
+| 6: Self-Building | 7/10 | System builds its own missing components automatically |
 
-**Total: ~21/50 difficulty. Five phases. Each is a standalone commit.**
+**Total: ~28/60 difficulty. Six phases. Each is a standalone commit.**
 
 ---
 
@@ -397,6 +581,8 @@ Phase 1 (Registry)  →  Phase 2 (Quick Check)  →  Phase 3 (Gap Analysis)  →
 | `ui/src/components/tool-factory/GapAnalysisView.tsx` | 3 | Gap Analysis results + PRD generation |
 | `ui/src/pages/ComponentDashboardPage.tsx` | 4 | Global component status page |
 | `server/services/execution_monitor.py` | 5 | Failure capture + diagnosis + retry |
+| `server/services/auto_builder.py` | 6 | Self-build orchestrator — spawns coding agents for missing components |
+| `server/services/build_notifier.py` | 6 | In-app + log notifications for auto-built components |
 
 ## Files To Modify
 
@@ -405,6 +591,8 @@ Phase 1 (Registry)  →  Phase 2 (Quick Check)  →  Phase 3 (Gap Analysis)  →
 | `ui/src/pages/YTStrategyLabPage.tsx` | 2 | Insert ToolReadinessCheck before Generate Tool |
 | `server/routers/tool_factory.py` | 2 | Add analyzer endpoints |
 | `server/services/sheet_blueprint.py` | 2 | Pass component availability to blueprint generation |
+| `server/services/tool_analyzer.py` | 6 | Add auto-build trigger when gap analysis finds buildable components |
+| `server/routers/tool_analyzer.py` | 6 | Add build status + notification endpoints |
 
 ---
 
@@ -415,11 +603,14 @@ Phase 1 (Registry)  →  Phase 2 (Quick Check)  →  Phase 3 (Gap Analysis)  →
 3. **Phase 3:** Gap Analysis generates accurate mini-PRDs that an agent can build from
 4. **Phase 4:** Dashboard shows global coverage % and highest-impact components to build
 5. **Phase 5:** A failed step automatically diagnoses, fixes, and retries successfully
+6. **Phase 6:** Analyzer discovers missing component → agent builds it → commits → pushes → user restarts → component is live. No human writes code.
 
 ## The End State
 
 After processing 15-20 YouTube videos through this system:
 - Component library covers 95%+ of common step types
 - Quick Check passes for 19 out of 20 new videos
-- The 1 in 20 that fails triggers Gap Analysis → component gets built → future tools benefit
+- The 1 in 20 that fails triggers auto-build → component gets built → future tools benefit
 - The system is self-improving: every tool it CAN'T make today makes it MORE capable tomorrow
+- **The user's only job is to feed it YouTube videos and restart the server when notified**
+- First software that builds its own tools automatically — each gap it discovers makes it stronger

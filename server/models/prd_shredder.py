@@ -14,6 +14,7 @@ class PRDStatus(str, Enum):
     BUILDING = "building"
     TESTING = "testing"
     COMMITTING = "committing"
+    QA_TESTING = "qa_testing"
     DONE = "done"
     FAILED = "failed"
 
@@ -74,6 +75,8 @@ class PRDQueueItem(BaseModel):
     tasks_total: int = 0
     tasks_done: int = 0
     analysis: Optional[PRDAnalysis] = None
+    playwright_errors: list[dict] = Field(default_factory=list)
+    bugfix_prd_id: Optional[str] = None  # ID of re-queued bug-fix PRD
 
 
 class QueueStats(BaseModel):

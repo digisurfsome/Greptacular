@@ -170,7 +170,7 @@ class PRDQueue:
             if item.status == PRDStatus.QUEUED:
                 stats.queued += 1
             elif item.status in (PRDStatus.CLONING, PRDStatus.ANALYZING, PRDStatus.BUILDING,
-                                 PRDStatus.TESTING, PRDStatus.COMMITTING):
+                                 PRDStatus.TESTING, PRDStatus.COMMITTING, PRDStatus.QA_TESTING):
                 stats.building += 1
             elif item.status == PRDStatus.DONE:
                 stats.done += 1
@@ -323,6 +323,18 @@ class PRDShredder:
             on_progress("Committing and pushing...")
             commit_hash = await self._commit_and_push(item, analysis, repo_dir, on_progress)
 
+            # Playwright QA — test the running app
+            await self.queue.update(item_id, status=PRDStatus.QA_TESTING, commit_hash=commit_hash)
+            on_progress("Running Playwright QA smoke tests...")
+            qa_errors = await self._playwright_qa(item, repo_dir, on_progress)
+
+            if qa_errors:
+                await self.queue.update(item_id, playwright_errors=qa_errors)
+                on_progress(f"Playwright found {len(qa_errors)} error(s) — creating bug-fix PRD...")
+                bugfix_id = await self._create_bugfix_prd(item, qa_errors, repo_dir)
+                await self.queue.update(item_id, bugfix_prd_id=bugfix_id)
+                on_progress(f"Bug-fix PRD queued: {bugfix_id}")
+
             # Done!
             await self.queue.update(
                 item_id,
@@ -330,7 +342,9 @@ class PRDShredder:
                 commit_hash=commit_hash,
                 completed_at=datetime.now(timezone.utc).isoformat(),
             )
-            on_progress(f"DONE! Commit: {commit_hash}")
+            on_progress(f"DONE! Commit: {commit_hash}" + (
+                f" | {len(qa_errors)} QA errors → bug-fix PRD queued" if qa_errors else " | QA clean"
+            ))
 
         except Exception as e:
             error_msg = str(e)
@@ -650,6 +664,123 @@ class PRDShredder:
         )
         return hash_result.stdout.strip() or "unknown"
 
+    # ----- Playwright QA -----
+
+    async def _playwright_qa(
+        self,
+        item: PRDQueueItem,
+        repo_dir: Path,
+        on_progress: Callable[[str], None],
+    ) -> list[dict]:
+        """Run Playwright smoke tests against the built app.
+
+        Steps:
+        1. Detect dev server command + port
+        2. Start dev server
+        3. Wait for it to be ready
+        4. Run smoke test (navigate routes, check console errors, click buttons)
+        5. Kill dev server
+        6. Return list of errors (empty = all clean)
+        """
+        dev_info = _detect_dev_command(repo_dir)
+        if not dev_info:
+            on_progress("No web UI detected — skipping Playwright QA")
+            return []
+
+        dev_cmd, port = dev_info
+        on_progress(f"Starting dev server: {' '.join(dev_cmd)} (port {port})")
+
+        # Start dev server as background process
+        env = os.environ.copy()
+        env.pop("CLAUDECODE", None)
+        env.pop("CLAUDE_CODE_ENTRYPOINT", None)
+
+        try:
+            server_proc = subprocess.Popen(
+                dev_cmd,
+                cwd=str(repo_dir),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env,
+            )
+        except Exception as e:
+            on_progress(f"Failed to start dev server: {e}")
+            return []
+
+        try:
+            # Wait for server to be ready
+            on_progress("Waiting for dev server to start...")
+            ready = await _wait_for_server(port, timeout=30)
+            if not ready:
+                on_progress(f"Dev server didn't respond on port {port} within 30s — skipping QA")
+                return []
+
+            on_progress("Dev server ready — running Playwright smoke test...")
+            errors = await _run_playwright_smoke(port, repo_dir, on_progress)
+            return errors
+
+        finally:
+            # Kill the dev server
+            try:
+                server_proc.terminate()
+                server_proc.wait(timeout=5)
+            except Exception:
+                try:
+                    server_proc.kill()
+                except Exception:
+                    pass
+
+    async def _create_bugfix_prd(
+        self,
+        original_item: PRDQueueItem,
+        errors: list[dict],
+        repo_dir: Path,
+    ) -> str:
+        """Create a bug-fix PRD from Playwright errors and re-enqueue it."""
+        error_descriptions = []
+        for err in errors[:20]:  # Cap at 20 errors
+            err_type = err.get("type", "unknown")
+            if err_type == "console_error":
+                error_descriptions.append(f"- Console error: {err.get('text', '')[:200]}")
+            elif err_type == "http_error":
+                error_descriptions.append(f"- HTTP {err.get('status')} on {err.get('url', '')}")
+            elif err_type == "route_error":
+                error_descriptions.append(f"- Route failed: {err.get('url', '')} — {err.get('message', '')[:200]}")
+            elif err_type == "pageerror":
+                error_descriptions.append(f"- Page crash: {err.get('message', '')[:200]}")
+            elif err_type == "load_error":
+                error_descriptions.append(f"- Load failed: {err.get('message', '')[:200]}")
+            else:
+                error_descriptions.append(f"- {err_type}: {json.dumps(err)[:200]}")
+
+        bugfix_prd = (
+            f"# Bug Fix: {original_item.title}\n\n"
+            f"## Context\n"
+            f"This PRD was auto-generated by the PRD Shredder's Playwright QA step.\n"
+            f"The original PRD \"{original_item.title}\" was built and committed "
+            f"(commit: {original_item.commit_hash}), but Playwright found errors.\n\n"
+            f"## Errors Found ({len(errors)})\n\n"
+            + "\n".join(error_descriptions)
+            + "\n\n## Requirements\n\n"
+            f"1. Fix ALL errors listed above\n"
+            f"2. Do NOT change working functionality\n"
+            f"3. Run `ruff check .` after every file change\n"
+            f"4. If a UI build exists, run `npm run build` in ui/\n"
+            f"5. Commit with message: \"fix: Playwright QA errors from {original_item.title}\"\n\n"
+            f"## Scope\n"
+            f"- ONLY fix the specific errors above\n"
+            f"- Do NOT refactor, add features, or change unrelated code\n"
+        )
+
+        # Enqueue the bug-fix PRD
+        bugfix_item = await self.enqueue(
+            title=f"Bug Fix: {original_item.title}",
+            prd_text=bugfix_prd,
+            target_repo=original_item.target_repo,
+            target_branch=original_item.target_branch,
+        )
+        return bugfix_item.id
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -663,6 +794,256 @@ def _is_local_path(path: str) -> bool:
         or (len(path) > 2 and path[1] == ":")  # Windows: C:\...
         or path.startswith("\\")
     )
+
+
+def _detect_dev_command(repo_dir: Path) -> tuple[list[str], int] | None:
+    """Detect the dev server command and port for a web project.
+
+    Returns (command_list, port) or None if no web UI detected.
+    """
+    # Check ui/ subdirectory first (AutoForge pattern)
+    ui_dir = repo_dir / "ui"
+    if ui_dir.exists() and (ui_dir / "package.json").exists():
+        pkg = _read_package_json(ui_dir / "package.json")
+        port = _extract_port_from_scripts(pkg) or 5173  # Vite default
+        dev_script = _find_dev_script(pkg)
+        if dev_script:
+            return (["npm", "run", dev_script], port)
+
+    # Check root package.json
+    root_pkg = repo_dir / "package.json"
+    if root_pkg.exists():
+        pkg = _read_package_json(root_pkg)
+        port = _extract_port_from_scripts(pkg) or 3000  # Node default
+        dev_script = _find_dev_script(pkg)
+        if dev_script:
+            return (["npm", "run", dev_script], port)
+
+    # Check for Python web apps (FastAPI/Flask/Django)
+    main_py = repo_dir / "server" / "main.py"
+    if main_py.exists():
+        return (["python", "-m", "uvicorn", "server.main:app", "--port", "8000"], 8000)
+
+    manage_py = repo_dir / "manage.py"
+    if manage_py.exists():
+        return (["python", "manage.py", "runserver", "8000"], 8000)
+
+    app_py = repo_dir / "app.py"
+    if app_py.exists():
+        return (["python", "app.py"], 5000)  # Flask default
+
+    return None
+
+
+def _read_package_json(path: Path) -> dict:
+    """Read and parse a package.json file."""
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _find_dev_script(pkg: dict) -> str | None:
+    """Find the best dev server script in package.json."""
+    scripts = pkg.get("scripts", {})
+    for name in ("dev", "start", "serve", "start:dev"):
+        if name in scripts:
+            return name
+    return None
+
+
+def _extract_port_from_scripts(pkg: dict) -> int | None:
+    """Try to extract port number from package.json scripts."""
+    import re as _re
+    scripts = pkg.get("scripts", {})
+    for script_val in scripts.values():
+        # Match --port 3000, --port=3000, -p 3000
+        match = _re.search(r"(?:--port[= ]|[ ]-p[ ])(\d{4,5})", str(script_val))
+        if match:
+            return int(match.group(1))
+    return None
+
+
+async def _wait_for_server(port: int, timeout: int = 30) -> bool:
+    """Wait for a server to start responding on the given port."""
+    import socket
+    deadline = asyncio.get_event_loop().time() + timeout
+    while asyncio.get_event_loop().time() < deadline:
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(1)
+            result = sock.connect_ex(("127.0.0.1", port))
+            sock.close()
+            if result == 0:
+                # Give it a moment to be fully ready
+                await asyncio.sleep(1)
+                return True
+        except Exception:
+            pass
+        await asyncio.sleep(1)
+    return False
+
+
+async def _run_playwright_smoke(
+    port: int,
+    repo_dir: Path,
+    on_progress: Callable[[str], None],
+) -> list[dict]:
+    """Run a Playwright smoke test against localhost:port.
+
+    Navigates to every internal route, collects console errors, checks for
+    HTTP errors, and clicks interactive elements. Returns a list of error dicts.
+    """
+    import tempfile
+
+    base_url = f"http://localhost:{port}"
+
+    # Write a temporary Python smoke test script
+    smoke_script = f'''#!/usr/bin/env python
+"""Auto-generated Playwright smoke test — PRD Shredder QA"""
+import json
+import sys
+
+errors = []
+
+try:
+    from playwright.sync_api import sync_playwright
+except ImportError:
+    # Playwright not available — report and exit
+    print(json.dumps([{{"type": "setup_error", "message": "playwright not installed"}}]))
+    sys.exit(0)
+
+try:
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context(ignore_https_errors=True)
+        page = context.new_page()
+
+        # Collect console errors
+        console_errors = []
+        page.on("console", lambda msg: console_errors.append(msg.text) if msg.type == "error" else None)
+        page.on("pageerror", lambda exc: errors.append({{"type": "pageerror", "message": str(exc)[:500]}}))
+
+        # Navigate to root
+        try:
+            response = page.goto("{base_url}", timeout=15000, wait_until="networkidle")
+            if response and response.status >= 400:
+                errors.append({{"type": "http_error", "url": "{base_url}", "status": response.status}})
+        except Exception as e:
+            errors.append({{"type": "load_error", "url": "{base_url}", "message": str(e)[:500]}})
+            print(json.dumps(errors))
+            sys.exit(0)
+
+        # Find all internal links
+        visited = set()
+        links = page.query_selector_all("a[href]")
+        for link in links:
+            try:
+                href = link.get_attribute("href")
+                if href and (href.startswith("/") or href.startswith("#")):
+                    clean = href.split("?")[0].split("#")[0] or "/"
+                    if clean != "/":
+                        visited.add(clean)
+            except Exception:
+                pass
+
+        # Visit each internal route (limit to 20)
+        for route in sorted(visited)[:20]:
+            url = f"{base_url}{{route}}"
+            try:
+                response = page.goto(url, timeout=10000, wait_until="networkidle")
+                if response and response.status >= 400:
+                    errors.append({{"type": "http_error", "url": url, "status": response.status}})
+            except Exception as e:
+                errors.append({{"type": "route_error", "url": url, "message": str(e)[:500]}})
+
+        # Go back to root and click buttons
+        try:
+            page.goto("{base_url}", timeout=10000, wait_until="networkidle")
+            buttons = page.query_selector_all("button:visible")
+            for btn in buttons[:10]:
+                try:
+                    btn.click(timeout=2000, no_wait_after=True)
+                    page.wait_for_timeout(500)
+                except Exception:
+                    pass  # Some buttons may trigger navigation etc.
+        except Exception:
+            pass
+
+        # Collect accumulated console errors
+        for ce_text in console_errors:
+            errors.append({{"type": "console_error", "text": ce_text[:500]}})
+
+        browser.close()
+
+except Exception as e:
+    errors.append({{"type": "smoke_test_crash", "message": str(e)[:500]}})
+
+print(json.dumps(errors))
+'''
+
+    # Write to temp file
+    tmp = tempfile.NamedTemporaryFile(
+        mode="w", suffix=".py", delete=False, encoding="utf-8",
+        dir=str(repo_dir),
+    )
+    tmp.write(smoke_script)
+    tmp.close()
+    tmp_path = tmp.name
+
+    try:
+        on_progress(f"Running smoke test against {base_url}...")
+
+        process = await asyncio.create_subprocess_exec(
+            "python", tmp_path,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=str(repo_dir),
+            env={**os.environ, "PLAYWRIGHT_BROWSERS_PATH": "0"},
+        )
+
+        stdout, stderr = await asyncio.wait_for(
+            process.communicate(),
+            timeout=120,  # 2 min max for QA
+        )
+
+        output = stdout.decode("utf-8", errors="replace").strip()
+
+        if not output:
+            on_progress("Playwright returned no output")
+            return []
+
+        try:
+            errors = json.loads(output)
+            if not isinstance(errors, list):
+                errors = []
+        except json.JSONDecodeError:
+            on_progress(f"Playwright output not JSON: {output[:200]}")
+            return []
+
+        # Filter out noise
+        errors = [e for e in errors if e.get("type") != "setup_error"]
+
+        if errors:
+            on_progress(f"Playwright found {len(errors)} error(s):")
+            for err in errors[:5]:
+                on_progress(f"  - {err.get('type')}: {str(err.get('text') or err.get('message') or err.get('url', ''))[:100]}")
+        else:
+            on_progress("Playwright QA: all routes clean, no console errors")
+
+        return errors
+
+    except asyncio.TimeoutError:
+        on_progress("Playwright smoke test timed out (120s)")
+        return [{"type": "timeout", "message": "Smoke test exceeded 120s"}]
+    except Exception as e:
+        on_progress(f"Playwright smoke test error: {e}")
+        return []
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
 
 
 def _extract_repo_name(url: str) -> str:

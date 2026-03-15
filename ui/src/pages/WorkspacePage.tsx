@@ -69,9 +69,17 @@ function CollapsedPanelBar({
   )
 }
 
+/** Parse conversation ID from the URL hash (e.g. #/workspace/chat/42 → 42). */
+function parseConversationIdFromHash(): number | null {
+  const match = window.location.hash.match(/^#\/workspace\/chat\/(\d+)/)
+  return match ? parseInt(match[1], 10) : null
+}
+
 /** Full-page workspace layout with keyboard shortcuts, breadcrumbs, and all Phase 4 features. */
 export function WorkspacePage(): React.JSX.Element {
-  const [activeConversationId, setActiveConversationId] = useState<number | null>(null)
+  // Conversation ID is driven by the URL hash — each conversation is its own "page".
+  // Sidebar navigation changes the hash, which triggers a re-render with the new ID.
+  const [activeConversationId, setActiveConversationId] = useState<number | null>(parseConversationIdFromHash)
   const [workingDirectory, setWorkingDirectory] = useState<string | null>(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
@@ -125,6 +133,14 @@ export function WorkspacePage(): React.JSX.Element {
       localStorage.setItem('workspace-provider', activeProvider)
     } catch { /* ignore quota or security errors */ }
   }, [researchCollapsed, prdCollapsed, coderCollapsed, researchModel, prdModel, coderModel, activeProvider])
+
+  // Sync activeConversationId with the URL hash — this is how "page navigation" works.
+  // When the sidebar navigates to #/workspace/chat/{id}, this picks up the change.
+  useEffect(() => {
+    const handler = () => setActiveConversationId(parseConversationIdFromHash())
+    window.addEventListener('hashchange', handler)
+    return () => window.removeEventListener('hashchange', handler)
+  }, [])
 
   // Passoff editor state — tab alongside Chat in PRD panel
   const [passoffSections, setPassoffSections] = useState<PassoffSection[]>([])
@@ -192,13 +208,13 @@ export function WorkspacePage(): React.JSX.Element {
     setPendingContextMode(contextMode)
     setPendingEffort(effort)
     setNewChatKey(k => k + 1)
-    setActiveConversationId(null)
+    window.location.hash = '#/workspace'
   }, [activeProvider])
 
   /** Clear active conversation when it's deleted so the chat panel disconnects. */
   const handleDeleteConversation = useCallback((deletedId: number) => {
-    if (activeConversationId === deletedId) {
-      setActiveConversationId(null)
+    if (parseConversationIdFromHash() === deletedId) {
+      window.location.hash = '#/workspace'
     }
     // Always clean up streaming state — the deleted conversation could be
     // streaming in any panel (main, PRD, coder) or split-view mode.
@@ -208,20 +224,22 @@ export function WorkspacePage(): React.JSX.Element {
       next.delete(deletedId)
       return next
     })
-  }, [activeConversationId])
+  }, [])
 
   /** Navigate back to conversation list (no model selection needed). */
   const handleBackToConversations = useCallback(() => {
-    setActiveConversationId(null)
+    window.location.hash = '#/workspace'
   }, [])
 
+  /** Navigate to a conversation page — each conversation is its own route. */
   const handleSelectConversation = useCallback((id: number) => {
-    setActiveConversationId(id)
+    window.location.hash = `#/workspace/chat/${id}`
     setMobileSidebarOpen(false)
   }, [])
 
+  /** After a new conversation is created, navigate to its page. */
   const handleConversationCreated = useCallback((id: number) => {
-    setActiveConversationId(id)
+    window.location.hash = `#/workspace/chat/${id}`
   }, [])
 
   const handleExportChat = useCallback(() => {

@@ -29,6 +29,7 @@ import { KeyboardShortcutsHelp } from './components/KeyboardShortcutsHelp'
 import { ThemeSelector } from './components/ThemeSelector'
 import { ResetProjectModal } from './components/ResetProjectModal'
 import { TokenBudgetBadge } from './components/TokenBudgetBadge'
+import { ShredderStatusBadge } from './components/prd-shredder/ShredderStatusBadge'
 import { ProjectSetupRequired } from './components/ProjectSetupRequired'
 import { GitActivityWidget } from './components/GitActivityWidget'
 import { getDependencyGraph, startAgent } from './lib/api'
@@ -362,6 +363,9 @@ function App() {
 
               {/* Token Budget Badge — always visible (not project-gated) */}
               <TokenBudgetBadge />
+
+              {/* PRD Shredder Status — always visible (not project-gated) */}
+              <ShredderStatusBadge />
 
               {/* Build timestamp — hidden on mobile, diagnostic only */}
               <span

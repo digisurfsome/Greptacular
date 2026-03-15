@@ -24,6 +24,27 @@ from typing import AsyncGenerator, Optional
 logger = logging.getLogger(__name__)
 
 
+def _find_gemini() -> Optional[str]:
+    """Find gemini CLI, checking PATH first then common npm global locations."""
+    # 1. Check PATH
+    found = shutil.which("gemini")
+    if found:
+        return found
+    # 2. Check common npm global bin dirs (Windows)
+    npm_global = Path(os.environ.get("APPDATA", "")) / "npm" / "gemini.cmd"
+    if npm_global.exists():
+        return str(npm_global)
+    # 3. Check npm prefix
+    npm_prefix = shutil.which("npm")
+    if npm_prefix:
+        prefix_dir = Path(npm_prefix).parent
+        for name in ("gemini.cmd", "gemini"):
+            candidate = prefix_dir / name
+            if candidate.exists():
+                return str(candidate)
+    return None
+
+
 class GeminiBridge:
     """
     Manages Gemini CLI invocations in headless streaming mode.
@@ -56,7 +77,7 @@ class GeminiBridge:
 
     async def start(self) -> None:
         """Pre-check Gemini CLI availability before starting the session."""
-        gemini_path = shutil.which("gemini")
+        gemini_path = _find_gemini()
         if not gemini_path:
             raise RuntimeError(
                 "Gemini CLI is not installed globally.\n\n"
@@ -64,6 +85,7 @@ class GeminiBridge:
                 "  npm install -g @google/gemini-cli\n\n"
                 "If it is already installed, make sure it is on your system PATH."
             )
+        logger.info("Found Gemini CLI at: %s", gemini_path)
 
     async def close(self) -> None:
         """Kill any running Gemini process."""
@@ -101,22 +123,16 @@ class GeminiBridge:
         - {"type": "error", "content": "..."}
         """
         # Find gemini CLI
-        gemini_path = shutil.which("gemini")
-        use_npx = False
+        gemini_path = _find_gemini()
         if not gemini_path:
-            # Fallback if start() was somehow skipped, but strongly discourage
-            gemini_path = shutil.which("npx")
-            if not gemini_path:
+            # Last resort: try npx
+            npx_path = shutil.which("npx")
+            if not npx_path:
                 raise RuntimeError(
-                    "Neither 'gemini' nor 'npx' found on PATH. "
+                    "Neither 'gemini' nor 'npx' found. "
                     "Install Gemini CLI: npm install -g @google/gemini-cli"
                 )
-            use_npx = True
-
-        # Build command
-        cmd: list[str] = []
-        if use_npx:
-            cmd = [gemini_path, "-y", "@google/gemini-cli"]
+            cmd = [npx_path, "-y", "@google/gemini-cli"]
         else:
             cmd = [gemini_path]
 

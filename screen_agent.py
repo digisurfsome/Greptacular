@@ -54,61 +54,86 @@ MAX_LOOPS = 15  # Safety cap — won't run more than 15 rounds
 COMMAND_TIMEOUT = 300  # 5 min per command
 LOG_DIR = Path.home() / ".autoforge"
 LOG_FILE = LOG_DIR / "screen_agent.log"
+BRAIN_FILE = LOG_DIR / "my_brain.md"
+BRAIN_DEFAULT = Path(__file__).parent / "my_brain_default.md"
 
 current_keys = set()
 client = None
 stop_flag = threading.Event()
 busy = threading.Event()
 
-SYSTEM_PROMPT = """\
-You are an autonomous command execution agent on the user's Windows machine.
-You are smart, resourceful, and you SOLVE PROBLEMS — you don't just run commands blindly.
 
-The user pressed a hotkey and you're seeing their screen. Your job:
+def load_brain() -> str:
+    """Load personal knowledge file. Create from default if missing."""
+    if not BRAIN_FILE.exists():
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
+        if BRAIN_DEFAULT.exists():
+            import shutil
+            shutil.copy2(BRAIN_DEFAULT, BRAIN_FILE)
+            log(f"Created brain file: {BRAIN_FILE}")
+        else:
+            BRAIN_FILE.write_text("# My Brain\n\nNo knowledge file found. Edit this file to teach me.\n", encoding="utf-8")
+    return BRAIN_FILE.read_text(encoding="utf-8")
+
+
+def save_learned_solution(problem: str, solution: str):
+    """Append a new learned solution to the brain file."""
+    try:
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+        entry = f"\n### [{ts}] {problem}\n{solution}\n"
+        with open(BRAIN_FILE, "a", encoding="utf-8") as f:
+            f.write(entry)
+        log(f"Learned: {problem}")
+    except Exception as e:
+        log(f"Failed to save learning: {e}")
+
+SYSTEM_PROMPT_TEMPLATE = """\
+You are the user's personal bionic assistant — an autonomous agent running on their machine.
+You know them, their setup, their tools, and their common problems. You're fast, smart, and
+you SOLVE PROBLEMS — you don't just run commands blindly.
+
+## YOUR PERSONAL KNOWLEDGE OF THIS USER
+
+{brain}
+
+## YOUR MISSION
+
+The user pressed a hotkey. You're seeing their screen. Your job:
 1. Read the screen — it shows a Claude Code conversation, terminal, or instructions
 2. Understand the GOAL (deploy, install, build, fix error, git operations, etc.)
 3. Figure out what commands to run to accomplish that goal
 4. When things go wrong, FIGURE OUT THE FIX — don't give up
+5. If you solve a new problem, report it so I can remember it for next time
 
-YOU ARE A PROBLEM SOLVER. Common situations you handle:
-- Vim/editor pops up during git merge → use --no-edit flag, or echo | to pipe empty input
-- Wrong path / "system cannot find the path" → try alternative paths, use dir to explore
-- Merge conflicts → try git merge --abort then retry with strategy, or resolve
-- Permission denied → try running as admin, or find alternative approach
-- "not recognized" command → find the right tool, install if needed
-- npm errors → try npm ci, delete node_modules, clear cache
-- Port in use → find and kill the process using it
-- Git "divergent branches" → use --no-edit --no-rebase or set pull strategy
+YOU ARE A PROBLEM SOLVER. You never say "I can't" — you find workarounds:
+- Vim/editor pops up → use --no-edit flag, or kill the process and retry
+- Wrong path → search for it with dir, try known paths from your brain file
+- Merge conflicts → abort and retry with strategy
+- Build errors → read the error, fix the specific issue
+- "not recognized" → find the right tool or install it
+- Port in use → find and kill the process
 - Process won't die → taskkill /f /t /pid
-- Build fails → read the error, fix the issue, retry
 
-ENVIRONMENT:
-- Windows 10, Command Prompt (cmd.exe) — NOT PowerShell
-- Use && to chain commands, use cd /d for drive changes
-- The user's dev repo: "C:\\Users\\lober\\GitHub\\Greptacular - AutoForge Build\\Greptacular"
-- The user's live install: C:\\Users\\lober\\Greptacular
-- ALWAYS use --no-edit on git merge/pull to avoid Vim
-- ALWAYS use cd /d for absolute paths
-
-DEPLOY CHAIN (when you see deploy/update instructions):
-1. cd /d "C:\\Users\\lober\\GitHub\\Greptacular - AutoForge Build\\Greptacular"
-2. git fetch origin <branch> && git merge origin/<branch> --no-edit
-3. cd ui && npm run build && cd ..
-4. git push origin main
-5. cd /d C:\\Users\\lober\\Greptacular && git pull origin main --no-edit
-6. start "" "C:\\Users\\lober\\Greptacular\\start_ui.bat"
+## RESPONSE FORMAT
 
 RESPOND WITH JSON ONLY:
-{
+{{
   "goal": "short description of what you're trying to accomplish",
   "status": "running" or "done" or "error",
   "message": "what you're doing now (shown to user)",
   "commands": ["command1", "command2"],
-  "done_reason": "only if status is done — explain what was accomplished"
-}
+  "done_reason": "only if status is done",
+  "learned": "only if you solved a new problem — describe the problem and fix so I remember it"
+}}
 
-If nothing to do: {"goal": "...", "status": "done", "commands": [], "done_reason": "..."}
+If nothing to do: {{"goal": "...", "status": "done", "commands": [], "done_reason": "..."}}
 """
+
+
+def get_system_prompt() -> str:
+    """Build system prompt with personal knowledge injected."""
+    brain = load_brain()
+    return SYSTEM_PROMPT_TEMPLATE.format(brain=brain)
 
 FOLLOWUP_PROMPT = """\
 Command results:
@@ -137,7 +162,8 @@ RESPOND WITH JSON ONLY:
   "status": "running" or "done" or "error",
   "message": "what's happening / what you're fixing",
   "commands": ["next commands"],
-  "done_reason": "only if fully done"
+  "done_reason": "only if fully done",
+  "learned": "only if you figured out a new workaround — describe problem and fix"
 }}
 """
 
@@ -171,7 +197,7 @@ def ask_claude_with_screenshot(screenshot_b64: str) -> dict:
     response = client.messages.create(
         model="claude-sonnet-4-20250514",
         max_tokens=2048,
-        system=SYSTEM_PROMPT,
+        system=get_system_prompt(),
         messages=[
             {
                 "role": "user",
@@ -234,7 +260,7 @@ def ask_claude_followup(goal: str, results: str, include_screenshot: bool = Fals
     response = client.messages.create(
         model="claude-sonnet-4-20250514",
         max_tokens=2048,
-        system=SYSTEM_PROMPT,
+        system=get_system_prompt(),
         messages=[{"role": "user", "content": content}],
     )
     text = response.content[0].text.strip()
@@ -420,11 +446,23 @@ def agent_loop():
             results_text = "\n\n".join(all_results)
             plan = ask_claude_followup(goal, results_text, include_screenshot=any_errors)
 
+            # Save learnings as we go
+            mid_learned = plan.get("learned")
+            if mid_learned:
+                save_learned_solution(goal, mid_learned)
+                win.append(f"Learned: {mid_learned}", "info")
+
             if plan.get("status") == "done":
                 break
             if plan.get("status") == "error":
                 win.append(f"\nError: {plan.get('message', 'Unknown error')}", "error")
                 break
+
+        # Save any learned solutions
+        learned = plan.get("learned")
+        if learned:
+            save_learned_solution(goal, learned)
+            win.append(f"\nLearned for next time: {learned}", "info")
 
         # Done
         done_reason = plan.get("done_reason", plan.get("message", "Task complete."))

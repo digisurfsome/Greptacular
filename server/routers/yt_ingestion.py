@@ -153,18 +153,67 @@ def _extract_video_id(url: str) -> str:
     raise ValueError(f"Could not extract video ID from URL: {url}")
 
 
+def _get_transcript_supadata(video_id: str) -> list[TranscriptSegment]:
+    """
+    Fetch transcript via Supadata REST API (fallback for cloud/blocked IPs).
+
+    Uses SUPADATA_API_KEY env var. Returns [] if key is not set or request fails.
+    Supadata returns offset/duration in milliseconds; we convert to seconds.
+    """
+    api_key = os.getenv("SUPADATA_API_KEY")
+    if not api_key:
+        logger.warning("SUPADATA_API_KEY not set — Supadata fallback unavailable")
+        return []
+
+    import httpx
+
+    video_url = f"https://www.youtube.com/watch?v={video_id}"
+    try:
+        resp = httpx.get(
+            "https://api.supadata.ai/v1/transcript",
+            params={"url": video_url, "text": "false"},
+            headers={"x-api-key": api_key},
+            timeout=30.0,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as exc:
+        logger.warning("Supadata transcript fetch failed for %s: %s", video_id, exc)
+        return []
+
+    content = data.get("content")
+    if not content or not isinstance(content, list):
+        logger.warning("Supadata returned empty/invalid content for %s", video_id)
+        return []
+
+    segments: list[TranscriptSegment] = []
+    total_chars = 0
+    for entry in content:
+        text = entry.get("text", "")
+        start = entry.get("offset", 0) / 1000.0  # ms -> seconds
+        duration = entry.get("duration", 0) / 1000.0  # ms -> seconds
+        total_chars += len(text)
+        if total_chars > MAX_TRANSCRIPT_CHARS:
+            logger.warning("Supadata transcript exceeded %d chars, truncating", MAX_TRANSCRIPT_CHARS)
+            break
+        segments.append(TranscriptSegment(text=text, start=start, duration=duration))
+
+    logger.info("Supadata returned %d transcript segments for %s", len(segments), video_id)
+    return segments
+
+
 def _get_transcript(video_id: str) -> list[TranscriptSegment]:
     """
-    Fetch the transcript for a YouTube video using youtube-transcript-api.
+    Fetch the transcript for a YouTube video.
 
-    Falls back gracefully if the library is not installed or if no transcript
-    is available.
+    Tries youtube-transcript-api first (free, no key needed). If YouTube
+    blocks the request (common on cloud IPs), falls back to Supadata API.
     """
     try:
         from youtube_transcript_api import YouTubeTranscriptApi  # type: ignore[import-untyped]
     except ImportError:
-        logger.warning("youtube-transcript-api not installed — transcript extraction unavailable")
-        return []
+        logger.warning("youtube-transcript-api not installed — trying Supadata fallback")
+        return _get_transcript_supadata(video_id)
 
     try:
         ytt_api = YouTubeTranscriptApi()
@@ -183,6 +232,13 @@ def _get_transcript(video_id: str) -> list[TranscriptSegment]:
             segments.append(TranscriptSegment(text=text, start=start, duration=duration))
         return segments
     except Exception as exc:
+        exc_type = type(exc).__name__
+        if exc_type in ("RequestBlocked", "IpBlocked"):
+            logger.warning(
+                "YouTube blocked transcript request for %s (%s) — trying Supadata fallback",
+                video_id, exc_type,
+            )
+            return _get_transcript_supadata(video_id)
         logger.warning("Failed to fetch transcript for %s: %s", video_id, exc)
         return []
 
@@ -582,16 +638,21 @@ async def yt_lab_health():
         pass
 
     has_api_key = bool(os.getenv("YOUTUBE_API_KEY"))
+    has_supadata_key = bool(os.getenv("SUPADATA_API_KEY"))
+
+    # Transcript is available if we have the local library OR the Supadata fallback
+    has_transcript_source = has_transcript_api or has_supadata_key
 
     body = {
         "yt_dlp": has_ytdlp,
         "ffmpeg": has_ffmpeg,
         "youtube_transcript_api": has_transcript_api,
         "youtube_api_key": has_api_key,
-        "status": "ok" if (has_ytdlp and has_transcript_api) else "degraded",
+        "supadata_api_key": has_supadata_key,
+        "status": "ok" if (has_ytdlp and has_transcript_source) else "degraded",
     }
 
-    status_code = 200 if (has_ytdlp and has_transcript_api) else 503
+    status_code = 200 if (has_ytdlp and has_transcript_source) else 503
     return JSONResponse(content=body, status_code=status_code)
 
 

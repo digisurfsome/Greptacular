@@ -344,7 +344,7 @@ export function MetaEnginePage() {
   const handleIngestUrl = useCallback(async () => {
     if (!ytUrl.trim()) return
     setIngesting(true)
-    const result = await safeFetch<IngestResult>('/meta-training/ingest-url', {
+    const result = await safeFetch<IngestResult>('/meta-training/ingest/url', {
       method: 'POST',
       body: JSON.stringify({ url: ytUrl.trim() }),
     })
@@ -359,7 +359,7 @@ export function MetaEnginePage() {
   const handleIngestText = useCallback(async () => {
     if (!pasteText.trim()) return
     setIngesting(true)
-    const result = await safeFetch<IngestResult>('/meta-training/ingest-text', {
+    const result = await safeFetch<IngestResult>('/meta-training/ingest/text', {
       method: 'POST',
       body: JSON.stringify({ text: pasteText.trim(), source_name: pasteSourceName.trim() || 'Pasted text' }),
     })
@@ -393,7 +393,7 @@ export function MetaEnginePage() {
       try {
         const formData = new FormData()
         formData.append('file', file)
-        const res = await fetch(`${API_BASE}/meta-training/upload-file`, {
+        const res = await fetch(`${API_BASE}/meta-training/ingest/upload`, {
           method: 'POST',
           body: formData,
         })
@@ -420,12 +420,12 @@ export function MetaEnginePage() {
     const [statsData, exData, patData, coachData] = await Promise.all([
       safeFetch<LibraryStats>('/meta-training/library'),
       safeFetch<TrainingExample[]>(
-        `/meta-training/examples${libraryFilter ? `?metaprogram=${libraryFilter}` : ''}`
+        `/meta-training/library/examples${libraryFilter ? `?metaprogram=${libraryFilter}` : ''}`
       ),
       safeFetch<TrainingPattern[]>(
-        `/meta-training/patterns${libraryFilter ? `?metaprogram=${libraryFilter}` : ''}`
+        `/meta-training/library/patterns${libraryFilter ? `?metaprogram=${libraryFilter}` : ''}`
       ),
-      safeFetch<CoachingScenario[]>('/meta-training/coaching'),
+      safeFetch<CoachingScenario[]>('/meta-training/library/coaching'),
     ])
     setLibraryStats(statsData ?? { sources: 0, examples: 0, patterns: 0, scenarios: 0 })
     setExamples(exData ?? [])
@@ -492,14 +492,14 @@ export function MetaEnginePage() {
 
   const loadOutputTopics = useCallback(async () => {
     setExportLoading(true)
-    const data = await safeFetch<OutputTopic[]>('/meta-training/output-topics')
+    const data = await safeFetch<OutputTopic[]>('/meta-training/output/topics')
     setOutputTopics(data ?? [])
     setExportLoading(false)
   }, [])
 
   const handleExport = useCallback(async (slug: string, format: 'csv' | 'json') => {
     try {
-      const res = await fetch(`${API_BASE}/meta-training/export/${format}/${slug}`)
+      const res = await fetch(`${API_BASE}/meta-training/output/${slug}/export/${format}`)
       if (!res.ok) return
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)

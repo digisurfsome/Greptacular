@@ -1044,6 +1044,8 @@ async def workspace_chat_websocket(websocket: WebSocket):
     """
     from ..services.workspace_chat_session import (
         create_session as ws_create_session,
+    )
+    from ..services.workspace_chat_session import (
         remove_session as ws_remove_session,
     )
 

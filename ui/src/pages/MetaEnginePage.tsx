@@ -67,10 +67,12 @@ interface MetaEngineSettings {
 
 interface IngestResult {
   source: string
-  status: 'success' | 'error'
+  status: 'success' | 'error' | 'processing'
   message: string
   examples_added?: number
   patterns_added?: number
+  /** Progress bar percentage (0-100) while processing */
+  _progressPct?: number
 }
 
 interface LibraryStats {
@@ -220,6 +222,24 @@ async function copyToClipboard(text: string): Promise<boolean> {
 const inputCls = "w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:border-orange-500 focus:outline-none transition-colors"
 const selectCls = "appearance-none bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:border-orange-500 focus:outline-none transition-colors pr-8"
 const cardCls = "bg-zinc-800/40 border border-zinc-700/60 rounded-xl p-6 shadow-sm"
+
+/**
+ * Map a progress message from the backend to a rough percentage.
+ * The backend emits messages at known stages of the ingest pipeline;
+ * we translate those into a 0-100 range for the progress bar.
+ */
+function mapProgressToPercent(msg: string): number {
+  const lower = msg.toLowerCase()
+  if (lower.includes('source type')) return 5
+  if (lower.includes('fetching transcript') || lower.includes('transcribing')) return 15
+  if (lower.includes('fetching video metadata')) return 25
+  if (lower.includes('transcript ready') || lower.includes('ingesting text')) return 40
+  if (lower.includes('extracting training data')) return 50
+  if (lower.includes('calling claude')) return 60
+  if (lower.includes('extraction complete') || lower.includes('extracted')) return 85
+  if (lower.includes('training library updated')) return 95
+  return 50
+}
 
 // ============================================================================
 // Main Component

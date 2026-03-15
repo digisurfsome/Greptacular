@@ -400,11 +400,18 @@ export function useWorkspaceChat({
               return prev;
             });
 
-            // Dispatch any message that was queued while waiting for session readiness
+            // Dispatch any message that was queued while waiting for session readiness.
+            // Use setTimeout(0) so React finishes rendering the completed assistant
+            // message before we send the next user message — prevents the user's
+            // message from appearing out of order with the agent's buffered response.
             if (queuedPayloadRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
               const queued = queuedPayloadRef.current;
               queuedPayloadRef.current = null;
-              wsRef.current.send(JSON.stringify(queued));
+              setTimeout(() => {
+                if (wsRef.current?.readyState === WebSocket.OPEN) {
+                  wsRef.current.send(JSON.stringify(queued));
+                }
+              }, 0);
             } else {
               setIsLoading(false);
             }

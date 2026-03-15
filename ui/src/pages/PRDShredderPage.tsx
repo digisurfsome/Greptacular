@@ -130,6 +130,33 @@ function SectionCard({ icon, title, count, accent, children }: {
 // ---------------------------------------------------------------------------
 // Live log viewer — terminal style
 // ---------------------------------------------------------------------------
+function colorizeLogLine(line: string): { color: string; lineNumColor: string } {
+  const lower = line.toLowerCase()
+  // Errors / failures
+  if (lower.includes('error') || lower.includes('failed') || lower.includes('exception') || lower.includes('traceback'))
+    return { color: 'text-red-400', lineNumColor: 'text-red-700' }
+  // Warnings / rate limits
+  if (lower.includes('warning') || lower.includes('rate limit') || lower.includes('retry') || lower.includes('retrying'))
+    return { color: 'text-amber-400', lineNumColor: 'text-amber-700' }
+  // Stage transitions
+  if (lower.includes('[stage') || lower.includes('stage ') || lower.includes('phase ') || lower.startsWith('===') || lower.startsWith('---'))
+    return { color: 'text-yellow-300', lineNumColor: 'text-yellow-700' }
+  // Countdown / cooldown timers
+  if (lower.includes('remaining') || lower.includes('cooldown') || lower.includes('countdown') || lower.includes('waiting'))
+    return { color: 'text-cyan-400', lineNumColor: 'text-cyan-700' }
+  // Success / done / complete
+  if (lower.includes('done') || lower.includes('complete') || lower.includes('success') || lower.includes('passed') || lower.includes('committed'))
+    return { color: 'text-emerald-400', lineNumColor: 'text-emerald-700' }
+  // Task progress
+  if (lower.includes('task ') || lower.includes('building ') || lower.includes('creating ') || lower.includes('modifying '))
+    return { color: 'text-orange-300', lineNumColor: 'text-orange-700' }
+  // Analysis / discovery
+  if (lower.includes('analyz') || lower.includes('discover') || lower.includes('scanning') || lower.includes('parsing'))
+    return { color: 'text-blue-400', lineNumColor: 'text-blue-700' }
+  // Default — bright enough to read
+  return { color: 'text-zinc-300', lineNumColor: 'text-zinc-600' }
+}
+
 function LiveLogViewer({ itemId }: { itemId: string }) {
   const { data } = useShredderItemLogs(itemId)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -144,20 +171,23 @@ function LiveLogViewer({ itemId }: { itemId: string }) {
   return (
     <div
       ref={containerRef}
-      className="bg-zinc-900 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg p-3 max-h-72 overflow-y-auto font-mono text-[11px] leading-relaxed"
+      className="bg-zinc-900 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg p-3 max-h-72 overflow-y-auto font-mono text-[13px] leading-relaxed"
     >
       {logs.length === 0 ? (
-        <div className="flex items-center gap-2 text-zinc-600 italic">
-          <Loader2 size={12} className="animate-spin text-orange-500" />
+        <div className="flex items-center gap-2 text-zinc-400 italic text-sm">
+          <Loader2 size={14} className="animate-spin text-orange-500" />
           Waiting for logs...
         </div>
       ) : (
-        logs.map((line, i) => (
-          <div key={i} className="text-zinc-500 hover:text-zinc-300 transition-colors py-px">
-            <span className="text-zinc-700 select-none mr-2 text-[10px]">{String(i + 1).padStart(3)}</span>
-            {line}
-          </div>
-        ))
+        logs.map((line, i) => {
+          const { color, lineNumColor } = colorizeLogLine(line)
+          return (
+            <div key={i} className={`${color} hover:brightness-125 transition-all py-px`}>
+              <span className={`${lineNumColor} select-none mr-2 text-[11px]`}>{String(i + 1).padStart(3)}</span>
+              {line}
+            </div>
+          )
+        })
       )}
     </div>
   )
@@ -538,7 +568,7 @@ export function PRDShredderPage() {
       <header className="sticky top-0 z-50 bg-white/90 dark:bg-[#0a0a0a]/90 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800/60">
         {/* Orange/amber gradient top line */}
         <div className="h-0.5 bg-gradient-to-r from-orange-500 via-amber-400 to-yellow-500" />
-        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div className="px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button
               onClick={() => { window.location.hash = '' }}
@@ -608,7 +638,7 @@ export function PRDShredderPage() {
       </header>
 
       {/* Content */}
-      <div className="max-w-4xl mx-auto px-4 py-5 space-y-5">
+      <div className="px-6 py-5 space-y-5">
 
         {/* Build Rules panel — slides down from header */}
         <BuildRulesPanel isOpen={rulesOpen} onClose={() => setRulesOpen(false)} />
@@ -636,7 +666,7 @@ export function PRDShredderPage() {
               count={activeItems.length}
               accent="border-orange-500/30"
             >
-              <div className="space-y-3 -mx-5 -mb-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 -mx-5 -mb-5">
                 {activeItems.map(item => (
                   <ActiveBuildCard key={item.id} item={item} />
                 ))}

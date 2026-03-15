@@ -1,5 +1,6 @@
 """Data models for the PRD Shredder — drop a PRD in, code comes out."""
 
+import uuid
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
@@ -86,3 +87,33 @@ class QueueStats(BaseModel):
     building: int = 0
     done: int = 0
     failed: int = 0
+
+
+# ---------------------------------------------------------------------------
+# Build Rules — persistent rules injected into every PRD execution prompt
+# ---------------------------------------------------------------------------
+
+class RuleCategory(str, Enum):
+    ARCHITECTURE = "architecture"
+    CODE_QUALITY = "code-quality"
+    TESTING = "testing"
+    SECURITY = "security"
+    STYLE = "style"
+    CUSTOM = "custom"
+
+
+class BuildRule(BaseModel):
+    """A persistent build rule that gets injected into PRD execution prompts."""
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    name: str
+    text: str  # The actual rule text injected into the prompt
+    category: RuleCategory = RuleCategory.CUSTOM
+    enabled: bool = True
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    order: int = 0  # Sort order within category
+
+
+class ShredderConfig(BaseModel):
+    """Shredder-wide configuration."""
+    github_token: str = ""
+    default_branch: str = "main"

@@ -229,3 +229,123 @@ async def retry_all_failed():
     shredder = get_shredder()
     count = await shredder.retry_all_failed()
     return {"retried": count, "message": f"{count} failed item(s) reset to queued"}
+
+
+# ---------------------------------------------------------------------------
+# Build Rules CRUD
+# ---------------------------------------------------------------------------
+
+class CreateRuleRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    text: str = Field(..., min_length=1)
+    category: str = Field(default="custom")
+    enabled: bool = True
+    order: int = 0
+
+
+class UpdateRuleRequest(BaseModel):
+    name: Optional[str] = None
+    text: Optional[str] = None
+    category: Optional[str] = None
+    enabled: Optional[bool] = None
+    order: Optional[int] = None
+
+
+@router.get("/rules")
+async def list_rules(category: Optional[str] = None):
+    """List all build rules, optionally filtered by category."""
+    shredder = get_shredder()
+    if category:
+        from ..models.prd_shredder import RuleCategory
+        try:
+            cat = RuleCategory(category)
+            rules = shredder.rules.list_by_category(cat)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid category: {category}")
+    else:
+        rules = shredder.rules.list_all()
+    return {"rules": [r.model_dump() for r in rules], "count": len(rules)}
+
+
+@router.post("/rules")
+async def create_rule(body: CreateRuleRequest):
+    """Create a new build rule."""
+    from ..models.prd_shredder import BuildRule, RuleCategory
+    try:
+        cat = RuleCategory(body.category)
+    except ValueError:
+        cat = RuleCategory.CUSTOM
+    rule = BuildRule(name=body.name, text=body.text, category=cat, enabled=body.enabled, order=body.order)
+    shredder = get_shredder()
+    created = shredder.rules.add(rule)
+    return created.model_dump()
+
+
+@router.put("/rules/{rule_id}")
+async def update_rule(rule_id: str, body: UpdateRuleRequest):
+    """Update an existing build rule."""
+    shredder = get_shredder()
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    if "category" in updates:
+        from ..models.prd_shredder import RuleCategory
+        try:
+            updates["category"] = RuleCategory(updates["category"])
+        except ValueError:
+            updates["category"] = RuleCategory.CUSTOM
+    rule = shredder.rules.update(rule_id, **updates)
+    if not rule:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    return rule.model_dump()
+
+
+@router.delete("/rules/{rule_id}")
+async def delete_rule(rule_id: str):
+    """Delete a build rule."""
+    shredder = get_shredder()
+    if not shredder.rules.delete(rule_id):
+        raise HTTPException(status_code=404, detail="Rule not found")
+    return {"deleted": True}
+
+
+@router.patch("/rules/{rule_id}/toggle")
+async def toggle_rule(rule_id: str):
+    """Toggle the enabled state of a build rule."""
+    shredder = get_shredder()
+    rule = shredder.rules.toggle(rule_id)
+    if not rule:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    return rule.model_dump()
+
+
+# ---------------------------------------------------------------------------
+# Shredder Config
+# ---------------------------------------------------------------------------
+
+class ConfigUpdate(BaseModel):
+    github_token: Optional[str] = None
+    default_branch: Optional[str] = None
+
+
+@router.get("/config")
+async def get_config():
+    """Get shredder configuration (GitHub token is masked)."""
+    shredder = get_shredder()
+    config = shredder.config.get()
+    masked = config.model_dump()
+    if masked["github_token"]:
+        token = masked["github_token"]
+        masked["github_token_masked"] = token[:4] + "..." + token[-4:] if len(token) > 8 else "***"
+    return masked
+
+
+@router.put("/config")
+async def update_config(body: ConfigUpdate):
+    """Update shredder configuration."""
+    shredder = get_shredder()
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    config = shredder.config.update(**updates)
+    masked = config.model_dump()
+    if masked["github_token"]:
+        token = masked["github_token"]
+        masked["github_token_masked"] = token[:4] + "..." + token[-4:] if len(token) > 8 else "***"
+    return masked

@@ -3043,3 +3043,69 @@ export async function retryAllFailedShredder(): Promise<{ retried: number; messa
 export async function deleteShredderItem(itemId: string): Promise<{ deleted: boolean }> {
   return fetchJSON(`/prd-shredder/items/${itemId}`, { method: 'DELETE' })
 }
+
+// ---------------------------------------------------------------------------
+// PRD Shredder — Build Rules & Config
+// ---------------------------------------------------------------------------
+
+export type BuildRuleCategory = 'architecture' | 'code-quality' | 'testing' | 'security' | 'style' | 'custom'
+
+export interface BuildRule {
+  id: string
+  name: string
+  text: string
+  category: BuildRuleCategory
+  enabled: boolean
+  created_at: string
+  order: number
+}
+
+export interface ShredderConfig {
+  github_token: string
+  github_token_masked?: string
+  default_branch: string
+}
+
+export async function listBuildRules(category?: string): Promise<{ rules: BuildRule[]; count: number }> {
+  const params = category ? `?category=${category}` : ''
+  return fetchJSON(`/prd-shredder/rules${params}`)
+}
+
+export async function createBuildRule(rule: {
+  name: string
+  text: string
+  category: string
+  enabled?: boolean
+  order?: number
+}): Promise<BuildRule> {
+  return fetchJSON('/prd-shredder/rules', {
+    method: 'POST',
+    body: JSON.stringify(rule),
+  })
+}
+
+export async function updateBuildRule(ruleId: string, updates: Partial<BuildRule>): Promise<BuildRule> {
+  return fetchJSON(`/prd-shredder/rules/${ruleId}`, {
+    method: 'PUT',
+    body: JSON.stringify(updates),
+  })
+}
+
+export async function deleteBuildRule(ruleId: string): Promise<void> {
+  return fetchJSON(`/prd-shredder/rules/${ruleId}`, { method: 'DELETE' })
+}
+
+export async function toggleBuildRule(ruleId: string): Promise<BuildRule> {
+  return fetchJSON(`/prd-shredder/rules/${ruleId}/toggle`, { method: 'PATCH' })
+}
+
+export async function getShredderConfig(): Promise<ShredderConfig> {
+  return fetchJSON('/prd-shredder/config')
+}
+
+export async function updateShredderConfig(updates: Partial<ShredderConfig>): Promise<ShredderConfig> {
+  return fetchJSON('/prd-shredder/config', {
+    method: 'PUT',
+    body: JSON.stringify(updates),
+  })
+}

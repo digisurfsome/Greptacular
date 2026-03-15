@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { ArrowLeft, Upload, RotateCcw, Trash2, ChevronRight, FileText, Loader2, CheckCircle2, XCircle, Clock, Zap, AlertTriangle, Moon, Sun, Flame, GitCommit, TestTube, Search, Code2, Play, Activity, History, ListOrdered, Terminal } from 'lucide-react'
+import { ArrowLeft, Upload, RotateCcw, Trash2, ChevronRight, FileText, Loader2, CheckCircle2, XCircle, Clock, Zap, AlertTriangle, Moon, Sun, Flame, GitCommit, TestTube, Search, Code2, Play, Activity, History, ListOrdered, Terminal, Settings } from 'lucide-react'
 import type { ShredderQueueItem } from '@/lib/api'
 import {
   useShredderQueue,
@@ -12,6 +12,7 @@ import {
   useDeleteItem,
 } from '@/hooks/usePRDShredder'
 import { useTheme } from '@/hooks/useTheme'
+import { BuildRulesPanel } from '@/components/prd-shredder/BuildRulesPanel'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -512,6 +513,7 @@ export function PRDShredderPage() {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const [showForm, setShowForm] = useState(false)
+  const [rulesOpen, setRulesOpen] = useState(false)
 
   const { data: queueData } = useShredderQueue()
   const { data: stats } = useShredderStats()
@@ -580,6 +582,19 @@ export function PRDShredderPage() {
               Drop PRD
             </button>
 
+            {/* Build Rules gear */}
+            <button
+              onClick={() => setRulesOpen(v => !v)}
+              className={`h-7 w-7 rounded flex items-center justify-center transition-colors ${
+                rulesOpen
+                  ? 'text-emerald-400 bg-emerald-500/15 hover:bg-emerald-500/25'
+                  : 'text-zinc-500 hover:text-white hover:bg-zinc-800'
+              }`}
+              title="Build Rules"
+            >
+              <Settings size={14} />
+            </button>
+
             {/* Dark/light toggle */}
             <button
               onClick={toggleDarkMode}
@@ -594,6 +609,9 @@ export function PRDShredderPage() {
 
       {/* Content */}
       <div className="max-w-4xl mx-auto px-4 py-5 space-y-5">
+
+        {/* Build Rules panel — slides down from header */}
+        <BuildRulesPanel isOpen={rulesOpen} onClose={() => setRulesOpen(false)} />
 
         {/* Enqueue form */}
         {showForm && <EnqueueForm onClose={() => setShowForm(false)} />}

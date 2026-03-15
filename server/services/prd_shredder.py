@@ -20,7 +20,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
-from ..models.prd_shredder import PRDAnalysis, PRDQueueItem, PRDStatus, QueueStats
+from ..models.prd_shredder import (
+    BuildRule,
+    PRDAnalysis,
+    PRDQueueItem,
+    PRDStatus,
+    QueueStats,
+    RuleCategory,
+    ShredderConfig,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +38,14 @@ DB_PATH = Path.home() / ".autoforge" / "prd_shredder.db"
 # Repo cache directory
 REPO_CACHE = Path.home() / ".autoforge" / "shredder_repos"
 
-# Build rules file
+# Build rules file (legacy static file — fallback only)
 BUILD_RULES_PATH = Path(__file__).resolve().parent.parent.parent / "docs" / "stripe-minions-build-rules.md"
+
+# Build rules store (new persistent rules managed via API)
+RULES_PATH = Path.home() / ".autoforge" / "shredder_build_rules.json"
+
+# Shredder-wide config
+CONFIG_PATH = Path.home() / ".autoforge" / "shredder_config.json"
 
 # Execution prompt config
 EXECUTION_PROMPT_CONFIG = Path.home() / ".autoforge" / "prd_shredder_execution_prompt.json"
@@ -192,6 +206,161 @@ class PRDQueue:
 
 
 # ---------------------------------------------------------------------------
+# Build Rules Store — persistent rules injected into execution prompts
+# ---------------------------------------------------------------------------
+
+class BuildRulesStore:
+    """Persistent store for build rules backed by a JSON file.
+
+    Synchronous operations (no async lock needed) since the dataset is small
+    and only modified via the REST API one request at a time.
+    """
+
+    def __init__(self) -> None:
+        self._path = RULES_PATH
+        self._rules: list[BuildRule] = []
+        self._load()
+
+    def _load(self) -> None:
+        """Load rules from disk."""
+        if self._path.exists():
+            try:
+                data = json.loads(self._path.read_text(encoding="utf-8"))
+                self._rules = [BuildRule(**item) for item in data]
+            except Exception as e:
+                logger.warning("Failed to load build rules: %s", e)
+                self._rules = []
+        else:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+
+    def _save(self) -> None:
+        """Persist rules to disk."""
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        self._path.write_text(
+            json.dumps([rule.model_dump() for rule in self._rules], indent=2, default=str),
+            encoding="utf-8",
+        )
+
+    def list_all(self) -> list[BuildRule]:
+        """Return all rules."""
+        return list(self._rules)
+
+    def list_by_category(self, category: RuleCategory) -> list[BuildRule]:
+        """Return rules filtered by category."""
+        return [r for r in self._rules if r.category == category]
+
+    def list_enabled(self) -> list[BuildRule]:
+        """Return only enabled rules."""
+        return [r for r in self._rules if r.enabled]
+
+    def get(self, rule_id: str) -> BuildRule | None:
+        """Get a single rule by ID."""
+        for rule in self._rules:
+            if rule.id == rule_id:
+                return rule
+        return None
+
+    def add(self, rule: BuildRule) -> BuildRule:
+        """Add a new rule and persist."""
+        self._rules.append(rule)
+        self._save()
+        return rule
+
+    def update(self, rule_id: str, **kwargs) -> BuildRule | None:
+        """Update fields on a rule by ID. Returns updated rule or None."""
+        for rule in self._rules:
+            if rule.id == rule_id:
+                for key, value in kwargs.items():
+                    if hasattr(rule, key):
+                        setattr(rule, key, value)
+                self._save()
+                return rule
+        return None
+
+    def delete(self, rule_id: str) -> bool:
+        """Delete a rule by ID. Returns True if found and deleted."""
+        before = len(self._rules)
+        self._rules = [r for r in self._rules if r.id != rule_id]
+        if len(self._rules) < before:
+            self._save()
+            return True
+        return False
+
+    def toggle(self, rule_id: str) -> BuildRule | None:
+        """Toggle the enabled state of a rule. Returns updated rule or None."""
+        for rule in self._rules:
+            if rule.id == rule_id:
+                rule.enabled = not rule.enabled
+                self._save()
+                return rule
+        return None
+
+    def get_rules_text(self) -> str:
+        """Get all enabled rules formatted for prompt injection.
+
+        Groups rules by category and formats them as markdown sections.
+        """
+        enabled = self.list_enabled()
+        if not enabled:
+            return ""
+        sections: dict[str, list[str]] = {}
+        for rule in sorted(enabled, key=lambda r: (r.category.value, r.order)):
+            cat = rule.category.value.replace("-", " ").title()
+            if cat not in sections:
+                sections[cat] = []
+            sections[cat].append(f"- {rule.name}: {rule.text}")
+        parts = []
+        for cat, rules in sections.items():
+            parts.append(f"### {cat}\n" + "\n".join(rules))
+        return "\n\n".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# Shredder Config Store — persistent shredder-wide settings
+# ---------------------------------------------------------------------------
+
+class ShredderConfigStore:
+    """Persistent shredder configuration backed by a JSON file."""
+
+    def __init__(self) -> None:
+        self._path = CONFIG_PATH
+        self._config = ShredderConfig()
+        self._load()
+
+    def _load(self) -> None:
+        """Load config from disk."""
+        if self._path.exists():
+            try:
+                data = json.loads(self._path.read_text(encoding="utf-8"))
+                self._config = ShredderConfig(**data)
+            except Exception as e:
+                logger.warning("Failed to load shredder config: %s", e)
+                self._config = ShredderConfig()
+        else:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+
+    def _save(self) -> None:
+        """Persist config to disk."""
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        self._path.write_text(
+            json.dumps(self._config.model_dump(), indent=2),
+            encoding="utf-8",
+        )
+
+    def get(self) -> ShredderConfig:
+        """Return current config."""
+        return self._config
+
+    def update(self, **kwargs) -> ShredderConfig:
+        """Update config fields and persist. Returns updated config."""
+        for key, value in kwargs.items():
+            if hasattr(self._config, key):
+                setattr(self._config, key, value)
+        self._save()
+        return self._config
+
+
+# ---------------------------------------------------------------------------
 # The Shredder
 # ---------------------------------------------------------------------------
 
@@ -200,6 +369,8 @@ class PRDShredder:
 
     def __init__(self) -> None:
         self.queue = PRDQueue()
+        self.rules = BuildRulesStore()
+        self.config = ShredderConfigStore()
         self._running = False
         self._task: asyncio.Task | None = None
         self._progress_callbacks: dict[str, list[Callable[[str], None]]] = {}
@@ -300,8 +471,8 @@ class PRDShredder:
                 if next_item:
                     await self._process(next_item)
                     # Cooldown between items to avoid rate limit cascades
-                    logger.info("Shredder cooldown: 30s before next item")
-                    await asyncio.sleep(30)
+                    logger.info("Shredder cooldown: 120s before next item")
+                    await asyncio.sleep(120)
                 else:
                     await asyncio.sleep(5)
             except asyncio.CancelledError:
@@ -430,8 +601,8 @@ class PRDShredder:
         REPO_CACHE.mkdir(parents=True, exist_ok=True)
         repo_dir = REPO_CACHE / repo_name.replace("/", "_")
 
-        # Get GitHub token
-        github_token = os.getenv("GITHUB_TOKEN", "")
+        # Get GitHub token from config store, fallback to env
+        github_token = self.config.get().github_token or os.getenv("GITHUB_TOKEN", "")
 
         if repo_dir.exists():
             on_progress(f"Pulling latest for {repo_name}...")
@@ -492,13 +663,17 @@ class PRDShredder:
         ))
         codebase_context = _read_relevant_files(repo_dir, all_files, max_chars=200_000)
 
-        # Load build rules
-        build_rules = ""
-        if BUILD_RULES_PATH.exists():
-            try:
-                build_rules = BUILD_RULES_PATH.read_text(encoding="utf-8")
-            except Exception:
-                on_progress("Warning: Could not load build rules file")
+        # Load build rules from store (falls back to static file for backward compat)
+        build_rules = self.rules.get_rules_text()
+        if build_rules:
+            on_progress(f"Injecting {len(self.rules.list_enabled())} build rules")
+        else:
+            # Fallback to static file for backward compatibility
+            if BUILD_RULES_PATH.exists():
+                try:
+                    build_rules = BUILD_RULES_PATH.read_text(encoding="utf-8")
+                except Exception:
+                    on_progress("Warning: Could not load build rules file")
 
         # Build the prompt
         execution_prompt = _load_execution_prompt()

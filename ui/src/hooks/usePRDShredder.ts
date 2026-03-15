@@ -78,3 +78,66 @@ export function useDeleteItem() {
     },
   })
 }
+
+// ---------------------------------------------------------------------------
+// Build Rules
+// ---------------------------------------------------------------------------
+
+export function useBuildRules(category?: string) {
+  return useQuery({
+    queryKey: ['shredder-rules', category],
+    queryFn: () => api.listBuildRules(category),
+  })
+}
+
+export function useCreateRule() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: api.createBuildRule,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['shredder-rules'] }),
+  })
+}
+
+export function useUpdateRule() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ ruleId, updates }: { ruleId: string; updates: Partial<api.BuildRule> }) =>
+      api.updateBuildRule(ruleId, updates),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['shredder-rules'] }),
+  })
+}
+
+export function useDeleteRule() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: api.deleteBuildRule,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['shredder-rules'] }),
+  })
+}
+
+export function useToggleRule() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: api.toggleBuildRule,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['shredder-rules'] }),
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Shredder Config
+// ---------------------------------------------------------------------------
+
+export function useShredderConfig() {
+  return useQuery({
+    queryKey: ['shredder-config'],
+    queryFn: api.getShredderConfig,
+  })
+}
+
+export function useUpdateShredderConfig() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: api.updateShredderConfig,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['shredder-config'] }),
+  })
+}

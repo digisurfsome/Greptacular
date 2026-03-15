@@ -223,6 +223,35 @@ class PRDShredder:
         logger.info("PRD queued: %s (repo=%s, branch=%s)", title, target_repo, target_branch)
         return item
 
+    async def retry_item(self, item_id: str) -> PRDQueueItem | None:
+        """Reset a failed item back to queued so it gets re-processed."""
+        item = await self.queue.get(item_id)
+        if not item or item.status != PRDStatus.FAILED:
+            return None
+        await self.queue.update(
+            item_id,
+            status=PRDStatus.QUEUED,
+            error=None,
+            started_at=None,
+            completed_at=None,
+            build_log=[f"[RETRY] Reset from FAILED at {datetime.now(timezone.utc).strftime('%H:%M:%S')}"],
+            tasks_done=0,
+            playwright_errors=[],
+            bugfix_prd_id=None,
+        )
+        logger.info("PRD retry: %s reset to QUEUED", item.title)
+        return await self.queue.get(item_id)
+
+    async def retry_all_failed(self) -> int:
+        """Reset ALL failed items back to queued. Returns count."""
+        items = await self.queue.list_all()
+        count = 0
+        for item in items:
+            if item.status == PRDStatus.FAILED:
+                await self.retry_item(item.id)
+                count += 1
+        return count
+
     def subscribe_progress(self, item_id: str, callback: Callable[[str], None]) -> None:
         """Subscribe to progress updates for an item."""
         if item_id not in self._progress_callbacks:
@@ -270,6 +299,9 @@ class PRDShredder:
                 next_item = await self.queue.get_next_queued()
                 if next_item:
                     await self._process(next_item)
+                    # Cooldown between items to avoid rate limit cascades
+                    logger.info("Shredder cooldown: 30s before next item")
+                    await asyncio.sleep(30)
                 else:
                     await asyncio.sleep(5)
             except asyncio.CancelledError:

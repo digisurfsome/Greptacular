@@ -267,6 +267,10 @@ def _parse_json_response(raw_text: str) -> dict:
 # SDK timeout: 5 minutes
 SDK_TIMEOUT_SECONDS = 300
 
+# Retry config for rate limit recovery
+MAX_SDK_RETRIES = 3
+RETRY_DELAYS = [30, 60, 120]  # Exponential backoff in seconds
+
 
 async def _call_via_sdk(
     system_prompt: str,
@@ -394,19 +398,61 @@ async def _call_via_sdk(
             raise RuntimeError("Claude returned empty response")
         return full_text.strip()
 
+    last_error: Exception | None = None
+    for attempt in range(MAX_SDK_RETRIES):
+        try:
+            result = await asyncio.wait_for(_run_sdk(), timeout=effective_timeout)
+            return result
+        except asyncio.TimeoutError:
+            last_error = RuntimeError(f"Claude timed out after {effective_timeout}s")
+            # Timeouts are retryable (could be transient rate limit stall)
+        except RuntimeError as e:
+            last_error = e
+            err_str = str(e).lower()
+            # Only retry on rate limit / unknown message type errors
+            if "rate_limit" not in err_str and "unknown message type" not in err_str:
+                break  # Non-retryable error
+        except Exception as e:
+            last_error = e
+            err_str = str(e).lower()
+            if "rate_limit" not in err_str and "unknown message type" not in err_str:
+                break
+        finally:
+            # Clean up the client between attempts
+            try:
+                await client.__aexit__(None, None, None)
+            except Exception:
+                pass
+
+        # Retry with backoff
+        if attempt < MAX_SDK_RETRIES - 1:
+            delay = RETRY_DELAYS[attempt]
+            _log(f"[PRD Analyzer] Rate limited — waiting {delay}s before retry "
+                 f"(attempt {attempt + 2}/{MAX_SDK_RETRIES})")
+            await asyncio.sleep(delay)
+
+            # Re-create client for next attempt
+            client = ClaudeSDKClient(
+                options=ClaudeAgentOptions(
+                    model=model,
+                    cli_path=system_cli,
+                    system_prompt=system_prompt,
+                    env=sdk_env,
+                    max_turns=2,
+                    permission_mode="acceptEdits",
+                    allowed_tools=[],
+                    cwd=scratch,
+                    settings=str(settings_file.resolve()),
+                    setting_sources=["user"],
+                )
+            )
+
+    # All retries exhausted
     try:
-        return await asyncio.wait_for(_run_sdk(), timeout=effective_timeout)
-    except asyncio.TimeoutError:
-        raise RuntimeError(f"Claude timed out after {effective_timeout}s")
-    finally:
-        try:
-            await client.__aexit__(None, None, None)
-        except Exception:
-            pass
-        try:
-            shutil.rmtree(scratch, ignore_errors=True)
-        except Exception:
-            pass
+        shutil.rmtree(scratch, ignore_errors=True)
+    except Exception:
+        pass
+    raise last_error or RuntimeError("All SDK retries exhausted")
 
 
 # ---------------------------------------------------------------------------

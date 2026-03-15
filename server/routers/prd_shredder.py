@@ -208,3 +208,24 @@ async def shredder_status():
         "running": shredder._running,
         "stats": stats.model_dump(),
     }
+
+
+@router.post("/items/{item_id}/retry")
+async def retry_item(item_id: str):
+    """Reset a failed item back to queued for re-processing."""
+    shredder = get_shredder()
+    item = await shredder.retry_item(item_id)
+    if not item:
+        raise HTTPException(
+            status_code=400,
+            detail="Item not found or not in FAILED status"
+        )
+    return {"retried": True, "item_id": item_id, "status": item.status.value}
+
+
+@router.post("/retry-all-failed")
+async def retry_all_failed():
+    """Reset ALL failed items back to queued."""
+    shredder = get_shredder()
+    count = await shredder.retry_all_failed()
+    return {"retried": count, "message": f"{count} failed item(s) reset to queued"}

@@ -15,6 +15,7 @@ import { CliScripterPage } from './pages/CliScripterPage'
 import { ToolManagerPage } from './components/tool-factory/ToolManagerPage'
 import { TokenBudgetPage } from './pages/TokenBudgetPage'
 import { PRDShredderPage } from './pages/PRDShredderPage'
+import { MetaEnginePage } from './pages/MetaEnginePage'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import './styles/globals.css'
 
@@ -82,6 +83,9 @@ function Root() {
   }
   if (hash === '#/prd-shredder' || hash.startsWith('#/prd-shredder/')) {
     return <ErrorBoundary><PRDShredderPage /></ErrorBoundary>
+  }
+  if (hash === '#/meta-engine' || hash.startsWith('#/meta-engine/')) {
+    return <MetaEnginePage />
   }
   return <App />
 }

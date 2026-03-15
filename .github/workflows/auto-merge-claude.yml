@@ -1,0 +1,53 @@
+name: Auto-merge Claude branches to main
+
+on:
+  push:
+    branches:
+      - 'claude/**'
+
+jobs:
+  merge-to-main:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Merge branch into main
+        run: |
+          BRANCH="${GITHUB_REF#refs/heads/}"
+          echo "Merging $BRANCH into main..."
+          git fetch origin "$BRANCH"
+          git merge "origin/$BRANCH" --no-edit -m "Auto-merge $BRANCH into main"
+          git push origin main
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build UI
+        run: |
+          cd ui
+          npm ci
+          npm run build
+
+      - name: Commit built UI
+        run: |
+          git add -f ui/dist/
+          if git diff --cached --quiet; then
+            echo "No UI changes to commit"
+          else
+            git commit -m "Auto-build UI dist from $BRANCH"
+            git push origin main
+          fi

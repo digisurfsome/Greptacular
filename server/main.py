@@ -50,6 +50,8 @@ from .routers import (
     factory_router,
     features_router,
     filesystem_router,
+    ingestion_sequences_router,
+    meta_training_router,
     github_router,
     notifications_router,
     prd_shredder_router,
@@ -353,6 +355,8 @@ app.include_router(token_budget_router)
 app.include_router(tool_factory_router)
 app.include_router(tool_themes_router)
 app.include_router(prd_shredder_router)
+app.include_router(ingestion_sequences_router)
+app.include_router(meta_training_router)
 
 
 # ============================================================================

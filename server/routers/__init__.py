@@ -44,6 +44,8 @@ from .verifications import router as verifications_router
 from .workspace import router as workspace_router
 from .yt_batch import router as yt_batch_router
 from .yt_ingestion import router as yt_ingestion_router
+from .ingestion_sequences import router as ingestion_sequences_router
+from .meta_training import router as meta_training_router
 from .yt_processing import router as yt_processing_router
 
 __all__ = [
@@ -88,4 +90,6 @@ __all__ = [
     "factory_presets_router",
     "verifications_router",
     "tool_themes_router",
+    "ingestion_sequences_router",
+    "meta_training_router",
 ]

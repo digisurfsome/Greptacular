@@ -133,6 +133,9 @@ const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: 'settings', label: 'Settings', icon: <Settings size={14} /> },
 ]
 
+const CHANNELS = ['general', 'instagram', 'email', 'landing_page', 'shorts', 'x', 'dm', 'ad']
+const TONES = ['conversational', 'professional', 'casual', 'urgent']
+
 const DEFAULT_SETTINGS: MetaEngineSettings = {
   workspaceFolder: '',
   openaiApiKey: '',
@@ -185,9 +188,6 @@ const POLE_OPTIONS: Record<string, { value: string; label: string }[]> = {
     { value: 'reactive', label: 'Reactive' },
   ],
 }
-
-const CHANNELS = ['general', 'instagram', 'email', 'landing_page', 'shorts', 'x', 'dm', 'ad']
-const TONES = ['conversational', 'professional', 'casual', 'urgent']
 
 // ============================================================================
 // Helpers

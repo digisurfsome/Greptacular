@@ -472,7 +472,243 @@ Tool Analyzer checks: do we have tools for each step?
 
 ---
 
-## Sources
+## NEW INPUT: Karpathy Auto-Research Loop Applied to Skills
+
+### The Source
+
+Andrej Karpathy (OpenAI founding team, ex-head of AI at Tesla) published a pattern called **"auto research"** — give an AI system something to improve, one clear way to measure if it got better, and let it loop all night. A Claude Code creator applied this exact pattern to skill self-improvement.
+
+### The Pattern (3 Files)
+
+Karpathy's original:
+1. `program.md` — Instructions for the agent (what to test, how to loop)
+2. `data.csv` — Fixed data file for recording results
+3. `train.py` — The script the agent edits and re-runs
+
+Applied to skills:
+1. `skill.md` — The skill instructions (what the agent edits)
+2. `eval/eval.json` — Binary assertions (the measurement)
+3. The loop prompt — "Keep going until perfect score or I stop you"
+
+### The Loop
+
+```
+READ skill.md
+    ↓
+MAKE ONE CHANGE to skill instructions
+    ↓
+RUN 5 test prompts through the skill
+    ↓
+CHECK 25 binary assertions (true/false)
+    ↓
+CALCULATE pass rate (e.g., 23/25 = 92%)
+    ↓
+├── Score improved? → git commit, keep change
+└── Score dropped?  → git reset, try different change
+    ↓
+REPEAT until perfect score or human interrupts
+```
+
+### Why Binary Assertions Are Everything
+
+**Binary (automatable):**
+- "First line is a standalone sentence, not part of a paragraph" → true/false
+- "Contains at least one specific number or statistic" → true/false
+- "Final line is NOT a question" → true/false
+- "Total word count under 300" → true/false
+- "Does not contain em-dashes" → true/false
+
+**NOT binary (requires human judgment):**
+- "Does it have a compelling subject line?" → subjective, can't automate
+- "Is the tone of voice right?" → two people disagree
+- "Is it creative enough?" → unmeasurable
+
+The key insight: **structural quality can be fully automated. Creative quality still needs human review.** But structural quality is 70-80% of what makes a skill reliable.
+
+### Two Layers of Self-Improvement
+
+**Layer 1: Skill Activation** (does the skill TRIGGER at the right time?)
+- Built into Anthropic's skill creator already
+- Tests: "Given these queries, does the skill activate? Yes/No?"
+- Improves the YAML description until trigger accuracy is high
+- Already automated — no work needed
+
+**Layer 2: Skill Output Quality** (does the skill PRODUCE good results?)
+- This is the Karpathy loop applied to skills
+- Tests: "Given these prompts, does output pass 25 binary assertions?"
+- Improves the skill.md instructions until pass rate is 100%
+- Runs overnight, autonomous, no human input needed
+
+### How This Changes the Tool Chamber Architecture
+
+This is the third dimension we were missing. The original architecture was:
+
+```
+v1: AI executes step → succeeds → freeze as skill (one-time capture)
+```
+
+With the Karpathy loop, it becomes:
+
+```
+v2: AI executes step → succeeds → freeze as skill v1
+    → overnight: run binary assertions against skill v1
+    → assertions fail? → modify skill, retest → skill v2
+    → repeat until perfect score → skill vN (battle-tested)
+```
+
+**The compound effect is now THREE layers deep:**
+
+1. **Tool Chamber** spins to the right tool for each step type
+2. **Skill Capture** freezes successful execution paths into deterministic skills
+3. **Karpathy Loop** autonomously refines those skills overnight using binary assertions
+
+```
+Week 1:  AI runs steps raw          → Expensive, unreliable
+Week 2:  Skills captured from v1    → Cheaper, somewhat reliable
+Week 4:  Skills refined to v3-v5    → Near-free, highly reliable
+Week 8:  Skills at v10+             → Near-perfect structural quality
+```
+
+### The Eval.json Structure for Tool Chamber Steps
+
+Adapting the binary assertion pattern to YT Lab step types:
+
+```json
+{
+  "skill_name": "youtube_upload",
+  "tests": [
+    {
+      "prompt": "Upload a video titled 'AI SEO Guide' to YouTube with description from {context}",
+      "expected_output": "Video successfully uploaded to YouTube",
+      "assertions": [
+        {"check": "navigated_to_youtube_studio", "type": "boolean"},
+        {"check": "clicked_upload_button", "type": "boolean"},
+        {"check": "file_was_selected", "type": "boolean"},
+        {"check": "title_field_matches_input", "type": "boolean"},
+        {"check": "description_contains_context", "type": "boolean"},
+        {"check": "publish_button_clicked", "type": "boolean"},
+        {"check": "no_error_messages_shown", "type": "boolean"},
+        {"check": "completion_time_under_120_seconds", "type": "boolean"}
+      ]
+    }
+  ]
+}
+```
+
+For each step TYPE in the tool chamber, we'd have an eval.json with binary assertions. The Karpathy loop refines the skill until all assertions pass consistently across multiple runs.
+
+### The Overnight Factory v2
+
+The original overnight vision:
+```
+Queue 10 YouTube videos → extract steps → build tools → sleep → wake up to 10 tools
+```
+
+With the Karpathy loop added:
+```
+Queue 10 YouTube videos → extract steps → build tools
+    ↓
+Tool Analyzer checks readiness → gaps found → PRD Shredder builds missing components
+    ↓
+Tool Chamber executes step chains → skills captured from successes
+    ↓
+OVERNIGHT: Karpathy loop runs on ALL captured skills
+    - Each skill runs 5 test prompts × 25 assertions = 125 binary checks
+    - Failed assertions → skill.md modified → retest → keep or revert
+    - Loops until perfect or morning
+    ↓
+MORNING: 10 tools built + skills refined to v3-v5 + component library expanded
+```
+
+**The system now has THREE self-improving feedback loops running simultaneously:**
+1. **Component Library** grows as the Tool Analyzer discovers and builds missing tools
+2. **Skill Registry** captures successful execution paths and freezes them
+3. **Karpathy Loop** refines frozen skills overnight using binary assertions
+
+Each loop makes the others more effective. More components → more skills get captured → more skills get refined → higher pass rates → more reliable tool execution → fewer gaps → fewer new components needed.
+
+### Implementation: The Skill Self-Improvement Agent
+
+```python
+class SkillRefiner:
+    """Karpathy auto-research loop applied to tool chamber skills."""
+
+    def __init__(self, skill_registry, eval_dir):
+        self.registry = skill_registry
+        self.eval_dir = eval_dir
+
+    async def run_overnight(self):
+        """Run until all skills hit perfect score or human interrupts."""
+        while True:
+            for skill in self.registry.get_all_skills():
+                eval_file = self.eval_dir / f"{skill.name}/eval.json"
+                if not eval_file.exists():
+                    continue
+
+                # Run assertions
+                score = await self.evaluate(skill, eval_file)
+
+                if score.pass_rate == 1.0:
+                    continue  # Perfect — skip
+
+                # Save current state
+                old_content = skill.read_md()
+                old_score = score.pass_rate
+
+                # AI makes ONE change to skill.md based on failed assertions
+                await self.improve_skill(skill, score.failed_assertions)
+
+                # Re-evaluate
+                new_score = await self.evaluate(skill, eval_file)
+
+                if new_score.pass_rate > old_score:
+                    # Keep the change
+                    skill.increment_version()
+                    git_commit(f"Skill refined: {skill.name} v{skill.version} "
+                              f"({old_score:.0%} → {new_score.pass_rate:.0%})")
+                else:
+                    # Revert
+                    skill.write_md(old_content)
+                    git_reset()
+
+                # Rate limit awareness
+                await self.check_rate_limits()
+
+    async def evaluate(self, skill, eval_file):
+        """Run all test prompts through skill, check binary assertions."""
+        evals = json.loads(eval_file.read_text())
+        results = []
+
+        for test in evals["tests"]:
+            # Run the skill with the test prompt
+            output = await self.run_skill(skill, test["prompt"])
+
+            # Check each binary assertion
+            for assertion in test["assertions"]:
+                passed = self.check_assertion(output, assertion)
+                results.append({"assertion": assertion, "passed": passed})
+
+        pass_count = sum(1 for r in results if r["passed"])
+        return Score(
+            pass_rate=pass_count / len(results),
+            failed_assertions=[r for r in results if not r["passed"]]
+        )
+```
+
+### The Key Insight for Our System
+
+The video creator said something important: **"Triggering reliably and producing great outputs are different problems."**
+
+In our tool chamber context:
+- **Triggering** = the Tool Analyzer correctly matching a step type to a tool (Layer 1)
+- **Output quality** = the tool actually executing the step correctly (Layer 2)
+- **Self-improvement** = the skill getting better at execution overnight (Layer 3)
+
+All three can be automated. All three use the same core pattern: **measure with binary assertions, loop until perfect, keep or revert each change.**
+
+This is the Stripe Blueprint pattern (deterministic hallways) PLUS Karpathy's auto-research loop (self-improving hallways). The hallways don't just exist — they get smoother overnight.
+
+---
 
 ### Stripe Minion Blog Articles
 - [Part 1: Minions: Stripe's one-shot, end-to-end coding agents](https://stripe.dev/blog/minions-stripes-one-shot-end-to-end-coding-agents)

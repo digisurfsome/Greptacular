@@ -470,16 +470,8 @@ class PRDShredder:
                 next_item = await self.queue.get_next_queued()
                 if next_item:
                     await self._process(next_item)
-                    # Cooldown between items to avoid rate limit cascades
-                    remaining = 120
-                    while remaining > 0:
-                        msg = f"[Queue cooldown] {remaining}s before next PRD..."
-                        logger.info(msg)
-                        asyncio.create_task(self.queue.append_log(next_item.id, msg))
-                        self._notify_progress(next_item.id, msg)
-                        step = min(10, remaining)
-                        await asyncio.sleep(step)
-                        remaining -= step
+                    # Brief pause between items
+                    await asyncio.sleep(5)
                 else:
                     await asyncio.sleep(5)
             except asyncio.CancelledError:

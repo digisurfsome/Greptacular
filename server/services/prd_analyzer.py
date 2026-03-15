@@ -269,7 +269,7 @@ SDK_TIMEOUT_SECONDS = 900
 
 # Retry config for rate limit recovery
 MAX_SDK_RETRIES = 5
-RETRY_DELAYS = [60, 120, 180, 300, 300]  # Aggressive backoff for rate limits
+RETRY_DELAYS = [15, 30, 60, 90, 120]  # Fast retries — only wait when actually rate limited
 
 
 async def _countdown(seconds: int, label: str, log_fn: Callable[[str], None], interval: int = 5) -> None:
@@ -503,9 +503,6 @@ class PRDAnalyzer:
         _log(f"[Stage 1/4] Done — difficulty={stage1.get('difficulty', '?')}/10, "
              f"{len(stage1.get('target_files', []))} target files")
 
-        # Cooldown between stages to avoid rate limit cascades
-        await _countdown(15, "Stage cooldown", _log)
-
         # ---- Stage 2: Codebase Discovery ----
         _log("[Stage 2/4] Scanning codebase...")
         file_tree = _get_file_tree(repo_dir)
@@ -527,8 +524,6 @@ class PRDAnalyzer:
         _log(f"[Stage 2/4] Done — {len(stage2.get('files_to_create', []))} to create, "
              f"{len(stage2.get('files_to_modify', []))} to modify")
 
-        await _countdown(15, "Stage cooldown", _log)
-
         # ---- Stage 3: Task Extraction ----
         _log("[Stage 3/4] Extracting tasks...")
         stage3_prompt = prompts["stage3_tasks"].format(
@@ -544,8 +539,6 @@ class PRDAnalyzer:
         stage3 = _parse_json_response(stage3_raw)
         raw_tasks = stage3.get("tasks", [])
         _log(f"[Stage 3/4] Done — {len(raw_tasks)} tasks extracted")
-
-        await _countdown(15, "Stage cooldown", _log)
 
         # ---- Stage 4: Consulting Review ----
         _log("[Stage 4/4] Consulting review...")

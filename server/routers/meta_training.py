@@ -27,7 +27,7 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 from server.services.meta_training_ingestor import (
@@ -64,13 +64,19 @@ class IngestURLRequest(BaseModel):
 
 
 @router.post("/ingest/url")
-async def ingest_url(request: IngestURLRequest):
+async def ingest_url(
+    request: IngestURLRequest,
+    x_openai_key: str | None = Header(None, alias="X-OpenAI-Key"),
+):
     """
     Ingest a YouTube URL.
 
     Fetches the transcript (free, no API key needed), extracts metaprogram
     training data using Claude, and adds it to the training library.
     """
+    if x_openai_key:
+        import os
+        os.environ["OPENAI_API_KEY"] = x_openai_key
     try:
         result = await ingest_source(source=request.url, source_type="youtube")
         return result
@@ -79,7 +85,10 @@ async def ingest_url(request: IngestURLRequest):
 
 
 @router.post("/ingest/upload")
-async def ingest_upload(file: UploadFile = File(...)):
+async def ingest_upload(
+    file: UploadFile = File(...),
+    x_openai_key: str | None = Header(None, alias="X-OpenAI-Key"),
+):
     """
     Upload an audio, video, or text file for transcription and training extraction.
 
@@ -90,7 +99,13 @@ async def ingest_upload(file: UploadFile = File(...)):
 
     Audio/video files are transcribed using Whisper (OpenAI API or local).
     Text files are ingested directly.
+
+    Pass X-OpenAI-Key header to use OpenAI Whisper API for transcription.
     """
+    # If key provided via header, set it for this request
+    if x_openai_key:
+        import os
+        os.environ["OPENAI_API_KEY"] = x_openai_key
     if not file.filename:
         raise HTTPException(status_code=400, detail="Filename required")
 

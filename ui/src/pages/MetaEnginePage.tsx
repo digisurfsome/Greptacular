@@ -348,6 +348,7 @@ export function MetaEnginePage() {
     const result = await safeFetch<IngestResult>('/meta-training/ingest/url', {
       method: 'POST',
       body: JSON.stringify({ url: ytUrl.trim() }),
+      headers: settings.openaiApiKey ? { 'X-OpenAI-Key': settings.openaiApiKey } : undefined,
     })
     setIngestResults(prev => [
       result ?? { source: ytUrl, status: 'error', message: 'Failed to connect to server' },
@@ -363,6 +364,7 @@ export function MetaEnginePage() {
     const result = await safeFetch<IngestResult>('/meta-training/ingest/text', {
       method: 'POST',
       body: JSON.stringify({ text: pasteText.trim(), source_name: pasteSourceName.trim() || 'Pasted text' }),
+      headers: settings.openaiApiKey ? { 'X-OpenAI-Key': settings.openaiApiKey } : undefined,
     })
     setIngestResults(prev => [
       result ?? { source: pasteSourceName || 'Text', status: 'error', message: 'Failed to connect to server' },
@@ -395,9 +397,12 @@ export function MetaEnginePage() {
       try {
         const formData = new FormData()
         formData.append('file', file)
+        const headers: Record<string, string> = {}
+        if (settings.openaiApiKey) headers['X-OpenAI-Key'] = settings.openaiApiKey
         const res = await fetch(`${API_BASE}/meta-training/ingest/upload`, {
           method: 'POST',
           body: formData,
+          headers,
         })
         const result: IngestResult = res.ok
           ? await res.json()

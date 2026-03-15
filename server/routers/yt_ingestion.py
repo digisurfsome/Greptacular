@@ -665,6 +665,35 @@ async def serve_screenshot(video_id: str, filename: str):
     return FileResponse(file_path, media_type=media_type)
 
 
+class ExportDataRequest(BaseModel):
+    """Request body for exporting localStorage data to disk."""
+
+    data: dict
+
+
+EXPORT_FILE_PATH = Path.home() / ".autoforge" / "yt-lab-export.json"
+
+
+@router.post("/export")
+def export_data(body: ExportDataRequest):
+    """Save YT Lab localStorage dump to ~/.autoforge/yt-lab-export.json."""
+    EXPORT_FILE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    EXPORT_FILE_PATH.write_text(json.dumps(body.data, indent=2), encoding="utf-8")
+    return {"ok": True, "path": str(EXPORT_FILE_PATH)}
+
+
+@router.get("/export")
+def get_export_data():
+    """Read the previously exported YT Lab data, if it exists."""
+    if not EXPORT_FILE_PATH.exists():
+        raise HTTPException(status_code=404, detail="No export file found")
+    try:
+        data = json.loads(EXPORT_FILE_PATH.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to read export: {exc}")
+    return {"ok": True, "data": data}
+
+
 def _filepath_to_url(filepath: str, video_id: str) -> str:
     """Convert a server-side screenshot filepath to a URL that the frontend can access."""
     filename = Path(filepath).name

@@ -39,6 +39,7 @@ import {
   Wand2,
   Layers,
   MessageSquare,
+  Download,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -2127,6 +2128,33 @@ export function YTStrategyLabPage(): React.JSX.Element {
     setView('detail')
   }, [])
 
+  /** Export all YT Lab localStorage data to a JSON file on disk. */
+  const handleExportAll = useCallback(async () => {
+    const data: Record<string, unknown> = {}
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (key && key.startsWith('yt-lab')) {
+        try {
+          data[key] = JSON.parse(localStorage.getItem(key) || 'null')
+        } catch {
+          data[key] = localStorage.getItem(key)
+        }
+      }
+    }
+    try {
+      const resp = await fetch('/api/yt-lab/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data }),
+      })
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+      const result = await resp.json()
+      alert(`Exported to: ${result.path}`)
+    } catch (err) {
+      alert(`Export failed: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }, [])
+
   // Execution view replaces the entire page layout (it has its own top bar)
   if (view === 'execution' && selectedProject) {
     const executionSteps = loadSteps(selectedProject.id)
@@ -2284,6 +2312,10 @@ export function YTStrategyLabPage(): React.JSX.Element {
                   className="h-8 w-8 p-0"
                 >
                   <BookOpen size={14} />
+                </Button>
+                <Button variant="outline" onClick={handleExportAll} className="gap-1.5 shrink-0">
+                  <Download size={16} />
+                  Export All
                 </Button>
                 <Button variant="outline" onClick={() => setShowPRDModal(true)} className="gap-1.5 shrink-0">
                   <FileText size={16} />

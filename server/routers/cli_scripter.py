@@ -458,6 +458,9 @@ set -e
 
 # Use Max subscription, not API credits
 unset ANTHROPIC_API_KEY 2>/dev/null || true
+unset CLAUDECODE 2>/dev/null || true
+unset CLAUDE_CODE_ENTRYPOINT 2>/dev/null || true
+unset CLAUDE_CODE_OAUTH_TOKEN 2>/dev/null || true
 
 PROJECT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$PROJECT_DIR"
@@ -612,6 +615,9 @@ set -e
 
 # Use Max subscription, not API credits
 unset ANTHROPIC_API_KEY 2>/dev/null || true
+unset CLAUDECODE 2>/dev/null || true
+unset CLAUDE_CODE_ENTRYPOINT 2>/dev/null || true
+unset CLAUDE_CODE_OAUTH_TOKEN 2>/dev/null || true
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TOTAL_STEPS={total}
@@ -1528,6 +1534,9 @@ async def start_build(request: StartBuildRequest):
         # safety net, but stripping it from the env is the correct fix.
         from registry import get_effective_sdk_env
         build_env = {**os.environ, **get_effective_sdk_env(force_subscription=True), "PYTHONUNBUFFERED": "1"}
+        build_env.pop("CLAUDECODE", None)
+        build_env.pop("CLAUDE_CODE_ENTRYPOINT", None)
+        build_env.pop("CLAUDE_CODE_OAUTH_TOKEN", None)
 
         # Start the build subprocess
         _build_process = subprocess.Popen(

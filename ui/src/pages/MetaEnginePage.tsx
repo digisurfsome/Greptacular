@@ -12,7 +12,7 @@
  *   4. Output / Export    - Browse and export generated topics
  */
 
-import { useState, useCallback, useRef, type DragEvent, type ChangeEvent } from 'react'
+import { useState, useCallback, useRef, useEffect, type DragEvent, type ChangeEvent } from 'react'
 import {
   ArrowLeft,
   Upload,
@@ -32,6 +32,14 @@ import {
   Sparkles,
   Layers,
   Search,
+  Settings,
+  StickyNote,
+  Trash2,
+  Plus,
+  Eye,
+  EyeOff,
+  FolderOpen,
+  Save,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -39,7 +47,23 @@ import { Button } from '@/components/ui/button'
 // Types
 // ============================================================================
 
-type TabId = 'ingest' | 'library' | 'writing' | 'export'
+type TabId = 'ingest' | 'library' | 'writing' | 'export' | 'notes' | 'settings'
+
+interface MetaEngineNote {
+  id: string
+  label: string
+  content: string
+  created_at: string
+  updated_at: string
+}
+
+interface MetaEngineSettings {
+  workspaceFolder: string
+  openaiApiKey: string
+  defaultChannel: string
+  defaultTone: string
+  autoIngest: boolean
+}
 
 interface IngestResult {
   source: string
@@ -105,7 +129,30 @@ const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: 'library', label: 'Training Library', icon: <Brain size={14} /> },
   { id: 'writing', label: 'Writing Engine', icon: <PenTool size={14} /> },
   { id: 'export', label: 'Output / Export', icon: <Download size={14} /> },
+  { id: 'notes', label: 'Notes', icon: <StickyNote size={14} /> },
+  { id: 'settings', label: 'Settings', icon: <Settings size={14} /> },
 ]
+
+const DEFAULT_SETTINGS: MetaEngineSettings = {
+  workspaceFolder: '',
+  openaiApiKey: '',
+  defaultChannel: CHANNELS[0],
+  defaultTone: TONES[0],
+  autoIngest: false,
+}
+
+const SETTINGS_STORAGE_KEY = 'metaengine-settings'
+const NOTES_STORAGE_KEY = 'metaengine-notes'
+
+/** Deterministic HSL color from a string label */
+function labelColor(label: string): string {
+  let hash = 0
+  for (let i = 0; i < label.length; i++) {
+    hash = label.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  const hue = ((hash % 360) + 360) % 360
+  return `hsl(${hue}, 60%, 55%)`
+}
 
 const METAPROGRAM_OPTIONS = [
   { value: '', label: 'All metaprograms' },
@@ -220,6 +267,76 @@ export function MetaEnginePage() {
   const [exportSearch, setExportSearch] = useState('')
   const [expandedTopic, setExpandedTopic] = useState<string | null>(null)
 
+  // -- Settings tab state
+  const [settings, setSettings] = useState<MetaEngineSettings>(DEFAULT_SETTINGS)
+  const [showApiKey, setShowApiKey] = useState(false)
+
+  // -- Notes tab state
+  const [notes, setNotes] = useState<MetaEngineNote[]>([])
+  const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null)
+
+  // Load settings and notes from localStorage on mount
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(SETTINGS_STORAGE_KEY)
+      if (raw) setSettings({ ...DEFAULT_SETTINGS, ...JSON.parse(raw) })
+    } catch { /* ignore corrupt data */ }
+    try {
+      const raw = localStorage.getItem(NOTES_STORAGE_KEY)
+      if (raw) setNotes(JSON.parse(raw))
+    } catch { /* ignore corrupt data */ }
+  }, [])
+
+  // ========================================================================
+  // Settings Handlers
+  // ========================================================================
+
+  const updateSetting = useCallback(<K extends keyof MetaEngineSettings>(key: K, value: MetaEngineSettings[K]) => {
+    setSettings(prev => {
+      const next = { ...prev, [key]: value }
+      localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(next))
+      return next
+    })
+  }, [])
+
+  // ========================================================================
+  // Notes Handlers
+  // ========================================================================
+
+  const persistNotes = useCallback((updated: MetaEngineNote[]) => {
+    setNotes(updated)
+    localStorage.setItem(NOTES_STORAGE_KEY, JSON.stringify(updated))
+  }, [])
+
+  const createNote = useCallback(() => {
+    const now = new Date().toISOString()
+    const note: MetaEngineNote = {
+      id: crypto.randomUUID(),
+      label: 'Untitled Note',
+      content: '',
+      created_at: now,
+      updated_at: now,
+    }
+    const updated = [note, ...notes]
+    persistNotes(updated)
+    setSelectedNoteId(note.id)
+  }, [notes, persistNotes])
+
+  const updateNote = useCallback((id: string, patch: Partial<Pick<MetaEngineNote, 'label' | 'content'>>) => {
+    const updated = notes.map(n =>
+      n.id === id ? { ...n, ...patch, updated_at: new Date().toISOString() } : n
+    )
+    persistNotes(updated)
+  }, [notes, persistNotes])
+
+  const deleteNote = useCallback((id: string) => {
+    const updated = notes.filter(n => n.id !== id)
+    persistNotes(updated)
+    if (selectedNoteId === id) setSelectedNoteId(null)
+  }, [notes, selectedNoteId, persistNotes])
+
+  const selectedNote = notes.find(n => n.id === selectedNoteId) ?? null
+
   // ========================================================================
   // Ingest Handlers
   // ========================================================================
@@ -227,7 +344,7 @@ export function MetaEnginePage() {
   const handleIngestUrl = useCallback(async () => {
     if (!ytUrl.trim()) return
     setIngesting(true)
-    const result = await safeFetch<IngestResult>('/meta-training/ingest-url', {
+    const result = await safeFetch<IngestResult>('/meta-training/ingest/url', {
       method: 'POST',
       body: JSON.stringify({ url: ytUrl.trim() }),
     })
@@ -242,7 +359,7 @@ export function MetaEnginePage() {
   const handleIngestText = useCallback(async () => {
     if (!pasteText.trim()) return
     setIngesting(true)
-    const result = await safeFetch<IngestResult>('/meta-training/ingest-text', {
+    const result = await safeFetch<IngestResult>('/meta-training/ingest/text', {
       method: 'POST',
       body: JSON.stringify({ text: pasteText.trim(), source_name: pasteSourceName.trim() || 'Pasted text' }),
     })
@@ -276,7 +393,7 @@ export function MetaEnginePage() {
       try {
         const formData = new FormData()
         formData.append('file', file)
-        const res = await fetch(`${API_BASE}/meta-training/upload-file`, {
+        const res = await fetch(`${API_BASE}/meta-training/ingest/upload`, {
           method: 'POST',
           body: formData,
         })
@@ -303,12 +420,12 @@ export function MetaEnginePage() {
     const [statsData, exData, patData, coachData] = await Promise.all([
       safeFetch<LibraryStats>('/meta-training/library'),
       safeFetch<TrainingExample[]>(
-        `/meta-training/examples${libraryFilter ? `?metaprogram=${libraryFilter}` : ''}`
+        `/meta-training/library/examples${libraryFilter ? `?metaprogram=${libraryFilter}` : ''}`
       ),
       safeFetch<TrainingPattern[]>(
-        `/meta-training/patterns${libraryFilter ? `?metaprogram=${libraryFilter}` : ''}`
+        `/meta-training/library/patterns${libraryFilter ? `?metaprogram=${libraryFilter}` : ''}`
       ),
-      safeFetch<CoachingScenario[]>('/meta-training/coaching'),
+      safeFetch<CoachingScenario[]>('/meta-training/library/coaching'),
     ])
     setLibraryStats(statsData ?? { sources: 0, examples: 0, patterns: 0, scenarios: 0 })
     setExamples(exData ?? [])
@@ -375,14 +492,14 @@ export function MetaEnginePage() {
 
   const loadOutputTopics = useCallback(async () => {
     setExportLoading(true)
-    const data = await safeFetch<OutputTopic[]>('/meta-training/output-topics')
+    const data = await safeFetch<OutputTopic[]>('/meta-training/output/topics')
     setOutputTopics(data ?? [])
     setExportLoading(false)
   }, [])
 
   const handleExport = useCallback(async (slug: string, format: 'csv' | 'json') => {
     try {
-      const res = await fetch(`${API_BASE}/meta-training/export/${format}/${slug}`)
+      const res = await fetch(`${API_BASE}/meta-training/output/${slug}/export/${format}`)
       if (!res.ok) return
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
@@ -865,6 +982,239 @@ export function MetaEnginePage() {
   }
 
   // ========================================================================
+  // Render: Settings Tab
+  // ========================================================================
+
+  function renderSettingsTab() {
+    return (
+      <div className="max-w-2xl space-y-6">
+        {/* Workspace folder */}
+        <div className={cardCls}>
+          <div className="mb-4 flex items-center gap-2">
+            <FolderOpen size={18} className="text-amber-500" />
+            <h3 className="text-sm font-bold uppercase tracking-wider text-orange-400">Workspace Folder</h3>
+          </div>
+          <p className="text-xs text-zinc-500 mb-3">
+            Where training data, notes, and exports get saved.
+          </p>
+          <div className="flex gap-2">
+            <input
+              placeholder="/path/to/metaengine-workspace"
+              value={settings.workspaceFolder}
+              onChange={e => updateSetting('workspaceFolder', e.target.value)}
+              className={inputCls + ' flex-1'}
+            />
+            <button
+              onClick={() => {
+                // Browser cannot open native folder picker without a file input.
+                // Use a hidden directory input as a best-effort approach.
+                const input = document.createElement('input')
+                input.type = 'file'
+                // webkitdirectory is widely supported but not standard
+                input.setAttribute('webkitdirectory', '')
+                input.onchange = () => {
+                  const files = Array.from(input.files ?? [])
+                  if (files.length > 0) {
+                    // Extract directory path from the first file's webkitRelativePath
+                    const rel = files[0].webkitRelativePath
+                    const folder = rel.split('/')[0]
+                    if (folder) updateSetting('workspaceFolder', folder)
+                  }
+                }
+                input.click()
+              }}
+              className="border border-zinc-600 text-zinc-300 hover:border-orange-500 hover:text-orange-400 px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-1.5"
+            >
+              <FolderOpen size={14} />
+              Browse
+            </button>
+          </div>
+        </div>
+
+        {/* OpenAI API key */}
+        <div className={cardCls}>
+          <div className="mb-4 flex items-center gap-2">
+            <Sparkles size={18} className="text-cyan-500" />
+            <h3 className="text-sm font-bold uppercase tracking-wider text-cyan-400">OpenAI API Key</h3>
+          </div>
+          <p className="text-xs text-zinc-500 mb-3">
+            Used for Whisper transcription of uploaded audio/video.
+          </p>
+          <div className="relative">
+            <input
+              type={showApiKey ? 'text' : 'password'}
+              placeholder="sk-..."
+              value={settings.openaiApiKey}
+              onChange={e => updateSetting('openaiApiKey', e.target.value)}
+              className={inputCls + ' pr-10'}
+            />
+            <button
+              type="button"
+              onClick={() => setShowApiKey(!showApiKey)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors"
+            >
+              {showApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          </div>
+        </div>
+
+        {/* Defaults */}
+        <div className={cardCls}>
+          <div className="mb-4 flex items-center gap-2">
+            <Settings size={18} className="text-violet-500" />
+            <h3 className="text-sm font-bold uppercase tracking-wider text-violet-400">Defaults</h3>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="space-y-1">
+              <span className="text-xs font-medium text-zinc-500">Default Channel</span>
+              <select
+                value={settings.defaultChannel}
+                onChange={e => updateSetting('defaultChannel', e.target.value)}
+                className={selectCls + ' w-full'}
+              >
+                {CHANNELS.map(ch => <option key={ch} value={ch}>{ch}</option>)}
+              </select>
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-medium text-zinc-500">Default Tone</span>
+              <select
+                value={settings.defaultTone}
+                onChange={e => updateSetting('defaultTone', e.target.value)}
+                className={selectCls + ' w-full'}
+              >
+                {TONES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </label>
+          </div>
+        </div>
+
+        {/* Auto-ingest toggle */}
+        <div className={cardCls}>
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-white">Auto-Ingest</h3>
+              <p className="text-xs text-zinc-500 mt-0.5">Automatically ingest new files dropped into the workspace folder.</p>
+            </div>
+            <button
+              onClick={() => updateSetting('autoIngest', !settings.autoIngest)}
+              className={`relative w-12 h-7 rounded-full transition-colors ${
+                settings.autoIngest ? 'bg-orange-500' : 'bg-zinc-700'
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 left-0.5 w-6 h-6 rounded-full bg-white shadow transition-transform ${
+                  settings.autoIngest ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
+        </div>
+
+        {/* Saved indicator */}
+        <div className="flex items-center gap-2 text-xs text-zinc-600">
+          <Save size={12} />
+          <span>Settings are saved automatically to localStorage.</span>
+        </div>
+      </div>
+    )
+  }
+
+  // ========================================================================
+  // Render: Notes Tab
+  // ========================================================================
+
+  function renderNotesTab() {
+    return (
+      <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-6 min-h-[500px]">
+        {/* Left sidebar: notes list */}
+        <div className={cardCls + ' flex flex-col overflow-hidden'}>
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-sm font-bold uppercase tracking-wider text-orange-400">Notes</h3>
+            <button
+              onClick={createNote}
+              className="gap-1 bg-gradient-to-r from-orange-500 to-amber-500 text-white hover:opacity-90 transition-opacity border-0 px-3 py-1.5 rounded-lg text-xs font-medium flex items-center"
+            >
+              <Plus size={12} />
+              New Note
+            </button>
+          </div>
+          {notes.length === 0 ? (
+            <div className="flex-1 flex flex-col items-center justify-center text-center py-8">
+              <StickyNote size={28} className="mb-2 text-zinc-600" />
+              <p className="text-xs text-zinc-500">No notes yet. Create one to get started.</p>
+            </div>
+          ) : (
+            <div className="flex-1 overflow-y-auto space-y-1 -mx-2 px-2">
+              {notes.map(note => (
+                <div
+                  key={note.id}
+                  onClick={() => setSelectedNoteId(note.id)}
+                  className={`group flex items-center gap-2 rounded-lg px-3 py-2 cursor-pointer transition-colors ${
+                    selectedNoteId === note.id
+                      ? 'bg-zinc-700/50 border border-orange-600/40'
+                      : 'hover:bg-zinc-800/60 border border-transparent'
+                  }`}
+                >
+                  <span
+                    className="w-2.5 h-2.5 rounded-full shrink-0"
+                    style={{ backgroundColor: labelColor(note.label) }}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-zinc-200 truncate">{note.label}</p>
+                    <p className="text-[10px] text-zinc-600">
+                      {new Date(note.updated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </p>
+                  </div>
+                  <button
+                    onClick={e => { e.stopPropagation(); deleteNote(note.id) }}
+                    className="opacity-0 group-hover:opacity-100 text-zinc-600 hover:text-red-400 transition-all p-0.5"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Right side: editor */}
+        <div className={cardCls + ' flex flex-col'}>
+          {selectedNote ? (
+            <>
+              <div className="mb-4 flex items-center gap-3">
+                <span
+                  className="w-3 h-3 rounded-full shrink-0"
+                  style={{ backgroundColor: labelColor(selectedNote.label) }}
+                />
+                <input
+                  value={selectedNote.label}
+                  onChange={e => updateNote(selectedNote.id, { label: e.target.value })}
+                  className="bg-transparent text-lg font-bold text-white border-none outline-none flex-1 placeholder-zinc-600"
+                  placeholder="Note title..."
+                />
+                <span className="text-[10px] text-zinc-600 shrink-0">
+                  {new Date(selectedNote.updated_at).toLocaleString()}
+                </span>
+              </div>
+              <textarea
+                value={selectedNote.content}
+                onChange={e => updateNote(selectedNote.id, { content: e.target.value })}
+                placeholder="Start writing..."
+                className="flex-1 min-h-[350px] bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-3 text-sm text-zinc-300 leading-relaxed resize-y focus:border-orange-500 focus:outline-none transition-colors"
+              />
+            </>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center text-center">
+              <StickyNote size={40} className="mb-3 text-zinc-700" />
+              <p className="text-sm text-zinc-500">Select a note or create a new one.</p>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // ========================================================================
   // Main Render
   // ========================================================================
 
@@ -921,6 +1271,8 @@ export function MetaEnginePage() {
         {activeTab === 'library' && renderLibraryTab()}
         {activeTab === 'writing' && renderWritingTab()}
         {activeTab === 'export' && renderExportTab()}
+        {activeTab === 'notes' && renderNotesTab()}
+        {activeTab === 'settings' && renderSettingsTab()}
       </main>
     </div>
   )

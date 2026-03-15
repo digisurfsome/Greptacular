@@ -1,16 +1,15 @@
 /**
  * Hook for managing workspace chat WebSocket connection.
  *
- * Forked from useAssistantChat with workspace-specific differences:
- * - WebSocket URL targets /api/workspace/ws (no project name)
- * - Tracks token usage (totalTokens, contextWindow) from server messages
- * - start() accepts optional workingDirectory parameter
- * - Expanded tool call descriptions for Write, Edit, and Bash tools
- * - No structured question/answer flow (no MCP ask_user tool)
+ * Simplified: one WebSocket, one session per page.  No viewer protocol,
+ * no background session manager, no attach/detach/replay.  The session
+ * lives and dies with the WebSocket connection.  On reconnect, the
+ * frontend sends "start" with the same conversation_id and history
+ * is loaded from the database.
  */
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { getTokenLog, cancelWorkspaceSession } from "../lib/api";
+import { getTokenLog } from "../lib/api";
 import type { ChatMessage, WorkspaceChatServerMessage, PendingInjection, ImageAttachment, WalkieTalkieLogEntry, TokenLogEntry } from "../lib/types";
 
 type ConnectionStatus = "disconnected" | "connecting" | "connected" | "error";
@@ -52,9 +51,7 @@ interface UseWorkspaceChatReturn {
   tokenLog: TokenLogEntry[];
   /** Clear the local token log entries array. */
   clearTokenLog: () => void;
-  /** The background session ID this viewer is attached to (null if none). */
-  attachedSessionId: string | null;
-  /** Cancel the currently running background session (stop the agent). */
+  /** Cancel the running session (closes WebSocket, auto-reconnects). */
   cancelSession: () => void;
   disconnect: () => void;
   clearMessages: () => void;
@@ -97,13 +94,6 @@ export function useWorkspaceChat({
   const [walkieTalkieLog, setWalkieTalkieLog] = useState<WalkieTalkieLogEntry[]>([]);
   const [tokenLog, setTokenLog] = useState<TokenLogEntry[]>([]);
 
-  // Background session viewer protocol state
-  const [attachedSessionId, setAttachedSessionId] = useState<string | null>(null);
-  const lastSeqRef = useRef<number>(0);
-  const attachedSessionIdRef = useRef<string | null>(null);
-  // Keep ref in sync with state for use in callbacks
-  attachedSessionIdRef.current = attachedSessionId;
-
   const addWalkieTalkieEntry = useCallback(
     (sender: 'user' | 'agent' | 'system', content: string) => {
       setWalkieTalkieLog((prev) => [
@@ -125,16 +115,11 @@ export function useWorkspaceChat({
   const maxReconnectAttempts = 3;
   const pingIntervalRef = useRef<number | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
-  // Monotonically increasing counter to prevent stale WebSocket callbacks
-  // from zombie connections. Each connect() increments this; onclose/onopen/
-  // onmessage handlers captured at creation time bail out if the generation
-  // has advanced (meaning a newer connection owns the session).
   const connectionGenerationRef = useRef(0);
   const checkAndSendTimeoutRef = useRef<number | null>(null);
   const loadingSafetyTimeoutRef = useRef<number | null>(null);
 
   // Store the last "start" params so we can re-send on reconnect.
-  // Without this, auto-reconnect creates a bare WebSocket with no server session.
   const lastStartParamsRef = useRef<{
     conversationId?: number;
     workingDirectory?: string;
@@ -147,7 +132,6 @@ export function useWorkspaceChat({
   // Session readiness tracking: prevents sending messages before the backend
   // session is fully established (Claude SDK client created, greeting sent).
   const sessionReadyRef = useRef(false);
-  // Queue the WebSocket payload to be sent once the session becomes ready.
   const queuedPayloadRef = useRef<Record<string, unknown> | null>(null);
 
   // Clean up all timers and the WebSocket on unmount
@@ -175,7 +159,6 @@ export function useWorkspaceChat({
   }, []);
 
   // Hydrate token log from the database when conversationId changes.
-  // This ensures historical token logs persist across page reloads.
   useEffect(() => {
     if (conversationId == null) return;
     let cancelled = false;
@@ -183,14 +166,10 @@ export function useWorkspaceChat({
       .then((entries) => {
         if (cancelled) return;
         if (entries.length > 0) {
-          // Merge with any entries already received via WebSocket.
-          // Use entry IDs to deduplicate (WebSocket entries may overlap
-          // with database entries if the fetch races with streaming).
           setTokenLog((prev) => {
             const existingIds = new Set(prev.map((e) => e.id));
             const newEntries = entries.filter((e) => !existingIds.has(e.id));
             if (newEntries.length === 0) return prev;
-            // Combine and sort by id (chronological order)
             return [...newEntries, ...prev].sort(
               (a, b) => (a.id ?? 0) - (b.id ?? 0),
             );
@@ -206,21 +185,14 @@ export function useWorkspaceChat({
   }, [conversationId]);
 
   const connect = useCallback(() => {
-    // Increment the connection generation so stale onclose/onopen/onmessage
-    // handlers from previous WebSockets will not interfere with this connection.
     connectionGenerationRef.current++;
     const thisGeneration = connectionGenerationRef.current;
 
-    // If an existing WebSocket is still open or connecting, close it first.
-    // Previously this silently returned, which caused zombie connections when
-    // disconnect()'s async onclose handler scheduled a reconnect that raced
-    // with a new start() call.
     if (wsRef.current) {
       if (
         wsRef.current.readyState === WebSocket.OPEN ||
         wsRef.current.readyState === WebSocket.CONNECTING
       ) {
-        // Prevent the closing socket's onclose from scheduling yet another reconnect
         reconnectAttempts.current = maxReconnectAttempts;
         wsRef.current.close();
       }
@@ -237,12 +209,7 @@ export function useWorkspaceChat({
     wsRef.current = ws;
 
     ws.onopen = () => {
-      // If the generation has advanced, a newer connect() call owns the session.
-      // This WebSocket is stale — do nothing.
       if (connectionGenerationRef.current !== thisGeneration) {
-        if (import.meta.env.DEV) {
-          console.debug('[useWorkspaceChat] Ignoring stale onopen (gen %d vs current %d)', thisGeneration, connectionGenerationRef.current);
-        }
         ws.close();
         return;
       }
@@ -251,64 +218,40 @@ export function useWorkspaceChat({
       const wasReconnect = reconnectAttempts.current > 0;
       reconnectAttempts.current = 0;
 
-      // Start ping interval to keep the connection alive
+      // Start ping interval
       pingIntervalRef.current = window.setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: "ping" }));
         }
       }, 30000);
 
-      // On reconnect, reattach to the existing background session if we
-      // have one (viewer protocol). Otherwise fall back to re-sending "start".
-      if (wasReconnect) {
-        if (attachedSessionIdRef.current) {
-          // Reattach to existing background session with catch-up
-          const attachPayload = {
-            type: "attach",
-            session_id: attachedSessionIdRef.current,
-            since_seq: lastSeqRef.current,
-          };
-          if (import.meta.env.DEV) {
-            console.debug('[useWorkspaceChat] Reattaching to session on reconnect:', attachPayload);
-          }
-          ws.send(JSON.stringify(attachPayload));
-        } else if (lastStartParamsRef.current) {
-          sessionReadyRef.current = false;
-          const params = lastStartParamsRef.current;
-          const payload: Record<string, unknown> = { type: "start" };
-          if (params.conversationId != null) {
-            payload.conversation_id = params.conversationId;
-          }
-          if (params.workingDirectory) {
-            payload.working_directory = params.workingDirectory;
-          }
-          payload.context_mode = params.contextMode ?? "200k";
-          if (params.costSettings) {
-            payload.cost_settings = params.costSettings;
-          }
-          if (params.model) {
-            payload.model = params.model;
-          }
-          if (params.provider) {
-            payload.provider = params.provider;
-          }
-
-          if (import.meta.env.DEV) {
-            console.debug('[useWorkspaceChat] Re-sending start on reconnect:', payload);
-          }
-          ws.send(JSON.stringify(payload));
+      // On reconnect, re-send "start" with saved params to resume the conversation.
+      if (wasReconnect && lastStartParamsRef.current) {
+        sessionReadyRef.current = false;
+        const params = lastStartParamsRef.current;
+        const payload: Record<string, unknown> = { type: "start" };
+        if (params.conversationId != null) {
+          payload.conversation_id = params.conversationId;
         }
+        if (params.workingDirectory) {
+          payload.working_directory = params.workingDirectory;
+        }
+        payload.context_mode = params.contextMode ?? "200k";
+        if (params.costSettings) {
+          payload.cost_settings = params.costSettings;
+        }
+        if (params.model) {
+          payload.model = params.model;
+        }
+        if (params.provider) {
+          payload.provider = params.provider;
+        }
+        ws.send(JSON.stringify(payload));
       }
     };
 
     ws.onclose = (event) => {
-      // If the generation has advanced, this is a stale onclose from a WebSocket
-      // that was replaced by a newer connect() call. Do NOT update state or
-      // schedule reconnects — the new connection owns the session now.
       if (connectionGenerationRef.current !== thisGeneration) {
-        if (import.meta.env.DEV) {
-          console.debug('[useWorkspaceChat] Ignoring stale onclose (gen %d vs current %d)', thisGeneration, connectionGenerationRef.current);
-        }
         return;
       }
 
@@ -318,7 +261,6 @@ export function useWorkspaceChat({
         pingIntervalRef.current = null;
       }
 
-      // Capture close reason for display on the Connection Failed screen
       if (event.code !== 1000 && event.code !== 1001) {
         const reason = event.reason
           || (event.code === 1006
@@ -327,7 +269,7 @@ export function useWorkspaceChat({
         setLastError(reason);
       }
 
-      // Attempt reconnection with exponential backoff if not intentionally closed
+      // Attempt reconnection with exponential backoff
       if (reconnectAttempts.current < maxReconnectAttempts) {
         reconnectAttempts.current++;
         const delay = Math.min(
@@ -349,21 +291,12 @@ export function useWorkspaceChat({
       if (connectionGenerationRef.current !== thisGeneration) return;
       try {
         const data = JSON.parse(event.data) as WorkspaceChatServerMessage;
-        // Always-on diagnostic: log all non-noise message types so we can
-        // verify which events actually arrive via the browser console.
-        if (data.type !== 'heartbeat' && data.type !== 'pong') {
+        if (data.type !== 'pong') {
           console.log('[WS]', data.type, data.type === 'token_log' ? (data as unknown as Record<string, unknown>).entry : '');
-        }
-
-        // Track sequence number from background session events
-        const eventSeq = (data as unknown as Record<string, unknown>).seq as number | undefined;
-        if (eventSeq && eventSeq > lastSeqRef.current) {
-          lastSeqRef.current = eventSeq;
         }
 
         switch (data.type) {
           case "text": {
-            // Append text to current assistant message or create a new one
             setMessages((prev) => {
               const lastMessage = prev[prev.length - 1];
               if (
@@ -396,7 +329,6 @@ export function useWorkspaceChat({
 
           case "tool_call": {
             const toolDescription = describeToolCall(data.tool, data.input);
-
             setMessages((prev) => [
               ...prev,
               {
@@ -415,11 +347,6 @@ export function useWorkspaceChat({
               context_window: number;
               message_count?: number;
               model_id?: string;
-              api_input_tokens?: number;
-              api_output_tokens?: number;
-              api_cache_read_tokens?: number;
-              api_cache_creation_tokens?: number;
-              cost_usd?: number;
             };
             setTotalTokens(tokenData.total_tokens);
             setContextWindow(tokenData.context_window);
@@ -448,8 +375,6 @@ export function useWorkspaceChat({
           }
 
           case "branch_created": {
-            // Branch auto-created for this conversation; the header's
-            // branch indicator will refresh automatically via its API call.
             break;
           }
 
@@ -457,7 +382,6 @@ export function useWorkspaceChat({
             currentAssistantMessageRef.current = null;
             sessionReadyRef.current = true;
 
-            // Clear walkie-talkie waiting state when response completes
             setAgentWaiting(false);
             setAgentWaitingQuestion(null);
 
@@ -480,19 +404,14 @@ export function useWorkspaceChat({
             if (queuedPayloadRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
               const queued = queuedPayloadRef.current;
               queuedPayloadRef.current = null;
-              // Keep isLoading true since we're immediately sending the queued message
               wsRef.current.send(JSON.stringify(queued));
-            } else if (!attachedSessionIdRef.current) {
-              // Only reset loading for direct (non-background) sessions.
-              // Background sessions may have multiple API turns; the session_state
-              // events (waiting_input, completed, failed) control loading state instead.
+            } else {
               setIsLoading(false);
             }
             break;
           }
 
           case "rate_limit_logged": {
-            // Backend auto-detected a rate limit and logged it
             const rlData = data as { event_type: string; tokens_at_hit: number };
             setMessages((prev) => [
               ...prev,
@@ -507,7 +426,6 @@ export function useWorkspaceChat({
           }
 
           case "status": {
-            // Informational status from backend (e.g. "Waiting for Opus...")
             setMessages((prev) => [
               ...prev,
               {
@@ -521,8 +439,6 @@ export function useWorkspaceChat({
           }
 
           case "agent_waiting": {
-            // Agent output a [WAITING] tag and is waiting for user input.
-            // Activate the countdown timer bar and show the question.
             const waitData = data as { question: string };
             const question = waitData.question || "Agent is waiting for your input...";
             setAgentWaiting(true);
@@ -532,8 +448,6 @@ export function useWorkspaceChat({
           }
 
           case "walkie_talkie_queued": {
-            // Confirmation that the walkie-talkie message was queued for the agent.
-            // Reset the waiting state since user has responded.
             setAgentWaiting(false);
             setAgentWaitingQuestion(null);
             addWalkieTalkieEntry('system', 'Message delivered to agent');
@@ -541,239 +455,22 @@ export function useWorkspaceChat({
           }
 
           case "token_log": {
-            // Real-time token processing log entry from the backend.
-            // Append to the log for display in the TokenLogPanel.
             const logData = data as { entry: TokenLogEntry };
-            console.log('[WS] token_log handler: entry exists=', !!logData.entry, 'event_type=', logData.entry?.event_type);
             if (logData.entry) {
-              setTokenLog((prev) => {
-                console.log('[WS] token_log appending: prev.length=', prev.length, 'new entry id=', logData.entry?.id);
-                return [...prev, logData.entry];
-              });
+              setTokenLog((prev) => [...prev, logData.entry]);
             }
-            break;
-          }
-
-          // --- Background session viewer protocol messages ---
-
-          case "session_created": {
-            const scData = data as { session_id: string; conversation_id: number };
-            setAttachedSessionId(scData.session_id);
-            lastSeqRef.current = 0;
-            if (scData.conversation_id) {
-              setConversationId(scData.conversation_id);
-            }
-            break;
-          }
-
-          case "replay": {
-            // Process replayed events (same handlers as live events).
-            // Events arrive as an array with seq numbers.
-            const replayData = data as { events: Array<Record<string, unknown>> };
-            if (replayData.events) {
-              for (const event of replayData.events) {
-                const seq = (event.seq ?? event._seq ?? 0) as number;
-                if (seq > lastSeqRef.current) {
-                  lastSeqRef.current = seq;
-                }
-                // Replay events flow through the same handlers as live events.
-                // We dispatch them as synthetic onmessage calls.
-                const eventType = event.type as string;
-                if (eventType === "text") {
-                  setMessages((prev) => {
-                    const lastMessage = prev[prev.length - 1];
-                    if (lastMessage?.role === "assistant" && lastMessage.isStreaming) {
-                      return [
-                        ...prev.slice(0, -1),
-                        { ...lastMessage, content: lastMessage.content + (event.content as string || "") },
-                      ];
-                    } else {
-                      return [
-                        ...prev,
-                        {
-                          id: generateId(),
-                          role: "assistant",
-                          content: (event.content as string) || "",
-                          timestamp: new Date(),
-                          isStreaming: true,
-                        },
-                      ];
-                    }
-                  });
-                } else if (eventType === "tool_call") {
-                  const toolDesc = describeToolCall(
-                    event.tool as string,
-                    (event.input as Record<string, unknown>) || {},
-                  );
-                  setMessages((prev) => [
-                    ...prev,
-                    { id: generateId(), role: "system", content: toolDesc, timestamp: new Date() },
-                  ]);
-                } else if (eventType === "response_done") {
-                  setMessages((prev) => {
-                    const lastMessage = prev[prev.length - 1];
-                    if (lastMessage?.role === "assistant" && lastMessage.isStreaming) {
-                      return [...prev.slice(0, -1), { ...lastMessage, isStreaming: false }];
-                    }
-                    return prev;
-                  });
-                } else if (eventType === "conversation_created") {
-                  setConversationId(event.conversation_id as number);
-                } else if (eventType === "token_usage") {
-                  setTotalTokens((event.total_tokens as number) || 0);
-                  setContextWindow((event.context_window as number) || 200_000);
-                } else if (eventType === "user_message") {
-                  setMessages((prev) => [
-                    ...prev,
-                    {
-                      id: generateId(),
-                      role: "user",
-                      content: (event.content as string) || "",
-                      timestamp: new Date(),
-                    },
-                  ]);
-                } else if (eventType === "error" || eventType === "session_failed") {
-                  const rawErr = event.content ?? event.error ?? "Unknown error";
-                  const errorContent = typeof rawErr === 'string' ? rawErr : JSON.stringify(rawErr);
-                  setMessages((prev) => [
-                    ...prev,
-                    {
-                      id: generateId(),
-                      role: "system",
-                      content: eventType === "session_failed" ? `Session failed: ${errorContent}` : errorContent,
-                      timestamp: new Date(),
-                    },
-                  ]);
-                } else if (eventType === "token_log") {
-                  // Replay token log entries so the TokenLogPanel populates on reconnect
-                  const logData = event as unknown as { entry: TokenLogEntry };
-                  if (logData.entry) {
-                    setTokenLog((prev) => [...prev, logData.entry]);
-                  }
-                }
-              }
-            }
-            break;
-          }
-
-          case "replay_done": {
-            const rdData = data as { current_seq: number; state: string };
-            lastSeqRef.current = rdData.current_seq;
-            // Mark streaming messages as complete after replay
-            setMessages((prev) => {
-              const lastMessage = prev[prev.length - 1];
-              if (lastMessage?.role === "assistant" && lastMessage.isStreaming) {
-                return [...prev.slice(0, -1), { ...lastMessage, isStreaming: false }];
-              }
-              return prev;
-            });
-            // If the session is in a waiting state, mark as ready for input
-            if (rdData.state === "waiting_input" || rdData.state === "completed" || rdData.state === "failed") {
-              setIsLoading(false);
-              sessionReadyRef.current = true;
-            }
-            break;
-          }
-
-          case "heartbeat": {
-            const hbData = data as { seq: number };
-            if (hbData.seq) {
-              lastSeqRef.current = hbData.seq;
-            }
-            break;
-          }
-
-          case "session_state": {
-            const ssData = data as { state: string; seq?: number };
-            console.log('[WS] session_state:', ssData.state, 'queued=', !!queuedPayloadRef.current);
-            if (ssData.seq && ssData.seq > lastSeqRef.current) {
-              lastSeqRef.current = ssData.seq;
-            }
-            if (ssData.state === "waiting_input") {
-              sessionReadyRef.current = true;
-              // Dispatch any queued message before resetting isLoading.
-              // The initial user message may be queued waiting for session readiness.
-              if (queuedPayloadRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
-                const queued = queuedPayloadRef.current;
-                queuedPayloadRef.current = null;
-                wsRef.current.send(JSON.stringify(queued));
-                // Keep isLoading true — we just sent a message
-              } else {
-                setIsLoading(false);
-              }
-            } else if (ssData.state === "streaming") {
-              setIsLoading(true);
-              sessionReadyRef.current = false;
-            } else if (ssData.state === "completed") {
-              setIsLoading(false);
-              sessionReadyRef.current = true;
-            } else if (ssData.state === "failed") {
-              setIsLoading(false);
-              sessionReadyRef.current = true;
-            }
-            break;
-          }
-
-          case "session_completed": {
-            setIsLoading(false);
-            sessionReadyRef.current = true;
-            break;
-          }
-
-          case "session_failed": {
-            const sfRawErr = (data as unknown as Record<string, unknown>).error ?? "Unknown error";
-            const sfErrStr = typeof sfRawErr === 'string' ? sfRawErr : JSON.stringify(sfRawErr);
-            setIsLoading(false);
-            sessionReadyRef.current = true;
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: `fail-${Date.now()}`,
-                role: "system",
-                content: `Session failed: ${sfErrStr}`,
-                timestamp: new Date(),
-              },
-            ]);
-            break;
-          }
-
-          case "session_cancelled": {
-            setIsLoading(false);
-            sessionReadyRef.current = true;
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: `cancel-${Date.now()}`,
-                role: "system",
-                content: "Session was cancelled.",
-                timestamp: new Date(),
-              },
-            ]);
-            break;
-          }
-
-          case "detached": {
-            // Confirmation that we detached from the session
             break;
           }
 
           case "error": {
             setIsLoading(false);
-            // Mark session as ready so subsequent messages aren't queued
-            // into a black hole waiting for a response_done that never comes.
             sessionReadyRef.current = true;
-            // Ensure content is always a string — backend may send objects
-            // in edge cases (e.g. structured error details), which would
-            // crash React if rendered directly (error #185).
             const safeContent = typeof data.content === 'string'
               ? data.content
               : (data.content ? JSON.stringify(data.content) : "Unknown error");
             setLastError(safeContent);
             onError?.(safeContent);
 
-            // Check if this is a rate limit or billing error -- auto-log via API as fallback.
-            // Guard: "Unknown message type: rate_limit_event" is a parse error,
-            // NOT an actual rate limit — skip detection in that case.
             const errorContent = safeContent.toLowerCase();
             const isUnknownMsgType = errorContent.includes("unknown message type");
             const rateLimitPatterns = [
@@ -803,7 +500,6 @@ export function useWorkspaceChat({
               },
             ]);
 
-            // Frontend fallback: if backend didn't catch it, log via REST
             if (isRateLimit) {
               import("@/lib/api").then(({ logRateLimit: logRL }) => {
                 logRL("daily", `Frontend auto-detected: ${data.content?.slice(0, 200)}`).catch(() => {});
@@ -813,7 +509,6 @@ export function useWorkspaceChat({
           }
 
           case "pong": {
-            // Keep-alive response, nothing to do
             break;
           }
         }
@@ -825,21 +520,15 @@ export function useWorkspaceChat({
 
   const start = useCallback(
     (existingConversationId?: number | null, workingDirectory?: string, contextMode?: string, costSettings?: Record<string, unknown>, model?: string, provider?: string) => {
-      // Clear any pending check timeout from a previous call
       if (checkAndSendTimeoutRef.current) {
         clearTimeout(checkAndSendTimeoutRef.current);
         checkAndSendTimeoutRef.current = null;
       }
 
-      // Clear any pending reconnect from a previous session's onclose handler.
-      // Without this, a zombie reconnect can race with this new connection.
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
         reconnectTimeoutRef.current = null;
       }
-      // Reset reconnect counter so this fresh start() gets full retry budget.
-      // (disconnect() deliberately leaves it at maxReconnectAttempts to prevent
-      //  the closing socket's onclose from scheduling zombie reconnects.)
       reconnectAttempts.current = 0;
 
       // Save start params so auto-reconnect can re-send the "start" message
@@ -852,31 +541,20 @@ export function useWorkspaceChat({
         provider,
       };
 
-      // Reset session readiness — the session is not ready until we receive
-      // the first response_done after the "start" message is processed.
       sessionReadyRef.current = false;
       queuedPayloadRef.current = null;
 
       connect();
 
-      // Wait for connection then send start message, with timeout protection
       let checkAttempts = 0;
-      const maxCheckAttempts = 100; // 10 seconds max (100 * 100ms)
+      const maxCheckAttempts = 100;
 
       const checkAndSend = () => {
         checkAttempts++;
         if (wsRef.current?.readyState === WebSocket.OPEN) {
           checkAndSendTimeoutRef.current = null;
           setIsLoading(true);
-          const payload: {
-            type: string;
-            conversation_id?: number;
-            working_directory?: string;
-            context_mode?: string;
-            cost_settings?: Record<string, unknown>;
-            model?: string;
-            provider?: string;
-          } = { type: "start" };
+          const payload: Record<string, unknown> = { type: "start" };
 
           if (existingConversationId != null) {
             payload.conversation_id = existingConversationId;
@@ -896,9 +574,6 @@ export function useWorkspaceChat({
             payload.provider = provider;
           }
 
-          if (import.meta.env.DEV) {
-            console.debug('[useWorkspaceChat] Sending start message:', payload);
-          }
           wsRef.current.send(JSON.stringify(payload));
         } else if (
           wsRef.current?.readyState === WebSocket.CONNECTING &&
@@ -906,7 +581,6 @@ export function useWorkspaceChat({
         ) {
           checkAndSendTimeoutRef.current = window.setTimeout(checkAndSend, 100);
         } else {
-          // Connection failed or timed out
           checkAndSendTimeoutRef.current = null;
           if (checkAttempts >= maxCheckAttempts) {
             onError?.("Connection timed out. The workspace server may be unavailable.");
@@ -940,48 +614,43 @@ export function useWorkspaceChat({
         setPendingInjection(null);
       }
 
-      // Add user message to chat immediately (show original content, not the injected version)
-      // Include attachments so they render inline in the message bubble
+      // Add user message to chat immediately
       setMessages((prev) => [
         ...prev,
         {
           id: generateId(),
           role: "user",
           content,
-          attachments,
           timestamp: new Date(),
+          attachments: attachments ? [...attachments] : undefined,
         },
       ]);
 
       setIsLoading(true);
+      setLastError(null);
 
-      // Build WebSocket payload with optional attachments
-      const wsPayload: Record<string, unknown> = {
+      const payload: Record<string, unknown> = {
         type: "message",
         content: fullMessage,
       };
-
       if (attachments && attachments.length > 0) {
-        wsPayload.attachments = attachments.map((att) => ({
-          filename: att.filename,
-          mimeType: att.mimeType,
-          base64Data: att.base64Data,
+        payload.attachments = attachments.map(a => ({
+          mimeType: a.mimeType,
+          base64Data: a.base64Data,
         }));
       }
-
       if (libraryFileIds && libraryFileIds.length > 0) {
-        wsPayload.library_file_ids = libraryFileIds;
+        payload.library_file_ids = libraryFileIds;
       }
 
-      // If the WebSocket isn't open yet or the backend session isn't ready
-      // (start still processing), queue the payload to be sent when
-      // the session confirms readiness via response_done.
-      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN || !sessionReadyRef.current) {
-        queuedPayloadRef.current = wsPayload;
-        return;
+      // If session is ready, send immediately.  Otherwise queue for delivery
+      // after the next response_done.
+      if (sessionReadyRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
+        sessionReadyRef.current = false;
+        wsRef.current.send(JSON.stringify(payload));
+      } else {
+        queuedPayloadRef.current = payload;
       }
-
-      wsRef.current.send(JSON.stringify(wsPayload));
     },
     [pendingInjection],
   );
@@ -999,37 +668,20 @@ export function useWorkspaceChat({
   );
 
   const cancelSession = useCallback(() => {
-    const sessionId = attachedSessionIdRef.current;
-    if (!sessionId) return;
-    cancelWorkspaceSession(sessionId).catch((err) => {
-      console.warn('[useWorkspaceChat] Failed to cancel session:', err);
-    });
-    // Optimistically update UI state — the server will send session_cancelled
-    // which will also set isLoading=false, but this gives instant feedback.
+    // Close the WebSocket — server cleans up the session.
+    // Auto-reconnect will re-send "start" with the same conversationId.
     setIsLoading(false);
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.close();
+    }
   }, []);
 
   const disconnect = useCallback(() => {
-    // Set to max to prevent the closing socket's async onclose from scheduling
-    // zombie reconnects. The next start() call resets this to 0.
     reconnectAttempts.current = maxReconnectAttempts;
-    lastStartParamsRef.current = null; // Clear so reconnect doesn't re-send stale start
+    lastStartParamsRef.current = null;
     sessionReadyRef.current = false;
     queuedPayloadRef.current = null;
-    // Reset the conversation identity so callers (handleSend) don't think
-    // a session is still active for the old conversation.
     setConversationId(null);
-
-    // Send detach before closing so the background session keeps running
-    if (wsRef.current?.readyState === WebSocket.OPEN && attachedSessionIdRef.current) {
-      try {
-        wsRef.current.send(JSON.stringify({ type: "detach" }));
-      } catch {
-        // Ignore send errors during disconnect
-      }
-    }
-    setAttachedSessionId(null);
-    lastSeqRef.current = 0;
 
     if (pingIntervalRef.current) {
       clearInterval(pingIntervalRef.current);
@@ -1047,9 +699,6 @@ export function useWorkspaceChat({
       wsRef.current.close();
       wsRef.current = null;
     }
-    // NOTE: Do NOT reset reconnectAttempts here. Leaving it at maxReconnectAttempts
-    // ensures the async onclose handler (which fires after this function returns)
-    // will NOT schedule a zombie reconnect. The next start() call resets it to 0.
     setConnectionStatus("disconnected");
   }, []);
 
@@ -1065,58 +714,27 @@ export function useWorkspaceChat({
     setTokenLog([]);
     sessionReadyRef.current = false;
     queuedPayloadRef.current = null;
-    setAttachedSessionId(null);
-    lastSeqRef.current = 0;
   }, []);
 
-  // Adaptive safety timeout: provider-aware to support long-running sessions.
-  // Claude sessions get a 10-minute timeout (fast model, quick responses).
-  // Codex/Gemini sessions can run for hours, so they get NO timeout — they
-  // rely on the WebSocket ping/pong keepalive and show a non-destructive
-  // warning after 30 minutes instead of force-resetting isLoading.
+  // Safety timeout for long-running sessions
   useEffect(() => {
     if (isLoading) {
       const provider = lastStartParamsRef.current?.provider ?? 'claude';
-      const isLongRunningProvider = provider === 'codex' || provider === 'gemini';
-
-      if (isLongRunningProvider) {
-        // For Codex/Gemini: show a non-destructive info message after 30 min,
-        // but do NOT reset isLoading — the session may still be working.
-        loadingSafetyTimeoutRef.current = window.setTimeout(() => {
-          setMessages((prev) => {
-            // Don't add duplicate long-running notices
-            if (prev.some(m => m.id.startsWith('long-running-'))) return prev;
-            return [
-              ...prev,
-              {
-                id: `long-running-${Date.now()}`,
-                role: "system" as const,
-                content: `Session has been running for 30+ minutes. ${provider === 'codex' ? 'Codex' : 'Gemini'} agents can run for hours — the session is still active.`,
-                timestamp: new Date(),
-              },
-            ];
-          });
-        }, 30 * 60 * 1000);
-      } else {
-        // For Claude: safety timeout.  Opus with large images can take 5+ min
-        // for a single API turn, and multi-turn agent sessions run much longer.
-        // Use 30 min non-destructive warning (same as Codex/Gemini) instead of
-        // the old 10 min hard-kill that was breaking long Opus sessions.
-        loadingSafetyTimeoutRef.current = window.setTimeout(() => {
-          setMessages((prev) => {
-            if (prev.some(m => m.id.startsWith('long-running-'))) return prev;
-            return [
-              ...prev,
-              {
-                id: `long-running-${Date.now()}`,
-                role: "system" as const,
-                content: "Session has been running for 30+ minutes. The agent may still be working — check the token log for activity.",
-                timestamp: new Date(),
-              },
-            ];
-          });
-        }, 30 * 60 * 1000);
-      }
+      loadingSafetyTimeoutRef.current = window.setTimeout(() => {
+        setMessages((prev) => {
+          if (prev.some(m => m.id.startsWith('long-running-'))) return prev;
+          const providerLabel = provider === 'codex' ? 'Codex' : provider === 'gemini' ? 'Gemini' : 'Claude';
+          return [
+            ...prev,
+            {
+              id: `long-running-${Date.now()}`,
+              role: "system" as const,
+              content: `Session has been running for 30+ minutes. ${providerLabel} agents can run for extended periods — the session is still active.`,
+              timestamp: new Date(),
+            },
+          ];
+        });
+      }, 30 * 60 * 1000);
     } else if (loadingSafetyTimeoutRef.current) {
       window.clearTimeout(loadingSafetyTimeoutRef.current);
       loadingSafetyTimeoutRef.current = null;
@@ -1150,7 +768,6 @@ export function useWorkspaceChat({
     sendWalkieTalkie,
     tokenLog,
     clearTokenLog: useCallback(() => setTokenLog([]), []),
-    attachedSessionId,
     cancelSession,
     disconnect,
     clearMessages,
@@ -1159,10 +776,6 @@ export function useWorkspaceChat({
 
 /**
  * Generates a user-friendly description for a tool call.
- *
- * Maps tool names to human-readable descriptions, extracting
- * relevant parameters like file paths, search patterns, and
- * command snippets for display in the chat timeline.
  */
 function describeToolCall(
   toolName: string,
@@ -1171,45 +784,72 @@ function describeToolCall(
   switch (toolName) {
     case "Read": {
       const filePath = input.file_path as string | undefined;
-      const filename = filePath?.split("/").pop() || filePath || "unknown";
-      return `Reading file: ${filename}`;
+      if (filePath) {
+        const fileName = filePath.split("/").pop() || filePath;
+        return `Reading ${fileName}`;
+      }
+      return "Reading file";
     }
     case "Write": {
       const filePath = input.file_path as string | undefined;
-      const filename = filePath?.split("/").pop() || filePath || "unknown";
-      return `Writing file: ${filename}`;
+      if (filePath) {
+        const fileName = filePath.split("/").pop() || filePath;
+        const content = input.content as string | undefined;
+        const lineCount = content ? content.split("\n").length : 0;
+        return lineCount > 0
+          ? `Writing ${fileName} (${lineCount} lines)`
+          : `Writing ${fileName}`;
+      }
+      return "Writing file";
     }
     case "Edit": {
       const filePath = input.file_path as string | undefined;
-      const filename = filePath?.split("/").pop() || filePath || "unknown";
-      return `Editing file: ${filename}`;
+      if (filePath) {
+        const fileName = filePath.split("/").pop() || filePath;
+        const oldStr = input.old_string as string | undefined;
+        const newStr = input.new_string as string | undefined;
+        if (oldStr && newStr) {
+          const removedLines = oldStr.split("\n").length;
+          const addedLines = newStr.split("\n").length;
+          return `Editing ${fileName} (-${removedLines}/+${addedLines} lines)`;
+        }
+        return `Editing ${fileName}`;
+      }
+      return "Editing file";
     }
     case "Bash": {
       const command = input.command as string | undefined;
-      const cmd = command
-        ? command.length > 60
-          ? command.substring(0, 60) + "..."
-          : command
-        : "...";
-      return `Running: ${cmd}`;
+      if (command) {
+        const truncated = command.length > 120 ? command.substring(0, 117) + "..." : command;
+        return `Running: ${truncated}`;
+      }
+      return "Running command";
     }
     case "Glob": {
       const pattern = input.pattern as string | undefined;
-      return `Searching for files: ${pattern || "..."}`;
+      return pattern ? `Searching for ${pattern}` : "Searching files";
     }
     case "Grep": {
       const pattern = input.pattern as string | undefined;
-      return `Searching for: ${pattern || "..."}`;
+      return pattern ? `Searching for "${pattern}"` : "Searching content";
     }
     case "WebFetch": {
-      return "Fetching web content";
+      const url = input.url as string | undefined;
+      if (url) {
+        try {
+          const hostname = new URL(url).hostname;
+          return `Fetching ${hostname}`;
+        } catch {
+          return `Fetching URL`;
+        }
+      }
+      return "Fetching web page";
     }
     case "WebSearch": {
       const query = input.query as string | undefined;
-      return `Searching web: ${query || "..."}`;
+      return query ? `Searching: "${query}"` : "Searching the web";
     }
-    default: {
-      return `Using tool: ${toolName}`;
-    }
+    default:
+      return `Using ${toolName}`;
   }
 }

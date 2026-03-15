@@ -44,8 +44,6 @@ interface PaneState {
   provider: WorkspaceProvider
   label: string
   collapsed: boolean
-  /** Background session ID this pane is attached to (for session persistence). */
-  attachedSessionId?: string | null
 }
 
 type LayoutMode = 'single' | 'dual' | 'triple'
@@ -249,9 +247,6 @@ export function DashboardPage(): React.JSX.Element {
     })
   }, [])
 
-  const handlePaneSessionAttached = useCallback((paneId: string, sessionId: string | null) => {
-    updatePane(paneId, { attachedSessionId: sessionId })
-  }, [updatePane])
 
   // Sidebar: assign conversation to first available pane (or active pane).
   // If the conversation has a stored provider, update the pane's provider to match
@@ -522,7 +517,6 @@ export function DashboardPage(): React.JSX.Element {
                     pendingEffort={idx === 0 ? pendingEffort : undefined}
                     newChatKey={idx === 0 ? newChatKey : undefined}
                     onStreamingChange={(streaming) => handlePaneStreamingChange(pane.id, streaming)}
-                    onSessionAttached={(sessionId) => handlePaneSessionAttached(pane.id, sessionId)}
                   />
                 </div>
               </Fragment>

@@ -255,12 +255,16 @@ export function VideoIngestPanel({ onIngestComplete, initialUrl, steps }: VideoI
 
         {/* Expandable content: links, transcript, game plan */}
         <div className="border-t border-border px-4 py-2 space-y-2">
-          {/* Action buttons row */}
-          <div className="flex items-center gap-3 flex-wrap">
+          {/* Primary action buttons — centered, prominent */}
+          <div className="flex items-center justify-center gap-2">
             {result.transcript.length > 0 && (
               <button
                 onClick={() => { setShowTranscript(!showTranscript); if (!showTranscript) setShowGamePlan(false) }}
-                className="flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border-2 transition-all ${
+                  showTranscript
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-primary/10 text-primary border-primary/40 hover:bg-primary/20 hover:border-primary/60'
+                }`}
               >
                 {showTranscript ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                 {showTranscript ? 'Hide Transcript' : 'View Transcript'}
@@ -269,29 +273,34 @@ export function VideoIngestPanel({ onIngestComplete, initialUrl, steps }: VideoI
             {steps && steps.length > 0 && (
               <button
                 onClick={() => { setShowGamePlan(!showGamePlan); if (!showGamePlan) setShowTranscript(false) }}
-                className="flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border-2 transition-all ${
+                  showGamePlan
+                    ? 'bg-amber-500 text-white border-amber-500'
+                    : 'bg-amber-500/10 text-amber-600 border-amber-500/40 hover:bg-amber-500/20 hover:border-amber-500/60'
+                }`}
               >
                 {showGamePlan ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                 {showGamePlan ? 'Hide Game Plan' : 'View Game Plan'}
               </button>
             )}
-            {result.extracted_urls.length > 0 && (
-              <span className="text-xs text-muted-foreground flex items-center gap-1">
-                <Link2 size={10} />
-                {result.extracted_urls.map((link, i) => (
-                  <a
-                    key={i}
-                    href={link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-primary hover:underline truncate max-w-48 inline-block align-bottom"
-                  >
-                    {new URL(link).hostname.replace('www.', '')}
-                  </a>
-                )).reduce<React.ReactNode[]>((acc, el, i) => i === 0 ? [el] : [...acc, <span key={`sep-${i}`}>, </span>, el], [])}
-              </span>
-            )}
           </div>
+          {/* Secondary: extracted links */}
+          {result.extracted_urls.length > 0 && (
+            <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
+              <Link2 size={10} />
+              {result.extracted_urls.map((link, i) => (
+                <a
+                  key={i}
+                  href={link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary/70 hover:text-primary hover:underline truncate max-w-48 inline-block align-bottom"
+                >
+                  {new URL(link).hostname.replace('www.', '')}
+                </a>
+              )).reduce<React.ReactNode[]>((acc, el, i) => i === 0 ? [el] : [...acc, <span key={`sep-${i}`}>, </span>, el], [])}
+            </div>
+          )}
 
           {/* Clean transcript — no timestamps */}
           {showTranscript && result.transcript.length > 0 && (

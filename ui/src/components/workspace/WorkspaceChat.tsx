@@ -146,8 +146,6 @@ interface WorkspaceChatProps {
   onStreamingChange?: (isStreaming: boolean) => void
   /** CLI provider for this pane ('claude' | 'codex' | 'gemini'). Passed to backend on conversation create. */
   provider?: 'claude' | 'codex' | 'gemini'
-  /** Called when the background session ID changes (for pane persistence). */
-  onSessionAttached?: (sessionId: string | null) => void
 }
 
 /** Generate a unique ID for local messages. */
@@ -216,7 +214,6 @@ export function WorkspaceChat({
   pendingEffort: pendingEffortProp,
   onStreamingChange,
   provider: providerProp,
-  onSessionAttached,
 }: WorkspaceChatProps): React.JSX.Element {
   const [inputValue, setInputValue] = useState('')
   const messagesContainerRef = useRef<HTMLDivElement>(null)
@@ -350,7 +347,6 @@ export function WorkspaceChat({
     tokenLog,
     clearTokenLog,
     modelId,
-    attachedSessionId,
     cancelSession,
     start,
     sendMessage,
@@ -366,14 +362,6 @@ export function WorkspaceChat({
     onStreamingChange?.(isLoading)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading])
-
-  // Notify parent when background session ID changes (for pane persistence).
-  // Intentionally omit onSessionAttached from deps to avoid re-render loops
-  // when the parent passes an unstable callback reference (inline arrow).
-  useEffect(() => {
-    onSessionAttached?.(attachedSessionId)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [attachedSessionId])
 
   // Compute API token totals from the token log entries.
   // For input/output/cost: sum across all turns (billing-relevant totals).
@@ -1450,23 +1438,6 @@ export function WorkspaceChat({
         isRegenerating={regenerateMutation.isPending}
       />
 
-      {/* Background session status bar */}
-      {attachedSessionId && (
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-card border-b border-border text-xs">
-          <span className={`h-2 w-2 rounded-full ${isLoading ? 'bg-cyan-500 animate-pulse' : 'bg-zinc-500'}`} />
-          <span className="text-muted-foreground">
-            Session {attachedSessionId.slice(0, 8)}
-          </span>
-          <span className="text-muted-foreground">|</span>
-          <span className="font-medium">{providerProp || 'claude'}</span>
-          {isLoading && (
-            <>
-              <span className="text-muted-foreground">|</span>
-              <span className="text-cyan-500 text-[10px]">Running</span>
-            </>
-          )}
-        </div>
-      )}
 
       {/* Messages area */}
       <div

@@ -29,7 +29,7 @@ echo "Target: $TARGET_REPO"
 echo ""
 
 # Escape the content for JSON (handle newlines, quotes, backslashes)
-PRD_JSON=$(python3 -c "
+PRD_JSON=$(python -c "
 import json, sys
 with open(sys.argv[1], 'r', encoding='utf-8') as f:
     content = f.read()

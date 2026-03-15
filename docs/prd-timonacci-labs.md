@@ -816,6 +816,109 @@ Binary assertions for the overnight Karpathy loops:
 
 ---
 
+## Core Concept 4: Human Context Layer (The Nyne Pattern)
+
+### The Insight
+
+Every agent in the system knows about the BUSINESS but knows nothing about the PEOPLE — not the user, not clients, not prospects. Nyne (nyne.ai) built exactly this: a person-level context graph that AI agents load before taking any action. They stitch together public data (social profiles, posts, interests, company, role) into one unified profile via 24 APIs.
+
+**We don't need to rebuild Nyne.** We steal the concept and apply it two ways:
+
+### Way 1: Personal Context File (Your Own Graph)
+
+A structured truth document about YOU that every agent loads first:
+
+```yaml
+# ~/.autoforge/human-context/owner.md
+name: [owner name]
+role: Solo founder, non-technical
+working_style:
+  - Thinks in creative leaps, not linear steps
+  - Tests ideas by throwing options at the wall
+  - Wants fast results, iterates from there
+  - Not a coder — needs plain language explanations
+decision_history:
+  - Chose subscription auth over API keys (cost control)
+  - Chose neobrutalism design (stands out)
+  - Chose Stripe Blueprint pattern (deterministic + AI hybrid)
+  - Chose overnight automation (rate limits are free at night)
+current_goals:
+  - Timonacci Labs as universal knowledge hub
+  - Tool chamber for YT Lab step execution
+  - SkillForge for overnight skill refinement
+  - Scale to 3 tools per day from YouTube content
+constraints:
+  - Subscription-only (no API credit burn)
+  - Windows laptop as primary dev machine
+  - VPS planned for computer use / Playwright
+  - Rate limits matter during working hours
+```
+
+**Every agent session pre-loads this.** The consultant agent, the builder agents, the tool pipeline — they all start with context about who they're working for. This is what the consultant foundation prompt already does manually. This makes it automatic and persistent.
+
+### Way 2: Client/Prospect Context (For Business Use)
+
+When the Astro theme business or any client-facing tool launches:
+
+1. Prospect lands on site → grab email
+2. Hit Nyne's enrichment API (free trial available) → get role, company, tech stack, interests
+3. AI sales agent or onboarding flow already knows who they are
+4. Agent personalizes the entire experience before they type a word
+
+**API integration for the tool chamber:**
+- `nyne_person_enrichment` — component in the tool chamber registry
+- Takes: email, phone, or social URL
+- Returns: full profile (role, company, interests, social activity)
+- The Diverter can route this to: personalized skill outputs, client truth documents, sales agent context
+
+### Way 3: Person Truth Documents
+
+Just like topic truth documents, but for people:
+
+```
+Client: John Smith
+Role: VP Marketing at TechCo
+Sources: LinkedIn profile, 3 email threads, 2 meeting transcripts
+Truth doc:
+  - Cares about: SEO automation, content scaling, team efficiency
+  - Pain points: Manual content creation, inconsistent brand voice
+  - Decision style: Data-driven, needs ROI numbers
+  - Budget authority: Yes, up to $50K/year
+  - Last interaction: 2026-03-10, discussed AI SEO tool demo
+```
+
+The Sword Sharpener works the same way — each new interaction with a person sharpens their truth document. After 5 meetings, you know exactly what they care about, how they decide, and what language resonates.
+
+### What This Unlocks
+
+```
+WITHOUT human context:
+  Agent: "Here's a generic proposal for AI SEO services."
+
+WITH human context:
+  Agent: "John, based on your team's current manual content workflow
+  and your Q2 goal of 3x organic traffic, here's a proposal focused
+  on ROI metrics since I know that's how you evaluate tools.
+  Budget is structured under your $50K authority threshold."
+```
+
+Every agent in the stack gets smarter about people, not just topics.
+
+### Implementation
+
+- **Phase 1:** Personal context file for the owner (manual, load into all agents)
+- **Phase 2:** Nyne API integration as a tool chamber component (enrichment on demand)
+- **Phase 3:** Person truth documents with Sword Sharpener (auto-improve from interactions)
+- **Phase 4:** Auto-load person context into any agent that interacts with clients
+
+**Files:**
+- `~/.autoforge/human-context/owner.md` — owner's personal context
+- `~/.autoforge/human-context/{person_id}.md` — per-person truth docs
+- `server/services/person_context.py` — person context management
+- `server/services/nyne_client.py` — Nyne API integration (optional, for enrichment)
+
+---
+
 ## The End State
 
 After 3 months of feeding content:

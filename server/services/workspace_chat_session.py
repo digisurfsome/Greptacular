@@ -121,6 +121,92 @@ def validate_cost_settings(raw: dict) -> dict:
     return result
 
 
+def _scan_project_tree(working_directory: str) -> str:
+    """Build a concise project file tree for the system prompt.
+
+    Scans the top level of *working_directory* and one level deeper for
+    well-known source subdirectories so the agent already knows where
+    things live before it starts exploring.
+
+    Returns a formatted tree string (max 80 lines) or an empty string on
+    error.
+    """
+    try:
+        entries = sorted(os.listdir(working_directory))
+    except OSError:
+        return ""
+
+    # Detect home directory (has Desktop, Documents, etc.)
+    home_markers = {"Desktop", "Documents", "Downloads", "AppData", "Library"}
+    if len(home_markers & set(entries)) >= 2:
+        return (
+            "Working directory appears to be a home directory — no project "
+            "structure available. Ask the user which project to work on."
+        )
+
+    # Subdirs whose immediate children are worth listing
+    EXPAND_DIRS = {
+        "src", "server", "ui", "lib", "api", "components", "pages",
+        "services", "routers", "hooks", "utils", "mcp_server",
+    }
+
+    lines: list[str] = ["Project structure:"]
+    MAX_LINES = 80
+
+    for name in entries:
+        if len(lines) >= MAX_LINES:
+            lines.append("  ... (truncated)")
+            break
+
+        full = os.path.join(working_directory, name)
+        is_dir = os.path.isdir(full)
+
+        # Skip hidden dirs except .claude
+        if name.startswith(".") and name != ".claude":
+            if is_dir:
+                continue
+            # Show hidden files only if they look important
+            if name not in (".env", ".gitignore", ".eslintrc.json"):
+                continue
+
+        if is_dir:
+            lines.append(f"  {name}/")
+            # Expand known source directories one level deep
+            if name.lower() in EXPAND_DIRS or name == ".claude":
+                try:
+                    children = sorted(os.listdir(full))
+                except OSError:
+                    continue
+                for child in children:
+                    if len(lines) >= MAX_LINES:
+                        lines.append("    ... (truncated)")
+                        break
+                    child_full = os.path.join(full, child)
+                    if child.startswith("."):
+                        continue
+                    suffix = "/" if os.path.isdir(child_full) else ""
+                    lines.append(f"    {child}{suffix}")
+                    # One more level for nested source dirs
+                    if os.path.isdir(child_full) and child.lower() in EXPAND_DIRS:
+                        try:
+                            grandchildren = sorted(os.listdir(child_full))
+                        except OSError:
+                            continue
+                        for gc in grandchildren:
+                            if len(lines) >= MAX_LINES:
+                                break
+                            if gc.startswith("."):
+                                continue
+                            gc_suffix = "/" if os.path.isdir(os.path.join(child_full, gc)) else ""
+                            lines.append(f"      {gc}{gc_suffix}")
+        else:
+            lines.append(f"  {name}")
+
+    if len(lines) <= 1:
+        return ""
+    return "\n".join(lines)
+
+
 def get_workspace_system_prompt(working_directory: str, model: str = "", context_mode: str = "1m") -> str:
     """Generate the system prompt for the workspace agent.
 
@@ -141,14 +227,56 @@ def get_workspace_system_prompt(working_directory: str, model: str = "", context
     }
     display_name = MODEL_DISPLAY_NAMES.get(model or "", model or "Claude")
     model_id_note = f" (model ID: {model})" if model else ""
+
+    # --- Project file tree ---
+    project_tree = _scan_project_tree(working_directory)
+    tree_section = f"\n{project_tree}\n" if project_tree else ""
+
+    # --- CLAUDE.md content ---
+    claude_md_section = ""
+    claude_md_path = os.path.join(working_directory, "CLAUDE.md")
+    try:
+        if os.path.isfile(claude_md_path):
+            with open(claude_md_path, "r", encoding="utf-8", errors="replace") as f:
+                content = f.read(8200)  # read slightly over cap to detect truncation
+            if len(content) > 8000:
+                content = content[:8000] + "\n... [truncated]"
+            claude_md_section = f"""
+Project instructions (CLAUDE.md):
+{content}
+"""
+    except OSError:
+        pass
+
     return f"""You are an expert coding assistant ({display_name}{model_id_note}, {context_tokens} token context).
 Working directory: {working_directory}
+{tree_section}{claude_md_section}
+## Tool Usage Rules
 
-Read files before editing. Preserve existing code style. Use absolute paths. Prefer Glob/Grep over bash find/grep.
+- Use Glob to find files by pattern, NOT bash find or ls.
+- Use Grep to search file contents, NOT bash grep or rg.
+- Use Read to read files, NOT bash cat/head/tail.
+- Use Edit for modifications, NOT bash sed/awk.
+- Use absolute paths for all file operations.
+- Read files before editing. Preserve existing code style.
 
-After completing edits, commit changes: `git add` only changed files (never -A), write a clear commit message, do NOT push. Report which files changed, the commit hash, and branch name.
+## Exploration Guardrails
+
+IMPORTANT: Before exploring the codebase, check the project structure above. Most files you need are already listed.
+
+- If you need to search, use targeted Glob/Grep with specific patterns — do NOT recursively scan directories.
+- NEVER make more than 15 tool calls without providing a substantive text response to the user. If you have made 10+ calls and have not answered yet, STOP, summarize what you have found, and ask the user for direction.
+- If you do not know where something is, ASK the user rather than searching the entire filesystem.
+
+## After Edits
+
+Commit changes: `git add` only changed files (never -A), write a clear commit message, do NOT push. Report which files changed, the commit hash, and branch name.
+
+## Structured Tags
 
 Use structured tags when appropriate: [SUMMARY]...[/SUMMARY], [ROADMAP]...[/ROADMAP], [PROGRESS]...[/PROGRESS] — the UI renders these as cards.
+
+## Communication
 
 If a tool call is blocked with "[WALKIE-TALKIE MESSAGE FROM USER]", acknowledge it, adjust if needed, then continue your task. Use [WAITING]question[/WAITING] when you need user input."""
 

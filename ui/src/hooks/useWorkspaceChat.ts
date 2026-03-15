@@ -635,6 +635,7 @@ export function useWorkspaceChat({
       };
       if (attachments && attachments.length > 0) {
         payload.attachments = attachments.map(a => ({
+          filename: a.filename,
           mimeType: a.mimeType,
           base64Data: a.base64Data,
         }));

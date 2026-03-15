@@ -80,7 +80,13 @@ export function WorkspacePage(): React.JSX.Element {
   // Conversation ID is driven by the URL hash — each conversation is its own "page".
   // Sidebar navigation changes the hash, which triggers a re-render with the new ID.
   const [activeConversationId, setActiveConversationId] = useState<number | null>(parseConversationIdFromHash)
-  const [workingDirectory, setWorkingDirectory] = useState<string | null>(null)
+  const [workingDirectory, setWorkingDirectory] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('workspace-working-dir') || null
+    } catch {
+      return null
+    }
+  })
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const [libraryCollapsed, setLibraryCollapsed] = useState(false)
@@ -133,6 +139,15 @@ export function WorkspacePage(): React.JSX.Element {
       localStorage.setItem('workspace-provider', activeProvider)
     } catch { /* ignore quota or security errors */ }
   }, [researchCollapsed, prdCollapsed, coderCollapsed, researchModel, prdModel, coderModel, activeProvider])
+
+  // Persist working directory to localStorage so new conversations remember it
+  useEffect(() => {
+    if (workingDirectory) {
+      try {
+        localStorage.setItem('workspace-working-dir', workingDirectory)
+      } catch { /* ignore quota or security errors */ }
+    }
+  }, [workingDirectory])
 
   // Sync activeConversationId with the URL hash — this is how "page navigation" works.
   // When the sidebar navigates to #/workspace/chat/{id}, this picks up the change.

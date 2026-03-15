@@ -1199,9 +1199,13 @@ async def workspace_chat_websocket(websocket: WebSocket):
                         continue
 
                     user_content = message.get("content", "").strip()
-                    if not user_content:
+                    raw_atts = message.get("attachments")
+                    if not user_content and not raw_atts:
                         await websocket.send_json({"type": "error", "content": "Empty message"})
                         continue
+                    # Default content for image-only messages so downstream code has something to work with
+                    if not user_content and raw_atts:
+                        user_content = "See attached image."
 
                     # Wait for any previous response to complete before sending a new query.
                     if response_task and not response_task.done():

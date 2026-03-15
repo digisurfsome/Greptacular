@@ -67,10 +67,14 @@ interface MetaEngineSettings {
 
 interface IngestResult {
   source: string
-  status: 'success' | 'error'
+  status: 'success' | 'error' | 'processing'
   message: string
   examples_added?: number
   patterns_added?: number
+  /** Progress bar percentage (0-100) while processing */
+  _progressPct?: number
+  /** Internal key to identify a specific processing entry for updates */
+  _processingKey?: string
 }
 
 interface LibraryStats {
@@ -221,6 +225,24 @@ const inputCls = "w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2
 const selectCls = "appearance-none bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:border-orange-500 focus:outline-none transition-colors pr-8"
 const cardCls = "bg-zinc-800/40 border border-zinc-700/60 rounded-xl p-6 shadow-sm"
 
+/**
+ * Map a progress message from the backend to a rough percentage.
+ * The backend emits messages at known stages of the ingest pipeline;
+ * we translate those into a 0-100 range for the progress bar.
+ */
+function mapProgressToPercent(msg: string): number {
+  const lower = msg.toLowerCase()
+  if (lower.includes('source type')) return 5
+  if (lower.includes('fetching transcript') || lower.includes('transcribing')) return 15
+  if (lower.includes('fetching video metadata')) return 25
+  if (lower.includes('transcript ready') || lower.includes('ingesting text')) return 40
+  if (lower.includes('extracting training data')) return 50
+  if (lower.includes('calling claude')) return 60
+  if (lower.includes('extraction complete') || lower.includes('extracted')) return 85
+  if (lower.includes('training library updated')) return 95
+  return 50
+}
+
 // ============================================================================
 // Main Component
 // ============================================================================
@@ -342,37 +364,163 @@ export function MetaEnginePage() {
   // Ingest Handlers
   // ========================================================================
 
-  const handleIngestUrl = useCallback(async () => {
-    if (!ytUrl.trim()) return
+  /**
+   * Consume an SSE stream from one of the /ingest/{url,text,upload}/stream
+   * endpoints. Adds a "processing" entry to ingestResults, updates it with
+   * progress messages and percentage, then replaces it with the final result.
+   */
+  async function streamIngest(
+    endpoint: string,
+    fetchOptions: RequestInit,
+    sourceName: string,
+  ) {
     setIngesting(true)
-    const result = await safeFetch<IngestResult>('/meta-training/ingest/url', {
-      method: 'POST',
-      body: JSON.stringify({ url: ytUrl.trim() }),
-      headers: settings.openaiApiKey ? { 'X-OpenAI-Key': settings.openaiApiKey } : undefined,
-    })
+
+    // Unique key so we can find and replace this entry in the results list
+    const processingKey = `__processing_${Date.now()}`
+
+    // Insert a processing entry at the top of results
     setIngestResults(prev => [
-      result ?? { source: ytUrl, status: 'error', message: 'Failed to connect to server' },
+      {
+        source: sourceName,
+        status: 'processing' as const,
+        message: 'Starting...',
+        _progressPct: 0,
+        _processingKey: processingKey,
+      },
       ...prev,
     ])
+
+    try {
+      const res = await fetch(`${API_BASE}${endpoint}`, fetchOptions)
+      if (!res.ok || !res.body) {
+        // Non-streaming error — replace processing entry with error
+        setIngestResults(prev =>
+          prev.map(r =>
+            r._processingKey === processingKey
+              ? { source: sourceName, status: 'error' as const, message: `Server error (HTTP ${res.status})` }
+              : r
+          )
+        )
+        setIngesting(false)
+        return
+      }
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let finalResult: IngestResult | null = null
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+
+        // SSE frames are separated by double newlines
+        const frames = buffer.split('\n\n')
+        buffer = frames.pop() ?? ''
+
+        for (const frame of frames) {
+          const dataMatch = frame.match(/^data: (.+)$/m)
+          if (!dataMatch) continue
+
+          let event: { type: string; message?: string; result?: Record<string, unknown> }
+          try {
+            event = JSON.parse(dataMatch[1])
+          } catch {
+            continue
+          }
+
+          if (event.type === 'progress') {
+            const msg = event.message ?? ''
+            const pct = mapProgressToPercent(msg)
+            setIngestResults(prev =>
+              prev.map(r =>
+                r._processingKey === processingKey
+                  ? { ...r, message: msg, _progressPct: pct }
+                  : r
+              )
+            )
+          } else if (event.type === 'done') {
+            // Map the backend result structure to our IngestResult.
+            // The backend returns { transcript: {...}, extraction: {...}, library_stats: {...} }
+            const res = event.result as Record<string, Record<string, unknown>> | undefined
+            const transcript = res?.transcript ?? {}
+            const extraction = res?.extraction ?? {}
+            const stats = (extraction.stats ?? {}) as Record<string, number>
+            const name = (transcript.source_name as string) ?? sourceName
+            const wordCount = (transcript.word_count as number) ?? 0
+            const examplesAdded = stats.metaprogram_examples ?? 0
+            const patternsAdded = stats.language_patterns ?? 0
+            finalResult = {
+              source: name,
+              status: 'success',
+              message: `Ingested (${wordCount.toLocaleString()} words)`,
+              examples_added: examplesAdded,
+              patterns_added: patternsAdded,
+            }
+          } else if (event.type === 'error') {
+            finalResult = {
+              source: sourceName,
+              status: 'error',
+              message: event.message ?? 'Unknown error',
+            }
+          }
+        }
+      }
+
+      // Replace the processing entry with the final result
+      setIngestResults(prev =>
+        prev.map(r =>
+          r._processingKey === processingKey
+            ? (finalResult ?? { source: sourceName, status: 'error' as const, message: 'Stream ended without result' })
+            : r
+        )
+      )
+    } catch {
+      // Network error — replace processing entry
+      setIngestResults(prev =>
+        prev.map(r =>
+          r._processingKey === processingKey
+            ? { source: sourceName, status: 'error' as const, message: 'Connection lost' }
+            : r
+        )
+      )
+    } finally {
+      setIngesting(false)
+    }
+  }
+
+  const handleIngestUrl = useCallback(async () => {
+    if (!ytUrl.trim()) return
+    const url = ytUrl.trim()
     setYtUrl('')
-    setIngesting(false)
+    await streamIngest(
+      '/meta-training/ingest/url/stream',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      },
+      url,
+    )
   }, [ytUrl])
 
   const handleIngestText = useCallback(async () => {
     if (!pasteText.trim()) return
-    setIngesting(true)
-    const result = await safeFetch<IngestResult>('/meta-training/ingest/text', {
-      method: 'POST',
-      body: JSON.stringify({ text: pasteText.trim(), source_name: pasteSourceName.trim() || 'Pasted text' }),
-      headers: settings.openaiApiKey ? { 'X-OpenAI-Key': settings.openaiApiKey } : undefined,
-    })
-    setIngestResults(prev => [
-      result ?? { source: pasteSourceName || 'Text', status: 'error', message: 'Failed to connect to server' },
-      ...prev,
-    ])
+    const text = pasteText.trim()
+    const name = pasteSourceName.trim() || 'Pasted text'
     setPasteText('')
     setPasteSourceName('')
-    setIngesting(false)
+    await streamIngest(
+      '/meta-training/ingest/text/stream',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, source_name: name }),
+      },
+      name,
+    )
   }, [pasteText, pasteSourceName])
 
   const handleFileDrop = useCallback(async (e: DragEvent<HTMLDivElement>) => {
@@ -391,7 +539,6 @@ export function MetaEnginePage() {
   }, [])
 
   async function uploadFiles(files: File[]) {
-    setIngesting(true)
     for (const file of files) {
       setIngestingFile(file.name)
       try {
@@ -645,12 +792,16 @@ export function MetaEnginePage() {
                 <div
                   key={i}
                   className={`flex items-start gap-2 rounded-lg border px-3 py-2.5 text-sm ${
-                    r.status === 'success'
-                      ? 'border-emerald-700/50 bg-emerald-950/30 text-emerald-300'
-                      : 'border-red-700/50 bg-red-950/30 text-red-300'
+                    r.status === 'processing'
+                      ? 'border-orange-600/50 bg-orange-950/20 text-orange-200'
+                      : r.status === 'success'
+                        ? 'border-emerald-700/50 bg-emerald-950/30 text-emerald-300'
+                        : 'border-red-700/50 bg-red-950/30 text-red-300'
                   }`}
                 >
-                  {r.status === 'success' ? (
+                  {r.status === 'processing' ? (
+                    <Loader2 size={14} className="mt-0.5 shrink-0 text-orange-400 animate-spin" />
+                  ) : r.status === 'success' ? (
                     <CheckCircle2 size={14} className="mt-0.5 shrink-0 text-emerald-500" />
                   ) : (
                     <XCircle size={14} className="mt-0.5 shrink-0 text-red-500" />
@@ -662,6 +813,17 @@ export function MetaEnginePage() {
                       <span className="ml-2 text-xs text-zinc-500">
                         (+{r.examples_added} examples, +{r.patterns_added ?? 0} patterns)
                       </span>
+                    )}
+                    {/* Progress bar for active ingestion */}
+                    {r.status === 'processing' && (
+                      <div className="mt-2">
+                        <div className="h-1.5 w-full rounded-full bg-zinc-700 overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-gradient-to-r from-orange-500 to-amber-400 transition-all duration-500 ease-out"
+                            style={{ width: `${r._progressPct ?? 0}%` }}
+                          />
+                        </div>
+                      </div>
                     )}
                   </div>
                 </div>

@@ -23,6 +23,8 @@ Endpoints:
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 from pathlib import Path
 from typing import Optional
@@ -159,6 +161,130 @@ async def ingest_text(request: IngestTextRequest):
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ═══════════════════════════════════════════════════════════════
+# SSE STREAMING INGEST ENDPOINTS
+# ═══════════════════════════════════════════════════════════════
+#
+# These mirror the POST ingest endpoints above but stream progress
+# messages to the client via Server-Sent Events. The on_progress
+# callback pushes messages into an asyncio.Queue which the event
+# generator yields from as SSE data frames.
+
+
+def _sse_event(event_type: str, payload: dict) -> str:
+    """Format a single SSE data frame."""
+    return f"data: {json.dumps({'type': event_type, **payload})}\n\n"
+
+
+async def _stream_ingest(coro) -> StreamingResponse:
+    """
+    Run an ingest coroutine that feeds an asyncio.Queue via on_progress,
+    and yield SSE events for each progress message plus the final result.
+    """
+    progress_queue: asyncio.Queue[str] = asyncio.Queue()
+
+    def on_progress(msg: str) -> None:
+        progress_queue.put_nowait(msg)
+
+    async def event_generator():
+        # Start the ingest work as a background task
+        task = asyncio.create_task(coro(on_progress))
+
+        # Yield progress messages while the task runs
+        while not task.done():
+            try:
+                msg = await asyncio.wait_for(progress_queue.get(), timeout=0.5)
+                yield _sse_event("progress", {"message": msg})
+            except asyncio.TimeoutError:
+                continue
+
+        # Drain any remaining progress messages queued after task finished
+        while not progress_queue.empty():
+            msg = progress_queue.get_nowait()
+            yield _sse_event("progress", {"message": msg})
+
+        # Yield the final result or error
+        try:
+            result = task.result()
+            yield _sse_event("done", {"result": result})
+        except Exception as e:
+            logger.exception("SSE ingest failed")
+            yield _sse_event("error", {"message": str(e)})
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.post("/ingest/url/stream")
+async def ingest_url_stream(request: IngestURLRequest):
+    """SSE endpoint for YouTube URL ingestion with real-time progress."""
+
+    async def do_ingest(on_progress):
+        return await ingest_source(
+            source=request.url,
+            source_type="youtube",
+            on_progress=on_progress,
+        )
+
+    return await _stream_ingest(do_ingest)
+
+
+@router.post("/ingest/upload/stream")
+async def ingest_upload_stream(file: UploadFile = File(...)):
+    """SSE endpoint for file upload ingestion with real-time progress."""
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Filename required")
+
+    ext = Path(file.filename).suffix.lower()
+    allowed = AUDIO_EXTENSIONS | VIDEO_EXTENSIONS | TEXT_EXTENSIONS
+    if ext not in allowed:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported format '{ext}'. Allowed: {sorted(allowed)}",
+        )
+
+    # Read file content upfront (before entering the SSE generator)
+    content = await file.read()
+    max_size = 100 * 1024 * 1024 if ext in (AUDIO_EXTENSIONS | VIDEO_EXTENSIONS) else 10 * 1024 * 1024
+    if len(content) > max_size:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large. Max: {max_size // (1024 * 1024)}MB",
+        )
+
+    filename = file.filename
+
+    async def do_ingest(on_progress):
+        return await ingest_source(
+            source="",
+            uploaded_content=content,
+            uploaded_filename=filename,
+            on_progress=on_progress,
+        )
+
+    return await _stream_ingest(do_ingest)
+
+
+@router.post("/ingest/text/stream")
+async def ingest_text_stream(request: IngestTextRequest):
+    """SSE endpoint for raw text ingestion with real-time progress."""
+
+    async def do_ingest(on_progress):
+        return await ingest_source(
+            source=request.text,
+            source_type="paste",
+            on_progress=on_progress,
+        )
+
+    return await _stream_ingest(do_ingest)
 
 
 # ═══════════════════════════════════════════════════════════════

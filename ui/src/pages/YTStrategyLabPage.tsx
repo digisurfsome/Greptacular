@@ -39,6 +39,7 @@ import {
   Wand2,
   Layers,
   MessageSquare,
+  Download,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -167,6 +168,7 @@ let _onSaveError: ((msg: string) => void) | null = null
 function saveProjects(projects: YTStrategyProject[]): void {
   try {
     localStorage.setItem(STORAGE_KEY_PROJECTS, JSON.stringify(projects))
+    syncToServer()
   } catch {
     _onSaveError?.('Failed to save projects — localStorage may be full. Your changes may be lost.')
   }
@@ -185,6 +187,7 @@ function loadSteps(projectId: string): YTStrategyStep[] {
 function saveSteps(projectId: string, steps: YTStrategyStep[]): void {
   try {
     localStorage.setItem(stepsStorageKey(projectId), JSON.stringify(steps))
+    syncToServer()
   } catch {
     _onSaveError?.('Failed to save steps — localStorage may be full. Your changes may be lost.')
   }
@@ -193,8 +196,73 @@ function saveSteps(projectId: string, steps: YTStrategyStep[]): void {
 function deleteSteps(projectId: string): void {
   try {
     localStorage.removeItem(stepsStorageKey(projectId))
+    syncToServer()
   } catch {
     // Ignore
+  }
+}
+
+// ============================================================================
+// Background sync to server (debounced, fire-and-forget)
+// ============================================================================
+
+/** Gather all yt-lab* keys from localStorage and POST to the backend export endpoint. */
+function _doSyncToServer(): void {
+  try {
+    const data: Record<string, unknown> = {}
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (key && key.startsWith('yt-lab')) {
+        try {
+          data[key] = JSON.parse(localStorage.getItem(key) || 'null')
+        } catch {
+          data[key] = localStorage.getItem(key)
+        }
+      }
+    }
+    // Fire-and-forget — no await, no error handling. This is background sync.
+    fetch('/api/yt-lab/export', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data }),
+    }).catch(() => {
+      // Silently ignore — server may be down, network may be unavailable
+    })
+  } catch {
+    // Silently ignore any localStorage read errors
+  }
+}
+
+/** Debounce timer handle for syncToServer. */
+let _syncTimer: ReturnType<typeof setTimeout> | null = null
+
+/** Debounced sync — waits 2 seconds after the last call before actually syncing. */
+function syncToServer(): void {
+  if (_syncTimer) clearTimeout(_syncTimer)
+  _syncTimer = setTimeout(_doSyncToServer, 2000)
+}
+
+/**
+ * Restore yt-lab data from the server export file into localStorage.
+ * Called once on page load when localStorage has no yt-lab-projects key.
+ * Returns true if data was restored.
+ */
+async function restoreFromServer(): Promise<boolean> {
+  try {
+    const resp = await fetch('/api/yt-lab/export')
+    if (!resp.ok) return false
+    const result = await resp.json()
+    if (!result.data || typeof result.data !== 'object') return false
+    const entries = Object.entries(result.data)
+    if (entries.length === 0) return false
+    for (const [key, value] of entries) {
+      if (key.startsWith('yt-lab')) {
+        localStorage.setItem(key, typeof value === 'string' ? value : JSON.stringify(value))
+      }
+    }
+    return true
+  } catch {
+    return false
   }
 }
 
@@ -1186,6 +1254,7 @@ function StrategyBuilder({
       setDiscoveryResult(result)
       try {
         localStorage.setItem(discoveryStorageKey(project.id), JSON.stringify(result))
+        syncToServer()
       } catch {
         // localStorage may be full — log but don't crash
         console.warn('Failed to persist discovery results to localStorage')
@@ -1205,6 +1274,7 @@ function StrategyBuilder({
         } else {
           localStorage.removeItem(opportunityStorageKey(project.id))
         }
+        syncToServer()
       } catch { /* ignore */ }
       // Auto-populate the processing user context with the selected opportunity
       if (opp) {
@@ -1365,6 +1435,7 @@ function StrategyBuilder({
     setProcessingTime(null)
     try {
       localStorage.setItem(ingestStorageKey(project.id), JSON.stringify(result))
+      syncToServer()
     } catch {
       console.warn('Failed to persist ingest result to localStorage')
     }
@@ -1698,6 +1769,7 @@ function StrategyBuilder({
                       result.screenshot_summary,
                     )
                   }
+                  syncToServer()
                 }
               }}
             />
@@ -1886,6 +1958,18 @@ export function YTStrategyLabPage(): React.JSX.Element {
   const [saveError, setSaveError] = useState<string | null>(null)
   const [showGuide, setShowGuide] = useState(false)
   const [showPRDModal, setShowPRDModal] = useState(false)
+
+  // Auto-restore from server if localStorage is empty (e.g., browser cache cleared)
+  useEffect(() => {
+    const existing = localStorage.getItem(STORAGE_KEY_PROJECTS)
+    if (!existing || existing === '[]') {
+      restoreFromServer().then(restored => {
+        if (restored) {
+          setProjects(loadProjects())
+        }
+      })
+    }
+  }, [])
 
   /** Handle PRD extraction complete — create a project from extracted steps. */
   const handlePRDExtractionComplete = useCallback((result: TFPRDExtractionResult) => {
@@ -2127,6 +2211,33 @@ export function YTStrategyLabPage(): React.JSX.Element {
     setView('detail')
   }, [])
 
+  /** Export all YT Lab localStorage data to a JSON file on disk. */
+  const handleExportAll = useCallback(async () => {
+    const data: Record<string, unknown> = {}
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (key && key.startsWith('yt-lab')) {
+        try {
+          data[key] = JSON.parse(localStorage.getItem(key) || 'null')
+        } catch {
+          data[key] = localStorage.getItem(key)
+        }
+      }
+    }
+    try {
+      const resp = await fetch('/api/yt-lab/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data }),
+      })
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+      const result = await resp.json()
+      alert(`Exported to: ${result.path}`)
+    } catch (err) {
+      alert(`Export failed: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }, [])
+
   // Execution view replaces the entire page layout (it has its own top bar)
   if (view === 'execution' && selectedProject) {
     const executionSteps = loadSteps(selectedProject.id)
@@ -2284,6 +2395,10 @@ export function YTStrategyLabPage(): React.JSX.Element {
                   className="h-8 w-8 p-0"
                 >
                   <BookOpen size={14} />
+                </Button>
+                <Button variant="outline" onClick={handleExportAll} className="gap-1.5 shrink-0">
+                  <Download size={16} />
+                  Export All
                 </Button>
                 <Button variant="outline" onClick={() => setShowPRDModal(true)} className="gap-1.5 shrink-0">
                   <FileText size={16} />

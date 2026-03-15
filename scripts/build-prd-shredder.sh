@@ -92,9 +92,15 @@ echo "Launching claude -p to build the PRD Shredder..."
 echo "This will take 3-10 minutes."
 echo ""
 
-claude -p "$PROMPT" \
+# Write prompt to temp file to avoid "Argument list too long" error
+PROMPT_FILE=$(mktemp)
+echo "$PROMPT" > "$PROMPT_FILE"
+
+cat "$PROMPT_FILE" | claude -p \
   --allowedTools "Edit,Write,Read,Bash(ruff*),Bash(git*),Bash(python*),Bash(pip*),Bash(ls*),Bash(cat*),Bash(mkdir*),Glob,Grep" \
   2>&1 | tee "$REPO_ROOT/.claude/build-logs/prd-shredder-$(date +%Y%m%d-%H%M%S).log"
+
+rm -f "$PROMPT_FILE"
 
 echo ""
 echo "=== Build complete ==="

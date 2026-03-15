@@ -776,30 +776,37 @@ class PRDShredder:
         if not claude_cli:
             raise RuntimeError("Claude CLI not found on PATH")
 
+        # Force subscription auth — clear ALL vars that could cause API key auth
         env = os.environ.copy()
-        env.pop("CLAUDECODE", None)
-        # Force subscription auth — clear API key so CLI uses OAuth credentials
-        env.pop("ANTHROPIC_API_KEY", None)
-        env.pop("ANTHROPIC_AUTH_TOKEN", None)
+        for var in [
+            "CLAUDECODE", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
+            "ANTHROPIC_BASE_URL", "CLAUDE_CODE_OAUTH_TOKEN",
+            "CLAUDE_AGENT_SDK_VERSION",
+        ]:
+            env.pop(var, None)
 
-        # Write prompt to temp file to avoid Windows command-line length limits
-        # (Windows has ~32K char limit for command arguments)
-        import tempfile
-        prompt_file = Path(tempfile.mktemp(prefix="prd_prompt_", suffix=".txt"))
-        prompt_file.write_text(full_prompt, encoding="utf-8")
+        cleaned = [v for v in ["CLAUDECODE", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
+                               "ANTHROPIC_BASE_URL"] if v in os.environ]
+        if cleaned:
+            on_progress(f"Cleared env vars for subscription auth: {', '.join(cleaned)}")
 
         on_progress("Agent coding now...")
-        # Use temp file + shell pipe to avoid Windows command-line length limits
-        # claude CLI reads from stdin when piped
-        prompt_path_str = str(prompt_file).replace("\\", "/")
-        shell_cmd = f'cat "{prompt_path_str}" | "{claude_cli}" -p --model claude-sonnet-4-6'
-        process = await asyncio.create_subprocess_shell(
-            shell_cmd,
+        # Pipe prompt via stdin — avoids Windows command-line length limits entirely
+        # claude -p reads from stdin when no prompt argument is given
+        process = await asyncio.create_subprocess_exec(
+            claude_cli, "-p", "--model", "claude-sonnet-4-6",
             cwd=str(repo_dir),
+            stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=env,
         )
+
+        # Send prompt to stdin and close it
+        prompt_bytes = full_prompt.encode("utf-8")
+        process.stdin.write(prompt_bytes)
+        await process.stdin.drain()
+        process.stdin.close()
 
         # Stream ALL output — no skipping lines
         stdout_lines: list[str] = []
@@ -822,12 +829,6 @@ class PRDShredder:
 
         return_code = await process.wait()
         on_progress(f"Agent finished — exit code {return_code} | {len(stdout_lines)} output lines")
-
-        # Clean up temp prompt file
-        try:
-            prompt_file.unlink(missing_ok=True)
-        except Exception:
-            pass
 
         if return_code != 0:
             on_progress(f"Warning: agent exited with code {return_code}")
@@ -921,20 +922,22 @@ class PRDShredder:
         # TypeScript build if ui/ exists
         ui_dir = repo_dir / "ui"
         if ui_dir.exists() and (ui_dir / "package.json").exists():
-            on_progress("Running TypeScript build...")
-            # Use npm.cmd on Windows, npm on Unix
-            npm_cmd = "npm.cmd" if os.name == "nt" else "npm"
-            ts_result = subprocess.run(
-                [npm_cmd, "run", "build"],
-                cwd=str(ui_dir),
-                capture_output=True,
-                text=True,
-                timeout=120,
-            )
-            if ts_result.returncode != 0:
-                on_progress(f"TS build warning: {ts_result.stderr[:300]}")
+            npm_path = shutil.which("npm.cmd") or shutil.which("npm")
+            if not npm_path:
+                on_progress("npm not found on PATH — skipping TypeScript build")
             else:
-                on_progress("TypeScript build: passed")
+                on_progress("Running TypeScript build...")
+                ts_result = subprocess.run(
+                    [npm_path, "run", "build"],
+                    cwd=str(ui_dir),
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                )
+                if ts_result.returncode != 0:
+                    on_progress(f"TS build warning: {ts_result.stderr[:300]}")
+                else:
+                    on_progress("TypeScript build: passed")
 
         # Python tests if pytest is available
         pytest_path = shutil.which("pytest")

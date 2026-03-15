@@ -379,12 +379,66 @@ async def ingest_text_file(
 # TRANSCRIPTION HELPERS
 # ═══════════════════════════════════════════════════════════════
 
+def _split_audio_into_chunks(file_path: str, max_chunk_mb: int = 24) -> list[str]:
+    """Split a large audio file into chunks small enough for the Whisper API (25MB limit).
+
+    Uses ffmpeg to split by duration. Returns list of temp file paths.
+    Caller is responsible for cleaning up the temp files.
+    """
+    file_size = os.path.getsize(file_path)
+    max_bytes = max_chunk_mb * 1024 * 1024
+
+    if file_size <= max_bytes:
+        return [file_path]  # No splitting needed
+
+    # Get duration via ffprobe
+    probe = subprocess.run(
+        ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+         "-of", "default=noprint_wrappers=1:nokey=1", file_path],
+        capture_output=True, text=True, timeout=30,
+    )
+    if probe.returncode != 0:
+        raise RuntimeError(f"ffprobe failed: {probe.stderr}")
+
+    total_duration = float(probe.stdout.strip())
+    num_chunks = max(2, int(file_size / max_bytes) + 1)
+    chunk_duration = total_duration / num_chunks
+
+    chunk_paths = []
+    ext = Path(file_path).suffix
+    try:
+        for i in range(num_chunks):
+            start = i * chunk_duration
+            chunk_path = tempfile.mktemp(suffix=f"_chunk{i}{ext}")
+            result = subprocess.run(
+                [
+                    "ffmpeg", "-i", file_path,
+                    "-ss", str(start),
+                    "-t", str(chunk_duration),
+                    "-c", "copy",  # fast, no re-encoding
+                    "-y", chunk_path,
+                ],
+                capture_output=True, text=True, timeout=120,
+            )
+            if result.returncode != 0:
+                raise RuntimeError(f"ffmpeg chunk split failed: {result.stderr}")
+            chunk_paths.append(chunk_path)
+    except Exception:
+        # Clean up any chunks created so far on failure
+        for p in chunk_paths:
+            if os.path.exists(p):
+                os.unlink(p)
+        raise
+
+    return chunk_paths
+
+
 async def _transcribe_openai_whisper(
     file_path: str,
     api_key: str,
     on_progress: Optional[Callable] = None,
 ) -> str:
-    """Use OpenAI's Whisper API for transcription."""
+    """Use OpenAI's Whisper API for transcription. Auto-chunks files > 24MB."""
     import asyncio
 
     if on_progress:
@@ -392,16 +446,35 @@ async def _transcribe_openai_whisper(
 
     def _call_api():
         import httpx
-        with open(file_path, "rb") as f:
-            response = httpx.post(
-                "https://api.openai.com/v1/audio/transcriptions",
-                headers={"Authorization": f"Bearer {api_key}"},
-                files={"file": (Path(file_path).name, f, "audio/mpeg")},
-                data={"model": "whisper-1", "response_format": "text"},
-                timeout=300,
-            )
-            response.raise_for_status()
-            return response.text
+
+        chunk_paths = _split_audio_into_chunks(file_path)
+        is_chunked = chunk_paths[0] != file_path
+
+        try:
+            transcripts = []
+            for idx, chunk in enumerate(chunk_paths):
+                if is_chunked and on_progress:
+                    on_progress(f"Transcribing chunk {idx + 1}/{len(chunk_paths)}...")
+                with open(chunk, "rb") as f:
+                    response = httpx.post(
+                        "https://api.openai.com/v1/audio/transcriptions",
+                        headers={"Authorization": f"Bearer {api_key}"},
+                        files={"file": (Path(chunk).name, f, "audio/mpeg")},
+                        data={"model": "whisper-1", "response_format": "text"},
+                        timeout=300,
+                    )
+                    response.raise_for_status()
+                    transcripts.append(response.text)
+
+            return " ".join(transcripts)
+        finally:
+            if is_chunked:
+                for p in chunk_paths:
+                    if os.path.exists(p):
+                        try:
+                            os.unlink(p)
+                        except Exception:
+                            pass
 
     return await asyncio.get_event_loop().run_in_executor(None, _call_api)
 

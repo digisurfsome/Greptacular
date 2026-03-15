@@ -119,9 +119,9 @@ async def ingest_upload(
             detail=f"Unsupported format '{ext}'. Allowed: {sorted(allowed)}",
         )
 
-    # Check file size (100MB max for audio/video, 10MB for text)
+    # Check file size (500MB max for audio/video, 10MB for text)
     content = await file.read()
-    max_size = 100 * 1024 * 1024 if ext in (AUDIO_EXTENSIONS | VIDEO_EXTENSIONS) else 10 * 1024 * 1024
+    max_size = 500 * 1024 * 1024 if ext in (AUDIO_EXTENSIONS | VIDEO_EXTENSIONS) else 10 * 1024 * 1024
     if len(content) > max_size:
         raise HTTPException(
             status_code=413,

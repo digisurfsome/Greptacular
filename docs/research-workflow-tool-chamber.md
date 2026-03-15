@@ -1,0 +1,498 @@
+# Research: The Tool Chamber — Modular Execution Layer for YT Lab Flows
+
+**Created: 2026-03-15**
+**Status: Research complete — ready for decision**
+**Purpose: Find/build the missing "tool chamber" that lets YT Lab steps actually execute**
+
+---
+
+## The Problem in One Sentence
+
+YT Lab creates beautiful 8-12 step workflow chains from YouTube videos, but there's no standardized execution layer to actually DO each step. We need a "revolver chamber" of tools that spins to the right one for each step type.
+
+---
+
+## What We Already Have
+
+### YT Lab Pipeline (Working)
+```
+YouTube URL → Ingest → Discovery → Strategy Extraction → Steps[]
+```
+
+Each step has: `title, description, prompt, expectedOutput, notes, model`
+
+### Tool Analyzer PRD (Ready to Build)
+- Component Registry — catalog of what tools exist
+- Quick Check — "can we make this?"
+- Gap Analysis — "what's missing?"
+- Self-Building — spawns agents to build missing components
+
+### PRD Shredder (Partially Built)
+- Queue PRDs → Analyze → Execute → Commit → Push
+- Already working: Phases 1-3
+
+### Stripe Minion Build Rules (Documented)
+- Blueprint Pattern: deterministic [ROBOT] steps + creative [AGENT] steps
+- Quality Gates: shift feedback left, lint locally before CI
+- Bounded iteration: max 2 retries, then hand off
+- Tool curation: ~15 tools per agent, not 500
+
+---
+
+## The Missing Piece: The Tool Chamber
+
+Each YT Lab step needs to be executed by one or more tools. The "chamber" metaphor is perfect — it's a revolver with N chambers, each loaded with a different execution capability. The system spins to the right tool based on what the step needs.
+
+### Step Types We Need to Handle
+
+From analyzing YT Lab output patterns:
+
+| Step Type | Example | Tool Needed |
+|---|---|---|
+| AI Generation | "Write a brand guide" | Claude API (subscription) |
+| Web Research | "Research competitor ads" | Web search + scraping |
+| Browser Action | "Log into Meta Ads Manager" | Playwright or Computer Use |
+| File Creation | "Export as PDF/CSV/HTML" | File writer |
+| API Call | "Post to WordPress" | HTTP client + auth |
+| Data Transform | "Merge all results into one doc" | Code execution |
+| Human Review | "Review and approve copy" | Pause + notification |
+| Deploy | "Push to Google Sheets" | Sheets API |
+| Email/Notify | "Send results to client" | SMTP/SendGrid |
+| Schedule | "Run this every Monday" | Cron/scheduler |
+
+### The "Deterministic Hallway" Concept
+
+From Stripe's Minion blog articles — this is the key insight:
+
+> "The walls matter more than the model."
+
+**What this means for the tool chamber:**
+- Each step in a YT Lab flow is a HALLWAY — the AI can choose left or right at decision points, but it can't go through walls
+- The "walls" are the tool options available for that step type
+- The AI picks which tool to use (Playwright vs Computer Use vs API), but the tool itself executes deterministically
+- This is the hybrid: **AI decides WHICH tool, tool executes DETERMINISTICALLY**
+
+```
+Step: "Upload ads to Meta"
+                |
+    AI Decision: How to do this?
+                |
+        ┌───────┼───────┐
+        │       │       │
+   Playwright  Computer  Meta API
+   (known UI)   Use     (if exists)
+        │     (unknown)     │
+        │       │           │
+   [ROBOT]   [ROBOT]    [ROBOT]
+   Click,    See screen,  POST
+   fill,     click what   /ads
+   submit    looks right  endpoint
+```
+
+The trick: **sleeve the deterministic around the AI**. The overall flow is deterministic (step 1 → step 2 → step 3). Within each step, the AI picks the tool. But the tool itself runs as a robot step. This is the "hallway theory" — options are constrained, outcomes are predictable.
+
+---
+
+## MIT/Apache-2.0 Workflow Frameworks Ranked for Our Use Case
+
+After extensive research, here are the frameworks ranked by fit for the "tool chamber" concept. The key criteria: (1) can execute workflows, not just plan them, (2) modular node architecture, (3) MIT or Apache-2.0, (4) can be embedded/scripted, not just used via UI.
+
+### TIER 1: Best Fit — Could Use Directly
+
+#### 1. Activepieces — MIT License
+- **GitHub:** [activepieces/activepieces](https://github.com/activepieces/activepieces) — ~20K stars
+- **License:** MIT
+- **What it is:** Open-source Zapier alternative with 500+ "pieces" (connectors)
+- **Why it fits:**
+  - Each "piece" is an npm package — you can literally pull individual connectors out
+  - 280+ pieces already work as MCP servers (Claude Desktop, Cursor compatible)
+  - TypeScript-native, type-safe piece framework
+  - Visual flow builder + code steps
+  - Human-in-the-loop (approval gates, delays)
+  - Self-hosted via Docker
+- **The play:** Don't use the full Activepieces platform. Pull individual PIECES out as standalone tool modules. Each piece = one chamber in the revolver. Gmail piece, Sheets piece, Slack piece, HTTP piece — they're all isolated npm packages.
+- **Fit score: 9/10** — MIT license, modular pieces architecture, can extract individual connectors
+
+#### 2. Temporal — MIT License
+- **GitHub:** [temporalio/temporal](https://github.com/temporalio/temporal) — ~12K stars
+- **License:** MIT
+- **What it is:** Durable execution engine for workflows that survive failures
+- **Why it fits:**
+  - Steps are "activities" — isolated, retryable, timeout-aware
+  - Workflows are code (Python, TypeScript, Go) — maximum flexibility
+  - Built-in retry logic, state persistence, failure recovery
+  - Perfect for long-running multi-step agent workflows
+  - Self-hosted, production-grade
+- **The play:** Each YT Lab step becomes a Temporal activity. The workflow orchestrator sequences them. If step 3 fails, Temporal retries only step 3. State persists across restarts.
+- **Fit score: 8/10** — MIT license, battle-tested at Uber/Netflix, but requires more setup than Activepieces
+
+#### 3. LangGraph — MIT License
+- **GitHub:** [langchain-ai/langgraph](https://github.com/langchain-ai/langgraph) — ~15K stars
+- **License:** MIT
+- **What it is:** Agent orchestration as directed graphs with tool calling
+- **Why it fits:**
+  - BUILT for exactly this: AI agent + tool use workflows
+  - Graph-based: nodes are tools, edges are decisions
+  - Native tool calling — the AI decides which tool, the graph executes it
+  - Durable execution, checkpointing, human-in-the-loop
+  - Used by Uber, LinkedIn, GitLab
+  - Python-native, works with any LLM
+- **The play:** Each YT Lab step is a LangGraph node. The graph routes between tool options (Playwright, API call, Computer Use) based on AI decision. State persists. Can pause for human approval.
+- **Fit score: 9/10** — MIT license, purpose-built for AI+tool workflows, Python-native matches our stack
+
+#### 4. Hatchet — MIT License
+- **GitHub:** [hatchet-dev/hatchet](https://github.com/hatchet-dev/hatchet) — ~4K stars
+- **License:** MIT
+- **What it is:** Distributed task queue + workflow engine
+- **Why it fits:**
+  - Fully MIT, fully self-hostable (unlike Inngest)
+  - Worker-based: each tool type runs as a worker
+  - Concurrency controls, rate limiting built in
+  - TypeScript + Python SDKs
+  - Lightweight compared to Temporal
+- **The play:** Each tool type (Playwright worker, API worker, Claude worker) is a Hatchet worker. Steps route to the right worker. Simpler than Temporal, still durable.
+- **Fit score: 7/10** — MIT license, simpler than Temporal, but smaller ecosystem
+
+### TIER 2: Good Fit — Need Some Adaptation
+
+#### 5. Node-RED — Apache 2.0
+- **GitHub:** [node-red/node-red](https://github.com/node-red/node-red) — ~20K stars
+- **License:** Apache 2.0
+- **What it is:** Flow-based visual programming for wiring APIs, hardware, and services
+- **Why it fits:**
+  - 5,000+ community nodes for every service imaginable
+  - Visual flow editor — the AI could programmatically create flows
+  - Subflows for reusable tool patterns
+  - Message-passing architecture matches step-to-step data flow
+  - Lightweight, runs on anything
+- **The play:** Each YT Lab step type maps to a Node-RED node or subflow. The AI constructs a Node-RED flow from the step list. Node-RED executes it. Visual debugging.
+- **Caution:** Node-RED is JavaScript-only (our backend is Python). Would need a bridge.
+- **Fit score: 7/10** — Massive node library, visual editing, but JS-only is a friction point
+
+#### 6. Kestra — Apache 2.0
+- **GitHub:** [kestra-io/kestra](https://github.com/kestra-io/kestra) — ~18K stars
+- **License:** Apache 2.0
+- **What it is:** Event-driven orchestration platform, 600+ plugins
+- **Why it fits:**
+  - YAML-defined workflows — easy to generate programmatically
+  - 600+ plugins covering databases, cloud, messaging, APIs
+  - Supports Python, Node.js, Go, Shell within workflows
+  - Event triggers, scheduling, retry logic
+  - Self-hosted via Docker
+- **The play:** YT Lab generates a Kestra YAML workflow from the step list. Each step maps to a Kestra task/plugin. Kestra handles execution, retries, scheduling.
+- **Caution:** Java-based (heavier resource footprint). YAML can get complex.
+- **Fit score: 7/10** — Huge plugin library, declarative YAML, but Java overhead
+
+#### 7. Trigger.dev — Apache 2.0
+- **GitHub:** [triggerdotdev/trigger.dev](https://github.com/triggerdotdev/trigger.dev) — ~10K stars
+- **License:** Apache 2.0
+- **What it is:** Background job/workflow engine with durable execution
+- **Why it fits:**
+  - v3 runs long-running tasks with checkpointing
+  - Built-in integrations (OpenAI, Slack, Airtable, etc.)
+  - Self-hosted via Docker, unlimited runs
+  - Real-time monitoring dashboard
+- **The play:** Each tool type is a Trigger.dev task. Steps chain together. Checkpointing means long browser automation tasks survive failures.
+- **Caution:** TypeScript-only. Our backend is Python.
+- **Fit score: 6/10** — Great DX, Apache 2.0, but TypeScript-only
+
+#### 8. Prefect — Apache 2.0
+- **GitHub:** [PrefectHQ/prefect](https://github.com/PrefectHQ/prefect) — ~18K stars
+- **License:** Apache 2.0
+- **What it is:** Python-native workflow orchestration
+- **Why it fits:**
+  - Any Python function becomes an orchestrated task with `@task` decorator
+  - Async execution, concurrent tasks, complex flow patterns
+  - Self-hosted server option
+  - Dashboard for monitoring
+  - Python-native = zero friction with our stack
+- **The play:** Each tool is a Prefect task. Flows are Python functions with `@flow` decorator. The Tool Analyzer generates Prefect flow code from YT Lab steps.
+- **Fit score: 7/10** — Python-native, Apache 2.0, but more data-pipeline focused than general automation
+
+### TIER 3: Worth Knowing — Different Angle
+
+#### 9. CrewAI — MIT License
+- **GitHub:** [crewAIInc/crewAI](https://github.com/crewAIInc/crewAI) — ~46K stars
+- **License:** MIT (open-source core)
+- **What it is:** Multi-agent orchestration framework with 100+ built-in tools
+- **Why it fits:**
+  - Role-based agent teams — each "crew member" has specific tools
+  - 100+ open-source tools out of the box
+  - Python-native, model-agnostic
+  - The "revolver chamber" is built in — agents have tool lists
+- **The play:** Each YT Lab step becomes a CrewAI task assigned to an agent with the right tools. The crew executes the step chain collaboratively.
+- **Caution:** More agent-framework than workflow-engine. Might be too opinionated.
+- **Fit score: 6/10** — Massive community, good tools, but agent-centric rather than workflow-centric
+
+#### 10. Dagster — Apache 2.0
+- **GitHub:** [dagster-io/dagster](https://github.com/dagster-io/dagster) — ~12K stars
+- **License:** Apache 2.0
+- **What it is:** Data orchestration platform with asset-centric approach
+- **Why it fits:**
+  - Python-native, strong typing, great DevX
+  - "Software-defined assets" — each step output is a tracked asset
+  - Built-in scheduling, retries, partitioning
+  - Excellent observability
+- **The play:** Each step output is a Dagster asset. The step chain is a Dagster graph. Strong for data-heavy workflows.
+- **Caution:** Very data-pipeline focused. Less suited for browser automation / API interaction steps.
+- **Fit score: 5/10** — Great Python orchestration, but designed for data, not general automation
+
+---
+
+## The Recommendation: A Hybrid Approach
+
+After studying everything — the YT Lab pipeline, the Stripe Minion patterns, the PRDs, and these 10 frameworks — here's what I think is the right move:
+
+### The Architecture: "Deterministic Hallway with Tool Chambers"
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    YT LAB STEP EXECUTOR                       │
+│                                                               │
+│  Step Chain: [1] → [2] → [3] → [4] → ... → [N]             │
+│              ↓      ↓      ↓      ↓            ↓             │
+│           ┌──┴──┐┌──┴──┐┌──┴──┐┌──┴──┐    ┌──┴──┐          │
+│           │TOOL ││TOOL ││TOOL ││TOOL │    │TOOL │          │
+│           │CHAM ││CHAM ││CHAM ││CHAM │    │CHAM │          │
+│           │BER  ││BER  ││BER  ││BER  │    │BER  │          │
+│           └─────┘└─────┘└─────┘└─────┘    └─────┘          │
+│                                                               │
+│  Each chamber has 2-5 tool options:                           │
+│  ┌─────────────────────┐                                      │
+│  │ TOOL CHAMBER        │                                      │
+│  │                     │                                      │
+│  │  [1] Claude API  ←──── Default for AI generation          │
+│  │  [2] Playwright  ←──── For known/scripted web actions     │
+│  │  [3] Computer Use ←─── For unknown/dynamic web actions    │
+│  │  [4] HTTP Client  ←─── For direct API calls               │
+│  │  [5] File Writer  ←─── For creating outputs               │
+│  │                     │                                      │
+│  │  AI SELECTS → Tool executes DETERMINISTICALLY             │
+│  └─────────────────────┘                                      │
+│                                                               │
+│  ORCHESTRATOR: LangGraph (MIT) — graph-based routing          │
+│  CONNECTORS: Activepieces Pieces (MIT) — pre-built tools      │
+│  DURABILITY: Temporal patterns — retry, persist, recover      │
+│  RULES: Stripe Blueprint — [ROBOT] + [AGENT] interleaving    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Why This Combination
+
+1. **LangGraph for the Orchestrator** — It's MIT, Python-native (matches our stack), purpose-built for AI+tool workflows. The graph structure naturally maps to YT Lab step chains with conditional routing. It handles the "which tool?" decision.
+
+2. **Activepieces Pieces for Pre-Built Connectors** — MIT license, 280+ pieces available as standalone npm packages. Instead of building a Gmail connector, Sheets connector, Slack connector from scratch, we pull them from Activepieces. Each piece = one tool option in the chamber.
+
+3. **Stripe Blueprint Pattern for Execution Control** — Already documented in our codebase. Each step alternates [ROBOT] (deterministic tool execution) and [AGENT] (AI decision-making). Bounded iteration (max 2 retries). Shift feedback left.
+
+4. **Temporal Patterns for Durability** — Not necessarily running full Temporal, but adopting its patterns: durable execution, activity-level retries, state persistence. LangGraph already has checkpointing that covers most of this.
+
+### Why NOT Just Use One Framework
+
+No single framework does everything:
+- LangGraph: Great orchestration, no pre-built connectors
+- Activepieces: Great connectors, not designed for AI agent routing
+- Temporal: Great durability, overkill for simple steps
+- Node-RED: Great visual editing, wrong language (JS vs Python)
+
+The hybrid takes the best of each:
+- **Decision layer**: LangGraph (AI routing)
+- **Connector layer**: Activepieces pieces (pre-built tools)
+- **Execution layer**: Python + Playwright + Computer Use
+- **Control layer**: Stripe Blueprint rules (deterministic structure)
+
+---
+
+## The "Something New Nobody Has Thought Of" — Skill-Sleeved Determinism
+
+Here's the creative synthesis you asked me to think about:
+
+### The Insight
+
+Stripe says "put the AI in a hallway with walls." But what if the WALLS themselves are AI-generated, and then FROZEN into deterministic structure?
+
+**The idea: Skills as Frozen Hallways**
+
+1. First time a step type is encountered: AI figures out how to do it (expensive, creative, might fail)
+2. The successful execution path is CAPTURED as a skill — a deterministic sequence of tool calls
+3. Next time that step type appears: the SKILL runs, not the AI
+4. The AI only activates when the skill fails (fallback) or when there's no skill yet
+
+```
+Step: "Upload video to YouTube"
+
+First time (no skill exists):
+  [AGENT] → Decides: use Computer Use → navigates YouTube Studio → uploads → succeeds
+  [CAPTURE] → Records the exact sequence as a skill:
+    1. Open youtube.com/studio
+    2. Click "Create" button
+    3. Click "Upload videos"
+    4. Select file from path
+    5. Fill title field with {title}
+    6. Fill description with {description}
+    7. Click "Next" 3 times
+    8. Click "Publish"
+  [FREEZE] → Skill saved as "youtube_upload_v1"
+
+Second time:
+  [ROBOT] → Runs "youtube_upload_v1" skill → deterministic, fast, no AI tokens
+  [FALLBACK] → If skill fails (YouTube redesigned?), fall back to [AGENT] mode
+  [LEARN] → If agent succeeds with new approach, update skill to v2
+```
+
+### Why This Is New
+
+- **Stripe** freezes the hallway at BUILD TIME (engineers write blueprints)
+- **This** freezes the hallway at RUNTIME (AI writes the blueprint on first success)
+- The system literally **learns its own deterministic structure** over time
+- After 20-30 video workflows, 90% of steps run as frozen skills — fast, cheap, predictable
+- The remaining 10% are genuinely new step types that trigger AI exploration
+
+### The Compound Effect
+
+```
+Week 1:  AI runs 100% of steps   → Expensive, slow, sometimes fails
+Week 2:  AI runs 60% of steps    → 40% are now frozen skills
+Week 4:  AI runs 20% of steps    → 80% are frozen skills
+Week 8:  AI runs 5% of steps     → 95% are frozen skills, near-zero cost
+```
+
+**This is the "micro reality" concept** — each skill is a micro-deterministic-reality within the larger AI-flexible system. The AI creates the micro-realities, then lives within them. It's not AI OR deterministic. It's AI CREATING determinism, then RUNNING within it.
+
+### Implementation Pattern
+
+```python
+class ToolChamber:
+    """The revolver. Spins to the right tool for each step."""
+
+    def execute_step(self, step: YTStrategyStep) -> StepResult:
+        # 1. Check if we have a frozen skill for this step type
+        skill = self.skill_registry.find_skill(step)
+
+        if skill and skill.confidence > 0.8:
+            # [ROBOT] Run the frozen skill
+            result = skill.execute(step)
+            if result.success:
+                return result
+            # Skill failed — fall through to AI
+
+        # 2. No skill or skill failed — AI decides
+        # [AGENT] Which tool to use?
+        tool_choice = self.ai_router.select_tool(step, self.available_tools)
+
+        # 3. [ROBOT] Execute the chosen tool
+        result = tool_choice.tool.execute(step)
+
+        # 4. [CAPTURE] If successful, freeze as skill
+        if result.success:
+            self.skill_registry.capture_skill(
+                step_type=step.type,
+                tool_used=tool_choice.tool,
+                execution_trace=result.trace,
+                version=skill.version + 1 if skill else 1
+            )
+
+        return result
+```
+
+---
+
+## The 5 Frameworks to Test (Ranked Priority)
+
+Based on everything above, here are the 5 to actually test over the next 1-2 days:
+
+### 1. LangGraph (MIT) — Test as the orchestrator
+- `pip install langgraph`
+- Build a simple 3-step flow: AI generation → web search → file output
+- Test tool routing: can it pick between Playwright and Computer Use?
+- Test state persistence: does it survive restarts?
+
+### 2. Activepieces Pieces (MIT) — Test as the connector library
+- Pull 3-4 pieces: Gmail, Sheets, HTTP, Slack
+- Test: can we use them as standalone npm packages outside Activepieces?
+- Test: can Python call them via subprocess or bridge?
+
+### 3. Temporal (MIT) — Test as the durability layer
+- `pip install temporalio`
+- Build a 3-step workflow with activities
+- Test: does it retry failed steps correctly?
+- Test: does state persist if we kill the process?
+
+### 4. Node-RED (Apache 2.0) — Test as the visual editor
+- `npm install node-red`
+- Build a flow that chains API calls
+- Test: can we programmatically create flows (REST API)?
+- Test: can an AI construct a Node-RED flow from a step list?
+
+### 5. CrewAI (MIT) — Test as the agent-tool layer
+- `pip install crewai`
+- Build a crew with 3 agents, each with different tools
+- Test: does tool selection work well?
+- Test: can we feed YT Lab steps as CrewAI tasks?
+
+---
+
+## How This Connects to Everything
+
+```
+YT Lab extracts steps from YouTube video
+        ↓
+Tool Analyzer checks: do we have tools for each step?
+        ↓ YES → Generate tool
+        ↓ NO  → Gap Analysis → which tools are missing?
+                     ↓
+              PRD Shredder builds missing tool/connector
+                     ↓
+              Tool Chamber gets new capability
+                     ↓
+              Re-check → now passes → Generate tool
+                     ↓
+              Tool executes step chain:
+                LangGraph routes each step
+                Skill Registry checks for frozen skills
+                Tool Chamber spins to right tool
+                Stripe Blueprint controls execution
+                     ↓
+              Step output feeds next step
+                     ↓
+              All steps complete → Tool is built and deployed
+                     ↓
+              Skill captures successful execution paths
+                     ↓
+              NEXT video benefits from captured skills
+```
+
+**The full loop is:**
+1. YT Lab finds what to build
+2. Tool Analyzer checks if we CAN build it
+3. PRD Shredder builds what's missing
+4. Tool Chamber executes the build
+5. Skills capture what worked
+6. Everything gets faster and cheaper over time
+
+---
+
+## Sources
+
+### Stripe Minion Blog Articles
+- [Part 1: Minions: Stripe's one-shot, end-to-end coding agents](https://stripe.dev/blog/minions-stripes-one-shot-end-to-end-coding-agents)
+- [Part 2: Minions Part 2](https://stripe.dev/blog/minions-stripes-one-shot-end-to-end-coding-agents-part-2)
+- [Analysis: The Walls Matter More Than the Model](https://www.anup.io/stripes-coding-agents-the-walls-matter-more-than-the-model/)
+
+### Frameworks Researched
+- [Activepieces](https://github.com/activepieces/activepieces) — MIT, ~20K stars
+- [LangGraph](https://github.com/langchain-ai/langgraph) — MIT, ~15K stars
+- [Temporal](https://github.com/temporalio/temporal) — MIT, ~12K stars
+- [Hatchet](https://github.com/hatchet-dev/hatchet) — MIT
+- [CrewAI](https://github.com/crewAIInc/crewAI) — MIT, ~46K stars
+- [Node-RED](https://nodered.org/) — Apache 2.0, ~20K stars
+- [Kestra](https://github.com/kestra-io/kestra) — Apache 2.0, ~18K stars
+- [Trigger.dev](https://github.com/triggerdotdev/trigger.dev) — Apache 2.0, ~10K stars
+- [Prefect](https://github.com/PrefectHQ/prefect) — Apache 2.0, ~18K stars
+- [Dagster](https://github.com/dagster-io/dagster) — Apache 2.0, ~12K stars
+
+### Internal Documents Referenced
+- `/docs/prd-yt-lab-tool-analyzer.md` — Tool Analyzer PRD (the self-building flywheel)
+- `/docs/prd-prd-shredder.md` — PRD Shredder (drop PRD in, code comes out)
+- `/docs/stripe-minions-build-rules.md` — Stripe patterns adapted for our agents
+- `/docs/prd-yt-lab-v2.md` — YT Lab v2 vision

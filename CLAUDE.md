@@ -58,20 +58,23 @@ Summary: Sonnet builds everything. Opus only does targeted checkpoints every 3-4
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│  ALL 200K MODELS → SUBSCRIPTION ONLY (force_subscription=True)     │
-│  ONLY 1M TOKEN MODELS → API KEY                                    │
-│  NO EXCEPTIONS. NO API KEYS FOR 200K MODELS. EVER.                 │
+│  ALL CLAUDE MODELS (200K AND 1M) → SUBSCRIPTION ONLY               │
+│  (force_subscription=True)                                          │
+│  NO EXCEPTIONS. NO API KEYS FOR SUBSCRIPTION MODELS. EVER.         │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
+**As of March 13, 2026:** Opus 4.6 and Sonnet 4.6 now have 1M context on the Max subscription plan by default. No config changes needed. No surcharge. The old rule separating 200K (subscription) from 1M (API key) is obsolete — both context sizes are covered by the subscription.
+
 **Before you write a single line that calls Claude, Codex, or Gemini, confirm:**
-1. Are you using a 200K context model? → Subscription auth. `unset ANTHROPIC_API_KEY`.
-2. Are you using a 1M context model? → API key is fine.
-3. Not sure? → Subscription. Default safe.
+1. Are you calling a Claude model? → Subscription auth. `unset ANTHROPIC_API_KEY`. Always.
+2. Not sure? → Subscription. Default safe.
 
 **How it works:** `get_effective_sdk_env()` in `registry.py` (line ~792) is the single source of truth. When `force_subscription=True`, it clears `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` so the CLI falls back to `~/.claude/.credentials.json` (subscription OAuth). Every Claude call in the system goes through this function.
 
 **If you skip this, the user burns API credits on their subscription models. That is a bug.**
+
+**Rate limit note:** 1M context requests consume more of your hourly quota per request. If rate limits become a problem, set `CLAUDE_CODE_DISABLE_1M_CONTEXT=1` to drop back to 200K context. AutoForge agent sessions are typically well under 200K per feature, so this mainly affects long interactive Claude Code conversations.
 
 Full details: `docs/SUBSCRIPTION_AND_WEBSOCKET_GUIDE.md`
 

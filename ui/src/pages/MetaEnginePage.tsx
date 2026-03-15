@@ -234,6 +234,7 @@ export function MetaEnginePage() {
   const [pasteText, setPasteText] = useState('')
   const [pasteSourceName, setPasteSourceName] = useState('')
   const [ingesting, setIngesting] = useState(false)
+  const [ingestingFile, setIngestingFile] = useState('')
   const [ingestResults, setIngestResults] = useState<IngestResult[]>([])
   const [dragOver, setDragOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -390,6 +391,7 @@ export function MetaEnginePage() {
   async function uploadFiles(files: File[]) {
     setIngesting(true)
     for (const file of files) {
+      setIngestingFile(file.name)
       try {
         const formData = new FormData()
         formData.append('file', file)
@@ -408,6 +410,7 @@ export function MetaEnginePage() {
         ])
       }
     }
+    setIngestingFile('')
     setIngesting(false)
   }
 
@@ -617,7 +620,16 @@ export function MetaEnginePage() {
         {/* Right column: results */}
         <div className={cardCls + ' h-fit'}>
           <h3 className="mb-4 text-sm font-bold uppercase tracking-wider text-zinc-400">Ingestion Results</h3>
-          {ingestResults.length === 0 ? (
+          {ingesting && ingestingFile && (
+            <div className="mb-3 flex items-center gap-3 rounded-lg border border-amber-700/50 bg-amber-950/30 px-3 py-2.5 text-sm text-amber-300">
+              <svg className="h-4 w-4 animate-spin shrink-0" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              <span className="truncate">Processing <strong>{ingestingFile}</strong> — transcribing &amp; extracting...</span>
+            </div>
+          )}
+          {!ingesting && ingestResults.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <Layers size={32} className="mb-3 text-zinc-600" />
               <p className="text-sm text-zinc-500">No ingestions yet. Upload content to get started.</p>

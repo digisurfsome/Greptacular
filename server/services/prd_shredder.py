@@ -778,11 +778,23 @@ class PRDShredder:
 
         env = os.environ.copy()
         env.pop("CLAUDECODE", None)
+        # Force subscription auth — clear API key so CLI uses OAuth credentials
+        env.pop("ANTHROPIC_API_KEY", None)
+        env.pop("ANTHROPIC_AUTH_TOKEN", None)
+
+        # Write prompt to temp file to avoid Windows command-line length limits
+        # (Windows has ~32K char limit for command arguments)
+        import tempfile
+        prompt_file = Path(tempfile.mktemp(prefix="prd_prompt_", suffix=".txt"))
+        prompt_file.write_text(full_prompt, encoding="utf-8")
 
         on_progress("Agent coding now...")
-        process = await asyncio.create_subprocess_exec(
-            claude_cli, "-p", full_prompt,
-            "--model", "claude-sonnet-4-6",
+        # Use temp file + shell pipe to avoid Windows command-line length limits
+        # claude CLI reads from stdin when piped
+        prompt_path_str = str(prompt_file).replace("\\", "/")
+        shell_cmd = f'cat "{prompt_path_str}" | "{claude_cli}" -p --model claude-sonnet-4-6'
+        process = await asyncio.create_subprocess_shell(
+            shell_cmd,
             cwd=str(repo_dir),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -810,6 +822,12 @@ class PRDShredder:
 
         return_code = await process.wait()
         on_progress(f"Agent finished — exit code {return_code} | {len(stdout_lines)} output lines")
+
+        # Clean up temp prompt file
+        try:
+            prompt_file.unlink(missing_ok=True)
+        except Exception:
+            pass
 
         if return_code != 0:
             on_progress(f"Warning: agent exited with code {return_code}")
@@ -904,8 +922,10 @@ class PRDShredder:
         ui_dir = repo_dir / "ui"
         if ui_dir.exists() and (ui_dir / "package.json").exists():
             on_progress("Running TypeScript build...")
+            # Use npm.cmd on Windows, npm on Unix
+            npm_cmd = "npm.cmd" if os.name == "nt" else "npm"
             ts_result = subprocess.run(
-                ["npm", "run", "build"],
+                [npm_cmd, "run", "build"],
                 cwd=str(ui_dir),
                 capture_output=True,
                 text=True,

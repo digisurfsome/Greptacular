@@ -631,12 +631,58 @@ Your choice (A/B/C, or press Enter for recommended):
 ## Appendix C: Mechanism Details
 ```
 
+### Verification Checkpoint Injection (Stage 6 Responsibility)
+
+The PRD Compiler MUST inject verification checkpoints into the final PRD. This is automatic — no user input required.
+
+**Process:**
+
+1. **Tag every feature** in the PRD with one or more of: `[UI]`, `[DATA]`, `[API]`, `[WIRE]`, `[AUTH]`, `[PHASE-END]`
+   - `[UI]` — Only visual/frontend changes
+   - `[DATA]` — Creates or modifies database tables, schemas, or persistent storage
+   - `[API]` — Adds or changes API endpoints or routes
+   - `[WIRE]` — Connects two existing systems (frontend↔backend, service↔service)
+   - `[AUTH]` — Involves authentication, authorization, permissions, or session management
+   - `[PHASE-END]` — Last feature before a phase boundary
+
+2. **Assign verification tier** based on tags:
+   - `PULSE_CHECK` (default) — Lint + type check + run tests. 2-5 minutes. After every feature.
+   - `SEAM_CHECK` — Pulse + test changed thing + test one dependency. 10-20 min. After `[DATA]`, `[API]`, `[WIRE]`, `[AUTH]`.
+   - `FULL_VERIFY` — Complete protocol (all routes, all journeys, bug hunt, DB validation, edge cases, cross-feature, responsive). 30-60 min. After `[PHASE-END]`.
+
+3. **Insert checkpoint markers** into the implementation phases section of the PRD:
+   ```
+   Phase 1: Foundation
+     Feature: Database schema [DATA] → SEAM_CHECK
+     Feature: Auth system [DATA][API][AUTH] → SEAM_CHECK
+     Feature: Base layout [UI] → PULSE_CHECK
+     Feature: Dashboard [UI][WIRE][PHASE-END] → FULL_VERIFY
+   ```
+
+4. **Add a verification_plan section** to the final PRD JSON output containing:
+   - The three tier definitions (PULSE_CHECK, SEAM_CHECK, FULL_VERIFY)
+   - A schedule of checkpoints (one FULL_VERIFY per phase minimum)
+   - Feature-level tags and assigned tiers
+
+5. **Add verification summary** to the PRD metadata:
+   ```json
+   "verification": {
+     "pulse_checks": N,
+     "seam_checks": N,
+     "full_verifies": N,
+     "total_checkpoints": N
+   }
+   ```
+
 ### Quality Gate
 - Zero orphan items (every item from stages 1-5 appears)
 - All provenance tags present
 - Markdown renders correctly
 - JSON validates against schema
 - DDR >= 1.10 (output richer than inputs due to enrichment)
+- `verification_plan` section exists in output with tier definitions and feature-level checkpoint assignments
+- Every feature has at least one verification tag
+- Every phase ends with at least one `FULL_VERIFY` checkpoint
 
 ---
 

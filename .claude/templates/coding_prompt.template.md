@@ -228,6 +228,87 @@ DETAIL → delete (with ConfirmModal) → LIST
 ```
 All detail pages must have back navigation.
 
+### STEP 4.7: VERIFICATION CHECKPOINTS (MANDATORY)
+
+Every feature in app_spec.txt has a verification tier assigned. Check the `<verification_plan>` section of app_spec.txt for your feature's tier. If no tier is specified, default to PULSE CHECK.
+
+#### Tier 1: PULSE CHECK (After EVERY Feature)
+
+Run these three commands. All must pass before proceeding:
+
+```bash
+# For TypeScript/JavaScript projects
+npm run lint
+npm run build   # Catches type errors
+
+# For Python projects
+ruff check .
+mypy .
+```
+
+Then run any existing test suite:
+```bash
+npm test 2>/dev/null || true
+npx playwright test tests/e2e/ 2>/dev/null || true
+pytest 2>/dev/null || true
+```
+
+**If lint or type errors exist — fix them NOW.** Do not proceed with broken code.
+
+#### Tier 2: SEAM CHECK (After [DATA], [API], [WIRE], [AUTH] Features)
+
+Everything from PULSE CHECK, plus:
+
+1. **Start/restart the app** — confirm it boots without errors
+2. **Test the specific thing you just built:**
+   - If you added/changed a database table → query it directly, verify schema is correct
+   - If you added/changed an API endpoint → call it with curl/fetch, verify response
+   - If you wired frontend to backend → navigate to the page, verify data displays
+   - If you changed auth → test login flow, verify protected routes block unauthorized access
+3. **Test ONE downstream dependency** — pick one feature that depends on what you just built and verify it still works
+4. **Check console/terminal** — zero errors, zero unhandled warnings
+
+**If any check fails — fix it NOW before moving to the next feature.**
+
+#### Tier 3: FULL VERIFY (At Phase Boundaries)
+
+This runs at the END of each implementation phase (after the last feature in the phase). It's the complete verification protocol:
+
+1. **Map every route** — navigate to every page in the app, confirm they render
+2. **Test every user journey built so far** — complete flows end-to-end (signup → create → view → edit → delete)
+3. **Bug hunt** — scan code for logic errors, missing null checks, broken conditionals
+4. **Database validation** — after each data action, query the DB to confirm records are correct
+5. **Edge cases** — empty states, invalid input, rapid clicks, boundary values
+6. **Cross-feature integration** — does Feature A's data show up correctly in Feature B?
+7. **Fix everything found** — classify by severity (Critical/High = fix now, Medium/Low = document)
+8. **Re-verify fixes** — confirm fixes don't break other things
+9. **Re-run lint and type check** — must still be clean after fixes
+
+**Output a verification report in claude-progress.txt:**
+```
+=== FULL VERIFY: Phase [N] ===
+Features Verified: [count]
+Issues Found: [count] ([fixed] fixed, [remaining] remaining)
+Lint: PASS/FAIL
+Type Check: PASS/FAIL
+Tests: [X] passing, [Y] failing
+Critical Issues Fixed: [list]
+Remaining Issues: [list with file:line]
+```
+
+**Do NOT proceed to the next phase until all Critical and High issues are resolved.**
+
+#### How to Know Your Feature's Tier
+
+1. Read the `<verification_plan><feature_tags>` section of app_spec.txt
+2. Find your feature by index
+3. The `verify` attribute tells you which tier: `PULSE_CHECK`, `SEAM_CHECK`, or `FULL_VERIFY`
+4. If your feature is the LAST feature in a phase, it's always `FULL_VERIFY` regardless of tags
+5. If app_spec.txt doesn't have a verification_plan section, use this default:
+   - Features that touch database/API/auth → SEAM CHECK
+   - Last feature before a new phase → FULL VERIFY
+   - Everything else → PULSE CHECK
+
 ### STEP 5: VERIFY WITH BROWSER AUTOMATION
 
 **CRITICAL:** You MUST verify features through the actual UI.

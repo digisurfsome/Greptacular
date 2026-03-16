@@ -462,6 +462,93 @@ Let the user confirm or adjust. This becomes your `feature_count` for the spec.
 
 **Important:** The first 5 features (indices 0-4) created by the initializer MUST be the Infrastructure category with no dependencies. All other features depend on these.
 
+## Phase 4V: Verification Checkpoint Injection (AUTOMATIC — DO NOT ASK USER)
+
+After deriving features, automatically tag each feature and inject verification checkpoints into the implementation plan. This happens silently — the user does not need to be involved.
+
+### Step 1: Auto-Tag Every Feature
+
+Scan each feature and assign one or more tags:
+
+| Tag | Meaning | Trigger |
+|-----|---------|---------|
+| `[UI]` | Only changes visual/frontend stuff | Feature description mentions layout, styling, colors, animations, responsive |
+| `[DATA]` | Touches database, creates/modifies tables or fields | Feature mentions create, store, save, persist, database, schema, model |
+| `[API]` | Adds or changes API endpoints | Feature mentions endpoint, route, API, request, response |
+| `[WIRE]` | Connects two existing systems together | Feature mentions integration, calls, fetches from, displays data from, sends to |
+| `[AUTH]` | Involves authentication or authorization | Feature mentions login, permission, role, access, session, token |
+| `[PHASE-END]` | Last feature in a phase | Automatically applied to the last feature before a phase boundary |
+
+A feature can have multiple tags. For example, "User profile page that saves to database" gets `[UI]` + `[DATA]` + `[API]`.
+
+### Step 2: Determine Verification Tier Per Feature
+
+Based on tags, assign the verification tier that runs AFTER that feature is implemented:
+
+| Verification Tier | When It Fires | What It Does | Duration |
+|-------------------|---------------|--------------|----------|
+| **PULSE CHECK** | After EVERY feature (default) | Lint + type check + run existing tests | 2-5 min |
+| **SEAM CHECK** | After any `[DATA]`, `[API]`, `[WIRE]`, or `[AUTH]` feature, OR before any feature that depends on a recently-built feature | Pulse Check + start app + test the specific thing that changed + test one downstream dependency + check console for errors | 10-20 min |
+| **FULL VERIFY** | After every `[PHASE-END]` feature, end of build, or when explicitly requested | Full verification protocol: map all routes, test every journey, bug hunt, database validation, edge cases, cross-feature integration, responsive check, fix everything found | 30-60 min |
+
+**Rules:**
+- Every feature gets at minimum a PULSE CHECK
+- Tags `[DATA]`, `[API]`, `[WIRE]`, `[AUTH]` upgrade to SEAM CHECK
+- `[PHASE-END]` upgrades to FULL VERIFY
+- If a feature has dependencies AND one of those dependencies was built in the same phase, upgrade to SEAM CHECK (verify the dependency works before building on it)
+
+### Step 3: Inject Checkpoints Into Implementation Steps
+
+When generating the `<implementation_steps>` section of app_spec.txt, insert verification steps:
+
+**Example output:**
+```xml
+<implementation_steps>
+  <step number="1">
+    <title>Phase 1: Foundation</title>
+    <tasks>
+      - Set up database schema and models [DATA]
+      - Create authentication system [DATA][API][AUTH]
+      - Build base layout and navigation [UI]
+      - Create dashboard page [UI][WIRE]
+    </tasks>
+    <verification tier="FULL_VERIFY">
+      Run complete verification protocol. All Phase 1 features must pass before proceeding.
+      Focus areas: database connectivity, auth flow end-to-end, navigation integrity.
+    </verification>
+  </step>
+  <step number="2">
+    <title>Phase 2: Core Features</title>
+    <tasks>
+      - User profile page [UI][DATA][API]
+        → SEAM CHECK after this feature (data + API change)
+      - Data entry form with validation [UI][DATA][API]
+        → SEAM CHECK after this feature (data + API change)
+      - Data display page [UI][WIRE]
+        → SEAM CHECK after this feature (wires to data from previous features)
+      - Search and filter functionality [UI][API]
+        → SEAM CHECK after this feature (new API endpoint)
+    </tasks>
+    <verification tier="FULL_VERIFY">
+      Run complete verification protocol. Test all Phase 2 features plus cross-feature integration with Phase 1.
+    </verification>
+  </step>
+</implementation_steps>
+```
+
+### Step 4: Add Verification Summary to Phase 7 Review
+
+When presenting the final summary to the user in Phase 7, include a verification summary:
+
+> "**Built-in Quality Checkpoints:**
+> - X PULSE CHECKS (after every feature — lint + type check)
+> - Y SEAM CHECKS (after database/API/integration changes — targeted functional test)
+> - Z FULL VERIFICATIONS (at phase boundaries — complete protocol)
+>
+> These run automatically during the build. You don't need to do anything."
+
+This gives the user confidence that the build won't accumulate hidden bugs.
+
 ## Phase 5: Technical Details (DERIVED OR DISCUSSED)
 
 **For Quick Mode users:**
@@ -667,6 +754,36 @@ Create a new file using this XML structure:
     </step>
     [Repeat for all phases]
   </implementation_steps>
+
+  <verification_plan>
+    <protocol>
+      <tier name="PULSE_CHECK" duration="2-5min">
+        Lint check, type check, run existing test suite.
+        Fires after every feature.
+      </tier>
+      <tier name="SEAM_CHECK" duration="10-20min">
+        PULSE_CHECK plus: start app, test changed functionality,
+        test one downstream dependency, check console for errors.
+        Fires after DATA, API, WIRE, or AUTH changes.
+      </tier>
+      <tier name="FULL_VERIFY" duration="30-60min">
+        Complete verification: map routes, test all journeys, bug hunt,
+        database validation, edge cases, cross-feature integration,
+        responsive check. Fix all issues found.
+        Fires at phase boundaries and end of build.
+      </tier>
+    </protocol>
+    <schedule>
+      <!-- Auto-generated from feature tags -->
+      <checkpoint after_phase="1" tier="FULL_VERIFY" />
+      <checkpoint after_phase="2" tier="FULL_VERIFY" />
+      <!-- ... one per phase ... -->
+    </schedule>
+    <feature_tags>
+      <!-- Auto-generated from Phase 4V analysis -->
+      <!-- Example: <feature index="5" tags="UI,DATA,API" verify="SEAM_CHECK" /> -->
+    </feature_tags>
+  </verification_plan>
 
   <success_criteria>
     <functionality>

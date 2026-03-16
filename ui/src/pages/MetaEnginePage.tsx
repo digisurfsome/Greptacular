@@ -116,10 +116,15 @@ interface GeneratedOutput {
 }
 
 interface OutputTopic {
-  slug: string
+  slug?: string
+  topic_slug?: string
   topic: string
-  output_count: number
-  outputs: GeneratedOutput[]
+  output_count?: number
+  total_pieces?: number
+  outputs?: GeneratedOutput[]
+  channels?: string[]
+  profiles?: string[]
+  updated_at?: string
 }
 
 // ============================================================================
@@ -572,20 +577,20 @@ export function MetaEnginePage() {
 
   const loadLibrary = useCallback(async () => {
     setLibraryLoading(true)
-    const [statsData, exData, patData, coachData] = await Promise.all([
-      safeFetch<LibraryStats>('/meta-training/library'),
-      safeFetch<TrainingExample[]>(
+    const [statsRes, exRes, patRes, coachRes] = await Promise.all([
+      safeFetch<{ stats: LibraryStats; sources: unknown[] }>('/meta-training/library'),
+      safeFetch<{ count: number; examples: TrainingExample[] }>(
         `/meta-training/library/examples${libraryFilter ? `?metaprogram=${libraryFilter}` : ''}`
       ),
-      safeFetch<TrainingPattern[]>(
+      safeFetch<{ count: number; patterns: TrainingPattern[] }>(
         `/meta-training/library/patterns${libraryFilter ? `?metaprogram=${libraryFilter}` : ''}`
       ),
-      safeFetch<CoachingScenario[]>('/meta-training/library/coaching'),
+      safeFetch<{ count: number; scenarios: CoachingScenario[] }>('/meta-training/library/coaching'),
     ])
-    setLibraryStats(statsData ?? { sources: 0, examples: 0, patterns: 0, scenarios: 0 })
-    setExamples(exData ?? [])
-    setPatterns(patData ?? [])
-    setCoaching(coachData ?? [])
+    setLibraryStats(statsRes?.stats ?? { sources: 0, examples: 0, patterns: 0, scenarios: 0 })
+    setExamples(exRes?.examples ?? [])
+    setPatterns(patRes?.patterns ?? [])
+    setCoaching(coachRes?.scenarios ?? [])
     setLibraryLoading(false)
   }, [libraryFilter])
 
@@ -601,10 +606,8 @@ export function MetaEnginePage() {
     const result = await safeFetch<{ content: string }>('/meta-training/write/generate', {
       method: 'POST',
       body: JSON.stringify({
+        profile: { motivation: writeMotivation, reference: writeReference, work_style: writeWorkStyle },
         topic: writeTopic.trim(),
-        motivation: writeMotivation,
-        reference: writeReference,
-        work_style: writeWorkStyle,
         channel: writeChannel,
         tone: writeTone,
       }),
@@ -621,15 +624,14 @@ export function MetaEnginePage() {
     if (!writeTopic.trim()) return
     setBatchGenerating(true)
     setBatchProgress('Starting batch generation...')
-    const result = await safeFetch<{ generated: number; message: string }>('/meta-training/write/all-combos', {
+    const result = await safeFetch<{ topic: string; total_variants: number; variants: unknown[] }>('/meta-training/write/all-combos', {
       method: 'POST',
       body: JSON.stringify({
         topic: writeTopic.trim(),
         channel: writeChannel,
-        tone: writeTone,
       }),
     })
-    setBatchProgress(result?.message ?? 'Batch generation failed or server unavailable.')
+    setBatchProgress(result ? `Generated ${result.total_variants} variants for "${result.topic}"` : 'Batch generation failed or server unavailable.')
     setBatchGenerating(false)
   }, [writeTopic, writeChannel, writeTone])
 
@@ -647,8 +649,8 @@ export function MetaEnginePage() {
 
   const loadOutputTopics = useCallback(async () => {
     setExportLoading(true)
-    const data = await safeFetch<OutputTopic[]>('/meta-training/output/topics')
-    setOutputTopics(data ?? [])
+    const data = await safeFetch<{ topics: OutputTopic[] }>('/meta-training/output/topics')
+    setOutputTopics(data?.topics ?? [])
     setExportLoading(false)
   }, [])
 
@@ -1110,36 +1112,39 @@ export function MetaEnginePage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {filteredTopics.map(topic => (
-              <div key={topic.slug} className={cardCls}>
+            {filteredTopics.map(topic => {
+              const topicSlug = topic.topic_slug ?? topic.slug ?? ''
+              const variantCount = topic.total_pieces ?? topic.output_count ?? 0
+              return (
+              <div key={topicSlug} className={cardCls}>
                 {/* Topic header */}
                 <button
-                  onClick={() => setExpandedTopic(expandedTopic === topic.slug ? null : topic.slug)}
+                  onClick={() => setExpandedTopic(expandedTopic === topicSlug ? null : topicSlug)}
                   className="flex w-full items-center justify-between text-left"
                 >
                   <div className="flex items-center gap-3">
                     <FileText size={16} className="text-zinc-500" />
                     <span className="text-sm font-semibold text-white">{topic.topic}</span>
                     <span className="text-[10px] font-bold bg-zinc-700/50 text-zinc-400 px-2 py-0.5 rounded">
-                      {topic.output_count} variant{topic.output_count !== 1 ? 's' : ''}
+                      {variantCount} variant{variantCount !== 1 ? 's' : ''}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={e => { e.stopPropagation(); handleExport(topic.slug, 'csv') }}
+                      onClick={e => { e.stopPropagation(); handleExport(topicSlug, 'csv') }}
                       className="text-xs text-zinc-500 hover:text-orange-400 transition-colors"
                     >CSV</button>
                     <button
-                      onClick={e => { e.stopPropagation(); handleExport(topic.slug, 'json') }}
+                      onClick={e => { e.stopPropagation(); handleExport(topicSlug, 'json') }}
                       className="text-xs text-zinc-500 hover:text-cyan-400 transition-colors"
                     >JSON</button>
                   </div>
                 </button>
 
                 {/* Expanded outputs */}
-                {expandedTopic === topic.slug && topic.outputs.length > 0 && (
+                {expandedTopic === topicSlug && (topic.outputs?.length ?? 0) > 0 && (
                   <div className="border-t border-zinc-700/40 mt-4 pt-4 space-y-3">
-                    {topic.outputs.map((out, i) => (
+                    {(topic.outputs ?? []).map((out, i) => (
                       <div key={i} className="rounded-lg border border-zinc-700/30 bg-zinc-900/50 p-3">
                         <div className="mb-2 flex flex-wrap items-center gap-2">
                           <span className="text-[10px] font-bold bg-orange-500/20 text-orange-400 px-2 py-0.5 rounded">{out.profile}</span>
@@ -1153,7 +1158,8 @@ export function MetaEnginePage() {
                   </div>
                 )}
               </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>

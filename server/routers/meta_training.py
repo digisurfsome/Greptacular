@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, File, Header, HTTPException, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from server.services.meta_output_router import (
@@ -606,6 +607,33 @@ async def list_output_topics():
     return {"topics": _output_router.list_topics()}
 
 
+# NOTE: /output/find MUST come before /output/{topic_slug} to avoid
+# FastAPI treating "find" as a topic_slug path parameter.
+@router.get("/output/find")
+async def find_copy(
+    topic_slug: Optional[str] = None,
+    channel: Optional[str] = None,
+    profile_code: Optional[str] = None,
+    copy_type: Optional[str] = None,
+):
+    """
+    Find copy by tags. This is how downstream systems query.
+
+    Examples:
+    - Email tool: ?channel=email&profile_code=toward_external
+    - CRM: ?copy_type=coach_prompt
+    - Ad manager: ?channel=ad&topic_slug=keto_app
+    - Social scheduler: ?channel=instagram
+    """
+    results = _output_router.find_copy(
+        topic_slug=topic_slug,
+        channel=channel,
+        profile_code=profile_code,
+        copy_type=copy_type,
+    )
+    return {"count": len(results), "results": results}
+
+
 @router.get("/output/{topic_slug}")
 async def get_topic_manifest(topic_slug: str):
     """Get the full manifest for a topic — all tagged copy pieces."""
@@ -631,33 +659,6 @@ async def delete_topic_output(topic_slug: str):
     if not deleted:
         raise HTTPException(status_code=404, detail=f"No output found for topic: {topic_slug}")
     return {"status": "deleted", "topic_slug": topic_slug}
-
-
-# ─── QUERY / FIND ───
-
-@router.get("/output/find")
-async def find_copy(
-    topic_slug: Optional[str] = None,
-    channel: Optional[str] = None,
-    profile_code: Optional[str] = None,
-    copy_type: Optional[str] = None,
-):
-    """
-    Find copy by tags. This is how downstream systems query.
-
-    Examples:
-    - Email tool: ?channel=email&profile_code=toward_external
-    - CRM: ?copy_type=coach_prompt
-    - Ad manager: ?channel=ad&topic_slug=keto_app
-    - Social scheduler: ?channel=instagram
-    """
-    results = _output_router.find_copy(
-        topic_slug=topic_slug,
-        channel=channel,
-        profile_code=profile_code,
-        copy_type=copy_type,
-    )
-    return {"count": len(results), "results": results}
 
 
 # ─── EXPORTS ───

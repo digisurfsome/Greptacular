@@ -122,7 +122,13 @@ class PRDQueue:
         if self._path.exists():
             try:
                 data = json.loads(self._path.read_text(encoding="utf-8"))
-                self._items = [PRDQueueItem(**item) for item in data]
+                items = []
+                for item in data:
+                    try:
+                        items.append(PRDQueueItem(**item))
+                    except Exception as e:
+                        logger.warning("Skipping corrupted queue item: %s", e)
+                self._items = items
             except Exception as e:
                 logger.warning("Failed to load PRD queue: %s", e)
                 self._items = []

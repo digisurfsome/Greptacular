@@ -535,12 +535,12 @@ function EnqueueForm({ onClose }: { onClose: () => void }) {
 export function PRDShredderPage() {
   const { darkMode, setDarkMode, toggleDarkMode } = useTheme()
 
+  // Force dark mode on — this page is designed for dark backgrounds only.
+  // Previous approach had a race condition where the page rendered in light mode
+  // first (white bg, invisible text) before the useEffect toggled dark mode.
   useEffect(() => {
-    if (!darkMode) {
-      const stored = localStorage.getItem('autoforge-dark-mode')
-      if (stored === null) setDarkMode(true)
-    }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    if (!darkMode) setDarkMode(true)
+  }, [darkMode, setDarkMode])
 
   const [showForm, setShowForm] = useState(false)
   const [rulesOpen, setRulesOpen] = useState(false)
@@ -563,9 +563,9 @@ export function PRDShredderPage() {
   const hasContent = allItems.length > 0
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-[#0a0a0a] text-zinc-900 dark:text-white">
+    <div className="min-h-screen bg-[#0a0a0a] text-white">
       {/* Header — sticky like CLI Scripter */}
-      <header className="sticky top-0 z-50 bg-white/90 dark:bg-[#0a0a0a]/90 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800/60">
+      <header className="sticky top-0 z-50 bg-[#0a0a0a]/90 backdrop-blur-md border-b border-zinc-800/60">
         {/* Orange/amber gradient top line */}
         <div className="h-0.5 bg-gradient-to-r from-orange-500 via-amber-400 to-yellow-500" />
         <div className="px-6 py-3 flex items-center justify-between">
@@ -666,7 +666,7 @@ export function PRDShredderPage() {
               count={activeItems.length}
               accent="border-orange-500/30"
             >
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 -mx-5 -mb-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                 {activeItems.map(item => (
                   <ActiveBuildCard key={item.id} item={item} />
                 ))}

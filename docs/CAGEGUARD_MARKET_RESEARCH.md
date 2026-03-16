@@ -137,7 +137,7 @@ These companies validate the market but don't compete directly with CageGuard. T
 
 ## Part 2: Market Demand & Community Sentiment
 
-### The Fear Is Real — Documented Incidents
+### The Fear Is Real — Documented Incidents (10+ Major Events)
 
 **The Cline "Clinejection" Attack (February 17, 2026)**
 - Prompt injection in Cline's GitHub Actions bot was exploited to steal npm publish tokens
@@ -148,16 +148,38 @@ These companies validate the market but don't compete directly with CageGuard. T
 **The ClawHavoc Supply Chain Attack (2025-2026)**
 - 9,000+ compromised OpenClaw installations
 - 1,184 malicious packages found in OpenClaw's skill marketplace (1 in 5 were malicious)
-- Source: Security research reports
+
+**Amazon Kiro AI Deletes Production (2026)**
+- Amazon's own AI agent deleted production infrastructure
+- Source: blog.barrack.ai coverage
+
+**Replit AI Deletes Production Database (2025)**
+- Replit's AI agent wiped a user's production database
+- Fortune magazine called it a "catastrophic failure"
+- Source: Fortune, July 2025
+
+**OpenAI Codex Data Loss on Windows (2026)**
+- Agent executed file deletion OUTSIDE the project directory
+- Critical data loss reported on OpenAI community forums
+
+**Claude Code rm -rf Home Directory (October 2025, the "Wolak Incident")**
+- Agent deleted user's entire home directory
+- Happened WITHOUT `--dangerously-skip-permissions` enabled
+- This is the incident that kicked off the sandboxing movement
 
 **Check Point RCE in Claude Code (2026)**
-- Researchers disclosed a remote code execution vulnerability through poisoned repo config files
-- An attacker could place a malicious config in a repo, and anyone using Claude Code on that repo would be compromised
+- Remote code execution through poisoned repo config files
+- Any repo could be weaponized to compromise Claude Code users
+
+**Ten Agents Destroyed Production — Zero Postmortems (2026)**
+- Harper Foley documented 10 separate production-destroying AI agent incidents
+- Common thread: no organization published postmortems
 
 **Broader Stats (2026)**
 - 77% of businesses reported an AI-related security incident
 - Average breach cost: $4.88M (highest ever recorded)
 - 492 MCP servers found exposed to the internet with zero authentication
+- **98.9% of Claude Code users have ZERO deny rules configured** (analysis of 18,470 config files — only 1.1% had a single deny rule)
 
 ### What People Are Saying Online
 
@@ -188,6 +210,7 @@ The most common DIY advice is: "just commit before running the agent." This is t
 - Anything outside the git repo
 - Files the agent creates/executes outside the project
 - System-level damage (if the agent escapes the project directory)
+- **And people skip it.** The discipline breaks down in practice. "Just commit before every AI operation works in theory, but in practice, when you're in flow and iterating quickly, you skip it. The one time you forget is the time the AI deletes your middleware folder."
 
 #### The "Just Use Docker" Crowd
 
@@ -203,6 +226,8 @@ Second most common advice:
 - Performance penalty for file I/O (especially on macOS)
 - Doesn't provide a review/merge workflow — you still need to manually diff
 - The developer who just wants to "vibe code" in Claude Code doesn't want to learn Docker
+- **Environment parity is the killer problem.** Real dev tasks fail because `make`, build tools, or deps are missing. As one developer reported: "asked it to run `make test` and it failed immediately — `make` wasn't installed."
+- **Config changes require full restarts,** losing the entire conversation context
 
 #### The "I Want This But It Doesn't Exist" Posts
 
@@ -212,14 +237,37 @@ Second most common advice:
 
 > "Someone needs to build a 'sandbox mode' that works across all these AI coding agents. Each one has its own half-baked safety features." — Twitter/X
 
+> "Either you can't get anything done, or you throw caution to the wind." — HN commenter
+
+> "I feel like a crazy person reading these comments." — Developer on AI agent safety thread
+
+> "Sandboxing is currently THE major challenge that needs to be solved. Early adopters will run agents natively, but it won't fly in regulated or conservative corporate environments." — HN commenter
+
 #### Hacker News Discussions
 
-**Thread: "How are you sandboxing coding agents?" (2026)**
-- 200+ comments
+**Thread: "How are you sandboxing coding agents?" (Jan 2026, 200+ comments)**
 - Top solutions mentioned: Docker, Firejail, git commits, VMs, "I just don't let it run unsupervised"
 - Multiple comments asking for a turnkey solution
 - Several people described building their own scripts (OverlayFS, bubblewrap wrappers)
 - Nobody mentioned a paid product they were using
+
+**Thread: "HN Survey: How Everyone Is Sandboxing AI Coding Agents" (Mar 2026)**
+- Continued interest — second major thread in 3 months on same topic
+- Community sentiment: "cautious pragmatism" not satisfaction. People describe *workarounds*, not *solutions*.
+
+**Agent Safehouse blew up on HN (March 2026, 403 points)**
+- A single bash script for macOS sandboxing got 403 upvotes
+- Shows massive appetite for simple sandboxing tools
+- macOS only — proves the cross-platform gap
+
+#### The Claude Code Permissions Problem
+
+This is a critical marketing data point:
+- **98.9% of Claude Code users have ZERO deny rules** (18,470 configs analyzed, only 1.1% had even one rule)
+- Claude Code ignores ignore rules meant to block secrets (The Register, Jan 2026)
+- Permission bypass bugs documented (GitHub Issue #26980 — "7+ corrections on a task that should have taken 2 edits")
+- Claude Code includes an intentional sandbox escape mechanism (`dangerouslyDisableSandbox` parameter)
+- **Prompt injection bypasses everything** — hidden 1-point white font in .docx files manipulated Claude into uploading sensitive files
 
 ### Demand Signals
 
@@ -236,40 +284,87 @@ Second most common advice:
 ### 1. Git (The Universal Safety Net)
 - **How people use it:** Commit before running agent, `git diff` after, `git reset --hard` if bad
 - **Adoption:** ~90% of developers already use git. Zero learning curve.
-- **Limitations:** Only protects tracked files. Doesn't protect .env, local DBs, system files. No protection against agents running malicious commands.
-- **Friction level:** LOW. This is your biggest free competitor.
+- **Limitations:**
+  - Only protects committed, tracked files
+  - .env files, local databases, API keys in config = unprotected
+  - People skip it. Discipline breaks down during rapid iteration
+  - AI agents can manipulate git itself (`git reset --hard`, `git checkout`)
+  - No protection against malicious commands outside the repo
+- **Emerging tool:** **mrq** — auto-captures filesystem snapshots continuously without requiring commits. Fills the "between commits" gap. Free/open source.
+- **Friction level:** LOW to set up / HIGH to maintain discipline. This is your biggest free competitor.
 
 ### 2. Docker Desktop Sandboxes
-- **How it works:** MicroVM-based isolation in Docker Desktop 4.58+. Agent runs in isolated VM with its own kernel.
+- **How it works:** MicroVM-based isolation in Docker Desktop 4.58+. Agent runs in isolated VM with its own kernel and Docker daemon.
 - **Adoption:** Docker Desktop has 20M+ developers. Sandbox feature is experimental but free.
-- **Limitations:** Requires Docker Desktop (2GB+ RAM). macOS file I/O is slower. No review/merge UI. Need Docker knowledge for volume mounts.
-- **Friction level:** MEDIUM. Non-trivial setup for non-Docker users.
+- **What works:** Setup described as "genuinely easy" for basic case. Devs report "forgetting they were inside a sandbox."
+- **Pain points (significant):**
+  - **Environment parity is the killer.** Real dev tasks fail because `make`, build tools, or deps are missing/incompatible with sandbox OS
+  - **Config changes require full restarts** — adding an API key means stopping, deleting, restarting the sandbox, losing entire Claude conversation context
+  - **First boot is slow.** Noticeable latency on initial microVM creation
+  - **Docker-in-Docker doesn't work.** Docker commands can't run inside sandbox
+  - **File sync lag** between host and VM
+  - **Disk footprint accumulates** — each microVM brings its own Linux kernel
+  - **Docker Desktop licensing costs** for orgs with 250+ employees or $10M+ revenue
+  - **Windows stability issues** — launching too many sandboxes causes crashes
+  - **Claude-only support** in Docker's official sandbox tooling
+  - No review/merge UI — you still need to manually diff
+- **Key developer quote:** "Solid infrastructure, but we wouldn't use it daily for real development. Filesystem safety addresses only a narrow aspect of agent risk."
+- **Friction level:** MEDIUM-HIGH. Non-trivial for non-Docker users. Significant daily-use pain points.
 
-### 3. Running in a VM (VirtualBox, WSL2, etc.)
+### 3. Running in a VM (VirtualBox, WSL2, Agent-VM)
 - **How people use it:** Run the AI agent inside a VM. Files in the VM are isolated.
-- **Adoption:** Low. Too much friction for most developers.
-- **Limitations:** Heavy resource usage. Slow. File sharing between host and VM is clunky. Not practical for rapid iteration.
-- **Friction level:** HIGH. Only the paranoid do this.
+- **Notable tool:** **Agent-VM** (Lima-based) — creates lightweight Debian VMs specifically for AI agents. Avoids Docker-in-Docker, ships with dev tools + headless Chrome.
+- **WSL2 reality check:** NOT secure. Host paths accessible, Docker socket often exposed, devcontainer images ship with passwordless sudo allowing trivial mounting of `/mnt/c` (entire Windows filesystem).
+- **Adoption:** Low. Too much friction for most.
+- **One developer's solution:** Built custom Incus system containers with btrfs snapshots for instant cloning, specifically because Docker Desktop was unreliable on M1 Macs. Extreme DIY.
+- **Friction level:** HIGH-VERY HIGH. Only the paranoid or the deeply technical do this.
 
-### 4. Firejail / bubblewrap / Apple Seatbelt
-- **How it works:** OS-level sandbox that restricts what processes can access.
-- **Adoption:** Very low outside Linux power users.
-- **Limitations:** Complex configuration. Different tools for different OSes. No review workflow. Can break agent functionality if misconfigured.
-- **Friction level:** HIGH. Linux-only for Firejail. Requires security expertise.
+### 4. Firejail / bubblewrap / Agent Safehouse
+- **Firejail (Linux):** Free, lightweight, uses namespaces + seccomp-bpf. Can restrict agents to single directory. Linux-only, may not work in WSL2, browser sandboxes conflict.
+- **bubblewrap (Linux):** Used internally by Claude Code's own sandboxing. Light user-namespace sandbox. Requires Linux knowledge.
+- **Agent Safehouse (macOS):** Single bash script using Apple's sandbox-exec for kernel-level sandboxing. Pre-configured for Claude Code, Codex, Aider, Cursor. **Blew up on HN — 403 points in March 2026.** But macOS only.
+- **Windows:** Windows Sandbox exists but not widely discussed for AI agent use. Most tools are Linux/macOS first.
+- **Friction level:** MEDIUM (Safehouse on macOS) to HIGH (Firejail/bubblewrap). Cross-platform = impossible with a single tool.
 
 ### 5. Claude Code's Built-in Permissions
-- **How it works:** Claude Code has permission modes (ask, auto-edit, bypass). The sandbox-runtime npm package adds OS-level restrictions.
-- **Adoption:** Default for Claude Code users.
-- **Limitations:** Only works with Claude Code. Permission prompts are annoying (many users bypass them). The sandbox-runtime is opt-in and developer-facing.
-- **Friction level:** LOW for basic permissions. MEDIUM for sandbox-runtime setup.
+- **How it works:** Four permission modes (Normal, Plan, Auto-accept, Bypass). OS-level sandboxing via bubblewrap/Seatbelt.
+- **The devastating stat:** **98.9% of users have zero restrictions configured.** 18,470 configs analyzed, only 1.1% had even one deny rule.
+- **Known issues:**
+  - Permission bypass bugs (GitHub Issue #26980)
+  - Ignores rules meant to block secrets (The Register, Jan 2026)
+  - Includes intentional sandbox escape mechanism (`dangerouslyDisableSandbox`)
+  - Prompt injection bypasses all permission checks
+  - The rm -rf home directory incident happened WITHOUT bypass mode
+- **Community verdict:** "Never run --dangerously-skip-permissions on your host machine" — yet the entire YOLO mode trend is about doing exactly that.
+- **Friction level:** LOW to enable, but NOT TRUSTED by security-conscious developers.
+
+### Friction Analysis Summary
+
+| Approach | Friction | Protection Level | Key Gap |
+|----------|---------|-----------------|---------|
+| Git commits | Low setup / High discipline | Tracked files only | People skip it; agents manipulate git |
+| Docker Sandboxes | Medium-High | Strong (microVM) | Environment parity, config restarts, no review UI |
+| Full VMs | Very High | Strongest | Slow, poor DX, elaborate sync workflows |
+| Firejail | Medium-High | Good | Linux-only, manual profiles |
+| Agent Safehouse | Low | Good | macOS-only |
+| bubblewrap | Medium-High | Good | Linux-only, deep knowledge needed |
+| Claude Code built-in | Low | Moderate | 98.9% don't configure; bypass bugs; agent-specific |
+
+### The Unserved Populations
+
+1. **Windows users** — Almost nothing works. Docker has licensing costs, Firejail/bubblewrap are Linux-only, Safehouse is macOS-only
+2. **Non-technical "vibe coders"** — Fastest-growing AI coding segment. Can't configure Docker, Firejail, or VMs. Most vulnerable.
+3. **"Set and forget" users** — Every current solution requires ongoing maintenance or active discipline
+4. **Multi-platform teams** — No single solution works across macOS, Linux, and Windows
+5. **Enterprise/regulated environments** — Need audit trails and compliance reporting, not bash scripts
 
 ### Key Takeaway for CageGuard
 
-The DIY landscape is fragmented:
-- **Git** = free and easy but incomplete protection
-- **Docker** = free and strong but requires Docker knowledge
-- **VMs / Firejail** = strong but too much friction
-- **Built-in agent permissions** = agent-specific, often bypassed
+The community sentiment is NOT "we have this figured out." It's:
+> "This feels like a pragmatic setup... hopefully it does enough to mitigate the worst risks."
+> "Either you can't get anything done, or you throw caution to the wind."
+
+People describe *workarounds*, not *solutions*. The gap between "everyone agrees sandboxing matters" and "almost nobody actually does it properly" is enormous.
 
 **CageGuard's opportunity = the unified, agent-agnostic, zero-config, review-before-merge experience that doesn't exist in the DIY world.**
 
@@ -438,6 +533,37 @@ The VC money is in cloud infrastructure. Nobody has funded a local sandbox produ
 - Reddit: r/ClaudeAI, r/OpenHands, r/programming (ongoing threads)
 - Medium: Michael Hunley, "Local Agent Safety Framework" (Jan 2026)
 - Various Twitter/X threads on AI agent safety
+
+---
+
+### Horror Stories & Production Incidents
+- "Ten AI Agents Destroyed Production. Zero Postmortems." — harperfoley.com
+- Amazon Kiro AI Deletes Production — blog.barrack.ai
+- Replit AI Deletes Production Database — Fortune, July 2025
+- OpenAI Codex Data Loss on Windows (agent deleted outside project dir) — OpenAI Community Forums
+- Claude Code rm -rf Home Directory (the "Wolak Incident") — October 2025
+
+### DIY Sandboxing Approaches
+- Docker Sandboxes assessment: arcade.dev/blog/using-docker-sandboxes-with-claude-code
+- "How to Sandbox Your AI Agent Using Docker" — blog.codeminer42.com
+- "How to Safely Run AI Agents Inside a DevContainer" — codewithandrea.com
+- Agent-VM (Lima-based): github.com/sylvinus/agent-vm
+- Agent Safehouse (macOS, 403 HN points): github.com/eugene1g/agent-safehouse
+- Firejail for AI agents: softwareengineeringstandard.com
+- "I Built Yet Another Sandbox for AI Coding Agents" (Incus containers): perevillega.com
+- mrq (continuous filesystem snapshots): getmrq.com
+- "Git Isn't Enough for AI Coding" — medium.com/@naviche
+- Claude Code permissions analysis (98.9% stat): eesel.ai/blog/security-claude-code
+- Claude Code permission bypass: GitHub Issue #26980
+- Claude Code ignores secret rules: The Register, Jan 2026
+- Prompt injection via .docx: security research demonstrations
+- "Secure Vibe Coding" guides: Wiz, Cloud Security Alliance, StepSecurity
+
+### HN Threads
+- "How are you sandboxing coding agents?" (Jan 2026): news.ycombinator.com/item?id=46400129
+- "HN Survey: How Everyone Is Sandboxing AI Coding Agents" (Mar 2026): news.ycombinator.com/item?id=47185250
+- "Why Sandboxing Coding Agents Is Harder Than You Think": news.ycombinator.com/item?id=46685618
+- Agent Safehouse discussion (403 points): news.ycombinator.com/item?id=47301085
 
 ---
 

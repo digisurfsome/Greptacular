@@ -147,6 +147,7 @@ async def create_new_conversation(body: ConversationCreateRequest):
         context_mode=str(conversation.context_mode) if conversation.context_mode else "1m",
         model=str(conversation.model) if conversation.model else "opus",
         effort=str(conversation.effort) if conversation.effort else "high",
+        provider=str(conversation.provider) if conversation.provider else provider,
         created_at=conversation.created_at.isoformat() if conversation.created_at else None,
         updated_at=conversation.updated_at.isoformat() if conversation.updated_at else None,
         message_count=0,
@@ -1007,6 +1008,20 @@ async def get_walkie_talkie_status(session_id: str):
     """Get the walkie-talkie status for a workspace session."""
     from ..services.workspace_chat_session import get_session as ws_get_session
     session = ws_get_session(session_id)
+    if not session:
+        return {"active": False, "waiting": False, "queue_size": 0}
+    return {
+        "active": session.walkie_talkie_enabled,
+        "waiting": session.walkie_talkie_waiting,
+        "queue_size": session.walkie_talkie_queue.qsize(),
+    }
+
+
+@router.get("/conversations/{conversation_id}/walkie-talkie/status")
+async def get_walkie_talkie_status_by_conversation(conversation_id: int):
+    """Get walkie-talkie status by conversation ID (frontend-friendly)."""
+    from ..services.workspace_chat_session import get_session_by_conversation
+    session = get_session_by_conversation(conversation_id)
     if not session:
         return {"active": False, "waiting": False, "queue_size": 0}
     return {

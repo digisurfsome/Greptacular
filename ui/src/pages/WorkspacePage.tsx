@@ -43,6 +43,7 @@ import {
   LayoutDashboard,
   Menu,
   Factory,
+  Swords,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -434,6 +435,16 @@ export function WorkspacePage(): React.JSX.Element {
           >
             <Factory size={14} />
             <span className="hidden sm:inline text-[10px]">Factory</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 gap-1.5 text-muted-foreground hover:text-foreground"
+            onClick={() => { window.location.hash = '#/arena' }}
+            title="Arena — compare AI models side-by-side"
+          >
+            <Swords size={14} />
+            <span className="hidden sm:inline text-[10px]">Arena</span>
           </Button>
           {splitView && (
             <Button

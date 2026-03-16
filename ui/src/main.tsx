@@ -16,6 +16,8 @@ import { ToolManagerPage } from './components/tool-factory/ToolManagerPage'
 import { TokenBudgetPage } from './pages/TokenBudgetPage'
 import { PRDShredderPage } from './pages/PRDShredderPage'
 import { MetaEnginePage } from './pages/MetaEnginePage'
+import { ArenaPage } from './pages/ArenaPage'
+import { ArenaChatPage } from './pages/ArenaChatPage'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import './styles/globals.css'
 
@@ -86,6 +88,12 @@ function Root() {
   }
   if (hash === '#/meta-engine' || hash.startsWith('#/meta-engine/')) {
     return <MetaEnginePage />
+  }
+  if (hash.startsWith('#/arena/chat')) {
+    return <ArenaChatPage />
+  }
+  if (hash === '#/arena' || hash.startsWith('#/arena/')) {
+    return <ErrorBoundary><ArenaPage /></ErrorBoundary>
   }
   return <App />
 }

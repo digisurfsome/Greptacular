@@ -396,7 +396,7 @@ export function WorkspaceChat({
   // Inject system messages into the chat when context usage crosses
   // key thresholds so both the user AND the agent can see them.
   const firedThresholdsRef = useRef<Set<number>>(new Set())
-  const contextBudgetTotal = (fixedContextMode ?? pendingContextModeProp ?? '200k') === '1m' ? 1_000_000 : 200_000
+  const contextBudgetTotal = sessionContextMode === '1m' ? 1_000_000 : 200_000
 
   const [contextWarnings, setContextWarnings] = useState<Array<{
     id: string; role: 'system'; content: string; timestamp: Date
@@ -408,10 +408,9 @@ export function WorkspaceChat({
     const fired = firedThresholdsRef.current
 
     const thresholds: Array<{ at: number; msg: string }> = [
-      { at: 40, msg: '[CONTEXT 40%] Plenty of room. Coding is safe.' },
-      { at: 45, msg: '[CONTEXT 45%] Consider wrapping up current coding task. Start thinking about handoff.' },
-      { at: 50, msg: '[CONTEXT 50%] Coding should stop here. PRDs, discussion, and planning can continue. Quality degrades for code generation beyond this point.' },
-      { at: 55, msg: '[CONTEXT 55%] Quality may degrade for detailed work. Consider handoff for complex PRDs.' },
+      { at: 50, msg: '[CONTEXT 50%] Start wrapping up. Begin handoff preparation.' },
+      { at: 51, msg: '[CONTEXT 51%] HARD STOP — coding must stop now. Commit work and hand off to next session.' },
+      { at: 55, msg: '[CONTEXT 55%] Quality degrading. PRDs and discussion only — no code generation.' },
       { at: 60, msg: '[CONTEXT 60%] Session should wrap up soon. Auto-generating handoff summary recommended.' },
     ]
 

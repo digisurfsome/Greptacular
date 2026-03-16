@@ -2059,6 +2059,15 @@ def get_session(session_id: str) -> Optional[WorkspaceChatSession]:
         return _sessions.get(session_id)
 
 
+def get_session_by_conversation(conversation_id: int) -> Optional["WorkspaceChatSession"]:
+    """Get an active session by its conversation ID."""
+    with _sessions_lock:
+        for s in _sessions.values():
+            if s.conversation_id == conversation_id:
+                return s
+    return None
+
+
 async def create_session(
     session_id: str,
     conversation_id: Optional[int] = None,

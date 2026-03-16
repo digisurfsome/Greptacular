@@ -31,7 +31,6 @@ import {
   useCycleModelBadge,
   useWorkspaceProviders,
 } from '@/hooks/useWorkspaceConversations'
-import { useBackgroundSessions } from '@/hooks/useBackgroundSessions'
 import {
   useWorkspaceCategories,
   useCreateCategory,
@@ -205,16 +204,6 @@ export function WorkspaceSidebar({
   }, [])
 
   const { data: conversations, isLoading } = useWorkspaceConversations()
-  const { data: bgSessions } = useBackgroundSessions()
-
-  // Build a map of conversation_id → background session state for self-sufficient indicators
-  const sessionStateMap = useMemo(() => {
-    const map = new Map<number, { state: string; provider: string; startedAt: string | null }>()
-    bgSessions?.forEach(s => {
-      map.set(s.conversation_id, { state: s.state, provider: s.provider, startedAt: s.started_at })
-    })
-    return map
-  }, [bgSessions])
 
   const createConversationMut = useCreateWorkspaceConversation()
   const updateConversationMut = useUpdateWorkspaceConversation()
@@ -776,11 +765,10 @@ export function WorkspaceSidebar({
                   const isStreaming = streamingIds?.has(conv.id) ?? false
 
                   // Background session state for richer indicators
-                  const bgState = sessionStateMap.get(conv.id)
-                  const isRunningBg = bgState && (bgState.state === 'running' || bgState.state === 'streaming')
-                  const isWaitingInput = bgState?.state === 'waiting_input'
-                  const isCompletedRecent = bgState?.state === 'completed'
-                  const isFailedBg = bgState?.state === 'failed'
+                  const isRunningBg = false
+                  const isWaitingInput = false
+                  const isCompletedRecent = false
+                  const isFailedBg = false
                   // Show activity from either WebSocket streaming or background session
                   const showActivity = isStreaming || isRunningBg
 

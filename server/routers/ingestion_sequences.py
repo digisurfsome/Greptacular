@@ -17,8 +17,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from server.services.ingestion_sequence_generator import (
-    Channel,
     DOMINANCE_LEVELS,
+    Channel,
     IngestionSequenceGenerator,
     generate_coach_prompt,
 )

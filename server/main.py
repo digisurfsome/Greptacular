@@ -50,9 +50,9 @@ from .routers import (
     factory_router,
     features_router,
     filesystem_router,
+    github_router,
     ingestion_sequences_router,
     meta_training_router,
-    github_router,
     notifications_router,
     prd_shredder_router,
     projects_router,
@@ -65,6 +65,7 @@ from .routers import (
     swarm_router,
     terminal_router,
     token_budget_router,
+    tool_analyzer_router,
     tool_factory_router,
     tool_themes_router,
     verifications_router,
@@ -352,6 +353,7 @@ app.include_router(approvals_router)
 app.include_router(checkpoints_router)
 app.include_router(cli_scripter_router)
 app.include_router(token_budget_router)
+app.include_router(tool_analyzer_router)
 app.include_router(tool_factory_router)
 app.include_router(tool_themes_router)
 app.include_router(prd_shredder_router)

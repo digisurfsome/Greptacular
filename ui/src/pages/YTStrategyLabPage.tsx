@@ -71,6 +71,7 @@ import { ThemePicker } from '@/components/tool-factory/ThemePicker'
 import { DeployConfirmation } from '@/components/tool-factory/DeployConfirmation'
 import { DeploymentSuccess } from '@/components/tool-factory/DeploymentSuccess'
 import { PRDUploadModal } from '@/components/tool-factory/PRDUploadModal'
+import { ToolReadinessCheck } from '@/components/tool-factory/ToolReadinessCheck'
 import { useDeployTool, useGoogleAuthStatus, useGoogleAuthUrl } from '@/hooks/useToolFactory'
 import type { TFSheetBlueprint, TFThemeConfig, TFPRDExtractionResult } from '@/lib/types'
 
@@ -1710,7 +1711,7 @@ function StrategyBuilder({
             ))}
           </div>
 
-          {/* Add step + Generate Tool buttons */}
+          {/* Add step + Readiness Check + Generate Tool buttons */}
           <div className="p-3 border-t border-border space-y-2">
             <Button
               variant="outline"
@@ -1721,16 +1722,33 @@ function StrategyBuilder({
               <Plus size={14} />
               Add Step
             </Button>
-            <Button
-              size="sm"
-              className="w-full gap-1.5"
-              onClick={handleStartGenerate}
-              disabled={steps.length === 0 || toolGenPhase !== 'idle'}
-              title={steps.length === 0 ? 'Add steps first' : 'Generate a Google Sheets tool from this strategy'}
-            >
-              <Sparkles size={14} />
-              Generate Tool
-            </Button>
+            {steps.length > 0 && toolGenPhase === 'idle' && (
+              <ToolReadinessCheck
+                steps={steps.map(s => ({
+                  order: s.order,
+                  title: s.title,
+                  description: s.description,
+                  prompt: s.prompt,
+                  expectedOutput: s.expectedOutput,
+                  notes: s.notes,
+                  model: s.model,
+                }))}
+                toolName={project.name}
+                onProceed={handleStartGenerate}
+              />
+            )}
+            {(steps.length === 0 || toolGenPhase !== 'idle') && (
+              <Button
+                size="sm"
+                className="w-full gap-1.5"
+                onClick={handleStartGenerate}
+                disabled={steps.length === 0 || toolGenPhase !== 'idle'}
+                title={steps.length === 0 ? 'Add steps first' : 'Generate a Google Sheets tool from this strategy'}
+              >
+                <Sparkles size={14} />
+                Generate Tool
+              </Button>
+            )}
           </div>
         </div>
       ) : (

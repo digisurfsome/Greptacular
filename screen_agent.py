@@ -27,9 +27,9 @@ import subprocess
 import sys
 import threading
 import tkinter as tk
-from tkinter import scrolledtext
 from datetime import datetime
 from pathlib import Path
+from tkinter import scrolledtext
 
 try:
     from PIL import ImageGrab

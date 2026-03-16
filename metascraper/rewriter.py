@@ -16,7 +16,6 @@ import anthropic
 
 from metascraper.detector import MetaprogramProfile
 
-
 # ═══════════════════════════════════════════════════════════════
 # CONVERSATIONAL METAPROGRAM QUESTIONS
 # ═══════════════════════════════════════════════════════════════

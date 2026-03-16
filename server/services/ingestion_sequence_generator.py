@@ -45,7 +45,6 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
-
 # ═══════════════════════════════════════════════════════════════
 # AUTHENTICITY RULES — The engine's immune system against fake data
 # ═══════════════════════════════════════════════════════════════
@@ -668,25 +667,25 @@ def _get_adapted_followup(profile: dict, topic: str) -> str:
     if motivation_level in (1, 2):  # Pure or dominant toward
         if reference == "internal":
             if motivation_level == 1:
-                base = f"You clearly know what you want. "
+                base = "You clearly know what you want. "
             else:
-                base = f"You know what you want — and what you're done putting up with. "
+                base = "You know what you want — and what you're done putting up with. "
         else:
             if motivation_level == 1:
-                base = f"Here's what people like you are building right now. "
+                base = "Here's what people like you are building right now. "
             else:
-                base = f"Here's what people like you are building — and what they left behind. "
+                base = "Here's what people like you are building — and what they left behind. "
     else:  # Pure or dominant away
         if reference == "internal":
             if motivation_level == 4:
-                base = f"You know exactly what's not working. Let's fix it. "
+                base = "You know exactly what's not working. Let's fix it. "
             else:
-                base = f"You know what's bugging you — and you're ready for something better. "
+                base = "You know what's bugging you — and you're ready for something better. "
         else:
             if motivation_level == 4:
-                base = f"Most people with this exact problem solved it like this. "
+                base = "Most people with this exact problem solved it like this. "
             else:
-                base = f"Most people with this problem solved it — and ended up ahead. "
+                base = "Most people with this problem solved it — and ended up ahead. "
 
     # ─── WORK STYLE FRAMING ───
     if work_style == "options":
@@ -748,7 +747,6 @@ class IngestionSequenceGenerator:
         constraints = self.channel_specs[channel]
 
         # Pick question variants
-        import random
         primary_q = self._pick_question(primary_meta, question_variant)
         secondary_q = self._pick_question(secondary_meta, question_variant)
 

@@ -26,6 +26,8 @@ from .factory import router as factory_router
 from .features import router as features_router
 from .filesystem import router as filesystem_router
 from .github import router as github_router
+from .ingestion_sequences import router as ingestion_sequences_router
+from .meta_training import router as meta_training_router
 from .notifications import router as notifications_router
 from .prd_shredder import router as prd_shredder_router
 from .projects import boilerplate_router, styles_router
@@ -38,14 +40,13 @@ from .spec_creation import router as spec_creation_router
 from .swarm import router as swarm_router
 from .terminal import router as terminal_router
 from .token_budget import router as token_budget_router
+from .tool_analyzer import router as tool_analyzer_router
 from .tool_factory import router as tool_factory_router
 from .tool_themes import router as tool_themes_router
 from .verifications import router as verifications_router
 from .workspace import router as workspace_router
 from .yt_batch import router as yt_batch_router
 from .yt_ingestion import router as yt_ingestion_router
-from .ingestion_sequences import router as ingestion_sequences_router
-from .meta_training import router as meta_training_router
 from .yt_processing import router as yt_processing_router
 
 __all__ = [
@@ -85,6 +86,7 @@ __all__ = [
     "execution_websocket",
     "token_budget_router",
     "prd_shredder_router",
+    "tool_analyzer_router",
     "tool_factory_router",
     "factory_router",
     "factory_presets_router",

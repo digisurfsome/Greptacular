@@ -11,16 +11,12 @@ Usage:
 import os
 import sys
 import threading
-from pathlib import Path
 
 from pynput import keyboard
 
 from vibehelper import __version__
-from vibehelper.agent import (
-    init_client, help_loop, busy, stop_flag, log, DATA_DIR, BRAIN_FILE
-)
+from vibehelper.agent import BRAIN_FILE, DATA_DIR, busy, help_loop, init_client, log, stop_flag
 from vibehelper.setup_wizard import run_setup
-
 
 # === HOTKEY HANDLING ===
 

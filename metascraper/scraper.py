@@ -22,7 +22,6 @@ SCRAPE CHAIN:
 """
 
 import asyncio
-import json
 import re
 import time
 from dataclasses import dataclass, field

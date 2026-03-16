@@ -12,29 +12,26 @@ FLOW:
 TOTAL TIME: 3-5 seconds from login to personalized first message.
 """
 
-import asyncio
-import json
 import time
 from dataclasses import dataclass
 from typing import Optional
 
-from metascraper.scraper import (
-    IdentitySignal,
-    ScrapedCorpus,
-    scrape_all,
-    extract_from_facebook_oauth,
-    extract_from_google_oauth,
-    extract_from_email,
-)
 from metascraper.detector import (
     MetaprogramProfile,
-    detect_metaprograms,
     detect_from_short_text,
+    detect_metaprograms,
 )
 from metascraper.rewriter import (
     get_needed_questions,
     rewrite_message,
-    instant_rewrite,
+)
+from metascraper.scraper import (
+    IdentitySignal,
+    ScrapedCorpus,
+    extract_from_email,
+    extract_from_facebook_oauth,
+    extract_from_google_oauth,
+    scrape_all,
 )
 
 
@@ -140,8 +137,8 @@ def apply_question_answer(
     builds incrementally. Check get_needed_questions() after
     each answer to see if you need to ask more.
     """
-    from metascraper.patterns import METAPROGRAMS
     from metascraper.detector import MetaprogramScore
+    from metascraper.patterns import METAPROGRAMS
     from metascraper.rewriter import FALLBACK_QUESTIONS
 
     if metaprogram not in FALLBACK_QUESTIONS:

@@ -18,6 +18,7 @@ import { PRDShredderPage } from './pages/PRDShredderPage'
 import { MetaEnginePage } from './pages/MetaEnginePage'
 import { ArenaPage } from './pages/ArenaPage'
 import { ArenaChatPage } from './pages/ArenaChatPage'
+import { ComponentDashboardPage } from './pages/ComponentDashboardPage'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import './styles/globals.css'
 
@@ -88,6 +89,9 @@ function Root() {
   }
   if (hash === '#/meta-engine' || hash.startsWith('#/meta-engine/')) {
     return <MetaEnginePage />
+  }
+  if (hash === '#/components' || hash.startsWith('#/components/')) {
+    return <ComponentDashboardPage />
   }
   if (hash.startsWith('#/arena/chat')) {
     return <ArenaChatPage />

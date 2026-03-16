@@ -10,15 +10,14 @@ import io
 import json
 import os
 import subprocess
-import sys
 import threading
 import tkinter as tk
-from tkinter import scrolledtext
 from datetime import datetime
 from pathlib import Path
+from tkinter import scrolledtext
 
-from PIL import ImageGrab
 import anthropic
+from PIL import ImageGrab
 
 # === CONFIG ===
 MAX_LOOPS = 15

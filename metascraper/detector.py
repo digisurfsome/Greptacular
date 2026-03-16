@@ -10,6 +10,7 @@ This means it's FREE and INSTANT once we have the text.
 import re
 from dataclasses import dataclass, field
 from typing import Optional
+
 from metascraper.patterns import METAPROGRAMS
 
 

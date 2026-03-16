@@ -58,7 +58,6 @@ import csv
 import io
 import json
 import logging
-import os
 import re
 import shutil
 import time
@@ -359,7 +358,7 @@ class OutputRouter:
         # Save by channel
         channel_dir = topic_dir / "by_channel" / tags.channel
         channel_dir.mkdir(parents=True, exist_ok=True)
-        filename = f"{tags.profile_code or 'general'}.md" if tags.copy_type != CopyType.FULL_SEQUENCE.value else f"full_sequence.json"
+        filename = f"{tags.profile_code or 'general'}.md" if tags.copy_type != CopyType.FULL_SEQUENCE.value else "full_sequence.json"
         channel_file = channel_dir / filename
         self._write_tagged_file(channel_file, tagged)
 

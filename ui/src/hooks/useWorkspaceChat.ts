@@ -131,6 +131,8 @@ export function useWorkspaceChat({
 
   // Session readiness tracking: prevents sending messages before the backend
   // session is fully established (Claude SDK client created, greeting sent).
+  // Once the first response_done fires, the session is ready and stays ready
+  // — we no longer gate on this per-message (that caused the stuck message bug).
   const sessionReadyRef = useRef(false);
   const queuedPayloadRef = useRef<Record<string, unknown> | null>(null);
 
@@ -400,10 +402,8 @@ export function useWorkspaceChat({
               return prev;
             });
 
-            // Dispatch any message that was queued while waiting for session readiness.
-            // Use setTimeout(0) so React finishes rendering the completed assistant
-            // message before we send the next user message — prevents the user's
-            // message from appearing out of order with the agent's buffered response.
+            // Dispatch any message that was queued before the session was ready
+            // (i.e., sent before the greeting completed). This only fires once.
             if (queuedPayloadRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
               const queued = queuedPayloadRef.current;
               queuedPayloadRef.current = null;
@@ -412,9 +412,8 @@ export function useWorkspaceChat({
                   wsRef.current.send(JSON.stringify(queued));
                 }
               }, 0);
-            } else {
-              setIsLoading(false);
             }
+            setIsLoading(false);
             break;
           }
 
@@ -651,11 +650,19 @@ export function useWorkspaceChat({
         payload.library_file_ids = libraryFileIds;
       }
 
-      // If session is ready, send immediately.  Otherwise queue for delivery
-      // after the next response_done.
-      if (sessionReadyRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
-        sessionReadyRef.current = false;
-        wsRef.current.send(JSON.stringify(payload));
+      // If session is ready (greeting received), send immediately.
+      // Otherwise queue for delivery after the first response_done.
+      // NOTE: We no longer set sessionReadyRef=false after each send.
+      // That was causing the "stuck message" bug — messages sent while
+      // waiting for a response would get queued and only dispatch on
+      // the next response_done, creating a "stuck then burst" effect.
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        if (sessionReadyRef.current) {
+          wsRef.current.send(JSON.stringify(payload));
+        } else {
+          // Only queue if session hasn't been established yet (pre-greeting)
+          queuedPayloadRef.current = payload;
+        }
       } else {
         queuedPayloadRef.current = payload;
       }

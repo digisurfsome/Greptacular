@@ -710,8 +710,7 @@ export function CliScripterPage() {
   // nextFeatureId computed inside functional updater to avoid stale/duplicate IDs
 
   // ---- Build Settings ----
-  // Model defaults to sonnet; each agent role has its own model selector
-  const model = MODELS[0].value
+  const [model] = usePersistedState('cli_scripter_model', MODELS[0].value)
   const [turns, setTurns] = usePersistedState('cli_scripter_turns', '25')
   const [transition, setTransition] = usePersistedState('cli_scripter_transition', TRANSITION_OPTIONS[0])
   const [errorHandling, setErrorHandling] = usePersistedState('cli_scripter_error_handling', ERROR_OPTIONS[0])
@@ -799,7 +798,7 @@ export function CliScripterPage() {
 
   const effectiveRepoName = repoName.trim() || slugifyName(appName)
 
-  const handleValidateToken = async (token: string) => {
+  const handleValidateToken = useCallback(async (token: string) => {
     if (!token.trim()) return
     setGithubValidating(true)
     setGithubError(null)
@@ -807,13 +806,13 @@ export function CliScripterPage() {
     try {
       const user = await validateGitHubToken(token)
       setGithubUser(user)
-      localStorage.setItem('github_pat', token)
+      sessionStorage.setItem('github_pat', token)
     } catch (err) {
       setGithubError(err instanceof Error ? err.message : 'Token validation failed')
     } finally {
       setGithubValidating(false)
     }
-  }
+  }, [])
 
   const handleCreateRepo = async () => {
     if (!githubToken || !effectiveRepoName) return
@@ -838,14 +837,19 @@ export function CliScripterPage() {
   }
 
   // Load saved GitHub token on mount and auto-validate
+  // Migrate from localStorage to sessionStorage (security: PAT shouldn't persist across sessions)
   useEffect(() => {
-    const saved = localStorage.getItem('github_pat')
+    const legacy = localStorage.getItem('github_pat')
+    if (legacy) {
+      sessionStorage.setItem('github_pat', legacy)
+      localStorage.removeItem('github_pat')
+    }
+    const saved = sessionStorage.getItem('github_pat')
     if (saved) {
       setGithubToken(saved)
       handleValidateToken(saved)
     }
-    // Run only on mount
-  }, [])
+  }, [handleValidateToken])
 
   // Auto-populate phase assignments from AI phase split result
   useEffect(() => {
@@ -1215,9 +1219,12 @@ Output a detailed phase plan with feature assignments, estimated token usage per
     setScriptsWritten(null)
 
     try {
+      // Extract only actual phase lines (e.g. "Phase 1: ...", "Phase 2 - ...", "## Phase 3")
+      // from the AI-generated text. Without this filter, every paragraph line becomes a "phase".
+      const phasePattern = /^(?:#{1,3}\s*)?phase\s*\d+/i
       const phases = phaseAssignments
         .split('\n')
-        .filter(l => l.trim())
+        .filter(l => phasePattern.test(l.trim()))
         .map(l => l.trim())
 
       if (phases.length === 0) {

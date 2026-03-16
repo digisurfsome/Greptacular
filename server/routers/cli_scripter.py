@@ -1547,6 +1547,7 @@ async def start_build(request: StartBuildRequest):
             text=True,
             bufsize=1,  # Line-buffered
             env=build_env,
+            start_new_session=(os.name != "nt"),  # Separate process group on Linux so killpg doesn't kill the server
         )
         _build_pid = _build_process.pid
 
@@ -1590,7 +1591,7 @@ async def build_status():
         "elapsed_seconds": round(elapsed, 1),
         "current_phase": _build_current_phase,
         "total_phases": _build_total_phases,
-        "phase_statuses": _build_phase_statuses,
+        "phase_statuses": {str(k): v for k, v in _build_phase_statuses.items()},
         "phase_timings": phase_timing_summary,
         "total_tokens": _build_total_tokens,
         "log_lines_count": len(_build_log_lines),

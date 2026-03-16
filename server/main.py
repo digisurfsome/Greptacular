@@ -67,6 +67,7 @@ from .routers import (
     token_budget_router,
     tool_analyzer_router,
     tool_factory_router,
+    tool_runner_router,
     tool_themes_router,
     verifications_router,
     workspace_router,
@@ -355,6 +356,7 @@ app.include_router(cli_scripter_router)
 app.include_router(token_budget_router)
 app.include_router(tool_analyzer_router)
 app.include_router(tool_factory_router)
+app.include_router(tool_runner_router)
 app.include_router(tool_themes_router)
 app.include_router(prd_shredder_router)
 app.include_router(ingestion_sequences_router)

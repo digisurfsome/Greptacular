@@ -25,6 +25,7 @@ if TYPE_CHECKING:
 from ..models.tool_factory import (
     ChainConfigRow,
     DetectedAPI,
+    ExecutionMode,
     IngestionSource,
     SheetBlueprint,
     StepType,
@@ -53,6 +54,43 @@ GENERATION_SIGNALS = [
     "generate", "create", "write", "build", "design", "draft",
     "compose", "produce", "make", "craft", "develop", "format",
 ]
+
+# ---------------------------------------------------------------------------
+# Expanded Step Type Signals (7-type system for Execution Engine)
+# ---------------------------------------------------------------------------
+
+API_CALL_SIGNALS = [
+    " api", "endpoint", " post ", " get ", "rest api", "api call",
+    "webhook", "http request", "curl",
+]
+
+BROWSER_ACTION_SIGNALS = [
+    "navigate", "go to", "click", "upload to", "log in", "sign in",
+    "fill out", "fill in", "submit form", "open browser", "screenshot",
+    "scroll", "login to",
+]
+
+FILE_CREATE_SIGNALS = [
+    "save as", "export to file", "download", "create file", "write to file",
+    " pdf", " csv", " html file", " json file", " txt file", "save file",
+]
+
+WEBHOOK_SIGNALS = [
+    "send to webhook", "notify webhook", "trigger webhook", "post to webhook",
+    "zapier", "make.com", "n8n",
+]
+
+# Execution mode mapping: StepType → default ExecutionMode
+_STEP_TYPE_TO_EXECUTION_MODE: dict[StepType, ExecutionMode] = {
+    StepType.GENERATION: ExecutionMode.AI_ONLY,
+    StepType.RESEARCH: ExecutionMode.AI_ONLY,
+    StepType.ACTION: ExecutionMode.AI_THEN_ACT,
+    StepType.MANUAL: ExecutionMode.HUMAN_CHECKPOINT,
+    StepType.API_CALL: ExecutionMode.DIRECT_ACTION,
+    StepType.BROWSER_ACTION: ExecutionMode.COMPUTER_USE,
+    StepType.FILE_CREATE: ExecutionMode.AI_THEN_ACT,
+    StepType.WEBHOOK: ExecutionMode.DIRECT_ACTION,
+}
 
 
 # ---------------------------------------------------------------------------
@@ -170,23 +208,50 @@ def filter_and_validate(steps: list[dict]) -> list[dict]:
 def classify_step(step: dict) -> StepType:
     """[ROBOT] Classify a step by keyword matching.
 
-    Priority: ACTION > MANUAL > GENERATION > RESEARCH (default).
+    Priority: BROWSER_ACTION > API_CALL > WEBHOOK > FILE_CREATE > MANUAL > ACTION > GENERATION > RESEARCH (default).
+
+    The 7-type system enables the Execution Engine to choose the right executor per step.
+    Legacy 4-type classifications (ACTION, MANUAL, GENERATION, RESEARCH) are preserved
+    and still returned for steps that don't match the new specific types.
     """
     text = f"{step.get('title', '')} {step.get('prompt', '')} {step.get('description', '')}".lower()
+
+    # Specific execution types first (higher precision)
+    for signal in BROWSER_ACTION_SIGNALS:
+        if signal in text:
+            return StepType.BROWSER_ACTION
+
+    for signal in API_CALL_SIGNALS:
+        if signal in text:
+            return StepType.API_CALL
+
+    for signal in WEBHOOK_SIGNALS:
+        if signal in text:
+            return StepType.WEBHOOK
+
+    for signal in FILE_CREATE_SIGNALS:
+        if signal in text:
+            return StepType.FILE_CREATE
+
+    # Legacy types
+    for signal in MANUAL_SIGNALS:
+        if signal in text:
+            return StepType.MANUAL
 
     for signal in ACTION_SIGNALS:
         if signal in text:
             return StepType.ACTION
-
-    for signal in MANUAL_SIGNALS:
-        if signal in text:
-            return StepType.MANUAL
 
     for signal in GENERATION_SIGNALS:
         if signal in text:
             return StepType.GENERATION
 
     return StepType.RESEARCH
+
+
+def determine_execution_mode(step_type: StepType) -> ExecutionMode:
+    """[ROBOT] Map a StepType to its default ExecutionMode."""
+    return _STEP_TYPE_TO_EXECUTION_MODE.get(step_type, ExecutionMode.AI_ONLY)
 
 
 def detect_apis(steps: list[dict]) -> list[DetectedAPI]:
@@ -425,6 +490,7 @@ def assemble_blueprint(
             notes=step.get("notes", ""),
             original_step_id=step.get("id", str(uuid.uuid4().hex[:8])),
             original_step_order=step.get("order", row_number),
+            execution_mode=determine_execution_mode(step_type),
         )
         chain_rows.append(row)
 

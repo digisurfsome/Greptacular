@@ -19,6 +19,7 @@ import { MetaEnginePage } from './pages/MetaEnginePage'
 import { ArenaPage } from './pages/ArenaPage'
 import { ArenaChatPage } from './pages/ArenaChatPage'
 import { ComponentDashboardPage } from './pages/ComponentDashboardPage'
+import { ToolRunnerPage } from './pages/ToolRunnerPage'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import './styles/globals.css'
 
@@ -77,6 +78,9 @@ function Root() {
   }
   if (hash === '#/cli-scripter' || hash.startsWith('#/cli-scripter/')) {
     return <CliScripterPage />
+  }
+  if (hash.startsWith('#/tools/') && hash.includes('/run')) {
+    return <ToolRunnerPage />
   }
   if (hash === '#/tools' || hash.startsWith('#/tools/')) {
     return <ToolManagerPage />

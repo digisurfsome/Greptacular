@@ -9,6 +9,10 @@ from pydantic import BaseModel, Field
 from ..services.api_research import BlueprintAPIResearch
 
 # ---------------------------------------------------------------------------
+# Execution Engine Models
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
 
@@ -17,6 +21,20 @@ class StepType(str, Enum):
     GENERATION = "generation"
     ACTION = "action"
     MANUAL = "manual"
+    # Execution Engine types (Phase 1 expansion)
+    API_CALL = "api_call"           # Direct HTTP call to external API
+    BROWSER_ACTION = "browser_action"  # Computer use or Playwright
+    FILE_CREATE = "file_create"     # AI generates → write to disk/Drive
+    WEBHOOK = "webhook"             # POST step output to a URL
+
+
+class ExecutionMode(str, Enum):
+    """How a step is executed in the Tool Runner."""
+    AI_ONLY = "ai_only"             # Send prompt to Claude, get text back (default)
+    AI_THEN_ACT = "ai_then_act"     # AI generates content, then action handler executes
+    DIRECT_ACTION = "direct_action" # No AI — directly call API, write file, etc.
+    COMPUTER_USE = "computer_use"   # Claude computer use (screenshot loop)
+    HUMAN_CHECKPOINT = "human_checkpoint"  # Pause and wait for user approval
 
 
 class ToolStatus(str, Enum):
@@ -134,6 +152,15 @@ class ChainConfigRow(BaseModel):
     notes: str = Field(default="", description="Implementation notes from video extraction")
     original_step_id: str = Field(description="ID of the source YTStrategyStep")
     original_step_order: int = Field(description="Original order in the video")
+    # Execution Engine fields
+    execution_mode: "ExecutionMode" = Field(
+        default="ai_only",
+        description="How this step is executed in the Tool Runner",
+    )
+    webhook_url: Optional[str] = Field(
+        default=None,
+        description="If set, POST step output to this URL after completion",
+    )
 
 
 class SheetBlueprint(BaseModel):
@@ -227,3 +254,66 @@ class PRDExtractionResult(BaseModel):
     steps: list[dict]               # Same shape as YTStrategyStep for pipeline compatibility
     extraction_model: str
     extraction_time: float
+
+
+# ---------------------------------------------------------------------------
+# Tool Runner Models (Execution Engine)
+# ---------------------------------------------------------------------------
+
+class StepStatus(str, Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    DONE = "done"
+    ERROR = "error"
+    SKIPPED = "skipped"
+    WAITING = "waiting"     # human_checkpoint — waiting for user
+
+
+class StepResult(BaseModel):
+    """Result of executing a single chain step."""
+    step_number: int
+    title: str
+    step_type: StepType
+    execution_mode: ExecutionMode
+    status: StepStatus
+    output: str = Field(default="", description="Text output (AI or action result)")
+    action_result: Optional[dict] = Field(default=None, description="Structured result from action handler")
+    error: Optional[str] = Field(default=None)
+    tokens_used: int = Field(default=0)
+    duration_seconds: float = Field(default=0.0)
+    started_at: Optional[str] = Field(default=None)
+    completed_at: Optional[str] = Field(default=None)
+
+
+class RunConfig(BaseModel):
+    """Configuration for a single tool run."""
+    run_id: str = Field(description="Unique run identifier")
+    tool_id: str
+    variables: dict[str, str] = Field(default_factory=dict, description="User-provided variable values")
+    start_from_step: int = Field(default=1, description="Step to start from (for resume)")
+    stop_after_step: Optional[int] = Field(default=None, description="Step to stop after (for partial runs)")
+
+
+class RunStatus(str, Enum):
+    IDLE = "idle"
+    RUNNING = "running"
+    PAUSED = "paused"       # human_checkpoint hit
+    DONE = "done"
+    ERROR = "error"
+    CANCELLED = "cancelled"
+
+
+class ToolRunState(BaseModel):
+    """Live state of an in-progress tool run."""
+    run_id: str
+    tool_id: str
+    tool_name: str
+    config: RunConfig
+    status: RunStatus = Field(default=RunStatus.IDLE)
+    current_step: int = Field(default=0)
+    total_steps: int = Field(default=0)
+    step_results: list[StepResult] = Field(default_factory=list)
+    started_at: Optional[str] = Field(default=None)
+    completed_at: Optional[str] = Field(default=None)
+    total_tokens: int = Field(default=0)
+    error: Optional[str] = Field(default=None)

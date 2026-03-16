@@ -42,6 +42,7 @@ from .terminal import router as terminal_router
 from .token_budget import router as token_budget_router
 from .tool_analyzer import router as tool_analyzer_router
 from .tool_factory import router as tool_factory_router
+from .tool_runner import router as tool_runner_router
 from .tool_themes import router as tool_themes_router
 from .verifications import router as verifications_router
 from .workspace import router as workspace_router
@@ -88,6 +89,7 @@ __all__ = [
     "prd_shredder_router",
     "tool_analyzer_router",
     "tool_factory_router",
+    "tool_runner_router",
     "factory_router",
     "factory_presets_router",
     "verifications_router",

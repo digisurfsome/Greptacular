@@ -772,6 +772,12 @@ def parse_csv(content: str) -> list[dict]:
 class SearchRequest(BaseModel):
     seed_keyword: str
     mode: str = "related"  # 'related', 'suggestions', 'both', or 'exact'
+    force_refresh: bool = False  # bypass DB deduplication
+
+
+class EstimateCostRequest(BaseModel):
+    seed_keyword: str
+    mode: str = "related"
 
 
 class SettingsPayload(BaseModel):
@@ -1257,6 +1263,104 @@ async def get_search_status(seed: str = Query("")):
     return status
 
 
+# ---- AI Seed Ordering (Phase 4) ---------------------------------------------
+
+async def _ai_order_seeds(seeds: list[str], openai_key: str) -> list[str]:
+    """Use a cheap AI model to order seeds from broadest to most specific.
+
+    Broadest seeds are searched first so their results can cross-resolve
+    more specific seeds, saving API calls.
+    """
+    if not openai_key or len(seeds) <= 2:
+        return seeds
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={"Authorization": f"Bearer {openai_key}"},
+                json={
+                    "model": "gpt-4o-mini",
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": (
+                                "You order keywords from broadest (most likely to encompass "
+                                "other keywords in search results) to most specific. "
+                                "Return ONLY a JSON array of strings, no other text."
+                            ),
+                        },
+                        {
+                            "role": "user",
+                            "content": f"Order these keywords from broadest to most specific: {json.dumps(seeds)}",
+                        },
+                    ],
+                    "temperature": 0,
+                    "max_tokens": 500,
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            content = data["choices"][0]["message"]["content"].strip()
+            ordered = json.loads(content)
+            # Validate all original seeds are present
+            if set(s.lower() for s in ordered) == set(s.lower() for s in seeds):
+                return [s.lower() for s in ordered]
+            # AI missed some — append missing ones at the end
+            ordered_lower = [s.lower() for s in ordered]
+            for s in seeds:
+                if s.lower() not in ordered_lower:
+                    ordered_lower.append(s.lower())
+            return ordered_lower
+    except Exception as e:
+        logger.warning("AI seed ordering failed, using original order: %s", e)
+        return seeds
+
+
+# ---- Cost Estimation --------------------------------------------------------
+
+@router.post("/estimate-cost")
+async def estimate_cost(req: EstimateCostRequest):
+    """Estimate API cost before running a search, accounting for cached seeds."""
+    raw_seeds = [s.strip().lower() for s in req.seed_keyword.split(",") if s.strip()]
+    if not raw_seeds:
+        return {"total_seeds": 0, "seeds_to_search": 0, "seeds_skipped": 0,
+                "skipped_list": [], "estimated_cost": 0.0, "mode": req.mode}
+
+    # Check which seeds already exist in the database
+    conn = get_db()
+    try:
+        existing_seeds = set(row[0] for row in conn.execute(
+            "SELECT DISTINCT seed_keyword FROM keywords"
+        ).fetchall())
+        existing_keywords = set(row[0] for row in conn.execute(
+            "SELECT DISTINCT keyword FROM keywords"
+        ).fetchall())
+    finally:
+        conn.close()
+
+    seeds_to_search = [s for s in raw_seeds if s not in existing_seeds and s not in existing_keywords]
+    seeds_skipped = [s for s in raw_seeds if s in existing_seeds or s in existing_keywords]
+
+    n = len(seeds_to_search)
+    mode = req.mode if req.mode in ("related", "suggestions", "both", "exact") else "related"
+    # Approximate cost per seed by mode
+    cost_per_seed = {"related": 0.06, "suggestions": 0.06, "both": 0.12, "exact": 0.005}
+    api_cost = n * cost_per_seed.get(mode, 0.06)
+    # Add bulk difficulty lookup cost (~$0.005 per seed)
+    if mode != "exact" and n > 0:
+        api_cost += 0.005 * n
+
+    return {
+        "total_seeds": len(raw_seeds),
+        "seeds_to_search": n,
+        "seeds_skipped": len(seeds_skipped),
+        "skipped_list": seeds_skipped,
+        "estimated_cost": round(api_cost, 3),
+        "mode": mode,
+    }
+
+
 # ---- Search -----------------------------------------------------------------
 
 @router.post("/search")
@@ -1273,6 +1377,35 @@ async def search_keywords(req: SearchRequest):
     all_new_keywords: list[dict] = []
     # Track per-seed results for multi-keyword progress reporting
     seed_results: dict[str, int] = {}
+    cross_resolved: list[str] = []
+
+    # --- Phase 1: DB Deduplication — skip seeds already in the database ---
+    # (bypassed when force_refresh=True)
+    seeds_to_search: list[str] = []
+    seeds_skipped: list[str] = []
+    if req.force_refresh:
+        seeds_to_search = list(raw_seeds)
+    else:
+        conn = get_db()
+        try:
+            existing_seeds = set(row[0] for row in conn.execute(
+                "SELECT DISTINCT seed_keyword FROM keywords"
+            ).fetchall())
+            existing_keywords = set(row[0] for row in conn.execute(
+                "SELECT DISTINCT keyword FROM keywords"
+            ).fetchall())
+        finally:
+            conn.close()
+
+        for seed in raw_seeds:
+            if seed in existing_seeds or seed in existing_keywords:
+                seeds_skipped.append(seed)
+            else:
+                seeds_to_search.append(seed)
+
+    # Set up progress tracking for the multi-seed search
+    progress_key = raw_seeds[0] if raw_seeds else "search"
+    total_to_search = len(seeds_to_search)
 
     if mode == "exact" and source == "dataforseo":
         # Exact mode: look up the exact keywords for volume/CPC/competition + KD
@@ -1283,47 +1416,48 @@ async def search_keywords(req: SearchRequest):
         location_code = int(settings.get("location_code", "2840"))
         language_code = settings.get("language_code", "en")
 
-        try:
-            # Get search volume data for all seeds at once
-            kws = await _dataforseo_search_volume(
-                raw_seeds, login, password, location_code, language_code
-            )
-            # Get KD scores
-            if kws:
-                kw_texts = [kw["keyword"] for kw in kws]
-                diff_map = await _dataforseo_bulk_keyword_difficulty(
-                    kw_texts, login, password, location_code, language_code
+        if seeds_to_search:
+            try:
+                # Get search volume data for new seeds only
+                kws = await _dataforseo_search_volume(
+                    seeds_to_search, login, password, location_code, language_code
                 )
-                for kw in kws:
-                    kd = diff_map.get(kw["keyword"].lower())
-                    if kd is not None:
-                        kw["difficulty"] = kd
-            all_new_keywords.extend(kws)
+                # Get KD scores
+                if kws:
+                    kw_texts = [kw["keyword"] for kw in kws]
+                    diff_map = await _dataforseo_bulk_keyword_difficulty(
+                        kw_texts, login, password, location_code, language_code
+                    )
+                    for kw in kws:
+                        kd = diff_map.get(kw["keyword"].lower())
+                        if kd is not None:
+                            kw["difficulty"] = kd
+                all_new_keywords.extend(kws)
 
-            # Map results back to seeds and persist per-seed
-            kw_by_text = {kw["keyword"].lower(): kw for kw in kws}
-            for seed in raw_seeds:
-                if seed in kw_by_text:
-                    seed_results[seed] = 1
-                    _upsert_keywords([kw_by_text[seed]], source=source, seed=seed)
-                else:
-                    seed_results[seed] = 0
+                # Map results back to seeds and persist per-seed
+                kw_by_text = {kw["keyword"].lower(): kw for kw in kws}
+                for seed in seeds_to_search:
+                    if seed in kw_by_text:
+                        seed_results[seed] = 1
+                        _upsert_keywords([kw_by_text[seed]], source=source, seed=seed)
+                    else:
+                        seed_results[seed] = 0
 
-        except httpx.HTTPStatusError as exc:
-            code = exc.response.status_code
-            error_msgs = {
-                401: "Authentication failed. Check your DataForSEO credentials.",
-                403: "Access denied. Your account may not have access to this endpoint.",
-                402: "Insufficient balance. Please top up your DataForSEO account.",
-                429: "Rate limit exceeded. Please wait a moment and try again.",
-            }
-            return {"error": error_msgs.get(code, f"DataForSEO API error: {code}"), "keywords": [], "count": 0}
-        except Exception as exc:
-            return {"error": f"DataForSEO error: {exc}", "keywords": [], "count": 0}
+            except httpx.HTTPStatusError as exc:
+                code = exc.response.status_code
+                error_msgs = {
+                    401: "Authentication failed. Check your DataForSEO credentials.",
+                    403: "Access denied. Your account may not have access to this endpoint.",
+                    402: "Insufficient balance. Please top up your DataForSEO account.",
+                    429: "Rate limit exceeded. Please wait a moment and try again.",
+                }
+                return {"error": error_msgs.get(code, f"DataForSEO API error: {code}"), "keywords": [], "count": 0}
+            except Exception as exc:
+                return {"error": f"DataForSEO error: {exc}", "keywords": [], "count": 0}
 
     elif mode == "exact" and source != "dataforseo":
         # Exact mode in demo: generate minimal demo data for each seed as-is
-        for seed in raw_seeds:
+        for seed in seeds_to_search:
             kws = _generate_demo_search_results(seed)
             # In exact mode, only keep the keyword that matches the seed exactly
             exact_match = [kw for kw in kws if kw["keyword"].lower() == seed]
@@ -1346,7 +1480,30 @@ async def search_keywords(req: SearchRequest):
                 _upsert_keywords([demo_kw], source=source, seed=seed)
     else:
         # Standard modes: related, suggestions, both
-        for seed in raw_seeds:
+        # Phase 3: Sequential cross-check — after each seed, check if remaining
+        # seeds appear in returned keywords (saving API calls)
+        remaining_seeds = list(seeds_to_search)
+
+        # Phase 4: AI seed ordering — order broadest-first for better cross-check
+        if len(remaining_seeds) > 2:
+            _search_status[progress_key] = {
+                "step": "ordering", "done": False,
+                "message": f"AI ordering {len(remaining_seeds)} seeds for optimal search order...",
+                "searched": 0, "total": total_to_search, "cross_resolved": 0,
+            }
+            openai_key = settings.get("openai_api_key", "")
+            remaining_seeds = await _ai_order_seeds(remaining_seeds, openai_key)
+
+        searched_count = 0
+        while remaining_seeds:
+            seed = remaining_seeds.pop(0)
+            searched_count += 1
+            _search_status[progress_key] = {
+                "step": "searching", "done": False,
+                "message": f"Searching seed {searched_count}/{total_to_search}: \"{seed}\"",
+                "searched": searched_count, "total": total_to_search,
+                "cross_resolved": len(cross_resolved),
+            }
             kws: list[dict] = []
             if source == "dataforseo":
                 login = settings.get("dataforseo_login", "")
@@ -1383,6 +1540,38 @@ async def search_keywords(req: SearchRequest):
             if kws:
                 _upsert_keywords(kws, source=source, seed=seed)
 
+            # Phase 3: Cross-check — see if remaining seeds appear in returned keywords
+            if kws and remaining_seeds:
+                returned_keywords = {kw["keyword"].lower() for kw in kws}
+                still_remaining = []
+                for rs in remaining_seeds:
+                    if rs in returned_keywords:
+                        cross_resolved.append(rs)
+                        seed_results[rs] = 0  # resolved via cross-check, no API call needed
+                    else:
+                        still_remaining.append(rs)
+                if len(still_remaining) < len(remaining_seeds):
+                    resolved_now = len(remaining_seeds) - len(still_remaining)
+                    _search_status[progress_key] = {
+                        "step": "searching", "done": False,
+                        "message": (
+                            f"Cross-check resolved {resolved_now} seed(s)! "
+                            f"{len(still_remaining)} remaining"
+                        ),
+                        "searched": searched_count, "total": total_to_search,
+                        "cross_resolved": len(cross_resolved),
+                    }
+                remaining_seeds = still_remaining
+
+    # Update progress: done
+    _search_status[progress_key] = {
+        "step": "done", "done": True,
+        "message": f"Complete. Searched {total_to_search - len(cross_resolved)} seeds, {len(cross_resolved)} cross-resolved, {len(seeds_skipped)} cached.",
+        "searched": total_to_search, "total": total_to_search,
+        "cross_resolved": len(cross_resolved),
+    }
+    _schedule_status_cleanup(progress_key, delay=30)
+
     # Record search history for each seed
     conn = get_db()
     try:
@@ -1415,6 +1604,9 @@ async def search_keywords(req: SearchRequest):
             "keywords": result,
             "count": len(result),
             "seed_results": seed_results,
+            "seeds_skipped": seeds_skipped,
+            "seeds_searched": len(seeds_to_search),
+            "cross_resolved": cross_resolved,
         }
     finally:
         conn.close()

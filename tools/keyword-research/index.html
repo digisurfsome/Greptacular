@@ -969,6 +969,7 @@ tbody tr:last-child td { border-bottom: none; }
   <div class="header">
     <div class="header-left">
       <h1>Keyword <span>Golden Nugget</span> Finder</h1>
+      <span id="modeBadge" style="font-size:11px;font-weight:700;padding:2px 10px;border-radius:99px;background:#dbeafe;color:#1e40af;display:none"></span>
       <div class="api-status" id="apiStatus">
         <div class="api-dot red" id="apiDot"></div>
         <span id="apiStatusText">Checking...</span>
@@ -1032,6 +1033,9 @@ tbody tr:last-child td { border-bottom: none; }
       <option value="exact" title="Look up exact keywords only — no expansion. Gets volume, KD, CPC, competition for the keywords you typed.">Exact Keywords (no expansion)</option>
     </select>
     <button class="btn-primary" id="searchBtn" onclick="searchKeywords()">Search</button>
+    <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:#888;cursor:pointer;white-space:nowrap" title="Bypass cache and re-search seeds already in the database">
+      <input type="checkbox" id="forceRefresh"> Force refresh
+    </label>
     <button class="btn-niche-explorer" onclick="openNicheExplorer()" title="Answer 5 questions, get 15+ seed angles covering your entire niche">&#x1F9ED; Niche Explorer</button>
   </div>
 
@@ -1040,6 +1044,9 @@ tbody tr:last-child td { border-bottom: none; }
     <div class="progress-spinner"></div>
     <span class="progress-check">&#10003;</span>
     <span id="progressText">Searching...</span>
+  </div>
+  <!-- Search progress log (multi-seed) -->
+  <div id="searchProgressLog" style="display:none;background:#f8f9fa;border:2px solid #222;border-radius:8px;padding:12px 16px;margin:8px 0;font-size:13px;font-family:monospace;max-height:120px;overflow-y:auto">
   </div>
 
   <!-- Search History -->
@@ -1146,8 +1153,8 @@ tbody tr:last-child td { border-bottom: none; }
               <th data-col="keyword" onclick="sortTable('keyword')" title="The search term people type into Google">Keyword <span class="sort-arrow" id="sort-keyword"></span></th>
               <th data-col="volume" onclick="sortTable('volume')" title="Estimated monthly searches on Google (higher = more people searching)">Volume <span class="sort-arrow" id="sort-volume"></span></th>
               <th data-col="difficulty" onclick="sortTable('difficulty')" title="Keyword Difficulty (0-100): How hard it is to rank organically in Google search results. Based on backlink strength of current top-10 pages.">KD <span class="sort-arrow" id="sort-difficulty"></span></th>
-              <th data-col="cpc" onclick="sortTable('cpc')" title="Cost Per Click: What advertisers pay per click in Google Ads. Higher CPC = more commercial value.">CPC <span class="sort-arrow" id="sort-cpc"></span></th>
-              <th data-col="competition" onclick="sortTable('competition')" title="Google Ads Competition (0-100): How many advertisers are bidding on this keyword. This is DIFFERENT from KD — Competition measures paid ad competition, KD measures organic ranking difficulty.">Comp <span class="sort-arrow" id="sort-competition"></span></th>
+              <th class="comp-col" data-col="cpc" onclick="sortTable('cpc')" title="Cost Per Click: What advertisers pay per click in Google Ads. Higher CPC = more commercial value.">CPC <span class="sort-arrow" id="sort-cpc"></span></th>
+              <th class="comp-col" data-col="competition" onclick="sortTable('competition')" title="Google Ads Competition (0-100): How many advertisers are bidding on this keyword. This is DIFFERENT from KD — Competition measures paid ad competition, KD measures organic ranking difficulty.">Comp <span class="sort-arrow" id="sort-competition"></span></th>
               <th data-col="trend" onclick="sortTable('trend')" title="Search volume trend over the past 12 months: Rising, Stable, or Declining">Trend <span class="sort-arrow" id="sort-trend"></span></th>
               <th title="Search intent classification: Buyer (wants to purchase), Tool (looking for a tool/app), Compare (comparing options), Info (seeking information), Research (exploring options), General (other)">Intent</th>
               <th data-col="opportunity_score" onclick="sortTable('opportunity_score')" title="Opportunity Score (0-100): Combined metric weighing volume against difficulty. Higher = easier to rank for with good traffic potential.">Opportunity <span class="sort-arrow" id="sort-opportunity_score"></span></th>
@@ -1497,6 +1504,26 @@ tbody tr:last-child td { border-bottom: none; }
 
 </div>
 
+<!-- Cost Estimation Modal -->
+<div class="modal-overlay" id="costEstimateModal" onclick="if(event.target===this)closeCostEstimate()" style="display:none">
+  <div class="modal" style="max-width:420px">
+    <h2>Search Cost Estimate</h2>
+    <div id="costEstimateBody" style="margin:16px 0;line-height:1.8">
+      <div>Seeds entered: <strong id="ceTotal">0</strong></div>
+      <div>Already cached: <strong id="ceSkipped">0</strong> <span style="color:#22c55e;font-size:12px">(free)</span></div>
+      <div>New searches: <strong id="ceNew">0</strong></div>
+      <div style="margin-top:8px;font-size:18px">Estimated cost: <strong id="ceCost">$0.00</strong></div>
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;margin:12px 0;font-size:13px;cursor:pointer">
+      <input type="checkbox" id="ceAutoSkip"> Always skip confirmation for searches under $0.10
+    </label>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeCostEstimate()">Cancel</button>
+      <button class="btn-primary" id="ceConfirmBtn" onclick="confirmSearch()">Search</button>
+    </div>
+  </div>
+</div>
+
 <!-- Settings Modal -->
 <div class="modal-overlay" id="settingsModal">
   <div class="modal">
@@ -1520,9 +1547,9 @@ tbody tr:last-child td { border-bottom: none; }
       </div>
     </div>
 
-    <label style="margin-top:16px">OpenAI API Key <span style="font-weight:400;color:#999">(for Content Strategy)</span></label>
+    <label style="margin-top:16px">OpenAI API Key <span style="font-weight:400;color:#999">(for Content Strategy + Smart Search ordering)</span></label>
     <input type="password" id="settOpenaiKey" placeholder="sk-...">
-    <div style="font-size:11px;color:#999;margin-top:2px;">Uses gpt-4o-mini (~$0.01 per strategy). Get key at platform.openai.com</div>
+    <div style="font-size:11px;color:#999;margin-top:2px;">Used for content strategy + AI seed ordering (~$0.001/search). Get key at platform.openai.com</div>
 
     <label style="margin-top:16px">Location</label>
     <select id="settLocation">
@@ -1552,6 +1579,11 @@ tbody tr:last-child td { border-bottom: none; }
       <option value="ja">Japanese</option>
       <option value="nl">Dutch</option>
     </select>
+
+    <label style="margin-top:16px;display:flex;align-items:center;gap:8px;cursor:pointer">
+      <input type="checkbox" id="settHideCompetition"> Hide Google Ads competition data (SEO Mode)
+    </label>
+    <div style="font-size:11px;color:#999;margin-top:2px;">When enabled, hides CPC and Competition columns for a cleaner SEO-focused view</div>
 
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeSettings()">Cancel</button>
@@ -2493,17 +2525,89 @@ async function searchKeywords() {
   if (!seed) return;
 
   const mode = document.getElementById('searchMode').value;
+  const autoSkip = localStorage.getItem('seo_auto_skip_confirm') === 'true';
+
+  // For DataForSEO mode, show cost estimate before searching
+  const settings = await api('GET', '/api/settings');
+  if (settings.data_source === 'dataforseo') {
+    const estimate = await api('POST', '/api/estimate-cost', { seed_keyword: seed, mode: mode });
+    if (estimate.seeds_to_search > 0 && !(autoSkip && estimate.estimated_cost < 0.10)) {
+      document.getElementById('ceTotal').textContent = estimate.total_seeds;
+      document.getElementById('ceSkipped').textContent = estimate.seeds_skipped;
+      document.getElementById('ceNew').textContent = estimate.seeds_to_search;
+      document.getElementById('ceCost').textContent = '$' + estimate.estimated_cost.toFixed(3);
+      document.getElementById('ceAutoSkip').checked = autoSkip;
+      document.getElementById('costEstimateModal').style.display = 'flex';
+      return;
+    }
+  }
+
+  // Demo mode or auto-skip — run directly
+  await executeSearch();
+}
+
+function closeCostEstimate() {
+  document.getElementById('costEstimateModal').style.display = 'none';
+}
+
+function confirmSearch() {
+  const autoSkip = document.getElementById('ceAutoSkip').checked;
+  localStorage.setItem('seo_auto_skip_confirm', autoSkip ? 'true' : 'false');
+  closeCostEstimate();
+  executeSearch();
+}
+
+async function executeSearch() {
+  const input = document.getElementById('searchInput');
+  const seed = input.value.trim();
+  if (!seed) return;
+
+  const mode = document.getElementById('searchMode').value;
+  const forceRefresh = document.getElementById('forceRefresh').checked;
   const btn = document.getElementById('searchBtn');
   btn.disabled = true;
 
   // Show progress indicator
   showProgress('Searching...');
 
+  // Show live progress log for multi-seed searches
+  const seeds = seed.split(',').filter(s => s.trim());
+  const logEl = document.getElementById('searchProgressLog');
+  let pollInterval = null;
+  if (seeds.length > 1) {
+    logEl.style.display = 'block';
+    logEl.innerHTML = '<div style="color:#888">Starting search...</div>';
+    const firstSeed = seeds[0].trim().toLowerCase();
+    pollInterval = setInterval(async () => {
+      try {
+        const status = await api('GET', '/api/search-status?seed=' + encodeURIComponent(firstSeed));
+        if (status && status.step !== 'idle') {
+          let line = status.message || '';
+          if (status.searched && status.total) {
+            line = '<strong>[' + status.searched + '/' + status.total + ']</strong> ' + line;
+          }
+          if (status.cross_resolved > 0) {
+            line += ' <span style="color:#16a34a">(' + status.cross_resolved + ' auto-resolved)</span>';
+          }
+          logEl.innerHTML = '<div>' + line + '</div>';
+          logEl.scrollTop = logEl.scrollHeight;
+          document.getElementById('progressText').textContent = status.message || 'Searching...';
+        }
+        if (status && status.done) {
+          clearInterval(pollInterval);
+          pollInterval = null;
+        }
+      } catch(e) {}
+    }, 1500);
+  }
+
   // Get balance before search
   const balanceBefore = await getBalance();
 
-  const data = await api('POST', '/api/search', { seed_keyword: seed, mode: mode });
+  const data = await api('POST', '/api/search', { seed_keyword: seed, mode: mode, force_refresh: forceRefresh });
   btn.disabled = false;
+  if (pollInterval) clearInterval(pollInterval);
+  setTimeout(() => { logEl.style.display = 'none'; }, 5000);
 
   const kwFound = data.keywords ? (data.count || data.keywords.length) : 0;
 
@@ -2530,11 +2634,28 @@ async function searchKeywords() {
   } else {
     // Build per-seed progress message for multi-keyword searches
     let msg = 'Found ' + kwFound + ' keywords';
+
+    // Phase 1: Show skipped (cached) seeds
+    if (data.seeds_skipped && data.seeds_skipped.length > 0) {
+      msg = 'Skipped ' + data.seeds_skipped.length + ' cached seeds. ' + msg;
+    }
+
+    // Phase 3: Show cross-resolved seeds
+    if (data.cross_resolved && data.cross_resolved.length > 0) {
+      msg += ' (' + data.cross_resolved.length + ' resolved via cross-check)';
+    }
+
     const seedResults = data.seed_results || {};
     const seedKeys = Object.keys(seedResults);
     if (seedKeys.length > 1) {
       const succeeded = seedKeys.filter(s => seedResults[s] > 0).length;
       msg = 'Found ' + kwFound + ' keywords from ' + succeeded + '/' + seedKeys.length + ' seeds';
+      if (data.seeds_skipped && data.seeds_skipped.length > 0) {
+        msg = 'Skipped ' + data.seeds_skipped.length + ' cached. ' + msg;
+      }
+      if (data.cross_resolved && data.cross_resolved.length > 0) {
+        msg += ' (' + data.cross_resolved.length + ' cross-resolved)';
+      }
       // Show which seeds returned 0 results
       const failed = seedKeys.filter(s => seedResults[s] === 0);
       if (failed.length > 0 && failed.length <= 5) {
@@ -3010,8 +3131,8 @@ function renderTable() {
       <td class="kw-cell"><a href="https://www.google.com/search?q=${encodeURIComponent(kw.keyword)}" target="_blank" rel="noopener" class="kw-link">${escHtml(kw.keyword)}</a></td>
       <td class="mono">${fmtNum(kw.volume)}<span class="vol-label">monthly</span></td>
       <td class="mono"><span class="diff-badge ${diffClass(kw.difficulty)}">${kw.difficulty}</span></td>
-      <td class="mono">$${(kw.cpc || 0).toFixed(2)}</td>
-      <td class="mono"><span class="diff-badge ${diffClass(compNum)}">${compNum}</span>${compLevelLabel}</td>
+      <td class="mono comp-col">$${(kw.cpc || 0).toFixed(2)}</td>
+      <td class="mono comp-col"><span class="diff-badge ${diffClass(compNum)}">${compNum}</span>${compLevelLabel}</td>
       <td style="text-align:center">${trendIcon(kw.trend)}</td>
       <td><span class="intent-badge ${intent.cls}">${intent.label}</span></td>
       <td class="mono"><span class="opp-badge ${oppClass(opp)}">${opp}</span></td>
@@ -3025,6 +3146,7 @@ function renderTable() {
   // Render pagination controls
   renderPagination(totalPages);
   updateSortArrows();
+  applyCompetitionToggle();
 }
 
 function renderPagination(totalPages) {
@@ -3086,6 +3208,7 @@ function openSettings() {
     if (data.openai_api_key) document.getElementById('settOpenaiKey').value = data.openai_api_key;
     if (data.location_code) document.getElementById('settLocation').value = data.location_code;
     if (data.language_code) document.getElementById('settLanguage').value = data.language_code;
+    document.getElementById('settHideCompetition').checked = (localStorage.getItem('seo_hide_competition') === 'true');
     toggleSettingsFields();
   });
 }
@@ -3132,9 +3255,23 @@ async function saveSettingsQuiet() {
 
 async function saveSettings() {
   await saveSettingsQuiet();
+  localStorage.setItem('seo_hide_competition', document.getElementById('settHideCompetition').checked ? 'true' : 'false');
+  applyCompetitionToggle();
   showToast('Settings saved');
   closeSettings();
   checkApiStatus();
+}
+
+function applyCompetitionToggle() {
+  const hide = localStorage.getItem('seo_hide_competition') === 'true';
+  document.querySelectorAll('.comp-col').forEach(function(el) {
+    el.style.display = hide ? 'none' : '';
+  });
+  var badge = document.getElementById('modeBadge');
+  if (badge) {
+    badge.textContent = hide ? 'SEO Mode' : '';
+    badge.style.display = hide ? 'inline-block' : 'none';
+  }
 }
 
 /* -- Mode switching ------------------------------------------------------ */
@@ -4033,6 +4170,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadKeywords();
   checkApiStatus();
   loadSearchHistory();
+  applyCompetitionToggle();
 });
 </script>
 </body>

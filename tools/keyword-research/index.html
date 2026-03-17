@@ -95,6 +95,7 @@ input, select { font-family: inherit; }
 .mode-badge.related { background: #dbeafe; color: #1e40af; }
 .mode-badge.suggestions { background: #fce7f3; color: #9d174d; }
 .mode-badge.merged { background: #e0e7ff; color: #3730a3; }
+.mode-badge.exact { background: #d1fae5; color: #065f46; }
 .cost-log-footer {
   display: flex; justify-content: space-between; align-items: center;
   padding: 8px 16px; background: #f8fafc; border-top: 1px solid #e2e8f0;
@@ -1028,6 +1029,7 @@ tbody tr:last-child td { border-bottom: none; }
       <option value="related" title="Keywords semantically related to your seed — deeper connections">Related Keywords</option>
       <option value="suggestions" title="Keywords from Google Autocomplete — what people actually type">Keyword Suggestions</option>
       <option value="both" title="Fetches both Related and Suggestions, deduplicates, gives most results">Both (Merge)</option>
+      <option value="exact" title="Look up exact keywords only — no expansion. Gets volume, KD, CPC, competition for the keywords you typed.">Exact Keywords (no expansion)</option>
     </select>
     <button class="btn-primary" id="searchBtn" onclick="searchKeywords()">Search</button>
     <button class="btn-niche-explorer" onclick="openNicheExplorer()" title="Answer 5 questions, get 15+ seed angles covering your entire niche">&#x1F9ED; Niche Explorer</button>
@@ -1110,7 +1112,7 @@ tbody tr:last-child td { border-bottom: none; }
       </div>
       <div class="filter-group">
         <label>Competition (0-100)</label>
-        <div class="filter-range">
+        <div class="filter-row">
           <input type="number" id="filterCompMin" value="0" min="0" max="100" oninput="applyFilters(); saveFilters()">
           <span>to</span>
           <input type="number" id="filterCompMax" value="100" min="0" max="100" oninput="applyFilters(); saveFilters()">
@@ -1770,8 +1772,8 @@ function renderCostLog() {
   let runningTotal = 0;
   tbody.innerHTML = costLog.map((e, i) => {
     runningTotal += e.cost;
-    const modeClass = e.mode === 'merged' ? 'merged' : e.mode === 'keyword_suggestions' ? 'suggestions' : 'related';
-    const modeLabel = e.mode === 'merged' ? 'Merged' : e.mode === 'keyword_suggestions' ? 'Suggestions' : 'Related';
+    const modeClass = e.mode === 'both' ? 'merged' : e.mode === 'suggestions' ? 'suggestions' : e.mode === 'exact' ? 'exact' : 'related';
+    const modeLabel = e.mode === 'both' ? 'Both' : e.mode === 'suggestions' ? 'Suggestions' : e.mode === 'exact' ? 'Exact' : 'Related';
     return `<tr>
       <td>${i + 1}</td>
       <td>${e.datetime}</td>
@@ -2457,6 +2459,18 @@ async function checkApiStatus() {
   }
 }
 
+/* -- Client-side opportunity score computation ----------------------------- */
+function compute_opportunity_scores_client(keywords) {
+  if (!keywords || keywords.length === 0) return keywords;
+  const maxVol = Math.max(...keywords.map(k => k.volume || 0)) || 1;
+  keywords.forEach(k => {
+    if (k.opportunity_score === undefined) {
+      k.opportunity_score = Math.round((k.volume / maxVol) * (1 - (k.difficulty || 0) / 100) * 100);
+    }
+  });
+  return keywords;
+}
+
 /* -- Load all keywords --------------------------------------------------- */
 async function loadKeywords() {
   const data = await api('GET', '/api/keywords?sort_by=volume&sort_order=desc');
@@ -2513,12 +2527,30 @@ async function searchKeywords() {
 
   if (data.error) {
     showProgressError(data.error);
-  } else if (kwFound > 0) {
-    showProgressDone('Found ' + kwFound + ' keywords');
-    await loadKeywords();
   } else {
-    showProgressDone('Found 0 keywords');
-    await loadKeywords();
+    // Build per-seed progress message for multi-keyword searches
+    let msg = 'Found ' + kwFound + ' keywords';
+    const seedResults = data.seed_results || {};
+    const seedKeys = Object.keys(seedResults);
+    if (seedKeys.length > 1) {
+      const succeeded = seedKeys.filter(s => seedResults[s] > 0).length;
+      msg = 'Found ' + kwFound + ' keywords from ' + succeeded + '/' + seedKeys.length + ' seeds';
+      // Show which seeds returned 0 results
+      const failed = seedKeys.filter(s => seedResults[s] === 0);
+      if (failed.length > 0 && failed.length <= 5) {
+        msg += ' (no results: ' + failed.join(', ') + ')';
+      }
+    }
+    showProgressDone(msg);
+    if (data.keywords && data.keywords.length > 0) {
+      // Show ONLY the keywords from this search, not everything in the DB
+      allKeywords = compute_opportunity_scores_client(data.keywords);
+      await loadSegments();
+      applyFilters();
+      scheduleAutoCheck();
+    } else {
+      await loadKeywords();
+    }
   }
   loadSearchHistory();
 }
@@ -2759,13 +2791,15 @@ async function loadSearchHistory() {
       const seed = h.seed_keyword || h.seed || h.keyword || '';
       const mode = h.mode || 'related';
       const count = h.keywords_found || h.count || 0;
-      const date = h.created_at || h.date || '';
+      const totalKw = h.total_keywords != null ? h.total_keywords : count;
+      const date = h.created_at || h.searched_at || h.date || '';
       const dateStr = date ? new Date(date).toLocaleDateString() : '';
+      const kwLabel = totalKw !== count ? `${count} found (${totalKw} total)` : `${count} kw`;
       return `<div class="search-history-row">
-        <input type="checkbox" value="${escHtml(seed)}" data-id="${escHtml(String(id))}">
+        <input type="checkbox" value="${seed.replace(/"/g, '&quot;')}" data-id="${escHtml(String(id))}">
         <span class="search-history-seed">${escHtml(seed)}</span>
         <span class="mode-badge ${mode}">${mode}</span>
-        <span class="search-history-meta">${count} kw</span>
+        <span class="search-history-meta">${kwLabel}</span>
         <span class="search-history-meta">${dateStr}</span>
         <button onclick="event.stopPropagation();deleteSearchHistory('${escHtml(String(id))}')" title="Delete" style="background:none;border:none;cursor:pointer;font-size:13px;color:#ccc;padding:2px 4px">&#x2715;</button>
       </div>`;
@@ -2954,6 +2988,8 @@ function renderTable() {
     const opp = kw.opportunity_score || 0;
     const rowNum = start + i + 1;
     const compNum = Math.round((kw.competition || 0) * 100);
+    const compLevel = kw.competition_level || '';
+    const compLevelLabel = compLevel ? `<span class="vol-label">${compLevel.toLowerCase()}</span>` : '';
     const intent = classifyIntent(kw.keyword);
     const dc = domainCache[kw.keyword];
     const kwEsc = escHtml(kw.keyword).replace(/'/g, "\\'");
@@ -2975,7 +3011,7 @@ function renderTable() {
       <td class="mono">${fmtNum(kw.volume)}<span class="vol-label">monthly</span></td>
       <td class="mono"><span class="diff-badge ${diffClass(kw.difficulty)}">${kw.difficulty}</span></td>
       <td class="mono">$${(kw.cpc || 0).toFixed(2)}</td>
-      <td class="mono"><span class="diff-badge ${diffClass(compNum)}">${compNum}</span></td>
+      <td class="mono"><span class="diff-badge ${diffClass(compNum)}">${compNum}</span>${compLevelLabel}</td>
       <td style="text-align:center">${trendIcon(kw.trend)}</td>
       <td><span class="intent-badge ${intent.cls}">${intent.label}</span></td>
       <td class="mono"><span class="opp-badge ${oppClass(opp)}">${opp}</span></td>
@@ -3507,7 +3543,7 @@ function renderHuntHistory(hunts) {
   }
 
   container.innerHTML = hunts.map(h => {
-    const date = new Date(h.created_at || h.date).toLocaleDateString('en-US', {
+    const date = new Date(h.created_at || h.searched_at || h.date).toLocaleDateString('en-US', {
       month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit'
     });
     const niches = (h.niches || []).join(', ');
@@ -3901,6 +3937,9 @@ async function researchPaKeywords() {
   btn.textContent = 'Researching...';
 
   const keywords = paKeywords.map(kw => kw.keyword);
+  if (keywords.length > 20) {
+    showToast(`Researching first 20 of ${keywords.length} keywords (API limit)`, 'warning');
+  }
   const data = await api('POST', '/api/problem-aware/research', { keywords });
 
   btn.disabled = false;

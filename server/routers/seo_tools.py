@@ -533,6 +533,69 @@ async def _dataforseo_bulk_keyword_difficulty(
     return diff_map
 
 
+async def _dataforseo_search_volume(
+    keywords: list[str], login: str, password: str,
+    location_code: int, language_code: str,
+) -> list[dict]:
+    """
+    Get search volume, CPC, and competition for exact keywords using
+    the Google Ads Search Volume endpoint. Returns a list of keyword dicts
+    ready for storage.
+    """
+    if not keywords:
+        return []
+
+    auth = (login, password)
+    results: list[dict] = []
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        # API accepts up to 700 keywords per call
+        for i in range(0, len(keywords), 700):
+            batch = keywords[i:i + 700]
+            payload = [{
+                "keywords": batch,
+                "location_code": location_code,
+                "language_code": language_code,
+            }]
+            resp = await client.post(
+                f"{DATAFORSEO_BASE}/keywords_data/google_ads/search_volume/live",
+                json=payload,
+                auth=auth,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+            for task in data.get("tasks", []):
+                if task.get("status_code") != 20000:
+                    logger.warning("Search volume task error: %s", task.get("status_message"))
+                    continue
+                for result_item in task.get("result", []) or []:
+                    if result_item is None:
+                        continue
+                    kw_text = result_item.get("keyword", "")
+                    if not kw_text:
+                        continue
+                    volume = result_item.get("search_volume") or 0
+                    cpc_val = result_item.get("cpc") or 0.0
+                    competition = result_item.get("competition") or 0.0
+                    comp_level = result_item.get("competition_level") or ""
+                    monthly = result_item.get("monthly_searches") or []
+                    trend = compute_trend(monthly)
+
+                    results.append({
+                        "keyword": kw_text,
+                        "volume": volume,
+                        "cpc": round(cpc_val, 2),
+                        "competition": round(competition, 4),
+                        "competition_level": comp_level,
+                        "monthly_searches": monthly,
+                        "serp_features": [],
+                        "trend": trend,
+                    })
+
+    return results
+
+
 async def dataforseo_search(
     seed: str, login: str, password: str,
     mode: str, location_code: int, language_code: str,
@@ -708,7 +771,7 @@ def parse_csv(content: str) -> list[dict]:
 
 class SearchRequest(BaseModel):
     seed_keyword: str
-    mode: str = "related"  # 'related', 'suggestions', or 'both'
+    mode: str = "related"  # 'related', 'suggestions', 'both', or 'exact'
 
 
 class SettingsPayload(BaseModel):
@@ -1061,6 +1124,7 @@ def _upsert_keywords(
                  serp_features = excluded.serp_features,
                  trend = excluded.trend,
                  source = excluded.source,
+                 seed_keyword = excluded.seed_keyword,
                  last_updated = excluded.last_updated
             """,
             [
@@ -1202,48 +1266,122 @@ async def search_keywords(req: SearchRequest):
     if not raw_seeds:
         return {"error": "Seed keyword is required", "keywords": [], "count": 0}
 
-    mode = req.mode if req.mode in ("related", "suggestions", "both") else "related"
+    mode = req.mode if req.mode in ("related", "suggestions", "both", "exact") else "related"
     settings = _get_settings()
     source = settings.get("data_source", "demo")
 
     all_new_keywords: list[dict] = []
+    # Track per-seed results for multi-keyword progress reporting
+    seed_results: dict[str, int] = {}
 
-    for seed in raw_seeds:
-        if source == "dataforseo":
-            login = settings.get("dataforseo_login", "")
-            password = settings.get("dataforseo_password", "")
-            if not login or not password:
-                return {"error": "DataForSEO credentials not configured", "keywords": [], "count": 0}
+    if mode == "exact" and source == "dataforseo":
+        # Exact mode: look up the exact keywords for volume/CPC/competition + KD
+        login = settings.get("dataforseo_login", "")
+        password = settings.get("dataforseo_password", "")
+        if not login or not password:
+            return {"error": "DataForSEO credentials not configured", "keywords": [], "count": 0}
+        location_code = int(settings.get("location_code", "2840"))
+        language_code = settings.get("language_code", "en")
 
-            location_code = int(settings.get("location_code", "2840"))
-            language_code = settings.get("language_code", "en")
-
-            try:
-                kws = await dataforseo_search(
-                    seed, login, password, mode, location_code, language_code
+        try:
+            # Get search volume data for all seeds at once
+            kws = await _dataforseo_search_volume(
+                raw_seeds, login, password, location_code, language_code
+            )
+            # Get KD scores
+            if kws:
+                kw_texts = [kw["keyword"] for kw in kws]
+                diff_map = await _dataforseo_bulk_keyword_difficulty(
+                    kw_texts, login, password, location_code, language_code
                 )
-                all_new_keywords.extend(kws)
-            except httpx.HTTPStatusError as exc:
-                code = exc.response.status_code
-                if code == 401:
-                    return {"error": "Authentication failed. Check your DataForSEO credentials.", "keywords": [], "count": 0}
-                elif code == 403:
-                    return {"error": "Access denied. Your account may not have access to this endpoint.", "keywords": [], "count": 0}
-                elif code == 402:
-                    return {"error": "Insufficient balance. Please top up your DataForSEO account.", "keywords": [], "count": 0}
-                elif code == 429:
-                    return {"error": "Rate limit exceeded. Please wait a moment and try again.", "keywords": [], "count": 0}
-                return {"error": f"DataForSEO API error: {code}", "keywords": [], "count": 0}
-            except Exception as exc:
-                return {"error": f"DataForSEO error: {exc}", "keywords": [], "count": 0}
-        else:
-            # Demo mode
-            kws = _generate_demo_search_results(seed)
+                for kw in kws:
+                    kd = diff_map.get(kw["keyword"].lower())
+                    if kd is not None:
+                        kw["difficulty"] = kd
             all_new_keywords.extend(kws)
 
-        # Persist this seed's keywords
-        if kws:
-            _upsert_keywords(kws, source=source, seed=seed)
+            # Map results back to seeds and persist per-seed
+            kw_by_text = {kw["keyword"].lower(): kw for kw in kws}
+            for seed in raw_seeds:
+                if seed in kw_by_text:
+                    seed_results[seed] = 1
+                    _upsert_keywords([kw_by_text[seed]], source=source, seed=seed)
+                else:
+                    seed_results[seed] = 0
+
+        except httpx.HTTPStatusError as exc:
+            code = exc.response.status_code
+            error_msgs = {
+                401: "Authentication failed. Check your DataForSEO credentials.",
+                403: "Access denied. Your account may not have access to this endpoint.",
+                402: "Insufficient balance. Please top up your DataForSEO account.",
+                429: "Rate limit exceeded. Please wait a moment and try again.",
+            }
+            return {"error": error_msgs.get(code, f"DataForSEO API error: {code}"), "keywords": [], "count": 0}
+        except Exception as exc:
+            return {"error": f"DataForSEO error: {exc}", "keywords": [], "count": 0}
+
+    elif mode == "exact" and source != "dataforseo":
+        # Exact mode in demo: generate minimal demo data for each seed as-is
+        for seed in raw_seeds:
+            kws = _generate_demo_search_results(seed)
+            # In exact mode, only keep the keyword that matches the seed exactly
+            exact_match = [kw for kw in kws if kw["keyword"].lower() == seed]
+            if exact_match:
+                all_new_keywords.extend(exact_match)
+                seed_results[seed] = len(exact_match)
+                _upsert_keywords(exact_match, source=source, seed=seed)
+            else:
+                # Generate a single entry for the exact keyword
+                demo_kw = kws[0] if kws else {
+                    "keyword": seed, "volume": random.randint(50, 5000),
+                    "cpc": round(random.uniform(0.10, 3.00), 2),
+                    "competition": round(random.uniform(0.01, 0.95), 2),
+                    "competition_level": random.choice(["LOW", "MEDIUM", "HIGH"]),
+                    "monthly_searches": [], "serp_features": [], "trend": "stable",
+                }
+                demo_kw["keyword"] = seed
+                all_new_keywords.append(demo_kw)
+                seed_results[seed] = 1
+                _upsert_keywords([demo_kw], source=source, seed=seed)
+    else:
+        # Standard modes: related, suggestions, both
+        for seed in raw_seeds:
+            kws: list[dict] = []
+            if source == "dataforseo":
+                login = settings.get("dataforseo_login", "")
+                password = settings.get("dataforseo_password", "")
+                if not login or not password:
+                    return {"error": "DataForSEO credentials not configured", "keywords": [], "count": 0}
+
+                location_code = int(settings.get("location_code", "2840"))
+                language_code = settings.get("language_code", "en")
+
+                try:
+                    kws = await dataforseo_search(
+                        seed, login, password, mode, location_code, language_code
+                    )
+                    all_new_keywords.extend(kws)
+                except httpx.HTTPStatusError as exc:
+                    code = exc.response.status_code
+                    error_msgs = {
+                        401: "Authentication failed. Check your DataForSEO credentials.",
+                        403: "Access denied. Your account may not have access to this endpoint.",
+                        402: "Insufficient balance. Please top up your DataForSEO account.",
+                        429: "Rate limit exceeded. Please wait a moment and try again.",
+                    }
+                    return {"error": error_msgs.get(code, f"DataForSEO API error: {code}"), "keywords": [], "count": 0}
+                except Exception as exc:
+                    return {"error": f"DataForSEO error: {exc}", "keywords": [], "count": 0}
+            else:
+                # Demo mode
+                kws = _generate_demo_search_results(seed)
+                all_new_keywords.extend(kws)
+
+            seed_results[seed] = len(kws)
+            # Persist this seed's keywords
+            if kws:
+                _upsert_keywords(kws, source=source, seed=seed)
 
     # Record search history for each seed
     conn = get_db()
@@ -1273,7 +1411,11 @@ async def search_keywords(req: SearchRequest):
         ).fetchall()
         result = _rows_to_dicts(rows)
         result = compute_opportunity_scores(result)
-        return {"keywords": result, "count": len(result)}
+        return {
+            "keywords": result,
+            "count": len(result),
+            "seed_results": seed_results,
+        }
     finally:
         conn.close()
 
@@ -1686,7 +1828,18 @@ async def get_search_history():
             "SELECT id, seed_keyword, mode, keywords_found, searched_at "
             "FROM search_history ORDER BY searched_at DESC"
         ).fetchall()
-        return {"history": [dict(r) for r in rows], "count": len(rows)}
+        history = [dict(r) for r in rows]
+        # Enrich with current total keyword count per seed
+        for entry in history:
+            seed = entry.get("seed_keyword", "")
+            if seed:
+                total = conn.execute(
+                    "SELECT COUNT(*) FROM keywords WHERE LOWER(seed_keyword) = LOWER(?)", (seed,)
+                ).fetchone()[0]
+                entry["total_keywords"] = total
+            else:
+                entry["total_keywords"] = 0
+        return {"history": history, "count": len(history)}
     finally:
         conn.close()
 
@@ -1720,6 +1873,29 @@ def _keyword_to_domain_base(keyword: str) -> str:
     base = keyword.lower().strip()
     base = re.sub(r"[^a-z0-9]+", "", base)
     return base
+
+
+@router.get("/domain-check")
+async def domain_check(keyword: str = Query(...)):
+    """Check domain availability for a single keyword across common TLDs via RDAP."""
+    base = _keyword_to_domain_base(keyword)
+    if not base:
+        raise HTTPException(status_code=400, detail="Keyword produces no valid domain base")
+
+    tlds = [".com", ".net", ".org", ".io", ".co", ".ai", ".app", ".dev"]
+    domains: list[dict] = []
+
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        for i in range(0, len(tlds), 3):
+            batch = tlds[i : i + 3]
+            tasks = [_check_rdap(client, keyword, tld, f"{base}{tld}") for tld in batch]
+            batch_results = await asyncio.gather(*tasks)
+            for _kw, tld, available in batch_results:
+                domains.append({"domain": f"{base}{tld}", "tld": tld, "available": available})
+            if i + 3 < len(tlds):
+                await asyncio.sleep(0.5)
+
+    return {"keyword": keyword, "domains": domains}
 
 
 @router.post("/domain-check-bulk")
@@ -1874,21 +2050,50 @@ async def content_strategy(req: ContentStrategyRequest):
         "strategy": {
             "snapshot": {
                 "url": req.url,
+                "what_they_sell": "Software / SaaS product (demo data)",
+                "icp": "Small-to-medium businesses looking for productivity tools",
+                "primary_cta": "Start Free Trial",
+                "pricing_motion": "Freemium with paid tiers",
+                "differentiators": ["AI-powered features", "Easy onboarding", "Affordable pricing"],
                 "estimated_traffic": random.randint(500, 50000),
                 "domain_authority": random.randint(10, 80),
                 "top_keyword_count": random.randint(5, 100),
             },
             "comparisons": [
-                {"competitor": "competitor1.com", "overlap": random.randint(10, 60)},
-                {"competitor": "competitor2.com", "overlap": random.randint(5, 40)},
+                {"keyword": "vs competitor1", "volume": random.randint(100, 3000), "difficulty": random.randint(10, 50), "competitor": "competitor1.com"},
+                {"keyword": "vs competitor2", "volume": random.randint(100, 3000), "difficulty": random.randint(10, 50), "competitor": "competitor2.com"},
             ],
             "alternatives": [
                 {"keyword": "alternative keyword 1", "volume": random.randint(100, 5000), "difficulty": random.randint(0, 50)},
                 {"keyword": "alternative keyword 2", "volume": random.randint(100, 5000), "difficulty": random.randint(0, 50)},
             ],
-            "content_gaps": [
-                {"topic": "Topic gap 1", "opportunity_score": random.randint(50, 100)},
-                {"topic": "Topic gap 2", "opportunity_score": random.randint(30, 80)},
+            "listicles": [
+                {"keyword": "best tools for X", "volume": random.randint(200, 4000), "difficulty": random.randint(10, 40)},
+                {"keyword": "top 10 X software", "volume": random.randint(200, 4000), "difficulty": random.randint(10, 40)},
+            ],
+            "integrations": [
+                {"keyword": "X integration with Slack", "volume": random.randint(50, 1000), "difficulty": random.randint(5, 30)},
+                {"keyword": "X integration with Zapier", "volume": random.randint(50, 1000), "difficulty": random.randint(5, 30)},
+            ],
+            "free_tools": [
+                {"keyword": "free X calculator", "volume": random.randint(100, 3000), "difficulty": random.randint(5, 25)},
+                {"keyword": "free X template", "volume": random.randint(100, 3000), "difficulty": random.randint(5, 25)},
+            ],
+            "pillars": [
+                {
+                    "title": "Complete Guide to X",
+                    "keywords": [
+                        {"keyword": "what is X", "volume": random.randint(500, 5000), "difficulty": random.randint(10, 40)},
+                        {"keyword": "how to use X", "volume": random.randint(300, 3000), "difficulty": random.randint(10, 35)},
+                    ],
+                },
+                {
+                    "title": "X for Beginners",
+                    "keywords": [
+                        {"keyword": "X tutorial", "volume": random.randint(200, 2000), "difficulty": random.randint(10, 35)},
+                        {"keyword": "X getting started", "volume": random.randint(100, 1000), "difficulty": random.randint(5, 30)},
+                    ],
+                },
             ],
         }
     }
@@ -1928,7 +2133,7 @@ async def content_strategy_research_keywords(req: ContentStrategyKeywordsRequest
             _upsert_keywords(results, source="demo", seed=seed)
 
     all_keywords = compute_opportunity_scores(all_keywords)
-    return {"keywords": all_keywords, "count": len(all_keywords)}
+    return {"results": all_keywords, "keywords": all_keywords, "count": len(all_keywords)}
 
 
 # ===========================================================================
@@ -2507,6 +2712,7 @@ async def problem_aware_research(req: ProblemAwareResearchRequest):
             await asyncio.sleep(0.2)
 
     return {
+        "results": enriched,
         "keywords": enriched,
         "count": len(enriched),
         "errors": errors,

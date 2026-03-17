@@ -892,6 +892,73 @@ tbody tr:last-child td { border-bottom: none; }
   cursor: pointer; padding: 2px 6px; border-radius: 4px; transition: all 0.15s;
 }
 .btn-delete-hunt:hover { color: #ef4444; background: #fef2f2; }
+/* -- Filter Chips -------------------------------------------------------- */
+.filter-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.filter-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 600;
+  background: #dbeafe; color: #1e40af; cursor: default;
+}
+.filter-chip .chip-x {
+  cursor: pointer; font-size: 13px; color: #93c5fd; margin-left: 2px;
+}
+.filter-chip .chip-x:hover { color: #1e40af; }
+
+/* -- Search History Panel ------------------------------------------------ */
+.search-history-panel {
+  margin: 8px 0; background: #fff; border: 1px solid #e0e0e0; border-radius: 10px; overflow: hidden;
+}
+.search-history-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 14px; cursor: pointer; user-select: none; font-size: 13px; font-weight: 600; color: #555;
+}
+.search-history-header:hover { background: #f9fafb; }
+.search-history-body { max-height: 200px; overflow-y: auto; }
+.search-history-body.collapsed { display: none; }
+.search-history-row {
+  display: flex; align-items: center; gap: 8px; padding: 6px 14px; font-size: 12px; border-bottom: 1px solid #f1f5f9;
+}
+.search-history-row:hover { background: #f9fafb; }
+.search-history-row input[type="checkbox"] { flex-shrink: 0; }
+.search-history-seed { flex: 1; font-weight: 600; color: #333; }
+.search-history-meta { font-size: 11px; color: #888; }
+.search-history-actions {
+  display: flex; gap: 6px; padding: 8px 14px; border-top: 1px solid #e0e0e0; background: #f8fafc;
+}
+.search-history-actions button {
+  padding: 4px 12px; border-radius: 6px; font-size: 11px; font-weight: 600; border: 1px solid #ddd;
+  background: #fff; cursor: pointer;
+}
+.search-history-actions button:hover { background: #f0f0f0; }
+.search-history-actions button.primary { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+.search-history-actions button.primary:hover { background: #2563eb; }
+.filter-chip-bar { display: flex; align-items: center; gap: 6px; }
+.filter-chip-bar .btn-clear-chips {
+  font-size: 10px; padding: 2px 8px; border-radius: 99px; border: 1px solid #ddd;
+  background: #f3f4f6; color: #666; cursor: pointer; font-weight: 600;
+}
+.filter-chip-bar .btn-clear-chips:hover { background: #e5e7eb; }
+/* Problem-Aware Discovery */
+.pa-cat-btn {
+  padding: 6px 14px; font-size: 12px; font-weight: 600;
+  border: 1.5px solid #e0e0e0; background: #f5f5f5; color: #666;
+  border-radius: 8px; cursor: pointer; transition: all 0.15s;
+}
+.pa-cat-btn.active { background: #7c3aed; color: #fff; border-color: #7c3aed; }
+.pa-cat-btn:not(.active):hover { background: #e9e9e9; }
+.pa-cat-btn .pa-count {
+  margin-left: 4px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 10px;
+}
+.pa-category-badge {
+  display: inline-block; padding: 2px 8px; border-radius: 99px;
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+}
+.pa-cat-pain { background: #fee2e2; color: #991b1b; }
+.pa-cat-question { background: #dbeafe; color: #1e40af; }
+.pa-cat-panic { background: #fef3c7; color: #92400e; }
+.pa-cat-pre_awareness { background: #e0e7ff; color: #3730a3; }
+.pa-researched { font-weight: 600; color: #059669; }
+.pa-not-researched { color: #ccc; font-style: italic; }
 </style>
 </head>
 <body>
@@ -939,6 +1006,7 @@ tbody tr:last-child td { border-bottom: none; }
     <button class="mode-tab active" onclick="switchMode('keyword-research')">Keyword Research</button>
     <button class="mode-tab" onclick="switchMode('nugget-hunter')">&#x26CF; Nugget Hunter</button>
     <button class="mode-tab" onclick="switchMode('content-strategy')">&#x1F4C8; Content Strategy</button>
+    <button class="mode-tab" onclick="switchMode('problem-aware')">&#x1F9E0; Problem-Aware</button>
   </div>
 
   <!-- Keyword Research Panel (existing tool) -->
@@ -954,12 +1022,12 @@ tbody tr:last-child td { border-bottom: none; }
 
   <!-- Search bar -->
   <div class="search-bar">
-    <input type="text" id="searchInput" placeholder="Enter a seed keyword (e.g. calculator, ai tools, converter)"
+    <input type="text" id="searchInput" placeholder="Enter seed keywords (e.g. calculator, ai tools, converter) — separate with commas for multiple"
            onkeydown="if(event.key==='Enter')searchKeywords()">
-    <select class="search-mode-select" id="searchMode">
-      <option value="related">Related Keywords</option>
-      <option value="suggestions">Keyword Suggestions</option>
-      <option value="both">Both (Merge)</option>
+    <select class="search-mode-select" id="searchMode" title="Choose how keywords are discovered">
+      <option value="related" title="Keywords semantically related to your seed — deeper connections">Related Keywords</option>
+      <option value="suggestions" title="Keywords from Google Autocomplete — what people actually type">Keyword Suggestions</option>
+      <option value="both" title="Fetches both Related and Suggestions, deduplicates, gives most results">Both (Merge)</option>
     </select>
     <button class="btn-primary" id="searchBtn" onclick="searchKeywords()">Search</button>
     <button class="btn-niche-explorer" onclick="openNicheExplorer()" title="Answer 5 questions, get 15+ seed angles covering your entire niche">&#x1F9ED; Niche Explorer</button>
@@ -970,6 +1038,21 @@ tbody tr:last-child td { border-bottom: none; }
     <div class="progress-spinner"></div>
     <span class="progress-check">&#10003;</span>
     <span id="progressText">Searching...</span>
+  </div>
+
+  <!-- Search History -->
+  <div class="search-history-panel" id="searchHistoryPanel">
+    <div class="search-history-header" onclick="toggleSearchHistory()">
+      <span><span class="arrow" id="searchHistoryArrow">&#x25B6;</span> Search History</span>
+      <span class="search-history-meta" id="searchHistoryCount"></span>
+    </div>
+    <div class="search-history-body collapsed" id="searchHistoryBody">
+      <div id="searchHistoryList"></div>
+      <div class="search-history-actions" id="searchHistoryActions" style="display:none">
+        <button class="primary" onclick="filterBySearches()">Show Selected</button>
+        <button onclick="showAllKeywords()">Show All</button>
+      </div>
+    </div>
   </div>
 
   <!-- Segment bar -->
@@ -1039,8 +1122,14 @@ tbody tr:last-child td { border-bottom: none; }
     <!-- Table -->
     <div class="table-container">
       <div class="table-toolbar">
-        <input type="text" class="table-filter-input" id="tableFilter"
-               placeholder="Filter keywords..." oninput="applyFilters()">
+        <div style="flex:1">
+          <div style="display:flex;gap:4px;align-items:center">
+            <input type="text" class="table-filter-input" id="tableFilter"
+                   placeholder="Type a filter term and press Enter to add..." onkeydown="if(event.key==='Enter'){event.preventDefault();addFilterChip()}" style="flex:1">
+            <button onclick="addFilterChip()" style="padding:5px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-weight:600;background:#f3f4f6;cursor:pointer">Add</button>
+          </div>
+          <div class="filter-chips" id="filterChips"></div>
+        </div>
         <div class="table-toolbar-right">
           <div class="tld-picker" id="tldPicker"></div>
           <button class="check-domains-btn" onclick="checkDomainsForPage()" title="Re-check domains for this page">&#x1F504; Re-check</button>
@@ -1051,18 +1140,18 @@ tbody tr:last-child td { border-bottom: none; }
         <table>
           <thead>
             <tr>
-              <th style="width:36px">#</th>
-              <th data-col="keyword" onclick="sortTable('keyword')">Keyword <span class="sort-arrow" id="sort-keyword"></span></th>
-              <th data-col="volume" onclick="sortTable('volume')">Volume <span class="sort-arrow" id="sort-volume"></span></th>
-              <th data-col="difficulty" onclick="sortTable('difficulty')">KD <span class="sort-arrow" id="sort-difficulty"></span></th>
-              <th data-col="cpc" onclick="sortTable('cpc')">CPC <span class="sort-arrow" id="sort-cpc"></span></th>
-              <th data-col="competition" onclick="sortTable('competition')">Comp <span class="sort-arrow" id="sort-competition"></span></th>
-              <th data-col="trend" onclick="sortTable('trend')">Trend <span class="sort-arrow" id="sort-trend"></span></th>
-              <th>Intent</th>
-              <th data-col="opportunity_score" onclick="sortTable('opportunity_score')">Opportunity <span class="sort-arrow" id="sort-opportunity_score"></span></th>
-              <th>SERP</th>
-              <th style="min-width:140px">Domains</th>
-              <th style="width:60px">Top 10</th>
+              <th style="width:36px" title="Row number">#</th>
+              <th data-col="keyword" onclick="sortTable('keyword')" title="The search term people type into Google">Keyword <span class="sort-arrow" id="sort-keyword"></span></th>
+              <th data-col="volume" onclick="sortTable('volume')" title="Estimated monthly searches on Google (higher = more people searching)">Volume <span class="sort-arrow" id="sort-volume"></span></th>
+              <th data-col="difficulty" onclick="sortTable('difficulty')" title="Keyword Difficulty (0-100): How hard it is to rank organically in Google search results. Based on backlink strength of current top-10 pages.">KD <span class="sort-arrow" id="sort-difficulty"></span></th>
+              <th data-col="cpc" onclick="sortTable('cpc')" title="Cost Per Click: What advertisers pay per click in Google Ads. Higher CPC = more commercial value.">CPC <span class="sort-arrow" id="sort-cpc"></span></th>
+              <th data-col="competition" onclick="sortTable('competition')" title="Google Ads Competition (0-100): How many advertisers are bidding on this keyword. This is DIFFERENT from KD — Competition measures paid ad competition, KD measures organic ranking difficulty.">Comp <span class="sort-arrow" id="sort-competition"></span></th>
+              <th data-col="trend" onclick="sortTable('trend')" title="Search volume trend over the past 12 months: Rising, Stable, or Declining">Trend <span class="sort-arrow" id="sort-trend"></span></th>
+              <th title="Search intent classification: Buyer (wants to purchase), Tool (looking for a tool/app), Compare (comparing options), Info (seeking information), Research (exploring options), General (other)">Intent</th>
+              <th data-col="opportunity_score" onclick="sortTable('opportunity_score')" title="Opportunity Score (0-100): Combined metric weighing volume against difficulty. Higher = easier to rank for with good traffic potential.">Opportunity <span class="sort-arrow" id="sort-opportunity_score"></span></th>
+              <th title="SERP Features: Special result types appearing for this keyword (featured snippets, People Also Ask, video results, etc.)">SERP</th>
+              <th style="min-width:140px" title="Domain name availability check for this keyword across selected TLDs">Domains</th>
+              <th style="width:60px" title="View the current top 10 Google search results for this keyword">Top 10</th>
             </tr>
           </thead>
           <tbody id="kwBody"></tbody>
@@ -1278,6 +1367,96 @@ tbody tr:last-child td { border-bottom: none; }
 
   </div><!-- /contentStrategyPanel -->
 
+  <!-- Problem-Aware Discovery Panel -->
+  <div id="problemAwarePanel" style="display:none">
+
+    <div class="nugget-section">
+      <h3>&#x1F9E0; Problem-Aware Keyword Discovery</h3>
+      <p style="color:#666;font-size:13px;margin-bottom:16px;">
+        Find what people search when they have the problem but don't know the product name.
+        Enter your product/tool name and optionally describe what it does.
+        We'll generate the pain-language, panic searches, and pre-awareness queries that
+        your competitors aren't targeting.
+      </p>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+        <div>
+          <label style="font-size:13px;font-weight:600;color:#555;margin-bottom:4px;display:block;">
+            Product/Tool Name or Category
+          </label>
+          <input type="text" id="paKeyword" placeholder="e.g. ai agent sandbox, CageGuard, file backup tool"
+                 style="width:100%;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14px;">
+        </div>
+        <div>
+          <label style="font-size:13px;font-weight:600;color:#555;margin-bottom:4px;display:block;">
+            What does it do? <span style="font-weight:400;color:#999">(optional — improves results)</span>
+          </label>
+          <input type="text" id="paDescription" placeholder="e.g. Protects files from AI agents, prevents accidental deletion"
+                 style="width:100%;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14px;">
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;align-items:center;">
+        <button class="btn-primary" id="paGenerateBtn" onclick="generateProblemAware()">
+          &#x1F9E0; Generate Problem-Aware Keywords
+        </button>
+        <span id="paStatus" style="font-size:13px;color:#7c3aed;"></span>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div id="paResults" style="display:none">
+
+      <!-- Category tabs -->
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;">
+        <button class="pa-cat-btn active" onclick="switchPaCategory('all')">All <span class="pa-count" id="paCntAll">0</span></button>
+        <button class="pa-cat-btn" onclick="switchPaCategory('pain')">&#x1F915; Pain/Problem <span class="pa-count" id="paCntPain">0</span></button>
+        <button class="pa-cat-btn" onclick="switchPaCategory('question')">&#x2753; Questions <span class="pa-count" id="paCntQuestion">0</span></button>
+        <button class="pa-cat-btn" onclick="switchPaCategory('panic')">&#x1F6A8; Panic/Emergency <span class="pa-count" id="paCntPanic">0</span></button>
+        <button class="pa-cat-btn" onclick="switchPaCategory('pre_awareness')">&#x1F4A1; Pre-Awareness <span class="pa-count" id="paCntPreAwareness">0</span></button>
+      </div>
+
+      <!-- Actions bar -->
+      <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;">
+        <button class="icon-btn" onclick="researchPaKeywords()" id="paResearchBtn">
+          &#x1F50D; Get Real Search Data
+        </button>
+        <button class="icon-btn" onclick="exportPaCSV()">
+          &#x2B07; Export CSV
+        </button>
+        <button class="icon-btn" onclick="addPaToMainKeywords()">
+          &#x2795; Add to Main Keywords
+        </button>
+        <span class="table-info" id="paTableInfo"></span>
+      </div>
+
+      <!-- Results table -->
+      <div class="nugget-section" style="padding:0;overflow:hidden;">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:36px">#</th>
+              <th>Keyword</th>
+              <th title="Category of problem-aware search">Category</th>
+              <th title="Estimated difficulty — most problem-aware keywords are very low competition">Est. KD</th>
+              <th title="Estimated Google Ads competition">Est. Comp</th>
+              <th title="Real search volume (click 'Get Real Search Data' to populate)">Volume</th>
+              <th title="Real keyword difficulty from DataForSEO">Real KD</th>
+              <th title="Real CPC from DataForSEO">Real CPC</th>
+            </tr>
+          </thead>
+          <tbody id="paBody"></tbody>
+        </table>
+        <div class="empty-state" id="paEmptyState" style="display:none">
+          <div class="emoji">&#x1F9E0;</div>
+          <p>Enter a product name and click Generate to discover problem-aware keywords.</p>
+        </div>
+        <div class="pagination" id="paPagination"></div>
+      </div>
+
+    </div>
+  </div>
+
   <!-- Cost Log Panel (always visible) -->
   <div class="cost-log-panel" id="costLogPanel">
     <div class="cost-log-header" onclick="toggleCostLog()">
@@ -1458,6 +1637,7 @@ tbody tr:last-child td { border-bottom: none; }
 let allKeywords = [];
 let filteredKeywords = [];
 let displayedKeywords = [];  // after text filter
+let filterChips = [];
 let segments = [];
 let activeSegments = new Set();
 let currentSort = { col: 'volume', order: 'desc' };
@@ -2340,6 +2520,7 @@ async function searchKeywords() {
     showProgressDone('Found 0 keywords');
     await loadKeywords();
   }
+  loadSearchHistory();
 }
 
 function showProgress(msg) {
@@ -2448,6 +2629,8 @@ function resetFilters() {
   document.getElementById('filterCompMin').value = 0;
   document.getElementById('filterCompMax').value = 100;
   document.getElementById('tableFilter').value = '';
+  filterChips = [];
+  renderFilterChips();
   activeSegments.clear();
   renderSegmentBar();
   localStorage.removeItem('kwFilters');
@@ -2466,7 +2649,10 @@ function applyFilters() {
   const intentFilter = document.getElementById('filterIntent').value;
   const compMin = parseInt(document.getElementById('filterCompMin').value) || 0;
   const compMax = parseInt(document.getElementById('filterCompMax').value) || 100;
-  const textFilter = (document.getElementById('tableFilter').value || '').toLowerCase().trim();
+  // Combine chips + current input for text filtering
+  const currentInput = (document.getElementById('tableFilter').value || '').toLowerCase().trim();
+  const allTextFilters = [...filterChips.map(c => c.toLowerCase())];
+  if (currentInput && !filterChips.length) allTextFilters.push(currentInput);
 
   if (activeSegments.size > 0) {
     const ranges = [];
@@ -2498,11 +2684,12 @@ function applyFilters() {
     });
   }
 
-  // Apply text filter
-  if (textFilter) {
-    displayedKeywords = filteredKeywords.filter(kw =>
-      kw.keyword.toLowerCase().includes(textFilter)
-    );
+  // Apply text filter (OR logic: keyword matches ANY chip/term)
+  if (allTextFilters.length > 0) {
+    displayedKeywords = filteredKeywords.filter(kw => {
+      const kwLower = kw.keyword.toLowerCase();
+      return allTextFilters.some(term => kwLower.includes(term));
+    });
   } else {
     displayedKeywords = filteredKeywords;
   }
@@ -2511,6 +2698,113 @@ function applyFilters() {
   sortData();
   renderTable();
   updateStats();
+}
+
+/* -- Filter Chips --------------------------------------------------------- */
+function addFilterChip() {
+  const input = document.getElementById('tableFilter');
+  const term = input.value.trim();
+  if (!term || filterChips.includes(term)) { input.value = ''; return; }
+  filterChips.push(term);
+  input.value = '';
+  renderFilterChips();
+  applyFilters();
+}
+
+function removeFilterChip(index) {
+  filterChips.splice(index, 1);
+  renderFilterChips();
+  applyFilters();
+}
+
+function clearAllFilterChips() {
+  filterChips = [];
+  renderFilterChips();
+  applyFilters();
+}
+
+function renderFilterChips() {
+  const container = document.getElementById('filterChips');
+  if (!filterChips.length) { container.innerHTML = ''; return; }
+  container.innerHTML = filterChips.map((chip, i) =>
+    `<span class="filter-chip">${escHtml(chip)}<span class="chip-x" onclick="removeFilterChip(${i})">&times;</span></span>`
+  ).join('') + ' <button class="btn-clear-chips" onclick="clearAllFilterChips()">Clear All</button>';
+}
+
+/* -- Search History ------------------------------------------------------- */
+function toggleSearchHistory() {
+  const body = document.getElementById('searchHistoryBody');
+  const arrow = document.getElementById('searchHistoryArrow');
+  const collapsed = body.classList.toggle('collapsed');
+  arrow.innerHTML = collapsed ? '&#x25B6;' : '&#x25BC;';
+}
+
+async function loadSearchHistory() {
+  try {
+    const data = await api('GET', '/api/search-history');
+    const list = document.getElementById('searchHistoryList');
+    const actions = document.getElementById('searchHistoryActions');
+    const countEl = document.getElementById('searchHistoryCount');
+    const history = data.history || data || [];
+    if (!Array.isArray(history) || history.length === 0) {
+      list.innerHTML = '<div style="padding:12px 14px;font-size:12px;color:#999;text-align:center">No searches yet</div>';
+      actions.style.display = 'none';
+      countEl.textContent = '';
+      return;
+    }
+    countEl.textContent = history.length + ' searches';
+    actions.style.display = 'flex';
+    list.innerHTML = history.map(h => {
+      const id = h.id || h.search_id || '';
+      const seed = h.seed_keyword || h.seed || h.keyword || '';
+      const mode = h.mode || 'related';
+      const count = h.keywords_found || h.count || 0;
+      const date = h.created_at || h.date || '';
+      const dateStr = date ? new Date(date).toLocaleDateString() : '';
+      return `<div class="search-history-row">
+        <input type="checkbox" value="${escHtml(seed)}" data-id="${escHtml(String(id))}">
+        <span class="search-history-seed">${escHtml(seed)}</span>
+        <span class="mode-badge ${mode}">${mode}</span>
+        <span class="search-history-meta">${count} kw</span>
+        <span class="search-history-meta">${dateStr}</span>
+        <button onclick="event.stopPropagation();deleteSearchHistory('${escHtml(String(id))}')" title="Delete" style="background:none;border:none;cursor:pointer;font-size:13px;color:#ccc;padding:2px 4px">&#x2715;</button>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    // Search history API may not exist yet — silently ignore
+  }
+}
+
+async function filterBySearches() {
+  const checked = document.querySelectorAll('#searchHistoryList input[type="checkbox"]:checked');
+  if (checked.length === 0) { showToast('Select at least one search'); return; }
+  const seeds = Array.from(checked).map(cb => cb.value).join(',');
+  try {
+    const data = await api('GET', '/api/keywords?seeds=' + encodeURIComponent(seeds));
+    if (data.keywords) {
+      allKeywords = data.keywords;
+      applyFilters();
+      showToast('Showing keywords from ' + checked.length + ' search(es)');
+    }
+  } catch (e) {
+    showToast('Failed to filter by searches');
+  }
+}
+
+async function showAllKeywords() {
+  await loadKeywords();
+  showToast('Showing all keywords');
+}
+
+async function deleteSearchHistory(id) {
+  if (!id) return;
+  try {
+    await api('DELETE', '/api/search-history/' + encodeURIComponent(id));
+    loadSearchHistory();
+    showToast('Search deleted');
+  } catch (e) {
+    showToast('Failed to delete');
+  }
 }
 
 /* -- Filter Persistence (localStorage) ----------------------------------- */
@@ -2813,9 +3107,10 @@ function switchMode(mode) {
     'keyword-research': document.getElementById('keywordResearchPanel'),
     'nugget-hunter': document.getElementById('nuggetHunterPanel'),
     'content-strategy': document.getElementById('contentStrategyPanel'),
+    'problem-aware': document.getElementById('problemAwarePanel'),
   };
   const tabs = document.querySelectorAll('.mode-tab');
-  const tabMap = {'keyword-research': 0, 'nugget-hunter': 1, 'content-strategy': 2};
+  const tabMap = {'keyword-research': 0, 'nugget-hunter': 1, 'content-strategy': 2, 'problem-aware': 3};
 
   Object.values(panels).forEach(p => p.style.display = 'none');
   tabs.forEach(t => t.classList.remove('active'));
@@ -3118,7 +3413,20 @@ function renderNuggetPagination(totalPages) {
 }
 
 function goToNuggetPage(page) {
-  const totalPages = Math.ceil(nuggetResults.length / NUGGET_PAGE_SIZE);
+  // Use filtered count (matching renderNuggetResults logic) instead of raw nuggetResults.length
+  let filtered = nuggetResults;
+  if (nuggetTierFilter !== 'all') {
+    filtered = filtered.filter(r => (r.tier || classifyNuggetTier(r)) === nuggetTierFilter);
+  }
+  const textFilter = (document.getElementById('nuggetTableFilter').value || '').toLowerCase().trim();
+  if (textFilter) {
+    filtered = filtered.filter(r =>
+      (r.keyword || '').toLowerCase().includes(textFilter) ||
+      (r.niche || '').toLowerCase().includes(textFilter) ||
+      (r.suffix || '').toLowerCase().includes(textFilter)
+    );
+  }
+  const totalPages = Math.ceil(filtered.length / NUGGET_PAGE_SIZE);
   if (page < 1 || page > totalPages) return;
   nuggetPage = page;
   renderNuggetResults();
@@ -3222,7 +3530,7 @@ async function deleteHunt(huntId) {
     showToast('Hunt deleted');
     loadHuntHistory();
     // If we were viewing this hunt's results, clear them
-    if (nuggetHuntId === huntId) {
+    if (String(nuggetHuntId) === String(huntId)) {
       nuggetResults = [];
       document.getElementById('huntResultsSection').style.display = 'none';
       nuggetHuntId = null;
@@ -3461,6 +3769,225 @@ function exportCsCSV() {
   a.click();
 }
 
+/* -- Problem-Aware Discovery --------------------------------------------- */
+let paKeywords = [];
+let paCategory = 'all';
+let paPage = 1;
+const PA_PAGE_SIZE = 25;
+
+async function generateProblemAware() {
+  const keyword = document.getElementById('paKeyword').value.trim();
+  if (!keyword) { showToast('Enter a product or keyword', true); return; }
+
+  const description = document.getElementById('paDescription').value.trim();
+  const btn = document.getElementById('paGenerateBtn');
+  const status = document.getElementById('paStatus');
+
+  btn.disabled = true;
+  status.textContent = 'Generating problem-aware keywords...';
+
+  const data = await api('POST', '/api/problem-aware', {
+    seed_keyword: keyword,
+    product_description: description
+  });
+
+  btn.disabled = false;
+  status.textContent = '';
+
+  if (data.error) {
+    status.textContent = data.error;
+    status.style.color = '#dc2626';
+    return;
+  }
+
+  paKeywords = data.keywords || [];
+  paPage = 1;
+  document.getElementById('paResults').style.display = 'block';
+  updatePaCounts();
+  renderPaResults();
+  showToast('Generated ' + paKeywords.length + ' problem-aware keywords');
+}
+
+function updatePaCounts() {
+  const counts = { all: paKeywords.length, pain: 0, question: 0, panic: 0, pre_awareness: 0 };
+  paKeywords.forEach(kw => { if (counts[kw.category] !== undefined) counts[kw.category]++; });
+  document.getElementById('paCntAll').textContent = counts.all;
+  document.getElementById('paCntPain').textContent = counts.pain;
+  document.getElementById('paCntQuestion').textContent = counts.question;
+  document.getElementById('paCntPanic').textContent = counts.panic;
+  document.getElementById('paCntPreAwareness').textContent = counts.pre_awareness;
+}
+
+function switchPaCategory(cat) {
+  paCategory = cat;
+  paPage = 1;
+  document.querySelectorAll('.pa-cat-btn').forEach(btn => {
+    const btnCat = btn.onclick.toString().match(/'([^']+)'/)?.[1] || '';
+    btn.classList.toggle('active', btnCat === cat);
+  });
+  renderPaResults();
+}
+
+function renderPaResults() {
+  const tbody = document.getElementById('paBody');
+  const empty = document.getElementById('paEmptyState');
+
+  let filtered = paCategory === 'all' ? paKeywords : paKeywords.filter(kw => kw.category === paCategory);
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    document.getElementById('paPagination').innerHTML = '';
+    document.getElementById('paTableInfo').textContent = '';
+    return;
+  }
+  empty.style.display = 'none';
+
+  const totalPages = Math.ceil(filtered.length / PA_PAGE_SIZE);
+  if (paPage > totalPages) paPage = totalPages;
+  const start = (paPage - 1) * PA_PAGE_SIZE;
+  const pageItems = filtered.slice(start, start + PA_PAGE_SIZE);
+
+  document.getElementById('paTableInfo').textContent = filtered.length + ' keywords';
+
+  const catLabels = {
+    pain: ['Pain/Problem', 'pa-cat-pain'],
+    question: ['Question', 'pa-cat-question'],
+    panic: ['Panic/Emergency', 'pa-cat-panic'],
+    pre_awareness: ['Pre-Awareness', 'pa-cat-pre_awareness']
+  };
+
+  tbody.innerHTML = pageItems.map((kw, i) => {
+    const [catLabel, catClass] = catLabels[kw.category] || ['Other', ''];
+    const vol = kw.real_volume !== undefined ? `<span class="pa-researched">${fmtNum(kw.real_volume)}</span>` : '<span class="pa-not-researched">—</span>';
+    const realKd = kw.real_difficulty !== undefined ? `<span class="pa-researched">${kw.real_difficulty}</span>` : '<span class="pa-not-researched">—</span>';
+    const realCpc = kw.real_cpc !== undefined ? `<span class="pa-researched">$${kw.real_cpc.toFixed(2)}</span>` : '<span class="pa-not-researched">—</span>';
+
+    return `<tr>
+      <td class="row-num">${start + i + 1}</td>
+      <td class="kw-cell"><a href="https://www.google.com/search?q=${encodeURIComponent(kw.keyword)}" target="_blank" rel="noopener" class="kw-link">${escHtml(kw.keyword)}</a></td>
+      <td><span class="pa-category-badge ${catClass}">${catLabel}</span></td>
+      <td class="mono"><span class="diff-badge ${diffClass(kw.estimated_difficulty || 5)}">${kw.estimated_difficulty || 5}</span></td>
+      <td class="mono">${Math.round((kw.estimated_competition || 0.05) * 100)}</td>
+      <td class="mono">${vol}</td>
+      <td class="mono">${realKd}</td>
+      <td class="mono">${realCpc}</td>
+    </tr>`;
+  }).join('');
+
+  // Pagination
+  const pag = document.getElementById('paPagination');
+  if (totalPages <= 1) { pag.innerHTML = ''; return; }
+  pag.innerHTML = `
+    <button onclick="goToPaPage(1)" ${paPage === 1 ? 'disabled' : ''}>&laquo;</button>
+    <button onclick="goToPaPage(${paPage - 1})" ${paPage === 1 ? 'disabled' : ''}>&lsaquo; Prev</button>
+    <span class="page-info">Page ${paPage} of ${totalPages}</span>
+    <button onclick="goToPaPage(${paPage + 1})" ${paPage === totalPages ? 'disabled' : ''}>Next &rsaquo;</button>
+    <button onclick="goToPaPage(${totalPages})" ${paPage === totalPages ? 'disabled' : ''}>&raquo;</button>
+  `;
+}
+
+function goToPaPage(page) {
+  const filtered = paCategory === 'all' ? paKeywords : paKeywords.filter(kw => kw.category === paCategory);
+  const totalPages = Math.ceil(filtered.length / PA_PAGE_SIZE);
+  if (page < 1 || page > totalPages) return;
+  paPage = page;
+  renderPaResults();
+}
+
+async function researchPaKeywords() {
+  const btn = document.getElementById('paResearchBtn');
+  btn.disabled = true;
+  btn.textContent = 'Researching...';
+
+  const keywords = paKeywords.map(kw => kw.keyword);
+  const data = await api('POST', '/api/problem-aware/research', { keywords });
+
+  btn.disabled = false;
+  btn.innerHTML = '&#x1F50D; Get Real Search Data';
+
+  if (data.results) {
+    // Merge real data back into paKeywords
+    const lookup = {};
+    data.results.forEach(r => { lookup[r.keyword.toLowerCase()] = r; });
+
+    paKeywords.forEach(kw => {
+      const real = lookup[kw.keyword.toLowerCase()];
+      if (real) {
+        kw.real_volume = real.volume || 0;
+        kw.real_difficulty = real.difficulty || 0;
+        kw.real_cpc = real.cpc || 0;
+        kw.real_competition = real.competition || 0;
+      }
+    });
+
+    renderPaResults();
+    const researched = paKeywords.filter(kw => kw.real_volume !== undefined).length;
+    showToast('Got real data for ' + researched + ' keywords');
+  }
+}
+
+function exportPaCSV() {
+  if (!paKeywords.length) { showToast('No keywords to export', true); return; }
+
+  let toExport = paCategory === 'all' ? paKeywords : paKeywords.filter(kw => kw.category === paCategory);
+
+  const headers = ['Keyword', 'Category', 'Est. KD', 'Est. Competition', 'Volume', 'Real KD', 'Real CPC'];
+  const rows = [headers.join(',')];
+  toExport.forEach(kw => {
+    rows.push([
+      '"' + kw.keyword.replace(/"/g, '""') + '"',
+      kw.category,
+      kw.estimated_difficulty || 5,
+      kw.estimated_competition || 0.05,
+      kw.real_volume !== undefined ? kw.real_volume : '',
+      kw.real_difficulty !== undefined ? kw.real_difficulty : '',
+      kw.real_cpc !== undefined ? kw.real_cpc.toFixed(2) : ''
+    ].join(','));
+  });
+
+  const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'problem_aware_keywords.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('Exported ' + toExport.length + ' keywords');
+}
+
+function addPaToMainKeywords() {
+  // Add problem-aware keywords to the main keyword research table
+  const toAdd = paKeywords.filter(kw => kw.real_volume !== undefined);
+  if (!toAdd.length) {
+    showToast('Research keywords first to get real data before adding', true);
+    return;
+  }
+  // Add to allKeywords (avoiding duplicates)
+  const existing = new Set(allKeywords.map(k => k.keyword.toLowerCase()));
+  let added = 0;
+  toAdd.forEach(kw => {
+    if (!existing.has(kw.keyword.toLowerCase())) {
+      allKeywords.push({
+        keyword: kw.keyword,
+        volume: kw.real_volume || 0,
+        difficulty: kw.real_difficulty || 0,
+        cpc: kw.real_cpc || 0,
+        competition: kw.real_competition || 0,
+        trend: 'stable',
+        source: 'problem_aware',
+        opportunity_score: Math.round(((kw.real_volume || 0) / 10000) * (1 - (kw.real_difficulty || 0) / 100) * 100)
+      });
+      added++;
+    }
+  });
+  applyFilters();
+  switchMode('keyword-research');
+  showToast('Added ' + added + ' keywords to main table');
+}
+
 /* -- Init ---------------------------------------------------------------- */
 document.addEventListener('DOMContentLoaded', () => {
   renderTldPicker();
@@ -3468,6 +3995,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadCostLog();
   loadKeywords();
   checkApiStatus();
+  loadSearchHistory();
 });
 </script>
 </body>

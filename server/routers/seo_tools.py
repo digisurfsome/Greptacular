@@ -20,6 +20,7 @@ import io
 import json
 import logging
 import random
+import re
 import sqlite3
 import time
 from datetime import datetime, timezone
@@ -167,6 +168,14 @@ def init_db() -> None:
                 ON nuggets(hunt_id);
             CREATE INDEX IF NOT EXISTS idx_nuggets_tier
                 ON nuggets(tier);
+
+            CREATE TABLE IF NOT EXISTS search_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                seed_keyword TEXT NOT NULL,
+                mode TEXT,
+                keywords_found INTEGER DEFAULT 0,
+                searched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
         """)
 
         # Migrate existing tables: add new columns if missing
@@ -200,6 +209,16 @@ init_db()
 # ---------------------------------------------------------------------------
 
 _search_status: dict[str, dict[str, Any]] = {}
+
+
+def _schedule_status_cleanup(key: str, delay: float = 60.0) -> None:
+    """Remove a _search_status entry after *delay* seconds to prevent memory leaks."""
+    try:
+        loop = asyncio.get_event_loop()
+        loop.call_later(delay, _search_status.pop, key, None)
+    except RuntimeError:
+        # No running loop — skip cleanup (edge case during shutdown)
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -581,6 +600,8 @@ async def dataforseo_search(
             "done": True,
             "count": len(all_keywords),
         }
+        # Clean up status entry after 60 seconds to prevent memory leak
+        _schedule_status_cleanup(status_key)
 
     except Exception as exc:
         _search_status[status_key] = {
@@ -589,6 +610,7 @@ async def dataforseo_search(
             "done": True,
             "count": 0,
         }
+        _schedule_status_cleanup(status_key)
         raise
 
     return all_keywords
@@ -695,6 +717,7 @@ class SettingsPayload(BaseModel):
     dataforseo_password: str = ""
     location_code: int = 2840
     language_code: str = "en"
+    openai_api_key: str = ""
 
 
 class NuggetHuntRequest(BaseModel):
@@ -1038,7 +1061,6 @@ def _upsert_keywords(
                  serp_features = excluded.serp_features,
                  trend = excluded.trend,
                  source = excluded.source,
-                 seed_keyword = excluded.seed_keyword,
                  last_updated = excluded.last_updated
             """,
             [
@@ -1098,7 +1120,7 @@ async def get_settings():
     settings = _get_settings()
     masked: dict[str, str] = {}
     for k, v in settings.items():
-        if any(secret in k for secret in ("password", "secret", "token")):
+        if any(secret in k for secret in ("password", "secret", "token", "api_key")):
             masked[k] = "***" + v[-4:] if len(v) > 4 else "****"
         else:
             masked[k] = v
@@ -1175,61 +1197,79 @@ async def get_search_status(seed: str = Query("")):
 
 @router.post("/search")
 async def search_keywords(req: SearchRequest):
-    """Search for keywords by seed. Uses configured data source."""
-    seed = req.seed_keyword.strip().lower()
-    if not seed:
+    """Search for keywords by seed. Supports comma-separated seeds."""
+    raw_seeds = [s.strip().lower() for s in req.seed_keyword.split(",") if s.strip()]
+    if not raw_seeds:
         return {"error": "Seed keyword is required", "keywords": [], "count": 0}
 
     mode = req.mode if req.mode in ("related", "suggestions", "both") else "related"
     settings = _get_settings()
     source = settings.get("data_source", "demo")
 
-    new_keywords: list[dict] = []
+    all_new_keywords: list[dict] = []
 
-    if source == "dataforseo":
-        login = settings.get("dataforseo_login", "")
-        password = settings.get("dataforseo_password", "")
-        if not login or not password:
-            return {"error": "DataForSEO credentials not configured", "keywords": [], "count": 0}
+    for seed in raw_seeds:
+        if source == "dataforseo":
+            login = settings.get("dataforseo_login", "")
+            password = settings.get("dataforseo_password", "")
+            if not login or not password:
+                return {"error": "DataForSEO credentials not configured", "keywords": [], "count": 0}
 
-        location_code = int(settings.get("location_code", "2840"))
-        language_code = settings.get("language_code", "en")
+            location_code = int(settings.get("location_code", "2840"))
+            language_code = settings.get("language_code", "en")
 
-        try:
-            new_keywords = await dataforseo_search(
-                seed, login, password, mode, location_code, language_code
-            )
-        except httpx.HTTPStatusError as exc:
-            code = exc.response.status_code
-            if code == 401:
-                return {"error": "Authentication failed. Check your DataForSEO credentials.", "keywords": [], "count": 0}
-            elif code == 403:
-                return {"error": "Access denied. Your account may not have access to this endpoint.", "keywords": [], "count": 0}
-            elif code == 402:
-                return {"error": "Insufficient balance. Please top up your DataForSEO account.", "keywords": [], "count": 0}
-            elif code == 429:
-                return {"error": "Rate limit exceeded. Please wait a moment and try again.", "keywords": [], "count": 0}
-            return {"error": f"DataForSEO API error: {code}", "keywords": [], "count": 0}
-        except Exception as exc:
-            return {"error": f"DataForSEO error: {exc}", "keywords": [], "count": 0}
+            try:
+                kws = await dataforseo_search(
+                    seed, login, password, mode, location_code, language_code
+                )
+                all_new_keywords.extend(kws)
+            except httpx.HTTPStatusError as exc:
+                code = exc.response.status_code
+                if code == 401:
+                    return {"error": "Authentication failed. Check your DataForSEO credentials.", "keywords": [], "count": 0}
+                elif code == 403:
+                    return {"error": "Access denied. Your account may not have access to this endpoint.", "keywords": [], "count": 0}
+                elif code == 402:
+                    return {"error": "Insufficient balance. Please top up your DataForSEO account.", "keywords": [], "count": 0}
+                elif code == 429:
+                    return {"error": "Rate limit exceeded. Please wait a moment and try again.", "keywords": [], "count": 0}
+                return {"error": f"DataForSEO API error: {code}", "keywords": [], "count": 0}
+            except Exception as exc:
+                return {"error": f"DataForSEO error: {exc}", "keywords": [], "count": 0}
+        else:
+            # Demo mode
+            kws = _generate_demo_search_results(seed)
+            all_new_keywords.extend(kws)
 
-    else:
-        # Demo mode
-        new_keywords = _generate_demo_search_results(seed)
+        # Persist this seed's keywords
+        if kws:
+            _upsert_keywords(kws, source=source, seed=seed)
 
-    # Persist to database
-    if new_keywords:
-        _upsert_keywords(new_keywords, source=source, seed=seed)
-
-    # Return all keywords matching the seed
+    # Record search history for each seed
     conn = get_db()
     try:
+        for seed in raw_seeds:
+            seed_count = conn.execute(
+                "SELECT COUNT(*) FROM keywords WHERE seed_keyword = ?", (seed,)
+            ).fetchone()[0]
+            conn.execute(
+                "INSERT INTO search_history (seed_keyword, mode, keywords_found) VALUES (?, ?, ?)",
+                (seed, mode, seed_count),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+    # Return all keywords matching ANY of the seeds
+    conn = get_db()
+    try:
+        placeholders = ",".join("?" for _ in raw_seeds)
         rows = conn.execute(
-            """SELECT keyword, volume, difficulty, cpc, competition,
+            f"""SELECT keyword, volume, difficulty, cpc, competition,
                       competition_level, monthly_searches, serp_features,
                       trend, source
-               FROM keywords WHERE seed_keyword = ? ORDER BY volume DESC""",
-            (seed,),
+               FROM keywords WHERE seed_keyword IN ({placeholders}) ORDER BY volume DESC""",
+            raw_seeds,
         ).fetchall()
         result = _rows_to_dicts(rows)
         result = compute_opportunity_scores(result)
@@ -1330,8 +1370,9 @@ async def get_keywords(
     volume_max: int = Query(10_000_000, ge=0),
     sort_by: str = Query("volume"),
     sort_order: str = Query("desc"),
+    seeds: str = Query(""),
 ):
-    """Get all cached keywords with filtering and sorting."""
+    """Get all cached keywords with filtering and sorting. Optionally filter by comma-separated seeds."""
     allowed_sort = {
         "volume", "difficulty", "cpc", "competition", "keyword",
         "opportunity_score", "trend", "competition_level",
@@ -1343,16 +1384,22 @@ async def get_keywords(
 
     conn = get_db()
     try:
-        rows = conn.execute(
-            """SELECT keyword, volume, difficulty, cpc, competition,
+        params: list[Any] = [difficulty_min, difficulty_max, volume_min, volume_max]
+        query = """SELECT keyword, volume, difficulty, cpc, competition,
                       competition_level, monthly_searches, serp_features,
                       trend, source
                FROM keywords
                WHERE difficulty >= ? AND difficulty <= ?
-                 AND volume >= ? AND volume <= ?
-               ORDER BY volume DESC""",
-            (difficulty_min, difficulty_max, volume_min, volume_max),
-        ).fetchall()
+                 AND volume >= ? AND volume <= ?"""
+
+        seed_list = [s.strip().lower() for s in seeds.split(",") if s.strip()] if seeds.strip() else []
+        if seed_list:
+            placeholders = ",".join("?" for _ in seed_list)
+            query += f" AND seed_keyword IN ({placeholders})"
+            params.extend(seed_list)
+
+        query += " ORDER BY volume DESC"
+        rows = conn.execute(query, params).fetchall()
         result = _rows_to_dicts(rows)
         result = compute_opportunity_scores(result)
 
@@ -1626,6 +1673,265 @@ async def delete_nugget_hunt(hunt_id: int = Query(...)):
 
 
 # ===========================================================================
+# Search History endpoints
+# ===========================================================================
+
+
+@router.get("/search-history")
+async def get_search_history():
+    """Get all search history entries, most recent first."""
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            "SELECT id, seed_keyword, mode, keywords_found, searched_at "
+            "FROM search_history ORDER BY searched_at DESC"
+        ).fetchall()
+        return {"history": [dict(r) for r in rows], "count": len(rows)}
+    finally:
+        conn.close()
+
+
+@router.delete("/search-history/{history_id}")
+async def delete_search_history_entry(history_id: int):
+    """Delete a single search history entry."""
+    conn = get_db()
+    try:
+        cursor = conn.execute("DELETE FROM search_history WHERE id = ?", (history_id,))
+        conn.commit()
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="History entry not found")
+        return {"status": "ok"}
+    finally:
+        conn.close()
+
+
+# ===========================================================================
+# Domain availability bulk check (RDAP)
+# ===========================================================================
+
+
+class DomainCheckBulkRequest(BaseModel):
+    keywords: list[str]
+    tlds: list[str] = [".com", ".net"]
+
+
+def _keyword_to_domain_base(keyword: str) -> str:
+    """Convert a keyword phrase to a domain-safe base string."""
+    base = keyword.lower().strip()
+    base = re.sub(r"[^a-z0-9]+", "", base)
+    return base
+
+
+@router.post("/domain-check-bulk")
+async def domain_check_bulk(req: DomainCheckBulkRequest):
+    """Check domain availability for keyword+TLD combos via RDAP."""
+    results: dict[str, dict[str, dict[str, bool]]] = {}
+
+    # Build all (keyword, tld, domain) combos
+    combos: list[tuple[str, str, str]] = []
+    for kw in req.keywords:
+        base = _keyword_to_domain_base(kw)
+        if not base:
+            continue
+        results[kw] = {}
+        for tld in req.tlds:
+            tld_clean = tld if tld.startswith(".") else f".{tld}"
+            domain = f"{base}{tld_clean}"
+            combos.append((kw, tld_clean, domain))
+
+    # Check in batches of 3
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        for i in range(0, len(combos), 3):
+            batch = combos[i : i + 3]
+            tasks = []
+            for kw, tld, domain in batch:
+                tasks.append(_check_rdap(client, kw, tld, domain))
+            batch_results = await asyncio.gather(*tasks)
+            for kw, tld, available in batch_results:
+                results[kw][tld] = {"available": available}
+            if i + 3 < len(combos):
+                await asyncio.sleep(0.5)
+
+    return {"results": results}
+
+
+async def _check_rdap(
+    client: httpx.AsyncClient, keyword: str, tld: str, domain: str
+) -> tuple[str, str, bool]:
+    """Query RDAP for a single domain. 404 = available, 200 = taken."""
+    try:
+        resp = await client.get(f"https://rdap.org/domain/{domain}")
+        available = resp.status_code == 404
+    except Exception:
+        # On timeout or error, report as unknown (treat as taken to be safe)
+        available = False
+    return keyword, tld, available
+
+
+# ===========================================================================
+# SERP Preview endpoint
+# ===========================================================================
+
+
+class SerpResult(BaseModel):
+    rank: int
+    title: str
+    url: str
+    domain: str
+    description: str
+
+
+@router.get("/serp-preview")
+async def serp_preview(keyword: str = Query(...)):
+    """Get top 10 SERP results for a keyword. Uses DataForSEO if configured, else demo."""
+    settings = _get_settings()
+    source = settings.get("data_source", "demo")
+    base_domain = re.sub(r"[^a-z0-9]+", "", keyword.lower().strip())
+
+    if source == "dataforseo":
+        login = settings.get("dataforseo_login", "")
+        password = settings.get("dataforseo_password", "")
+        if login and password:
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    resp = await client.post(
+                        f"{DATAFORSEO_BASE}/serp/google/organic/live",
+                        auth=(login, password),
+                        json=[{
+                            "keyword": keyword,
+                            "location_code": int(settings.get("location_code", "2840")),
+                            "language_code": settings.get("language_code", "en"),
+                            "depth": 10,
+                        }],
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
+
+                serp_results: list[dict] = []
+                has_emd = False
+                for task in data.get("tasks", []):
+                    for res in task.get("result", []) or []:
+                        for item in res.get("items", []) or []:
+                            if item.get("type") != "organic":
+                                continue
+                            domain = item.get("domain", "")
+                            serp_results.append({
+                                "rank": item.get("rank_group", 0),
+                                "title": item.get("title", ""),
+                                "url": item.get("url", ""),
+                                "domain": domain,
+                                "description": item.get("description", ""),
+                            })
+                            # EMD check: domain without TLD matches the base keyword
+                            domain_base = re.sub(r"\.[a-z]+$", "", domain.lower())
+                            domain_base = re.sub(r"[^a-z0-9]", "", domain_base)
+                            if domain_base == base_domain:
+                                has_emd = True
+
+                return {
+                    "results": serp_results[:10],
+                    "base_domain": base_domain,
+                    "has_exact_match": has_emd,
+                }
+            except Exception as exc:
+                logger.warning("SERP preview DataForSEO error: %s", exc)
+                # Fall through to demo
+
+    # Demo mode — return mock results
+    mock_results = [
+        {"rank": i + 1, "title": f"Result {i + 1} for {keyword}", "url": f"https://example{i + 1}.com/{keyword.replace(' ', '-')}",
+         "domain": f"example{i + 1}.com", "description": f"This is a sample search result about {keyword}."}
+        for i in range(10)
+    ]
+    return {
+        "results": mock_results,
+        "base_domain": base_domain,
+        "has_exact_match": False,
+    }
+
+
+# ===========================================================================
+# Content Strategy endpoints
+# ===========================================================================
+
+
+class ContentStrategyRequest(BaseModel):
+    url: str
+
+
+class ContentStrategyKeywordsRequest(BaseModel):
+    keywords: list[str]
+
+
+@router.post("/content-strategy")
+async def content_strategy(req: ContentStrategyRequest):
+    """Generate a content strategy analysis for a URL. Currently demo mode only."""
+    # Future: if OpenAI key is configured in settings, use it for real analysis
+    _settings = _get_settings()
+    _openai_key = _settings.get("openai_api_key", "")
+    # For now, return demo data regardless of key presence
+    return {
+        "strategy": {
+            "snapshot": {
+                "url": req.url,
+                "estimated_traffic": random.randint(500, 50000),
+                "domain_authority": random.randint(10, 80),
+                "top_keyword_count": random.randint(5, 100),
+            },
+            "comparisons": [
+                {"competitor": "competitor1.com", "overlap": random.randint(10, 60)},
+                {"competitor": "competitor2.com", "overlap": random.randint(5, 40)},
+            ],
+            "alternatives": [
+                {"keyword": "alternative keyword 1", "volume": random.randint(100, 5000), "difficulty": random.randint(0, 50)},
+                {"keyword": "alternative keyword 2", "volume": random.randint(100, 5000), "difficulty": random.randint(0, 50)},
+            ],
+            "content_gaps": [
+                {"topic": "Topic gap 1", "opportunity_score": random.randint(50, 100)},
+                {"topic": "Topic gap 2", "opportunity_score": random.randint(30, 80)},
+            ],
+        }
+    }
+
+
+@router.post("/content-strategy/research-keywords")
+async def content_strategy_research_keywords(req: ContentStrategyKeywordsRequest):
+    """Search each keyword via DataForSEO (or demo) and return keyword data."""
+    settings = _get_settings()
+    source = settings.get("data_source", "demo")
+    all_keywords: list[dict] = []
+
+    for kw in req.keywords:
+        seed = kw.strip().lower()
+        if not seed:
+            continue
+        if source == "dataforseo":
+            login = settings.get("dataforseo_login", "")
+            password = settings.get("dataforseo_password", "")
+            if login and password:
+                try:
+                    results = await dataforseo_search(
+                        seed, login, password, "related",
+                        int(settings.get("location_code", "2840")),
+                        settings.get("language_code", "en"),
+                    )
+                    all_keywords.extend(results)
+                    if results:
+                        _upsert_keywords(results, source=source, seed=seed)
+                    continue
+                except Exception as exc:
+                    logger.warning("Content strategy keyword search error for '%s': %s", seed, exc)
+        # Demo fallback
+        results = _generate_demo_search_results(seed)
+        all_keywords.extend(results)
+        if results:
+            _upsert_keywords(results, source="demo", seed=seed)
+
+    all_keywords = compute_opportunity_scores(all_keywords)
+    return {"keywords": all_keywords, "count": len(all_keywords)}
+
+
+# ===========================================================================
 # AI-Powered Keyword Analysis WebSocket
 # ===========================================================================
 #
@@ -1813,3 +2119,397 @@ async def seo_chat_websocket(websocket: WebSocket):
             except Exception as e:
                 logger.warning("Error detaching SEO viewer on disconnect: %s", e)
         logger.info("SEO analysis WebSocket cleaned up")
+
+
+# ---------------------------------------------------------------------------
+# Problem-Aware Discovery — generate keywords people search when they have
+# a problem but don't know the product category or proper terminology
+# ---------------------------------------------------------------------------
+
+class ProblemAwareRequest(BaseModel):
+    seed_keyword: str  # e.g. "ai agent sandbox" or "CageGuard"
+    product_description: str = ""  # optional context about what the product does
+
+
+class ProblemAwareKeyword(BaseModel):
+    keyword: str
+    category: str  # pain, question, panic, pre_awareness
+    estimated_difficulty: int  # 1-10 scale, lower = easier
+    estimated_competition: float  # 0.0-1.0
+    search_type: str = "problem_aware"
+
+
+class ProblemAwareResponse(BaseModel):
+    keywords: list[ProblemAwareKeyword]
+    seed: str
+    count: int
+
+
+class ProblemAwareResearchRequest(BaseModel):
+    keywords: list[str]
+
+
+def _extract_terms(seed: str, description: str) -> dict[str, list[str]]:
+    """
+    Decompose a seed keyword and optional description into semantic term buckets.
+    Returns dict with keys: tool, category, action, threat, thing, problem.
+    Each value is a list of term strings.
+    """
+    words = seed.lower().split()
+
+    # Common tool/product indicators
+    tool_indicators = {
+        "ai", "agent", "bot", "tool", "app", "software", "platform",
+        "cli", "api", "plugin", "extension", "service", "engine",
+    }
+    # Common category/solution indicators
+    category_indicators = {
+        "sandbox", "protection", "guard", "shield", "monitor", "filter",
+        "blocker", "manager", "tracker", "analyzer", "scanner", "checker",
+        "backup", "recovery", "vault", "lock", "firewall", "proxy",
+    }
+    # Common action verbs
+    action_indicators = {
+        "protect", "secure", "isolate", "restrict", "limit", "block",
+        "prevent", "monitor", "scan", "check", "backup", "recover",
+        "encrypt", "filter", "validate", "audit", "control", "manage",
+    }
+    # Common threat/problem terms
+    threat_indicators = {
+        "delete", "overwrite", "corrupt", "crash", "break", "leak",
+        "expose", "steal", "modify", "destroy", "lose", "damage",
+        "hack", "inject", "overflow", "bypass", "exploit", "spam",
+    }
+
+    tool_terms: list[str] = []
+    category_terms: list[str] = []
+    action_terms: list[str] = []
+    threat_terms: list[str] = []
+    thing_terms: list[str] = []  # what gets affected (files, code, data, etc.)
+    problem_terms: list[str] = []  # general problem phrases
+
+    # Extract tool terms — try bigrams first (e.g. "ai agent"), then singles
+    for i in range(len(words) - 1):
+        bigram = f"{words[i]} {words[i + 1]}"
+        if words[i] in tool_indicators or words[i + 1] in tool_indicators:
+            tool_terms.append(bigram)
+    for w in words:
+        if w in tool_indicators:
+            tool_terms.append(w)
+        if w in category_indicators:
+            category_terms.append(w)
+        if w in action_indicators:
+            action_terms.append(w)
+
+    # If no tool term found, use the full seed as the tool term
+    if not tool_terms:
+        tool_terms.append(seed.lower())
+
+    # If no category found, use the full seed
+    if not category_terms:
+        category_terms.append(seed.lower())
+
+    # Extract additional terms from product description
+    if description:
+        desc_words = re.findall(r'\b[a-z]+\b', description.lower())
+        for w in desc_words:
+            if w in action_indicators and w not in action_terms:
+                action_terms.append(w)
+            if w in threat_indicators and w not in threat_terms:
+                threat_terms.append(w)
+
+        # Extract noun phrases from description for "thing" terms
+        thing_candidates = {"files", "code", "data", "project", "projects",
+                           "database", "config", "configuration", "system",
+                           "server", "website", "app", "application", "repo",
+                           "repository", "folder", "directory", "settings",
+                           "credentials", "keys", "secrets", "environment",
+                           "documents", "images", "assets", "packages",
+                           "dependencies", "modules", "components", "build"}
+        for w in desc_words:
+            if w in thing_candidates and w not in thing_terms:
+                thing_terms.append(w)
+
+    # Defaults if nothing extracted
+    if not action_terms:
+        action_terms = ["protect", "secure", "manage"]
+    if not threat_terms:
+        threat_terms = ["delete", "overwrite", "break", "crash", "corrupt"]
+    if not thing_terms:
+        thing_terms = ["files", "code", "data", "project"]
+    if not problem_terms:
+        problem_terms = ["not working", "error", "issue", "problem"]
+
+    return {
+        "tool": tool_terms,
+        "category": category_terms,
+        "action": action_terms,
+        "threat": threat_terms,
+        "thing": thing_terms,
+        "problem": problem_terms,
+    }
+
+
+def _generate_problem_aware_keywords(seed: str, description: str) -> list[ProblemAwareKeyword]:
+    """
+    Generate problem-aware keyword variations from a seed using template expansion.
+    Returns 40-80 unique keywords across 4 categories.
+    """
+    terms = _extract_terms(seed, description)
+    tools = terms["tool"]
+    categories = terms["category"]
+    actions = terms["action"]
+    threats = terms["threat"]
+    things = terms["thing"]
+
+    results: list[ProblemAwareKeyword] = []
+    seen: set[str] = set()
+
+    def _add(keyword: str, category: str, difficulty: int, competition: float) -> None:
+        kw_lower = keyword.lower().strip()
+        if kw_lower and kw_lower not in seen and len(kw_lower) > 5:
+            seen.add(kw_lower)
+            results.append(ProblemAwareKeyword(
+                keyword=kw_lower,
+                category=category,
+                estimated_difficulty=difficulty,
+                estimated_competition=competition,
+            ))
+
+    # ---- Category 1: Pain/Problem phrases ----
+    for tool in tools:
+        for thing in things:
+            _add(f"how to fix {tool} {thing} issues", "pain", 3, 0.05)
+            _add(f"{tool} {thing} not working", "pain", 4, 0.08)
+            _add(f"{tool} broke my {thing}", "pain", 2, 0.03)
+            _add(f"{tool} messed up my {thing}", "pain", 2, 0.02)
+            _add(f"{tool} keeps changing my {thing}", "pain", 3, 0.04)
+            _add(f"why did {tool} change my {thing}", "pain", 2, 0.03)
+        for problem in ["not working", "error", "bug", "issue", "failing"]:
+            _add(f"{tool} {problem}", "pain", 5, 0.10)
+        _add(f"help with {tool}", "pain", 4, 0.06)
+        _add(f"fix {tool} problems", "pain", 3, 0.05)
+        _add(f"troubleshoot {tool}", "pain", 4, 0.07)
+        _add(f"{tool} keeps failing", "pain", 3, 0.04)
+        _add(f"{tool} doesn't work", "pain", 4, 0.06)
+
+    for cat in categories:
+        _add(f"{cat} not working", "pain", 4, 0.08)
+        _add(f"why does {cat} fail", "pain", 3, 0.04)
+        _add(f"problems with {cat}", "pain", 3, 0.05)
+        _add(f"{cat} alternatives that work", "pain", 5, 0.12)
+
+    # ---- Category 2: Question phrases ----
+    for tool in tools:
+        for action in actions:
+            _add(f"how to {action} with {tool}", "question", 4, 0.07)
+            _add(f"can {tool} {action} my {things[0]}", "question", 3, 0.05)
+        _add(f"what is {tool}", "question", 6, 0.15)
+        _add(f"how does {tool} work", "question", 5, 0.10)
+        _add(f"is {tool} safe", "question", 4, 0.06)
+        _add(f"is {tool} safe to use", "question", 3, 0.05)
+        _add(f"do i need {tool}", "question", 3, 0.04)
+        _add(f"{tool} vs manual", "question", 4, 0.08)
+        _add(f"best {tool} settings", "question", 5, 0.10)
+        _add(f"how to set up {tool}", "question", 5, 0.09)
+        _add(f"{tool} tutorial", "question", 6, 0.12)
+        _add(f"{tool} for beginners", "question", 5, 0.08)
+        _add(f"how to use {tool} safely", "question", 3, 0.05)
+
+    for cat in categories:
+        _add(f"what is {cat}", "question", 6, 0.15)
+        _add(f"do i need {cat}", "question", 3, 0.04)
+        _add(f"is {cat} worth it", "question", 4, 0.07)
+        _add(f"best {cat} tools", "question", 6, 0.15)
+        _add(f"free {cat} tools", "question", 5, 0.10)
+        _add(f"{cat} explained", "question", 4, 0.06)
+
+    # ---- Category 3: Panic/Emergency phrases ----
+    for tool in tools:
+        for thing in things:
+            _add(f"{tool} deleted my {thing}", "panic", 2, 0.02)
+            _add(f"{tool} overwrote my {thing}", "panic", 2, 0.02)
+            _add(f"{tool} destroyed my {thing}", "panic", 1, 0.01)
+            _add(f"recover {thing} after {tool}", "panic", 3, 0.04)
+            _add(f"undo {tool} changes to {thing}", "panic", 3, 0.03)
+        _add(f"{tool} crashed", "panic", 3, 0.05)
+        _add(f"{tool} won't stop", "panic", 2, 0.02)
+        _add(f"how to stop {tool}", "panic", 3, 0.04)
+        _add(f"{tool} ran out of control", "panic", 1, 0.01)
+        _add(f"{tool} infinite loop", "panic", 2, 0.03)
+        _add(f"emergency stop {tool}", "panic", 2, 0.02)
+
+    for threat in threats:
+        for thing in things:
+            _add(f"recover {thing} after {threat}", "panic", 3, 0.04)
+            _add(f"undo {threat} {thing}", "panic", 2, 0.03)
+
+    # ---- Category 4: Pre-awareness natural language ----
+    for tool in tools:
+        for thing in things:
+            _add(f"protect {thing} from {tool}", "pre_awareness", 3, 0.04)
+            _add(f"stop {tool} from changing {thing}", "pre_awareness", 2, 0.03)
+            _add(f"prevent {tool} from deleting {thing}", "pre_awareness", 2, 0.02)
+            _add(f"keep {thing} safe from {tool}", "pre_awareness", 2, 0.03)
+            _add(f"{tool} {thing} access control", "pre_awareness", 4, 0.07)
+            _add(f"limit {tool} access to {thing}", "pre_awareness", 3, 0.04)
+            _add(f"restrict {tool} {thing} permissions", "pre_awareness", 3, 0.05)
+
+        _add(f"is it safe to use {tool}", "pre_awareness", 3, 0.05)
+        _add(f"risks of using {tool}", "pre_awareness", 3, 0.04)
+        _add(f"dangers of {tool}", "pre_awareness", 3, 0.04)
+        _add(f"{tool} safety concerns", "pre_awareness", 3, 0.05)
+        _add(f"{tool} security risks", "pre_awareness", 4, 0.06)
+        _add(f"should i trust {tool}", "pre_awareness", 2, 0.03)
+        _add(f"what can {tool} access", "pre_awareness", 3, 0.04)
+        _add(f"{tool} file access risk", "pre_awareness", 3, 0.04)
+
+    for action in actions:
+        for thing in things:
+            _add(f"how to {action} {thing}", "pre_awareness", 5, 0.10)
+            _add(f"best way to {action} {thing}", "pre_awareness", 5, 0.09)
+        _add(f"how to {action} automatically", "pre_awareness", 4, 0.07)
+
+    for threat in threats:
+        for thing in things:
+            _add(f"prevent {threat} {thing}", "pre_awareness", 3, 0.04)
+            _add(f"stop {thing} from being {threat}d", "pre_awareness", 2, 0.03)
+            _add(f"{thing} keeps getting {threat}d", "pre_awareness", 2, 0.02)
+
+    return results
+
+
+@router.post("/problem-aware")
+async def problem_aware_discovery(req: ProblemAwareRequest):
+    """
+    Generate problem-aware keywords — what people search when they have a
+    problem but don't know the product category or proper terminology.
+
+    This is a template-based generator (no AI calls, no API credits).
+    Returns 40-80 unique long-tail keywords across 4 categories:
+    pain, question, panic, pre_awareness.
+    """
+    if not req.seed_keyword.strip():
+        raise HTTPException(status_code=400, detail="seed_keyword is required")
+
+    keywords = _generate_problem_aware_keywords(
+        req.seed_keyword.strip(),
+        req.product_description.strip(),
+    )
+
+    return ProblemAwareResponse(
+        keywords=keywords,
+        seed=req.seed_keyword.strip(),
+        count=len(keywords),
+    )
+
+
+@router.post("/problem-aware/research")
+async def problem_aware_research(req: ProblemAwareResearchRequest):
+    """
+    Enrich problem-aware keywords with real DataForSEO volume/difficulty/CPC data.
+    Takes a list of keywords and runs each through the DataForSEO related keywords
+    endpoint (with include_seed_keyword=true) to get actual search metrics.
+    """
+    if not req.keywords:
+        raise HTTPException(status_code=400, detail="keywords list is required")
+
+    settings = _get_settings()
+    login = settings.get("dataforseo_login", "")
+    password = settings.get("dataforseo_password", "")
+    location_code = int(settings.get("location_code", "2840"))
+    language_code = settings.get("language_code", "en")
+
+    if not login or not password:
+        raise HTTPException(
+            status_code=400,
+            detail="DataForSEO credentials not configured. Set them in SEO Tools settings.",
+        )
+
+    # Cap at 20 keywords per request to avoid excessive API costs
+    keywords_to_research = req.keywords[:20]
+    enriched: list[dict[str, Any]] = []
+    errors: list[dict[str, str]] = []
+
+    auth = (login, password)
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        for kw in keywords_to_research:
+            try:
+                # Use related_keywords with include_seed_keyword to get metrics
+                # for the exact keyword itself
+                payload = [{
+                    "keyword": kw,
+                    "location_code": location_code,
+                    "language_code": language_code,
+                    "depth": 1,
+                    "limit": 1,
+                    "include_serp_info": False,
+                    "include_seed_keyword": True,
+                    "include_clickstream_data": False,
+                }]
+
+                resp = await client.post(
+                    f"{DATAFORSEO_BASE}/dataforseo_labs/google/related_keywords/live",
+                    json=payload,
+                    auth=auth,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+
+                # Parse the response — the seed keyword data is in seed_keyword_data
+                tasks = data.get("tasks", [])
+                if tasks and tasks[0].get("result"):
+                    result = tasks[0]["result"][0]
+                    seed_data = result.get("seed_keyword_data", {})
+                    kw_info = seed_data.get("keyword_info", {})
+
+                    enriched.append({
+                        "keyword": kw,
+                        "volume": kw_info.get("search_volume", 0),
+                        "cpc": kw_info.get("cpc", 0.0),
+                        "competition": kw_info.get("competition", 0.0),
+                        "competition_level": kw_info.get("competition_level", ""),
+                        "difficulty": seed_data.get("keyword_properties", {}).get(
+                            "keyword_difficulty", None
+                        ),
+                        "trend": kw_info.get("monthly_searches", []),
+                        "found": True,
+                    })
+                else:
+                    enriched.append({
+                        "keyword": kw,
+                        "volume": 0,
+                        "cpc": 0.0,
+                        "competition": 0.0,
+                        "competition_level": "",
+                        "difficulty": None,
+                        "trend": [],
+                        "found": False,
+                    })
+
+            except Exception as exc:
+                logger.warning("DataForSEO lookup failed for '%s': %s", kw, exc)
+                errors.append({"keyword": kw, "error": str(exc)})
+                enriched.append({
+                    "keyword": kw,
+                    "volume": 0,
+                    "cpc": 0.0,
+                    "competition": 0.0,
+                    "competition_level": "",
+                    "difficulty": None,
+                    "trend": [],
+                    "found": False,
+                    "error": str(exc),
+                })
+
+            # Small delay between requests to be polite to the API
+            await asyncio.sleep(0.2)
+
+    return {
+        "keywords": enriched,
+        "count": len(enriched),
+        "errors": errors,
+        "truncated": len(req.keywords) > 20,
+        "total_requested": len(req.keywords),
+    }

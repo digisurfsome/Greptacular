@@ -3937,9 +3937,7 @@ async function researchPaKeywords() {
   btn.textContent = 'Researching...';
 
   const keywords = paKeywords.map(kw => kw.keyword);
-  if (keywords.length > 20) {
-    showToast(`Researching first 20 of ${keywords.length} keywords (API limit)`, 'warning');
-  }
+  showToast(`Researching ${keywords.length} keywords (bulk mode ~$0.01)...`);
   const data = await api('POST', '/api/problem-aware/research', { keywords });
 
   btn.disabled = false;

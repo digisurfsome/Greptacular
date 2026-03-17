@@ -2613,8 +2613,9 @@ async def problem_aware_discovery(req: ProblemAwareRequest):
 async def problem_aware_research(req: ProblemAwareResearchRequest):
     """
     Enrich problem-aware keywords with real DataForSEO volume/difficulty/CPC data.
-    Takes a list of keywords and runs each through the DataForSEO related keywords
-    endpoint (with include_seed_keyword=true) to get actual search metrics.
+    Uses bulk Search Volume ($0.005/call, up to 700 kws) + bulk Keyword Difficulty
+    ($0.005/call, up to 1000 kws) instead of individual Related Keywords calls ($0.06 each).
+    Old approach: 20 keywords = $1.20. New approach: 247 keywords = ~$0.01.
     """
     if not req.keywords:
         raise HTTPException(status_code=400, detail="keywords list is required")
@@ -2631,91 +2632,48 @@ async def problem_aware_research(req: ProblemAwareResearchRequest):
             detail="DataForSEO credentials not configured. Set them in SEO Tools settings.",
         )
 
-    # Cap at 20 keywords per request to avoid excessive API costs
-    keywords_to_research = req.keywords[:20]
-    enriched: list[dict[str, Any]] = []
+    # No cap needed — bulk endpoints handle hundreds cheaply
+    keywords_to_research = req.keywords
     errors: list[dict[str, str]] = []
 
-    auth = (login, password)
+    try:
+        # 1) Bulk search volume — gets volume, CPC, competition for all keywords at once
+        vol_results = await _dataforseo_search_volume(
+            keywords_to_research, login, password, location_code, language_code
+        )
+        vol_lookup: dict[str, dict] = {}
+        for r in vol_results:
+            vol_lookup[r["keyword"].lower()] = r
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        for kw in keywords_to_research:
-            try:
-                # Use related_keywords with include_seed_keyword to get metrics
-                # for the exact keyword itself
-                payload = [{
-                    "keyword": kw,
-                    "location_code": location_code,
-                    "language_code": language_code,
-                    "depth": 1,
-                    "limit": 1,
-                    "include_serp_info": False,
-                    "include_seed_keyword": True,
-                    "include_clickstream_data": False,
-                }]
+        # 2) Bulk keyword difficulty — gets KD scores for all keywords at once
+        diff_map = await _dataforseo_bulk_keyword_difficulty(
+            keywords_to_research, login, password, location_code, language_code
+        )
+    except Exception as exc:
+        logger.error("PA research bulk API failed: %s", exc)
+        raise HTTPException(status_code=500, detail=f"DataForSEO API error: {exc}")
 
-                resp = await client.post(
-                    f"{DATAFORSEO_BASE}/dataforseo_labs/google/related_keywords/live",
-                    json=payload,
-                    auth=auth,
-                )
-                resp.raise_for_status()
-                data = resp.json()
+    enriched: list[dict[str, Any]] = []
+    for kw in keywords_to_research:
+        vol_data = vol_lookup.get(kw.lower(), {})
+        difficulty = diff_map.get(kw.lower())
 
-                # Parse the response — the seed keyword data is in seed_keyword_data
-                tasks = data.get("tasks", [])
-                if tasks and tasks[0].get("result"):
-                    result = tasks[0]["result"][0]
-                    seed_data = result.get("seed_keyword_data", {})
-                    kw_info = seed_data.get("keyword_info", {})
-
-                    enriched.append({
-                        "keyword": kw,
-                        "volume": kw_info.get("search_volume", 0),
-                        "cpc": kw_info.get("cpc", 0.0),
-                        "competition": kw_info.get("competition", 0.0),
-                        "competition_level": kw_info.get("competition_level", ""),
-                        "difficulty": seed_data.get("keyword_properties", {}).get(
-                            "keyword_difficulty", None
-                        ),
-                        "trend": kw_info.get("monthly_searches", []),
-                        "found": True,
-                    })
-                else:
-                    enriched.append({
-                        "keyword": kw,
-                        "volume": 0,
-                        "cpc": 0.0,
-                        "competition": 0.0,
-                        "competition_level": "",
-                        "difficulty": None,
-                        "trend": [],
-                        "found": False,
-                    })
-
-            except Exception as exc:
-                logger.warning("DataForSEO lookup failed for '%s': %s", kw, exc)
-                errors.append({"keyword": kw, "error": str(exc)})
-                enriched.append({
-                    "keyword": kw,
-                    "volume": 0,
-                    "cpc": 0.0,
-                    "competition": 0.0,
-                    "competition_level": "",
-                    "difficulty": None,
-                    "trend": [],
-                    "found": False,
-                    "error": str(exc),
-                })
-
-            # Small delay between requests to be polite to the API
-            await asyncio.sleep(0.2)
+        enriched.append({
+            "keyword": kw,
+            "volume": vol_data.get("volume", 0),
+            "cpc": vol_data.get("cpc", 0.0),
+            "competition": vol_data.get("competition", 0.0),
+            "competition_level": vol_data.get("competition_level", ""),
+            "difficulty": difficulty,
+            "trend": vol_data.get("monthly_searches", []),
+            "found": bool(vol_data),
+        })
 
     return {
         "results": enriched,
         "keywords": enriched,
         "count": len(enriched),
         "errors": errors,
-        "truncated": len(req.keywords) > 20,
+        "truncated": False,
         "total_requested": len(req.keywords),
     }

@@ -1439,12 +1439,12 @@ tbody tr:last-child td { border-bottom: none; }
             <tr>
               <th style="width:36px">#</th>
               <th>Keyword</th>
-              <th title="Category of problem-aware search">Category</th>
-              <th title="Estimated difficulty — most problem-aware keywords are very low competition">Est. KD</th>
-              <th title="Estimated Google Ads competition">Est. Comp</th>
-              <th title="Real search volume (click 'Get Real Search Data' to populate)">Volume</th>
-              <th title="Real keyword difficulty from DataForSEO">Real KD</th>
-              <th title="Real CPC from DataForSEO">Real CPC</th>
+              <th style="text-align:center">Category</th>
+              <th style="text-align:center" title="Estimated difficulty — most problem-aware keywords are very low competition">Est. KD</th>
+              <th style="text-align:center" title="Estimated Google Ads competition">Est. Comp</th>
+              <th style="text-align:center" title="Real search volume (click 'Get Real Search Data' to populate)">Volume</th>
+              <th style="text-align:center" title="Real keyword difficulty from DataForSEO">Real KD</th>
+              <th style="text-align:center" title="Real CPC from DataForSEO">Real CPC</th>
             </tr>
           </thead>
           <tbody id="paBody"></tbody>
@@ -3902,12 +3902,12 @@ function renderPaResults() {
     return `<tr>
       <td class="row-num">${start + i + 1}</td>
       <td class="kw-cell"><a href="https://www.google.com/search?q=${encodeURIComponent(kw.keyword)}" target="_blank" rel="noopener" class="kw-link">${escHtml(kw.keyword)}</a></td>
-      <td><span class="pa-category-badge ${catClass}">${catLabel}</span></td>
-      <td class="mono"><span class="diff-badge ${diffClass(kw.estimated_difficulty || 5)}">${kw.estimated_difficulty || 5}</span></td>
-      <td class="mono">${Math.round((kw.estimated_competition || 0.05) * 100)}</td>
-      <td class="mono">${vol}</td>
-      <td class="mono">${realKd}</td>
-      <td class="mono">${realCpc}</td>
+      <td style="text-align:center"><span class="pa-category-badge ${catClass}">${catLabel}</span></td>
+      <td class="mono" style="text-align:center"><span class="diff-badge ${diffClass(kw.estimated_difficulty || 5)}">${kw.estimated_difficulty || 5}</span></td>
+      <td class="mono" style="text-align:center">${Math.round((kw.estimated_competition || 0.05) * 100)}</td>
+      <td class="mono" style="text-align:center">${vol}</td>
+      <td class="mono" style="text-align:center">${realKd}</td>
+      <td class="mono" style="text-align:center">${realCpc}</td>
     </tr>`;
   }).join('');
 

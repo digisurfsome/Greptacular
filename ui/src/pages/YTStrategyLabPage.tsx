@@ -1586,6 +1586,7 @@ function StrategyBuilder({
   }, [])
 
   /** User confirmed deploy. */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleDeploy = useCallback(async (_sheetName: string) => {
     if (!generatedToolId) return
     try {

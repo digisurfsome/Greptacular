@@ -156,13 +156,26 @@ export function useAgentOSChat({
 
         case 'question': {
           setIsThinking(false)
-          setCurrentQuestion({
-            id: data.question_id || generateId(),
-            question: data.question || '',
-            type: data.question_type || 'text',
-            options: data.options,
-            purpose: data.purpose,
-          })
+          // Backend sends question data nested under data.question as an object
+          const q = data.question
+          if (q && typeof q === 'object') {
+            setCurrentQuestion({
+              id: q.id || generateId(),
+              question: q.question || '',
+              type: q.type || 'text',
+              options: q.options,
+              purpose: q.purpose,
+            })
+          } else {
+            // Fallback: flat structure for backward compatibility
+            setCurrentQuestion({
+              id: data.question_id || generateId(),
+              question: (typeof data.question === 'string' ? data.question : '') || '',
+              type: data.question_type || 'text',
+              options: data.options,
+              purpose: data.purpose,
+            })
+          }
           break
         }
 
@@ -201,7 +214,7 @@ export function useAgentOSChat({
         case 'spec_preview': {
           setSpecPreview({
             featureId: data.feature_id ?? 0,
-            content: data.content || '',
+            content: data.generation_prompt || data.content || '',
           })
           break
         }
@@ -209,7 +222,8 @@ export function useAgentOSChat({
         case 'handoff_ready': {
           setHandoffStatus(data.status || data)
           setIsThinking(false)
-          onCompleteRef.current?.()
+          // Do not call onComplete here — 'complete' event handles that.
+          // Calling it on both handoff_ready and complete would fire it twice.
           break
         }
 

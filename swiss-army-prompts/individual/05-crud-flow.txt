@@ -1,0 +1,530 @@
+================================================================================
+REFERENCE: Swiss Army Knife Prompt System — README
+================================================================================
+
+# Swiss Army Knife Prompt System
+
+## For Claude Code + Supabase + Vite + React + Tailwind
+
+A modular prompt system for building production-quality apps using vibe coding.
+Each module is standalone but designed to work together.
+
+## Modules
+
+| # | Module | Use When |
+|---|--------|----------|
+| 01 | **Scaffold** | Starting any new app from zero |
+| 02 | **Auth** | Adding Supabase auth + Google OAuth + roles |
+| 03 | **Data Layer** | Creating tables, RLS, and service layer |
+| 04 | **UI Kit** | Building reusable components (Modal, Toast, etc.) |
+| 05 | **CRUD Flow** | Building List/Detail/Create/Edit for any entity |
+| 06 | **Polish** | Date formatting, loading states, error handling |
+| 07 | **Style & Theming** | Applying a visual style with dark mode |
+| 08 | **Bug Fix Protocol** | Systematically fixing bugs |
+| 09 | **Feature Add** | Adding features to an existing app |
+| 10 | **Debug Protocol** | Deep diagnosis when something is broken |
+| 11 | **Clean Room** | Reverse-engineering an app into your stack |
+| 12 | **PRD Generator** | Turning an idea into a structured spec |
+| 13 | **Testing Protocol** | Adding tests and verification |
+
+## How to Use
+
+1. Start a new Claude Code session
+2. Paste the module prompt (or save as CLAUDE.md in your project)
+3. Fill in the [BRACKETS] with your specifics
+4. Let Claude Code execute
+
+## Stack
+
+- **AI Coding Tool:** Claude Code (terminal)
+- **Database + Auth:** Supabase
+- **Frontend:** React 19 + TypeScript + Vite
+- **Styling:** Tailwind CSS v4
+- **Icons:** Lucide React
+- **Hosting:** Vercel / Netlify / any static host
+
+## Origin
+
+Adapted from a production-tested build system by a 15-year software veteran,
+translated from Google AI Studio + Gemini + Firestore to Claude Code + Supabase.
+
+================================================================================
+MODULE 05: CRUD FLOW PROMPT
+================================================================================
+
+# MODULE 05: CRUD FLOW PROMPT
+
+## List → Detail → Create → Edit — The Universal Page Pattern
+
+**What this does:** Builds the complete page flow for any data entity in your app. This is the pattern you'll reuse for every single "thing" a user creates, views, edits, and deletes. Recipes, projects, tasks, notes, listings — they all follow this flow.
+
+**Prerequisite:** Modules 01-04 must be complete (Scaffold, Auth, Data Layer, UI Kit).
+
+**This is the most reusable module.** You'll run this prompt once per entity. Got 3 entities? Run it 3 times, changing Section 1 each time.
+
+---
+
+## --- START PROMPT ---
+
+## TASK: Build Complete CRUD Pages for [ENTITY_NAME]
+
+Create the full page flow for [ENTITY_NAME]: List View, Detail View, Create View, and Edit View. Follow the exact navigation flow and patterns below.
+
+Read these files first: `src/services/database.ts`, `src/types/index.ts`, `src/components/ui/` (all UI components), `src/App.tsx`, `src/components/Layout.tsx`.
+
+---
+
+## SECTION 1: ENTITY DEFINITION [FILL THIS IN]
+
+**Entity Name:** [e.g., "Project", "Recipe", "Note"]
+**Entity Plural:** [e.g., "Projects", "Recipes", "Notes"]
+**Table Name:** [e.g., "projects", "recipes", "notes"] (must match your Supabase table)
+
+**Display Fields:**
+- **Title field:** [which field is the main title? e.g., "title", "name"]
+- **Subtitle/description field:** [which field shows below the title? e.g., "description"]
+- **Status field:** [if applicable, e.g., "status" with values draft/published/archived]
+- **Key detail fields:** [what shows on the detail page? list them]
+
+**Form Fields (for Create/Edit):**
+- [field_name]: [type — text input / textarea / select / number / checkbox / date picker]
+- [field_name]: [type] — required / optional
+- [field_name]: [type] — required / optional
+
+**List Card Shows:** [What 2-3 things appear on each card in the list? e.g., "title, description (truncated 2 lines), relative date"]
+
+**Default Sort:** [e.g., "newest first", "alphabetical", "by priority"]
+
+---
+
+## SECTION 2: THE NAVIGATION FLOW (MANDATORY)
+
+```
+┌──────────────────┐     click card        ┌──────────────────┐
+│                  │ ───────────────────▶   │                  │
+│    LIST VIEW     │                        │   DETAIL VIEW    │
+│  /[entities]     │                        │  /[entities]/:id │
+│                  │ ◀───────────────────   │                  │
+└──────────────────┘     back button        └──────────────────┘
+        │                                          │      │
+        │ click "New"                  click "Edit" │      │ click "Delete"
+        ▼                                          ▼      ▼
+┌──────────────────┐                        ┌──────────────────┐
+│                  │                        │                  │
+│   CREATE VIEW    │                        │    EDIT VIEW     │
+│  /[entities]/new │                        │ /[entities]/:id  │
+│                  │                        │    /edit         │
+└──────────────────┘                        └──────────────────┘
+        │                                          │
+        │ save → navigate to detail                │ save → navigate to detail
+        ▼                                          │
+┌──────────────────┐                               │
+│   DETAIL VIEW    │ ◀─────────────────────────────┘
+│  /[entities]/:id │
+└──────────────────┘
+```
+
+**ANTI-PATTERNS (DO NOT DO THESE):**
+- Clicking a card opens edit mode directly (MUST open read-only detail first)
+- Using the same component for create and edit (separate pages)
+- No way to view an item without editing it
+- Delete with no ConfirmModal
+- Success/error with no Toast feedback
+- Empty list with just "No items" text
+
+---
+
+## SECTION 3: LIST VIEW PAGE
+
+**Route:** `/[entities]`
+**File:** `src/pages/[Entity]ListPage.tsx`
+
+### What It Shows
+
+```
+┌────────────────────────────────────────────────────────┐
+│  [Entities]                              [+ New Entity] │
+│                                                         │
+│  🔍 Search...                                           │
+│                                                         │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │ Card: [Title]                        [3d ago]   │   │
+│  │ [Description, truncated to 2 lines...]          │   │
+│  │ [Status badge]                                  │   │
+│  └─────────────────────────────────────────────────┘   │
+│                                                         │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │ Card: [Title]                        [5d ago]   │   │
+│  │ [Description, truncated to 2 lines...]          │   │
+│  └─────────────────────────────────────────────────┘   │
+│                                                         │
+│  Showing 1-10 of 24          [← Prev] [Next →]        │
+└────────────────────────────────────────────────────────┘
+```
+
+### Requirements
+
+1. **Header:** Page title + "New [Entity]" button (top right)
+2. **Search bar:** Filters by title/description, debounced 300ms
+3. **Card grid:** Responsive — 1 column mobile, 2 columns tablet, 3 columns desktop
+4. **Each card shows:**
+   - Title (truncated with `truncate` if too long)
+   - Description (truncated with `line-clamp-2`)
+   - Relative date (`formatRelativeTime`)
+   - Status badge if applicable
+   - Clickable — navigates to detail view
+   - Hover effect (subtle lift from Card component)
+5. **Loading state:** Skeleton cards (use SkeletonCard from UI Kit, show 6)
+6. **Empty state:** EmptyState component with appropriate icon and "Create your first [entity]" CTA
+7. **Error state:** Error message with retry button
+8. **Pagination:** Show 12 items per page, prev/next buttons, "Page X of Y"
+
+### Data Fetching Pattern
+
+```typescript
+const { user } = useAuth()
+const [items, setItems] = useState<EntityType[]>([])
+const [loading, setLoading] = useState(true)
+const [error, setError] = useState<string | null>(null)
+const [searchQuery, setSearchQuery] = useState('')
+const [page, setPage] = useState(1)
+
+const ITEMS_PER_PAGE = 12
+
+useEffect(() => {
+  if (!user) return
+  setLoading(true)
+  setError(null)
+
+  getEntities(user.id)
+    .then(setItems)
+    .catch((err) => setError(err.message))
+    .finally(() => setLoading(false))
+}, [user])
+
+// Client-side search filter
+const filtered = items.filter((item) =>
+  item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+  item.description?.toLowerCase().includes(searchQuery.toLowerCase())
+)
+
+// Pagination
+const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE)
+const paginated = filtered.slice(
+  (page - 1) * ITEMS_PER_PAGE,
+  page * ITEMS_PER_PAGE
+)
+```
+
+---
+
+## SECTION 4: DETAIL VIEW PAGE
+
+**Route:** `/[entities]/:id`
+**File:** `src/pages/[Entity]DetailPage.tsx`
+
+### What It Shows
+
+```
+┌────────────────────────────────────────────────────────┐
+│  ← Back to [Entities]                                   │
+│                                                         │
+│  [Title]                                                │
+│  [Status badge]         Created [relative time]         │
+│                                                         │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │                                                  │   │
+│  │  [Full description / content]                    │   │
+│  │                                                  │   │
+│  │  [All detail fields, nicely formatted]           │   │
+│  │                                                  │   │
+│  └─────────────────────────────────────────────────┘   │
+│                                                         │
+│  [Edit Button]                        [Delete Button]   │
+│                                                         │
+│  Last updated: January 15, 2026 at 3:45 PM             │
+└────────────────────────────────────────────────────────┘
+```
+
+### Requirements
+
+1. **Back navigation:** `← Back to [Entities]` link at top (navigates to list)
+2. **Title:** Large, prominent
+3. **Metadata:** Created date, updated date, status
+4. **Content:** All fields displayed in read-only format
+5. **Actions:**
+   - Edit button → navigates to `/[entities]/:id/edit`
+   - Delete button → opens ConfirmModal
+6. **Loading state:** Skeleton matching the content layout
+7. **Not found state:** EmptyState with "Item not found" and back-to-list CTA
+8. **Delete flow:**
+   - Click delete → ConfirmModal opens
+   - Confirm → loading state on button → delete → success toast → navigate to list
+   - Error → error toast → close modal
+
+### Data Fetching
+
+```typescript
+const { id } = useParams()
+const navigate = useNavigate()
+const { showToast } = useToast()
+const [item, setItem] = useState<EntityType | null>(null)
+const [loading, setLoading] = useState(true)
+const [isDeleting, setIsDeleting] = useState(false)
+const [showDeleteModal, setShowDeleteModal] = useState(false)
+
+useEffect(() => {
+  if (!id) return
+  getEntity(id)
+    .then(setItem)
+    .catch(() => setItem(null))
+    .finally(() => setLoading(false))
+}, [id])
+
+const handleDelete = async () => {
+  if (!id) return
+  setIsDeleting(true)
+  try {
+    await deleteEntity(id)
+    showToast({ type: 'success', message: '[Entity] deleted' })
+    navigate('/[entities]')
+  } catch (err) {
+    showToast({ type: 'error', message: err instanceof Error ? err.message : 'Delete failed' })
+    setIsDeleting(false)
+  }
+}
+```
+
+---
+
+## SECTION 5: CREATE VIEW PAGE
+
+**Route:** `/[entities]/new`
+**File:** `src/pages/[Entity]CreatePage.tsx`
+
+### What It Shows
+
+```
+┌────────────────────────────────────────────────────────┐
+│  ← Back to [Entities]                                   │
+│                                                         │
+│  Create New [Entity]                                    │
+│                                                         │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │  Title *                                        │   │
+│  │  ┌─────────────────────────────────────────┐    │   │
+│  │  │                                         │    │   │
+│  │  └─────────────────────────────────────────┘    │   │
+│  │                                                  │   │
+│  │  Description                                    │   │
+│  │  ┌─────────────────────────────────────────┐    │   │
+│  │  │                                         │    │   │
+│  │  │                                         │    │   │
+│  │  └─────────────────────────────────────────┘    │   │
+│  │                                                  │   │
+│  │  [More fields as needed...]                     │   │
+│  │                                                  │   │
+│  │           [Cancel]              [Create Entity]  │   │
+│  └─────────────────────────────────────────────────┘   │
+│                                                         │
+└────────────────────────────────────────────────────────┘
+```
+
+### Requirements
+
+1. **Back navigation:** `← Back to [Entities]`
+2. **Form fields:** All fields from Section 1, with proper types
+3. **First input auto-focused** on page load
+4. **Validation:** Required fields checked before submit
+5. **Error display:** Inline error messages below fields that fail validation
+6. **Submit button:** Shows loading state during save
+7. **Cancel button:** Goes back to list
+8. **On success:** Toast + navigate to the new item's detail page
+9. **On error:** Toast with error message, stay on form, preserve data
+10. **Unsaved changes warning:** Browser `beforeunload` if form is dirty
+11. **Max width:** `max-w-2xl` to keep forms readable
+
+### Form Pattern
+
+```typescript
+const { user } = useAuth()
+const navigate = useNavigate()
+const { showToast } = useToast()
+const [isSubmitting, setIsSubmitting] = useState(false)
+const [errors, setErrors] = useState<Record<string, string>>({})
+
+// Form state — one useState per field, or one object
+const [formData, setFormData] = useState({
+  title: '',
+  description: '',
+  // ... other fields with defaults
+})
+
+const validate = (): boolean => {
+  const newErrors: Record<string, string> = {}
+  if (!formData.title.trim()) newErrors.title = 'Title is required'
+  // ... other validations
+  setErrors(newErrors)
+  return Object.keys(newErrors).length === 0
+}
+
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault()
+  if (!validate() || !user) return
+
+  setIsSubmitting(true)
+  try {
+    const created = await createEntity(user.id, formData)
+    showToast({ type: 'success', message: '[Entity] created!' })
+    navigate(`/[entities]/${created.id}`)
+  } catch (err) {
+    showToast({ type: 'error', message: err instanceof Error ? err.message : 'Failed to create' })
+    setIsSubmitting(false)
+  }
+}
+```
+
+### Input Component Pattern
+
+For each form field, use this consistent pattern:
+
+```tsx
+<div className="space-y-1">
+  <label htmlFor="title" className="block text-sm font-medium text-text-primary">
+    Title <span className="text-red-500">*</span>
+  </label>
+  <input
+    id="title"
+    type="text"
+    value={formData.title}
+    onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
+    className={`w-full px-4 py-3 rounded-lg border transition-colors
+      ${errors.title
+        ? 'border-red-500 bg-red-50 focus:ring-red-500 dark:bg-red-950/20'
+        : 'border-border-subtle bg-surface-muted focus:ring-brand'
+      }
+      focus:outline-none focus:ring-2
+      disabled:opacity-50 disabled:cursor-not-allowed`}
+    disabled={isSubmitting}
+    autoFocus
+  />
+  {errors.title && (
+    <p className="text-sm text-red-600">{errors.title}</p>
+  )}
+</div>
+```
+
+---
+
+## SECTION 6: EDIT VIEW PAGE
+
+**Route:** `/[entities]/:id/edit`
+**File:** `src/pages/[Entity]EditPage.tsx`
+
+### Requirements
+
+Same form as Create, but:
+
+1. **Pre-filled** with existing data (fetched by ID)
+2. **Loading state:** Skeleton while fetching existing data
+3. **Not found:** If item doesn't exist, show error + back link
+4. **Submit label:** "Save Changes" instead of "Create"
+5. **Cancel goes to detail page** (not list)
+6. **On success:** Toast + navigate to detail page
+7. **Unsaved changes warning** if form is dirty (changed from original)
+
+### Detecting Dirty State
+
+```typescript
+const [originalData, setOriginalData] = useState<typeof formData | null>(null)
+
+// After fetching:
+setFormData({ title: item.title, description: item.description ?? '' })
+setOriginalData({ title: item.title, description: item.description ?? '' })
+
+// Check if dirty:
+const isDirty = JSON.stringify(formData) !== JSON.stringify(originalData)
+```
+
+---
+
+## SECTION 7: ADD ROUTES TO App.tsx
+
+Add these routes inside the `<Routes>` block:
+
+```tsx
+{/* [Entity] CRUD routes */}
+<Route path="/[entities]" element={
+  <ProtectedRoute><Layout><EntityListPage /></Layout></ProtectedRoute>
+} />
+<Route path="/[entities]/new" element={
+  <ProtectedRoute><Layout><EntityCreatePage /></Layout></ProtectedRoute>
+} />
+<Route path="/[entities]/:id" element={
+  <ProtectedRoute><Layout><EntityDetailPage /></Layout></ProtectedRoute>
+} />
+<Route path="/[entities]/:id/edit" element={
+  <ProtectedRoute><Layout><EntityEditPage /></Layout></ProtectedRoute>
+} />
+```
+
+Also add a link to the sidebar navigation in `Sidebar.tsx`.
+
+---
+
+## SECTION 8: UPDATE DASHBOARD
+
+Replace the placeholder Dashboard content with:
+- A summary card showing total count of entities
+- Recent entities (last 5)
+- Quick "Create New" CTA
+- Link to full list view
+
+---
+
+## SECTION 9: VERIFY
+
+1. `npm run build` — zero errors
+2. `npm run dev` and test the complete flow:
+   - [ ] List page shows (empty state on first visit)
+   - [ ] Click "New" → Create form appears
+   - [ ] Fill in form → Submit → Success toast → Redirected to detail
+   - [ ] Detail page shows all data correctly
+   - [ ] Click "Edit" → Edit form pre-filled
+   - [ ] Change something → Save → Success toast → Back to detail with changes
+   - [ ] Click "Delete" → ConfirmModal appears
+   - [ ] Confirm → Success toast → Back to list
+   - [ ] Search works on list page
+   - [ ] Pagination works when > 12 items
+   - [ ] Back navigation works on every page
+   - [ ] Mobile layout works (resize to < 640px)
+   - [ ] Dark mode works on all pages
+   - [ ] Zero console errors
+
+---
+
+## COMMIT
+
+```bash
+git add -A
+git commit -m "crud: add [entity] pages — list, detail, create, edit with full flow"
+```
+
+---
+
+## REPEATING FOR MORE ENTITIES
+
+Have another entity? Copy this prompt, change Section 1, and run it again. The patterns are identical — only the fields and routes change.
+
+---
+
+## WHAT'S NEXT
+
+| Module | What It Adds |
+|--------|-------------|
+| **06 — Polish** | Hover states, transitions, accessibility, offline handling, session expiry |
+| **07 — Style & Theming** | Apply your specific visual style, landing page design |
+
+---
+
+## --- END PROMPT ---

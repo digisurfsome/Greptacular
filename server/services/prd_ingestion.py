@@ -167,7 +167,7 @@ async def extract_steps_from_prd(
         PRD_EXTRACTION_SYSTEM,
         user_message,
         "claude-sonnet-4-6",
-        timeout=120,
+        timeout=300,
     )
 
     elapsed = time.time() - start_time

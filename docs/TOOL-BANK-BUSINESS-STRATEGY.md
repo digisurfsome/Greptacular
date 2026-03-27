@@ -328,4 +328,184 @@ That IS the product for Phase 1. The tool is what they're buying, but the fricti
 
 ---
 
+## Automated Installation Tool (Claude Does the Install)
+
+### The Reality
+
+You're not a coder. You're never going to SSH into a machine and run commands yourself. Claude Code is doing the work. So the installation process itself needs to be a tool — a deterministic, repeatable skill that Claude executes with minimal human input.
+
+### Why This Works
+
+Think about what an install actually is:
+
+```
+FIXED (same every time, 90% of the work):
+├── Check Python version, install if needed
+├── Check Node.js version, install if needed
+├── Clone the tool repo
+├── Create virtual environment
+├── Install Python dependencies
+├── Install Node dependencies
+├── Build the UI
+├── Set up the database
+├── Configure startup scripts
+└── Run verification checks
+
+VARIABLE (the only parts that change):
+├── Which OS (Windows / Mac / Linux) — 3 options
+├── Which tool to install — pick from your tool list
+├── Subscription config — their Claude credentials
+└── Custom settings — if they want anything tweaked
+```
+
+90% of it is deterministic — literally the same commands in the same order every time. The variable parts are just a few inputs up front.
+
+### The Installation Skill Architecture
+
+**Layer 1: The Intake Questionnaire (human-facing)**
+You ask the client a few questions. Could be a form, a call, a chat:
+- What OS are they on? (Windows / Mac / Linux)
+- Which tool(s) do they want?
+- How many people will use it?
+- Do they have a Claude subscription already?
+- Any IT restrictions? (VPN, firewall, etc.)
+
+**Layer 2: The Installation Skill (Claude-facing)**
+A Claude Code skill (`.claude/skills/` or `.claude/commands/`) that takes those answers as inputs and runs the entire install. The skill would look something like:
+
+```
+SKILL: install-tool-for-client
+
+INPUTS:
+- os_type: windows | mac | linux
+- tool_name: [from tool catalog]
+- install_path: where to put it
+- subscription_type: claude_max | claude_pro | api_key
+- multi_user: true | false
+
+DETERMINISTIC STEPS:
+1. Detect OS and set platform-specific commands
+2. Check prerequisites (Python 3.11+, Node 20+)
+   - If missing: provide exact install instructions for their OS
+3. Clone tool repo to install_path
+4. Create venv, install deps
+5. Build UI if applicable
+6. Configure subscription auth
+   - If claude_max/pro: set up credential forwarding
+   - If api_key: configure .env
+7. If multi_user: configure for network access (host 0.0.0.0, set port)
+8. Create startup script for their OS
+9. Run verification suite:
+   - Can it reach the AI? ✓/✗
+   - Does the UI load? ✓/✗
+   - Can it process a test request? ✓/✗
+10. Generate install report (what was done, how to start it, troubleshooting)
+
+DETERMINISTIC WALLS (things that can't deviate):
+- Python version must be 3.11+
+- Node version must be 20+
+- Subscription auth must follow the pattern in registry.py
+- Security settings must match client.py defaults
+- Verification must pass before declaring success
+```
+
+**Layer 3: Deterministic Walls (error prevention)**
+These are the hard rules that Claude cannot deviate from, no matter what:
+
+| Wall | Rule | Why |
+|------|------|-----|
+| Auth | Never use API keys for subscription models | Burns credits (see CLAUDE.md) |
+| Security | Never use bypassPermissions | Crashes on Windows (see CLAUDE.md) |
+| SDK Pattern | Always wrap receive_response in try/except | Rate limit events kill responses |
+| Verification | Must pass all checks before marking done | Can't deliver a broken install |
+| Rollback | If install fails, clean up everything | Don't leave half-installs |
+
+### The Improvement Loop
+
+**Install #1-3:** Run the skill manually, watch for failures, fix them.
+Each failure becomes a new deterministic wall or a new check in the preflight.
+
+**Install #4-6:** The skill handles 90%+ automatically. You're mostly just
+answering the intake questions and watching it work.
+
+**Install #7-10:** You start finding patterns — "Windows machines always need
+this extra step" or "Mac users always hit this Python issue." Each pattern
+gets baked into the skill as a conditional.
+
+**Install #10+:** The skill is nearly autopilot. The only things that can go
+wrong are truly new situations (weird corporate firewalls, unusual OS configs).
+Those are rare and each one makes the skill better.
+
+### What Makes This Different from a Human Dev Doing It
+
+A human dev doing installs:
+- Gets bored, makes mistakes on the 15th install
+- Forgets steps they haven't done in a while
+- Each install takes the same amount of time (no learning curve for the tool)
+
+Claude with a deterministic skill:
+- Never forgets a step
+- Every install follows the exact same process
+- Gets BETTER over time as you add walls and checks
+- Can do the install in 15 minutes instead of an hour
+- Generates a clean install report every time
+
+### The Tool Catalog
+
+Each tool in your bank gets an entry:
+
+```yaml
+# tool-catalog/content-writer.yaml
+name: Content Writer
+repo: github.com/you/tool-content-writer
+requires:
+  - python: ">=3.11"
+  - node: ">=20"
+  - subscription: claude
+install_type: standard  # vs "custom" for tools needing extra config
+estimated_install_time: 15min
+monthly_support_tier: basic
+```
+
+The installation skill reads this catalog entry and knows exactly what to do.
+New tool? Add a YAML entry. Same install process.
+
+### From Install Skill to Support Skill
+
+The same pattern works for support:
+
+```
+SKILL: diagnose-tool-issue
+
+INPUTS:
+- tool_name: which tool is broken
+- symptom: what's happening (from client description)
+- install_path: where it's installed
+
+DETERMINISTIC STEPS:
+1. Run health checks (same as install verification)
+2. Check logs for known error patterns
+3. Match against known-issues database
+4. If match found: apply known fix
+5. If no match: gather diagnostics, report what was tried
+```
+
+Every support call makes the known-issues database bigger. Every fix becomes
+a deterministic step. Support gets cheaper and faster over time.
+
+### Summary
+
+You're not learning to code. You're building a machine that installs and
+supports your tools. The machine is Claude + deterministic skills + a growing
+knowledge base of every install and every issue. Each engagement makes the
+machine better. By the time you're doing 20+ installs, the whole process is:
+
+1. Client fills out intake form (5 min)
+2. You connect to their machine (5 min)
+3. You say "run the install skill" (Claude does 15 min of work)
+4. You show them how to use it (15 min)
+5. Done. Bill them.
+
+---
+
 *Strategy developed through multiple conversations. This is the master reference document.*

@@ -194,6 +194,18 @@ export function AgentOSChat({ projectName, onComplete, onCancel }: AgentOSChatPr
           <ChatMessage key={message.id} message={message} />
         ))}
 
+        {/* Text question prompt — shows question text for free-text input */}
+        {currentQuestion && currentQuestion.type === 'text' && (
+          <div className="px-4 py-3">
+            <Card className="p-4 border-primary/30 bg-primary/5">
+              <p className="text-sm font-medium text-foreground">{currentQuestion.question}</p>
+              {currentQuestion.purpose && (
+                <p className="text-xs text-muted-foreground mt-1">{currentQuestion.purpose}</p>
+              )}
+            </Card>
+          </div>
+        )}
+
         {/* Question options (choice-based) */}
         {currentQuestion && currentQuestion.type !== 'text' && currentQuestion.options && (
           <div className="px-4 py-3">

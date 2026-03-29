@@ -29,6 +29,8 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+from server.services.screenshot_analyzer import ScreenshotCapture
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/yt-lab", tags=["yt-lab"])
@@ -94,19 +96,6 @@ class ScreenshotSuggestion(BaseModel):
     reason: str
     captured: bool = False
     filepath: Optional[str] = None
-
-
-class ScreenshotCapture(BaseModel):
-    """A captured and analyzed screenshot from a video."""
-
-    timestamp: float
-    reason: str
-    image_path: str
-    ocr_text: str = ""
-    ui_detected: str = ""
-    classification: str = "other"  # prompt | result | dashboard | form | navigation | other
-    relevance_score: int = Field(default=5, ge=1, le=10)
-    transcript_segment: str = ""
 
 
 class IngestResponse(BaseModel):

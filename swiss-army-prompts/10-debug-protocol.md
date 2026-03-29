@@ -1,0 +1,231 @@
+# MODULE 10: DEEP DEBUG PROTOCOL
+
+## When the Bug Fix Module Isn't Enough
+
+**What this does:** A deep investigation protocol for bugs that are hard to reproduce, intermittent, or deeply architectural. Module 08 (Bug Fix) handles straightforward bugs. This module is for when you've been going in circles and nothing makes sense.
+
+**When to use:** You've tried fixing the bug and failed. Or the bug keeps coming back. Or you don't even understand what's causing it.
+
+**The difference from Module 08:** Module 08 follows a linear diagnostic path. This module is a full investigation — gathering evidence, forming hypotheses, testing them, and ruling things out systematically.
+
+---
+
+## --- START PROMPT ---
+
+## TASK: Deep Investigation — Something Is Broken and I Can't Figure Out Why
+
+Do NOT try to fix anything yet. Your only job is to investigate, understand, and explain. I'll tell you when to fix.
+
+---
+
+## SECTION 1: THE PROBLEM [FILL THIS IN]
+
+**What's wrong (in plain language):**
+[Describe what you're experiencing]
+
+**What I've already tried:**
+[List any fixes you've already attempted]
+
+**How often does it happen?**
+[Every time / Sometimes / Only after X / Randomly]
+
+**When did it start?**
+[After a specific change? After updating something? Always been this way? Not sure?]
+
+---
+
+## SECTION 2: EVIDENCE GATHERING (DO ALL OF THESE)
+
+### 2A: Collect All Error Messages
+
+1. Open the app in the browser
+2. Open DevTools → Console tab → Clear console → Reproduce the bug
+3. Copy EVERY error and warning (even ones that seem unrelated)
+4. Open DevTools → Network tab → Filter by errors (red) → Note failed requests
+5. Check the terminal running `npm run dev` → Copy any errors there
+6. Run `npm run build` → Copy any TypeScript errors
+
+**Report ALL of this to me before proceeding.**
+
+### 2B: Map the Code Path
+
+Starting from the user action that triggers the bug, trace through every file involved:
+
+```
+USER ACTION: [click button / navigate to page / submit form / etc.]
+    │
+    ├── Component: [file:line] — What does the event handler do?
+    │       │
+    │       ├── Calls: [function name in service/hook]
+    │       │       │
+    │       │       ├── Calls: [Supabase query / API call]
+    │       │       │       │
+    │       │       │       └── Returns: [what comes back? check the actual data]
+    │       │       │
+    │       │       └── Returns: [what does the service return to the component?]
+    │       │
+    │       └── Updates state: [what state changes? does it trigger a re-render?]
+    │
+    └── Re-render: [what does the component display after state update?]
+```
+
+Read EVERY file in this chain. Write down what each one does.
+
+### 2C: Check Recent Changes
+
+```bash
+git log --oneline -20
+git diff HEAD~5
+```
+
+Did a recent commit introduce the bug? If so, what changed?
+
+### 2D: Check Environment
+
+- Is `.env.local` present with correct Supabase credentials?
+- Is the Supabase project accessible (check Dashboard)?
+- Are RLS policies correct (check in Supabase Dashboard → Authentication → Policies)?
+- Is the auth session valid (check Supabase Dashboard → Authentication → Users)?
+- Are there any browser extensions interfering?
+
+---
+
+## SECTION 3: HYPOTHESIS TESTING
+
+Based on the evidence, form 2-3 hypotheses about what's wrong.
+
+For each hypothesis:
+
+### Hypothesis 1: [Your theory]
+
+**Evidence supporting this:**
+- [Evidence point 1]
+- [Evidence point 2]
+
+**Evidence against this:**
+- [Evidence point 1]
+
+**Test:** [How to confirm or rule this out — be specific]
+
+**Result:** [After testing — confirmed or ruled out]
+
+### Hypothesis 2: [Alternative theory]
+
+[Same structure]
+
+### Hypothesis 3: [Third possibility]
+
+[Same structure]
+
+---
+
+## SECTION 4: ISOLATION TECHNIQUES
+
+If hypotheses aren't conclusive, isolate the problem:
+
+### Technique 1: Binary Search
+
+If unsure which change broke it:
+```bash
+# Find the last known working commit
+git log --oneline -20
+
+# Check out the midpoint
+git stash  # save current changes
+git checkout [midpoint-commit]
+npm run dev  # test — is it broken here?
+
+# If broken: bug is in older commits, test earlier midpoint
+# If works: bug is in newer commits, test later midpoint
+# Repeat until you find the exact commit that broke it
+
+git checkout main  # return to latest
+git stash pop  # restore changes
+```
+
+### Technique 2: Minimal Reproduction
+
+Create the simplest possible version that reproduces the bug:
+
+1. Comment out everything except the broken feature
+2. Hardcode data instead of fetching it
+3. Remove auth, remove layout, remove everything non-essential
+4. Does the bug still happen with the bare minimum?
+5. Add things back one at a time until the bug appears — that's the culprit
+
+### Technique 3: Console Instrumentation
+
+Temporarily add strategic console.logs (we'll remove them after):
+
+```typescript
+console.log('[DEBUG] Component mounted, user:', user?.id)
+console.log('[DEBUG] Fetching data...')
+console.log('[DEBUG] Data received:', data?.length, 'items')
+console.log('[DEBUG] State updated, rendering with:', items.length)
+```
+
+Place them at every step in the data flow chain. Watch the console to see where things go wrong.
+
+### Technique 4: Network Inspection
+
+For data bugs:
+1. Open DevTools → Network tab
+2. Find the Supabase request
+3. Click it → check the Request (what was sent) and Response (what came back)
+4. Is the request correct? Are query params right?
+5. Is the response what you expect? Is it empty? Does it have an error?
+
+---
+
+## SECTION 5: REPORT YOUR FINDINGS
+
+After investigation, give me a clear report:
+
+```
+INVESTIGATION SUMMARY
+=====================
+
+BUG: [One-sentence description]
+
+ROOT CAUSE: [What is actually wrong and why]
+
+EVIDENCE:
+1. [Key finding 1]
+2. [Key finding 2]
+3. [Key finding 3]
+
+LOCATION:
+- [File:line — what's wrong here]
+- [File:line — related issue]
+
+RECOMMENDED FIX:
+[Describe the fix in plain language]
+
+RISK:
+[What could go wrong with this fix? What else might it affect?]
+
+CONFIDENCE: [High / Medium / Low]
+[If low, explain what you're still unsure about]
+```
+
+---
+
+## SECTION 6: FIX (ONLY AFTER APPROVAL)
+
+Wait for my approval before fixing. Then:
+
+1. Make the minimum change that fixes the root cause
+2. `npm run build` — zero errors
+3. Test the original reproduction steps — bug is gone
+4. Test adjacent features — nothing else broke
+5. Remove any console.log statements you added for debugging
+6. Commit with a clear message explaining the root cause
+
+```bash
+git add -A
+git commit -m "fix: [what was broken] — caused by [root cause]"
+```
+
+---
+
+## --- END PROMPT ---

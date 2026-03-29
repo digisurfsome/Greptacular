@@ -172,7 +172,7 @@ function GapItem({
         <p className="text-[10px] text-muted-foreground mt-1.5">
           Recommendation: {gap.recommendation}
           {gap.confidence > 0 && (
-            <span className="ml-1 text-primary font-bold">({gap.confidence}%)</span>
+            <span className="ml-1 text-primary font-bold">({Math.round(gap.confidence * 100)}%)</span>
           )}
         </p>
       )}

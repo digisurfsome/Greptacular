@@ -1,0 +1,517 @@
+================================================================================
+REFERENCE: Swiss Army Knife Prompt System — README
+================================================================================
+
+# Swiss Army Knife Prompt System
+
+## For Claude Code + Supabase + Vite + React + Tailwind
+
+A modular prompt system for building production-quality apps using vibe coding.
+Each module is standalone but designed to work together.
+
+## Modules
+
+| # | Module | Use When |
+|---|--------|----------|
+| 01 | **Scaffold** | Starting any new app from zero |
+| 02 | **Auth** | Adding Supabase auth + Google OAuth + roles |
+| 03 | **Data Layer** | Creating tables, RLS, and service layer |
+| 04 | **UI Kit** | Building reusable components (Modal, Toast, etc.) |
+| 05 | **CRUD Flow** | Building List/Detail/Create/Edit for any entity |
+| 06 | **Polish** | Date formatting, loading states, error handling |
+| 07 | **Style & Theming** | Applying a visual style with dark mode |
+| 08 | **Bug Fix Protocol** | Systematically fixing bugs |
+| 09 | **Feature Add** | Adding features to an existing app |
+| 10 | **Debug Protocol** | Deep diagnosis when something is broken |
+| 11 | **Clean Room** | Reverse-engineering an app into your stack |
+| 12 | **PRD Generator** | Turning an idea into a structured spec |
+| 13 | **Testing Protocol** | Adding tests and verification |
+
+## How to Use
+
+1. Start a new Claude Code session
+2. Paste the module prompt (or save as CLAUDE.md in your project)
+3. Fill in the [BRACKETS] with your specifics
+4. Let Claude Code execute
+
+## Stack
+
+- **AI Coding Tool:** Claude Code (terminal)
+- **Database + Auth:** Supabase
+- **Frontend:** React 19 + TypeScript + Vite
+- **Styling:** Tailwind CSS v4
+- **Icons:** Lucide React
+- **Hosting:** Vercel / Netlify / any static host
+
+## Origin
+
+Adapted from a production-tested build system by a 15-year software veteran,
+translated from Google AI Studio + Gemini + Firestore to Claude Code + Supabase.
+
+================================================================================
+MODULE 04: UI KIT PROMPT
+================================================================================
+
+# MODULE 04: UI KIT PROMPT
+
+## Reusable Components — Modal, Toast, Button, Avatar, Skeleton, EmptyState
+
+**What this does:** Builds every shared UI component your app needs. These are used by every page and every feature. After this module, you never build these again — they're your personal component library.
+
+**Prerequisite:** Modules 01 (Scaffold) and 02 (Auth) must be complete.
+
+---
+
+## --- START PROMPT ---
+
+## TASK: Build the Complete UI Component Kit
+
+Create all reusable UI components for this app. These components are used across every page and feature. Follow every pattern exactly.
+
+Read these files first: `src/index.css`, `src/contexts/ToastContext.tsx`, `src/contexts/ThemeContext.tsx`, `src/types/index.ts`. Understand the design tokens and existing context before building.
+
+---
+
+## COMPONENT 1: Modal (Base)
+
+**src/components/ui/Modal.tsx**
+
+The base modal that every other modal builds on. Used for forms, confirmations, and any overlay content.
+
+Requirements:
+- Dark overlay backdrop that fades in
+- Centered white card that scales up on open
+- Close button (X) in top-right corner
+- Title slot (optional)
+- Content slot (children)
+- Closes on Escape key
+- Closes on backdrop click (optional, default true)
+- Focus trap — Tab stays inside the modal
+- Prevents body scroll when open
+- Responsive: nearly full-screen on mobile, max-w-md on desktop
+- Uses Tailwind only, no animation libraries
+
+```typescript
+interface ModalProps {
+  isOpen: boolean
+  onClose: () => void
+  title?: string
+  children: React.ReactNode
+  /** If false, clicking backdrop won't close. Default: true */
+  closeOnBackdrop?: boolean
+  /** Width class. Default: 'max-w-md' */
+  maxWidth?: string
+}
+```
+
+Implementation details:
+- Use a portal (`createPortal`) to render at document body level
+- Backdrop: `fixed inset-0 bg-black/50 z-50` with fade-in animation
+- Card: `bg-surface-base rounded-xl border border-border-subtle shadow-lg` with scale animation
+- Close button: `absolute top-4 right-4` with X icon from Lucide
+- Escape key: `useEffect` with `keydown` listener
+- Body scroll lock: `document.body.style.overflow = 'hidden'` on mount, restore on unmount
+- Mobile: `mx-4 max-h-[90vh] overflow-y-auto`
+- Focus first focusable element on open
+
+---
+
+## COMPONENT 2: ConfirmModal
+
+**src/components/ui/ConfirmModal.tsx**
+
+Built on top of Modal. Used for ALL destructive actions (delete, remove, discard).
+
+**RULE: Every destructive action in the app MUST use this component. No exceptions.**
+
+Requirements:
+- Title (e.g., "Delete this item?")
+- Description (e.g., "This action cannot be undone.")
+- Cancel button (secondary style)
+- Confirm button (danger style, with loading state)
+- Optional: require typing a word to confirm (for account deletion)
+
+```typescript
+interface ConfirmModalProps {
+  isOpen: boolean
+  onClose: () => void
+  onConfirm: () => void | Promise<void>
+  title: string
+  description: string
+  confirmLabel?: string       // Default: "Delete"
+  cancelLabel?: string        // Default: "Cancel"
+  variant?: 'danger' | 'warning'  // Default: 'danger'
+  /** If set, user must type this word to enable the confirm button */
+  requireConfirmText?: string
+}
+```
+
+---
+
+## COMPONENT 3: Toast (Full Implementation)
+
+**src/components/ui/Toast.tsx**
+
+Replace the basic toast renderer in ToastContext with a proper component.
+
+Requirements:
+- Slides in from top-right
+- Color-coded by type: success (green), error (red), warning (yellow), info (blue)
+- Icon per type: CheckCircle, XCircle, AlertCircle, Info (from Lucide)
+- Dismiss button (X)
+- Auto-dismisses after duration (default 4 seconds)
+- Stacks multiple toasts with gap
+- Progress bar that shows time remaining (subtle, at bottom of toast)
+
+```typescript
+interface ToastProps {
+  toast: ToastMessage  // from types/index.ts
+  onDismiss: (id: string) => void
+}
+```
+
+Also update **src/contexts/ToastContext.tsx** to render `<Toast>` components instead of the inline `<div>`.
+
+---
+
+## COMPONENT 4: Button
+
+**src/components/ui/Button.tsx**
+
+The one button to rule them all. Every button in the app uses this.
+
+Requirements:
+- Variants: primary, secondary, danger, ghost
+- Sizes: sm, md (default), lg
+- Loading state: shows spinner, disables click, shows "Loading..." text
+- Disabled state: reduced opacity, no pointer events
+- Full-width option
+- Icon support (left icon slot)
+- Proper focus ring for accessibility
+- Active press effect (slight scale down)
+
+```typescript
+interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: 'primary' | 'secondary' | 'danger' | 'ghost'
+  size?: 'sm' | 'md' | 'lg'
+  loading?: boolean
+  fullWidth?: boolean
+  icon?: React.ReactNode
+}
+```
+
+Styling per variant:
+- **primary:** `bg-brand hover:bg-brand-dark text-white`
+- **secondary:** `bg-surface-muted hover:bg-border-subtle text-text-primary border border-border-subtle`
+- **danger:** `bg-red-600 hover:bg-red-700 text-white`
+- **ghost:** `bg-transparent hover:bg-surface-muted text-text-secondary`
+
+Sizing:
+- **sm:** `px-3 py-1.5 text-sm rounded-md`
+- **md:** `px-4 py-2.5 text-sm rounded-lg`
+- **lg:** `px-6 py-3 text-base rounded-lg`
+
+---
+
+## COMPONENT 5: Avatar
+
+**src/components/ui/Avatar.tsx**
+
+Shows user's Google profile photo with fallback to initials.
+
+Requirements:
+- Three sizes: sm (32px), md (40px), lg (48px)
+- Shows photo if available
+- Falls back to colored circle with initials if photo fails or is missing
+- `onError` handler hides broken `<img>` and shows initials instead
+- Initials: first letter of first and last name, uppercase, max 2 chars
+
+```typescript
+interface AvatarProps {
+  src?: string | null
+  name?: string | null
+  size?: 'sm' | 'md' | 'lg'
+}
+```
+
+---
+
+## COMPONENT 6: ThemeToggle
+
+**src/components/ui/ThemeToggle.tsx**
+
+Toggle between light and dark mode.
+
+Requirements:
+- Sun icon in dark mode (clicking switches to light)
+- Moon icon in light mode (clicking switches to dark)
+- Uses `useTheme()` from ThemeContext
+- Accessible: `aria-label` describes the action
+- Subtle hover background
+
+```typescript
+// No props needed — reads from ThemeContext
+```
+
+---
+
+## COMPONENT 7: Card
+
+**src/components/ui/Card.tsx**
+
+Standard content container used everywhere.
+
+Requirements:
+- Default styling: `bg-surface-base rounded-xl border border-border-subtle shadow-card`
+- Padding: `p-6` by default, configurable
+- Optional hover effect for clickable cards (lift + shadow increase)
+- Optional `as` prop for semantic HTML (div, article, section)
+- onClick handler (makes it a button semantically)
+
+```typescript
+interface CardProps {
+  children: React.ReactNode
+  className?: string
+  hover?: boolean
+  onClick?: () => void
+  padding?: 'none' | 'sm' | 'md' | 'lg'
+}
+```
+
+---
+
+## COMPONENT 8: Skeleton
+
+**src/components/ui/Skeleton.tsx**
+
+Animated loading placeholder that matches content shape.
+
+**RULE: Use Skeleton for ALL loading states. Never show "Loading..." text. Never use a full-page spinner for content that has a known shape.**
+
+Requirements:
+- Shimmer animation (subtle pulse or sweep)
+- Configurable width, height, and border-radius
+- Pre-built variants: `SkeletonText`, `SkeletonCard`, `SkeletonAvatar`
+- Matches the actual content dimensions so the page doesn't jump when content loads
+
+```typescript
+interface SkeletonProps {
+  className?: string
+  /** Width class (e.g., 'w-full', 'w-48'). Default: 'w-full' */
+  width?: string
+  /** Height class (e.g., 'h-4', 'h-12'). Default: 'h-4' */
+  height?: string
+  /** Border radius class. Default: 'rounded-md' */
+  rounded?: string
+}
+
+// Pre-built composites:
+function SkeletonCard(): JSX.Element  // Card-shaped placeholder
+function SkeletonText({ lines }: { lines?: number }): JSX.Element  // Paragraph placeholder
+function SkeletonAvatar({ size }: { size?: 'sm' | 'md' | 'lg' }): JSX.Element
+```
+
+The shimmer animation in CSS:
+```css
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--color-surface-muted) 25%,
+    var(--color-border-subtle) 50%,
+    var(--color-surface-muted) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+```
+
+Add this to **src/index.css** in the animations section.
+
+---
+
+## COMPONENT 9: EmptyState
+
+**src/components/ui/EmptyState.tsx**
+
+Shown when a list has no items. NEVER show just "No items" text.
+
+**RULE: Every empty list MUST use this component with an icon and a call-to-action.**
+
+Requirements:
+- Large icon (from Lucide, passed as prop)
+- Title (e.g., "No projects yet")
+- Description (e.g., "Create your first project to get started")
+- CTA button (e.g., "Create Project") — navigates or calls a function
+- Centered, with generous padding
+- Muted colors so it doesn't look like an error
+
+```typescript
+interface EmptyStateProps {
+  icon: React.ReactNode
+  title: string
+  description: string
+  action?: {
+    label: string
+    onClick: () => void
+  }
+}
+```
+
+---
+
+## COMPONENT 10: Spinner
+
+**src/components/ui/Spinner.tsx**
+
+Simple loading spinner for inline use and full-page loading.
+
+```typescript
+interface SpinnerProps {
+  /** Size in Tailwind classes. Default: 'w-6 h-6' */
+  size?: string
+  /** Color class. Default: 'text-brand' */
+  color?: string
+}
+```
+
+Use a CSS border spinner (the `border-t-transparent` trick), not an SVG.
+
+---
+
+## COMPONENT 11: Layout Shell
+
+Update the existing layout components to use the new UI kit:
+
+### src/components/Layout.tsx
+
+The main authenticated layout with sidebar + header + content area.
+
+```
+Desktop (lg+):
+┌─────────────────────────────────────────────────┐
+│ HEADER: Logo    ThemeToggle  Avatar  SignOut     │
+├──────────────┬──────────────────────────────────┤
+│              │                                  │
+│   SIDEBAR    │         MAIN CONTENT             │
+│   (240px)    │         (scrollable)             │
+│              │                                  │
+│   - Nav      │         {children}               │
+│   - Help     │                                  │
+└──────────────┴──────────────────────────────────┘
+
+Mobile (<lg):
+┌─────────────────────┐
+│ HEADER  [☰] [👤]    │  ← Hamburger + Avatar
+├─────────────────────┤
+│                     │
+│    MAIN CONTENT     │  ← Full width
+│    {children}       │
+│                     │
+└─────────────────────┘
+│ Sidebar slides in as overlay when hamburger tapped │
+```
+
+Requirements:
+- Sidebar: `w-60 bg-surface-base border-r border-border-subtle`
+- Header: `h-16 bg-surface-base border-b border-border-subtle`
+- Main: `flex-1 overflow-y-auto bg-surface-canvas`
+- Mobile: sidebar hidden, hamburger shows it as overlay
+- Clicking nav item or outside closes mobile sidebar
+- Uses `Avatar`, `ThemeToggle`, `Button` from the UI kit
+
+### src/components/Sidebar.tsx
+
+Navigation links + help at bottom.
+
+Requirements:
+- Active link highlighted with brand color background
+- Uses `useLocation()` from React Router to detect active page
+- Help/Support link pinned to bottom
+- Conditional admin link (`{isAdmin && <Link to="/admin">...}`)
+
+### src/components/MobileNav.tsx
+
+Mobile header with hamburger.
+
+Requirements:
+- Hamburger icon (Menu) toggles sidebar overlay
+- Close icon (X) inside the overlay
+- Backdrop click closes
+- 44px minimum touch targets
+
+---
+
+## BANNED LIST (ENFORCE STRICTLY)
+
+These are NEVER allowed in any component, page, or feature:
+
+| Banned | Use Instead |
+|--------|-------------|
+| `alert()` | `showToast({ type: 'info', message: '...' })` |
+| `confirm()` | `<ConfirmModal>` |
+| `prompt()` | `<Modal>` with a form inside |
+| `console.log` for user feedback | `showToast()` |
+| "Loading..." text | `<Skeleton>` or `<Spinner>` |
+| "No items" plain text | `<EmptyState>` with icon and CTA |
+| `window.alert` | Toast |
+| Inline `<div className="modal...">` | `<Modal>` component |
+| Browser default dialogs | Custom components |
+
+---
+
+## VERIFICATION
+
+After building all components:
+
+1. `npm run build` — zero TypeScript errors
+2. `npm run dev` — navigate through the app
+3. Open DevTools Console — zero errors or warnings
+4. Test dark mode toggle — all components should respect dark mode
+5. Test mobile (resize browser to < 640px) — layout should be responsive
+6. Test Escape key on modal — should close
+7. Test toast — should auto-dismiss after 4 seconds
+
+---
+
+## COMMIT
+
+```bash
+git add -A
+git commit -m "ui: add complete component kit — Modal, Toast, Button, Avatar, Skeleton, EmptyState, Layout"
+```
+
+---
+
+## WHAT YOU NOW HAVE
+
+| Component | Used For |
+|-----------|----------|
+| Modal | Forms, dialogs, any overlay |
+| ConfirmModal | Delete confirmations, destructive actions |
+| Toast | Success/error/info feedback |
+| Button | Every button in the app |
+| Avatar | User photos with fallback |
+| ThemeToggle | Dark/light mode switch |
+| Card | Content containers |
+| Skeleton | Loading placeholders |
+| EmptyState | Empty lists with CTA |
+| Spinner | Inline loading indicators |
+| Layout | Sidebar + header + content shell |
+| Sidebar | Navigation |
+| MobileNav | Mobile hamburger menu |
+
+## WHAT'S NEXT
+
+| Module | What It Adds |
+|--------|-------------|
+| **05 — CRUD Flow** | List → Detail → Create → Edit pages for your entities |
+| **06 — Polish** | Search, pagination, date formatting, error handling, retries |
+
+---
+
+## --- END PROMPT ---

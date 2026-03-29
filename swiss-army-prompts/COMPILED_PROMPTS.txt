@@ -1,0 +1,5242 @@
+================================================================================
+00-README.md - Swiss Army Knife Prompt System
+================================================================================
+
+# Swiss Army Knife Prompt System
+
+## For Claude Code + Supabase + Vite + React + Tailwind
+
+A modular prompt system for building production-quality apps using vibe coding.
+Each module is standalone but designed to work together.
+
+## Modules
+
+| # | Module | Use When |
+|---|--------|----------|
+| 01 | **Scaffold** | Starting any new app from zero |
+| 02 | **Auth** | Adding Supabase auth + Google OAuth + roles |
+| 03 | **Data Layer** | Creating tables, RLS, and service layer |
+| 04 | **UI Kit** | Building reusable components (Modal, Toast, etc.) |
+| 05 | **CRUD Flow** | Building List/Detail/Create/Edit for any entity |
+| 06 | **Polish** | Date formatting, loading states, error handling |
+| 07 | **Style & Theming** | Applying a visual style with dark mode |
+| 08 | **Bug Fix Protocol** | Systematically fixing bugs |
+| 09 | **Feature Add** | Adding features to an existing app |
+| 10 | **Debug Protocol** | Deep diagnosis when something is broken |
+| 11 | **Clean Room** | Reverse-engineering an app into your stack |
+| 12 | **PRD Generator** | Turning an idea into a structured spec |
+| 13 | **Testing Protocol** | Adding tests and verification |
+
+## How to Use
+
+1. Start a new Claude Code session
+2. Paste the module prompt (or save as CLAUDE.md in your project)
+3. Fill in the [BRACKETS] with your specifics
+4. Let Claude Code execute
+
+## Stack
+
+- **AI Coding Tool:** Claude Code (terminal)
+- **Database + Auth:** Supabase
+- **Frontend:** React 19 + TypeScript + Vite
+- **Styling:** Tailwind CSS v4
+- **Icons:** Lucide React
+- **Hosting:** Vercel / Netlify / any static host
+
+## Origin
+
+Adapted from a production-tested build system by a 15-year software veteran,
+translated from Google AI Studio + Gemini + Firestore to Claude Code + Supabase.
+
+
+
+================================================================================
+01-scaffold.md - MODULE 01: SCAFFOLD PROMPT
+================================================================================
+
+# MODULE 01: SCAFFOLD PROMPT
+
+## The Foundation — New App From Zero
+
+**What this does:** Creates a complete, production-ready project skeleton using Claude Code + Supabase + Vite + React + TypeScript + Tailwind CSS. This is your starting point for every single app.
+
+**When to use:** Every time you start a new app. Before Auth, before UI, before anything.
+
+---
+
+## HOW TO USE THIS PROMPT
+
+1. Open Claude Code in your terminal
+2. Navigate to where you want the project: `cd ~/projects`
+3. Copy everything below the **--- START PROMPT ---** line
+4. Paste it into Claude Code
+5. Fill in the [BRACKETS] before sending — there are only 3 things to fill in
+
+---
+
+## --- START PROMPT ---
+
+## TASK: Scaffold a new application
+
+Create a complete project from scratch. Follow every instruction exactly. Do not skip steps. Do not improvise the stack. Do not add libraries not listed here.
+
+---
+
+## SECTION 1: APP IDENTITY [FILL THESE IN]
+
+**App Name:** [YOUR_APP_NAME]
+**One-Line Description:** [What does this app do in one sentence?]
+**App Slug:** [your-app-name] (lowercase, hyphens, used for folder name)
+
+---
+
+## SECTION 2: EXECUTION STEPS (DO THESE IN ORDER)
+
+### STEP 1: Create the Vite Project
+
+```bash
+npm create vite@latest [your-app-name] -- --template react-ts
+cd [your-app-name]
+```
+
+Do NOT use `--template react`. It MUST be `react-ts` for TypeScript.
+
+### STEP 2: Install Core Dependencies
+
+```bash
+npm install @supabase/supabase-js react-router-dom lucide-react
+```
+
+That's it. Three dependencies. Do NOT install:
+- State management libraries (no Redux, no Zustand, no Jotai)
+- CSS frameworks besides Tailwind (no Chakra, no MUI, no Mantine)
+- Form libraries (no Formik, no React Hook Form) — we use controlled components
+- Animation libraries (no Framer Motion) — we use CSS transitions
+- Date libraries (no date-fns, no dayjs) — we write a 15-line helper
+
+### STEP 3: Install Tailwind CSS v4
+
+```bash
+npm install tailwindcss @tailwindcss/vite
+```
+
+Then configure Vite to use the Tailwind plugin:
+
+**vite.config.ts:**
+```typescript
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
+
+export default defineConfig({
+  plugins: [
+    react(),
+    tailwindcss(),
+  ],
+})
+```
+
+**src/index.css** — Replace the entire contents with:
+```css
+@import "tailwindcss";
+
+/* ============================================
+   DESIGN TOKENS — LIGHT MODE (DEFAULT)
+   ============================================ */
+
+@theme {
+  /* Brand Colors — REPLACE with your brand colors */
+  --color-brand-light: #93c5fd;
+  --color-brand: #3b82f6;
+  --color-brand-dark: #1d4ed8;
+
+  /* Surface Colors */
+  --color-surface-canvas: #F9FAFB;
+  --color-surface-base: #FFFFFF;
+  --color-surface-muted: #F3F4F6;
+
+  /* Text Colors */
+  --color-text-primary: #111827;
+  --color-text-secondary: #6B7280;
+  --color-text-tertiary: #9CA3AF;
+
+  /* Border Colors */
+  --color-border-subtle: #E5E7EB;
+
+  /* Semantic Colors */
+  --color-success: #10B981;
+  --color-error: #EF4444;
+  --color-warning: #F59E0B;
+  --color-info: #3B82F6;
+
+  /* Typography */
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+
+  /* Spacing & Radius */
+  --radius-card: 12px;
+
+  /* Shadows */
+  --shadow-card: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+}
+
+/* ============================================
+   DARK MODE OVERRIDES
+   ============================================ */
+
+.dark {
+  --color-surface-canvas: #0F172A;
+  --color-surface-base: #1E293B;
+  --color-surface-muted: #334155;
+  --color-text-primary: #F1F5F9;
+  --color-text-secondary: #94A3B8;
+  --color-text-tertiary: #64748B;
+  --color-border-subtle: #334155;
+  --shadow-card: 0 1px 3px 0 rgba(0, 0, 0, 0.3);
+}
+
+/* ============================================
+   BASE STYLES
+   ============================================ */
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Smooth transitions when toggling dark mode */
+* {
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+```
+
+### STEP 4: Add Inter Font
+
+**index.html** — Add inside `<head>`:
+```html
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+```
+
+Also update the `<title>` tag to: `[YOUR_APP_NAME]`
+
+### STEP 5: Create the File Structure
+
+Create ALL of these files. Empty files are fine — we fill them in subsequent modules. But the structure MUST exist now.
+
+```
+src/
+├── App.tsx                        # Main app with routing (we build this below)
+├── main.tsx                       # Entry point (Vite generates this)
+├── index.css                      # Tailwind imports + tokens (done in Step 3)
+├── config/
+│   └── supabase.ts                # Supabase client configuration
+├── contexts/
+│   ├── AuthContext.tsx             # Auth state + user profile + role
+│   ├── ThemeContext.tsx            # Dark mode state + toggle
+│   └── ToastContext.tsx            # Toast notification state
+├── hooks/
+│   ├── useAuth.ts                 # Re-export from AuthContext (convenience)
+│   └── usePageTitle.ts            # Dynamic document title
+├── components/
+│   ├── ProtectedRoute.tsx         # Route guard — any authenticated user
+│   ├── AdminRoute.tsx             # Route guard — admin only
+│   ├── ErrorBoundary.tsx          # Catches crashes, shows fallback UI
+│   ├── Layout.tsx                 # Main layout — sidebar + header + content
+│   ├── Sidebar.tsx                # Desktop sidebar navigation
+│   ├── MobileNav.tsx              # Mobile header with hamburger toggle
+│   └── ui/
+│       ├── Modal.tsx              # Base modal (overlay, close, title, content)
+│       ├── ConfirmModal.tsx       # "Are you sure?" for destructive actions
+│       ├── Toast.tsx              # Slide-in notification component
+│       ├── Button.tsx             # Button with loading state
+│       ├── Avatar.tsx             # User avatar with initials fallback
+│       ├── ThemeToggle.tsx        # Dark/light mode toggle
+│       ├── Card.tsx               # Standard card wrapper
+│       ├── Skeleton.tsx           # Animated loading placeholder
+│       ├── EmptyState.tsx         # Empty list state with icon + CTA
+│       └── Spinner.tsx            # Loading spinner
+├── pages/
+│   ├── LandingPage.tsx            # Public landing page
+│   ├── LoginPage.tsx              # Login page
+│   ├── Dashboard.tsx              # Main authenticated view
+│   ├── Profile.tsx                # User profile + delete account
+│   └── NotFoundPage.tsx           # 404 page
+├── services/
+│   └── database.ts                # All Supabase database operations
+├── utils/
+│   ├── formatDate.ts              # Relative time formatting
+│   └── pluralize.ts              # "1 item" vs "2 items"
+└── types/
+    └── index.ts                   # ALL TypeScript interfaces
+```
+
+### STEP 6: Configure Supabase Client
+
+**src/config/supabase.ts:**
+```typescript
+import { createClient } from '@supabase/supabase-js'
+import type { Database } from '../types/supabase'
+
+// USER: Replace these with your Supabase project credentials
+// Found at: https://supabase.com/dashboard → Project → Settings → API
+const supabaseUrl = 'YOUR_SUPABASE_URL'
+const supabaseAnonKey = 'YOUR_SUPABASE_ANON_KEY'
+
+export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey)
+```
+
+**src/types/supabase.ts** — Create a placeholder that we'll generate properly later:
+```typescript
+// This file will be auto-generated by: npx supabase gen types typescript
+// For now, use this placeholder so the app compiles
+export type Database = {
+  public: {
+    Tables: {
+      profiles: {
+        Row: {
+          id: string
+          email: string
+          display_name: string | null
+          avatar_url: string | null
+          role: 'user' | 'pro' | 'admin'
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id: string
+          email: string
+          display_name?: string | null
+          avatar_url?: string | null
+          role?: 'user' | 'pro' | 'admin'
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          email?: string
+          display_name?: string | null
+          avatar_url?: string | null
+          role?: 'user' | 'pro' | 'admin'
+          created_at?: string
+          updated_at?: string
+        }
+      }
+    }
+    Views: Record<string, never>
+    Functions: Record<string, never>
+    Enums: {
+      user_role: 'user' | 'pro' | 'admin'
+    }
+  }
+}
+```
+
+### STEP 7: Create Core Type Definitions
+
+**src/types/index.ts:**
+```typescript
+// ============================================
+// USER TYPES
+// ============================================
+
+export interface UserProfile {
+  id: string
+  email: string
+  display_name: string | null
+  avatar_url: string | null
+  role: 'user' | 'pro' | 'admin'
+  created_at: string
+  updated_at: string
+}
+
+// ============================================
+// UI TYPES
+// ============================================
+
+export interface ToastMessage {
+  id: string
+  type: 'success' | 'error' | 'info' | 'warning'
+  message: string
+  duration?: number
+}
+
+// ============================================
+// APP-SPECIFIC TYPES — ADD YOUR ENTITIES HERE
+// ============================================
+
+// Example (replace with your actual data types):
+// export interface Item {
+//   id: string
+//   user_id: string
+//   title: string
+//   description: string | null
+//   created_at: string
+//   updated_at: string
+// }
+```
+
+### STEP 8: Create Utility Helpers
+
+**src/utils/formatDate.ts:**
+```typescript
+/**
+ * Formats a date string into human-readable relative time.
+ * "Just now" → "5m ago" → "2h ago" → "Yesterday" → "3d ago" → "Jan 15" → "Jan 15, 2024"
+ */
+export function formatRelativeTime(dateString: string): string {
+  const date = new Date(dateString)
+  const now = new Date()
+  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000)
+
+  if (diffInSeconds < 60) return 'Just now'
+  if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`
+  if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`
+  if (diffInSeconds < 172800) return 'Yesterday'
+  if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)}d ago`
+
+  const sameYear = date.getFullYear() === now.getFullYear()
+  if (sameYear) {
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  }
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+/**
+ * Formats a date for display in detail views (more complete).
+ * "January 15, 2024 at 3:45 PM"
+ */
+export function formatFullDate(dateString: string): string {
+  const date = new Date(dateString)
+  return date.toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+```
+
+**src/utils/pluralize.ts:**
+```typescript
+/**
+ * Returns "1 item" or "5 items" — never "1 items".
+ * Handles irregular plurals: pluralize(1, 'entry', 'entries')
+ */
+export function pluralize(count: number, singular: string, plural?: string): string {
+  const form = count === 1 ? singular : (plural || `${singular}s`)
+  return `${count} ${form}`
+}
+```
+
+### STEP 9: Create the Page Title Hook
+
+**src/hooks/usePageTitle.ts:**
+```typescript
+import { useEffect } from 'react'
+
+const APP_NAME = '[YOUR_APP_NAME]'
+
+/**
+ * Updates the browser tab title. Every page MUST use this.
+ * Usage: usePageTitle('Dashboard')  →  "Dashboard — AppName"
+ */
+export function usePageTitle(title: string) {
+  useEffect(() => {
+    document.title = title ? `${title} — ${APP_NAME}` : APP_NAME
+  }, [title])
+}
+```
+
+### STEP 10: Create the Error Boundary
+
+**src/components/ErrorBoundary.tsx:**
+```typescript
+import { Component, type ReactNode } from 'react'
+
+interface Props {
+  children: ReactNode
+}
+
+interface State {
+  hasError: boolean
+}
+
+export default class ErrorBoundary extends Component<Props, State> {
+  constructor(props: Props) {
+    super(props)
+    this.state = { hasError: false }
+  }
+
+  static getDerivedStateFromError(): State {
+    return { hasError: true }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-surface-canvas">
+          <div className="text-center p-8">
+            <h1 className="text-2xl font-semibold text-text-primary mb-2">
+              Something went wrong
+            </h1>
+            <p className="text-text-secondary mb-6">
+              Please refresh the page to try again.
+            </p>
+            <button
+              onClick={() => window.location.reload()}
+              className="bg-brand hover:bg-brand-dark text-white font-medium px-6 py-3 rounded-lg transition-colors"
+            >
+              Refresh Page
+            </button>
+          </div>
+        </div>
+      )
+    }
+
+    return this.props.children
+  }
+}
+```
+
+### STEP 11: Create the 404 Page
+
+**src/pages/NotFoundPage.tsx:**
+```typescript
+import { Link } from 'react-router-dom'
+import { usePageTitle } from '../hooks/usePageTitle'
+
+export default function NotFoundPage() {
+  usePageTitle('Page Not Found')
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-surface-canvas text-center px-4">
+      <h1 className="text-7xl font-bold text-text-tertiary">404</h1>
+      <p className="text-xl text-text-secondary mt-4 mb-8">
+        This page doesn't exist.
+      </p>
+      <Link
+        to="/"
+        className="text-brand hover:text-brand-dark font-medium transition-colors"
+      >
+        &larr; Back to Home
+      </Link>
+    </div>
+  )
+}
+```
+
+### STEP 12: Create the Minimal App Shell
+
+**src/App.tsx:**
+```typescript
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import ErrorBoundary from './components/ErrorBoundary'
+import NotFoundPage from './pages/NotFoundPage'
+
+/**
+ * Minimal app shell. Auth, Theme, and Toast providers
+ * get added by Module 02 (Auth) and Module 04 (UI Kit).
+ *
+ * Routes get added as you build pages.
+ */
+function App() {
+  return (
+    <ErrorBoundary>
+      <BrowserRouter>
+        <Routes>
+          {/* PUBLIC ROUTES */}
+          <Route path="/" element={<PlaceholderHome />} />
+
+          {/* CATCH-ALL 404 */}
+          <Route path="*" element={<NotFoundPage />} />
+        </Routes>
+      </BrowserRouter>
+    </ErrorBoundary>
+  )
+}
+
+/** Temporary landing page — replaced by Module 07 (Style & Theming) */
+function PlaceholderHome() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-surface-canvas">
+      <div className="text-center">
+        <h1 className="text-4xl font-bold text-text-primary mb-2">
+          [YOUR_APP_NAME]
+        </h1>
+        <p className="text-text-secondary">
+          Scaffold complete. Ready for Auth (Module 02).
+        </p>
+      </div>
+    </div>
+  )
+}
+
+export default App
+```
+
+### STEP 13: Update main.tsx
+
+**src/main.tsx** — Replace contents with:
+```typescript
+import { StrictMode } from 'react'
+import { createRoot } from 'react-dom/client'
+import App from './App'
+import './index.css'
+
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <App />
+  </StrictMode>
+)
+```
+
+### STEP 14: Create the Favicon
+
+Create a simple SVG favicon. Replace the letter and color with your brand:
+
+**public/favicon.svg:**
+```svg
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect width="32" height="32" rx="8" fill="#3b82f6"/>
+  <text x="16" y="22" text-anchor="middle" font-family="system-ui" font-weight="bold" font-size="18" fill="#ffffff">A</text>
+</svg>
+```
+
+Then update **index.html** `<head>` to include:
+```html
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+```
+
+### STEP 15: Create .env.local (Git-Ignored)
+
+**IMPORTANT:** Never commit Supabase credentials. Create `.env.local`:
+
+```bash
+# Supabase — get these from https://supabase.com/dashboard → Project → Settings → API
+VITE_SUPABASE_URL=https://your-project-ref.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key-here
+```
+
+Then update **src/config/supabase.ts** to use env vars:
+```typescript
+import { createClient } from '@supabase/supabase-js'
+import type { Database } from '../types/supabase'
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error(
+    'Missing Supabase environment variables. ' +
+    'Copy .env.example to .env.local and add your credentials.'
+  )
+}
+
+export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey)
+```
+
+Create **.env.example** (this one IS committed — it's the template):
+```bash
+# Copy this file to .env.local and fill in your values
+# Get credentials from: https://supabase.com/dashboard → Project → Settings → API
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
+```
+
+### STEP 16: Update .gitignore
+
+Append to the existing `.gitignore`:
+```
+# Environment variables (credentials)
+.env.local
+.env.production.local
+
+# Supabase
+supabase/.temp/
+```
+
+### STEP 17: Verify the Build
+
+Run these commands and fix any errors before proceeding:
+
+```bash
+npm run dev
+```
+
+Open the URL it shows (usually http://localhost:5173). You should see:
+- "[YOUR_APP_NAME]" centered on screen
+- "Scaffold complete. Ready for Auth (Module 02)."
+- Clean console — zero errors, zero warnings
+
+Then verify the production build:
+```bash
+npm run build
+```
+
+This must complete with zero TypeScript errors and zero warnings.
+
+### STEP 18: Initial Git Commit
+
+```bash
+git init
+git add -A
+git commit -m "scaffold: [YOUR_APP_NAME] — Vite + React + TS + Tailwind + Supabase"
+```
+
+---
+
+## SECTION 3: WHAT YOU NOW HAVE
+
+After this module, your project has:
+
+| Layer | Status | Details |
+|-------|--------|---------|
+| **Build system** | Done | Vite + React 19 + TypeScript |
+| **Styling** | Done | Tailwind CSS v4 with design tokens + dark mode CSS vars |
+| **Supabase client** | Done | Configured with env vars, type-safe |
+| **Routing** | Done | React Router with 404 handling |
+| **Error boundary** | Done | Catches crashes, shows recovery UI |
+| **Type system** | Done | Base types + Supabase type placeholder |
+| **Utilities** | Done | Date formatting + pluralization |
+| **File structure** | Done | Every folder and file created |
+| **Git** | Done | Clean initial commit |
+
+## SECTION 4: WHAT'S NEXT
+
+| Next Module | What It Adds |
+|-------------|-------------|
+| **02 — Auth** | Supabase auth, Google OAuth, AuthContext, protected routes, role-based access |
+| **03 — Data Layer** | SQL migrations, RLS policies, database service functions |
+| **04 — UI Kit** | Modal, Toast, Button, Avatar, Skeleton, EmptyState — every reusable component |
+
+---
+
+## SECTION 5: RULES — DO NOT VIOLATE
+
+These rules apply to THIS scaffold and ALL subsequent modules:
+
+### Stack Lock (NEVER change these)
+- React 19 + TypeScript — no JavaScript files, ever
+- Vite — no Next.js, no Remix, no CRA
+- Tailwind CSS v4 — no other CSS frameworks, no CSS-in-JS
+- Supabase — no Firebase, no Prisma, no raw SQL in components
+- React Router — no TanStack Router, no file-based routing
+- Lucide React — no other icon libraries
+- No state management libraries — React Context only
+
+### Dependency Lock (NEVER add these)
+- NO Redux, Zustand, Jotai, Recoil, MobX
+- NO Chakra UI, MUI, Mantine, Radix (we build our own UI kit)
+- NO Formik, React Hook Form (controlled components)
+- NO Framer Motion, React Spring (CSS transitions)
+- NO Axios (use Supabase client or native fetch)
+- NO date-fns, dayjs, moment (we wrote formatDate.ts)
+- NO Docker (deployment is static hosting)
+- NO backend API server (Supabase IS the backend)
+
+### File Rules
+- One component per file
+- All types in `types/index.ts` (or `types/supabase.ts` for DB types)
+- All database calls in `services/database.ts` — NEVER in components
+- All Supabase config in `config/supabase.ts` — one client instance
+- Group related components in feature folders under `components/`
+- Custom hooks in `hooks/` — one hook per file
+
+### Naming Conventions
+- Files: PascalCase for components (`Dashboard.tsx`), camelCase for everything else (`formatDate.ts`)
+- Components: PascalCase (`export default function Dashboard()`)
+- Hooks: camelCase starting with `use` (`usePageTitle`)
+- Types/Interfaces: PascalCase (`UserProfile`, `ToastMessage`)
+- Constants: SCREAMING_SNAKE (`APP_NAME`, `ITEMS_PER_PAGE`)
+- CSS: Tailwind classes only — no inline styles, no CSS modules
+
+### Environment Variables
+- All client-side env vars MUST start with `VITE_`
+- NEVER commit `.env.local` — it holds credentials
+- ALWAYS commit `.env.example` — it's the template
+- Supabase credentials: `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`
+
+---
+
+## --- END PROMPT ---
+
+
+
+================================================================================
+02-auth.md - MODULE 02: AUTH PROMPT
+================================================================================
+
+# MODULE 02: AUTH PROMPT
+
+## Supabase Authentication — Google OAuth + Roles + Protected Routes
+
+**What this does:** Adds complete authentication to your scaffolded app. Google sign-in, user profiles with roles (user/pro/admin), protected routes, and session management. After this module, your app has login/logout, route protection, and role-based access control.
+
+**Prerequisite:** Module 01 (Scaffold) must be complete.
+
+**Supabase setup required before running this prompt:**
+1. Go to https://supabase.com/dashboard → your project → Authentication → Providers
+2. Enable Google provider
+3. Add your Google OAuth credentials (from Google Cloud Console)
+4. Your `.env.local` must have `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`
+
+---
+
+## --- START PROMPT ---
+
+## TASK: Add Supabase Authentication
+
+Add complete authentication to this existing Vite + React + TypeScript + Supabase app. Follow every instruction exactly. Do not skip steps.
+
+Read the existing files first: `src/config/supabase.ts`, `src/App.tsx`, `src/types/index.ts`, and `src/index.css`. Understand the existing structure before making changes.
+
+---
+
+## STEP 1: Create the Profiles Table in Supabase
+
+Run this SQL in the Supabase SQL Editor (Dashboard → SQL Editor → New Query):
+
+**IMPORTANT: Print this SQL for me to copy — do NOT try to run it yourself. You cannot connect to Supabase directly.**
+
+```sql
+-- ============================================
+-- PROFILES TABLE
+-- Stores user metadata + role
+-- Auto-created on first sign-in via trigger
+-- ============================================
+
+-- Create the role enum
+CREATE TYPE public.user_role AS ENUM ('user', 'pro', 'admin');
+
+-- Create the profiles table
+CREATE TABLE public.profiles (
+  id UUID REFERENCES auth.users(id) ON DELETE CASCADE PRIMARY KEY,
+  email TEXT NOT NULL,
+  display_name TEXT,
+  avatar_url TEXT,
+  role public.user_role NOT NULL DEFAULT 'user',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Enable Row Level Security
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+
+-- Policy: Users can read their own profile
+CREATE POLICY "Users can read own profile"
+  ON public.profiles
+  FOR SELECT
+  USING (auth.uid() = id);
+
+-- Policy: Users can update their own profile (but NOT the role field)
+CREATE POLICY "Users can update own profile except role"
+  ON public.profiles
+  FOR UPDATE
+  USING (auth.uid() = id)
+  WITH CHECK (
+    auth.uid() = id
+    AND role = (SELECT role FROM public.profiles WHERE id = auth.uid())
+  );
+
+-- Policy: Allow insert during sign-up (trigger or first login)
+CREATE POLICY "Users can insert own profile"
+  ON public.profiles
+  FOR INSERT
+  WITH CHECK (auth.uid() = id AND role = 'user');
+
+-- Auto-create profile on sign-up via trigger
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.profiles (id, email, display_name, avatar_url)
+  VALUES (
+    NEW.id,
+    NEW.email,
+    COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.raw_user_meta_data->>'name', ''),
+    COALESCE(NEW.raw_user_meta_data->>'avatar_url', NEW.raw_user_meta_data->>'picture', NULL)
+  );
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Trigger: fire on every new auth.users row
+CREATE OR REPLACE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- Auto-update the updated_at timestamp
+CREATE OR REPLACE FUNCTION public.update_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER profiles_updated_at
+  BEFORE UPDATE ON public.profiles
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+```
+
+**What this does vs. Firebase:**
+| Firebase Pattern | Supabase Equivalent |
+|---|---|
+| `onAuthStateChanged` creates user doc | Trigger auto-creates profile row |
+| Firestore security rules block role changes | RLS policy `WITH CHECK` prevents role changes |
+| `users/{uid}` document | `profiles` table, `id` = auth user UUID |
+| `serverTimestamp()` | `DEFAULT now()` + `update_updated_at()` trigger |
+| Role changes via Firebase Console | Role changes via Supabase Dashboard SQL or Table Editor |
+
+---
+
+## STEP 2: Create AuthContext
+
+**src/contexts/AuthContext.tsx:**
+```typescript
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from 'react'
+import type { User, Session } from '@supabase/supabase-js'
+import { supabase } from '../config/supabase'
+import type { UserProfile } from '../types'
+
+interface AuthContextType {
+  /** Supabase auth user (null if signed out) */
+  user: User | null
+  /** Profile from the profiles table (null if signed out or loading) */
+  profile: UserProfile | null
+  /** True while checking initial session */
+  loading: boolean
+  /** Sign in with Google OAuth popup/redirect */
+  signInWithGoogle: () => Promise<void>
+  /** Sign out and clear state */
+  signOut: () => Promise<void>
+  /** Convenience: profile.role === 'admin' */
+  isAdmin: boolean
+  /** Convenience: profile.role === 'pro' || 'admin' */
+  isPro: boolean
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined)
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<User | null>(null)
+  const [profile, setProfile] = useState<UserProfile | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  // Fetch the user's profile from the profiles table
+  async function fetchProfile(userId: string) {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single()
+
+    if (error) {
+      console.error('Failed to fetch profile:', error.message)
+      return null
+    }
+    return data as UserProfile
+  }
+
+  useEffect(() => {
+    // 1. Check for existing session on mount
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        setUser(session.user)
+        fetchProfile(session.user.id).then((p) => {
+          setProfile(p)
+          setLoading(false)
+        })
+      } else {
+        setLoading(false)
+      }
+    })
+
+    // 2. Listen for auth state changes (sign in, sign out, token refresh)
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session?.user) {
+        setUser(session.user)
+        // Small delay to allow the trigger to create the profile
+        // (only needed on very first sign-in)
+        const p = await fetchProfile(session.user.id)
+        if (!p) {
+          // Trigger hasn't fired yet — wait briefly and retry
+          await new Promise((r) => setTimeout(r, 1000))
+          const retried = await fetchProfile(session.user.id)
+          setProfile(retried)
+        } else {
+          setProfile(p)
+        }
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null)
+        setProfile(null)
+      } else if (event === 'TOKEN_REFRESHED' && session?.user) {
+        setUser(session.user)
+        // Profile doesn't change on token refresh, but re-fetch to be safe
+        const p = await fetchProfile(session.user.id)
+        setProfile(p)
+      }
+      setLoading(false)
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
+
+  const signInWithGoogle = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/dashboard`,
+      },
+    })
+    if (error) throw error
+  }
+
+  const handleSignOut = async () => {
+    const { error } = await supabase.auth.signOut()
+    if (error) throw error
+    setUser(null)
+    setProfile(null)
+  }
+
+  const isAdmin = profile?.role === 'admin'
+  const isPro = profile?.role === 'pro' || profile?.role === 'admin'
+
+  return (
+    <AuthContext.Provider
+      value={{
+        user,
+        profile,
+        loading,
+        signInWithGoogle,
+        signOut: handleSignOut,
+        isAdmin,
+        isPro,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  )
+}
+
+export function useAuth() {
+  const context = useContext(AuthContext)
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider')
+  }
+  return context
+}
+```
+
+---
+
+## STEP 3: Create ThemeContext
+
+**src/contexts/ThemeContext.tsx:**
+```typescript
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from 'react'
+
+type Theme = 'light' | 'dark'
+
+interface ThemeContextType {
+  theme: Theme
+  toggleTheme: () => void
+  setTheme: (theme: Theme) => void
+}
+
+const ThemeContext = createContext<ThemeContextType | undefined>(undefined)
+
+export function ThemeProvider({ children }: { children: ReactNode }) {
+  const [theme, setThemeState] = useState<Theme>(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('theme') as Theme | null
+      if (stored) return stored
+      if (window.matchMedia('(prefers-color-scheme: dark)').matches) return 'dark'
+    }
+    return 'light'
+  })
+
+  useEffect(() => {
+    const root = document.documentElement
+    if (theme === 'dark') {
+      root.classList.add('dark')
+    } else {
+      root.classList.remove('dark')
+    }
+    localStorage.setItem('theme', theme)
+  }, [theme])
+
+  const toggleTheme = () => setThemeState((t) => (t === 'light' ? 'dark' : 'light'))
+  const setTheme = (t: Theme) => setThemeState(t)
+
+  return (
+    <ThemeContext.Provider value={{ theme, toggleTheme, setTheme }}>
+      {children}
+    </ThemeContext.Provider>
+  )
+}
+
+export function useTheme() {
+  const context = useContext(ThemeContext)
+  if (!context) throw new Error('useTheme must be used within ThemeProvider')
+  return context
+}
+```
+
+---
+
+## STEP 4: Create ToastContext (Minimal — Full component in Module 04)
+
+**src/contexts/ToastContext.tsx:**
+```typescript
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useState,
+  type ReactNode,
+} from 'react'
+import type { ToastMessage } from '../types'
+
+interface ToastContextType {
+  toasts: ToastMessage[]
+  showToast: (toast: Omit<ToastMessage, 'id'>) => void
+  dismissToast: (id: string) => void
+}
+
+const ToastContext = createContext<ToastContextType | undefined>(undefined)
+
+export function ToastProvider({ children }: { children: ReactNode }) {
+  const [toasts, setToasts] = useState<ToastMessage[]>([])
+
+  const showToast = useCallback((toast: Omit<ToastMessage, 'id'>) => {
+    const id = crypto.randomUUID()
+    const duration = toast.duration ?? 4000
+
+    setToasts((prev) => [...prev, { ...toast, id }])
+
+    // Auto-dismiss
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id))
+    }, duration)
+  }, [])
+
+  const dismissToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id))
+  }, [])
+
+  return (
+    <ToastContext.Provider value={{ toasts, showToast, dismissToast }}>
+      {children}
+      {/* Toast renderer — Module 04 replaces this with the full Toast component */}
+      <div className="fixed top-4 right-4 z-50 flex flex-col gap-2">
+        {toasts.map((toast) => (
+          <div
+            key={toast.id}
+            className={`px-4 py-3 rounded-lg shadow-lg text-white text-sm font-medium animate-slide-in ${
+              toast.type === 'success' ? 'bg-green-600' :
+              toast.type === 'error' ? 'bg-red-600' :
+              toast.type === 'warning' ? 'bg-yellow-600' :
+              'bg-blue-600'
+            }`}
+          >
+            {toast.message}
+          </div>
+        ))}
+      </div>
+    </ToastContext.Provider>
+  )
+}
+
+export function useToast() {
+  const context = useContext(ToastContext)
+  if (!context) throw new Error('useToast must be used within ToastProvider')
+  return context
+}
+```
+
+Add the slide-in animation to **src/index.css** (inside the file, after the dark mode block):
+```css
+/* ============================================
+   ANIMATIONS
+   ============================================ */
+
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-slide-in {
+  animation: slide-in 0.3s ease-out;
+}
+```
+
+---
+
+## STEP 5: Create Route Guards
+
+**src/components/ProtectedRoute.tsx:**
+```typescript
+import { Navigate } from 'react-router-dom'
+import { useAuth } from '../contexts/AuthContext'
+
+/**
+ * Wraps any route that requires authentication.
+ * Redirects to /login if not signed in.
+ */
+export default function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth()
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-surface-canvas">
+        <div className="w-8 h-8 border-4 border-brand border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  if (!user) return <Navigate to="/login" replace />
+
+  return <>{children}</>
+}
+```
+
+**src/components/AdminRoute.tsx:**
+```typescript
+import { Navigate } from 'react-router-dom'
+import { useAuth } from '../contexts/AuthContext'
+
+/**
+ * Wraps admin-only routes.
+ * Redirects non-admins to /dashboard.
+ */
+export default function AdminRoute({ children }: { children: React.ReactNode }) {
+  const { user, loading, isAdmin } = useAuth()
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-surface-canvas">
+        <div className="w-8 h-8 border-4 border-brand border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  if (!user) return <Navigate to="/login" replace />
+  if (!isAdmin) return <Navigate to="/dashboard" replace />
+
+  return <>{children}</>
+}
+```
+
+---
+
+## STEP 6: Create the Login Page
+
+**src/pages/LoginPage.tsx:**
+```typescript
+import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../contexts/AuthContext'
+import { usePageTitle } from '../hooks/usePageTitle'
+import { useEffect, useState } from 'react'
+
+export default function LoginPage() {
+  usePageTitle('Sign In')
+  const { user, signInWithGoogle, loading } = useAuth()
+  const navigate = useNavigate()
+  const [isSigningIn, setIsSigningIn] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // If already signed in, redirect to dashboard
+  useEffect(() => {
+    if (user && !loading) {
+      navigate('/dashboard', { replace: true })
+    }
+  }, [user, loading, navigate])
+
+  const handleGoogleSignIn = async () => {
+    setIsSigningIn(true)
+    setError(null)
+    try {
+      await signInWithGoogle()
+      // OAuth redirects the page — no need to navigate manually
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Sign-in failed. Please try again.'
+      setError(message)
+      setIsSigningIn(false)
+    }
+  }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-surface-canvas px-4">
+      <div className="w-full max-w-sm">
+        <div className="bg-surface-base rounded-xl border border-border-subtle shadow-card p-8">
+          <h1 className="text-2xl font-semibold text-text-primary text-center mb-2">
+            Welcome Back
+          </h1>
+          <p className="text-text-secondary text-center mb-8">
+            Sign in to continue
+          </p>
+
+          {error && (
+            <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+              {error}
+            </div>
+          )}
+
+          <button
+            onClick={handleGoogleSignIn}
+            disabled={isSigningIn}
+            className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-lg border border-border-subtle bg-surface-base hover:bg-surface-muted transition-colors font-medium text-text-primary disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isSigningIn ? (
+              <div className="w-5 h-5 border-2 border-text-tertiary border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <svg className="w-5 h-5" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" />
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+              </svg>
+            )}
+            {isSigningIn ? 'Signing in...' : 'Continue with Google'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+```
+
+---
+
+## STEP 7: Create a Minimal Dashboard (Placeholder)
+
+**src/pages/Dashboard.tsx:**
+```typescript
+import { useAuth } from '../contexts/AuthContext'
+import { usePageTitle } from '../hooks/usePageTitle'
+
+export default function Dashboard() {
+  usePageTitle('Dashboard')
+  const { profile, signOut } = useAuth()
+
+  return (
+    <div className="p-8">
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h1 className="text-2xl font-semibold text-text-primary">Dashboard</h1>
+          <p className="text-text-secondary mt-1">
+            Welcome back, {profile?.display_name || 'there'}
+          </p>
+        </div>
+        <button
+          onClick={signOut}
+          className="px-4 py-2 text-sm text-text-secondary hover:text-text-primary transition-colors"
+        >
+          Sign Out
+        </button>
+      </div>
+
+      {/* Placeholder — your app's content goes here */}
+      <div className="bg-surface-base rounded-xl border border-border-subtle shadow-card p-12 text-center">
+        <p className="text-text-tertiary">
+          Auth complete. Ready for Data Layer (Module 03).
+        </p>
+      </div>
+    </div>
+  )
+}
+```
+
+---
+
+## STEP 8: Create a Minimal Profile Page
+
+**src/pages/Profile.tsx:**
+```typescript
+import { useAuth } from '../contexts/AuthContext'
+import { usePageTitle } from '../hooks/usePageTitle'
+import { formatFullDate } from '../utils/formatDate'
+
+export default function Profile() {
+  usePageTitle('Profile')
+  const { profile, user } = useAuth()
+
+  return (
+    <div className="p-8 max-w-2xl">
+      <h1 className="text-2xl font-semibold text-text-primary mb-8">Profile</h1>
+
+      <div className="bg-surface-base rounded-xl border border-border-subtle shadow-card p-6">
+        <div className="flex items-center gap-4 mb-6">
+          {profile?.avatar_url ? (
+            <img
+              src={profile.avatar_url}
+              alt={profile.display_name || 'Avatar'}
+              className="w-16 h-16 rounded-full object-cover"
+            />
+          ) : (
+            <div className="w-16 h-16 rounded-full bg-brand flex items-center justify-center text-white text-xl font-semibold">
+              {profile?.display_name?.[0]?.toUpperCase() || '?'}
+            </div>
+          )}
+          <div>
+            <h2 className="text-lg font-medium text-text-primary">
+              {profile?.display_name || 'Unknown'}
+            </h2>
+            <p className="text-text-secondary text-sm">{profile?.email}</p>
+          </div>
+        </div>
+
+        <dl className="space-y-4">
+          <div>
+            <dt className="text-xs font-medium text-text-tertiary uppercase tracking-wide">
+              Account Type
+            </dt>
+            <dd className="text-text-primary mt-1 capitalize">
+              {profile?.role || 'user'}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium text-text-tertiary uppercase tracking-wide">
+              Member Since
+            </dt>
+            <dd className="text-text-primary mt-1">
+              {profile?.created_at ? formatFullDate(profile.created_at) : '—'}
+            </dd>
+          </div>
+        </dl>
+      </div>
+
+      {/* Danger Zone — delete account. Full implementation in Module 03 (Data Layer) */}
+      <div className="mt-12 pt-8 border-t border-red-200">
+        <h3 className="text-lg font-semibold text-red-600 mb-2">Danger Zone</h3>
+        <p className="text-text-secondary text-sm mb-4">
+          Account deletion will be available after the data layer is set up (Module 03).
+        </p>
+      </div>
+    </div>
+  )
+}
+```
+
+---
+
+## STEP 9: Create a Minimal Landing Page
+
+**src/pages/LandingPage.tsx:**
+```typescript
+import { Link } from 'react-router-dom'
+import { useAuth } from '../contexts/AuthContext'
+import { usePageTitle } from '../hooks/usePageTitle'
+
+export default function LandingPage() {
+  usePageTitle('')
+  const { user, loading } = useAuth()
+
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-surface-canvas px-4">
+      <h1 className="text-5xl font-bold text-text-primary mb-4 text-center">
+        [YOUR_APP_NAME]
+      </h1>
+      <p className="text-xl text-text-secondary mb-8 text-center max-w-md">
+        [One-line description of what the app does]
+      </p>
+
+      {!loading && (
+        <Link
+          to={user ? '/dashboard' : '/login'}
+          className="bg-brand hover:bg-brand-dark text-white font-medium px-8 py-3 rounded-lg transition-colors"
+        >
+          {user ? 'Go to Dashboard' : 'Get Started'}
+        </Link>
+      )}
+    </div>
+  )
+}
+```
+
+---
+
+## STEP 10: Wire Up App.tsx
+
+Replace **src/App.tsx** with:
+
+```typescript
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { AuthProvider } from './contexts/AuthContext'
+import { ThemeProvider } from './contexts/ThemeContext'
+import { ToastProvider } from './contexts/ToastContext'
+import ErrorBoundary from './components/ErrorBoundary'
+import ProtectedRoute from './components/ProtectedRoute'
+import LandingPage from './pages/LandingPage'
+import LoginPage from './pages/LoginPage'
+import Dashboard from './pages/Dashboard'
+import Profile from './pages/Profile'
+import NotFoundPage from './pages/NotFoundPage'
+
+function App() {
+  return (
+    <ErrorBoundary>
+      <AuthProvider>
+        <ThemeProvider>
+          <ToastProvider>
+            <BrowserRouter>
+              <Routes>
+                {/* Public routes */}
+                <Route path="/" element={<LandingPage />} />
+                <Route path="/login" element={<LoginPage />} />
+
+                {/* Protected routes — any authenticated user */}
+                <Route path="/dashboard" element={
+                  <ProtectedRoute><Dashboard /></ProtectedRoute>
+                } />
+                <Route path="/profile" element={
+                  <ProtectedRoute><Profile /></ProtectedRoute>
+                } />
+
+                {/* Admin routes — add when needed:
+                <Route path="/admin" element={
+                  <AdminRoute><AdminDashboard /></AdminRoute>
+                } />
+                */}
+
+                {/* 404 */}
+                <Route path="*" element={<NotFoundPage />} />
+              </Routes>
+            </BrowserRouter>
+          </ToastProvider>
+        </ThemeProvider>
+      </AuthProvider>
+    </ErrorBoundary>
+  )
+}
+
+export default App
+```
+
+**Provider nesting order matters:**
+1. ErrorBoundary (outermost — catches everything)
+2. AuthProvider (needs to be outside everything that checks auth)
+3. ThemeProvider (independent, but inside auth for convenience)
+4. ToastProvider (innermost — so toasts can appear over everything)
+
+---
+
+## STEP 11: Configure Supabase Auth Redirect
+
+For OAuth to work in development, you need to add `http://localhost:5173` as an allowed redirect URL:
+
+1. Go to Supabase Dashboard → Authentication → URL Configuration
+2. Add `http://localhost:5173/**` to "Redirect URLs"
+3. For production, also add your production URL
+
+**IMPORTANT: Print this as a reminder for me. Do NOT try to configure Supabase remotely.**
+
+---
+
+## STEP 12: Verify
+
+Run `npm run dev` and verify:
+
+1. Landing page shows with "Get Started" button
+2. Clicking "Get Started" goes to /login
+3. Google sign-in button appears and is clickable
+4. After sign-in, redirects to /dashboard
+5. Dashboard shows the user's name
+6. /profile shows user info
+7. Sign out returns to landing
+8. Navigating to /dashboard while signed out redirects to /login
+9. Navigating to /nonexistent shows 404
+10. Zero console errors
+
+Then verify the build:
+```bash
+npm run build
+```
+
+Must complete with zero errors.
+
+---
+
+## STEP 13: Commit
+
+```bash
+git add -A
+git commit -m "auth: add Supabase Google OAuth, profiles, protected routes, role-based access"
+```
+
+---
+
+## WHAT YOU NOW HAVE
+
+| Feature | Status |
+|---------|--------|
+| Google OAuth sign-in | Done |
+| Auto-created user profiles | Done (via DB trigger) |
+| Role system (user/pro/admin) | Done |
+| Role can't be self-changed | Done (RLS policy) |
+| Protected routes | Done |
+| Admin-only routes | Done (ready to use) |
+| Pro-only routes | Pattern ready |
+| Session persistence | Done (Supabase handles refresh tokens) |
+| Auth loading states | Done (spinner while checking session) |
+| Login page with error handling | Done |
+| Landing page with auth-aware CTA | Done |
+| Dashboard with sign-out | Done |
+| Profile page | Done |
+| Dark mode toggle | Done (context ready, toggle component in Module 04) |
+| Toast notifications | Done (basic renderer, full component in Module 04) |
+
+## KEY DIFFERENCES FROM FIREBASE (for your understanding)
+
+| Concept | Firebase | Supabase (what we built) |
+|---------|----------|--------------------------|
+| User creation | `onAuthStateChanged` + manual doc write | Database trigger (automatic) |
+| Auth state | `onAuthStateChanged` callback | `onAuthStateChange` subscription |
+| Sign-in | `signInWithPopup` | `signInWithOAuth` (redirect-based) |
+| Profile storage | `users/{uid}` document | `profiles` table row |
+| Security | Firestore rules (JSON-like) | RLS policies (SQL) |
+| Role protection | Client-side check + rules | Client-side check + RLS |
+| Token refresh | Automatic + `onAuthStateChanged` | Automatic + `TOKEN_REFRESHED` event |
+| Session | Firebase manages cookies | Supabase manages localStorage tokens |
+
+## WHAT'S NEXT
+
+| Module | What It Adds |
+|--------|-------------|
+| **03 — Data Layer** | SQL tables for your app data, RLS policies, service functions, delete account |
+| **04 — UI Kit** | Full Modal, Toast, Button, Avatar, Skeleton, EmptyState components |
+
+---
+
+## --- END PROMPT ---
+
+
+
+================================================================================
+03-data-layer.md - MODULE 03: DATA LAYER PROMPT
+================================================================================
+
+# MODULE 03: DATA LAYER PROMPT
+
+## Supabase Tables, RLS Policies, and Service Functions
+
+**What this does:** Creates your app's database tables, secures them with Row Level Security, and builds a clean service layer so components never talk to Supabase directly. Also adds delete-account functionality.
+
+**Prerequisite:** Modules 01 (Scaffold) and 02 (Auth) must be complete.
+
+**This is the module where you define WHAT your app stores.** Fill in Section 1 below.
+
+---
+
+## --- START PROMPT ---
+
+## TASK: Build the Supabase Data Layer
+
+Create database tables, RLS policies, and a TypeScript service layer for this app. Follow every instruction exactly. Read the existing codebase first.
+
+Read these files before starting: `src/config/supabase.ts`, `src/types/index.ts`, `src/types/supabase.ts`, `src/contexts/AuthContext.tsx`.
+
+---
+
+## SECTION 1: YOUR DATA ENTITIES [FILL THIS IN]
+
+Define what your app stores. Be specific.
+
+**Entity 1:** [NAME]
+- Fields: [list each field with its type]
+- Example: `title: string, description: string (optional), status: enum (draft/published/archived), priority: number`
+- Belongs to: user (each user has their own)
+- Sorting: by created_at descending (newest first)
+
+**Entity 2:** [NAME] (if applicable)
+- Fields: [list each field with its type]
+- Belongs to: user
+- Sorting: [how should these be ordered?]
+
+**Entity 3:** [NAME] (if applicable)
+- Fields: [list each field with its type]
+- Belongs to: [user / entity 1 / entity 2]
+- Sorting: [how should these be ordered?]
+
+**Relationships:**
+- [e.g., "Each Project has many Tasks" or "Each Recipe has many Ingredients"]
+
+---
+
+## SECTION 2: SQL GENERATION RULES
+
+For each entity defined above, generate SQL following these exact patterns.
+
+### Table Template
+
+For EVERY table, use this structure:
+
+```sql
+-- ============================================
+-- [TABLE_NAME] TABLE
+-- [Brief description of what this stores]
+-- ============================================
+
+CREATE TABLE public.[table_name] (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+
+  -- Entity-specific fields go here
+  -- Use appropriate types:
+  --   TEXT for strings
+  --   INTEGER for numbers
+  --   BOOLEAN for true/false
+  --   TIMESTAMPTZ for dates/times
+  --   JSONB for flexible structured data
+  --   UUID for references to other tables
+
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Enable RLS (MANDATORY for every table)
+ALTER TABLE public.[table_name] ENABLE ROW LEVEL SECURITY;
+
+-- Policy: Users can only see their own rows
+CREATE POLICY "[table_name]_select_own"
+  ON public.[table_name]
+  FOR SELECT
+  USING (auth.uid() = user_id);
+
+-- Policy: Users can only insert their own rows
+CREATE POLICY "[table_name]_insert_own"
+  ON public.[table_name]
+  FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+-- Policy: Users can only update their own rows
+CREATE POLICY "[table_name]_update_own"
+  ON public.[table_name]
+  FOR UPDATE
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+-- Policy: Users can only delete their own rows
+CREATE POLICY "[table_name]_delete_own"
+  ON public.[table_name]
+  FOR DELETE
+  USING (auth.uid() = user_id);
+
+-- Auto-update updated_at timestamp
+CREATE TRIGGER [table_name]_updated_at
+  BEFORE UPDATE ON public.[table_name]
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+-- Index for fast user queries (MANDATORY for every table with user_id)
+CREATE INDEX idx_[table_name]_user_id ON public.[table_name](user_id);
+```
+
+### Enum Template
+
+If an entity has a status/type field with fixed options:
+
+```sql
+CREATE TYPE public.[enum_name] AS ENUM ('option1', 'option2', 'option3');
+```
+
+Then reference it in the table: `status public.[enum_name] NOT NULL DEFAULT 'option1'`
+
+### Foreign Key Template (for related tables)
+
+If Entity B belongs to Entity A:
+
+```sql
+-- In Entity B's table definition:
+[entity_a]_id UUID REFERENCES public.[entity_a](id) ON DELETE CASCADE NOT NULL,
+
+-- Additional index for the foreign key
+CREATE INDEX idx_[table_b]_[table_a]_id ON public.[table_b]([table_a]_id);
+
+-- RLS policy should also check that the parent belongs to the user:
+CREATE POLICY "[table_b]_select_own"
+  ON public.[table_b]
+  FOR SELECT
+  USING (
+    auth.uid() = user_id
+    OR auth.uid() = (SELECT user_id FROM public.[table_a] WHERE id = [table_a]_id)
+  );
+```
+
+### What Supabase Gives You That Firestore Doesn't
+
+| Feature | Firestore | Supabase |
+|---------|-----------|----------|
+| **Joins** | Impossible (denormalize everything) | `SELECT * FROM items JOIN categories ON ...` |
+| **Aggregations** | Client-side counting | `SELECT COUNT(*), status FROM items GROUP BY status` |
+| **Migrations** | None (schemaless) | SQL migrations, version controlled |
+| **Type generation** | Manual TypeScript types | `npx supabase gen types typescript` auto-generates |
+| **Cascading deletes** | Manual (delete each subcollection) | `ON DELETE CASCADE` — one line |
+| **Full-text search** | Third-party (Algolia) | Built-in `to_tsvector` / `to_tsquery` |
+| **Unique constraints** | Client-side validation only | `UNIQUE(user_id, slug)` — database enforced |
+
+---
+
+## SECTION 3: PRINT THE SQL
+
+**IMPORTANT: Print ALL the SQL for me to copy and run in Supabase SQL Editor. Do NOT try to execute it yourself. You cannot connect to my Supabase instance.**
+
+Generate the complete SQL based on the entities I defined in Section 1, following the templates in Section 2. Output it as one single SQL block I can paste.
+
+---
+
+## SECTION 4: UPDATE TYPESCRIPT TYPES
+
+### Update src/types/supabase.ts
+
+Add the new tables to the Database type. Follow the exact pattern that already exists for the `profiles` table:
+
+```typescript
+// For each new table, add:
+[table_name]: {
+  Row: {
+    // all columns with their TypeScript types
+    // UUID → string
+    // TEXT → string
+    // INTEGER → number
+    // BOOLEAN → boolean
+    // TIMESTAMPTZ → string
+    // JSONB → Record<string, unknown> (or a specific interface)
+    // ENUM → union type (e.g., 'draft' | 'published' | 'archived')
+  }
+  Insert: {
+    // same as Row, but columns with defaults are optional (?)
+    // id, created_at, updated_at are always optional
+    // user_id is required
+  }
+  Update: {
+    // all columns are optional (?)
+  }
+}
+```
+
+### Update src/types/index.ts
+
+Add application-level interfaces for each entity:
+
+```typescript
+export interface [EntityName] {
+  id: string
+  user_id: string
+  // ... all fields ...
+  created_at: string
+  updated_at: string
+}
+```
+
+---
+
+## SECTION 5: BUILD THE SERVICE LAYER
+
+**src/services/database.ts:**
+
+Build ALL database operations here. Components NEVER import from `@supabase/supabase-js` directly.
+
+Follow this exact pattern for each entity:
+
+```typescript
+import { supabase } from '../config/supabase'
+import type { [EntityName] } from '../types'
+
+// ============================================
+// [ENTITY_NAME] OPERATIONS
+// ============================================
+
+/** Get all [entities] for the current user, newest first */
+export async function get[Entities](userId: string): Promise<[EntityName][]> {
+  const { data, error } = await supabase
+    .from('[table_name]')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+
+  if (error) throw new Error(`Failed to load [entities]: ${error.message}`)
+  return data as [EntityName][]
+}
+
+/** Get a single [entity] by ID */
+export async function get[Entity](id: string): Promise<[EntityName] | null> {
+  const { data, error } = await supabase
+    .from('[table_name]')
+    .select('*')
+    .eq('id', id)
+    .single()
+
+  if (error) {
+    if (error.code === 'PGRST116') return null // Not found
+    throw new Error(`Failed to load [entity]: ${error.message}`)
+  }
+  return data as [EntityName]
+}
+
+/** Create a new [entity] */
+export async function create[Entity](
+  userId: string,
+  data: Omit<[EntityName], 'id' | 'user_id' | 'created_at' | 'updated_at'>
+): Promise<[EntityName]> {
+  const { data: created, error } = await supabase
+    .from('[table_name]')
+    .insert({ ...data, user_id: userId })
+    .select()
+    .single()
+
+  if (error) throw new Error(`Failed to create [entity]: ${error.message}`)
+  return created as [EntityName]
+}
+
+/** Update an existing [entity] */
+export async function update[Entity](
+  id: string,
+  data: Partial<Omit<[EntityName], 'id' | 'user_id' | 'created_at' | 'updated_at'>>
+): Promise<[EntityName]> {
+  const { data: updated, error } = await supabase
+    .from('[table_name]')
+    .update(data)
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (error) throw new Error(`Failed to update [entity]: ${error.message}`)
+  return updated as [EntityName]
+}
+
+/** Delete an [entity] */
+export async function delete[Entity](id: string): Promise<void> {
+  const { error } = await supabase
+    .from('[table_name]')
+    .delete()
+    .eq('id', id)
+
+  if (error) throw new Error(`Failed to delete [entity]: ${error.message}`)
+}
+
+/** Search [entities] by title/name (client-side filter for simplicity) */
+export async function search[Entities](
+  userId: string,
+  query: string
+): Promise<[EntityName][]> {
+  const { data, error } = await supabase
+    .from('[table_name]')
+    .select('*')
+    .eq('user_id', userId)
+    .ilike('title', `%${query}%`)
+    .order('created_at', { ascending: false })
+
+  if (error) throw new Error(`Failed to search [entities]: ${error.message}`)
+  return data as [EntityName][]
+}
+```
+
+### Realtime Subscriptions (optional — for live updates)
+
+```typescript
+/** Subscribe to changes on [entities] for a user */
+export function subscribeTo[Entities](
+  userId: string,
+  callback: (payload: any) => void
+) {
+  return supabase
+    .channel('[table_name]_changes')
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: '[table_name]',
+        filter: `user_id=eq.${userId}`,
+      },
+      callback
+    )
+    .subscribe()
+}
+```
+
+### Error Handling Pattern
+
+Every service function should throw human-readable errors. The calling component catches them and shows a toast:
+
+```typescript
+// In the component:
+try {
+  await createItem(user.id, formData)
+  showToast({ type: 'success', message: 'Item created!' })
+  navigate(`/items/${created.id}`)
+} catch (err) {
+  const message = err instanceof Error ? err.message : 'Something went wrong'
+  showToast({ type: 'error', message })
+}
+```
+
+---
+
+## SECTION 6: DELETE ACCOUNT
+
+Add the delete-account function to **src/services/database.ts**:
+
+```typescript
+// ============================================
+// ACCOUNT DELETION
+// ============================================
+
+/**
+ * Delete all user data and their profile.
+ * Auth user deletion must be done via Supabase Dashboard or Edge Function.
+ * CASCADE on the profiles table handles cleanup when auth.users row is deleted.
+ *
+ * For tables WITHOUT CASCADE from profiles, delete explicitly:
+ */
+export async function deleteAllUserData(userId: string): Promise<void> {
+  // Delete from each table that has user_id
+  // Order: children first, then parents
+  const tables = [
+    // '[child_table]',
+    // '[parent_table]',
+    // Add all your app's tables here
+  ]
+
+  for (const table of tables) {
+    const { error } = await supabase
+      .from(table)
+      .delete()
+      .eq('user_id', userId)
+
+    if (error) {
+      throw new Error(`Failed to delete data from ${table}: ${error.message}`)
+    }
+  }
+
+  // Profile is deleted via CASCADE when auth user is deleted
+  // The actual auth.users deletion requires a Supabase Edge Function or
+  // manual deletion from the Dashboard.
+  //
+  // To enable self-service account deletion, deploy this Edge Function:
+  // See: https://supabase.com/docs/guides/auth/managing-user-data#deleting-users
+}
+```
+
+Then update **src/pages/Profile.tsx** to add the danger zone with a working delete flow. Use a ConfirmModal that requires typing "DELETE" (same pattern as the mentor's prompt — this is universally good UX).
+
+---
+
+## SECTION 7: VERIFY
+
+1. Run the SQL in Supabase SQL Editor
+2. Check Supabase Table Editor — your tables should appear
+3. Check Authentication — the `profiles` trigger should still work
+4. Run `npm run build` — zero TypeScript errors
+5. Run `npm run dev` and:
+   - Sign in
+   - Check Supabase Table Editor — profile row should exist
+   - Open browser DevTools Console — zero errors
+
+---
+
+## SECTION 8: COMMIT
+
+```bash
+git add -A
+git commit -m "data: add [entity] tables, RLS policies, service layer, delete account"
+```
+
+---
+
+## WHAT YOU NOW HAVE
+
+| Layer | Status |
+|-------|--------|
+| Database tables with proper types | Done |
+| Row Level Security on every table | Done |
+| Auto-updating timestamps | Done |
+| Cascading deletes | Done |
+| Type-safe service layer | Done |
+| CRUD operations for each entity | Done |
+| Search by text field | Done |
+| Realtime subscription pattern | Ready |
+| Delete account flow | Done |
+| Human-readable error messages | Done |
+
+## KEY PATTERN: WHY SERVICES, NOT DIRECT CALLS
+
+The mentor's prompt has this same rule for Firestore: **"NO Firestore calls in components."** Here's why this matters:
+
+```
+BAD (Firestore and Supabase both):
+  Component → imports supabase → calls supabase.from('items').select(...)
+
+GOOD:
+  Component → imports getItems from services/database → calls getItems(userId)
+```
+
+Benefits:
+1. **One place to change** if you rename a table or change a query
+2. **Type safety** — the service function defines what goes in and comes out
+3. **Error handling** — consistent error messages in one place
+4. **Testability** — you can mock the service layer
+5. **Readability** — `createItem(userId, data)` is clearer than raw Supabase calls
+
+---
+
+## WHAT'S NEXT
+
+| Module | What It Adds |
+|--------|-------------|
+| **04 — UI Kit** | Modal, Toast, Button, Avatar, Skeleton, EmptyState components |
+| **05 — CRUD Flow** | List → Detail → Create → Edit pages for your entities |
+
+---
+
+## --- END PROMPT ---
+
+
+
+================================================================================
+04-ui-kit.md - MODULE 04: UI KIT PROMPT
+================================================================================
+
+# MODULE 04: UI KIT PROMPT
+
+## Reusable Components — Modal, Toast, Button, Avatar, Skeleton, EmptyState
+
+**What this does:** Builds every shared UI component your app needs. These are used by every page and every feature. After this module, you never build these again — they're your personal component library.
+
+**Prerequisite:** Modules 01 (Scaffold) and 02 (Auth) must be complete.
+
+---
+
+## --- START PROMPT ---
+
+## TASK: Build the Complete UI Component Kit
+
+Create all reusable UI components for this app. These components are used across every page and feature. Follow every pattern exactly.
+
+Read these files first: `src/index.css`, `src/contexts/ToastContext.tsx`, `src/contexts/ThemeContext.tsx`, `src/types/index.ts`. Understand the design tokens and existing context before building.
+
+---
+
+## COMPONENT 1: Modal (Base)
+
+**src/components/ui/Modal.tsx**
+
+The base modal that every other modal builds on. Used for forms, confirmations, and any overlay content.
+
+Requirements:
+- Dark overlay backdrop that fades in
+- Centered white card that scales up on open
+- Close button (X) in top-right corner
+- Title slot (optional)
+- Content slot (children)
+- Closes on Escape key
+- Closes on backdrop click (optional, default true)
+- Focus trap — Tab stays inside the modal
+- Prevents body scroll when open
+- Responsive: nearly full-screen on mobile, max-w-md on desktop
+- Uses Tailwind only, no animation libraries
+
+```typescript
+interface ModalProps {
+  isOpen: boolean
+  onClose: () => void
+  title?: string
+  children: React.ReactNode
+  /** If false, clicking backdrop won't close. Default: true */
+  closeOnBackdrop?: boolean
+  /** Width class. Default: 'max-w-md' */
+  maxWidth?: string
+}
+```
+
+Implementation details:
+- Use a portal (`createPortal`) to render at document body level
+- Backdrop: `fixed inset-0 bg-black/50 z-50` with fade-in animation
+- Card: `bg-surface-base rounded-xl border border-border-subtle shadow-lg` with scale animation
+- Close button: `absolute top-4 right-4` with X icon from Lucide
+- Escape key: `useEffect` with `keydown` listener
+- Body scroll lock: `document.body.style.overflow = 'hidden'` on mount, restore on unmount
+- Mobile: `mx-4 max-h-[90vh] overflow-y-auto`
+- Focus first focusable element on open
+
+---
+
+## COMPONENT 2: ConfirmModal
+
+**src/components/ui/ConfirmModal.tsx**
+
+Built on top of Modal. Used for ALL destructive actions (delete, remove, discard).
+
+**RULE: Every destructive action in the app MUST use this component. No exceptions.**
+
+Requirements:
+- Title (e.g., "Delete this item?")
+- Description (e.g., "This action cannot be undone.")
+- Cancel button (secondary style)
+- Confirm button (danger style, with loading state)
+- Optional: require typing a word to confirm (for account deletion)
+
+```typescript
+interface ConfirmModalProps {
+  isOpen: boolean
+  onClose: () => void
+  onConfirm: () => void | Promise<void>
+  title: string
+  description: string
+  confirmLabel?: string       // Default: "Delete"
+  cancelLabel?: string        // Default: "Cancel"
+  variant?: 'danger' | 'warning'  // Default: 'danger'
+  /** If set, user must type this word to enable the confirm button */
+  requireConfirmText?: string
+}
+```
+
+---
+
+## COMPONENT 3: Toast (Full Implementation)
+
+**src/components/ui/Toast.tsx**
+
+Replace the basic toast renderer in ToastContext with a proper component.
+
+Requirements:
+- Slides in from top-right
+- Color-coded by type: success (green), error (red), warning (yellow), info (blue)
+- Icon per type: CheckCircle, XCircle, AlertCircle, Info (from Lucide)
+- Dismiss button (X)
+- Auto-dismisses after duration (default 4 seconds)
+- Stacks multiple toasts with gap
+- Progress bar that shows time remaining (subtle, at bottom of toast)
+
+```typescript
+interface ToastProps {
+  toast: ToastMessage  // from types/index.ts
+  onDismiss: (id: string) => void
+}
+```
+
+Also update **src/contexts/ToastContext.tsx** to render `<Toast>` components instead of the inline `<div>`.
+
+---
+
+## COMPONENT 4: Button
+
+**src/components/ui/Button.tsx**
+
+The one button to rule them all. Every button in the app uses this.
+
+Requirements:
+- Variants: primary, secondary, danger, ghost
+- Sizes: sm, md (default), lg
+- Loading state: shows spinner, disables click, shows "Loading..." text
+- Disabled state: reduced opacity, no pointer events
+- Full-width option
+- Icon support (left icon slot)
+- Proper focus ring for accessibility
+- Active press effect (slight scale down)
+
+```typescript
+interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: 'primary' | 'secondary' | 'danger' | 'ghost'
+  size?: 'sm' | 'md' | 'lg'
+  loading?: boolean
+  fullWidth?: boolean
+  icon?: React.ReactNode
+}
+```
+
+Styling per variant:
+- **primary:** `bg-brand hover:bg-brand-dark text-white`
+- **secondary:** `bg-surface-muted hover:bg-border-subtle text-text-primary border border-border-subtle`
+- **danger:** `bg-red-600 hover:bg-red-700 text-white`
+- **ghost:** `bg-transparent hover:bg-surface-muted text-text-secondary`
+
+Sizing:
+- **sm:** `px-3 py-1.5 text-sm rounded-md`
+- **md:** `px-4 py-2.5 text-sm rounded-lg`
+- **lg:** `px-6 py-3 text-base rounded-lg`
+
+---
+
+## COMPONENT 5: Avatar
+
+**src/components/ui/Avatar.tsx**
+
+Shows user's Google profile photo with fallback to initials.
+
+Requirements:
+- Three sizes: sm (32px), md (40px), lg (48px)
+- Shows photo if available
+- Falls back to colored circle with initials if photo fails or is missing
+- `onError` handler hides broken `<img>` and shows initials instead
+- Initials: first letter of first and last name, uppercase, max 2 chars
+
+```typescript
+interface AvatarProps {
+  src?: string | null
+  name?: string | null
+  size?: 'sm' | 'md' | 'lg'
+}
+```
+
+---
+
+## COMPONENT 6: ThemeToggle
+
+**src/components/ui/ThemeToggle.tsx**
+
+Toggle between light and dark mode.
+
+Requirements:
+- Sun icon in dark mode (clicking switches to light)
+- Moon icon in light mode (clicking switches to dark)
+- Uses `useTheme()` from ThemeContext
+- Accessible: `aria-label` describes the action
+- Subtle hover background
+
+```typescript
+// No props needed — reads from ThemeContext
+```
+
+---
+
+## COMPONENT 7: Card
+
+**src/components/ui/Card.tsx**
+
+Standard content container used everywhere.
+
+Requirements:
+- Default styling: `bg-surface-base rounded-xl border border-border-subtle shadow-card`
+- Padding: `p-6` by default, configurable
+- Optional hover effect for clickable cards (lift + shadow increase)
+- Optional `as` prop for semantic HTML (div, article, section)
+- onClick handler (makes it a button semantically)
+
+```typescript
+interface CardProps {
+  children: React.ReactNode
+  className?: string
+  hover?: boolean
+  onClick?: () => void
+  padding?: 'none' | 'sm' | 'md' | 'lg'
+}
+```
+
+---
+
+## COMPONENT 8: Skeleton
+
+**src/components/ui/Skeleton.tsx**
+
+Animated loading placeholder that matches content shape.
+
+**RULE: Use Skeleton for ALL loading states. Never show "Loading..." text. Never use a full-page spinner for content that has a known shape.**
+
+Requirements:
+- Shimmer animation (subtle pulse or sweep)
+- Configurable width, height, and border-radius
+- Pre-built variants: `SkeletonText`, `SkeletonCard`, `SkeletonAvatar`
+- Matches the actual content dimensions so the page doesn't jump when content loads
+
+```typescript
+interface SkeletonProps {
+  className?: string
+  /** Width class (e.g., 'w-full', 'w-48'). Default: 'w-full' */
+  width?: string
+  /** Height class (e.g., 'h-4', 'h-12'). Default: 'h-4' */
+  height?: string
+  /** Border radius class. Default: 'rounded-md' */
+  rounded?: string
+}
+
+// Pre-built composites:
+function SkeletonCard(): JSX.Element  // Card-shaped placeholder
+function SkeletonText({ lines }: { lines?: number }): JSX.Element  // Paragraph placeholder
+function SkeletonAvatar({ size }: { size?: 'sm' | 'md' | 'lg' }): JSX.Element
+```
+
+The shimmer animation in CSS:
+```css
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--color-surface-muted) 25%,
+    var(--color-border-subtle) 50%,
+    var(--color-surface-muted) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+```
+
+Add this to **src/index.css** in the animations section.
+
+---
+
+## COMPONENT 9: EmptyState
+
+**src/components/ui/EmptyState.tsx**
+
+Shown when a list has no items. NEVER show just "No items" text.
+
+**RULE: Every empty list MUST use this component with an icon and a call-to-action.**
+
+Requirements:
+- Large icon (from Lucide, passed as prop)
+- Title (e.g., "No projects yet")
+- Description (e.g., "Create your first project to get started")
+- CTA button (e.g., "Create Project") — navigates or calls a function
+- Centered, with generous padding
+- Muted colors so it doesn't look like an error
+
+```typescript
+interface EmptyStateProps {
+  icon: React.ReactNode
+  title: string
+  description: string
+  action?: {
+    label: string
+    onClick: () => void
+  }
+}
+```
+
+---
+
+## COMPONENT 10: Spinner
+
+**src/components/ui/Spinner.tsx**
+
+Simple loading spinner for inline use and full-page loading.
+
+```typescript
+interface SpinnerProps {
+  /** Size in Tailwind classes. Default: 'w-6 h-6' */
+  size?: string
+  /** Color class. Default: 'text-brand' */
+  color?: string
+}
+```
+
+Use a CSS border spinner (the `border-t-transparent` trick), not an SVG.
+
+---
+
+## COMPONENT 11: Layout Shell
+
+Update the existing layout components to use the new UI kit:
+
+### src/components/Layout.tsx
+
+The main authenticated layout with sidebar + header + content area.
+
+```
+Desktop (lg+):
+┌─────────────────────────────────────────────────┐
+│ HEADER: Logo    ThemeToggle  Avatar  SignOut     │
+├──────────────┬──────────────────────────────────┤
+│              │                                  │
+│   SIDEBAR    │         MAIN CONTENT             │
+│   (240px)    │         (scrollable)             │
+│              │                                  │
+│   - Nav      │         {children}               │
+│   - Help     │                                  │
+└──────────────┴──────────────────────────────────┘
+
+Mobile (<lg):
+┌─────────────────────┐
+│ HEADER  [☰] [👤]    │  ← Hamburger + Avatar
+├─────────────────────┤
+│                     │
+│    MAIN CONTENT     │  ← Full width
+│    {children}       │
+│                     │
+└─────────────────────┘
+│ Sidebar slides in as overlay when hamburger tapped │
+```
+
+Requirements:
+- Sidebar: `w-60 bg-surface-base border-r border-border-subtle`
+- Header: `h-16 bg-surface-base border-b border-border-subtle`
+- Main: `flex-1 overflow-y-auto bg-surface-canvas`
+- Mobile: sidebar hidden, hamburger shows it as overlay
+- Clicking nav item or outside closes mobile sidebar
+- Uses `Avatar`, `ThemeToggle`, `Button` from the UI kit
+
+### src/components/Sidebar.tsx
+
+Navigation links + help at bottom.
+
+Requirements:
+- Active link highlighted with brand color background
+- Uses `useLocation()` from React Router to detect active page
+- Help/Support link pinned to bottom
+- Conditional admin link (`{isAdmin && <Link to="/admin">...}`)
+
+### src/components/MobileNav.tsx
+
+Mobile header with hamburger.
+
+Requirements:
+- Hamburger icon (Menu) toggles sidebar overlay
+- Close icon (X) inside the overlay
+- Backdrop click closes
+- 44px minimum touch targets
+
+---
+
+## BANNED LIST (ENFORCE STRICTLY)
+
+These are NEVER allowed in any component, page, or feature:
+
+| Banned | Use Instead |
+|--------|-------------|
+| `alert()` | `showToast({ type: 'info', message: '...' })` |
+| `confirm()` | `<ConfirmModal>` |
+| `prompt()` | `<Modal>` with a form inside |
+| `console.log` for user feedback | `showToast()` |
+| "Loading..." text | `<Skeleton>` or `<Spinner>` |
+| "No items" plain text | `<EmptyState>` with icon and CTA |
+| `window.alert` | Toast |
+| Inline `<div className="modal...">` | `<Modal>` component |
+| Browser default dialogs | Custom components |
+
+---
+
+## VERIFICATION
+
+After building all components:
+
+1. `npm run build` — zero TypeScript errors
+2. `npm run dev` — navigate through the app
+3. Open DevTools Console — zero errors or warnings
+4. Test dark mode toggle — all components should respect dark mode
+5. Test mobile (resize browser to < 640px) — layout should be responsive
+6. Test Escape key on modal — should close
+7. Test toast — should auto-dismiss after 4 seconds
+
+---
+
+## COMMIT
+
+```bash
+git add -A
+git commit -m "ui: add complete component kit — Modal, Toast, Button, Avatar, Skeleton, EmptyState, Layout"
+```
+
+---
+
+## WHAT YOU NOW HAVE
+
+| Component | Used For |
+|-----------|----------|
+| Modal | Forms, dialogs, any overlay |
+| ConfirmModal | Delete confirmations, destructive actions |
+| Toast | Success/error/info feedback |
+| Button | Every button in the app |
+| Avatar | User photos with fallback |
+| ThemeToggle | Dark/light mode switch |
+| Card | Content containers |
+| Skeleton | Loading placeholders |
+| EmptyState | Empty lists with CTA |
+| Spinner | Inline loading indicators |
+| Layout | Sidebar + header + content shell |
+| Sidebar | Navigation |
+| MobileNav | Mobile hamburger menu |
+
+## WHAT'S NEXT
+
+| Module | What It Adds |
+|--------|-------------|
+| **05 — CRUD Flow** | List → Detail → Create → Edit pages for your entities |
+| **06 — Polish** | Search, pagination, date formatting, error handling, retries |
+
+---
+
+## --- END PROMPT ---
+
+
+
+================================================================================
+05-crud-flow.md - MODULE 05: CRUD FLOW PROMPT
+================================================================================
+
+# MODULE 05: CRUD FLOW PROMPT
+
+## List → Detail → Create → Edit — The Universal Page Pattern
+
+**What this does:** Builds the complete page flow for any data entity in your app. This is the pattern you'll reuse for every single "thing" a user creates, views, edits, and deletes. Recipes, projects, tasks, notes, listings — they all follow this flow.
+
+**Prerequisite:** Modules 01-04 must be complete (Scaffold, Auth, Data Layer, UI Kit).
+
+**This is the most reusable module.** You'll run this prompt once per entity. Got 3 entities? Run it 3 times, changing Section 1 each time.
+
+---
+
+## --- START PROMPT ---
+
+## TASK: Build Complete CRUD Pages for [ENTITY_NAME]
+
+Create the full page flow for [ENTITY_NAME]: List View, Detail View, Create View, and Edit View. Follow the exact navigation flow and patterns below.
+
+Read these files first: `src/services/database.ts`, `src/types/index.ts`, `src/components/ui/` (all UI components), `src/App.tsx`, `src/components/Layout.tsx`.
+
+---
+
+## SECTION 1: ENTITY DEFINITION [FILL THIS IN]
+
+**Entity Name:** [e.g., "Project", "Recipe", "Note"]
+**Entity Plural:** [e.g., "Projects", "Recipes", "Notes"]
+**Table Name:** [e.g., "projects", "recipes", "notes"] (must match your Supabase table)
+
+**Display Fields:**
+- **Title field:** [which field is the main title? e.g., "title", "name"]
+- **Subtitle/description field:** [which field shows below the title? e.g., "description"]
+- **Status field:** [if applicable, e.g., "status" with values draft/published/archived]
+- **Key detail fields:** [what shows on the detail page? list them]
+
+**Form Fields (for Create/Edit):**
+- [field_name]: [type — text input / textarea / select / number / checkbox / date picker]
+- [field_name]: [type] — required / optional
+- [field_name]: [type] — required / optional
+
+**List Card Shows:** [What 2-3 things appear on each card in the list? e.g., "title, description (truncated 2 lines), relative date"]
+
+**Default Sort:** [e.g., "newest first", "alphabetical", "by priority"]
+
+---
+
+## SECTION 2: THE NAVIGATION FLOW (MANDATORY)
+
+```
+┌──────────────────┐     click card        ┌──────────────────┐
+│                  │ ───────────────────▶   │                  │
+│    LIST VIEW     │                        │   DETAIL VIEW    │
+│  /[entities]     │                        │  /[entities]/:id │
+│                  │ ◀───────────────────   │                  │
+└──────────────────┘     back button        └──────────────────┘
+        │                                          │      │
+        │ click "New"                  click "Edit" │      │ click "Delete"
+        ▼                                          ▼      ▼
+┌──────────────────┐                        ┌──────────────────┐
+│                  │                        │                  │
+│   CREATE VIEW    │                        │    EDIT VIEW     │
+│  /[entities]/new │                        │ /[entities]/:id  │
+│                  │                        │    /edit         │
+└──────────────────┘                        └──────────────────┘
+        │                                          │
+        │ save → navigate to detail                │ save → navigate to detail
+        ▼                                          │
+┌──────────────────┐                               │
+│   DETAIL VIEW    │ ◀─────────────────────────────┘
+│  /[entities]/:id │
+└──────────────────┘
+```
+
+**ANTI-PATTERNS (DO NOT DO THESE):**
+- Clicking a card opens edit mode directly (MUST open read-only detail first)
+- Using the same component for create and edit (separate pages)
+- No way to view an item without editing it
+- Delete with no ConfirmModal
+- Success/error with no Toast feedback
+- Empty list with just "No items" text
+
+---
+
+## SECTION 3: LIST VIEW PAGE
+
+**Route:** `/[entities]`
+**File:** `src/pages/[Entity]ListPage.tsx`
+
+### What It Shows
+
+```
+┌────────────────────────────────────────────────────────┐
+│  [Entities]                              [+ New Entity] │
+│                                                         │
+│  🔍 Search...                                           │
+│                                                         │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │ Card: [Title]                        [3d ago]   │   │
+│  │ [Description, truncated to 2 lines...]          │   │
+│  │ [Status badge]                                  │   │
+│  └─────────────────────────────────────────────────┘   │
+│                                                         │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │ Card: [Title]                        [5d ago]   │   │
+│  │ [Description, truncated to 2 lines...]          │   │
+│  └─────────────────────────────────────────────────┘   │
+│                                                         │
+│  Showing 1-10 of 24          [← Prev] [Next →]        │
+└────────────────────────────────────────────────────────┘
+```
+
+### Requirements
+
+1. **Header:** Page title + "New [Entity]" button (top right)
+2. **Search bar:** Filters by title/description, debounced 300ms
+3. **Card grid:** Responsive — 1 column mobile, 2 columns tablet, 3 columns desktop
+4. **Each card shows:**
+   - Title (truncated with `truncate` if too long)
+   - Description (truncated with `line-clamp-2`)
+   - Relative date (`formatRelativeTime`)
+   - Status badge if applicable
+   - Clickable — navigates to detail view
+   - Hover effect (subtle lift from Card component)
+5. **Loading state:** Skeleton cards (use SkeletonCard from UI Kit, show 6)
+6. **Empty state:** EmptyState component with appropriate icon and "Create your first [entity]" CTA
+7. **Error state:** Error message with retry button
+8. **Pagination:** Show 12 items per page, prev/next buttons, "Page X of Y"
+
+### Data Fetching Pattern
+
+```typescript
+const { user } = useAuth()
+const [items, setItems] = useState<EntityType[]>([])
+const [loading, setLoading] = useState(true)
+const [error, setError] = useState<string | null>(null)
+const [searchQuery, setSearchQuery] = useState('')
+const [page, setPage] = useState(1)
+
+const ITEMS_PER_PAGE = 12
+
+useEffect(() => {
+  if (!user) return
+  setLoading(true)
+  setError(null)
+
+  getEntities(user.id)
+    .then(setItems)
+    .catch((err) => setError(err.message))
+    .finally(() => setLoading(false))
+}, [user])
+
+// Client-side search filter
+const filtered = items.filter((item) =>
+  item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+  item.description?.toLowerCase().includes(searchQuery.toLowerCase())
+)
+
+// Pagination
+const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE)
+const paginated = filtered.slice(
+  (page - 1) * ITEMS_PER_PAGE,
+  page * ITEMS_PER_PAGE
+)
+```
+
+---
+
+## SECTION 4: DETAIL VIEW PAGE
+
+**Route:** `/[entities]/:id`
+**File:** `src/pages/[Entity]DetailPage.tsx`
+
+### What It Shows
+
+```
+┌────────────────────────────────────────────────────────┐
+│  ← Back to [Entities]                                   │
+│                                                         │
+│  [Title]                                                │
+│  [Status badge]         Created [relative time]         │
+│                                                         │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │                                                  │   │
+│  │  [Full description / content]                    │   │
+│  │                                                  │   │
+│  │  [All detail fields, nicely formatted]           │   │
+│  │                                                  │   │
+│  └─────────────────────────────────────────────────┘   │
+│                                                         │
+│  [Edit Button]                        [Delete Button]   │
+│                                                         │
+│  Last updated: January 15, 2026 at 3:45 PM             │
+└────────────────────────────────────────────────────────┘
+```
+
+### Requirements
+
+1. **Back navigation:** `← Back to [Entities]` link at top (navigates to list)
+2. **Title:** Large, prominent
+3. **Metadata:** Created date, updated date, status
+4. **Content:** All fields displayed in read-only format
+5. **Actions:**
+   - Edit button → navigates to `/[entities]/:id/edit`
+   - Delete button → opens ConfirmModal
+6. **Loading state:** Skeleton matching the content layout
+7. **Not found state:** EmptyState with "Item not found" and back-to-list CTA
+8. **Delete flow:**
+   - Click delete → ConfirmModal opens
+   - Confirm → loading state on button → delete → success toast → navigate to list
+   - Error → error toast → close modal
+
+### Data Fetching
+
+```typescript
+const { id } = useParams()
+const navigate = useNavigate()
+const { showToast } = useToast()
+const [item, setItem] = useState<EntityType | null>(null)
+const [loading, setLoading] = useState(true)
+const [isDeleting, setIsDeleting] = useState(false)
+const [showDeleteModal, setShowDeleteModal] = useState(false)
+
+useEffect(() => {
+  if (!id) return
+  getEntity(id)
+    .then(setItem)
+    .catch(() => setItem(null))
+    .finally(() => setLoading(false))
+}, [id])
+
+const handleDelete = async () => {
+  if (!id) return
+  setIsDeleting(true)
+  try {
+    await deleteEntity(id)
+    showToast({ type: 'success', message: '[Entity] deleted' })
+    navigate('/[entities]')
+  } catch (err) {
+    showToast({ type: 'error', message: err instanceof Error ? err.message : 'Delete failed' })
+    setIsDeleting(false)
+  }
+}
+```
+
+---
+
+## SECTION 5: CREATE VIEW PAGE
+
+**Route:** `/[entities]/new`
+**File:** `src/pages/[Entity]CreatePage.tsx`
+
+### What It Shows
+
+```
+┌────────────────────────────────────────────────────────┐
+│  ← Back to [Entities]                                   │
+│                                                         │
+│  Create New [Entity]                                    │
+│                                                         │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │  Title *                                        │   │
+│  │  ┌─────────────────────────────────────────┐    │   │
+│  │  │                                         │    │   │
+│  │  └─────────────────────────────────────────┘    │   │
+│  │                                                  │   │
+│  │  Description                                    │   │
+│  │  ┌─────────────────────────────────────────┐    │   │
+│  │  │                                         │    │   │
+│  │  │                                         │    │   │
+│  │  └─────────────────────────────────────────┘    │   │
+│  │                                                  │   │
+│  │  [More fields as needed...]                     │   │
+│  │                                                  │   │
+│  │           [Cancel]              [Create Entity]  │   │
+│  └─────────────────────────────────────────────────┘   │
+│                                                         │
+└────────────────────────────────────────────────────────┘
+```
+
+### Requirements
+
+1. **Back navigation:** `← Back to [Entities]`
+2. **Form fields:** All fields from Section 1, with proper types
+3. **First input auto-focused** on page load
+4. **Validation:** Required fields checked before submit
+5. **Error display:** Inline error messages below fields that fail validation
+6. **Submit button:** Shows loading state during save
+7. **Cancel button:** Goes back to list
+8. **On success:** Toast + navigate to the new item's detail page
+9. **On error:** Toast with error message, stay on form, preserve data
+10. **Unsaved changes warning:** Browser `beforeunload` if form is dirty
+11. **Max width:** `max-w-2xl` to keep forms readable
+
+### Form Pattern
+
+```typescript
+const { user } = useAuth()
+const navigate = useNavigate()
+const { showToast } = useToast()
+const [isSubmitting, setIsSubmitting] = useState(false)
+const [errors, setErrors] = useState<Record<string, string>>({})
+
+// Form state — one useState per field, or one object
+const [formData, setFormData] = useState({
+  title: '',
+  description: '',
+  // ... other fields with defaults
+})
+
+const validate = (): boolean => {
+  const newErrors: Record<string, string> = {}
+  if (!formData.title.trim()) newErrors.title = 'Title is required'
+  // ... other validations
+  setErrors(newErrors)
+  return Object.keys(newErrors).length === 0
+}
+
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault()
+  if (!validate() || !user) return
+
+  setIsSubmitting(true)
+  try {
+    const created = await createEntity(user.id, formData)
+    showToast({ type: 'success', message: '[Entity] created!' })
+    navigate(`/[entities]/${created.id}`)
+  } catch (err) {
+    showToast({ type: 'error', message: err instanceof Error ? err.message : 'Failed to create' })
+    setIsSubmitting(false)
+  }
+}
+```
+
+### Input Component Pattern
+
+For each form field, use this consistent pattern:
+
+```tsx
+<div className="space-y-1">
+  <label htmlFor="title" className="block text-sm font-medium text-text-primary">
+    Title <span className="text-red-500">*</span>
+  </label>
+  <input
+    id="title"
+    type="text"
+    value={formData.title}
+    onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
+    className={`w-full px-4 py-3 rounded-lg border transition-colors
+      ${errors.title
+        ? 'border-red-500 bg-red-50 focus:ring-red-500 dark:bg-red-950/20'
+        : 'border-border-subtle bg-surface-muted focus:ring-brand'
+      }
+      focus:outline-none focus:ring-2
+      disabled:opacity-50 disabled:cursor-not-allowed`}
+    disabled={isSubmitting}
+    autoFocus
+  />
+  {errors.title && (
+    <p className="text-sm text-red-600">{errors.title}</p>
+  )}
+</div>
+```
+
+---
+
+## SECTION 6: EDIT VIEW PAGE
+
+**Route:** `/[entities]/:id/edit`
+**File:** `src/pages/[Entity]EditPage.tsx`
+
+### Requirements
+
+Same form as Create, but:
+
+1. **Pre-filled** with existing data (fetched by ID)
+2. **Loading state:** Skeleton while fetching existing data
+3. **Not found:** If item doesn't exist, show error + back link
+4. **Submit label:** "Save Changes" instead of "Create"
+5. **Cancel goes to detail page** (not list)
+6. **On success:** Toast + navigate to detail page
+7. **Unsaved changes warning** if form is dirty (changed from original)
+
+### Detecting Dirty State
+
+```typescript
+const [originalData, setOriginalData] = useState<typeof formData | null>(null)
+
+// After fetching:
+setFormData({ title: item.title, description: item.description ?? '' })
+setOriginalData({ title: item.title, description: item.description ?? '' })
+
+// Check if dirty:
+const isDirty = JSON.stringify(formData) !== JSON.stringify(originalData)
+```
+
+---
+
+## SECTION 7: ADD ROUTES TO App.tsx
+
+Add these routes inside the `<Routes>` block:
+
+```tsx
+{/* [Entity] CRUD routes */}
+<Route path="/[entities]" element={
+  <ProtectedRoute><Layout><EntityListPage /></Layout></ProtectedRoute>
+} />
+<Route path="/[entities]/new" element={
+  <ProtectedRoute><Layout><EntityCreatePage /></Layout></ProtectedRoute>
+} />
+<Route path="/[entities]/:id" element={
+  <ProtectedRoute><Layout><EntityDetailPage /></Layout></ProtectedRoute>
+} />
+<Route path="/[entities]/:id/edit" element={
+  <ProtectedRoute><Layout><EntityEditPage /></Layout></ProtectedRoute>
+} />
+```
+
+Also add a link to the sidebar navigation in `Sidebar.tsx`.
+
+---
+
+## SECTION 8: UPDATE DASHBOARD
+
+Replace the placeholder Dashboard content with:
+- A summary card showing total count of entities
+- Recent entities (last 5)
+- Quick "Create New" CTA
+- Link to full list view
+
+---
+
+## SECTION 9: VERIFY
+
+1. `npm run build` — zero errors
+2. `npm run dev` and test the complete flow:
+   - [ ] List page shows (empty state on first visit)
+   - [ ] Click "New" → Create form appears
+   - [ ] Fill in form → Submit → Success toast → Redirected to detail
+   - [ ] Detail page shows all data correctly
+   - [ ] Click "Edit" → Edit form pre-filled
+   - [ ] Change something → Save → Success toast → Back to detail with changes
+   - [ ] Click "Delete" → ConfirmModal appears
+   - [ ] Confirm → Success toast → Back to list
+   - [ ] Search works on list page
+   - [ ] Pagination works when > 12 items
+   - [ ] Back navigation works on every page
+   - [ ] Mobile layout works (resize to < 640px)
+   - [ ] Dark mode works on all pages
+   - [ ] Zero console errors
+
+---
+
+## COMMIT
+
+```bash
+git add -A
+git commit -m "crud: add [entity] pages — list, detail, create, edit with full flow"
+```
+
+---
+
+## REPEATING FOR MORE ENTITIES
+
+Have another entity? Copy this prompt, change Section 1, and run it again. The patterns are identical — only the fields and routes change.
+
+---
+
+## WHAT'S NEXT
+
+| Module | What It Adds |
+|--------|-------------|
+| **06 — Polish** | Hover states, transitions, accessibility, offline handling, session expiry |
+| **07 — Style & Theming** | Apply your specific visual style, landing page design |
+
+---
+
+## --- END PROMPT ---
+
+
+
+================================================================================
+06-polish.md - MODULE 06: POLISH PROMPT
+================================================================================
+
+# MODULE 06: POLISH PROMPT
+
+## The "Make It Not Look Vibe-Coded" Module
+
+**What this does:** Adds every professional detail that separates amateur apps from production-quality ones. Hover states, transitions, accessibility, offline handling, session expiry, keyboard navigation, responsive micro-interactions, and error recovery.
+
+**Prerequisite:** Modules 01-05 should be complete. This module polishes everything that exists.
+
+**When to use:** After your app's core functionality works but before you show it to anyone.
+
+---
+
+## --- START PROMPT ---
+
+## TASK: Polish This App to Production Quality
+
+Review the entire codebase and add every missing professional detail. Go through each section below systematically. Do not skip any section.
+
+Read ALL files in `src/components/`, `src/pages/`, `src/contexts/`, and `src/index.css` before starting. Understand what exists.
+
+---
+
+## SECTION 1: HOVER STATES
+
+Every interactive element MUST have a visible hover response. Audit every component and page.
+
+| Element Type | Required Hover Effect |
+|---|---|
+| Cards (clickable) | `hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer` |
+| Primary buttons | `hover:bg-brand-dark transition-colors` |
+| Secondary buttons | `hover:bg-border-subtle transition-colors` |
+| Ghost buttons | `hover:bg-surface-muted transition-colors` |
+| Danger buttons | `hover:bg-red-700 transition-colors` |
+| Text links | `hover:text-brand hover:underline transition-colors` |
+| Icon buttons | `hover:bg-surface-muted rounded-lg p-2 transition-colors` |
+| Table/list rows | `hover:bg-surface-muted transition-colors` |
+| Sidebar nav items | `hover:bg-surface-muted rounded-lg transition-colors` |
+| Dropdown items | `hover:bg-surface-muted transition-colors` |
+
+**Rule:** If you can click it, it must visually respond to hover. No exceptions.
+
+---
+
+## SECTION 2: TRANSITIONS AND ANIMATIONS
+
+Add these CSS animations and apply them throughout the app.
+
+**Add to src/index.css (animations section):**
+
+```css
+/* Modal backdrop fade */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Modal content scale */
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* Toast slide in from right */
+@keyframes slide-in-right {
+  from { opacity: 0; transform: translateX(100%); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* Mobile sidebar slide in from left */
+@keyframes slide-in-left {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+/* Subtle fade for page content */
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in { animation: fade-in 0.2s ease-out; }
+.animate-scale-in { animation: scale-in 0.2s ease-out; }
+.animate-slide-in-right { animation: slide-in-right 0.3s ease-out; }
+.animate-slide-in-left { animation: slide-in-left 0.3s ease-out; }
+.animate-fade-up { animation: fade-up 0.3s ease-out; }
+```
+
+**Apply to components:**
+- Modal backdrop → `animate-fade-in`
+- Modal content → `animate-scale-in`
+- Toast → `animate-slide-in-right`
+- Mobile sidebar → `animate-slide-in-left`
+- Page main content → `animate-fade-up`
+- Buttons → `active:scale-[0.98] transition-all duration-150`
+- Cards → `transition-all duration-200`
+
+---
+
+## SECTION 3: ACCESSIBILITY
+
+### Focus States
+
+Every interactive element needs a visible focus ring for keyboard navigation:
+
+```
+focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2
+```
+
+Apply to: buttons, links, inputs, selects, textareas, cards (if clickable).
+
+For dark mode, add: `focus:ring-offset-surface-base` (so the offset matches the background).
+
+### Keyboard Navigation
+
+**Modals:**
+```typescript
+// Already in Modal from Module 04, but verify:
+// - Escape closes
+// - Tab cycles through focusable elements (focus trap)
+// - First focusable element receives focus on open
+// - Focus returns to trigger element on close
+```
+
+**Dropdown menus (if any):**
+- Arrow keys move selection
+- Enter/Space selects
+- Escape closes
+
+### ARIA Labels
+
+Audit every icon-only button and add `aria-label`:
+
+```tsx
+// Good
+<button aria-label="Close modal" onClick={onClose}>
+  <X className="w-5 h-5" />
+</button>
+
+// Good
+<button aria-label="Delete item" onClick={onDelete}>
+  <Trash2 className="w-5 h-5" />
+</button>
+
+// Good
+<button aria-label="Toggle dark mode" onClick={toggleTheme}>
+  {theme === 'light' ? <Moon /> : <Sun />}
+</button>
+```
+
+### Screen Reader Support
+
+```tsx
+// Loading states
+{loading && <span className="sr-only">Loading content...</span>}
+
+// Status messages
+<div role="status" aria-live="polite">
+  {toasts.map(toast => ...)}
+</div>
+
+// Form errors
+<p role="alert" className="text-sm text-red-600">{error}</p>
+```
+
+Add `sr-only` class if not already in CSS:
+```css
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+```
+
+### Touch Targets
+
+On mobile, all clickable elements must be at least 44x44px:
+
+```tsx
+// Icon buttons — ensure min size
+className="p-2.5 ..." // 20px icon + 10px padding each side = 40px. Add more if needed.
+
+// Or use min-h and min-w
+className="min-h-[44px] min-w-[44px] ..."
+```
+
+---
+
+## SECTION 4: OFFLINE HANDLING
+
+Detect network status and inform the user.
+
+**Create src/hooks/useOnlineStatus.ts:**
+
+```typescript
+import { useEffect, useState } from 'react'
+
+export function useOnlineStatus() {
+  const [isOnline, setIsOnline] = useState(
+    typeof navigator !== 'undefined' ? navigator.onLine : true
+  )
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true)
+    const handleOffline = () => setIsOnline(false)
+
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
+
+  return isOnline
+}
+```
+
+**Add an offline banner to Layout.tsx:**
+
+```tsx
+const isOnline = useOnlineStatus()
+
+// At the top of the layout, above the header:
+{!isOnline && (
+  <div className="bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200 px-4 py-2 text-center text-sm font-medium">
+    You're offline. Some features may not work until you reconnect.
+  </div>
+)}
+```
+
+---
+
+## SECTION 5: SESSION EXPIRY HANDLING
+
+Supabase sessions expire. Handle it gracefully instead of showing cryptic errors.
+
+**Update src/contexts/AuthContext.tsx:**
+
+In the `onAuthStateChange` listener, add handling for token refresh failures:
+
+```typescript
+// Inside the onAuthStateChange callback:
+if (event === 'TOKEN_REFRESHED' && session?.user) {
+  setUser(session.user)
+} else if (event === 'SIGNED_OUT') {
+  setUser(null)
+  setProfile(null)
+  // If they were on a protected route, redirect gracefully
+  if (window.location.pathname !== '/' && window.location.pathname !== '/login') {
+    window.location.href = '/login'
+  }
+}
+```
+
+**Wrap service calls to catch auth errors:**
+
+Update `src/services/database.ts` — add a helper:
+
+```typescript
+function handleSupabaseError(error: { code: string; message: string }, operation: string): never {
+  if (error.code === 'PGRST301' || error.code === '401' || error.message.includes('JWT')) {
+    throw new Error('Your session has expired. Please sign in again.')
+  }
+  if (error.code === '42501' || error.message.includes('permission denied')) {
+    throw new Error('You don\'t have permission to do this.')
+  }
+  if (error.code === 'PGRST116') {
+    throw new Error('Item not found. It may have been deleted.')
+  }
+  throw new Error(`Failed to ${operation}. Please try again.`)
+}
+```
+
+Then use it in every service function:
+```typescript
+if (error) handleSupabaseError(error, 'load items')
+```
+
+---
+
+## SECTION 6: ERROR RECOVERY
+
+Every error state should be actionable, not a dead end.
+
+**Pattern for pages with data fetching:**
+
+```tsx
+if (error) {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 text-center">
+      <AlertCircle className="w-12 h-12 text-red-500 mb-4" />
+      <h2 className="text-lg font-semibold text-text-primary mb-2">Something went wrong</h2>
+      <p className="text-text-secondary mb-6 max-w-sm">{error}</p>
+      <Button variant="secondary" onClick={refetch}>
+        Try Again
+      </Button>
+    </div>
+  )
+}
+```
+
+**Pattern for inline actions (save/delete/update):**
+
+```typescript
+try {
+  await updateEntity(id, data)
+  showToast({ type: 'success', message: 'Saved!' })
+} catch (err) {
+  const message = err instanceof Error ? err.message : 'Something went wrong'
+  showToast({ type: 'error', message })
+  // IMPORTANT: Do NOT navigate away. Stay on the page. Keep the form data.
+}
+```
+
+---
+
+## SECTION 7: TEXT AND DATA FORMATTING
+
+Audit every page and ensure:
+
+### Dates
+- NO raw timestamps displayed anywhere
+- List views: `formatRelativeTime` ("3d ago")
+- Detail views: `formatFullDate` ("January 15, 2026 at 3:45 PM")
+
+### Numbers
+- Use `pluralize` helper: "1 item" not "1 items"
+- Large numbers: toLocaleString() — "1,234" not "1234"
+
+### Long Text
+- Card titles: `truncate` class (single line ellipsis)
+- Card descriptions: `line-clamp-2` (two line ellipsis)
+- Sidebar items: `truncate max-w-[180px]`
+- Table cells: `truncate max-w-[200px]`
+
+### Empty Values
+- Show "—" (em dash) for null/empty fields, not "null" or blank space
+- `{item.description || '—'}`
+
+---
+
+## SECTION 8: FORM FIELD POLISH
+
+Audit all forms (Create and Edit pages):
+
+1. **Labels:** Every input has a label. Required fields show `*` in red.
+2. **Placeholder text:** Helpful hint, not just the field name ("e.g., My First Project")
+3. **Error states:** Red border, red background tint, error message below
+4. **Disabled during submit:** All fields disabled while `isSubmitting`
+5. **Autofocus:** First input focused on page load
+6. **Enter key:** Forms submit on Enter (via `<form onSubmit>`)
+7. **Tab order:** Logical tab order (top to bottom, left to right)
+
+---
+
+## SECTION 9: CONSOLE CLEANUP
+
+Open the app and navigate through EVERY page and action. Fix any:
+
+- `console.log` statements (remove them all)
+- React key warnings (ensure unique keys in all `.map()` calls)
+- Missing useEffect dependency warnings (fix dependencies or add eslint-disable with justification)
+- TypeScript errors in the console
+- Network errors (404s, failed fetches)
+- Unused variable warnings
+
+**Goal: Zero console output on a clean run through the entire app.**
+
+---
+
+## SECTION 10: RESPONSIVE SPOT CHECK
+
+Resize browser to mobile width (375px) and verify every page:
+
+| Page | Check |
+|------|-------|
+| Landing | Text readable, CTA visible, no horizontal scroll |
+| Login | Card fits screen, button full width |
+| Dashboard | Cards stack vertically, no overflow |
+| List | Cards single column, search full width, pagination controls accessible |
+| Detail | Content fits, buttons full width or stacked, back link visible |
+| Create/Edit | Inputs full width, labels visible, submit button accessible |
+| Profile | Content fits, danger zone visible |
+| 404 | Centered, readable |
+
+Also check at tablet (768px) and desktop (1280px).
+
+---
+
+## COMMIT
+
+```bash
+git add -A
+git commit -m "polish: add hover states, animations, a11y, offline handling, error recovery, responsive fixes"
+```
+
+---
+
+## WHAT THIS MODULE FIXED
+
+| Category | Before | After |
+|----------|--------|-------|
+| Hover states | Some elements have no feedback | Every clickable element responds |
+| Animations | Instant/jarring transitions | Smooth fade, scale, slide |
+| Accessibility | No focus rings, no ARIA | Full keyboard nav, screen reader support |
+| Offline | Cryptic errors | "You're offline" banner |
+| Session expiry | Broken state | Graceful redirect to login |
+| Errors | Dead ends | Retry buttons, helpful messages |
+| Text | Raw timestamps, "null" | Relative dates, em dashes |
+| Forms | Minimal feedback | Full validation, disabled states, autofocus |
+| Console | Warnings and errors | Clean — zero output |
+| Mobile | Maybe works | Verified at 375px, 768px, 1280px |
+
+---
+
+## WHAT'S NEXT
+
+| Module | What It Adds |
+|--------|-------------|
+| **07 — Style & Theming** | Your specific visual identity, landing page, brand colors |
+| **08 — Bug Fix Protocol** | Systematic approach to fixing bugs |
+
+---
+
+## --- END PROMPT ---
+
+
+
+================================================================================
+07-style-theming.md - MODULE 07: STYLE & THEMING PROMPT
+================================================================================
+
+# MODULE 07: STYLE & THEMING PROMPT
+
+## Apply Your Visual Identity — Brand Colors, Typography, Landing Page
+
+**What this does:** Transforms your functional app into a visually distinctive product. Applies your specific brand colors, typography feel, and design personality. Builds a real landing page. This is where your app stops looking like "every other Tailwind app."
+
+**Prerequisite:** Modules 01-06 should be complete. This module reskins everything.
+
+**The mentor's approach:** He uses a separate "Style Guide Generator Prompt" that takes a screenshot of an app/website you like and produces a detailed style sheet. That's brilliant — we keep that concept but adapt it for Tailwind CSS v4 design tokens.
+
+---
+
+## --- START PROMPT ---
+
+## TASK: Apply Visual Style and Build the Landing Page
+
+Transform this app's visual identity. Apply the style guide below to every component, page, and layout element. Then build a real landing page.
+
+Read these files first: `src/index.css` (design tokens), `src/components/Layout.tsx`, `src/components/Sidebar.tsx`, `src/pages/LandingPage.tsx`, and scan all files in `src/components/ui/`.
+
+---
+
+## SECTION 1: STYLE GUIDE [FILL THIS IN]
+
+*Option A: Describe your style in plain language.*
+*Option B: Paste output from a Style Guide Generator.*
+*Option C: Provide a screenshot URL and I'll analyze it.*
+
+**Visual Style:** [Modern / Minimal / Playful / Corporate / Dark & Techy / Warm & Friendly]
+
+**Primary Brand Color:** [e.g., "#DFFF5E" or "electric lime" or "deep purple"]
+**Secondary Color:** [e.g., "#10B981" or "coral" or "warm gray"]
+**Accent Color (optional):** [e.g., for highlights, badges, CTAs]
+
+**Personality/Tone:** [Friendly / Professional / Casual / Serious / Playful / Premium]
+
+**Design Inspiration:** [Optional — "Like Notion" or "Like Linear" or "Like Stripe" or "Clean SaaS dashboard" or "Warm productivity app"]
+
+**Dark Mode Primary:** [Is the app dark-first or light-first? Default: light-first]
+
+---
+
+## SECTION 2: UPDATE DESIGN TOKENS
+
+Based on the style guide above, update **src/index.css** `@theme` block.
+
+### Color Token Mapping
+
+Replace the placeholder brand colors with the actual brand:
+
+```css
+@theme {
+  /* Brand — derived from the primary color in 3 shades */
+  --color-brand-light: [lighter shade — for hover backgrounds, badges];
+  --color-brand: [primary — for buttons, links, active states];
+  --color-brand-dark: [darker shade — for button hover, emphasis];
+
+  /* Surface — adjust warmth/coolness to match the personality */
+  /* Cool personality (techy, minimal): use blue-gray tones */
+  /* Warm personality (friendly, casual): use warm gray tones */
+  --color-surface-canvas: [page background];
+  --color-surface-base: [card/panel background];
+  --color-surface-muted: [input backgrounds, hover backgrounds];
+
+  /* Text — ensure contrast ratios meet WCAG AA (4.5:1 for body text) */
+  --color-text-primary: [main text — near black or near white];
+  --color-text-secondary: [secondary text — medium contrast];
+  --color-text-tertiary: [least important text — low contrast but still readable];
+
+  /* Border */
+  --color-border-subtle: [dividers, card borders — should be subtle];
+}
+```
+
+### Dark Mode Tokens
+
+Update the `.dark` block with corresponding dark mode colors:
+
+```css
+.dark {
+  --color-surface-canvas: [dark page background];
+  --color-surface-base: [dark card background];
+  --color-surface-muted: [dark input/hover background];
+  --color-text-primary: [light text on dark];
+  --color-text-secondary: [medium text on dark];
+  --color-text-tertiary: [dim text on dark];
+  --color-border-subtle: [dark dividers];
+}
+```
+
+**RULE: If the style guide is dark-first, still define light mode as the :root default and dark mode in .dark. The theme toggle must work both ways.**
+
+### Typography Feel
+
+Adjust the font stack based on personality:
+
+| Personality | Font Stack |
+|-------------|------------|
+| Modern/Clean | `'Inter', ui-sans-serif, system-ui, sans-serif` (default) |
+| Premium/Editorial | `'Plus Jakarta Sans', 'Inter', ui-sans-serif, sans-serif` |
+| Techy/Code | `'JetBrains Mono', 'Fira Code', monospace` (for headers only) |
+| Warm/Friendly | `'Nunito', 'Inter', ui-sans-serif, sans-serif` |
+| Corporate | `'IBM Plex Sans', 'Inter', ui-sans-serif, sans-serif` |
+
+If changing from Inter, update the Google Fonts `<link>` in `index.html`.
+
+### Corner Radius
+
+Adjust `--radius-card` based on personality:
+
+| Feel | Radius |
+|------|--------|
+| Sharp/Corporate | `8px` |
+| Standard | `12px` (default) |
+| Soft/Friendly | `16px` |
+| Rounded/Playful | `20px` |
+
+### Shadow Depth
+
+Adjust card shadow:
+
+| Feel | Shadow |
+|------|--------|
+| Flat/Minimal | `none` or `0 0 0 1px var(--color-border-subtle)` |
+| Standard | `0 1px 3px rgba(0,0,0,0.05)` (default) |
+| Elevated | `0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1)` |
+
+---
+
+## SECTION 3: COMPONENT RESKINNING
+
+After updating tokens, audit each component to ensure the new brand works:
+
+### Buttons
+- Primary button text color: ensure contrast against brand color
+  - Light brand colors (yellow, lime, cyan) → use dark text (`text-gray-900`)
+  - Dark brand colors (purple, blue, red) → use white text (`text-white`)
+- Check all button variants still look good with new colors
+
+### Cards
+- Verify border, shadow, and radius match the new feel
+- Hover effect should feel natural with new shadow depth
+
+### Sidebar
+- Active nav item highlight should use `bg-brand/10 text-brand` (brand at 10% opacity for background)
+- Ensure sidebar feels cohesive with the new palette
+
+### Badges / Status Indicators
+- If your app has status badges (draft, active, completed), choose colors that work with the brand:
+  - Don't use brand color for status — it creates confusion
+  - Use semantic colors: green for success, yellow for pending, red for error, gray for draft
+
+### Login Page
+- Update to reflect brand personality
+- Consider adding a brand-colored gradient or pattern to one side (split layout on desktop)
+
+---
+
+## SECTION 4: BUILD THE REAL LANDING PAGE
+
+Replace the placeholder `LandingPage.tsx` with a proper marketing-style landing page.
+
+### Structure
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  NAVBAR: Logo                    [Sign In] [Get Started] │
+├──────────────────────────────────────────────────────────┤
+│                                                          │
+│           HERO SECTION                                   │
+│  Big headline (value proposition)                        │
+│  Subtitle (one sentence description)                     │
+│  [Primary CTA Button]    [Secondary CTA]                 │
+│                                                          │
+├──────────────────────────────────────────────────────────┤
+│                                                          │
+│           FEATURES SECTION (3 cards)                     │
+│  ┌────────┐  ┌────────┐  ┌────────┐                    │
+│  │ Icon   │  │ Icon   │  │ Icon   │                    │
+│  │ Title  │  │ Title  │  │ Title  │                    │
+│  │ Desc   │  │ Desc   │  │ Desc   │                    │
+│  └────────┘  └────────┘  └────────┘                    │
+│                                                          │
+├──────────────────────────────────────────────────────────┤
+│                                                          │
+│           HOW IT WORKS (3 steps)                         │
+│  1. Step one      2. Step two      3. Step three        │
+│                                                          │
+├──────────────────────────────────────────────────────────┤
+│                                                          │
+│           FINAL CTA                                      │
+│  Ready to get started?                                   │
+│  [Get Started — It's Free]                               │
+│                                                          │
+├──────────────────────────────────────────────────────────┤
+│  FOOTER: © 2026 AppName                                  │
+└──────────────────────────────────────────────────────────┘
+```
+
+### Requirements
+
+1. **Navbar:** Sticky top, transparent initially, becomes solid on scroll
+2. **Hero:** Full viewport height (min-h-screen or large padding), compelling headline
+3. **Features:** 3 cards with Lucide icons, responsive grid
+4. **How it works:** 3 numbered steps
+5. **Final CTA:** Centered call to action with brand button
+6. **Footer:** Simple, copyright + optional links
+7. **Auth-aware:** Show "Go to Dashboard" if signed in, "Get Started" if not
+8. **Responsive:** All sections stack on mobile
+9. **Uses brand colors** from the updated design tokens
+10. **Smooth scroll** between sections (optional)
+
+---
+
+## SECTION 5: UPDATE FAVICON
+
+Update `public/favicon.svg` to use the new brand color:
+
+```svg
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect width="32" height="32" rx="8" fill="[BRAND_COLOR]"/>
+  <text x="16" y="22" text-anchor="middle" font-family="system-ui" font-weight="bold" font-size="18" fill="[CONTRAST_TEXT_COLOR]">[FIRST_LETTER]</text>
+</svg>
+```
+
+---
+
+## SECTION 6: VERIFY
+
+1. `npm run build` — zero errors
+2. Light mode looks correct on: Landing, Login, Dashboard, List, Detail, Create/Edit, Profile
+3. Dark mode looks correct on all the same pages
+4. Brand color has sufficient contrast for:
+   - Button text readability
+   - Link visibility against background
+   - Active sidebar item visibility
+5. Mobile layout still works after reskinning
+6. Landing page is compelling and professional
+
+---
+
+## COMMIT
+
+```bash
+git add -A
+git commit -m "style: apply brand identity — [describe the style, e.g., 'dark premium theme with purple accents']"
+```
+
+---
+
+## REUSABLE PATTERN: STYLE GUIDE FROM SCREENSHOT
+
+If you have a screenshot of an app/website you want to match, use this sub-prompt before running this module:
+
+```
+Analyze this screenshot and extract a complete style guide:
+1. Primary color (hex)
+2. Secondary color (hex)
+3. Background color
+4. Text colors (primary, secondary, tertiary)
+5. Border/divider color
+6. Corner radius (sharp/standard/soft/rounded)
+7. Shadow depth (flat/standard/elevated)
+8. Typography feel (clean/premium/techy/warm/corporate)
+9. Overall personality in 3 words
+10. Is it dark-first or light-first?
+
+Format the output so I can paste it directly into the style guide section of my build prompt.
+```
+
+---
+
+## --- END PROMPT ---
+
+
+
+================================================================================
+08-bug-fix.md - MODULE 08: BUG FIX PROTOCOL
+================================================================================
+
+# MODULE 08: BUG FIX PROTOCOL
+
+## Systematic Bug Diagnosis and Repair
+
+**What this does:** A reusable prompt for fixing bugs in any app you've built. Instead of saying "fix this," this prompt forces Claude Code to follow a systematic diagnosis process that actually finds root causes instead of slapping band-aids on symptoms.
+
+**When to use:** Any time something is broken, behaving unexpectedly, or throwing errors.
+
+**This is NOT a build-once module.** You'll use this prompt over and over, every time you have a bug.
+
+---
+
+## --- START PROMPT ---
+
+## TASK: Diagnose and Fix a Bug
+
+Follow this exact diagnostic process. Do NOT jump to a fix before completing the diagnosis. Skipping steps is how bugs get "fixed" in a way that creates two new bugs.
+
+---
+
+## SECTION 1: BUG REPORT [FILL THIS IN]
+
+**What should happen:**
+[Describe the expected behavior]
+
+**What actually happens:**
+[Describe the actual behavior — be specific]
+
+**Steps to reproduce:**
+1. [Step 1]
+2. [Step 2]
+3. [Step 3]
+4. [What goes wrong at this point]
+
+**When did it start?** [Always been broken / After I changed X / After updating Y / Not sure]
+
+**Error messages (if any):**
+[Paste any console errors, terminal errors, or error messages displayed in the UI]
+
+---
+
+## SECTION 2: DIAGNOSTIC PROTOCOL (FOLLOW IN ORDER)
+
+### STEP 1: Reproduce the Bug
+
+Before touching any code, reproduce the bug yourself:
+
+1. Run `npm run dev`
+2. Follow the reproduction steps exactly
+3. Open DevTools Console — note every error and warning
+4. Open DevTools Network tab — note any failed requests (red)
+5. Check the terminal running the dev server — note any server-side errors
+
+**Write down what you observe.** Do NOT start fixing yet.
+
+### STEP 2: Identify the Scope
+
+Determine what type of bug this is:
+
+| Bug Type | Signs | Investigation Path |
+|----------|-------|-------------------|
+| **Render/UI bug** | Wrong layout, missing element, style issue | Check the component JSX and CSS classes |
+| **State bug** | Stale data, wrong values, not updating | Trace the state from source to display |
+| **Routing bug** | Wrong page, redirect loop, 404 on valid route | Check App.tsx routes and navigation calls |
+| **Auth bug** | Can't sign in, session lost, wrong permissions | Check AuthContext and Supabase auth config |
+| **Data bug** | Wrong data displayed, missing data, save fails | Check service layer and Supabase query |
+| **Type error** | TypeScript error, runtime type mismatch | Check type definitions and data shapes |
+| **Build error** | Won't compile, import errors | Check imports, dependency versions |
+| **Race condition** | Works sometimes, fails sometimes | Check async operations and loading states |
+
+### STEP 3: Trace the Data Flow
+
+Starting from where the bug manifests, trace backwards:
+
+```
+DISPLAY (what the user sees)
+    ↑
+COMPONENT (what renders it)
+    ↑
+STATE/PROPS (where the data comes from)
+    ↑
+HOOK/CONTEXT (where state is managed)
+    ↑
+SERVICE FUNCTION (where data is fetched/mutated)
+    ↑
+SUPABASE/API (the actual data source)
+```
+
+Read each file in this chain. Identify where the expected data diverges from actual data.
+
+### STEP 4: Read Before You Write
+
+**MANDATORY:** Read every file involved in the bug BEFORE making any changes.
+
+For each file:
+1. Read it completely
+2. Understand what it's supposed to do
+3. Note anything suspicious
+4. Move to the next file
+
+Do NOT edit a file until you've read ALL files in the chain.
+
+### STEP 5: Identify the Root Cause
+
+State the root cause clearly before writing any fix:
+
+```
+ROOT CAUSE: [One sentence describing WHY the bug exists]
+LOCATION: [File path and line number(s)]
+WHY IT WENT WRONG: [The mistake that was made]
+```
+
+**Common root causes by type:**
+
+**UI bugs:**
+- Wrong Tailwind class (typo, missing responsive prefix)
+- Conditional rendering logic inverted (`!condition` instead of `condition`)
+- Missing key prop in `.map()` causing stale renders
+- Z-index conflict (modal behind overlay)
+
+**State bugs:**
+- Setting state but not re-rendering (mutating object instead of creating new one)
+- useEffect dependency array wrong (missing dep = stale closure)
+- State update in wrong lifecycle phase
+- Race condition between multiple async state updates
+
+**Data bugs:**
+- Column name mismatch between TypeScript type and Supabase table
+- `.single()` on a query that returns 0 or multiple rows
+- Missing `.select()` after `.insert()` / `.update()` (returns no data)
+- RLS policy blocking the query silently (returns empty, not error)
+- Forgetting `user_id` filter (getting all users' data or empty set)
+
+**Auth bugs:**
+- Redirect URL not in Supabase allowed list
+- Checking `user` before auth state is loaded (`loading` not checked)
+- Token refresh failing silently
+- Supabase client created with wrong credentials
+
+### STEP 6: Write the Fix
+
+Now — and only now — write the fix.
+
+**Rules for the fix:**
+1. Fix ONLY the root cause. Do not refactor surrounding code.
+2. Do not add "preventive" fixes for bugs that don't exist.
+3. If the fix requires changing multiple files, list all files first.
+4. Make the smallest change that correctly fixes the bug.
+5. If you're not sure the fix is right, say so.
+
+### STEP 7: Verify the Fix
+
+1. Reproduce the original bug steps — it should now work correctly
+2. `npm run build` — zero TypeScript errors
+3. Open DevTools Console — zero new errors
+4. Test adjacent functionality — make sure you didn't break something nearby
+5. Test the happy path AND edge cases:
+   - Empty state (no data)
+   - Error state (what if the network fails)
+   - Loading state
+   - Mobile layout
+   - Dark mode
+
+### STEP 8: Explain the Fix
+
+Tell me in plain language:
+1. What was broken
+2. Why it was broken (root cause)
+3. What you changed (specific files and lines)
+4. Why this fix is correct
+5. Anything I should watch out for
+
+---
+
+## SECTION 3: COMMON BUG PATTERNS AND QUICK FIXES
+
+Use this as a reference. If the bug matches a pattern, the fix is often fast.
+
+### "Data shows for a split second then disappears"
+**Root cause:** Component re-renders and re-fetches, or auth state changes triggering a re-mount.
+**Fix:** Check useEffect dependencies. Check if the component unmounts and remounts.
+
+### "It works locally but not after deploy"
+**Root cause:** Environment variables not set in production, or routing issue with SPA.
+**Fix:** Check that VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are set in deployment env. Add `_redirects` file for Netlify or `vercel.json` for Vercel with SPA routing.
+
+### "White screen / blank page"
+**Root cause:** JavaScript error crashing React before anything renders.
+**Fix:** Check browser console for the error. Common: missing import, undefined variable, JSON parse error.
+
+### "Login works but I get redirected back to login"
+**Root cause:** Auth state not loading fast enough — ProtectedRoute redirects before session is checked.
+**Fix:** Ensure ProtectedRoute checks `loading` state and shows spinner while auth is initializing.
+
+### "Form submits but data doesn't appear in the list"
+**Root cause:** List page fetches data on mount but doesn't refetch after creation. Or the create function doesn't return the created item.
+**Fix:** After navigating back to list, the list should refetch. Use a state trigger or query invalidation.
+
+### "Everything works but it's slow"
+**Root cause:** Fetching too much data, no pagination, or multiple unnecessary re-renders.
+**Fix:** Add `.limit()` to Supabase queries. Check for missing `useMemo`/`useCallback` on expensive operations. Check if parent component re-renders causing all children to re-render.
+
+### "Dark mode looks broken on one page"
+**Root cause:** Hardcoded colors instead of design token CSS variables.
+**Fix:** Search the file for hex values (`#FFFFFF`, `#000000`, etc.) and replace with token classes (`text-text-primary`, `bg-surface-base`, etc.).
+
+### "Mobile layout is broken"
+**Root cause:** Fixed widths, missing responsive classes, or overflow.
+**Fix:** Check for `w-[Xpx]` without responsive variants. Check for `overflow-hidden` missing on containers. Ensure grid uses `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3`.
+
+### "Supabase returns empty array instead of error"
+**Root cause:** RLS policy is blocking the query. Supabase returns empty results (not errors) when RLS blocks.
+**Fix:** Check RLS policies in Supabase Dashboard. Verify the user_id matches. Test the query in Supabase SQL editor with the user's UUID.
+
+### "TypeScript error but the code looks right"
+**Root cause:** Type definition doesn't match actual data shape from Supabase.
+**Fix:** Check `src/types/supabase.ts` and `src/types/index.ts`. Regenerate types with `npx supabase gen types typescript` if available.
+
+---
+
+## SECTION 4: MULTIPLE BUGS
+
+If there are multiple bugs, fix them ONE AT A TIME:
+
+1. Pick the most fundamental bug first (auth > data > UI)
+2. Follow the full diagnostic protocol for that one bug
+3. Verify the fix
+4. Commit: `git commit -m "fix: [describe what was fixed]"`
+5. Move to the next bug
+6. Repeat
+
+**Never try to fix multiple bugs in one pass.** You'll create interactions between fixes that are impossible to debug.
+
+---
+
+## COMMIT
+
+After each bug fix:
+
+```bash
+git add -A
+git commit -m "fix: [describe the fix in plain language — what was broken and why]"
+```
+
+---
+
+## --- END PROMPT ---
+
+
+
+================================================================================
+09-feature-add.md - MODULE 09: FEATURE ADD PROMPT
+================================================================================
+
+# MODULE 09: FEATURE ADD PROMPT
+
+## Adding Features to an Existing App
+
+**What this does:** A repeatable prompt for adding any new feature to an app that's already built. Whether it's a new entity, a new page, an integration, a filter system, export functionality — this prompt ensures the new feature follows the existing patterns instead of creating an inconsistent mess.
+
+**When to use:** Any time you want to add something to a working app. This is the prompt you'll use the most after the initial build.
+
+---
+
+## --- START PROMPT ---
+
+## TASK: Add a New Feature to This Existing App
+
+You are adding a feature to an existing, working application. Your #1 priority is **consistency with what already exists.** Do not introduce new patterns, new libraries, new file structures, or new conventions. Match what's already there.
+
+---
+
+## SECTION 1: FEATURE DESCRIPTION [FILL THIS IN]
+
+**What I want to add:**
+[Describe the feature in plain language. Be specific about what the user should be able to do.]
+
+**Where it fits in the app:**
+[New page? New section on existing page? New button? New modal? Sidebar item?]
+
+**What data does it need?**
+[New database table? New fields on existing table? No new data? Uses existing data differently?]
+
+**Who can access it?**
+[All users / Pro only / Admin only / Public (no auth)]
+
+---
+
+## SECTION 2: PRE-FLIGHT CHECKLIST (DO THIS FIRST)
+
+Before writing a single line of code, research the existing codebase:
+
+### 2A: Understand the Architecture
+
+Read and list the patterns used in:
+
+1. **File structure** — Where do pages go? Components? Hooks? Services?
+2. **Routing** — How are routes defined in App.tsx? What's the URL pattern?
+3. **Data fetching** — How do existing pages fetch data? Direct Supabase calls or service layer?
+4. **State management** — React Context? Local state? What pattern?
+5. **Component library** — What reusable components exist in `components/ui/`?
+6. **Styling** — What design tokens are used? What's the card/button/input pattern?
+7. **Error handling** — How do existing pages handle errors? Toast? Inline?
+8. **Loading states** — Skeleton? Spinner? What pattern?
+
+**List each pattern with the file that exemplifies it.** This is your reference for building the new feature.
+
+### 2B: Check for Conflicts
+
+- Will this feature affect any existing routes?
+- Will it modify any shared components?
+- Does it need new dependencies? (If yes, justify why an existing dependency can't do it)
+- Does it need new database tables? (If yes, we follow Module 03 patterns)
+- Does it conflict with any existing feature?
+
+### 2C: Plan the Changes
+
+List every file you'll create or modify:
+
+```
+CREATE:
+- src/pages/NewFeaturePage.tsx
+- src/components/NewFeature/FeatureCard.tsx
+- ...
+
+MODIFY:
+- src/App.tsx (add route)
+- src/components/Sidebar.tsx (add nav link)
+- src/services/database.ts (add service functions)
+- src/types/index.ts (add types)
+- ...
+```
+
+**Tell me this plan before you start coding.** I want to approve the approach.
+
+---
+
+## SECTION 3: IMPLEMENTATION RULES
+
+### Rule 1: Match Existing Patterns EXACTLY
+
+If existing pages fetch data like this:
+```typescript
+const [items, setItems] = useState<Item[]>([])
+const [loading, setLoading] = useState(true)
+
+useEffect(() => {
+  getItems(user.id).then(setItems).finally(() => setLoading(false))
+}, [user])
+```
+
+Then your new page fetches data the SAME way. Not with React Query. Not with SWR. Not with a custom hook (unless custom hooks already exist). The same way.
+
+### Rule 2: Use Existing Components
+
+Check `src/components/ui/` before building anything new:
+
+- Need a modal? Use `Modal.tsx`
+- Need a confirmation? Use `ConfirmModal.tsx`
+- Need a button? Use `Button.tsx`
+- Need a card? Use `Card.tsx`
+- Need loading states? Use `Skeleton.tsx`
+- Need empty state? Use `EmptyState.tsx`
+- Need to show a toast? Use `useToast()` hook
+
+**NEVER** recreate a component that already exists, even if you'd make it "slightly different." Use what's there.
+
+### Rule 3: Follow the CRUD Pattern (If Applicable)
+
+If the feature involves creating/viewing/editing/deleting something, follow the exact flow from Module 05:
+
+```
+List Page → Detail Page → Create Page → Edit Page
+```
+
+Don't combine these. Don't skip the detail page. Don't make create and edit the same component.
+
+### Rule 4: Database Changes Follow Module 03
+
+If the feature needs new tables:
+1. Write the SQL (CREATE TABLE, RLS policies, triggers)
+2. Print it for me to run in Supabase SQL Editor
+3. Update `src/types/supabase.ts` and `src/types/index.ts`
+4. Add service functions to `src/services/database.ts`
+
+### Rule 5: No New Dependencies Without Justification
+
+If you think a new npm package is needed, you must:
+1. Explain what it does
+2. Explain why the feature can't be built without it
+3. Confirm it's well-maintained (>1000 GitHub stars, updated within 6 months)
+4. Get my approval before installing
+
+### Rule 6: Mobile First
+
+New UI must work on mobile (375px), tablet (768px), and desktop (1280px).
+
+### Rule 7: Dark Mode
+
+New UI must work in both light and dark mode. Use design token classes, never hardcoded colors.
+
+---
+
+## SECTION 4: IMPLEMENTATION ORDER
+
+Build the feature in this order:
+
+1. **Types** — Add interfaces to `types/index.ts`
+2. **Database** — SQL + service functions (if needed)
+3. **Core logic** — Hooks, context (if needed)
+4. **UI components** — Feature-specific components
+5. **Pages** — The actual pages
+6. **Routing** — Add to App.tsx
+7. **Navigation** — Add to Sidebar, update Dashboard
+8. **Polish** — Loading states, error states, empty states, hover effects
+9. **Verify** — Build check, console check, responsive check, dark mode check
+
+---
+
+## SECTION 5: VERIFY
+
+1. `npm run build` — zero errors
+2. `npm run dev` — test the new feature end-to-end
+3. Test existing features — make sure nothing broke
+4. DevTools Console — zero new errors
+5. Mobile layout — new pages work at 375px
+6. Dark mode — new pages look correct
+
+---
+
+## COMMIT
+
+```bash
+git add -A
+git commit -m "feat: add [feature name] — [brief description of what it does]"
+```
+
+---
+
+## --- END PROMPT ---
+
+
+
+================================================================================
+10-debug-protocol.md - MODULE 10: DEEP DEBUG PROTOCOL
+================================================================================
+
+# MODULE 10: DEEP DEBUG PROTOCOL
+
+## When the Bug Fix Module Isn't Enough
+
+**What this does:** A deep investigation protocol for bugs that are hard to reproduce, intermittent, or deeply architectural. Module 08 (Bug Fix) handles straightforward bugs. This module is for when you've been going in circles and nothing makes sense.
+
+**When to use:** You've tried fixing the bug and failed. Or the bug keeps coming back. Or you don't even understand what's causing it.
+
+**The difference from Module 08:** Module 08 follows a linear diagnostic path. This module is a full investigation — gathering evidence, forming hypotheses, testing them, and ruling things out systematically.
+
+---
+
+## --- START PROMPT ---
+
+## TASK: Deep Investigation — Something Is Broken and I Can't Figure Out Why
+
+Do NOT try to fix anything yet. Your only job is to investigate, understand, and explain. I'll tell you when to fix.
+
+---
+
+## SECTION 1: THE PROBLEM [FILL THIS IN]
+
+**What's wrong (in plain language):**
+[Describe what you're experiencing]
+
+**What I've already tried:**
+[List any fixes you've already attempted]
+
+**How often does it happen?**
+[Every time / Sometimes / Only after X / Randomly]
+
+**When did it start?**
+[After a specific change? After updating something? Always been this way? Not sure?]
+
+---
+
+## SECTION 2: EVIDENCE GATHERING (DO ALL OF THESE)
+
+### 2A: Collect All Error Messages
+
+1. Open the app in the browser
+2. Open DevTools → Console tab → Clear console → Reproduce the bug
+3. Copy EVERY error and warning (even ones that seem unrelated)
+4. Open DevTools → Network tab → Filter by errors (red) → Note failed requests
+5. Check the terminal running `npm run dev` → Copy any errors there
+6. Run `npm run build` → Copy any TypeScript errors
+
+**Report ALL of this to me before proceeding.**
+
+### 2B: Map the Code Path
+
+Starting from the user action that triggers the bug, trace through every file involved:
+
+```
+USER ACTION: [click button / navigate to page / submit form / etc.]
+    │
+    ├── Component: [file:line] — What does the event handler do?
+    │       │
+    │       ├── Calls: [function name in service/hook]
+    │       │       │
+    │       │       ├── Calls: [Supabase query / API call]
+    │       │       │       │
+    │       │       │       └── Returns: [what comes back? check the actual data]
+    │       │       │
+    │       │       └── Returns: [what does the service return to the component?]
+    │       │
+    │       └── Updates state: [what state changes? does it trigger a re-render?]
+    │
+    └── Re-render: [what does the component display after state update?]
+```
+
+Read EVERY file in this chain. Write down what each one does.
+
+### 2C: Check Recent Changes
+
+```bash
+git log --oneline -20
+git diff HEAD~5
+```
+
+Did a recent commit introduce the bug? If so, what changed?
+
+### 2D: Check Environment
+
+- Is `.env.local` present with correct Supabase credentials?
+- Is the Supabase project accessible (check Dashboard)?
+- Are RLS policies correct (check in Supabase Dashboard → Authentication → Policies)?
+- Is the auth session valid (check Supabase Dashboard → Authentication → Users)?
+- Are there any browser extensions interfering?
+
+---
+
+## SECTION 3: HYPOTHESIS TESTING
+
+Based on the evidence, form 2-3 hypotheses about what's wrong.
+
+For each hypothesis:
+
+### Hypothesis 1: [Your theory]
+
+**Evidence supporting this:**
+- [Evidence point 1]
+- [Evidence point 2]
+
+**Evidence against this:**
+- [Evidence point 1]
+
+**Test:** [How to confirm or rule this out — be specific]
+
+**Result:** [After testing — confirmed or ruled out]
+
+### Hypothesis 2: [Alternative theory]
+
+[Same structure]
+
+### Hypothesis 3: [Third possibility]
+
+[Same structure]
+
+---
+
+## SECTION 4: ISOLATION TECHNIQUES
+
+If hypotheses aren't conclusive, isolate the problem:
+
+### Technique 1: Binary Search
+
+If unsure which change broke it:
+```bash
+# Find the last known working commit
+git log --oneline -20
+
+# Check out the midpoint
+git stash  # save current changes
+git checkout [midpoint-commit]
+npm run dev  # test — is it broken here?
+
+# If broken: bug is in older commits, test earlier midpoint
+# If works: bug is in newer commits, test later midpoint
+# Repeat until you find the exact commit that broke it
+
+git checkout main  # return to latest
+git stash pop  # restore changes
+```
+
+### Technique 2: Minimal Reproduction
+
+Create the simplest possible version that reproduces the bug:
+
+1. Comment out everything except the broken feature
+2. Hardcode data instead of fetching it
+3. Remove auth, remove layout, remove everything non-essential
+4. Does the bug still happen with the bare minimum?
+5. Add things back one at a time until the bug appears — that's the culprit
+
+### Technique 3: Console Instrumentation
+
+Temporarily add strategic console.logs (we'll remove them after):
+
+```typescript
+console.log('[DEBUG] Component mounted, user:', user?.id)
+console.log('[DEBUG] Fetching data...')
+console.log('[DEBUG] Data received:', data?.length, 'items')
+console.log('[DEBUG] State updated, rendering with:', items.length)
+```
+
+Place them at every step in the data flow chain. Watch the console to see where things go wrong.
+
+### Technique 4: Network Inspection
+
+For data bugs:
+1. Open DevTools → Network tab
+2. Find the Supabase request
+3. Click it → check the Request (what was sent) and Response (what came back)
+4. Is the request correct? Are query params right?
+5. Is the response what you expect? Is it empty? Does it have an error?
+
+---
+
+## SECTION 5: REPORT YOUR FINDINGS
+
+After investigation, give me a clear report:
+
+```
+INVESTIGATION SUMMARY
+=====================
+
+BUG: [One-sentence description]
+
+ROOT CAUSE: [What is actually wrong and why]
+
+EVIDENCE:
+1. [Key finding 1]
+2. [Key finding 2]
+3. [Key finding 3]
+
+LOCATION:
+- [File:line — what's wrong here]
+- [File:line — related issue]
+
+RECOMMENDED FIX:
+[Describe the fix in plain language]
+
+RISK:
+[What could go wrong with this fix? What else might it affect?]
+
+CONFIDENCE: [High / Medium / Low]
+[If low, explain what you're still unsure about]
+```
+
+---
+
+## SECTION 6: FIX (ONLY AFTER APPROVAL)
+
+Wait for my approval before fixing. Then:
+
+1. Make the minimum change that fixes the root cause
+2. `npm run build` — zero errors
+3. Test the original reproduction steps — bug is gone
+4. Test adjacent features — nothing else broke
+5. Remove any console.log statements you added for debugging
+6. Commit with a clear message explaining the root cause
+
+```bash
+git add -A
+git commit -m "fix: [what was broken] — caused by [root cause]"
+```
+
+---
+
+## --- END PROMPT ---
+
+
+
+================================================================================
+11-clean-room.md - MODULE 11: CLEAN ROOM / REVERSE ENGINEERING PROMPT
+================================================================================
+
+# MODULE 11: CLEAN ROOM / REVERSE ENGINEERING PROMPT
+
+## Rebuild an Existing App's Functionality in Your Stack
+
+**What this does:** When you find an app or website that does exactly what you want, this module helps you analyze its functionality and rebuild it from scratch using your stack (Claude Code + Supabase + React). This is a clean room approach — you study WHAT it does, not HOW it's coded, and build your own implementation.
+
+**When to use:**
+- You see an app and want to build something similar
+- You want to migrate from one tech stack to another
+- You're studying a competitor and want to build a better version
+- You have an old app and want to rebuild it modern
+
+**Legal note:** Clean room reverse engineering studies the external behavior and functionality, not the source code. You're building an original implementation inspired by functionality, which is standard industry practice.
+
+---
+
+## --- START PROMPT ---
+
+## TASK: Analyze an Existing App and Build My Own Version
+
+I want to study an existing app's functionality and build my own version using our standard stack (Supabase + React + TypeScript + Tailwind). This is a clean room approach — analyze WHAT it does, then build it from scratch.
+
+---
+
+## SECTION 1: THE APP TO STUDY [FILL THIS IN]
+
+**App name or URL:** [Name or link]
+
+**What it does (in your words):**
+[Describe the main purpose in 2-3 sentences]
+
+**What I love about it:**
+[What specific features or UX patterns do you want to recreate?]
+
+**What I'd change:**
+[Anything you want to do differently?]
+
+**Screenshots available?** [Yes — I'll share them / No — I'll describe it]
+
+---
+
+## SECTION 2: FUNCTIONAL ANALYSIS
+
+For the app described above, break down its functionality into these categories:
+
+### 2A: Core User Actions
+
+List every distinct action a user can take, organized by importance:
+
+**Must Have (core functionality — the app is useless without these):**
+1. [Action — e.g., "Create a new project"]
+2. [Action — e.g., "Add tasks to a project"]
+3. [Action — e.g., "Mark tasks complete"]
+
+**Should Have (important but not critical for MVP):**
+1. [Action — e.g., "Filter tasks by status"]
+2. [Action — e.g., "Drag to reorder tasks"]
+
+**Nice to Have (polish — add later):**
+1. [Action — e.g., "Keyboard shortcuts"]
+2. [Action — e.g., "Export to CSV"]
+
+### 2B: Data Model
+
+What "things" (entities) does the app manage?
+
+For each entity:
+- What fields does it have?
+- How does it relate to other entities?
+- Who owns it? (per-user or shared)
+- How is it sorted/organized?
+
+```
+Entity: [Name]
+  Fields: [list]
+  Belongs to: [user / other entity]
+  Has many: [child entities]
+  Sorted by: [default ordering]
+```
+
+### 2C: Page Map
+
+What screens/pages exist?
+
+```
+PUBLIC:
+  / — Landing page
+  /login — Sign in
+  /pricing — (if applicable)
+
+AUTHENTICATED:
+  /dashboard — Main view after login
+  /[entity] — List of [entities]
+  /[entity]/:id — Detail view
+  /[entity]/new — Create new
+  /[entity]/:id/edit — Edit existing
+  /settings — User settings
+  /profile — User profile
+```
+
+### 2D: Key UX Patterns
+
+What notable UX patterns does the app use?
+
+- Navigation: sidebar / top nav / tabs / breadcrumbs?
+- List display: cards / table / list / kanban?
+- Forms: inline editing / modal forms / separate pages?
+- Feedback: toasts / inline messages / modals?
+- Search/filter: search bar / faceted filters / tags?
+- Sorting: dropdown / clickable headers / drag?
+- Real-time updates: yes / no?
+
+---
+
+## SECTION 3: MAP TO OUR STACK
+
+Now translate each element to our standard stack:
+
+| App Feature | Our Implementation |
+|---|---|
+| Authentication | Supabase Auth + Google OAuth (Module 02) |
+| Database | Supabase PostgreSQL + RLS (Module 03) |
+| [Feature X] | [How we'd build it] |
+| [Feature Y] | [How we'd build it] |
+| Real-time updates | Supabase Realtime subscriptions |
+| File uploads (if any) | Supabase Storage |
+| Search | Supabase `.ilike()` or full-text search |
+| Payments (if any) | Stripe + Supabase Edge Functions |
+
+### Data Model Translation
+
+Create the Supabase SQL for each entity identified in 2B. Follow Module 03 patterns exactly (RLS, triggers, indexes).
+
+### Page Map Translation
+
+Map each screen to a React route. Follow Module 05 patterns for CRUD.
+
+---
+
+## SECTION 4: BUILD PLAN
+
+Create a phased build plan:
+
+**Phase 1: Foundation**
+- [ ] Scaffold (Module 01)
+- [ ] Auth (Module 02)
+- [ ] Data layer for core entities (Module 03)
+- [ ] UI Kit (Module 04)
+
+**Phase 2: Core Functionality (Must Have)**
+- [ ] CRUD for Entity 1 (Module 05)
+- [ ] CRUD for Entity 2 (Module 05)
+- [ ] [Core feature specific to this app]
+
+**Phase 3: Important Features (Should Have)**
+- [ ] [Feature 1]
+- [ ] [Feature 2]
+- [ ] Polish pass (Module 06)
+
+**Phase 4: Visual Identity**
+- [ ] Style & theme (Module 07)
+- [ ] Landing page
+
+**Phase 5: Nice to Have**
+- [ ] [Feature 1]
+- [ ] [Feature 2]
+
+**Tell me this plan before starting. I'll prioritize and we'll go phase by phase.**
+
+---
+
+## SECTION 5: WHAT MAKES YOUR VERSION DIFFERENT
+
+For each feature you're rebuilding, note what you want to keep, change, or add:
+
+| Original Feature | Keep / Change / Drop | Your Version |
+|---|---|---|
+| [Feature 1] | Keep | Same functionality |
+| [Feature 2] | Change | [What you'd do differently] |
+| [Feature 3] | Drop | Not needed for my use case |
+| [New Feature] | Add | [Something the original doesn't have] |
+
+---
+
+## SECTION 6: EXECUTE
+
+Execute the build plan phase by phase. For each phase:
+1. Use the appropriate module prompt (01-07)
+2. Verify the phase works before moving to the next
+3. Commit at the end of each phase
+
+---
+
+## --- END PROMPT ---
+
+
+
+================================================================================
+12-prd-generator.md - MODULE 12: PRD GENERATOR PROMPT
+================================================================================
+
+# MODULE 12: PRD GENERATOR PROMPT
+
+## Turn an Idea Into a Structured Product Requirements Document
+
+**What this does:** Takes a rough app idea (even just a sentence) and produces a structured PRD that can feed directly into the build modules (01-07). This replaces the mentor's "Idea Prompt" but goes further — it forces you to make decisions about scope, users, and data before any code is written.
+
+**When to use:** Before starting ANY new app. Before Module 01. This is step zero.
+
+**Why this matters:** The #1 reason vibe-coded apps fail is vague requirements. "Build me a task manager" will produce garbage. "Build me a task manager where freelancers track billable hours per client with weekly invoicing" will produce something useful. This prompt bridges that gap.
+
+---
+
+## --- START PROMPT ---
+
+## TASK: Help Me Turn This Idea Into a Build-Ready PRD
+
+I have an app idea. Help me refine it into a structured document I can use to build it. Ask me questions if my answers are vague. Push back if I'm adding too much scope. The goal is an MVP — the smallest version that's actually useful.
+
+---
+
+## SECTION 1: THE RAW IDEA [FILL THIS IN]
+
+**My idea in one sentence:**
+[Describe it however you want — even a rough sentence is fine]
+
+**Who is this for?**
+[Who would use this? Be as specific as possible. "Everyone" is not an answer.]
+
+**What problem does it solve?**
+[What pain point, annoyance, or need does this address?]
+
+**How do people solve this today?**
+[Spreadsheets? A different app? Pen and paper? They don't?]
+
+**Why would someone use YOUR app instead?**
+[What makes your version better or different?]
+
+---
+
+## SECTION 2: SCOPE RAZOR (CRITICAL)
+
+Before listing features, answer these scope questions:
+
+**What is the ONE thing this app must do perfectly?**
+[One sentence. This is the core. Everything else is secondary.]
+
+**What are you EXPLICITLY not building in v1?**
+[List at least 3 things people might expect but you're cutting from MVP]
+1. NOT building: [feature]
+2. NOT building: [feature]
+3. NOT building: [feature]
+
+**MVP test:** If someone downloaded this app and it only did [the one thing], would they still find it useful?
+- If YES: good scope
+- If NO: you need to add one more core feature, but only one
+
+---
+
+## SECTION 3: USER STORIES
+
+For each feature, write it as a user story:
+
+**"As a [user type], I want to [action], so that [benefit]."**
+
+### Core (Must Have — app doesn't work without these)
+1. As a [user], I want to [action], so that [benefit]
+2. As a [user], I want to [action], so that [benefit]
+3. As a [user], I want to [action], so that [benefit]
+
+### Important (Should Have — significantly improves the experience)
+4. As a [user], I want to [action], so that [benefit]
+5. As a [user], I want to [action], so that [benefit]
+
+### Nice to Have (Add later)
+6. As a [user], I want to [action], so that [benefit]
+
+**Cap it at 5-7 user stories for MVP.** If you have more than 7, you're building too much.
+
+---
+
+## SECTION 4: DATA MODEL
+
+What "things" does the app store? Think in terms of nouns.
+
+For each entity:
+
+```
+ENTITY: [Name] (e.g., "Project", "Recipe", "Workout")
+  FIELDS:
+    - [field_name]: [type] (required/optional) — [brief description]
+    - [field_name]: [type] (required/optional) — [brief description]
+  BELONGS TO: [user / another entity]
+  HAS MANY: [child entities, if any]
+  DEFAULT SORT: [how should a list of these be ordered?]
+```
+
+Common field types:
+- `string` — text (title, name, description)
+- `text` — long text (body, notes, content)
+- `number` — integers or decimals
+- `boolean` — true/false (is_active, is_complete)
+- `enum` — fixed options (status: draft/active/archived)
+- `date` — dates (due_date, start_date)
+- `url` — links
+- `json` — flexible structured data
+
+---
+
+## SECTION 5: PAGE MAP
+
+List every page the app needs:
+
+```
+PUBLIC (no login required):
+  /                — Landing page (what the app is, CTA to sign up)
+  /login           — Sign in with Google
+
+AUTHENTICATED (login required):
+  /dashboard       — Main view after login (summary + quick actions)
+  /[entities]      — List all [entities]
+  /[entities]/new  — Create a new [entity]
+  /[entities]/:id  — View a [entity] (read-only detail)
+  /[entities]/:id/edit — Edit a [entity]
+  /profile         — User profile + account settings
+
+ADMIN (if applicable):
+  /admin           — Admin dashboard
+```
+
+For each page, note:
+- What data does it show?
+- What actions can the user take?
+- What's the primary CTA?
+
+---
+
+## SECTION 6: KEY DECISIONS
+
+Make these decisions now, not during development:
+
+| Decision | Options | Your Choice |
+|----------|---------|-------------|
+| Auth method | Google only / Email + Google / Magic link | |
+| Data visibility | Private (per-user) / Shared (team) / Public | |
+| Primary list display | Cards / Table / List | |
+| Mobile priority | Mobile-first / Desktop-first / Equal | |
+| Monetization | Free / Freemium / Paid | |
+| Role system | Single role / User+Admin / User+Pro+Admin | |
+| Dark mode | Yes / No / Later | |
+| Real-time updates | Yes (live) / No (manual refresh) | |
+| File uploads | Yes / No | |
+| Notifications | None / In-app toast / Email (later) | |
+
+---
+
+## SECTION 7: OUTPUT — BUILD-READY SPEC
+
+Compile everything above into this format that feeds directly into Modules 01-07:
+
+```markdown
+# [APP_NAME] — Product Requirements Document
+
+## App Identity
+- **Name:** [App name]
+- **One-liner:** [One sentence description]
+- **Target user:** [Specific user persona]
+- **Core problem:** [What it solves]
+
+## Features (for Module 01, Section 2)
+1. [Feature 1 — specific description of what users can do]
+2. [Feature 2]
+3. [Feature 3]
+4. [Feature 4] (if needed)
+5. [Feature 5] (if needed)
+
+## Data Entities (for Module 03)
+[Entity definitions from Section 4]
+
+## Pages (for Module 05)
+[Page map from Section 5]
+
+## Style Direction (for Module 07)
+- Visual feel: [from Section 1 context]
+- Personality: [professional / casual / playful / premium]
+- Color preference: [if any]
+- Inspiration: [apps they admire, if any]
+
+## Out of Scope for v1
+- [Not building X]
+- [Not building Y]
+- [Not building Z]
+```
+
+**This output becomes the input for Module 01 (Scaffold).** The user copies the features into Section 2, the style direction into Section 3, and starts building.
+
+---
+
+## --- END PROMPT ---
+
+
+
+================================================================================
+13-testing-protocol.md - MODULE 13: TESTING PROTOCOL
+================================================================================
+
+# MODULE 13: TESTING PROTOCOL
+
+## Verify Everything Works Before You Ship
+
+**What this does:** A comprehensive testing checklist and automated test setup for your app. This isn't unit-test-every-function testing (overkill for vibe coding). This is "make sure everything actually works and doesn't break when you ship it" testing.
+
+**When to use:**
+- Before showing your app to anyone
+- Before deploying to production
+- After making significant changes
+- When something feels "off" but you can't pinpoint it
+
+**Two levels:**
+1. **Manual Testing Checklist** — Walk through the app like a user (fast, no code)
+2. **Automated Smoke Tests** — Playwright tests that catch regressions (optional, for apps you maintain long-term)
+
+---
+
+## --- START PROMPT ---
+
+## TASK: Test This Application Thoroughly
+
+Run through the complete testing protocol. Report every issue found, categorized by severity.
+
+---
+
+## SECTION 1: PRE-FLIGHT CHECKS
+
+Before testing functionality, verify the basics:
+
+### Build Check
+```bash
+npm run build
+```
+- [ ] Zero TypeScript errors
+- [ ] Zero build warnings
+- [ ] Build completes successfully
+
+### Lint Check (if configured)
+```bash
+npm run lint
+```
+- [ ] Zero lint errors
+- [ ] Zero lint warnings (or only pre-existing ones)
+
+### Dev Server
+```bash
+npm run dev
+```
+- [ ] Starts without errors
+- [ ] No warnings in terminal
+- [ ] Accessible at localhost URL
+
+### Environment
+- [ ] `.env.local` exists with Supabase credentials
+- [ ] Supabase project is accessible (check Dashboard)
+- [ ] At least one test user account exists
+
+---
+
+## SECTION 2: MANUAL TESTING CHECKLIST
+
+Open the app in browser. Open DevTools Console. Clear it. Then test each flow:
+
+### Authentication Flow
+- [ ] Landing page loads without console errors
+- [ ] "Sign In" / "Get Started" button is visible and clickable
+- [ ] Google OAuth popup/redirect works
+- [ ] After sign-in, redirected to Dashboard
+- [ ] User name/avatar appears correctly
+- [ ] Profile page shows correct info
+- [ ] Sign out works — returns to landing
+- [ ] After sign out, `/dashboard` redirects to `/login`
+- [ ] Refresh the page while signed in — session persists
+- [ ] Console: zero errors during entire auth flow
+
+### Navigation Flow
+- [ ] Every sidebar link works
+- [ ] Active page highlighted in sidebar
+- [ ] Back buttons work on every detail/edit page
+- [ ] Browser back button works correctly
+- [ ] Invalid URL shows 404 page
+- [ ] 404 page has link back to home
+
+### CRUD Flow (for EACH entity)
+**Create:**
+- [ ] "New" button visible on list page
+- [ ] Form loads with first input focused
+- [ ] Required fields show validation errors when empty
+- [ ] Submit shows loading state on button
+- [ ] Success: toast appears, redirected to detail page
+- [ ] New item appears in list (navigate back)
+
+**Read (List):**
+- [ ] Items display correctly in cards/list
+- [ ] Dates show relative time (not raw timestamps)
+- [ ] Long titles truncated properly
+- [ ] Long descriptions truncated (line-clamp)
+- [ ] Search filters results correctly
+- [ ] Empty search shows "no results" message
+- [ ] Clear search shows all items
+- [ ] Pagination works (if > 12 items)
+
+**Read (Detail):**
+- [ ] All fields display correctly
+- [ ] Null/empty fields show "—" not "null"
+- [ ] Dates formatted as full date
+- [ ] Edit button navigates to edit form
+- [ ] Delete button opens ConfirmModal
+
+**Update:**
+- [ ] Edit form pre-filled with current data
+- [ ] Changes are saved correctly
+- [ ] Success: toast + redirect to detail with updated data
+- [ ] Cancel returns to detail (not list) without saving
+
+**Delete:**
+- [ ] ConfirmModal appears with correct message
+- [ ] Cancel closes modal without deleting
+- [ ] Confirm shows loading state
+- [ ] Success: toast + redirect to list, item gone
+- [ ] Cannot delete an item that doesn't exist (handle gracefully)
+
+### UI Component Testing
+- [ ] Toast: success, error, info types all display correctly
+- [ ] Toast: auto-dismisses after ~4 seconds
+- [ ] Toast: dismiss button works
+- [ ] Modal: Escape key closes
+- [ ] Modal: clicking backdrop closes (if enabled)
+- [ ] Modal: focus stays inside modal (tab doesn't escape)
+- [ ] Buttons: loading state works (spinner + disabled)
+- [ ] Skeleton: shows during loading, replaced by real content
+- [ ] EmptyState: shows when lists are empty, with working CTA
+
+### Error Handling
+- [ ] Turn off WiFi → "You're offline" banner appears
+- [ ] Turn WiFi back on → banner disappears
+- [ ] Failed data fetch shows error with "Try Again" button
+- [ ] "Try Again" actually retries
+- [ ] Form submission with network error shows error toast, keeps form data
+
+### Responsive Design
+Test at each breakpoint (resize browser window):
+
+**Mobile (375px):**
+- [ ] No horizontal scroll on any page
+- [ ] Sidebar hidden, hamburger menu works
+- [ ] Cards stack vertically
+- [ ] Buttons full-width where appropriate
+- [ ] Text readable (16px minimum body text)
+- [ ] Touch targets at least 44x44px
+- [ ] Forms usable — inputs not cut off
+
+**Tablet (768px):**
+- [ ] Layout adapts (2-column grids)
+- [ ] Sidebar may or may not show (either is fine)
+
+**Desktop (1280px):**
+- [ ] Sidebar visible
+- [ ] Multi-column card grids
+- [ ] Comfortable spacing
+
+### Dark Mode
+- [ ] Toggle works
+- [ ] Every page looks correct in dark mode
+- [ ] No white/light backgrounds leaking through
+- [ ] Text is readable against dark backgrounds
+- [ ] Brand color still looks good on dark
+- [ ] Cards, modals, inputs all have dark variants
+- [ ] Preference saved — refresh keeps the mode
+
+### Console Audit
+- [ ] Navigate through EVERY page
+- [ ] Perform EVERY action
+- [ ] Zero `console.log` output
+- [ ] Zero React warnings
+- [ ] Zero TypeScript runtime errors
+- [ ] Zero 404 network requests
+- [ ] Zero failed API calls (other than intentional error testing)
+
+---
+
+## SECTION 3: SEVERITY CLASSIFICATION
+
+For every issue found, classify it:
+
+| Severity | Definition | Example |
+|----------|-----------|---------|
+| **P0 — Blocker** | App is broken, can't do the core thing | Can't sign in, data doesn't save, white screen |
+| **P1 — Critical** | Major feature broken | Delete doesn't work, search crashes, mobile unusable |
+| **P2 — Major** | Feature works but poorly | Slow load, missing loading state, bad error message |
+| **P3 — Minor** | Cosmetic or edge case | Alignment off, dark mode color wrong, rare edge case |
+| **P4 — Nit** | Polish | Animation missing, hover state missing, date format wrong |
+
+### Issue Report Format
+
+For each issue:
+
+```
+[P1] Title of the issue
+  Page: /dashboard
+  Steps: 1. Click X  2. See Y
+  Expected: Z
+  Actual: W
+  Console error: (if any)
+```
+
+---
+
+## SECTION 4: AUTOMATED SMOKE TESTS (OPTIONAL)
+
+For apps you'll maintain long-term, add Playwright tests that catch regressions.
+
+### Setup
+
+```bash
+npm install -D @playwright/test
+npx playwright install chromium
+```
+
+**playwright.config.ts:**
+```typescript
+import { defineConfig } from '@playwright/test'
+
+export default defineConfig({
+  testDir: './tests',
+  use: {
+    baseURL: 'http://localhost:5173',
+    screenshot: 'only-on-failure',
+  },
+  webServer: {
+    command: 'npm run dev',
+    port: 5173,
+    reuseExistingServer: true,
+  },
+})
+```
+
+### Core Smoke Tests
+
+**tests/smoke.spec.ts:**
+
+```typescript
+import { test, expect } from '@playwright/test'
+
+test.describe('Smoke Tests', () => {
+  test('landing page loads', async ({ page }) => {
+    await page.goto('/')
+    // Check that the page has content (not a white screen)
+    await expect(page.locator('body')).not.toBeEmpty()
+    // Check for console errors
+    const errors: string[] = []
+    page.on('console', msg => {
+      if (msg.type() === 'error') errors.push(msg.text())
+    })
+    await page.waitForTimeout(2000)
+    expect(errors).toHaveLength(0)
+  })
+
+  test('login page loads', async ({ page }) => {
+    await page.goto('/login')
+    await expect(page.locator('body')).not.toBeEmpty()
+  })
+
+  test('404 page shows for invalid routes', async ({ page }) => {
+    await page.goto('/this-page-does-not-exist')
+    await expect(page.locator('text=404')).toBeVisible()
+  })
+
+  test('unauthenticated user redirected from protected routes', async ({ page }) => {
+    await page.goto('/dashboard')
+    // Should redirect to login
+    await expect(page).toHaveURL(/login/)
+  })
+
+  test('no console errors on key pages', async ({ page }) => {
+    const errors: string[] = []
+    page.on('console', msg => {
+      if (msg.type() === 'error') errors.push(msg.text())
+    })
+
+    const pages = ['/', '/login']
+    for (const url of pages) {
+      await page.goto(url)
+      await page.waitForTimeout(1000)
+    }
+
+    expect(errors).toHaveLength(0)
+  })
+
+  test('responsive: no horizontal scroll on mobile', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 })
+    await page.goto('/')
+    const body = page.locator('body')
+    const scrollWidth = await body.evaluate(el => el.scrollWidth)
+    const clientWidth = await body.evaluate(el => el.clientWidth)
+    expect(scrollWidth).toBeLessThanOrEqual(clientWidth + 1) // 1px tolerance
+  })
+})
+```
+
+### Run Tests
+
+```bash
+npx playwright test
+npx playwright test --ui  # with visual UI
+```
+
+**Add to package.json scripts:**
+```json
+{
+  "scripts": {
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
+  }
+}
+```
+
+---
+
+## SECTION 5: PRE-DEPLOY CHECKLIST
+
+Final checks before deploying to production:
+
+- [ ] `npm run build` passes
+- [ ] All P0 and P1 issues fixed
+- [ ] Smoke tests pass (if set up)
+- [ ] Environment variables documented in `.env.example`
+- [ ] Production Supabase URL (not dev) ready for deploy config
+- [ ] Redirect URL added in Supabase for production domain
+- [ ] SPA routing configured:
+  - **Vercel:** `vercel.json` with `"rewrites": [{"source": "/(.*)", "destination": "/index.html"}]`
+  - **Netlify:** `public/_redirects` with `/* /index.html 200`
+- [ ] Favicon set
+- [ ] Page title set (not "Vite + React + TS")
+- [ ] OpenGraph meta tags (optional but nice for sharing)
+- [ ] One final manual walkthrough of the complete app
+
+---
+
+## SECTION 6: COMMIT
+
+```bash
+git add -A
+git commit -m "test: add testing protocol and Playwright smoke tests"
+```
+
+---
+
+## POST-TESTING: FIX ISSUES
+
+Use Module 08 (Bug Fix) for each issue found, starting with P0 blockers and working down.
+
+---
+
+## --- END PROMPT ---
+
+

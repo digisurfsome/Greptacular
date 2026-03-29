@@ -697,7 +697,7 @@ async def get_cre_summary(project_name: str):
 
 
 @router.get("/context-primer/{project_name}")
-def get_context_primer(project_name: str):
+async def get_context_primer(project_name: str):
     """Read the context primer from .agent/knowledge/context-primer.md."""
     project_dir = _resolve_project(project_name)
     primer_path = project_dir / ".agent" / "knowledge" / "context-primer.md"

@@ -1,0 +1,247 @@
+# MODULE 08: BUG FIX PROTOCOL
+
+## Systematic Bug Diagnosis and Repair
+
+**What this does:** A reusable prompt for fixing bugs in any app you've built. Instead of saying "fix this," this prompt forces Claude Code to follow a systematic diagnosis process that actually finds root causes instead of slapping band-aids on symptoms.
+
+**When to use:** Any time something is broken, behaving unexpectedly, or throwing errors.
+
+**This is NOT a build-once module.** You'll use this prompt over and over, every time you have a bug.
+
+---
+
+## --- START PROMPT ---
+
+## TASK: Diagnose and Fix a Bug
+
+Follow this exact diagnostic process. Do NOT jump to a fix before completing the diagnosis. Skipping steps is how bugs get "fixed" in a way that creates two new bugs.
+
+---
+
+## SECTION 1: BUG REPORT [FILL THIS IN]
+
+**What should happen:**
+[Describe the expected behavior]
+
+**What actually happens:**
+[Describe the actual behavior — be specific]
+
+**Steps to reproduce:**
+1. [Step 1]
+2. [Step 2]
+3. [Step 3]
+4. [What goes wrong at this point]
+
+**When did it start?** [Always been broken / After I changed X / After updating Y / Not sure]
+
+**Error messages (if any):**
+[Paste any console errors, terminal errors, or error messages displayed in the UI]
+
+---
+
+## SECTION 2: DIAGNOSTIC PROTOCOL (FOLLOW IN ORDER)
+
+### STEP 1: Reproduce the Bug
+
+Before touching any code, reproduce the bug yourself:
+
+1. Run `npm run dev`
+2. Follow the reproduction steps exactly
+3. Open DevTools Console — note every error and warning
+4. Open DevTools Network tab — note any failed requests (red)
+5. Check the terminal running the dev server — note any server-side errors
+
+**Write down what you observe.** Do NOT start fixing yet.
+
+### STEP 2: Identify the Scope
+
+Determine what type of bug this is:
+
+| Bug Type | Signs | Investigation Path |
+|----------|-------|-------------------|
+| **Render/UI bug** | Wrong layout, missing element, style issue | Check the component JSX and CSS classes |
+| **State bug** | Stale data, wrong values, not updating | Trace the state from source to display |
+| **Routing bug** | Wrong page, redirect loop, 404 on valid route | Check App.tsx routes and navigation calls |
+| **Auth bug** | Can't sign in, session lost, wrong permissions | Check AuthContext and Supabase auth config |
+| **Data bug** | Wrong data displayed, missing data, save fails | Check service layer and Supabase query |
+| **Type error** | TypeScript error, runtime type mismatch | Check type definitions and data shapes |
+| **Build error** | Won't compile, import errors | Check imports, dependency versions |
+| **Race condition** | Works sometimes, fails sometimes | Check async operations and loading states |
+
+### STEP 3: Trace the Data Flow
+
+Starting from where the bug manifests, trace backwards:
+
+```
+DISPLAY (what the user sees)
+    ↑
+COMPONENT (what renders it)
+    ↑
+STATE/PROPS (where the data comes from)
+    ↑
+HOOK/CONTEXT (where state is managed)
+    ↑
+SERVICE FUNCTION (where data is fetched/mutated)
+    ↑
+SUPABASE/API (the actual data source)
+```
+
+Read each file in this chain. Identify where the expected data diverges from actual data.
+
+### STEP 4: Read Before You Write
+
+**MANDATORY:** Read every file involved in the bug BEFORE making any changes.
+
+For each file:
+1. Read it completely
+2. Understand what it's supposed to do
+3. Note anything suspicious
+4. Move to the next file
+
+Do NOT edit a file until you've read ALL files in the chain.
+
+### STEP 5: Identify the Root Cause
+
+State the root cause clearly before writing any fix:
+
+```
+ROOT CAUSE: [One sentence describing WHY the bug exists]
+LOCATION: [File path and line number(s)]
+WHY IT WENT WRONG: [The mistake that was made]
+```
+
+**Common root causes by type:**
+
+**UI bugs:**
+- Wrong Tailwind class (typo, missing responsive prefix)
+- Conditional rendering logic inverted (`!condition` instead of `condition`)
+- Missing key prop in `.map()` causing stale renders
+- Z-index conflict (modal behind overlay)
+
+**State bugs:**
+- Setting state but not re-rendering (mutating object instead of creating new one)
+- useEffect dependency array wrong (missing dep = stale closure)
+- State update in wrong lifecycle phase
+- Race condition between multiple async state updates
+
+**Data bugs:**
+- Column name mismatch between TypeScript type and Supabase table
+- `.single()` on a query that returns 0 or multiple rows
+- Missing `.select()` after `.insert()` / `.update()` (returns no data)
+- RLS policy blocking the query silently (returns empty, not error)
+- Forgetting `user_id` filter (getting all users' data or empty set)
+
+**Auth bugs:**
+- Redirect URL not in Supabase allowed list
+- Checking `user` before auth state is loaded (`loading` not checked)
+- Token refresh failing silently
+- Supabase client created with wrong credentials
+
+### STEP 6: Write the Fix
+
+Now — and only now — write the fix.
+
+**Rules for the fix:**
+1. Fix ONLY the root cause. Do not refactor surrounding code.
+2. Do not add "preventive" fixes for bugs that don't exist.
+3. If the fix requires changing multiple files, list all files first.
+4. Make the smallest change that correctly fixes the bug.
+5. If you're not sure the fix is right, say so.
+
+### STEP 7: Verify the Fix
+
+1. Reproduce the original bug steps — it should now work correctly
+2. `npm run build` — zero TypeScript errors
+3. Open DevTools Console — zero new errors
+4. Test adjacent functionality — make sure you didn't break something nearby
+5. Test the happy path AND edge cases:
+   - Empty state (no data)
+   - Error state (what if the network fails)
+   - Loading state
+   - Mobile layout
+   - Dark mode
+
+### STEP 8: Explain the Fix
+
+Tell me in plain language:
+1. What was broken
+2. Why it was broken (root cause)
+3. What you changed (specific files and lines)
+4. Why this fix is correct
+5. Anything I should watch out for
+
+---
+
+## SECTION 3: COMMON BUG PATTERNS AND QUICK FIXES
+
+Use this as a reference. If the bug matches a pattern, the fix is often fast.
+
+### "Data shows for a split second then disappears"
+**Root cause:** Component re-renders and re-fetches, or auth state changes triggering a re-mount.
+**Fix:** Check useEffect dependencies. Check if the component unmounts and remounts.
+
+### "It works locally but not after deploy"
+**Root cause:** Environment variables not set in production, or routing issue with SPA.
+**Fix:** Check that VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are set in deployment env. Add `_redirects` file for Netlify or `vercel.json` for Vercel with SPA routing.
+
+### "White screen / blank page"
+**Root cause:** JavaScript error crashing React before anything renders.
+**Fix:** Check browser console for the error. Common: missing import, undefined variable, JSON parse error.
+
+### "Login works but I get redirected back to login"
+**Root cause:** Auth state not loading fast enough — ProtectedRoute redirects before session is checked.
+**Fix:** Ensure ProtectedRoute checks `loading` state and shows spinner while auth is initializing.
+
+### "Form submits but data doesn't appear in the list"
+**Root cause:** List page fetches data on mount but doesn't refetch after creation. Or the create function doesn't return the created item.
+**Fix:** After navigating back to list, the list should refetch. Use a state trigger or query invalidation.
+
+### "Everything works but it's slow"
+**Root cause:** Fetching too much data, no pagination, or multiple unnecessary re-renders.
+**Fix:** Add `.limit()` to Supabase queries. Check for missing `useMemo`/`useCallback` on expensive operations. Check if parent component re-renders causing all children to re-render.
+
+### "Dark mode looks broken on one page"
+**Root cause:** Hardcoded colors instead of design token CSS variables.
+**Fix:** Search the file for hex values (`#FFFFFF`, `#000000`, etc.) and replace with token classes (`text-text-primary`, `bg-surface-base`, etc.).
+
+### "Mobile layout is broken"
+**Root cause:** Fixed widths, missing responsive classes, or overflow.
+**Fix:** Check for `w-[Xpx]` without responsive variants. Check for `overflow-hidden` missing on containers. Ensure grid uses `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3`.
+
+### "Supabase returns empty array instead of error"
+**Root cause:** RLS policy is blocking the query. Supabase returns empty results (not errors) when RLS blocks.
+**Fix:** Check RLS policies in Supabase Dashboard. Verify the user_id matches. Test the query in Supabase SQL editor with the user's UUID.
+
+### "TypeScript error but the code looks right"
+**Root cause:** Type definition doesn't match actual data shape from Supabase.
+**Fix:** Check `src/types/supabase.ts` and `src/types/index.ts`. Regenerate types with `npx supabase gen types typescript` if available.
+
+---
+
+## SECTION 4: MULTIPLE BUGS
+
+If there are multiple bugs, fix them ONE AT A TIME:
+
+1. Pick the most fundamental bug first (auth > data > UI)
+2. Follow the full diagnostic protocol for that one bug
+3. Verify the fix
+4. Commit: `git commit -m "fix: [describe what was fixed]"`
+5. Move to the next bug
+6. Repeat
+
+**Never try to fix multiple bugs in one pass.** You'll create interactions between fixes that are impossible to debug.
+
+---
+
+## COMMIT
+
+After each bug fix:
+
+```bash
+git add -A
+git commit -m "fix: [describe the fix in plain language — what was broken and why]"
+```
+
+---
+
+## --- END PROMPT ---

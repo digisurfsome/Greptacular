@@ -374,6 +374,11 @@ class WorkspaceChatSession:
         self.walkie_talkie_queue: asyncio.Queue[str] = asyncio.Queue()
         self.walkie_talkie_enabled: bool = True  # Controlled by comm_check_frequency setting
         self.walkie_talkie_waiting: bool = False  # True when agent output [WAITING] tag
+        # Safety net: messages drained from queue but not yet confirmed delivered.
+        # If the SDK silently ignores the hook's "block" response (e.g. for internal
+        # tool types during sub-agent execution), these messages would be permanently
+        # lost.  We keep them here and re-deliver at the start of the next turn.
+        self._pending_walkie_deliveries: list[str] = []
 
     async def close(self) -> None:
         """Clean up resources and close the Claude client (or Codex/Gemini bridge)."""
@@ -886,6 +891,14 @@ class WorkspaceChatSession:
             # Reset waiting state -- user has responded
             self.walkie_talkie_waiting = False
 
+            # Safety net: keep a copy of these messages.  If the SDK silently
+            # ignores the "block" return (e.g. for internal tool types during
+            # sub-agent execution), the messages would be permanently lost.
+            # We store them in _pending_walkie_deliveries and clear them only
+            # when the agent acknowledges receipt (detected in the response
+            # stream) or when they're re-delivered at the start of the next turn.
+            self._pending_walkie_deliveries.extend(messages)
+
             # Concatenate multiple messages with separators
             if len(messages) == 1:
                 body = messages[0]
@@ -894,8 +907,9 @@ class WorkspaceChatSession:
                 body = "\n---\n".join(parts)
 
             logger.info(
-                "Walkie-talkie: delivering %d message(s) to agent in session %s",
-                len(messages), self.session_id,
+                "Walkie-talkie: delivering %d message(s) to agent in session %s "
+                "(pending_backup=%d)",
+                len(messages), self.session_id, len(self._pending_walkie_deliveries),
             )
 
             # Return the same plain-dict format used by bash_security_hook.
@@ -1678,6 +1692,42 @@ class WorkspaceChatSession:
         if not self.client:
             return
 
+        # ── Walkie-talkie safety net: re-deliver unacknowledged messages ──
+        # If the PreToolUse hook drained messages from the queue but the SDK
+        # silently ignored the "block" return (e.g. for internal tool types
+        # during sub-agent execution), those messages are still in
+        # _pending_walkie_deliveries.  Prepend them to this turn's message
+        # so the agent is guaranteed to see them.
+        if self._pending_walkie_deliveries:
+            undelivered = self._pending_walkie_deliveries.copy()
+            self._pending_walkie_deliveries.clear()
+            # Also drain any new messages that arrived since the last hook fired
+            while True:
+                try:
+                    msg = self.walkie_talkie_queue.get_nowait()
+                    undelivered.append(msg)
+                except asyncio.QueueEmpty:
+                    break
+            if undelivered:
+                if len(undelivered) == 1:
+                    wt_body = undelivered[0]
+                else:
+                    parts = [f"Message {i + 1}: {m}" for i, m in enumerate(undelivered)]
+                    wt_body = "\n---\n".join(parts)
+                logger.info(
+                    "Walkie-talkie safety net: re-delivering %d unacknowledged "
+                    "message(s) at start of new turn in session %s",
+                    len(undelivered), self.session_id,
+                )
+                message = (
+                    f"[WALKIE-TALKIE MESSAGE FROM USER — MISSED DELIVERY]\n\n"
+                    f"{wt_body}\n\n"
+                    f"[END WALKIE-TALKIE MESSAGE]\n\n"
+                    f"Please acknowledge and address these message(s) first, "
+                    f"then respond to the user's latest message below.\n\n"
+                    f"---\n\n{message}"
+                )
+
         # Timeouts — Opus is significantly slower than Sonnet, especially
         # with the 1M context beta.  Use generous limits but don't hang forever.
         # When self.model is None or empty, the default is Opus, so use Opus timeouts.
@@ -1797,6 +1847,22 @@ class WorkspaceChatSession:
                                     )
 
                             yield {"type": "text", "content": text}
+
+                            # Clear walkie-talkie safety net when agent acknowledges
+                            # receipt.  The hook injects "[WALKIE-TALKIE MESSAGE FROM
+                            # USER]" as a tool block reason — when the agent's response
+                            # references it, we know the delivery succeeded and can
+                            # clear the backup copies.
+                            if self._pending_walkie_deliveries and (
+                                "walkie-talkie" in text.lower()
+                                or "walkie talkie" in text.lower()
+                            ):
+                                logger.info(
+                                    "Walkie-talkie: agent acknowledged %d message(s), "
+                                    "clearing pending backup",
+                                    len(self._pending_walkie_deliveries),
+                                )
+                                self._pending_walkie_deliveries.clear()
 
                             # Detect agent-initiated wait signal: [WAITING]...[/WAITING]
                             if "[WAITING]" in full_response and "[/WAITING]" in full_response:

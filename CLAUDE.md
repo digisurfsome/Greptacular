@@ -594,6 +594,36 @@ Alternative providers are configured via the **Settings UI** (gear icon > API Pr
 - `.claude/templates/` - Prompt templates copied to new projects
 - `examples/` - Configuration examples and documentation for security settings
 
+## Page PRDs — MUST READ BEFORE CHANGING ANY PAGE
+
+**Location:** `docs/page-prds/` — organized by page name.
+
+Every AutoForge UI page has its own PRD folder:
+
+| Folder | Page |
+|--------|------|
+| `docs/page-prds/dashboard/` | DashboardPage |
+| `docs/page-prds/workspace/` | WorkspacePage |
+| `docs/page-prds/yt-strategy-lab/` | YTStrategyLabPage |
+| `docs/page-prds/dunkstack/` | DunkStackPage |
+| `docs/page-prds/arena/` | ArenaPage / ArenaChatPage |
+| `docs/page-prds/cli-scripter/` | CliScripterPage |
+| `docs/page-prds/meta-engine/` | MetaEnginePage |
+| `docs/page-prds/monitor/` | MonitorPage |
+| `docs/page-prds/prd-shredder/` | PRDShredderPage |
+| `docs/page-prds/role-library/` | RoleLibraryPage |
+| `docs/page-prds/seo-tools/` | SEOToolsPage |
+| `docs/page-prds/token-budget/` | TokenBudgetPage |
+| `docs/page-prds/tool-runner/` | ToolRunnerPage |
+| `docs/page-prds/component-dashboard/` | ComponentDashboardPage |
+
+### Rules
+
+1. **Before adding features or expanding any page**, check `docs/page-prds/<page-name>/` for existing PRDs. Read them first — they contain context, decisions, and plans.
+2. **When creating a new UI page**, also create a matching folder in `docs/page-prds/` so it has a home for PRDs from day one.
+3. **When writing a PRD for a page improvement**, save it as `docs/page-prds/<page-name>/prd-<feature-name>.md`.
+4. **Full index:** See `docs/page-prds/README.md` for the complete folder map.
+
 ## Key Patterns
 
 ### Prompt Loading Fallback Chain

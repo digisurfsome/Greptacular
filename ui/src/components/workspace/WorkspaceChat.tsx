@@ -266,6 +266,28 @@ export function WorkspaceChat({
     fixedContextMode ?? pendingContextModeProp ?? '200k'
   )
 
+  // Cache the last known context_mode from the database so it persists across
+  // React Query refetch gaps (where conversationDetail is temporarily undefined).
+  // This prevents the badge from flickering to '200k' during invalidation cycles.
+  const [knownContextMode, setKnownContextMode] = useState<'1m' | '200k' | null>(null)
+  const knownConversationIdRef = useRef<number | null>(null)
+
+  // Reset knownContextMode when switching to a different conversation
+  useEffect(() => {
+    const effId = conversationId ?? activeConversationId
+    if (effId !== knownConversationIdRef.current) {
+      knownConversationIdRef.current = effId
+      setKnownContextMode(null)
+    }
+  }, [conversationId, activeConversationId])
+
+  // Persist the DB value whenever conversationDetail loads
+  useEffect(() => {
+    if (conversationDetail?.context_mode) {
+      setKnownContextMode(conversationDetail.context_mode as '1m' | '200k')
+    }
+  }, [conversationDetail?.context_mode])
+
   // Provider-aware model presets (used for read-only display in the header badge).
   const { data: wsProviders } = useWorkspaceProviders()
   const effectiveProvider = providerProp ?? 'claude'
@@ -369,6 +391,14 @@ export function WorkspaceChat({
   // Each turn's cache_read includes all previously cached content, so summing
   // them would massively over-count (e.g. 100K + 200K + 300K = 600K when
   // the actual cache is 300K).
+  //
+  // IMPORTANT: The SDK's ResultMessage.usage is CUMULATIVE across all API
+  // turns in the session (including sub-agent turns). So api_input_tokens
+  // from a result_summary is NOT the current context window fill — it's
+  // the total input across all API calls. For the context bar, we use
+  // cache_read + cache_create as the best proxy for current context window
+  // utilization (these represent the actual cached context state), capped
+  // at the context window size.
   const apiTokenTotals = useMemo(() => {
     let apiInput = 0
     let apiOutput = 0
@@ -387,10 +417,15 @@ export function WorkspaceChat({
         latestInput = e.api_input_tokens ?? 0
       }
     }
-    // currentContext = actual context window utilization right now
-    const currentContext = latestInput + latestCacheRead + latestCacheCreate
+    // currentContext = best estimate of actual context window fill level.
+    // Use cache_read + cache_create as proxy (reflects real cached state).
+    // Cap at context window — the SDK's cumulative input_tokens can exceed
+    // the window when sub-agents or multiple tool-use turns are involved.
+    const ctxWindow = sessionContextMode === '1m' ? 1_000_000 : 200_000
+    const rawContext = latestCacheRead + latestCacheCreate + latestInput
+    const currentContext = Math.min(rawContext, ctxWindow)
     return { apiInput, apiOutput, cacheRead: latestCacheRead, totalCost, currentContext }
-  }, [tokenLog])
+  }, [tokenLog, sessionContextMode])
 
   // ── Context window threshold warnings ──────────────────────────────
   // Inject system messages into the chat when context usage crosses
@@ -462,6 +497,7 @@ export function WorkspaceChat({
     ?? (effectiveProvider === 'claude' ? 'opus' : wsProviders?.[effectiveProvider]?.default_model ?? 'opus')
   const conversationContextMode: '1m' | '200k' = fixedContextMode
     ?? conversationDetail?.context_mode
+    ?? knownContextMode
     ?? pendingContextModeProp
     ?? '200k'
 

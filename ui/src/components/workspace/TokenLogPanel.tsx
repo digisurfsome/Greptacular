@@ -122,7 +122,11 @@ function TokenLogTotals({
       }
     }
 
-    const currentContext = lastInput + lastCacheRead + lastCacheCreate
+    // Cap context at a reasonable max — the SDK's cumulative input_tokens
+    // can exceed the context window when sub-agents or multiple API turns
+    // are involved. Cache read + create is the best proxy for actual fill.
+    const rawContext = lastInput + lastCacheRead + lastCacheCreate
+    const currentContext = Math.min(rawContext, 1_100_000) // slightly over 1M to allow for overhead
     const cacheHitRate = (lastInput + lastCacheRead) > 0
       ? Math.round((lastCacheRead / (lastInput + lastCacheRead)) * 100)
       : 0

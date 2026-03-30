@@ -1148,9 +1148,9 @@ class WorkspaceChatSession:
                 yield {"type": "text", "content": greeting}
 
                 # Yield initial token usage so the client can render the meter
-                total = get_conversation_token_total(self.conversation_id)
+                total = await asyncio.to_thread(get_conversation_token_total, self.conversation_id)
                 from . import workspace_database as db
-                msg_count = db.get_message_count(self.conversation_id)
+                msg_count = await asyncio.to_thread(db.get_message_count, self.conversation_id)
                 yield {
                     "type": "token_usage",
                     "total_tokens": total,
@@ -1167,9 +1167,9 @@ class WorkspaceChatSession:
         else:
             # Resumed conversation -- yield current token totals so the meter
             # shows existing usage immediately, then signal response_done.
-            total = get_conversation_token_total(self.conversation_id)
+            total = await asyncio.to_thread(get_conversation_token_total, self.conversation_id)
             from . import workspace_database as db
-            msg_count = db.get_message_count(self.conversation_id)
+            msg_count = await asyncio.to_thread(db.get_message_count, self.conversation_id)
             yield {
                 "type": "token_usage",
                 "total_tokens": total,
@@ -1285,10 +1285,10 @@ class WorkspaceChatSession:
             greeting = f"Ready ({provider_display}). Working directory: **{self.working_directory}**."
             yield {"type": "text", "content": greeting}
 
-        # Yield token usage
+        # Yield token usage (off event loop)
         assert self.conversation_id is not None
-        total = get_conversation_token_total(self.conversation_id)
-        msg_count = db.get_message_count(self.conversation_id)
+        total = await asyncio.to_thread(get_conversation_token_total, self.conversation_id)
+        msg_count = await asyncio.to_thread(db.get_message_count, self.conversation_id)
         yield {
             "type": "token_usage",
             "total_tokens": total,
@@ -1358,11 +1358,11 @@ class WorkspaceChatSession:
                 yield {"type": "error", "content": f"{self.provider} error: {str(e)}"}
             return
 
-        # Persist assistant message in DB
+        # Persist assistant message in DB (off event loop to avoid blocking WS flush)
         response_text = "".join(full_text)
         if response_text and self.conversation_id:
-            tokens = estimate_tokens(response_text)
-            add_message(self.conversation_id, "assistant", response_text, tokens)
+            tokens = await asyncio.to_thread(estimate_tokens, response_text)
+            await asyncio.to_thread(add_message, self.conversation_id, "assistant", response_text, tokens)
 
         # Persist provider thread/session ID for resume
         thread_id = None
@@ -1381,10 +1381,10 @@ class WorkspaceChatSession:
             except Exception as e:
                 logger.warning("Failed to persist provider_thread_id: %s", e)
 
-        # Yield token usage
+        # Yield token usage (off event loop)
         if self.conversation_id:
-            total = get_conversation_token_total(self.conversation_id)
-            msg_count = db.get_message_count(self.conversation_id)
+            total = await asyncio.to_thread(get_conversation_token_total, self.conversation_id)
+            msg_count = await asyncio.to_thread(db.get_message_count, self.conversation_id)
             yield {
                 "type": "token_usage",
                 "total_tokens": total,
@@ -1431,9 +1431,10 @@ class WorkspaceChatSession:
             yield {"type": "error", "content": "No conversation ID set."}
             return
 
-        # Estimate tokens and store the user message in the global database
-        user_tokens = estimate_tokens(user_message)
-        add_message(self.conversation_id, "user", user_message, user_tokens)
+        # Estimate tokens and store the user message in the global database.
+        # Run off the event loop to prevent blocking WebSocket frame flushing.
+        user_tokens = await asyncio.to_thread(estimate_tokens, user_message)
+        await asyncio.to_thread(add_message, self.conversation_id, "user", user_message, user_tokens)
 
         # For resumed conversations, include full history context in the first message.
         # Uses dynamic token-budget loading: summary first, then recent messages
@@ -1456,8 +1457,8 @@ class WorkspaceChatSession:
             else:
                 from . import workspace_database as db
 
-                # Load the latest summary first
-                latest_summary = db.get_latest_summary(self.conversation_id)
+                # Load the latest summary first (off event loop)
+                latest_summary = await asyncio.to_thread(db.get_latest_summary, self.conversation_id)
                 summary_context = ""
                 summary_tokens = 0
                 if latest_summary:
@@ -1468,8 +1469,9 @@ class WorkspaceChatSession:
                 MESSAGE_TOKEN_BUDGET = self.cost_settings["history_budget"]
                 remaining_budget = MESSAGE_TOKEN_BUDGET - summary_tokens
 
-                # Load messages dynamically up to the budget
-                history_messages, loaded_tokens = db.get_messages_for_context(
+                # Load messages dynamically up to the budget (off event loop)
+                history_messages, loaded_tokens = await asyncio.to_thread(
+                    db.get_messages_for_context,
                     self.conversation_id,
                     token_budget=remaining_budget,
                 )
@@ -1972,10 +1974,13 @@ class WorkspaceChatSession:
                     except Exception as e:
                         logger.warning("Failed to log result_summary: %s", e)
 
-        # Store the complete response with its token estimate
+        # Store the complete response with its token estimate.
+        # Use asyncio.to_thread() for sync DB calls to prevent blocking
+        # the event loop — blocked event loops cause WebSocket frames to
+        # buffer instead of flushing, making responses appear "stuck".
         if full_response and self.conversation_id is not None:
-            response_tokens = estimate_tokens(full_response)
-            add_message(self.conversation_id, "assistant", full_response, response_tokens)
+            response_tokens = await asyncio.to_thread(estimate_tokens, full_response)
+            await asyncio.to_thread(add_message, self.conversation_id, "assistant", full_response, response_tokens)
 
             # Auto-summary DISABLED: was making direct Anthropic API calls
             # (Haiku) using the API key instead of routing through subscription.
@@ -1998,7 +2003,7 @@ class WorkspaceChatSession:
             # Prefer actual API numbers from the ResultMessage when available;
             # fall back to heuristic estimates for backward compatibility.
             from . import workspace_database as db
-            msg_count = db.get_message_count(self.conversation_id)
+            msg_count = await asyncio.to_thread(db.get_message_count, self.conversation_id)
 
             if self._last_api_usage:
                 api = self._last_api_usage
@@ -2018,7 +2023,7 @@ class WorkspaceChatSession:
                     "cost_usd": api["cost_usd"],
                 }
             else:
-                total = get_conversation_token_total(self.conversation_id)
+                total = await asyncio.to_thread(get_conversation_token_total, self.conversation_id)
                 yield {
                     "type": "token_usage",
                     "total_tokens": total,
@@ -2027,9 +2032,9 @@ class WorkspaceChatSession:
                     "model_id": self._resolved_model_id,
                 }
 
-            # Log premium-zone usage for cost tracking
+            # Log premium-zone usage for cost tracking (off event loop)
             try:
-                db.log_premium_usage(self.conversation_id, model=self.model or "opus")
+                await asyncio.to_thread(db.log_premium_usage, self.conversation_id, model=self.model or "opus")
             except Exception as e:
                 logger.warning(f"Failed to log premium usage: {e}")
 

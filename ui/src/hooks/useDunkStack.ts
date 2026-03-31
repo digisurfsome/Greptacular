@@ -148,7 +148,7 @@ function parseCommsFile(content: string, sender: 'human' | 'agent'): CommsEntry[
 // Hook
 // ============================================================================
 
-export function useDunkStack(): UseDunkStackReturn {
+export function useDunkStack(projectName?: string | null): UseDunkStackReturn {
   const [commsLog, setCommsLog] = useState<CommsEntry[]>([])
   const [controlMode, setControlModeState] = useState('idle')
   const [tokenState, setTokenState] = useState<DunkStackTokenState | null>(null)
@@ -162,16 +162,18 @@ export function useDunkStack(): UseDunkStackReturn {
   const wsRef = useRef<WebSocket | null>(null)
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  // Load initial data on mount
+  const pn = projectName ?? undefined
+
+  // Load initial data on mount or project change
   useEffect(() => {
     async function loadInitial() {
       try {
         const [toHuman, fromHuman, control, tokens, cfg] = await Promise.all([
-          dunkstackReadToHuman(),
-          dunkstackReadFromHuman(),
-          dunkstackReadControl(),
-          dunkstackGetTokenState(),
-          dunkstackReadConfig(),
+          dunkstackReadToHuman(pn),
+          dunkstackReadFromHuman(pn),
+          dunkstackReadControl(pn),
+          dunkstackGetTokenState(pn),
+          dunkstackReadConfig(pn),
         ])
 
         // Parse comms into combined log
@@ -195,7 +197,7 @@ export function useDunkStack(): UseDunkStackReturn {
     }
 
     loadInitial()
-  }, [])
+  }, [pn])
 
   // WebSocket connection for real-time updates
   useEffect(() => {
@@ -326,11 +328,14 @@ export function useDunkStack(): UseDunkStackReturn {
               break
 
             case 'model_preset_update':
-              // Model preset changed mid-session — update agent events log
+              // Update token state with new model limit and mode
+              if (msg.model_limit) {
+                setTokenState(prev => prev ? { ...prev, model_limit: msg.model_limit, mode: msg.mode || prev.mode } : prev)
+              }
               setAgentEvents(prev => [...prev, {
                 id: `ae-${Date.now()}-${prev.length}`,
                 type: 'model_preset_update',
-                content: `Model changed to ${msg.model_id || 'unknown'} (${msg.context_mode || ''})`,
+                content: `Model changed to ${msg.model_id || 'unknown'} (${msg.mode || ''})`,
                 timestamp: new Date().toISOString(),
               }])
               break
@@ -372,8 +377,8 @@ export function useDunkStack(): UseDunkStackReturn {
     pollIntervalRef.current = setInterval(async () => {
       try {
         const [toHuman, fromHuman] = await Promise.all([
-          dunkstackReadToHuman(),
-          dunkstackReadFromHuman(),
+          dunkstackReadToHuman(pn),
+          dunkstackReadFromHuman(pn),
         ])
         const agentEntries = parseCommsFile(toHuman.content, 'agent')
         const humanEntries = parseCommsFile(fromHuman.content, 'human')
@@ -389,16 +394,16 @@ export function useDunkStack(): UseDunkStackReturn {
     return () => {
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
     }
-  }, [])
+  }, [pn])
 
   // Send message (human → agent) via file-based walkie-talkie
   const sendMessage = useCallback(async (content: string, title?: string) => {
-    await dunkstackWriteFromHuman(content, title)
+    await dunkstackWriteFromHuman(content, title, undefined, pn)
     // Immediately re-poll comms to pick up any pending updates
     try {
       const [toHuman, fromHuman] = await Promise.all([
-        dunkstackReadToHuman(),
-        dunkstackReadFromHuman(),
+        dunkstackReadToHuman(pn),
+        dunkstackReadFromHuman(pn),
       ])
       const agentEntries = parseCommsFile(toHuman.content, 'agent')
       const humanEntries = parseCommsFile(fromHuman.content, 'human')
@@ -409,13 +414,13 @@ export function useDunkStack(): UseDunkStackReturn {
     } catch {
       // Ignore - periodic poll will catch it
     }
-  }, [])
+  }, [pn])
 
   // Update control mode
   const setControlMode = useCallback(async (mode: string, message?: string) => {
-    await dunkstackUpdateControl(mode, message)
+    await dunkstackUpdateControl(mode, message, pn)
     setControlModeState(mode)
-  }, [])
+  }, [pn])
 
   // Save bridge
   const saveBridge = useCallback(async (data: {

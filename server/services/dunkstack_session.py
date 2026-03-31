@@ -99,6 +99,7 @@ _SETTINGS_FILE = _SETTINGS_DIR / ".dunkstack_claude_settings.json"
 _MODEL_MAP = {
     "opus": "claude-opus-4-6",
     "sonnet": "claude-sonnet-4-6",
+    "haiku": "claude-haiku-4-5-20251001",
 }
 
 
@@ -290,11 +291,11 @@ class DunkStackCodingSession:
         _walkie_state = {"last_size": 0}
         _project_dir_path = self.project_dir
 
-        # Seed last_size to current file size so we only inject NEW messages
+        # Seed last_size to current char count so we only inject NEW messages
         _from_human_init = _project_dir_path / ".agent" / "comms" / "from_human.md"
         if _from_human_init.exists():
             try:
-                _walkie_state["last_size"] = _from_human_init.stat().st_size
+                _walkie_state["last_size"] = len(_from_human_init.read_text(encoding="utf-8"))
             except Exception:
                 pass
 
@@ -309,12 +310,12 @@ class DunkStackCodingSession:
             new_messages: str | None = None
             control_mode = "continue"
 
-            # Check for new messages (compare byte offset)
+            # Check for new messages (compare character count)
             if from_human_path.exists():
                 try:
-                    current_size = from_human_path.stat().st_size
+                    content = from_human_path.read_text(encoding="utf-8")
+                    current_size = len(content)
                     if current_size > _walkie_state["last_size"]:
-                        content = from_human_path.read_text(encoding="utf-8")
                         new_content = content[_walkie_state["last_size"]:]
                         _walkie_state["last_size"] = current_size
                         if new_content.strip():
@@ -1014,7 +1015,7 @@ async def create_coding_session(
     # Resolve model shorthand to full ID
     from registry import get_effective_sdk_env
 
-    sdk_env = get_effective_sdk_env(force_subscription=context_window <= 200_000)
+    sdk_env = get_effective_sdk_env(force_subscription=True)
     resolved_model = _resolve_model_id(model_id, sdk_env)
 
     old_session: Optional[DunkStackCodingSession] = None

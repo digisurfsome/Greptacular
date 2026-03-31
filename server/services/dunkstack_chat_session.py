@@ -382,11 +382,11 @@ class DunkStackChatSession:
         _walkie_state: dict[str, int] = {"last_size": 0}
         _project_dir_path = Path(self.working_directory)
 
-        # Seed last_size to current file size so we only inject NEW messages
+        # Seed last_size to current char count so we only inject NEW messages
         _from_human_init = _project_dir_path / ".agent" / "comms" / "from_human.md"
         if _from_human_init.exists():
             try:
-                _walkie_state["last_size"] = _from_human_init.stat().st_size
+                _walkie_state["last_size"] = len(_from_human_init.read_text(encoding="utf-8"))
             except Exception:
                 pass
 
@@ -401,12 +401,12 @@ class DunkStackChatSession:
             new_messages: str | None = None
             control_mode = "continue"
 
-            # Check for new messages (compare byte offset)
+            # Check for new messages (compare character count)
             if from_human_path.exists():
                 try:
-                    current_size = from_human_path.stat().st_size
+                    content = from_human_path.read_text(encoding="utf-8")
+                    current_size = len(content)
                     if current_size > _walkie_state["last_size"]:
-                        content = from_human_path.read_text(encoding="utf-8")
                         new_content = content[_walkie_state["last_size"]:]
                         _walkie_state["last_size"] = current_size
                         if new_content.strip():

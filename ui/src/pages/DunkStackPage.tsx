@@ -109,6 +109,7 @@ function getStoredProject(): string | null {
 
 export function DunkStackPage(): React.JSX.Element {
   const { theme, setTheme, darkMode, toggleDarkMode, themes } = useTheme()
+  const [selectedProject, setSelectedProject] = useState<string | null>(getStoredProject)
   const {
     commsLog,
     sendMessage,
@@ -127,7 +128,7 @@ export function DunkStackPage(): React.JSX.Element {
     agentEvents: hookAgentEvents,
     connected,
     loading,
-  } = useDunkStack()
+  } = useDunkStack(selectedProject)
   const { data: projects } = useProjects()
   const createProject = useCreateProject()
 
@@ -136,7 +137,6 @@ export function DunkStackPage(): React.JSX.Element {
   const [modelPresetIndex, setModelPresetIndex] = useState(getStoredModelPreset)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
-  const [selectedProject, setSelectedProject] = useState<string | null>(getStoredProject)
 
   // Bridge/session chaining state
   const [bridges, setBridges] = useState<DunkStackBridgeEntry[]>([])

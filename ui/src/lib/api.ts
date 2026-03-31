@@ -1587,42 +1587,46 @@ export interface DunkStackTokenState {
   safety: DunkStackSafetyStatus
 }
 
-export async function dunkstackReadToHuman(): Promise<DunkStackCommsResponse> {
-  return fetchJSON('/dunkstack/comms/to-human')
+function _pq(projectName?: string): string {
+  return projectName ? `?project_name=${encodeURIComponent(projectName)}` : ''
 }
 
-export async function dunkstackReadFromHuman(): Promise<DunkStackCommsResponse> {
-  return fetchJSON('/dunkstack/comms/from-human')
+export async function dunkstackReadToHuman(projectName?: string): Promise<DunkStackCommsResponse> {
+  return fetchJSON(`/dunkstack/comms/to-human${_pq(projectName)}`)
 }
 
-export async function dunkstackWriteFromHuman(content: string, title?: string, category?: string): Promise<{ status: string; timestamp: string }> {
-  return fetchJSON('/dunkstack/comms/from-human', {
+export async function dunkstackReadFromHuman(projectName?: string): Promise<DunkStackCommsResponse> {
+  return fetchJSON(`/dunkstack/comms/from-human${_pq(projectName)}`)
+}
+
+export async function dunkstackWriteFromHuman(content: string, title?: string, category?: string, projectName?: string): Promise<{ status: string; timestamp: string }> {
+  return fetchJSON(`/dunkstack/comms/from-human${_pq(projectName)}`, {
     method: 'POST',
     body: JSON.stringify({ content, title, category }),
   })
 }
 
-export async function dunkstackReadControl(): Promise<DunkStackControlResponse> {
-  return fetchJSON('/dunkstack/control')
+export async function dunkstackReadControl(projectName?: string): Promise<DunkStackControlResponse> {
+  return fetchJSON(`/dunkstack/control${_pq(projectName)}`)
 }
 
-export async function dunkstackUpdateControl(mode: string, message?: string): Promise<{ status: string; mode: string }> {
-  return fetchJSON('/dunkstack/control', {
+export async function dunkstackUpdateControl(mode: string, message?: string, projectName?: string): Promise<{ status: string; mode: string }> {
+  return fetchJSON(`/dunkstack/control${_pq(projectName)}`, {
     method: 'POST',
     body: JSON.stringify({ mode, message }),
   })
 }
 
-export async function dunkstackReadWorkingMemory(): Promise<DunkStackCommsResponse> {
-  return fetchJSON('/dunkstack/working-memory')
+export async function dunkstackReadWorkingMemory(projectName?: string): Promise<DunkStackCommsResponse> {
+  return fetchJSON(`/dunkstack/working-memory${_pq(projectName)}`)
 }
 
-export async function dunkstackReadIndex(): Promise<DunkStackCommsResponse> {
-  return fetchJSON('/dunkstack/index')
+export async function dunkstackReadIndex(projectName?: string): Promise<DunkStackCommsResponse> {
+  return fetchJSON(`/dunkstack/index${_pq(projectName)}`)
 }
 
-export async function dunkstackReadBridge(): Promise<DunkStackCommsResponse> {
-  return fetchJSON('/dunkstack/bridge')
+export async function dunkstackReadBridge(projectName?: string): Promise<DunkStackCommsResponse> {
+  return fetchJSON(`/dunkstack/bridge${_pq(projectName)}`)
 }
 
 export async function dunkstackSaveBridge(data: {
@@ -1659,8 +1663,8 @@ export async function dunkstackLoadBridge(filename: string, projectName?: string
   return fetchJSON(`/dunkstack/bridge/load?${params.toString()}`, { method: 'POST' })
 }
 
-export async function dunkstackReadConfig(): Promise<DunkStackConfigResponse> {
-  return fetchJSON('/dunkstack/config')
+export async function dunkstackReadConfig(projectName?: string): Promise<DunkStackConfigResponse> {
+  return fetchJSON(`/dunkstack/config${_pq(projectName)}`)
 }
 
 export async function dunkstackUpdateConfig(update: Record<string, unknown>): Promise<{ status: string; config: Record<string, unknown> }> {
@@ -1681,8 +1685,8 @@ export async function dunkstackGetSdkEnv(): Promise<{ mode: string; model_limit:
   return fetchJSON('/dunkstack/sdk-env')
 }
 
-export async function dunkstackGetTokenState(): Promise<DunkStackTokenState> {
-  return fetchJSON('/dunkstack/tokens')
+export async function dunkstackGetTokenState(projectName?: string): Promise<DunkStackTokenState> {
+  return fetchJSON(`/dunkstack/tokens${_pq(projectName)}`)
 }
 
 export async function dunkstackRecordTokens(data: {

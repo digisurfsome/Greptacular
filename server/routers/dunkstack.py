@@ -951,7 +951,7 @@ async def _auto_stop_agent(project_name: Optional[str]) -> None:
             await _broadcast({
                 "type": "hard_stop",
                 "project_name": project_name,
-                "message": "Agent auto-stopped: context usage exceeded HARD STOP threshold.",
+                "reason": "Agent auto-stopped: context usage exceeded HARD STOP threshold.",
             })
 
             logger.info("Agent auto-stopped at HARD STOP threshold for %s", project_name)

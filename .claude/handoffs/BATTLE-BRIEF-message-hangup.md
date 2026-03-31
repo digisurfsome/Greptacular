@@ -1,10 +1,20 @@
-# BATTLE BRIEF: WebSocket Message Hang-Up Bug
+# BATTLE BRIEF: WebSocket Message Hang-Up Bug + Walkie-Talkie Display Bug
 
-## THE PROBLEM — PLAIN ENGLISH
+## TWO BUGS TO FIX
+
+### BUG 1: Message Hang-Up (CRITICAL — 8 failed fix attempts)
 
 When the AI agent responds to the user in the Workspace chat, the response text gets STUCK. The user sees nothing. Then when the user sends ANOTHER message, all the stuck responses flood in at once. This makes the chat unusable.
 
 **This bug has survived 8 fix attempts by different agents.** Every single one diagnosed it as "sync DB calls blocking the async event loop" and wrapped them in `asyncio.to_thread()`. The bug persists. That theory is either incomplete or wrong.
+
+### BUG 2: Walkie-Talkie Messages Not Showing in Main Chat
+
+When the user sends a message via walkie-talkie (the green input bar that appears when agent is working), the message ONLY appears in the right-side walkie-talkie panel. It does NOT appear as a user chat bubble in the main chat (left side). The workspace agent was supposed to add an `addLocalMessage()` call to show the message in the main chat, but it's not working.
+
+**Where to look:** `ui/src/components/workspace/WorkspaceChat.tsx` — the `handleSend` function, specifically the walkie-talkie branch (around line 949-981). It calls `addLocalMessage('user', content)` but the message isn't appearing in the main chat. Either `addLocalMessage` isn't working, or the message is being added but immediately overwritten by a React state update from the WebSocket.
+
+**Also check:** `ui/src/hooks/useWorkspaceChat.ts` — the `addLocalMessage` function definition. Make sure it's actually adding to the `messages` state array and not being batched/lost.
 
 ## EXACT SYMPTOMS
 

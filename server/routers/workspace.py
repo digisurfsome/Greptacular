@@ -1047,7 +1047,7 @@ Reason: {req.reason}
     path.write_text(content, encoding="utf-8")
     logger.info("Workspace bridge saved to %s", path)
 
-    return {"status": "ok", "timestamp": timestamp, "path": str(path)}
+    return {"status": "ok", "timestamp": timestamp, "filename": path.name}
 
 
 @router.get("/bridge")
@@ -1335,28 +1335,36 @@ async def workspace_chat_websocket(websocket: WebSocket):
                     )
 
                 elif msg_type == "walkie_talkie":
-                    content = message.get("content", "")
+                    content = message.get("content", "").strip()
                     if not session:
                         await websocket.send_json({
                             "type": "error",
                             "content": "No active session. Send 'start' first.",
                         })
                     elif content:
-                        await session.queue_walkie_talkie_message(content)
-                        await websocket.send_json({
-                            "type": "walkie_talkie_queued",
-                            "content": content[:100],
-                        })
+                        # Check if a turn is active BEFORE queuing to avoid
+                        # double delivery (queue + send_message argument).
+                        turn_active = response_task and not response_task.done()
 
-                        # Fallback: if no turn is active (polling loop ended or
-                        # turn finished), auto-start a new turn so the message
-                        # still gets through.  Costs a full history resend but
-                        # ensures seamless UX.
-                        if not response_task or response_task.done():
+                        if turn_active:
+                            # Turn is active — queue for hook injection (cheap)
+                            await session.queue_walkie_talkie_message(content)
+                            await websocket.send_json({
+                                "type": "walkie_talkie_queued",
+                                "content": content[:100],
+                            })
+                        else:
+                            # No active turn — start a new one directly with the
+                            # message as the turn content.  Do NOT also queue it,
+                            # which would cause _query_claude() to deliver it twice.
                             logger.info(
                                 "Walkie-talkie fallback: no active turn, auto-starting new turn "
                                 "for session %s", session_id,
                             )
+                            await websocket.send_json({
+                                "type": "walkie_talkie_queued",
+                                "content": content[:100],
+                            })
                             response_task = asyncio.create_task(
                                 _stream_to_ws(
                                     session.send_message(

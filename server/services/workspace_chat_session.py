@@ -316,14 +316,15 @@ After completing each task or response, enter a polling loop to keep the turn al
    - If a walkie-talkie message is injected (you'll see [WALKIE-TALKIE MESSAGE FROM USER]), process it and respond
    - If no message, wait ~30 seconds by doing a Bash sleep, then read the file again
    - Continue polling until the user sends "end session" or you approach context limits
-3. When you receive "end session", write a handoff summary to `.autoforge/handoffs/session-latest.md` in your working directory, then stop.
+3. When you receive "end session", write a handoff summary to `{handoff_dir}/session-latest.md` then stop.
 
 IMPORTANT: Do NOT end your turn with [WAITING]. Keep the turn alive by polling.
 The user will send follow-up messages via walkie-talkie injection during your tool calls.
 Your responses appear in the main chat. The cost savings come from keeping the turn alive
 so the full conversation history is not resent with each message.
 
-When approaching context limits (you'll notice context warnings), write a handoff summary before ending."""
+When approaching context limits (you'll notice context warnings), write a handoff summary
+to `{handoff_dir}/session-latest.md` before ending."""
 
 
 class WorkspaceChatSession:
@@ -2090,6 +2091,21 @@ class WorkspaceChatSession:
                         yield {"type": "token_log", "entry": entry}
                     except Exception as e:
                         logger.warning("Failed to log result_summary: %s", e)
+
+        # Clear walkie-talkie safety net unconditionally at the end of
+        # the response stream.  The keyword-based clearing (checking for
+        # "walkie-talkie" in agent text) is unreliable -- the agent may
+        # acknowledge the message without using that exact word.
+        if self._pending_walkie_deliveries:
+            logger.info(
+                "Walkie-talkie: clearing %d pending delivery(ies) at end of response stream",
+                len(self._pending_walkie_deliveries),
+            )
+            self._pending_walkie_deliveries.clear()
+
+        # Reset walkie_talkie_waiting at end of turn (BUG 5 fix)
+        if self.walkie_talkie_waiting:
+            self.walkie_talkie_waiting = False
 
         # Store the complete response with its token estimate.
         # Use asyncio.to_thread() for sync DB calls to prevent blocking

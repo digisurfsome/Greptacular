@@ -374,6 +374,18 @@ export function WorkspaceChat({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading])
 
+  // Reset firstMessageSent when agent turn completes (isLoading → false).
+  // This ensures the next message after the turn ends goes as a proper
+  // API turn instead of being routed as a walkie-talkie to a dead session.
+  const prevIsLoadingRef = useRef(false)
+  useEffect(() => {
+    if (prevIsLoadingRef.current && !isLoading) {
+      // Turn just ended
+      setFirstMessageSent(false)
+    }
+    prevIsLoadingRef.current = isLoading
+  }, [isLoading])
+
   // Compute API token totals from the token log entries.
   // For input/output/cost: sum across all turns (billing-relevant totals).
   // For cache: use the LATEST result_summary only (current context state).
@@ -987,15 +999,17 @@ export function WorkspaceChat({
     }
   }, [inputValue, isLoading, firstMessageSent, conversationId, activeConversationId, start, sendMessage, sendWalkieTalkie, addWalkieTalkieEntry, workingDirectory, pendingImages, pendingFiles, attachedLibraryFiles, conversationContextMode, conversationModel, effortLevel, providerProp])
 
-  // End Session: gracefully tell the agent to write a handoff and stop
+  // End Session: gracefully tell the agent to write a handoff and stop.
+  // Do NOT reset firstMessageSent here — it will be reset automatically
+  // when isLoading transitions to false (via the prevIsLoadingRef effect).
+  // Resetting it prematurely would disable the textarea and prevent
+  // sending follow-up corrections while the agent writes the handoff.
   const handleEndSession = useCallback(() => {
     if (!isLoading) return
-    const convId = conversationId ?? activeConversationId ?? 'unknown'
-    const endMessage = `End session. Write your handoff summary to .autoforge/handoffs/session-${convId}.md including: summary of what was discussed, decisions made, current state, and next steps. Then stop.`
+    const endMessage = `End session. Write your handoff summary (as described in your system prompt) including: summary of what was discussed, decisions made, current state, and next steps. Then stop polling and end your turn.`
     sendWalkieTalkie(endMessage)
     addWalkieTalkieEntry('user', 'End Session (handoff requested)')
-    setFirstMessageSent(false)
-  }, [isLoading, conversationId, activeConversationId, sendWalkieTalkie, addWalkieTalkieEntry])
+  }, [isLoading, sendWalkieTalkie, addWalkieTalkieEntry])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {

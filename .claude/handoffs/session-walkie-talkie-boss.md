@@ -45,7 +45,25 @@ The owner wants to build a revolutionary chat system:
 
 Saved to `C:\Users\lober\Documents\Cold_Email_Playbook_2026.md` — comprehensive breakdown from a YouTube video about cold email deliverability in 2026 after Google's November 2025 shutdown.
 
+## BREAKTHROUGH: Parallel Agent Debugging (3-Agent Swarm)
+
+Launched 3 agents simultaneously, each focused on a different layer:
+
+| Agent | Focus | Finding |
+|-------|-------|---------|
+| Agent 1 | React/Client | flushSync needed for response_done, pong timeout detection for dead connections, handleSend dependency leak |
+| Agent 2 | UI/Rendering | Auto-scroll broken during streaming (depends on message count not content), walkie-talkie handleWalkieTalkieSend missing addLocalMessage() |
+| Agent 3 | TCP/Transport | **TCP_NODELAY not set ANYWHERE** — Nagle's algorithm buffering all WebSocket frames in kernel. Created server/tcp_nodelay.py monkey-patch. This is likely THE root cause that 8 previous fixes missed because they all focused on Python, not the OS TCP layer. |
+
+**All 3 fixes are needed together** — they each address a different layer (TCP, React, UI scroll).
+**Status: Agents completed but may not have merged to main yet.** Need to verify merge status.
+
+## Swarm Architecture Designed
+
+Filed at `.claude/handoffs/swarm-architecture-design.md`. Commander → Managers → Sub-Agents, all communicating via file system. First test: 2 managers, 6 agents. This architecture was proven viable by the 3-agent debugging session above.
+
 ## Context at Handoff
-- ~60-65% of 1M context window used
-- All code committed and pushed to main
-- Battle brief ready for 3 parallel agents to fix hang-up bug
+- ~80% of 1M context window used
+- All handoff docs committed and pushed to main
+- 3 agents may need to merge their work to main
+- Swarm architecture design doc ready for implementation

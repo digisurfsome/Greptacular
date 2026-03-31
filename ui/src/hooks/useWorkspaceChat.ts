@@ -300,31 +300,36 @@ export function useWorkspaceChat({
         switch (data.type) {
           case "text": {
             setMessages((prev) => {
-              const lastMessage = prev[prev.length - 1];
-              if (
-                lastMessage?.role === "assistant" &&
-                lastMessage.isStreaming
-              ) {
-                return [
-                  ...prev.slice(0, -1),
-                  {
-                    ...lastMessage,
-                    content: lastMessage.content + data.content,
-                  },
-                ];
-              } else {
-                currentAssistantMessageRef.current = generateId();
-                return [
-                  ...prev,
-                  {
-                    id: currentAssistantMessageRef.current,
-                    role: "assistant",
-                    content: data.content,
-                    timestamp: new Date(),
-                    isStreaming: true,
-                  },
-                ];
+              // Find the streaming assistant message BY ID, not by position.
+              // tool_call and status events insert system messages that push
+              // the streaming message away from the last position. Using the
+              // last-position check caused duplicate/out-of-order messages.
+              const streamingId = currentAssistantMessageRef.current;
+              if (streamingId) {
+                const idx = prev.findIndex(m => m.id === streamingId);
+                if (idx !== -1) {
+                  return [
+                    ...prev.slice(0, idx),
+                    {
+                      ...prev[idx],
+                      content: prev[idx].content + data.content,
+                    },
+                    ...prev.slice(idx + 1),
+                  ];
+                }
               }
+              // No existing streaming message — create a new one
+              currentAssistantMessageRef.current = generateId();
+              return [
+                ...prev,
+                {
+                  id: currentAssistantMessageRef.current,
+                  role: "assistant",
+                  content: data.content,
+                  timestamp: new Date(),
+                  isStreaming: true,
+                },
+              ];
             });
             break;
           }
@@ -381,22 +386,25 @@ export function useWorkspaceChat({
           }
 
           case "response_done": {
+            // Capture the streaming message ID before clearing it
+            const doneMessageId = currentAssistantMessageRef.current;
             currentAssistantMessageRef.current = null;
             sessionReadyRef.current = true;
 
             setAgentWaiting(false);
             setAgentWaitingQuestion(null);
 
-            // Mark current streaming message as complete
+            // Mark the streaming message as complete BY ID, not by position.
+            // The streaming message may not be the last message if tool_call
+            // or status events inserted system messages after it.
             setMessages((prev) => {
-              const lastMessage = prev[prev.length - 1];
-              if (
-                lastMessage?.role === "assistant" &&
-                lastMessage.isStreaming
-              ) {
+              if (!doneMessageId) return prev;
+              const idx = prev.findIndex(m => m.id === doneMessageId && m.isStreaming);
+              if (idx !== -1) {
                 return [
-                  ...prev.slice(0, -1),
-                  { ...lastMessage, isStreaming: false },
+                  ...prev.slice(0, idx),
+                  { ...prev[idx], isStreaming: false },
+                  ...prev.slice(idx + 1),
                 ];
               }
               return prev;

@@ -1214,7 +1214,15 @@ async def workspace_chat_websocket(websocket: WebSocket):
         logger.info("Workspace auto-bridge saved to %s at %.0f%%", path, usage_pct)
 
     async def _stream_to_ws(gen):
-        """Stream async generator chunks directly to the WebSocket."""
+        """Stream async generator chunks directly to the WebSocket.
+
+        CRITICAL: After each send_json, we yield control to the event loop
+        with asyncio.sleep(0). This forces the ASGI transport to flush the
+        WebSocket frame to the network immediately. Without this, frames
+        can sit in the kernel TCP send buffer (especially on Windows) until
+        the next incoming packet or buffer-full event triggers a flush —
+        causing responses to appear "stuck" until the user sends a message.
+        """
         try:
             async for chunk in gen:
                 # Check for auto-bridge trigger on token_usage events
@@ -1228,18 +1236,23 @@ async def workspace_chat_websocket(websocket: WebSocket):
                             await _workspace_auto_bridge(conv_id, pct)
                 try:
                     await websocket.send_json(chunk)
+                    # Force event loop tick to flush the WebSocket frame.
+                    await asyncio.sleep(0)
                 except Exception:
                     break  # WebSocket closed mid-stream
         except asyncio.CancelledError:
             try:
                 await websocket.send_json({"type": "response_done"})
+                await asyncio.sleep(0)
             except Exception:
                 pass
         except Exception as e:
             logger.exception("Error streaming workspace response")
             try:
                 await websocket.send_json({"type": "error", "content": str(e)})
+                await asyncio.sleep(0)
                 await websocket.send_json({"type": "response_done"})
+                await asyncio.sleep(0)
             except Exception:
                 pass
 

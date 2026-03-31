@@ -1308,9 +1308,15 @@ async def workspace_chat_websocket(websocket: WebSocket):
                     if not user_content and raw_atts:
                         user_content = "See attached image."
 
-                    # Wait for any previous response to complete before sending a new query.
+                    # Cancel any previous response that is still running so the
+                    # receive loop is never blocked.  This prevents a deadlock
+                    # where the old polling loop holds the task open forever.
                     if response_task and not response_task.done():
-                        await response_task
+                        response_task.cancel()
+                        try:
+                            await response_task
+                        except asyncio.CancelledError:
+                            pass
 
                     # Extract optional attachments and library file IDs.
                     raw_attachments = message.get("attachments") or None

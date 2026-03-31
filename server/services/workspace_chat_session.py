@@ -306,25 +306,15 @@ Use structured tags when appropriate: [SUMMARY]...[/SUMMARY], [ROADMAP]...[/ROAD
 
 If a tool call is blocked with "[WALKIE-TALKIE MESSAGE FROM USER]", acknowledge it, adjust if needed, then continue your task.
 
-## Walkie-Talkie Polling Protocol
+## Walkie-Talkie Messages
 
-After completing each task or response, enter a polling loop to keep the turn alive for cheap walkie-talkie communication:
+The user can send follow-up messages while you are working. These arrive as
+[WALKIE-TALKIE MESSAGE FROM USER] injections during your tool calls — you do
+NOT need to poll for them. Just work normally; if a walkie-talkie message
+arrives, acknowledge it and adjust.
 
-1. Output your response text as normal
-2. Then enter a polling loop:
-   - Read the file `{walkie_check_path}`
-   - If a walkie-talkie message is injected (you'll see [WALKIE-TALKIE MESSAGE FROM USER]), process it and respond
-   - If no message, wait ~30 seconds by doing a Bash sleep, then read the file again
-   - Continue polling until the user sends "end session" or you approach context limits
-3. When you receive "end session", write a handoff summary to `{handoff_dir}/session-latest.md` then stop.
-
-IMPORTANT: Do NOT end your turn with [WAITING]. Keep the turn alive by polling.
-The user will send follow-up messages via walkie-talkie injection during your tool calls.
-Your responses appear in the main chat. The cost savings come from keeping the turn alive
-so the full conversation history is not resent with each message.
-
-When approaching context limits (you'll notice context warnings), write a handoff summary
-to `{handoff_dir}/session-latest.md` before ending."""
+When approaching context limits, write a handoff summary to
+`{handoff_dir}/session-latest.md` before ending."""
 
 
 class WorkspaceChatSession:

@@ -4,7 +4,7 @@
  * Features:
  * - Draggable: click-and-drag the title bar to reposition
  * - Resizable: drag edges/corners to resize (min 400x300, max viewport)
- * - Tabs: "User Guide" (inline React content), "CLI Reference" (renders DUNKSTACK_MANUAL.md), and "Notes" (CRUD with tags/dates)
+ * - Tabs: "User Guide" (renders DUNKSTACK_MANUAL.md) and "Notes" (CRUD with tags/dates)
  * - Notes persisted to localStorage with create, save, date, tag support
  */
 
@@ -38,7 +38,7 @@ interface Note {
   updatedAt: string
 }
 
-type GuideTab = 'guide' | 'manual' | 'notes'
+type GuideTab = 'guide' | 'notes'
 
 interface DunkStackGuidePanelProps {
   onClose: () => void
@@ -212,178 +212,6 @@ const markdownComponents: Components = {
 // ============================================================================
 
 function UserGuideTab(): React.JSX.Element {
-  return (
-    <div className="p-5 overflow-y-auto h-full space-y-5">
-      {/* Header */}
-      <div>
-        <h1 className="text-xl font-bold text-foreground mb-1">DunkStack User Guide</h1>
-        <p className="text-sm text-muted-foreground leading-relaxed">
-          Everything you need to know about the DunkStack dashboard — what each panel does, how to navigate, and how to get the most out of it.
-        </p>
-      </div>
-
-      {/* Page Layout */}
-      <section>
-        <h2 className="text-base font-bold text-foreground border-b border-border pb-1 mb-2">Page Layout</h2>
-        <p className="text-sm text-muted-foreground mb-2 leading-relaxed">
-          DunkStack is a three-column layout with a top navigation bar and context gauge:
-        </p>
-        <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1.5">
-          <li><strong className="text-foreground">Top Bar</strong> — Navigation, model selector, panel toggles, theme controls</li>
-          <li><strong className="text-foreground">Left Sidebar</strong> — Project list (collapsible). Click a project to select it</li>
-          <li><strong className="text-foreground">Center Panel</strong> — The main work area: Comms Chat or Agent OS workflow</li>
-          <li><strong className="text-foreground">Right Panel</strong> — Toggleable: Safety, Files, or Agent OS details</li>
-        </ul>
-      </section>
-
-      {/* Context Gauge */}
-      <section>
-        <h2 className="text-base font-bold text-foreground border-b border-border pb-1 mb-2">Context Gauge</h2>
-        <p className="text-sm text-muted-foreground mb-2 leading-relaxed">
-          The colored bar just below the top nav shows real-time token usage against the model limit.
-        </p>
-        <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1.5">
-          <li><strong className="text-foreground">Green zone</strong> — Under 60% usage, plenty of room</li>
-          <li><strong className="text-foreground">Yellow zone</strong> — 60-80%, approaching limits</li>
-          <li><strong className="text-foreground">Orange zone</strong> — 80-90%, consider wrapping up the session</li>
-          <li><strong className="text-foreground">Red zone</strong> — Over 90%, handoff or hard stop imminent</li>
-        </ul>
-        <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
-          Hover over the gauge to see a breakdown: input tokens, output tokens, cache reads, total cost, and API calls. The <strong className="text-foreground">Reset</strong> button clears the counter for a fresh session.
-        </p>
-      </section>
-
-      {/* Model Presets */}
-      <section>
-        <h2 className="text-base font-bold text-foreground border-b border-border pb-1 mb-2">Model Presets</h2>
-        <p className="text-sm text-muted-foreground mb-2 leading-relaxed">
-          The pill buttons in the top bar switch between model and context-window combinations:
-        </p>
-        <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1.5">
-          <li><strong className="text-foreground">Opus 4.6 · 200K</strong> — Fastest, smaller context window</li>
-          <li><strong className="text-foreground">Opus 4.6 · 1M</strong> — Full million-token context</li>
-          <li><strong className="text-foreground">Sonnet 4.6 · 1M</strong> — Lighter model with full context</li>
-        </ul>
-        <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
-          Your selection is saved and persists across page reloads. The config is also pushed to the backend so the agent uses the right model.
-        </p>
-      </section>
-
-      {/* Comms Chat */}
-      <section>
-        <h2 className="text-base font-bold text-foreground border-b border-border pb-1 mb-2">Comms Chat</h2>
-        <p className="text-sm text-muted-foreground mb-2 leading-relaxed">
-          The center panel is a file-based communication channel. Messages are written to <code className="bg-muted px-1.5 py-0.5 rounded text-xs font-mono text-foreground">.agent/comms/</code> files — this is how you talk to the agent and how the agent talks back.
-        </p>
-        <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1.5">
-          <li>Type a message and press <strong className="text-foreground">Enter</strong> or click <strong className="text-foreground">Send</strong></li>
-          <li>Messages appear as a chat log with timestamps</li>
-          <li>The connection dot shows WebSocket status (green = live, yellow = reconnecting, red = disconnected)</li>
-        </ul>
-      </section>
-
-      {/* Control Modes */}
-      <section>
-        <h2 className="text-base font-bold text-foreground border-b border-border pb-1 mb-2">Session Control Modes</h2>
-        <p className="text-sm text-muted-foreground mb-2 leading-relaxed">
-          Found in the Safety panel, these modes control how the agent behaves between tasks:
-        </p>
-        <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1.5">
-          <li><strong className="text-foreground">Idle</strong> — Agent waits for your next instruction after each task</li>
-          <li><strong className="text-foreground">Continue</strong> — Agent picks up the next feature automatically</li>
-          <li><strong className="text-foreground">Autopilot</strong> — Full autonomous mode, agent works through the backlog</li>
-        </ul>
-      </section>
-
-      {/* Safety Panel */}
-      <section>
-        <h2 className="text-base font-bold text-foreground border-b border-border pb-1 mb-2">Safety Panel</h2>
-        <p className="text-sm text-muted-foreground mb-2 leading-relaxed">
-          Toggle with the <strong className="text-foreground">Shield</strong> button in the top bar. The 3-tier safety system protects against context overflow:
-        </p>
-        <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1.5">
-          <li><strong className="text-foreground">Warning</strong> — Visual alert when tokens approach the threshold</li>
-          <li><strong className="text-foreground">Handoff</strong> — Agent saves a bridge file and stops gracefully</li>
-          <li><strong className="text-foreground">Hard Stop</strong> — Emergency halt if the handoff threshold is exceeded</li>
-        </ul>
-        <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
-          The <strong className="text-foreground">Save Bridge</strong> button manually creates a checkpoint so a new session can pick up where this one left off.
-        </p>
-      </section>
-
-      {/* Files Panel */}
-      <section>
-        <h2 className="text-base font-bold text-foreground border-b border-border pb-1 mb-2">Files Panel</h2>
-        <p className="text-sm text-muted-foreground mb-2 leading-relaxed">
-          Toggle with the <strong className="text-foreground">File</strong> button in the top bar. Browse the <code className="bg-muted px-1.5 py-0.5 rounded text-xs font-mono text-foreground">.agent/</code> directory contents:
-        </p>
-        <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1.5">
-          <li><strong className="text-foreground">Index</strong> — Master project index file</li>
-          <li><strong className="text-foreground">Working Memory</strong> — Agent's scratchpad for current session state</li>
-          <li><strong className="text-foreground">Bridge</strong> — Handoff data for session continuity</li>
-          <li><strong className="text-foreground">Build Log</strong> — Running log of what the agent has done</li>
-          <li><strong className="text-foreground">Config</strong> — Current DunkStack configuration (JSON)</li>
-        </ul>
-      </section>
-
-      {/* Agent OS */}
-      <section>
-        <h2 className="text-base font-bold text-foreground border-b border-border pb-1 mb-2">Agent OS (PRD Creator)</h2>
-        <p className="text-sm text-muted-foreground mb-2 leading-relaxed">
-          Toggle with the <strong className="text-foreground">Sparkles</strong> button in the top bar. This is the full PRD creation workflow:
-        </p>
-        <ol className="list-decimal list-inside text-sm text-muted-foreground space-y-1.5">
-          <li><strong className="text-foreground">Intake Dock</strong> — Upload or describe your app idea to start</li>
-          <li><strong className="text-foreground">Agent OS Chat</strong> — Interactive conversation that walks through all 9 stages: Purpose, Users, Features, Architecture, UX, Standards, Expansion, Gap Analysis, and Final Review</li>
-        </ol>
-        <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
-          The right panel shows additional context while in Agent OS mode: inferred standards, product details, spec cards, gap analysis results, and expansion options.
-        </p>
-      </section>
-
-      {/* Project Sidebar */}
-      <section>
-        <h2 className="text-base font-bold text-foreground border-b border-border pb-1 mb-2">Project Sidebar</h2>
-        <p className="text-sm text-muted-foreground mb-2 leading-relaxed">
-          The left sidebar lists all registered AutoForge projects. Click one to select it — the selection persists across reloads. Each project shows its feature progress (passing / total).
-        </p>
-        <p className="text-sm text-muted-foreground leading-relaxed">
-          Collapse the sidebar using the <strong className="text-foreground">chevron</strong> button to get more room for the center panel.
-        </p>
-      </section>
-
-      {/* Theme & Display */}
-      <section>
-        <h2 className="text-base font-bold text-foreground border-b border-border pb-1 mb-2">Theme & Display</h2>
-        <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1.5">
-          <li><strong className="text-foreground">Theme Selector</strong> — Pick from available color themes in the top bar</li>
-          <li><strong className="text-foreground">Dark Mode</strong> — Sun/Moon toggle for light and dark modes</li>
-          <li><strong className="text-foreground">Guide</strong> — The book icon opens this panel (you're here!)</li>
-        </ul>
-      </section>
-
-      {/* Tips */}
-      <section>
-        <h2 className="text-base font-bold text-foreground border-b border-border pb-1 mb-2">Tips</h2>
-        <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1.5">
-          <li>This guide panel is <strong className="text-foreground">draggable</strong> — grab the title bar to move it</li>
-          <li>It's also <strong className="text-foreground">resizable</strong> — drag any edge or corner</li>
-          <li>Use the <strong className="text-foreground">maximize</strong> button for full-screen reading</li>
-          <li>Press <strong className="text-foreground">Escape</strong> to close the guide</li>
-          <li>Your position and size are saved automatically</li>
-          <li>Check the <strong className="text-foreground">CLI Reference</strong> tab for the full API and command-line documentation</li>
-          <li>Use the <strong className="text-foreground">Notes</strong> tab to jot down anything as you work</li>
-        </ul>
-      </section>
-    </div>
-  )
-}
-
-// ============================================================================
-// Manual Tab (CLI Reference)
-// ============================================================================
-
-function ManualTab(): React.JSX.Element {
   const [content, setContent] = useState<string>('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -416,7 +244,7 @@ function ManualTab(): React.JSX.Element {
       <div className="flex items-center justify-center h-full">
         <div className="flex flex-col items-center gap-3">
           <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-          <span className="text-xs text-muted-foreground">Loading manual...</span>
+          <span className="text-xs text-muted-foreground">Loading user manual...</span>
         </div>
       </div>
     )
@@ -971,17 +799,6 @@ export function DunkStackGuidePanel({ onClose }: DunkStackGuidePanelProps): Reac
           User Guide
         </button>
         <button
-          onClick={() => setActiveTab('manual')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-            activeTab === 'manual'
-              ? 'bg-primary/10 text-primary border border-primary/20'
-              : 'text-muted-foreground hover:bg-muted'
-          }`}
-        >
-          <BookOpen size={12} />
-          CLI Reference
-        </button>
-        <button
           onClick={() => setActiveTab('notes')}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
             activeTab === 'notes'
@@ -997,7 +814,6 @@ export function DunkStackGuidePanel({ onClose }: DunkStackGuidePanelProps): Reac
       {/* Tab content */}
       <div className="flex-1 overflow-hidden min-h-0">
         {activeTab === 'guide' && <UserGuideTab />}
-        {activeTab === 'manual' && <ManualTab />}
         {activeTab === 'notes' && <NotesTab />}
       </div>
     </div>

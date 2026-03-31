@@ -1187,6 +1187,29 @@ async def workspace_chat_websocket(websocket: WebSocket):
         conv_label = f"session-{conv_id}" if conv_id else "session-latest"
         path = handoff_dir / f"{conv_label}.md"
         content = f"# Auto-Bridge Save — {timestamp}\n\n## Reason\nContext usage reached {usage_pct:.0f}% — auto-saving for session continuity.\n"
+
+        # Pull recent conversation messages so the next session has actual context
+        if conv_id:
+            try:
+                from .workspace import workspace_db  # noqa: F811
+            except ImportError:
+                workspace_db = None
+            try:
+                from ..services import workspace_database as _wdb
+                recent = _wdb.get_messages(conv_id)
+                # Include last 20 messages (truncate long ones)
+                tail = recent[-20:] if len(recent) > 20 else recent
+                if tail:
+                    content += "\n## Recent Conversation Context\n\n"
+                    for msg in tail:
+                        role = msg.get("role", "unknown").upper()
+                        text = msg.get("content", "")
+                        if len(text) > 500:
+                            text = text[:500] + "... [truncated]"
+                        content += f"**{role}:** {text}\n\n"
+            except Exception as _ctx_err:
+                logger.warning("Auto-bridge: could not load messages: %s", _ctx_err)
+
         path.write_text(content, encoding="utf-8")
         logger.info("Workspace auto-bridge saved to %s at %.0f%%", path, usage_pct)
 

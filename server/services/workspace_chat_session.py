@@ -322,7 +322,7 @@ NOT need to poll for them. Just work normally; if a walkie-talkie message
 arrives, acknowledge it and adjust.
 
 When approaching context limits, write a handoff summary to
-`{handoff_dir}/session-latest.md` before ending."""
+`{handoff_dir}/session-{conversation_id or 'latest'}.md` before ending."""
 
 
 class WorkspaceChatSession:

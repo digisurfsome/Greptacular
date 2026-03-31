@@ -9,6 +9,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from "react";
+import { flushSync } from "react-dom";
 import { getTokenLog } from "../lib/api";
 import type { ChatMessage, WorkspaceChatServerMessage, PendingInjection, ImageAttachment, WalkieTalkieLogEntry, TokenLogEntry } from "../lib/types";
 
@@ -57,6 +58,10 @@ interface UseWorkspaceChatReturn {
   cancelSession: () => void;
   disconnect: () => void;
   clearMessages: () => void;
+  /** Monotonically increasing counter bumped on every message-related state update.
+   *  Used by the component to trigger auto-scroll during streaming (where message
+   *  count doesn't change but content grows). */
+  messageVersion: number;
 }
 
 function generateId(): string {
@@ -95,6 +100,9 @@ export function useWorkspaceChat({
   const [agentWaitingQuestion, setAgentWaitingQuestion] = useState<string | null>(null);
   const [walkieTalkieLog, setWalkieTalkieLog] = useState<WalkieTalkieLogEntry[]>([]);
   const [tokenLog, setTokenLog] = useState<TokenLogEntry[]>([]);
+  // Monotonically increasing counter for message changes — used for auto-scroll
+  const [messageVersion, setMessageVersion] = useState(0);
+  const bumpMessageVersion = useCallback(() => setMessageVersion(v => v + 1), []);
 
   const addWalkieTalkieEntry = useCallback(
     (sender: 'user' | 'agent' | 'system', content: string) => {
@@ -113,6 +121,7 @@ export function useWorkspaceChat({
 
   const addLocalMessage = useCallback(
     (role: 'user' | 'assistant' | 'system', content: string) => {
+      console.log(`[WS addLocalMessage] role=${role} len=${content.length}`);
       setMessages((prev) => [
         ...prev,
         {
@@ -122,8 +131,9 @@ export function useWorkspaceChat({
           timestamp: new Date(),
         },
       ]);
+      bumpMessageVersion();
     },
-    [],
+    [bumpMessageVersion],
   );
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -135,6 +145,11 @@ export function useWorkspaceChat({
   const connectionGenerationRef = useRef(0);
   const checkAndSendTimeoutRef = useRef<number | null>(null);
   const loadingSafetyTimeoutRef = useRef<number | null>(null);
+
+  // Diagnostics: track pong responses to detect dead connections
+  const lastPongRef = useRef<number>(Date.now());
+  // Diagnostics: count text chunks per response for debugging
+  const textChunkCountRef = useRef<number>(0);
 
   // Store the last "start" params so we can re-send on reconnect.
   const lastStartParamsRef = useRef<{
@@ -237,9 +252,21 @@ export function useWorkspaceChat({
       const wasReconnect = reconnectAttempts.current > 0;
       reconnectAttempts.current = 0;
 
-      // Start ping interval
+      // Start ping interval with dead-connection detection.
+      // If we haven't received a pong in 90s (3 missed cycles), the
+      // server's outgoing buffer is likely stuck — force reconnect.
+      lastPongRef.current = Date.now();
       pingIntervalRef.current = window.setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {
+          const sincePong = Date.now() - lastPongRef.current;
+          if (sincePong > 90_000) {
+            console.warn(`[WS] No pong received in ${Math.round(sincePong / 1000)}s — connection appears dead, forcing reconnect`);
+            ws.close();
+            return;
+          }
+          if (sincePong > 45_000) {
+            console.warn(`[WS] No pong received in ${Math.round(sincePong / 1000)}s — connection may be stalled`);
+          }
           ws.send(JSON.stringify({ type: "ping" }));
         }
       }, 30000);
@@ -307,12 +334,35 @@ export function useWorkspaceChat({
     };
 
     ws.onmessage = (event) => {
-      if (connectionGenerationRef.current !== thisGeneration) return;
+      // ── DIAGNOSTIC: log BEFORE generation guard so we can see if
+      //    messages arrive at the browser but get silently dropped.
+      const recvTs = Date.now();
+      let parsedType = '?';
+      try {
+        const peek = JSON.parse(event.data);
+        parsedType = peek?.type ?? '?';
+      } catch { /* will re-parse below */ }
+
+      if (parsedType !== 'pong') {
+        const extra = parsedType === 'text'
+          ? ` chunk#${++textChunkCountRef.current}`
+          : parsedType === 'response_done'
+            ? ` (${textChunkCountRef.current} chunks total)`
+            : '';
+        console.log(
+          `[WS RECV] type=${parsedType} at=${recvTs} gen=${connectionGenerationRef.current}/${thisGeneration}${extra}`,
+        );
+      }
+
+      if (connectionGenerationRef.current !== thisGeneration) {
+        console.warn(
+          `[WS DROP] type=${parsedType} — stale generation (current=${connectionGenerationRef.current}, handler=${thisGeneration})`,
+        );
+        return;
+      }
+
       try {
         const data = JSON.parse(event.data) as WorkspaceChatServerMessage;
-        if (data.type !== 'pong') {
-          console.log('[WS]', data.type, data.type === 'token_log' ? (data as unknown as Record<string, unknown>).entry : '');
-        }
 
         switch (data.type) {
           case "text": {
@@ -347,6 +397,8 @@ export function useWorkspaceChat({
                 },
               ];
             });
+            // Bump version so the component can auto-scroll during streaming
+            bumpMessageVersion();
             break;
           }
 
@@ -361,6 +413,7 @@ export function useWorkspaceChat({
                 timestamp: new Date(),
               },
             ]);
+            bumpMessageVersion();
             break;
           }
 
@@ -402,27 +455,41 @@ export function useWorkspaceChat({
           }
 
           case "response_done": {
+            console.log(`[WS] response_done at=${Date.now()}, ${textChunkCountRef.current} text chunks received, flushing synchronously`);
+            textChunkCountRef.current = 0;
+
             // Capture the streaming message ID before clearing it
             const doneMessageId = currentAssistantMessageRef.current;
             currentAssistantMessageRef.current = null;
             sessionReadyRef.current = true;
 
-            setAgentWaiting(false);
-            setAgentWaitingQuestion(null);
+            // Use flushSync to FORCE React to commit this render synchronously.
+            // Without this, React 19 may defer the render (batching with lower-
+            // priority updates), causing the response to appear "stuck" until
+            // the next user interaction triggers a priority flush.
+            flushSync(() => {
+              setAgentWaiting(false);
+              setAgentWaitingQuestion(null);
 
-            // Mark the streaming message as complete BY ID, not by position.
-            setMessages((prev) => {
-              if (!doneMessageId) return prev;
-              const idx = prev.findIndex(m => m.id === doneMessageId && m.isStreaming);
-              if (idx !== -1) {
-                return [
-                  ...prev.slice(0, idx),
-                  { ...prev[idx], isStreaming: false },
-                  ...prev.slice(idx + 1),
-                ];
-              }
-              return prev;
+              // Mark the streaming message as complete BY ID, not by position.
+              setMessages((prev) => {
+                if (!doneMessageId) return prev;
+                const idx = prev.findIndex(m => m.id === doneMessageId && m.isStreaming);
+                if (idx !== -1) {
+                  return [
+                    ...prev.slice(0, idx),
+                    { ...prev[idx], isStreaming: false },
+                    ...prev.slice(idx + 1),
+                  ];
+                }
+                return prev;
+              });
+
+              setIsLoading(false);
             });
+
+            // Bump version for scroll after flushSync
+            bumpMessageVersion();
 
             // Dispatch any message that was queued before the session was ready
             // (i.e., sent before the greeting completed). This only fires once.
@@ -435,7 +502,6 @@ export function useWorkspaceChat({
                 }
               }, 0);
             }
-            setIsLoading(false);
             break;
           }
 
@@ -450,6 +516,7 @@ export function useWorkspaceChat({
                 timestamp: new Date(),
               },
             ]);
+            bumpMessageVersion();
             break;
           }
 
@@ -463,6 +530,7 @@ export function useWorkspaceChat({
                 timestamp: new Date(),
               },
             ]);
+            bumpMessageVersion();
             break;
           }
 
@@ -491,7 +559,9 @@ export function useWorkspaceChat({
           }
 
           case "error": {
-            setIsLoading(false);
+            flushSync(() => {
+              setIsLoading(false);
+            });
             sessionReadyRef.current = true;
             const safeContent = typeof data.content === 'string'
               ? data.content
@@ -527,6 +597,7 @@ export function useWorkspaceChat({
                 timestamp: new Date(),
               },
             ]);
+            bumpMessageVersion();
 
             if (isRateLimit) {
               import("@/lib/api").then(({ logRateLimit: logRL }) => {
@@ -537,6 +608,7 @@ export function useWorkspaceChat({
           }
 
           case "pong": {
+            lastPongRef.current = Date.now();
             break;
           }
         }
@@ -544,7 +616,7 @@ export function useWorkspaceChat({
         console.error("Failed to parse WebSocket message:", e);
       }
     };
-  }, [onError, addWalkieTalkieEntry]);
+  }, [onError, addWalkieTalkieEntry, bumpMessageVersion]);
 
   const start = useCallback(
     (existingConversationId?: number | null, workingDirectory?: string, contextMode?: string, costSettings?: Record<string, unknown>, model?: string, provider?: string) => {
@@ -809,6 +881,7 @@ export function useWorkspaceChat({
     cancelSession,
     disconnect,
     clearMessages,
+    messageVersion,
   };
 }
 

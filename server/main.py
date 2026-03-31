@@ -23,6 +23,12 @@ from dotenv import load_dotenv
 # Load environment variables from .env file if present
 load_dotenv()
 
+# Apply TCP_NODELAY patch to all uvicorn connections BEFORE any
+# WebSocket traffic. This fixes the "stuck messages" bug where
+# Nagle's algorithm holds small WebSocket frames in the TCP buffer.
+from .ws_flush import _apply_uvicorn_tcp_nodelay_patch  # noqa: E402, F401
+_apply_uvicorn_tcp_nodelay_patch()
+
 from fastapi import FastAPI, HTTPException, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse

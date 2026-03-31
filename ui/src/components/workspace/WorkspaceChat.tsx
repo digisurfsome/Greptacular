@@ -375,7 +375,16 @@ export function WorkspaceChat({
     sendWalkieTalkie,
     disconnect,
     clearMessages,
+    messageVersion,
   } = useWorkspaceChat({ onError: handleError })
+
+  // isLoading and firstMessageSent also need refs to keep handleSend stable.
+  // Without this, every isLoading transition recreates handleSend, which
+  // defeats React.memo on WorkspaceChatInput (the most performance-critical moment).
+  const isLoadingRef = useRef(isLoading)
+  isLoadingRef.current = isLoading
+  const firstMessageSentRef = useRef(firstMessageSent)
+  firstMessageSentRef.current = firstMessageSent
 
   // Notify parent when streaming state changes (for sidebar activity indicator).
   // Intentionally omit onStreamingChange from deps to avoid re-render loops
@@ -654,14 +663,17 @@ export function WorkspaceChat({
     setIsUserScrolledUp(distanceFromBottom > 100)
   }, [])
 
+  // Auto-scroll on message content changes (not just new messages).
+  // messageVersion is bumped by the hook on every text chunk, tool_call,
+  // response_done, etc., so the scroll tracks streaming content growth —
+  // not just when a new message is added to the array.
   useEffect(() => {
-    if (!isUserScrolledUp) {
-      messagesContainerRef.current?.scrollTo({
-        top: messagesContainerRef.current.scrollHeight,
-        behavior: 'smooth',
-      })
+    if (!isUserScrolledUp && messagesContainerRef.current) {
+      // Use instant scroll during streaming (frequent updates) to avoid
+      // stacking smooth-scroll animations. Smooth only for discrete events.
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
     }
-  }, [liveMessages.length, isUserScrolledUp])
+  }, [messageVersion, isUserScrolledUp])
 
   // Detect response completion (isLoading true→false) for auto-forward.
   // Intentionally omit onResponseComplete from deps to avoid re-render loops
@@ -885,6 +897,7 @@ export function WorkspaceChat({
     const content = walkieTalkieInput.trim()
     if (!content) return
     addWalkieTalkieEntry('user', content)
+    addLocalMessage('user', content)
     sendWalkieTalkie(content)
     setWalkieTalkieInput('')
     // Show brief "Sent!" confirmation
@@ -894,7 +907,7 @@ export function WorkspaceChat({
       setWalkieTalkieSent(false)
       walkieTalkieSentTimerRef.current = null
     }, 1500)
-  }, [walkieTalkieInput, sendWalkieTalkie, addWalkieTalkieEntry])
+  }, [walkieTalkieInput, sendWalkieTalkie, addWalkieTalkieEntry, addLocalMessage])
 
   // Walkie-talkie input keydown handler
   const handleWalkieTalkieKeyDown = useCallback(
@@ -951,7 +964,7 @@ export function WorkspaceChat({
     // If agent is in an active turn and we've already sent the first message,
     // route through walkie-talkie instead of starting a new API turn.
     // This is dramatically cheaper — no full conversation history resend.
-    if (isLoading && firstMessageSent) {
+    if (isLoadingRef.current && firstMessageSentRef.current) {
       console.info('[WorkspaceChat] handleSend: routing via walkie-talkie (turn active)')
 
       // Append file text contents to walkie-talkie message (images cannot be sent)
@@ -986,7 +999,7 @@ export function WorkspaceChat({
       return
     }
 
-    if (isLoading) return
+    if (isLoadingRef.current) return
 
     // Append file contents as text
     if (curFiles.length > 0) {
@@ -1036,7 +1049,7 @@ export function WorkspaceChat({
     if (effectiveId) {
       localStorage.removeItem(`${DRAFT_KEY_PREFIX}${effectiveId}`)
     }
-  }, [isLoading, firstMessageSent, conversationId, activeConversationId, start, sendMessage, sendWalkieTalkie, addWalkieTalkieEntry, addLocalMessage, workingDirectory, conversationContextMode, conversationModel, effortLevel, providerProp])
+  }, [conversationId, activeConversationId, start, sendMessage, sendWalkieTalkie, addWalkieTalkieEntry, addLocalMessage, workingDirectory, conversationContextMode, conversationModel, effortLevel, providerProp])
 
   // End Session: gracefully tell the agent to write a handoff and stop.
   // Do NOT reset firstMessageSent here — it will be reset automatically

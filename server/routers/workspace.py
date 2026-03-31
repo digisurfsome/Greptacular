@@ -10,11 +10,14 @@ read/write agent with a 1M-token context window.
 import asyncio
 import json
 import logging
+import time
 import uuid
 from typing import Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
+
+from ..ws_flush import ws_send_and_flush
 
 logger = logging.getLogger(__name__)
 
@@ -1216,17 +1219,32 @@ async def workspace_chat_websocket(websocket: WebSocket):
     async def _stream_to_ws(gen):
         """Stream async generator chunks directly to the WebSocket.
 
-        CRITICAL: After each send_json, we yield control to the event loop
-        with asyncio.sleep(0). This forces the ASGI transport to flush the
-        WebSocket frame to the network immediately. Without this, frames
-        can sit in the kernel TCP send buffer (especially on Windows) until
-        the next incoming packet or buffer-full event triggers a flush —
-        causing responses to appear "stuck" until the user sends a message.
+        CRITICAL FIX (March 2026): Uses ``ws_send_and_flush()`` instead of
+        plain ``send_json()`` + ``asyncio.sleep(0)``.  The old approach
+        failed because:
+        1. Neither websockets nor uvicorn set TCP_NODELAY → Nagle holds
+           small WebSocket frames in the kernel buffer.
+        2. ``asyncio.sleep(0)`` on Windows ProactorEventLoop doesn't
+           guarantee IOCP write completions are processed.
+        3. Combined with Windows Delayed ACK (~200ms), frames accumulate
+           and only flush when the user sends the next message.
+
+        The new approach:
+        - TCP_NODELAY is set on all connections (via ws_flush.py patch)
+        - Each send uses a 1ms sleep to allow IOCP completion processing
+        - Critical messages (response_done) use a 50ms flush to ensure
+          the final frame reaches the browser
+        - Diagnostic timestamps log slow sends for debugging
         """
+        _stream_start = time.perf_counter()
+        _chunk_count = 0
         try:
             async for chunk in gen:
+                _chunk_count += 1
+                chunk_type = chunk.get("type", "?")
+
                 # Check for auto-bridge trigger on token_usage events
-                if chunk.get("type") == "token_usage":
+                if chunk_type == "token_usage":
                     total = chunk.get("total_tokens", 0)
                     ctx_win = chunk.get("context_window", 0)
                     if ctx_win > 0 and total > 0:
@@ -1235,24 +1253,54 @@ async def workspace_chat_websocket(websocket: WebSocket):
                             conv_id = session.conversation_id if session else None
                             await _workspace_auto_bridge(conv_id, pct)
                 try:
-                    await websocket.send_json(chunk)
-                    # Force event loop tick to flush the WebSocket frame.
-                    await asyncio.sleep(0)
+                    # Use improved flush: 1ms sleep for regular chunks,
+                    # which is enough for IOCP processing on Windows.
+                    await ws_send_and_flush(
+                        websocket, chunk,
+                        flush_delay=0.001,
+                        label=f"stream#{_chunk_count}",
+                    )
                 except Exception:
                     break  # WebSocket closed mid-stream
+
+            # ── Post-stream flush ──
+            # After all chunks have been sent, add a longer sleep to
+            # ensure the FINAL frames (especially response_done) have
+            # been fully flushed to the network.  This is the most
+            # critical point: without it, the last frame(s) can sit
+            # in the kernel buffer indefinitely on Windows.
+            _elapsed = time.perf_counter() - _stream_start
+            logger.debug(
+                "[WS-STREAM] completed: %d chunks in %.1fs",
+                _chunk_count, _elapsed,
+            )
+            await asyncio.sleep(0.05)
+
         except asyncio.CancelledError:
             try:
-                await websocket.send_json({"type": "response_done"})
-                await asyncio.sleep(0)
+                await ws_send_and_flush(
+                    websocket,
+                    {"type": "response_done"},
+                    flush_delay=0.05,
+                    label="cancel-done",
+                )
             except Exception:
                 pass
         except Exception as e:
             logger.exception("Error streaming workspace response")
             try:
-                await websocket.send_json({"type": "error", "content": str(e)})
-                await asyncio.sleep(0)
-                await websocket.send_json({"type": "response_done"})
-                await asyncio.sleep(0)
+                await ws_send_and_flush(
+                    websocket,
+                    {"type": "error", "content": str(e)},
+                    flush_delay=0.001,
+                    label="error",
+                )
+                await ws_send_and_flush(
+                    websocket,
+                    {"type": "response_done"},
+                    flush_delay=0.05,
+                    label="error-done",
+                )
             except Exception:
                 pass
 
@@ -1265,7 +1313,10 @@ async def workspace_chat_websocket(websocket: WebSocket):
                 logger.debug("Workspace received message type: %s", msg_type)
 
                 if msg_type == "ping":
-                    await websocket.send_json({"type": "pong"})
+                    await ws_send_and_flush(
+                        websocket, {"type": "pong"},
+                        flush_delay=0.001, label="pong",
+                    )
 
                 elif msg_type == "start":
                     conversation_id = message.get("conversation_id")
@@ -1273,9 +1324,11 @@ async def workspace_chat_websocket(websocket: WebSocket):
 
                     # If resuming an existing conversation without an explicit
                     # working_directory, look it up from the database.
+                    # NOTE: Wrapped in to_thread to prevent blocking the event
+                    # loop (sync SQLite call that was blocking WebSocket flushing).
                     if conversation_id is not None and working_directory is None:
                         from ..services.workspace_database import get_conversation
-                        conv = get_conversation(conversation_id)
+                        conv = await asyncio.to_thread(get_conversation, conversation_id)
                         if conv:
                             working_directory = conv.get("working_directory")
 
@@ -1304,9 +1357,10 @@ async def workspace_chat_websocket(websocket: WebSocket):
                             provider = "claude"
 
                         # Server-side safety net: cross-check against DB for resumed conversations.
+                        # NOTE: Wrapped in to_thread to prevent blocking the event loop.
                         if conversation_id is not None:
                             from ..services.workspace_database import get_conversation as get_conv_for_mode
-                            conv_for_mode = get_conv_for_mode(conversation_id)
+                            conv_for_mode = await asyncio.to_thread(get_conv_for_mode, conversation_id)
                             if conv_for_mode:
                                 stored_mode = conv_for_mode.get("context_mode")
                                 stored_model = conv_for_mode.get("model")
@@ -1363,23 +1417,23 @@ async def workspace_chat_websocket(websocket: WebSocket):
 
                     except Exception as e:
                         logger.exception("Error starting workspace session")
-                        await websocket.send_json({
+                        await ws_send_and_flush(websocket, {
                             "type": "error",
                             "content": f"Failed to start session: {str(e)}",
-                        })
+                        }, flush_delay=0.01, label="start-error")
 
                 elif msg_type == "message":
                     if not session:
-                        await websocket.send_json({
+                        await ws_send_and_flush(websocket, {
                             "type": "error",
                             "content": "No active session. Send 'start' first.",
-                        })
+                        }, flush_delay=0.01, label="no-session")
                         continue
 
                     user_content = message.get("content", "").strip()
                     raw_atts = message.get("attachments")
                     if not user_content and not raw_atts:
-                        await websocket.send_json({"type": "error", "content": "Empty message"})
+                        await ws_send_and_flush(websocket, {"type": "error", "content": "Empty message"}, flush_delay=0.01, label="empty-msg")
                         continue
                     # Default content for image-only messages so downstream code has something to work with
                     if not user_content and raw_atts:
@@ -1420,10 +1474,10 @@ async def workspace_chat_websocket(websocket: WebSocket):
                 elif msg_type == "walkie_talkie":
                     content = message.get("content", "").strip()
                     if not session:
-                        await websocket.send_json({
+                        await ws_send_and_flush(websocket, {
                             "type": "error",
                             "content": "No active session. Send 'start' first.",
-                        })
+                        }, flush_delay=0.01, label="wt-no-session")
                     elif content:
                         # Check if a turn is active BEFORE queuing to avoid
                         # double delivery (queue + send_message argument).
@@ -1432,10 +1486,10 @@ async def workspace_chat_websocket(websocket: WebSocket):
                         if turn_active:
                             # Turn is active — queue for hook injection (cheap)
                             await session.queue_walkie_talkie_message(content)
-                            await websocket.send_json({
+                            await ws_send_and_flush(websocket, {
                                 "type": "walkie_talkie_queued",
                                 "content": content[:100],
-                            })
+                            }, flush_delay=0.01, label="wt-queued")
                         else:
                             # No active turn — start a new one directly with the
                             # message as the turn content.  Do NOT also queue it,
@@ -1444,10 +1498,10 @@ async def workspace_chat_websocket(websocket: WebSocket):
                                 "Walkie-talkie fallback: no active turn, auto-starting new turn "
                                 "for session %s", session_id,
                             )
-                            await websocket.send_json({
+                            await ws_send_and_flush(websocket, {
                                 "type": "walkie_talkie_queued",
                                 "content": content[:100],
-                            })
+                            }, flush_delay=0.01, label="wt-fallback")
                             response_task = asyncio.create_task(
                                 _stream_to_ws(
                                     session.send_message(
@@ -1458,10 +1512,10 @@ async def workspace_chat_websocket(websocket: WebSocket):
 
                 elif msg_type == "answer":
                     if not session:
-                        await websocket.send_json({
+                        await ws_send_and_flush(websocket, {
                             "type": "error",
                             "content": "No active session. Send 'start' first.",
-                        })
+                        }, flush_delay=0.01, label="answer-no-session")
                         continue
 
                     # Format the answers as a natural response
@@ -1485,16 +1539,16 @@ async def workspace_chat_websocket(websocket: WebSocket):
                     )
 
                 else:
-                    await websocket.send_json({
+                    await ws_send_and_flush(websocket, {
                         "type": "error",
                         "content": f"Unknown message type: {msg_type}",
-                    })
+                    }, flush_delay=0.01, label="unknown-type")
 
             except json.JSONDecodeError:
-                await websocket.send_json({
+                await ws_send_and_flush(websocket, {
                     "type": "error",
                     "content": "Invalid JSON",
-                })
+                }, flush_delay=0.01, label="json-error")
 
     except WebSocketDisconnect:
         logger.info("Workspace WebSocket disconnected")
@@ -1502,10 +1556,10 @@ async def workspace_chat_websocket(websocket: WebSocket):
     except Exception as e:
         logger.exception("Workspace WebSocket error")
         try:
-            await websocket.send_json({
+            await ws_send_and_flush(websocket, {
                 "type": "error",
                 "content": f"Server error: {str(e)}",
-            })
+            }, flush_delay=0.05, label="fatal-error")
         except Exception:
             pass
 

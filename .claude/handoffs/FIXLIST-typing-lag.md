@@ -110,6 +110,30 @@ The `<input type="file">` elements (lines 1845-1867) should STAY in `WorkspaceCh
 
 The input only re-renders when you actually type (changing `inputValue`) or when `isLoading` changes. That's it.
 
+## BONUS FIX: Images/Files Dropped in Walkie-Talkie Mode
+
+**Priority: HIGH — user reported this during live testing.**
+
+When the user is in walkie-talkie mode (mid-conversation, agent is running), images pasted via Ctrl+V, files attached via the file button, and library files are ALL silently dropped. Only the text content is sent through the walkie-talkie path.
+
+### What's Happening
+
+In `WorkspaceChat.tsx`, the walkie-talkie send path (inside `handleSend`) only sends the text string via `sendWalkieTalkie(content)`. It completely bypasses the attachment processing logic (pending images, pending files, pending library files).
+
+### How to Fix
+
+When attachments are present in walkie-talkie mode, convert images to base64 data URLs and append them to the text content as markdown: `![image](data:image/png;base64,...)`. This way they travel through the existing text-only walkie-talkie channel. For files, append their content as code blocks. For library files, append the path reference.
+
+In `WorkspaceChat.tsx`, in the walkie-talkie send path:
+
+1. Before calling `sendWalkieTalkie(content)`, check for pending images/files
+2. If images exist, convert each to base64 and append as markdown image tags
+3. If files exist, append their content as code blocks
+4. Send the combined text+attachments string via `sendWalkieTalkie()`
+5. Clear the pending attachments after sending (same as normal path)
+
+**IMPORTANT:** Look at how `pendingImages`, `pendingAttachments`, and `pendingLibraryFiles` are structured in the existing code. Match the actual data structures.
+
 ## Checklist
 
 - [ ] Create `ui/src/components/workspace/WorkspaceChatInput.tsx`
@@ -119,7 +143,10 @@ The input only re-renders when you actually type (changing `inputValue`) or when
 - [ ] Replace inline JSX in `WorkspaceChat.tsx` with `<WorkspaceChatInput />`
 - [ ] Move attachment preview chips to the new component (or pass as `attachmentPreview` prop)
 - [ ] Keep hidden `<input type="file">` elements in parent
+- [ ] Fix walkie-talkie mode to include images/files/library attachments in the message
+- [ ] Clear pending attachments after walkie-talkie send
 - [ ] Test: type while agent is streaming — no lag
 - [ ] Test: green styling appears when in walkie-talkie mode
 - [ ] Test: all buttons still work (send, file, image, library, end session)
+- [ ] Test: paste an image while in walkie-talkie mode — it should be sent with the message
 - [ ] Run `npm run build` in `ui/` to verify no TypeScript errors

@@ -207,7 +207,7 @@ def _scan_project_tree(working_directory: str) -> str:
     return "\n".join(lines)
 
 
-def get_workspace_system_prompt(working_directory: str, model: str = "", context_mode: str = "1m") -> str:
+def get_workspace_system_prompt(working_directory: str, model: str = "", context_mode: str = "1m", conversation_id: int | None = None) -> str:
     """Generate the system prompt for the workspace agent.
 
     Args:
@@ -259,20 +259,28 @@ Project instructions (CLAUDE.md):
     # --- Previous session handoff context ---
     handoff_section = ""
     handoff_dir = os.path.join(str(Path.home()), ".autoforge", "handoffs")
-    latest_handoff = os.path.join(handoff_dir, "session-latest.md")
-    try:
-        if os.path.isfile(latest_handoff):
-            with open(latest_handoff, "r", encoding="utf-8", errors="replace") as f:
-                handoff_content = f.read(10000)  # Cap at 10K chars
-            if handoff_content.strip():
-                handoff_section = f"""
+
+    # Try conversation-specific handoff first, then fall back to latest
+    candidates: list[str] = []
+    if conversation_id:
+        candidates.append(os.path.join(handoff_dir, f"session-{conversation_id}.md"))
+    candidates.append(os.path.join(handoff_dir, "session-latest.md"))
+
+    for handoff_path in candidates:
+        try:
+            if os.path.isfile(handoff_path):
+                with open(handoff_path, "r", encoding="utf-8", errors="replace") as f:
+                    handoff_content = f.read(10000)
+                if handoff_content.strip():
+                    handoff_section = f"""
 ## Previous Session Context
 The following handoff was written by the previous agent session. Use it for continuity:
 
 {handoff_content}
 """
-    except OSError:
-        pass
+                    break
+        except OSError:
+            continue
 
     return f"""You are an expert coding assistant ({display_name}{model_id_note}, {context_tokens} token context).
 Working directory: {working_directory}
@@ -812,7 +820,7 @@ class WorkspaceChatSession:
         # also load it -- giving the agent both workspace instructions
         # AND the project's own CLAUDE.md context.
         # -----------------------------------------------------------------
-        system_prompt = get_workspace_system_prompt(self.working_directory, model=model, context_mode=self.context_mode)
+        system_prompt = get_workspace_system_prompt(self.working_directory, model=model, context_mode=self.context_mode, conversation_id=self.conversation_id)
         logger.info(
             "Workspace system_prompt: context_mode=%s, model=%s, cwd=%s",
             self.context_mode, model, self.working_directory,

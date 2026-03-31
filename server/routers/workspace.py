@@ -78,6 +78,7 @@ class ConversationCreateRequest(BaseModel):
     model: str = "opus"
     effort: str = "high"
     provider: str = "claude"
+    fork_from: Optional[int] = None  # conversation ID to load handoff context from
 
 
 class ConversationUpdateRequest(BaseModel):
@@ -137,6 +138,19 @@ async def create_new_conversation(body: ConversationCreateRequest):
         effort=body.effort,
         provider=provider,
     )
+
+    # If forking from a past conversation, copy its handoff to the new conversation's file
+    if body.fork_from:
+        from pathlib import Path as _P
+        handoff_dir = _P.home() / ".autoforge" / "handoffs"
+        source = handoff_dir / f"session-{body.fork_from}.md"
+        if not source.is_file():
+            source = handoff_dir / "session-latest.md"
+        if source.is_file():
+            dest = handoff_dir / f"session-{conversation.id}.md"
+            dest.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+            logger.info("Forked handoff from conv %s to conv %s", body.fork_from, conversation.id)
+
     return WorkspaceConversationSummary(
         id=int(conversation.id),
         title=str(conversation.title) if conversation.title else None,
@@ -1155,13 +1169,40 @@ async def workspace_chat_websocket(websocket: WebSocket):
     session = None          # WorkspaceChatSession instance
     session_id: Optional[str] = None
     response_task: Optional[asyncio.Task] = None
+    _auto_bridge_saved = False  # Only auto-save bridge once per connection
 
     logger.info("Workspace WebSocket connected (direct mode)")
+
+    async def _workspace_auto_bridge(conv_id: Optional[int], usage_pct: float):
+        """Auto-save bridge when context usage exceeds threshold."""
+        nonlocal _auto_bridge_saved
+        if _auto_bridge_saved:
+            return
+        _auto_bridge_saved = True
+        from pathlib import Path as _Path
+        from datetime import datetime, timezone
+        handoff_dir = _Path.home() / ".autoforge" / "handoffs"
+        handoff_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        conv_label = f"session-{conv_id}" if conv_id else "session-latest"
+        path = handoff_dir / f"{conv_label}.md"
+        content = f"# Auto-Bridge Save — {timestamp}\n\n## Reason\nContext usage reached {usage_pct:.0f}% — auto-saving for session continuity.\n"
+        path.write_text(content, encoding="utf-8")
+        logger.info("Workspace auto-bridge saved to %s at %.0f%%", path, usage_pct)
 
     async def _stream_to_ws(gen):
         """Stream async generator chunks directly to the WebSocket."""
         try:
             async for chunk in gen:
+                # Check for auto-bridge trigger on token_usage events
+                if chunk.get("type") == "token_usage":
+                    total = chunk.get("total_tokens", 0)
+                    ctx_win = chunk.get("context_window", 0)
+                    if ctx_win > 0 and total > 0:
+                        pct = (total / ctx_win) * 100
+                        if pct >= 80 and not _auto_bridge_saved:
+                            conv_id = session.conversation_id if session else None
+                            await _workspace_auto_bridge(conv_id, pct)
                 try:
                     await websocket.send_json(chunk)
                 except Exception:

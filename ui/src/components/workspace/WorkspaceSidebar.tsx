@@ -188,6 +188,7 @@ export function WorkspaceSidebar({
   const [showNewChatForm, setShowNewChatForm] = useState(false)
   const [newChatName, setNewChatName] = useState('')
   const [newChatCategory, setNewChatCategory] = useState('')
+  const [forkFromConvId, setForkFromConvId] = useState<number | null>(null)
   const [attachRepo, setAttachRepo] = useState(false)
   const [newChatProvider, setNewChatProvider] = useState<WorkspaceProvider>(activeProvider)
   const namingInputRef = useRef<HTMLInputElement>(null)
@@ -282,6 +283,7 @@ export function WorkspaceSidebar({
       context_mode: preset.context,
       effort,
       provider: newChatProvider,
+      fork_from: forkFromConvId || undefined,
     }, {
       onSuccess: (newConv) => {
         onSelectConversation(newConv.id, newConv.provider)
@@ -289,6 +291,7 @@ export function WorkspaceSidebar({
         setNewChatName('')
         setNewChatCategory('')
         setAttachRepo(false)
+        setForkFromConvId(null)
       },
       onError: (err) => {
         console.error('Failed to create conversation:', err)
@@ -296,6 +299,7 @@ export function WorkspaceSidebar({
         setNewChatName('')
         setNewChatCategory('')
         setAttachRepo(false)
+        setForkFromConvId(null)
       },
     })
   }, [showNewChatForm, newChatName, newChatCategory, createConversationMut, onSelectConversation, modelPresetIndex, effortLevel, newChatModelPresets, isNewChatClaude, newChatProvider])
@@ -306,6 +310,7 @@ export function WorkspaceSidebar({
     setNewChatName('')
     setNewChatCategory('')
     setAttachRepo(false)
+    setForkFromConvId(null)
     setNewChatProvider(activeProvider)
   }, [activeProvider])
 
@@ -510,6 +515,23 @@ export function WorkspaceSidebar({
               <option value="">No folder</option>
               {categories.map((cat) => (
                 <option key={cat.id} value={cat.name}>{cat.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Fork from past conversation */}
+          <div className="mb-1.5">
+            <span className="text-[10px] text-muted-foreground mb-0.5 block">Continue from</span>
+            <select
+              value={forkFromConvId ?? ''}
+              onChange={(e) => setForkFromConvId(e.target.value ? Number(e.target.value) : null)}
+              className="w-full text-xs bg-input border border-border rounded px-2 py-1.5 outline-none ring-ring focus:ring-1 text-foreground"
+            >
+              <option value="">Fresh start</option>
+              {conversations?.map((conv) => (
+                <option key={conv.id} value={conv.id}>
+                  {conv.title || `Chat #${conv.id}`}
+                </option>
               ))}
             </select>
           </div>

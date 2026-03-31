@@ -47,6 +47,8 @@ interface UseWorkspaceChatReturn {
   walkieTalkieLog: WalkieTalkieLogEntry[];
   /** Append an entry to the walkie-talkie log (used by WorkspaceChat for user-initiated events). */
   addWalkieTalkieEntry: (sender: 'user' | 'agent' | 'system', content: string) => void;
+  /** Add a message directly to the local messages array (e.g. walkie-talkie user messages). */
+  addLocalMessage: (role: 'user' | 'assistant' | 'system', content: string) => void;
   /** Real-time token processing log entries received via WebSocket. */
   tokenLog: TokenLogEntry[];
   /** Clear the local token log entries array. */
@@ -101,6 +103,21 @@ export function useWorkspaceChat({
         {
           id: `wt-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
           sender,
+          content,
+          timestamp: new Date(),
+        },
+      ]);
+    },
+    [],
+  );
+
+  const addLocalMessage = useCallback(
+    (role: 'user' | 'assistant' | 'system', content: string) => {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: generateId(),
+          role,
           content,
           timestamp: new Date(),
         },
@@ -783,6 +800,7 @@ export function useWorkspaceChat({
     agentWaitingQuestion,
     walkieTalkieLog,
     addWalkieTalkieEntry,
+    addLocalMessage,
     start,
     sendMessage,
     sendWalkieTalkie,

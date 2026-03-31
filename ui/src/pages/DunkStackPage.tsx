@@ -41,7 +41,7 @@ import { ThemeSelector } from '@/components/ThemeSelector'
 import { useTheme } from '@/hooks/useTheme'
 import { useProjects, useCreateProject } from '@/hooks/useProjects'
 import { useDunkStack } from '@/hooks/useDunkStack'
-import { dunkstackUpdateModelPreset } from '@/lib/api'
+import { dunkstackUpdateModelPreset, dunkstackListBridges, dunkstackLoadBridge, type DunkStackBridgeEntry } from '@/lib/api'
 import { DunkStackContextGauge } from '@/components/dunkstack/DunkStackContextGauge'
 import { DunkStackAgentView } from '@/components/dunkstack/DunkStackAgentView'
 import { DunkStackSafetyPanel } from '@/components/dunkstack/DunkStackSafetyPanel'
@@ -138,6 +138,28 @@ export function DunkStackPage(): React.JSX.Element {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const [selectedProject, setSelectedProject] = useState<string | null>(getStoredProject)
 
+  // Bridge/session chaining state
+  const [bridges, setBridges] = useState<DunkStackBridgeEntry[]>([])
+  const [selectedBridge, setSelectedBridge] = useState<string | null>(null)
+  const [showBridgeSelector, setShowBridgeSelector] = useState(false)
+
+  // Fetch bridges when project changes
+  useEffect(() => {
+    if (!selectedProject) { setBridges([]); return }
+    dunkstackListBridges(selectedProject)
+      .then(res => setBridges(res.bridges || []))
+      .catch(() => setBridges([]))
+  }, [selectedProject])
+
+  const handleLoadBridge = useCallback(async (filename: string) => {
+    if (!selectedProject) return
+    try {
+      await dunkstackLoadBridge(filename, selectedProject)
+      setSelectedBridge(filename)
+      setShowBridgeSelector(false)
+    } catch { /* best effort */ }
+  }, [selectedProject])
+
   // New project inline form state
   const [showNewProject, setShowNewProject] = useState(false)
   const [newProjectName, setNewProjectName] = useState('')
@@ -164,7 +186,7 @@ export function DunkStackPage(): React.JSX.Element {
       setModelPresetIndex(formModelPresetIndex)
       localStorage.setItem('dunkstack-model-preset', String(formModelPresetIndex))
       const preset = MODEL_PRESETS[formModelPresetIndex]
-      const modelId = preset.model === 'opus' ? 'claude-opus-4-6' : 'claude-sonnet-4-6'
+      const modelId = preset.model === 'haiku' ? 'claude-haiku-4-5-20251001' : preset.model === 'opus' ? 'claude-opus-4-6' : 'claude-sonnet-4-6'
       try { await dunkstackUpdateModelPreset(modelId, preset.limit) } catch { /* best-effort */ }
       // Reset form
       setShowNewProject(false)
@@ -256,7 +278,7 @@ export function DunkStackPage(): React.JSX.Element {
   const handleStartAgent = useCallback(async () => {
     if (!selectedProject) return
     const preset = MODEL_PRESETS[modelPresetIndex]
-    const modelId = preset.model === 'opus' ? 'claude-opus-4-6' : 'claude-sonnet-4-6'
+    const modelId = preset.model === 'haiku' ? 'claude-haiku-4-5-20251001' : preset.model === 'opus' ? 'claude-opus-4-6' : 'claude-sonnet-4-6'
     await startAgent(selectedProject, modelId, preset.limit)
   }, [selectedProject, modelPresetIndex, startAgent])
 
@@ -487,6 +509,44 @@ export function DunkStackPage(): React.JSX.Element {
                'Idle'}
             </span>
           </div>
+
+          {/* Bridge selector — only when agent is stopped and bridges exist */}
+          {!isAgentRunning && !agentStarting && bridges.length > 0 && (
+            <div className="relative">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1 text-[10px] h-6 px-2"
+                onClick={() => setShowBridgeSelector(prev => !prev)}
+              >
+                <Layers size={11} />
+                <span className="hidden sm:inline">
+                  {selectedBridge ? `Bridge: ${selectedBridge.replace('bridge_', '').replace('.md', '')}` : 'Load Bridge'}
+                </span>
+                <ChevronDown size={10} />
+              </Button>
+              {showBridgeSelector && (
+                <div className="absolute top-full left-0 mt-1 w-64 bg-popover border border-border rounded-md shadow-lg z-50 max-h-48 overflow-y-auto">
+                  {bridges.map(b => (
+                    <button
+                      key={b.filename}
+                      className={`w-full text-left px-3 py-1.5 text-xs hover:bg-accent/50 flex flex-col gap-0.5 border-b border-border/30 last:border-0 ${
+                        selectedBridge === b.filename ? 'bg-accent/30' : ''
+                      }`}
+                      onClick={() => handleLoadBridge(b.filename)}
+                    >
+                      <span className="font-medium truncate">
+                        {b.is_current ? '● Current' : b.label}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground truncate">
+                        {b.reason || 'No reason'} · {new Date(b.timestamp).toLocaleString()}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="flex-1 min-w-1" />
 

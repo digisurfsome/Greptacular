@@ -89,6 +89,12 @@ def _reset_comms_files(project_name: Optional[str] = None) -> None:
         encoding="utf-8",
     )
 
+    # Create walkie-check.txt for polling loop keep-alive
+    (comms / "walkie-check.txt").write_text(
+        "poll\n",
+        encoding="utf-8",
+    )
+
     logger.info("Reset comms files for %s", project_name or "default")
 
 
@@ -161,22 +167,50 @@ class TokenSnapshot(BaseModel):
 # In-memory token tracking (per-session, resets on server restart)
 # ============================================================================
 
-_token_state = {
-    "entries": [],       # List of TokenSnapshot dicts
-    "cumulative": {
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "cache_read_tokens": 0,
-        "cache_creation_tokens": 0,
-        "total_cost_usd": 0.0,
-        "api_calls": 0,
-    },
-    "model_limit": 200000,
-    "mode": "subscription",  # subscription | api
-}
+def _default_token_state() -> dict:
+    """Return a fresh token state dict."""
+    return {
+        "entries": [],
+        "cumulative": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cache_read_tokens": 0,
+            "cache_creation_tokens": 0,
+            "total_cost_usd": 0.0,
+            "api_calls": 0,
+        },
+        "model_limit": 200000,
+        "mode": "subscription",
+    }
+
+
+# Per-project token tracking. Key = project_name (or "__global__" fallback).
+_token_states: dict[str, dict] = {}
+
+
+def _get_token_state(project_name: Optional[str] = None) -> dict:
+    """Get the token state for a project, creating it if needed."""
+    key = project_name or "__global__"
+    if key not in _token_states:
+        _token_states[key] = _default_token_state()
+    return _token_states[key]
+
+
+# Backward compat — default global state
+_token_state = _get_token_state()
 
 # Track previous safety tier for transition detection (auto bridge save / auto stop)
-_previous_safety_tier: int = 0
+_previous_safety_tiers: dict[str, int] = {}
+
+
+def _get_previous_safety_tier(project_name: Optional[str] = None) -> int:
+    key = project_name or "__global__"
+    return _previous_safety_tiers.get(key, 0)
+
+
+def _set_previous_safety_tier(project_name: Optional[str], tier: int) -> None:
+    key = project_name or "__global__"
+    _previous_safety_tiers[key] = tier
 
 # Benchmark mode state
 _benchmark_state: dict = {
@@ -427,6 +461,12 @@ Reason: {req.reason}
 """
     path.write_text(content, encoding="utf-8")
 
+    # Also save a timestamped copy for session chaining
+    history_dir = _agent_dir(project_name) / "bridge_history"
+    history_dir.mkdir(parents=True, exist_ok=True)
+    ts_slug = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    (history_dir / f"bridge_{ts_slug}.md").write_text(content, encoding="utf-8")
+
     # Also append to build log
     log_path = _agent_dir(project_name) / "progress" / "build_log.md"
     if log_path.exists():
@@ -449,6 +489,88 @@ def read_bridge(project_name: Optional[str] = None):
     if not path.exists():
         return {"content": "", "exists": False}
     return {"content": path.read_text(encoding="utf-8"), "exists": True}
+
+
+@router.get("/bridge/list")
+def list_bridges(project_name: Optional[str] = None):
+    """List all saved bridge files for session chaining.
+
+    Returns bridges sorted newest-first with metadata.
+    """
+    history_dir = _agent_dir(project_name) / "bridge_history"
+    bridges: list[dict] = []
+
+    # Include current bridge.md if it exists
+    current = _agent_dir(project_name) / "bridge.md"
+    if current.exists():
+        try:
+            content = current.read_text(encoding="utf-8")
+            mtime = datetime.fromtimestamp(current.stat().st_mtime, tz=timezone.utc)
+            # Extract reason from content
+            reason = ""
+            for line in content.splitlines():
+                if line.startswith("Reason:"):
+                    reason = line.split(":", 1)[1].strip()
+                    break
+            bridges.append({
+                "filename": "bridge.md",
+                "label": "Current Session",
+                "reason": reason,
+                "timestamp": mtime.isoformat(),
+                "size": len(content),
+                "is_current": True,
+            })
+        except Exception:
+            pass
+
+    # Include history files
+    if history_dir.exists():
+        for f in sorted(history_dir.glob("bridge_*.md"), reverse=True):
+            try:
+                content = f.read_text(encoding="utf-8")
+                mtime = datetime.fromtimestamp(f.stat().st_mtime, tz=timezone.utc)
+                reason = ""
+                for line in content.splitlines():
+                    if line.startswith("Reason:"):
+                        reason = line.split(":", 1)[1].strip()
+                        break
+                bridges.append({
+                    "filename": f.name,
+                    "label": f.stem.replace("bridge_", "").replace("_", " "),
+                    "reason": reason,
+                    "timestamp": mtime.isoformat(),
+                    "size": len(content),
+                    "is_current": False,
+                })
+            except Exception:
+                continue
+
+    return {"bridges": bridges}
+
+
+@router.post("/bridge/load")
+async def load_bridge(project_name: Optional[str] = None, filename: str = "bridge.md"):
+    """Load a specific bridge file as the active bridge for the next session.
+
+    Copies the selected bridge file to bridge.md so the agent reads it on startup.
+    """
+    agent = _agent_dir(project_name)
+
+    if filename == "bridge.md":
+        # Already the current bridge
+        path = agent / "bridge.md"
+    else:
+        path = agent / "bridge_history" / filename
+
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"Bridge file not found: {filename}")
+
+    content = path.read_text(encoding="utf-8")
+
+    # Copy to bridge.md (the file the agent reads on startup)
+    (agent / "bridge.md").write_text(content, encoding="utf-8")
+
+    return {"status": "ok", "loaded": filename, "size": len(content)}
 
 
 # ============================================================================
@@ -500,10 +622,11 @@ async def update_config(update: ConfigUpdate, project_name: Optional[str] = None
         yaml.dump(config, f, default_flow_style=False, sort_keys=False)
 
     # Update in-memory token state
+    tstate = _get_token_state(project_name)
     if update.safety and "model_limit" in update.safety:
-        _token_state["model_limit"] = update.safety["model_limit"]
+        tstate["model_limit"] = update.safety["model_limit"]
     if update.mode and "type" in update.mode:
-        _token_state["mode"] = update.mode["type"]
+        tstate["mode"] = update.mode["type"]
 
     await _broadcast({"type": "config_update", "config": config})
 
@@ -516,15 +639,8 @@ async def update_config(update: ConfigUpdate, project_name: Optional[str] = None
 
 
 def _is_subscription_mode() -> bool:
-    """Check if the current model preset should use subscription billing.
-
-    200K context = subscription (free with Claude Max)
-    1M context   = API key billing (costs money)
-
-    Same logic as client.py: use_api_billing = (agent_type == "initializer")
-    maps to: subscription = (context_window <= 200_000)
-    """
-    return _token_state["model_limit"] <= 200_000
+    """ALL Claude models use subscription auth — no exceptions."""
+    return True
 
 
 @router.get("/sdk-env")
@@ -551,7 +667,7 @@ def get_sdk_env():
 
     return {
         "mode": "subscription" if force_sub else "api",
-        "model_limit": _token_state["model_limit"],
+        "model_limit": _get_token_state()["model_limit"],
         "env_keys": list(sdk_env.keys()),
         "env_redacted": redacted,
     }
@@ -566,13 +682,13 @@ async def update_model_preset(preset: ModelPresetUpdate, project_name: Optional[
     2. Persists to config.yml
     3. Broadcasts to WebSocket clients
     """
-    # Derive billing mode: 200K = subscription, 1M = api
-    is_sub = preset.context_window <= 200_000
-    mode_str = "subscription" if is_sub else "api"
+    # ALL models use subscription auth
+    mode_str = "subscription"
 
-    # Update in-memory state
-    _token_state["model_limit"] = preset.context_window
-    _token_state["mode"] = mode_str
+    # Update in-memory state (per-project)
+    tstate = _get_token_state(project_name)
+    tstate["model_limit"] = preset.context_window
+    tstate["mode"] = mode_str
 
     # Persist to config.yml
     _ensure_agent_dir(project_name)
@@ -623,18 +739,19 @@ async def update_model_preset(preset: ModelPresetUpdate, project_name: Optional[
 @router.get("/tokens")
 def get_token_state(project_name: Optional[str] = None):
     """Get the current token tracking state for the context gauge."""
-    cumulative = _token_state["cumulative"]
-    model_limit = _token_state["model_limit"]
+    ts = _get_token_state(project_name)
+    cumulative = ts["cumulative"]
+    model_limit = ts["model_limit"]
     total_tokens = cumulative["input_tokens"] + cumulative["output_tokens"]
     usage_pct = (total_tokens / model_limit * 100) if model_limit > 0 else 0
 
     return {
         "cumulative": cumulative,
         "model_limit": model_limit,
-        "mode": _token_state["mode"],
+        "mode": ts["mode"],
         "usage_percent": round(usage_pct, 2),
-        "entries_count": len(_token_state["entries"]),
-        "safety": _get_safety_status(usage_pct),
+        "entries_count": len(ts["entries"]),
+        "safety": _get_safety_status(usage_pct, project_name),
     }
 
 
@@ -651,10 +768,11 @@ async def record_tokens(snapshot: TokenSnapshot, project_name: Optional[str] = N
         "total_cost_usd": snapshot.total_cost_usd,
         "timestamp": ts,
     }
-    _token_state["entries"].append(entry)
+    tstate = _get_token_state(project_name)
+    tstate["entries"].append(entry)
 
     # Update cumulative
-    cum = _token_state["cumulative"]
+    cum = tstate["cumulative"]
     cum["input_tokens"] += snapshot.input_tokens
     cum["output_tokens"] += snapshot.output_tokens
     cum["cache_read_tokens"] += snapshot.cache_read_tokens
@@ -663,24 +781,24 @@ async def record_tokens(snapshot: TokenSnapshot, project_name: Optional[str] = N
     cum["api_calls"] += 1
 
     # Calculate safety status
-    model_limit = _token_state["model_limit"]
+    model_limit = tstate["model_limit"]
     total = cum["input_tokens"] + cum["output_tokens"]
     usage_pct = (total / model_limit * 100) if model_limit > 0 else 0
-    safety = _get_safety_status(usage_pct)
+    safety = _get_safety_status(usage_pct, project_name)
 
     # ── Auto-actions on safety tier transitions ──
-    global _previous_safety_tier
+    prev_tier = _get_previous_safety_tier(project_name)
     current_tier = safety.get("tier", 0)
 
-    if current_tier >= 2 and _previous_safety_tier < 2:
+    if current_tier >= 2 and prev_tier < 2:
         # Transition to HANDOFF tier — auto-save bridge state
         asyncio.create_task(_auto_bridge_save(project_name, usage_pct))
 
-    if current_tier >= 3 and _previous_safety_tier < 3:
+    if current_tier >= 3 and prev_tier < 3:
         # Transition to HARD STOP tier — stop the agent
         asyncio.create_task(_auto_stop_agent(project_name))
 
-    _previous_safety_tier = current_tier
+    _set_previous_safety_tier(project_name, current_tier)
 
     # Check benchmark checkpoints
     await _check_benchmark_checkpoints(total)
@@ -699,17 +817,9 @@ async def record_tokens(snapshot: TokenSnapshot, project_name: Optional[str] = N
 @router.post("/tokens/reset")
 async def reset_tokens(project_name: Optional[str] = None):
     """Reset token tracking state (new session)."""
-    global _previous_safety_tier
-    _token_state["entries"] = []
-    _token_state["cumulative"] = {
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "cache_read_tokens": 0,
-        "cache_creation_tokens": 0,
-        "total_cost_usd": 0.0,
-        "api_calls": 0,
-    }
-    _previous_safety_tier = 0
+    key = project_name or "__global__"
+    _token_states[key] = _default_token_state()
+    _set_previous_safety_tier(project_name, 0)
 
     await _broadcast({"type": "token_reset"})
     return {"status": "ok"}
@@ -718,13 +828,14 @@ async def reset_tokens(project_name: Optional[str] = None):
 @router.get("/tokens/log")
 def get_token_log(project_name: Optional[str] = None):
     """Get the full token log entries."""
-    return {"entries": _token_state["entries"]}
+    ts = _get_token_state(project_name)
+    return {"entries": ts["entries"]}
 
 
-def _get_safety_status(usage_pct: float) -> dict:
+def _get_safety_status(usage_pct: float, project_name: Optional[str] = None) -> dict:
     """Determine the safety tier based on usage percentage."""
     # Read thresholds from config or use defaults
-    config_path = _agent_dir() / "settings" / "config.yml"
+    config_path = _agent_dir(project_name) / "settings" / "config.yml"
     warning_pct = 45.0
     handoff_pct = 47.5
     hard_stop_pct = 50.0
@@ -1126,9 +1237,10 @@ async def _record_token_usage(
         "total_cost_usd": total_cost_usd,
         "timestamp": ts,
     }
-    _token_state["entries"].append(entry)
+    tstate = _get_token_state(None)  # Will be overridden by per-project closure
+    tstate["entries"].append(entry)
 
-    cum = _token_state["cumulative"]
+    cum = tstate["cumulative"]
     cum["input_tokens"] += input_tokens
     cum["output_tokens"] += output_tokens
     cum["cache_read_tokens"] += cache_read_tokens
@@ -1136,10 +1248,10 @@ async def _record_token_usage(
     cum["total_cost_usd"] += total_cost_usd
     cum["api_calls"] += 1
 
-    model_limit = _token_state["model_limit"]
+    model_limit = tstate["model_limit"]
     total = cum["input_tokens"] + cum["output_tokens"]
     usage_pct = (total / model_limit * 100) if model_limit > 0 else 0
-    safety = _get_safety_status(usage_pct)
+    safety = _get_safety_status(usage_pct, None)
 
     # Check benchmark checkpoints
     await _check_benchmark_checkpoints(total)
@@ -1182,16 +1294,18 @@ async def dunkstack_websocket(ws: WebSocket):
     logger.info("DunkStack WebSocket connected (total: %d)", len(_ws_connections))
 
     current_session_id: Optional[str] = None
+    current_project_name: Optional[str] = None
 
     try:
-        # Send initial state
+        # Send initial state (project not known yet — use global default)
+        init_ts = _get_token_state(None)
         await ws.send_json({
             "type": "init",
             "token_state": {
-                "cumulative": _token_state["cumulative"],
-                "model_limit": _token_state["model_limit"],
-                "mode": _token_state["mode"],
-                "entries_count": len(_token_state["entries"]),
+                "cumulative": init_ts["cumulative"],
+                "model_limit": init_ts["model_limit"],
+                "mode": init_ts["mode"],
+                "entries_count": len(init_ts["entries"]),
             },
         })
 
@@ -1238,17 +1352,58 @@ async def dunkstack_websocket(ws: WebSocket):
                     _reset_comms_files(project_name)
 
                     session_id = f"dunkstack-{id(ws)}-{datetime.now(timezone.utc).strftime('%H%M%S')}"
+
+                    # Create per-project token usage callback
+                    _pn = project_name  # capture for closure
+
+                    async def _project_token_usage(
+                        input_tokens: int, output_tokens: int,
+                        cache_read_tokens: int, cache_creation_tokens: int,
+                        total_cost_usd: float,
+                    ) -> None:
+                        ts_now = datetime.now(timezone.utc).isoformat()
+                        entry = {
+                            "input_tokens": input_tokens,
+                            "output_tokens": output_tokens,
+                            "cache_read_tokens": cache_read_tokens,
+                            "cache_creation_tokens": cache_creation_tokens,
+                            "total_cost_usd": total_cost_usd,
+                            "timestamp": ts_now,
+                        }
+                        tstate = _get_token_state(_pn)
+                        tstate["entries"].append(entry)
+                        cum = tstate["cumulative"]
+                        cum["input_tokens"] += input_tokens
+                        cum["output_tokens"] += output_tokens
+                        cum["cache_read_tokens"] += cache_read_tokens
+                        cum["cache_creation_tokens"] += cache_creation_tokens
+                        cum["total_cost_usd"] += total_cost_usd
+                        cum["api_calls"] += 1
+                        ml = tstate["model_limit"]
+                        total = cum["input_tokens"] + cum["output_tokens"]
+                        usage_pct = (total / ml * 100) if ml > 0 else 0
+                        safety = _get_safety_status(usage_pct, _pn)
+                        await _check_benchmark_checkpoints(total)
+                        await _broadcast({
+                            "type": "token_update",
+                            "entry": entry,
+                            "cumulative": cum,
+                            "usage_percent": round(usage_pct, 2),
+                            "safety": safety,
+                        })
+
                     session = DunkStackChatSession(
                         session_id=session_id,
                         model_id=model_id,
                         working_directory=working_directory,
                         context_mode=context_mode,
                         effort=effort,
-                        on_token_usage=_record_token_usage,
+                        on_token_usage=_project_token_usage,
                     )
 
                     _agent_sessions[session_id] = session
                     current_session_id = session_id
+                    current_project_name = project_name
 
                     # Start the session and stream initialization events
                     try:
@@ -1296,8 +1451,8 @@ async def dunkstack_websocket(ws: WebSocket):
                     session = _agent_sessions[current_session_id]
 
                     # Also write to from_human.md for the file-based record
-                    _ensure_agent_dir()
-                    path = _agent_dir() / "comms" / "from_human.md"
+                    _ensure_agent_dir(current_project_name)
+                    path = _agent_dir(current_project_name) / "comms" / "from_human.md"
                     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
                     entry_text = f"\n\n## [{timestamp}] Message\n{content}\n"
                     if path.exists():

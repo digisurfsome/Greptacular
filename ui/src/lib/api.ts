@@ -1638,6 +1638,27 @@ export async function dunkstackSaveBridge(data: {
   })
 }
 
+export interface DunkStackBridgeEntry {
+  filename: string
+  label: string
+  reason: string
+  timestamp: string
+  size: number
+  is_current: boolean
+}
+
+export async function dunkstackListBridges(projectName?: string): Promise<{ bridges: DunkStackBridgeEntry[] }> {
+  const params = projectName ? `?project_name=${encodeURIComponent(projectName)}` : ''
+  return fetchJSON(`/dunkstack/bridge/list${params}`)
+}
+
+export async function dunkstackLoadBridge(filename: string, projectName?: string): Promise<{ status: string; loaded: string; size: number }> {
+  const params = new URLSearchParams()
+  if (projectName) params.set('project_name', projectName)
+  params.set('filename', filename)
+  return fetchJSON(`/dunkstack/bridge/load?${params.toString()}`, { method: 'POST' })
+}
+
 export async function dunkstackReadConfig(): Promise<DunkStackConfigResponse> {
   return fetchJSON('/dunkstack/config')
 }

@@ -79,6 +79,16 @@ Begin your session. Follow the file-based operating protocol:
 5. Read .agent/comms/control.md for mode signal
 6. Begin working on whatever task is described
 
+## Polling Loop (IMPORTANT)
+After completing your current tasks, enter a polling loop to stay alive:
+- Read .agent/comms/walkie-check.txt every ~30 seconds (use Bash: `cat .agent/comms/walkie-check.txt`)
+- Check .agent/comms/from_human.md for any new messages from the human
+- Check .agent/comms/control.md for mode changes (idle → pause, continue → work)
+- If you find new instructions in from_human.md, process them immediately
+- If mode is "idle", wait and re-check periodically
+- Continue this loop until the human says "end session" or context approaches its limit
+- Write a brief status update to .agent/comms/to_human.md when entering the polling loop
+
 Remember: Write ALL substantive output to files. Chat responses are status-only (1-2 sentences max)."""
 
 # Settings file path (separate from workspace to avoid collisions)
@@ -173,8 +183,8 @@ class DunkStackCodingSession:
         return DEFAULT_SYSTEM_PROMPT
 
     def _is_subscription_mode(self) -> bool:
-        """200K context = subscription (free), 1M = API billing."""
-        return self.context_window <= 200_000
+        """ALL Claude models use subscription auth — no exceptions."""
+        return True
 
     async def start(self) -> AsyncGenerator[dict[str, Any], None]:
         """Initialize the Claude SDK client, send the bootstrap message, and stream.
@@ -720,6 +730,7 @@ class DunkStackCodingSession:
         first_token_timeout = 300  # 5 minutes for first token
         ongoing_timeout = 300  # 5 minutes between subsequent tokens
         first_token_received = False
+        full_text = ""
 
         try:
             response_iter = self.client.receive_response().__aiter__()
@@ -745,6 +756,7 @@ class DunkStackCodingSession:
                         if block_type == "TextBlock" and hasattr(block, "text"):
                             text = block.text
                             if text:
+                                full_text += text
                                 yield {"type": "text", "content": text}
 
                         elif block_type == "ToolUseBlock" and hasattr(block, "name"):
@@ -811,6 +823,16 @@ class DunkStackCodingSession:
 
         except Exception as e:
             error_str = str(e).lower()
+
+            # SDK throws "Unknown message type: rate_limit_event" as an exception
+            # AFTER the full response has been collected. Recover if we have text.
+            if full_text.strip() and "unknown message type" in error_str:
+                logger.info("DunkStack: recovered from 'unknown message type' with %d chars", len(full_text))
+                return
+            if full_text.strip():
+                logger.warning("DunkStack: exception after partial response (%d chars), using what we have: %s", len(full_text), e)
+                return
+
             _auth_hints = ["401", "authentication_error", "oauth", "token has expired", "credential"]
 
             if any(h in error_str for h in _auth_hints) and self._force_sub:

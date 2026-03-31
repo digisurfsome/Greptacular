@@ -17,11 +17,12 @@ import json
 import logging
 import shutil
 import sys
+import time
 from pathlib import Path
 from typing import Any, AsyncGenerator, Optional
 
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
-from claude_agent_sdk.types import HookMatcher
+from claude_agent_sdk.types import HookMatcher, SyncHookJSONOutput
 from dotenv import load_dotenv
 
 # Ensure project root is on sys.path before importing root-level modules
@@ -307,8 +308,8 @@ class DunkStackChatSession:
         try:
             from registry import get_effective_sdk_env
 
-            # 200K context → subscription billing; 1M → API key billing
-            force_sub = self.context_mode != "1m"
+            # ALL Claude models use subscription auth — no exceptions
+            force_sub = True
             self._force_sub = force_sub
             sdk_env = get_effective_sdk_env(force_subscription=force_sub)
             if self.effort in ("low", "medium", "high"):
@@ -347,9 +348,152 @@ class DunkStackChatSession:
             context["project_dir"] = working_dir_str
             return await bash_security_hook(input_data, tool_use_id, context)
 
-        hooks = {
+        # ── PreCompact hook for file-based recovery ──
+        async def pre_compact_hook(
+            input_data: Any, tool_use_id: Any = None, context: Any = None
+        ) -> SyncHookJSONOutput:
+            """Guide compaction to preserve file-based protocol awareness."""
+            logger.info("[DunkStack] Context compaction triggered")
+            return SyncHookJSONOutput(
+                hookSpecificOutput={  # type: ignore[typeddict-item]
+                    "hookEventName": "PreCompact",
+                    "customInstructions": (
+                        "## DunkStack Compaction Guidelines\n"
+                        "After compaction, re-read .agent/index.md and "
+                        ".agent/working_memory.md.\n"
+                        "These files are the source of truth, not conversation "
+                        "history.\n\n"
+                        "## DISCARD\n"
+                        "- Full file contents from Read results (keep: "
+                        "'Read file X')\n"
+                        "- Large Grep/Glob outputs (keep: 'Found N matches')\n"
+                        "- Verbose Bash output (keep: command + success/failure)\n\n"
+                        "## PRESERVE\n"
+                        "- Current task and progress state\n"
+                        "- Files created or modified (paths only)\n"
+                        "- Unresolved errors or blockers\n"
+                    ),
+                }
+            )
+
+        # ── Walkie-talkie PreToolUse hook ──
+        # Injects human messages from .agent/comms/from_human.md at tool-call
+        # boundaries, enforces idle/continue/autopilot session control modes.
+        _walkie_state: dict[str, int] = {"last_size": 0}
+        _project_dir_path = Path(self.working_directory)
+
+        # Seed last_size to current file size so we only inject NEW messages
+        _from_human_init = _project_dir_path / ".agent" / "comms" / "from_human.md"
+        if _from_human_init.exists():
+            try:
+                _walkie_state["last_size"] = _from_human_init.stat().st_size
+            except Exception:
+                pass
+
+        async def walkie_talkie_hook(
+            input_data: Any, tool_use_id: Any = None, context: Any = None
+        ) -> SyncHookJSONOutput:
+            """Check walkie-talkie for new messages and enforce session control."""
+            comms_dir = _project_dir_path / ".agent" / "comms"
+            from_human_path = comms_dir / "from_human.md"
+            control_path = comms_dir / "control.md"
+
+            new_messages: str | None = None
+            control_mode = "continue"
+
+            # Check for new messages (compare byte offset)
+            if from_human_path.exists():
+                try:
+                    current_size = from_human_path.stat().st_size
+                    if current_size > _walkie_state["last_size"]:
+                        content = from_human_path.read_text(encoding="utf-8")
+                        new_content = content[_walkie_state["last_size"]:]
+                        _walkie_state["last_size"] = current_size
+                        if new_content.strip():
+                            new_messages = new_content.strip()
+                except Exception as e:
+                    logger.debug("Walkie-talkie read error: %s", e)
+
+            # Check control mode
+            if control_path.exists():
+                try:
+                    raw = control_path.read_text(encoding="utf-8").strip().lower()
+                    for line in raw.splitlines():
+                        if line.startswith("mode:"):
+                            mode_val = line.split(":", 1)[1].strip()
+                            if mode_val in ("idle", "continue", "autopilot"):
+                                control_mode = mode_val
+                            break
+                except Exception:
+                    pass
+
+            # IDLE mode: block the tool call and wait
+            if control_mode == "idle":
+                reason = (
+                    "SESSION MODE: IDLE. The human has paused your session. "
+                    "Do NOT proceed with any work. "
+                )
+                if new_messages:
+                    reason += (
+                        f"New walkie-talkie message:\n\n{new_messages}\n\n"
+                        "Read and acknowledge this message by writing to "
+                        ".agent/comms/to_human.md, then wait for mode change."
+                    )
+                else:
+                    reason += (
+                        "Check .agent/comms/control.md periodically. "
+                        "Resume work when mode changes to 'continue' or 'autopilot'."
+                    )
+                await asyncio.sleep(10)
+                return SyncHookJSONOutput(
+                    hookSpecificOutput={  # type: ignore[typeddict-item]
+                        "hookEventName": "PreToolUse",
+                        "decision": "block",
+                        "reason": reason,
+                    }
+                )
+
+            # AUTOPILOT mode: check if human is actively typing
+            if control_mode == "autopilot" and from_human_path.exists():
+                try:
+                    mtime = from_human_path.stat().st_mtime
+                    if time.time() - mtime < 30:
+                        await asyncio.sleep(3)
+                except Exception:
+                    pass
+
+            # If there are new messages, block once to inject them
+            if new_messages:
+                return SyncHookJSONOutput(
+                    hookSpecificOutput={  # type: ignore[typeddict-item]
+                        "hookEventName": "PreToolUse",
+                        "decision": "block",
+                        "reason": (
+                            "WALKIE-TALKIE — NEW MESSAGE FROM HUMAN:\n\n"
+                            f"{new_messages}\n\n"
+                            "Read and acknowledge this message by writing a response to "
+                            ".agent/comms/to_human.md (using the Write tool). "
+                            "If the message contains new instructions, adjust your plan. "
+                            "Then continue your work."
+                        ),
+                    }
+                )
+
+            # No new messages, mode is continue or autopilot — approve
+            return SyncHookJSONOutput(
+                hookSpecificOutput={  # type: ignore[typeddict-item]
+                    "hookEventName": "PreToolUse",
+                    "decision": "approve",
+                }
+            )
+
+        hooks: dict[str, list[HookMatcher]] = {
             "PreToolUse": [
+                HookMatcher(hooks=[walkie_talkie_hook]),  # All tools
                 HookMatcher(matcher="Bash", hooks=[bash_hook_with_context]),
+            ],
+            "PreCompact": [
+                HookMatcher(hooks=[pre_compact_hook]),
             ],
         }
 
@@ -487,6 +631,13 @@ class DunkStackChatSession:
             "5. Read .agent/comms/control.md for mode signal\n"
             "6. Write your response/greeting to .agent/comms/to_human.md (NOT in chat)\n"
             "7. Respond in chat with a 1-sentence status ONLY\n\n"
+            "## Polling Loop (IMPORTANT)\n"
+            "After completing your current tasks, enter a polling loop to stay alive:\n"
+            "- Read .agent/comms/walkie-check.txt every ~30 seconds\n"
+            "- Check .agent/comms/from_human.md for any new messages\n"
+            "- Check .agent/comms/control.md for mode changes\n"
+            "- If you find new instructions, process them immediately\n"
+            "- Continue until the human says 'end session' or context approaches limit\n\n"
             "Begin now."
         )
         async for event in self.send_message(bootstrap_msg):
@@ -617,8 +768,20 @@ class DunkStackChatSession:
             yield {"type": "response_done"}
 
         except Exception as e:
-            logger.exception("Error during DunkStack query")
             error_str = str(e).lower()
+
+            # SDK throws "Unknown message type: rate_limit_event" as an exception
+            # AFTER the full response has been collected. Recover if we have text.
+            if full_response.strip() and "unknown message type" in error_str:
+                logger.info("DunkStack: recovered from 'unknown message type' with %d chars", len(full_response))
+                yield {"type": "response_done"}
+                return
+            if full_response.strip():
+                logger.warning("DunkStack: exception after partial response (%d chars), using what we have: %s", len(full_response), e)
+                yield {"type": "response_done"}
+                return
+
+            logger.exception("Error during DunkStack query")
             _auth_hints = ["401", "authentication_error", "oauth", "token has expired", "credential"]
             if any(h in error_str for h in _auth_hints):
                 logger.warning("DunkStack auth error — attempting API key fallback")

@@ -248,9 +248,35 @@ Project instructions (CLAUDE.md):
     except OSError:
         pass
 
+    # --- Walkie-talkie polling file ---
+    walkie_check_path = os.path.join(str(Path.home()), ".autoforge", "walkie-check.txt")
+    # Ensure the polling target file exists
+    os.makedirs(os.path.dirname(walkie_check_path), exist_ok=True)
+    if not os.path.isfile(walkie_check_path):
+        with open(walkie_check_path, "w") as f:
+            f.write("ok")
+
+    # --- Previous session handoff context ---
+    handoff_section = ""
+    handoff_dir = os.path.join(str(Path.home()), ".autoforge", "handoffs")
+    latest_handoff = os.path.join(handoff_dir, "session-latest.md")
+    try:
+        if os.path.isfile(latest_handoff):
+            with open(latest_handoff, "r", encoding="utf-8", errors="replace") as f:
+                handoff_content = f.read(10000)  # Cap at 10K chars
+            if handoff_content.strip():
+                handoff_section = f"""
+## Previous Session Context
+The following handoff was written by the previous agent session. Use it for continuity:
+
+{handoff_content}
+"""
+    except OSError:
+        pass
+
     return f"""You are an expert coding assistant ({display_name}{model_id_note}, {context_tokens} token context).
 Working directory: {working_directory}
-{tree_section}{claude_md_section}
+{tree_section}{claude_md_section}{handoff_section}
 ## Tool Usage Rules
 
 - Use Glob to find files by pattern, NOT bash find or ls.
@@ -278,7 +304,26 @@ Use structured tags when appropriate: [SUMMARY]...[/SUMMARY], [ROADMAP]...[/ROAD
 
 ## Communication
 
-If a tool call is blocked with "[WALKIE-TALKIE MESSAGE FROM USER]", acknowledge it, adjust if needed, then continue your task. Use [WAITING]question[/WAITING] when you need user input."""
+If a tool call is blocked with "[WALKIE-TALKIE MESSAGE FROM USER]", acknowledge it, adjust if needed, then continue your task.
+
+## Walkie-Talkie Polling Protocol
+
+After completing each task or response, enter a polling loop to keep the turn alive for cheap walkie-talkie communication:
+
+1. Output your response text as normal
+2. Then enter a polling loop:
+   - Read the file `{walkie_check_path}`
+   - If a walkie-talkie message is injected (you'll see [WALKIE-TALKIE MESSAGE FROM USER]), process it and respond
+   - If no message, wait ~30 seconds by doing a Bash sleep, then read the file again
+   - Continue polling until the user sends "end session" or you approach context limits
+3. When you receive "end session", write a handoff summary to `.autoforge/handoffs/session-latest.md` in your working directory, then stop.
+
+IMPORTANT: Do NOT end your turn with [WAITING]. Keep the turn alive by polling.
+The user will send follow-up messages via walkie-talkie injection during your tool calls.
+Your responses appear in the main chat. The cost savings come from keeping the turn alive
+so the full conversation history is not resent with each message.
+
+When approaching context limits (you'll notice context warnings), write a handoff summary before ending."""
 
 
 class WorkspaceChatSession:
@@ -372,7 +417,13 @@ class WorkspaceChatSession:
         # Walkie-talkie communication: in-memory message queue for injecting
         # user messages into a running agent via PreToolUse hook interception.
         self.walkie_talkie_queue: asyncio.Queue[str] = asyncio.Queue()
-        self.walkie_talkie_enabled: bool = True  # Controlled by comm_check_frequency setting
+        # Read walkie-talkie setting from global settings store
+        try:
+            from registry import get_setting
+            freq = get_setting("comm_check_frequency", "every_tool_call")
+            self.walkie_talkie_enabled = (freq != "never")
+        except Exception:
+            self.walkie_talkie_enabled = True  # Default to enabled
         self.walkie_talkie_waiting: bool = False  # True when agent output [WAITING] tag
         # Safety net: messages drained from queue but not yet confirmed delivered.
         # If the SDK silently ignores the hook's "block" response (e.g. for internal

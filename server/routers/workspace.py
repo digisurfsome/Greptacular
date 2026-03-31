@@ -1000,6 +1000,92 @@ async def get_git_pr_info(working_directory: str, branch: Optional[str] = None):
 
 
 # ============================================================================
+# Bridge / Handoff Endpoints (ported from DunkStack for session chaining)
+# ============================================================================
+
+class WorkspaceBridgeSaveRequest(BaseModel):
+    """Request to save a workspace bridge/handoff."""
+    reason: str = "manual"
+    current_task: Optional[str] = None
+    progress: Optional[str] = None
+    next_steps: Optional[str] = None
+    open_questions: Optional[str] = None
+    conversation_id: Optional[int] = None
+
+
+@router.post("/bridge/save")
+async def save_workspace_bridge(req: WorkspaceBridgeSaveRequest):
+    """Save a bridge state for workspace session continuity."""
+    import os
+    from datetime import datetime, timezone
+    from pathlib import Path
+
+    handoff_dir = Path.home() / ".autoforge" / "handoffs"
+    handoff_dir.mkdir(parents=True, exist_ok=True)
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    conv_label = f"session-{req.conversation_id}" if req.conversation_id else "session-latest"
+    path = handoff_dir / f"{conv_label}.md"
+
+    content = f"""# Session Handoff — {timestamp}
+
+## Session Summary
+Reason: {req.reason}
+
+## Current Task
+{req.current_task or '[No active task]'}
+
+## Progress
+{req.progress or '[No progress recorded]'}
+
+## Next Steps
+{req.next_steps or '[No next steps defined]'}
+
+## Open Questions
+{req.open_questions or '[None]'}
+"""
+    path.write_text(content, encoding="utf-8")
+    logger.info("Workspace bridge saved to %s", path)
+
+    return {"status": "ok", "timestamp": timestamp, "path": str(path)}
+
+
+@router.get("/bridge")
+def read_workspace_bridge(conversation_id: Optional[int] = None):
+    """Read a workspace bridge/handoff file."""
+    from pathlib import Path
+
+    handoff_dir = Path.home() / ".autoforge" / "handoffs"
+    if conversation_id:
+        path = handoff_dir / f"session-{conversation_id}.md"
+    else:
+        path = handoff_dir / "session-latest.md"
+
+    if not path.exists():
+        return {"content": "", "exists": False}
+    return {"content": path.read_text(encoding="utf-8"), "exists": True}
+
+
+@router.get("/bridge/list")
+def list_workspace_bridges():
+    """List all available workspace handoff files."""
+    from pathlib import Path
+
+    handoff_dir = Path.home() / ".autoforge" / "handoffs"
+    if not handoff_dir.exists():
+        return {"handoffs": []}
+
+    handoffs = []
+    for f in sorted(handoff_dir.glob("session-*.md"), reverse=True):
+        handoffs.append({
+            "filename": f.name,
+            "conversation_id": f.stem.replace("session-", ""),
+            "modified": f.stat().st_mtime,
+        })
+    return {"handoffs": handoffs}
+
+
+# ============================================================================
 # Walkie-Talkie Status Endpoint
 # ============================================================================
 
@@ -1261,6 +1347,23 @@ async def workspace_chat_websocket(websocket: WebSocket):
                             "type": "walkie_talkie_queued",
                             "content": content[:100],
                         })
+
+                        # Fallback: if no turn is active (polling loop ended or
+                        # turn finished), auto-start a new turn so the message
+                        # still gets through.  Costs a full history resend but
+                        # ensures seamless UX.
+                        if not response_task or response_task.done():
+                            logger.info(
+                                "Walkie-talkie fallback: no active turn, auto-starting new turn "
+                                "for session %s", session_id,
+                            )
+                            response_task = asyncio.create_task(
+                                _stream_to_ws(
+                                    session.send_message(
+                                        f"[Walkie-talkie message from user]: {content}",
+                                    )
+                                )
+                            )
 
                 elif msg_type == "answer":
                     if not session:

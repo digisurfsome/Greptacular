@@ -32,6 +32,7 @@ import {
   Square,
   Eye,
   EyeOff,
+  LogOut,
 } from 'lucide-react'
 import { useWorkspaceChat } from '@/hooks/useWorkspaceChat'
 import { useWorkspaceConversation, useWorkspaceProviders } from '@/hooks/useWorkspaceConversations'
@@ -241,6 +242,7 @@ export function WorkspaceChat({
   const [tokenLogAutoVisible, setTokenLogAutoVisible] = useState(false)
 
   // Walkie-talkie state
+  const [firstMessageSent, setFirstMessageSent] = useState(false)
   const [walkieTalkieInput, setWalkieTalkieInput] = useState('')
   const [walkieTalkieSent, setWalkieTalkieSent] = useState(false)
   const walkieTalkieSentTimerRef = useRef<number | null>(null)
@@ -272,21 +274,8 @@ export function WorkspaceChat({
   const [knownContextMode, setKnownContextMode] = useState<'1m' | '200k' | null>(null)
   const knownConversationIdRef = useRef<number | null>(null)
 
-  // Reset knownContextMode when switching to a different conversation
-  useEffect(() => {
-    const effId = conversationId ?? activeConversationId
-    if (effId !== knownConversationIdRef.current) {
-      knownConversationIdRef.current = effId
-      setKnownContextMode(null)
-    }
-  }, [conversationId, activeConversationId])
-
-  // Persist the DB value whenever conversationDetail loads
-  useEffect(() => {
-    if (conversationDetail?.context_mode) {
-      setKnownContextMode(conversationDetail.context_mode as '1m' | '200k')
-    }
-  }, [conversationDetail?.context_mode])
+  // NOTE: knownContextMode reset and conversationDetail persistence effects
+  // are defined below, after useWorkspaceChat and useWorkspaceConversation hooks.
 
   // Provider-aware model presets (used for read-only display in the header badge).
   const { data: wsProviders } = useWorkspaceProviders()
@@ -517,6 +506,23 @@ export function WorkspaceChat({
     }
   }, [conversationDetail, fixedContextMode])
 
+  // Reset knownContextMode when switching to a different conversation
+  // (moved here so activeConversationId and conversationDetail are in scope)
+  useEffect(() => {
+    const effId = conversationId ?? activeConversationId
+    if (effId !== knownConversationIdRef.current) {
+      knownConversationIdRef.current = effId
+      setKnownContextMode(null)
+    }
+  }, [conversationId, activeConversationId])
+
+  // Persist the DB value whenever conversationDetail loads
+  useEffect(() => {
+    if (conversationDetail?.context_mode) {
+      setKnownContextMode(conversationDetail.context_mode as '1m' | '200k')
+    }
+  }, [conversationDetail?.context_mode])
+
   // Summary query and mutation for auto-summary pin
   const queryClient = useQueryClient()
 
@@ -573,6 +579,7 @@ export function WorkspaceChat({
     if (previousId !== undefined) {
       disconnect()
       clearMessages()
+      setFirstMessageSent(false)
     }
 
     // Start/resume the selected conversation, passing the working directory
@@ -612,6 +619,7 @@ export function WorkspaceChat({
     setSessionContextMode(conversationContextMode)
     disconnect()
     clearMessages()
+    setFirstMessageSent(false)
     start(conversationId, workingDirectory ?? undefined, conversationContextMode, { effort: effortLevel }, conversationModel, providerProp)
   }, [conversationModel, conversationContextMode, conversationId, isLoadingConversation, disconnect, clearMessages, start, workingDirectory, effortLevel, providerProp])
 
@@ -907,10 +915,26 @@ export function WorkspaceChat({
   // Whether walkie-talkie UI should be visible
   const walkieTalkieVisible = isLoading && commCheckFrequency !== 'never'
 
-  // Send handler
+  // Send handler — routes through walkie-talkie when agent is already in a turn
   const handleSend = useCallback(async () => {
     let content = inputValue.trim()
     if (!content && pendingImages.length === 0 && pendingFiles.length === 0) return
+
+    // If agent is in an active turn and we've already sent the first message,
+    // route through walkie-talkie instead of starting a new API turn.
+    // This is dramatically cheaper — no full conversation history resend.
+    if (isLoading && firstMessageSent) {
+      console.info('[WorkspaceChat] handleSend: routing via walkie-talkie (turn active)')
+      sendWalkieTalkie(content)
+      addWalkieTalkieEntry('user', content)
+      setInputValue('')
+      const textarea = inputRef.current
+      if (textarea) {
+        textarea.style.height = 'auto'
+      }
+      return
+    }
+
     if (isLoading) return
 
     // Append file contents as text
@@ -945,6 +969,7 @@ export function WorkspaceChat({
       })
     }
     sendMessage(content, attachments, libraryIds)
+    setFirstMessageSent(true)
 
     setInputValue('')
     // Reset textarea height back to single row after sending
@@ -960,7 +985,17 @@ export function WorkspaceChat({
     if (effectiveId) {
       localStorage.removeItem(`${DRAFT_KEY_PREFIX}${effectiveId}`)
     }
-  }, [inputValue, isLoading, conversationId, activeConversationId, start, sendMessage, workingDirectory, pendingImages, pendingFiles, attachedLibraryFiles, conversationContextMode, conversationModel, effortLevel, providerProp])
+  }, [inputValue, isLoading, firstMessageSent, conversationId, activeConversationId, start, sendMessage, sendWalkieTalkie, addWalkieTalkieEntry, workingDirectory, pendingImages, pendingFiles, attachedLibraryFiles, conversationContextMode, conversationModel, effortLevel, providerProp])
+
+  // End Session: gracefully tell the agent to write a handoff and stop
+  const handleEndSession = useCallback(() => {
+    if (!isLoading) return
+    const convId = conversationId ?? activeConversationId ?? 'unknown'
+    const endMessage = `End session. Write your handoff summary to .autoforge/handoffs/session-${convId}.md including: summary of what was discussed, decisions made, current state, and next steps. Then stop.`
+    sendWalkieTalkie(endMessage)
+    addWalkieTalkieEntry('user', 'End Session (handoff requested)')
+    setFirstMessageSent(false)
+  }, [isLoading, conversationId, activeConversationId, sendWalkieTalkie, addWalkieTalkieEntry])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -1829,19 +1864,38 @@ export function WorkspaceChat({
             }}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            placeholder="Ask anything... (paste images with Ctrl+V)"
-            disabled={isLoading || isLoadingConversation}
+            placeholder={isLoading && firstMessageSent ? "Type to send via walkie-talkie..." : "Ask anything... (paste images with Ctrl+V)"}
+            disabled={isLoadingConversation || (isLoading && !firstMessageSent)}
             className="flex-1 resize-y min-h-[44px] max-h-[240px] rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none ring-ring focus:ring-1 disabled:cursor-not-allowed disabled:opacity-50"
             rows={1}
           />
           {isLoading ? (
-            <Button
-              onClick={cancelSession}
-              title="Stop agent"
-              className="bg-red-600 hover:bg-red-700 text-white"
-            >
-              <Square size={16} className="fill-current" />
-            </Button>
+            <div className="flex gap-1">
+              {firstMessageSent && (
+                <Button
+                  onClick={handleSend}
+                  disabled={!inputValue.trim()}
+                  title="Send via walkie-talkie (no extra API cost)"
+                  className="bg-amber-600 hover:bg-amber-700 text-white"
+                >
+                  <Send size={16} />
+                </Button>
+              )}
+              <Button
+                onClick={handleEndSession}
+                title="End session gracefully (writes handoff)"
+                className="bg-orange-600 hover:bg-orange-700 text-white"
+              >
+                <LogOut size={16} />
+              </Button>
+              <Button
+                onClick={cancelSession}
+                title="Force stop agent"
+                className="bg-red-600 hover:bg-red-700 text-white"
+              >
+                <Square size={16} className="fill-current" />
+              </Button>
+            </div>
           ) : (
             <Button
               onClick={handleSend}

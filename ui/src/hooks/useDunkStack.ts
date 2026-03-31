@@ -314,6 +314,32 @@ export function useDunkStack(): UseDunkStackReturn {
               }])
               break
 
+            case 'hard_stop':
+              // Safety system triggered hard stop — agent should terminate
+              setAgentStatus(prev => prev ? { ...prev, status: 'stopped', error: msg.reason || 'Hard stop triggered by safety system' } : null)
+              setAgentEvents(prev => [...prev, {
+                id: `ae-${Date.now()}-${prev.length}`,
+                type: 'hard_stop',
+                content: msg.reason || 'Context usage exceeded hard stop threshold. Session terminated.',
+                timestamp: new Date().toISOString(),
+              }])
+              break
+
+            case 'model_preset_update':
+              // Model preset changed mid-session — update agent events log
+              setAgentEvents(prev => [...prev, {
+                id: `ae-${Date.now()}-${prev.length}`,
+                type: 'model_preset_update',
+                content: `Model changed to ${msg.model_id || 'unknown'} (${msg.context_mode || ''})`,
+                timestamp: new Date().toISOString(),
+              }])
+              break
+
+            case 'agent_started':
+              // Agent session started successfully
+              setAgentStatus(prev => prev ? { ...prev, status: 'running', error: null } : { status: 'running' })
+              break
+
             case 'pong':
               break
           }

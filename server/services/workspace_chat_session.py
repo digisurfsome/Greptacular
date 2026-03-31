@@ -1942,12 +1942,13 @@ class WorkspaceChatSession:
                             "input": tool_input,
                         }
 
-                        # Log the tool call
+                        # Log the tool call (off event loop to prevent WebSocket flush blocking)
                         if conv_id is not None:
                             input_str = json.dumps(tool_input) if tool_input else ""
                             input_len = len(input_str)
                             try:
-                                entry = add_token_log_entry(
+                                entry = await asyncio.to_thread(
+                                    add_token_log_entry,
                                     conversation_id=conv_id,
                                     event_type="tool_call",
                                     turn_number=turn_number,
@@ -1960,10 +1961,11 @@ class WorkspaceChatSession:
                             except Exception as e:
                                 logger.warning("Failed to log tool_call: %s", e)
 
-                # Log the assistant turn summary
+                # Log the assistant turn summary (off event loop)
                 if conv_id is not None:
                     try:
-                        entry = add_token_log_entry(
+                        entry = await asyncio.to_thread(
+                            add_token_log_entry,
                             conversation_id=conv_id,
                             event_type="assistant_turn",
                             turn_number=turn_number,
@@ -1997,7 +1999,8 @@ class WorkspaceChatSession:
 
                         if conv_id is not None:
                             try:
-                                entry = add_token_log_entry(
+                                entry = await asyncio.to_thread(
+                                    add_token_log_entry,
                                     conversation_id=conv_id,
                                     event_type="tool_result",
                                     turn_number=turn_number,
@@ -2071,7 +2074,8 @@ class WorkspaceChatSession:
 
                 if conv_id is not None:
                     try:
-                        entry = add_token_log_entry(
+                        entry = await asyncio.to_thread(
+                            add_token_log_entry,
                             conversation_id=conv_id,
                             event_type="result_summary",
                             turn_number=turn_number,

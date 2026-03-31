@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import Any, AsyncGenerator, Optional
 
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
-from claude_agent_sdk.types import HookMatcher, SyncHookJSONOutput
+from claude_agent_sdk.types import HookMatcher
 
 _root_str = str(Path(__file__).parent.parent.parent)
 if _root_str not in sys.path:

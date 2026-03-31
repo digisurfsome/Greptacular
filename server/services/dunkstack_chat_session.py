@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any, AsyncGenerator, Optional
 
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
-from claude_agent_sdk.types import HookMatcher, SyncHookJSONOutput
+from claude_agent_sdk.types import HookMatcher
 from dotenv import load_dotenv
 
 # Ensure project root is on sys.path before importing root-level modules

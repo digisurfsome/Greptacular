@@ -29,10 +29,8 @@ import {
   ChevronDown,
   ScrollText,
   BookOpen,
-  Square,
   Eye,
   EyeOff,
-  LogOut,
 } from 'lucide-react'
 import { useWorkspaceChat } from '@/hooks/useWorkspaceChat'
 import { useWorkspaceConversation, useWorkspaceProviders } from '@/hooks/useWorkspaceConversations'
@@ -58,6 +56,7 @@ import { AutoSummaryPin } from './AutoSummaryPin'
 import { ChatForkModal } from './ChatForkModal'
 import { InjectFromChatModal } from './InjectFromChatModal'
 import { TokenLogPanel } from './TokenLogPanel'
+import { WorkspaceChatInput } from './WorkspaceChatInput'
 import { AgentNotifications, stripStructuredBlocks, parseStructuredBlocks } from './AgentNotifications'
 import { SaveToLibraryModal } from './SaveToLibraryModal'
 import { LibraryPickerModal } from './LibraryPickerModal'
@@ -1059,6 +1058,11 @@ export function WorkspaceChat({
     [handleSend],
   )
 
+  // Stable callbacks for memoized WorkspaceChatInput
+  const handleFileSelect = useCallback(() => fileInputRef.current?.click(), [])
+  const handleImageSelect = useCallback(() => imageInputRef.current?.click(), [])
+  const handleLibrarySelect = useCallback(() => setShowLibraryPicker(true), [])
+
   const effectiveConversationId = conversationId ?? activeConversationId
   const effectiveTitle = conversationDetail?.title ?? null
   const effectiveCategory = conversationDetail?.category ?? 'general'
@@ -1837,143 +1841,54 @@ export function WorkspaceChat({
           </div>
         )}
 
-        <div className="flex gap-2">
-          {/* File upload button */}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-[44px] px-2 text-muted-foreground hover:text-foreground"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isLoading || isLoadingConversation}
-            title="Attach file"
-          >
-            <Paperclip size={18} />
-          </Button>
+        {/* Hidden file inputs — stay in parent to avoid ref issues */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            const files = Array.from(e.target.files || [])
+            if (files.length > 0) processFiles(files)
+            e.target.value = '' // Reset so same file can be selected again
+          }}
+        />
+        <input
+          ref={imageInputRef}
+          type="file"
+          multiple
+          accept="image/jpeg,image/png,image/gif,image/webp"
+          className="hidden"
+          onChange={(e) => {
+            const files = Array.from(e.target.files || [])
+            if (files.length > 0) processImageFiles(files)
+            e.target.value = ''
+          }}
+        />
 
-          {/* Image upload button */}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-[44px] px-2 text-muted-foreground hover:text-foreground"
-            onClick={() => imageInputRef.current?.click()}
-            disabled={isLoading || isLoadingConversation}
-            title="Attach image"
-          >
-            <ImagePlus size={18} />
-          </Button>
-
-          {/* Attach from Library button */}
-          <Button
-            variant="ghost"
-            size="sm"
-            className={`h-[44px] px-2 ${attachedLibraryFiles.length > 0 ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}
-            onClick={() => setShowLibraryPicker(true)}
-            disabled={isLoading || isLoadingConversation}
-            title={attachedLibraryFiles.length > 0 ? `${attachedLibraryFiles.length} library file(s) attached` : 'Attach from Library'}
-          >
-            <BookOpen size={18} />
-            {attachedLibraryFiles.length > 0 && (
-              <span className="absolute -top-1 -right-1 bg-primary text-primary-foreground text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
-                {attachedLibraryFiles.length}
-              </span>
-            )}
-          </Button>
-
-          {/* Hidden file inputs */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            className="hidden"
-            onChange={(e) => {
-              const files = Array.from(e.target.files || [])
-              if (files.length > 0) processFiles(files)
-              e.target.value = '' // Reset so same file can be selected again
-            }}
-          />
-          <input
-            ref={imageInputRef}
-            type="file"
-            multiple
-            accept="image/jpeg,image/png,image/gif,image/webp"
-            className="hidden"
-            onChange={(e) => {
-              const files = Array.from(e.target.files || [])
-              if (files.length > 0) processImageFiles(files)
-              e.target.value = ''
-            }}
-          />
-
-          <textarea
-            ref={inputRef as React.RefObject<HTMLTextAreaElement>}
-            value={inputValue}
-            onChange={(e) => {
-              setInputValue(e.target.value)
-              // Auto-expand: reset height then set to scrollHeight (capped by max-h)
-              const el = e.target
-              el.style.height = 'auto'
-              el.style.height = `${Math.min(el.scrollHeight, 240)}px`
-            }}
-            onKeyDown={handleKeyDown}
-            onPaste={handlePaste}
-            placeholder={isLoading && firstMessageSent ? "Type to send via walkie-talkie..." : "Ask anything... (paste images with Ctrl+V)"}
-            disabled={isLoadingConversation || (isLoading && !firstMessageSent)}
-            className={`flex-1 resize-y min-h-[44px] max-h-[240px] rounded-md border px-3 py-2 text-sm outline-none focus:ring-1 disabled:cursor-not-allowed disabled:opacity-50 ${
-              isLoading && firstMessageSent
-                ? 'border-green-500 bg-green-50 dark:bg-green-950/20 text-foreground placeholder:text-green-600 dark:placeholder:text-green-400 ring-green-400'
-                : 'border-border bg-input text-foreground placeholder:text-muted-foreground ring-ring'
-            }`}
-            rows={1}
-          />
-          {isLoading ? (
-            <div className="flex gap-1">
-              {firstMessageSent && (
-                <Button
-                  onClick={handleSend}
-                  disabled={!inputValue.trim()}
-                  title="Send via walkie-talkie (no extra API cost)"
-                  className="bg-green-600 hover:bg-green-700 text-white"
-                >
-                  <Send size={16} />
-                </Button>
-              )}
-              <Button
-                onClick={handleEndSession}
-                title="End session gracefully (writes handoff)"
-                className="bg-orange-600 hover:bg-orange-700 text-white"
-              >
-                <LogOut size={16} />
-              </Button>
-              <Button
-                onClick={cancelSession}
-                title="Force stop agent"
-                className="bg-red-600 hover:bg-red-700 text-white"
-              >
-                <Square size={16} className="fill-current" />
-              </Button>
-            </div>
-          ) : (
-            <Button
-              onClick={handleSend}
-              disabled={(!inputValue.trim() && pendingImages.length === 0 && pendingFiles.length === 0) || isLoadingConversation}
-              title={fixedContextMode === '200k' ? 'Send (Subscription)' : fixedContextMode === '1m' ? 'Send (API)' : 'Send message'}
-              className={
-                panelLabel?.includes('RESEARCH')
-                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                  : panelLabel?.includes('CODER')
-                    ? 'bg-cyan-600 hover:bg-cyan-700 text-white'
-                    : panelLabel?.includes('PRD')
-                      ? 'bg-violet-600 hover:bg-violet-700 text-white'
-                      : undefined
-              }
-            >
-              <Send size={18} />
-            </Button>
-          )}
-        </div>
-        <p className="text-xs text-muted-foreground mt-2">
-          Enter to send, Shift+Enter for new line. Drag &amp; drop or paste images.
-        </p>
+        {/* Memoized input — prevents re-renders from WS message state changes */}
+        <WorkspaceChatInput
+          inputValue={inputValue}
+          setInputValue={setInputValue}
+          onSend={handleSend}
+          onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
+          placeholder={isLoading && firstMessageSent ? "Type to send via walkie-talkie..." : "Ask anything... (paste images with Ctrl+V)"}
+          disabled={isLoadingConversation || (isLoading && !firstMessageSent)}
+          isWalkieTalkieMode={isLoading && firstMessageSent}
+          isLoading={isLoading}
+          firstMessageSent={firstMessageSent}
+          onEndSession={handleEndSession}
+          onCancelSession={cancelSession}
+          onFileSelect={handleFileSelect}
+          onImageSelect={handleImageSelect}
+          onLibrarySelect={handleLibrarySelect}
+          libraryFileCount={attachedLibraryFiles.length}
+          panelLabel={panelLabel}
+          fixedContextMode={fixedContextMode}
+          hasPendingContent={pendingImages.length > 0 || pendingFiles.length > 0}
+          inputRef={inputRef as React.RefObject<HTMLTextAreaElement>}
+        />
       </div>
 
       {/* Fork modal */}

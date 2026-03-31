@@ -339,153 +339,16 @@ class DunkStackChatSession:
         is_alternative_api = bool(base_url) or is_vertex
         self._is_alternative_api = is_alternative_api
 
-        # Bash security hook
-        working_dir_str = self.working_directory
+        # ── Shared hooks (extracted to dunkstack_hooks.py) ──
+        from .dunkstack_hooks import (
+            create_bash_hook_with_context,
+            create_pre_compact_hook,
+            create_walkie_talkie_hook,
+        )
 
-        async def bash_hook_with_context(input_data, tool_use_id=None, context=None):
-            if context is None:
-                context = {}
-            context["project_dir"] = working_dir_str
-            return await bash_security_hook(input_data, tool_use_id, context)
-
-        # ── PreCompact hook for file-based recovery ──
-        async def pre_compact_hook(
-            input_data: Any, tool_use_id: Any = None, context: Any = None
-        ) -> SyncHookJSONOutput:
-            """Guide compaction to preserve file-based protocol awareness."""
-            logger.info("[DunkStack] Context compaction triggered")
-            return SyncHookJSONOutput(
-                hookSpecificOutput={  # type: ignore[typeddict-item]
-                    "hookEventName": "PreCompact",
-                    "customInstructions": (
-                        "## DunkStack Compaction Guidelines\n"
-                        "After compaction, re-read .agent/index.md and "
-                        ".agent/working_memory.md.\n"
-                        "These files are the source of truth, not conversation "
-                        "history.\n\n"
-                        "## DISCARD\n"
-                        "- Full file contents from Read results (keep: "
-                        "'Read file X')\n"
-                        "- Large Grep/Glob outputs (keep: 'Found N matches')\n"
-                        "- Verbose Bash output (keep: command + success/failure)\n\n"
-                        "## PRESERVE\n"
-                        "- Current task and progress state\n"
-                        "- Files created or modified (paths only)\n"
-                        "- Unresolved errors or blockers\n"
-                    ),
-                }
-            )
-
-        # ── Walkie-talkie PreToolUse hook ──
-        # Injects human messages from .agent/comms/from_human.md at tool-call
-        # boundaries, enforces idle/continue/autopilot session control modes.
-        _walkie_state: dict[str, int] = {"last_size": 0}
-        _project_dir_path = Path(self.working_directory)
-
-        # Seed last_size to current char count so we only inject NEW messages
-        _from_human_init = _project_dir_path / ".agent" / "comms" / "from_human.md"
-        if _from_human_init.exists():
-            try:
-                _walkie_state["last_size"] = len(_from_human_init.read_text(encoding="utf-8"))
-            except Exception:
-                pass
-
-        async def walkie_talkie_hook(
-            input_data: Any, tool_use_id: Any = None, context: Any = None
-        ) -> SyncHookJSONOutput:
-            """Check walkie-talkie for new messages and enforce session control."""
-            comms_dir = _project_dir_path / ".agent" / "comms"
-            from_human_path = comms_dir / "from_human.md"
-            control_path = comms_dir / "control.md"
-
-            new_messages: str | None = None
-            control_mode = "continue"
-
-            # Check for new messages (compare character count)
-            if from_human_path.exists():
-                try:
-                    content = from_human_path.read_text(encoding="utf-8")
-                    current_size = len(content)
-                    if current_size > _walkie_state["last_size"]:
-                        new_content = content[_walkie_state["last_size"]:]
-                        _walkie_state["last_size"] = current_size
-                        if new_content.strip():
-                            new_messages = new_content.strip()
-                except Exception as e:
-                    logger.debug("Walkie-talkie read error: %s", e)
-
-            # Check control mode
-            if control_path.exists():
-                try:
-                    raw = control_path.read_text(encoding="utf-8").strip().lower()
-                    for line in raw.splitlines():
-                        if line.startswith("mode:"):
-                            mode_val = line.split(":", 1)[1].strip()
-                            if mode_val in ("idle", "continue", "autopilot"):
-                                control_mode = mode_val
-                            break
-                except Exception:
-                    pass
-
-            # IDLE mode: block the tool call and wait
-            if control_mode == "idle":
-                reason = (
-                    "SESSION MODE: IDLE. The human has paused your session. "
-                    "Do NOT proceed with any work. "
-                )
-                if new_messages:
-                    reason += (
-                        f"New walkie-talkie message:\n\n{new_messages}\n\n"
-                        "Read and acknowledge this message by writing to "
-                        ".agent/comms/to_human.md, then wait for mode change."
-                    )
-                else:
-                    reason += (
-                        "Check .agent/comms/control.md periodically. "
-                        "Resume work when mode changes to 'continue' or 'autopilot'."
-                    )
-                await asyncio.sleep(10)
-                return SyncHookJSONOutput(
-                    hookSpecificOutput={  # type: ignore[typeddict-item]
-                        "hookEventName": "PreToolUse",
-                        "decision": "block",
-                        "reason": reason,
-                    }
-                )
-
-            # AUTOPILOT mode: check if human is actively typing
-            if control_mode == "autopilot" and from_human_path.exists():
-                try:
-                    mtime = from_human_path.stat().st_mtime
-                    if time.time() - mtime < 30:
-                        await asyncio.sleep(3)
-                except Exception:
-                    pass
-
-            # If there are new messages, block once to inject them
-            if new_messages:
-                return SyncHookJSONOutput(
-                    hookSpecificOutput={  # type: ignore[typeddict-item]
-                        "hookEventName": "PreToolUse",
-                        "decision": "block",
-                        "reason": (
-                            "WALKIE-TALKIE — NEW MESSAGE FROM HUMAN:\n\n"
-                            f"{new_messages}\n\n"
-                            "Read and acknowledge this message by writing a response to "
-                            ".agent/comms/to_human.md (using the Write tool). "
-                            "If the message contains new instructions, adjust your plan. "
-                            "Then continue your work."
-                        ),
-                    }
-                )
-
-            # No new messages, mode is continue or autopilot — approve
-            return SyncHookJSONOutput(
-                hookSpecificOutput={  # type: ignore[typeddict-item]
-                    "hookEventName": "PreToolUse",
-                    "decision": "approve",
-                }
-            )
+        bash_hook_with_context = create_bash_hook_with_context(bash_security_hook, self.working_directory)
+        pre_compact_hook = create_pre_compact_hook()
+        walkie_talkie_hook, _walkie_state = create_walkie_talkie_hook(Path(self.working_directory))
 
         hooks: dict[str, list[HookMatcher]] = {
             "PreToolUse": [

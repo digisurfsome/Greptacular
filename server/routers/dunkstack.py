@@ -301,23 +301,42 @@ async def write_from_human(msg: CommsMessage, project_name: Optional[str] = None
 
     # Forward to any running agent sessions so they process it immediately.
     # The agent receives a nudge telling it to re-read from_human.md and respond.
+    nudge = (
+        f"New message from the human was posted to .agent/comms/from_human.md at {timestamp}. "
+        "Re-read .agent/comms/from_human.md now and respond to the latest message. "
+        "Write your response to .agent/comms/to_human.md (NOT in chat). "
+        "Chat reply: 1-sentence status only."
+    )
+
     forwarded = False
+
+    # Forward to WebSocket-based chat sessions
     if _agent_sessions:
-        nudge = (
-            f"New message from the human was posted to .agent/comms/from_human.md at {timestamp}. "
-            "Re-read .agent/comms/from_human.md now and respond to the latest message. "
-            "Write your response to .agent/comms/to_human.md (NOT in chat). "
-            "Chat reply: 1-sentence status only."
-        )
         for session_id, session in list(_agent_sessions.items()):
             try:
-                # Stream agent response events to all connected WS clients
                 async for event in session.send_message(nudge):
                     await _broadcast(event)
                 forwarded = True
-                logger.info("Forwarded walkie-talkie message to agent session %s", session_id)
+                logger.info("Forwarded walkie-talkie message to WS agent session %s", session_id)
             except Exception as e:
-                logger.warning("Failed to forward message to agent session %s: %s", session_id, e)
+                logger.warning("Failed to forward to WS agent session %s: %s", session_id, e)
+
+    # Also forward to REST-started coding sessions
+    if not forwarded:
+        from ..services.dunkstack_session import get_coding_session, list_coding_sessions as _list_coding
+        for s_info in _list_coding():
+            p_name = s_info.get("project_name")
+            if not p_name:
+                continue
+            coding_session = get_coding_session(p_name)
+            if coding_session and coding_session.status == "running":
+                try:
+                    async for event in coding_session.send_message(nudge):
+                        await _broadcast(event)
+                    forwarded = True
+                    logger.info("Forwarded walkie-talkie message to REST coding session %s", p_name)
+                except Exception as e:
+                    logger.warning("Failed to forward to REST coding session %s: %s", p_name, e)
 
     return {"status": "ok", "timestamp": timestamp, "forwarded_to_agent": forwarded}
 
@@ -550,10 +569,14 @@ def list_bridges(project_name: Optional[str] = None):
 
 @router.post("/bridge/load")
 async def load_bridge(project_name: Optional[str] = None, filename: str = "bridge.md"):
-    """Load a specific bridge file as the active bridge for the next session.
+    """Load a specific bridge file as the active bridge for the next session."""
+    # Security: strip path components to prevent directory traversal
+    import os
+    safe_filename = os.path.basename(filename.replace("\\", "/"))
+    if safe_filename != filename:
+        logger.warning("Bridge load: sanitized filename %r -> %r", filename, safe_filename)
+        filename = safe_filename
 
-    Copies the selected bridge file to bridge.md so the agent reads it on startup.
-    """
     agent = _agent_dir(project_name)
 
     if filename == "bridge.md":

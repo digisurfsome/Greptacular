@@ -759,11 +759,25 @@ export async function getWorkspaceConversation(
 }
 
 export async function createWorkspaceConversation(
-  options?: { title?: string; category?: string; working_directory?: string; model?: string; context_mode?: string; effort?: string; provider?: string }
+  options?: { title?: string; category?: string; working_directory?: string; model?: string; context_mode?: string; effort?: string; provider?: string; fork_from?: number }
 ): Promise<WorkspaceConversation> {
   return fetchJSON('/workspace/conversations', {
     method: 'POST',
     body: JSON.stringify(options ?? {}),
+  })
+}
+
+export async function workspaceSaveBridge(data: {
+  reason?: string
+  current_task?: string
+  progress?: string
+  next_steps?: string
+  open_questions?: string
+  conversation_id?: number | null
+}): Promise<{ status: string; timestamp: string; filename: string }> {
+  return fetchJSON('/workspace/bridge/save', {
+    method: 'POST',
+    body: JSON.stringify(data),
   })
 }
 
@@ -1657,9 +1671,11 @@ export async function dunkstackListBridges(projectName?: string): Promise<{ brid
 }
 
 export async function dunkstackLoadBridge(filename: string, projectName?: string): Promise<{ status: string; loaded: string; size: number }> {
+  // Strip any path separators -- only the base filename should be sent
+  const safeName = filename.replace(/^.*[\\/]/, '')
   const params = new URLSearchParams()
   if (projectName) params.set('project_name', projectName)
-  params.set('filename', filename)
+  params.set('filename', safeName)
   return fetchJSON(`/dunkstack/bridge/load?${params.toString()}`, { method: 'POST' })
 }
 

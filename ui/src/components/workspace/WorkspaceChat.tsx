@@ -355,6 +355,7 @@ export function WorkspaceChat({
     agentWaitingQuestion,
     walkieTalkieLog,
     addWalkieTalkieEntry,
+    addLocalMessage,
     tokenLog,
     clearTokenLog,
     modelId,
@@ -937,9 +938,32 @@ export function WorkspaceChat({
     // This is dramatically cheaper — no full conversation history resend.
     if (isLoading && firstMessageSent) {
       console.info('[WorkspaceChat] handleSend: routing via walkie-talkie (turn active)')
-      sendWalkieTalkie(content)
-      addWalkieTalkieEntry('user', content)
+
+      // Append file text contents to walkie-talkie message (images cannot be sent)
+      let wtContent = content
+      if (pendingFiles.length > 0) {
+        const fileTexts = await Promise.all(
+          pendingFiles.map(async (file) => {
+            try {
+              const text = await fileToText(file)
+              return `\n--- File: ${file.name} ---\n${text}\n--- End: ${file.name} ---`
+            } catch {
+              return `\n--- File: ${file.name} (could not read) ---`
+            }
+          })
+        )
+        wtContent = wtContent + fileTexts.join('\n')
+      }
+      if (pendingImages.length > 0) {
+        wtContent += `\n[Note: ${pendingImages.length} image(s) could not be sent via walkie-talkie — images require a new turn]`
+      }
+
+      sendWalkieTalkie(wtContent)
+      addWalkieTalkieEntry('user', wtContent)
+      addLocalMessage('user', content + (pendingImages.length > 0 ? ` (+${pendingImages.length} images dropped)` : ''))
       setInputValue('')
+      setPendingImages([])
+      setPendingFiles([])
       const textarea = inputRef.current
       if (textarea) {
         textarea.style.height = 'auto'
@@ -997,19 +1021,33 @@ export function WorkspaceChat({
     if (effectiveId) {
       localStorage.removeItem(`${DRAFT_KEY_PREFIX}${effectiveId}`)
     }
-  }, [inputValue, isLoading, firstMessageSent, conversationId, activeConversationId, start, sendMessage, sendWalkieTalkie, addWalkieTalkieEntry, workingDirectory, pendingImages, pendingFiles, attachedLibraryFiles, conversationContextMode, conversationModel, effortLevel, providerProp])
+  }, [inputValue, isLoading, firstMessageSent, conversationId, activeConversationId, start, sendMessage, sendWalkieTalkie, addWalkieTalkieEntry, addLocalMessage, workingDirectory, pendingImages, pendingFiles, attachedLibraryFiles, conversationContextMode, conversationModel, effortLevel, providerProp])
 
   // End Session: gracefully tell the agent to write a handoff and stop.
   // Do NOT reset firstMessageSent here — it will be reset automatically
   // when isLoading transitions to false (via the prevIsLoadingRef effect).
   // Resetting it prematurely would disable the textarea and prevent
   // sending follow-up corrections while the agent writes the handoff.
-  const handleEndSession = useCallback(() => {
+  const handleEndSession = useCallback(async () => {
     if (!isLoading) return
-    const endMessage = `End session. Write your handoff summary (as described in your system prompt) including: summary of what was discussed, decisions made, current state, and next steps. Then stop polling and end your turn.`
+    const endMessage = `End session. Write your handoff summary including: summary of what was discussed, decisions made, current state, and next steps. Then end your turn.`
     sendWalkieTalkie(endMessage)
     addWalkieTalkieEntry('user', 'End Session (handoff requested)')
-  }, [isLoading, sendWalkieTalkie, addWalkieTalkieEntry])
+    addLocalMessage('user', 'End Session requested')
+
+    // Also save bridge via REST as a safety net
+    const effectiveId = conversationId ?? activeConversationId
+    try {
+      const { workspaceSaveBridge } = await import('@/lib/api')
+      await workspaceSaveBridge({
+        reason: 'end_session',
+        conversation_id: effectiveId,
+        current_task: 'Session ended by user',
+      })
+    } catch (e) {
+      console.warn('Bridge save failed:', e)
+    }
+  }, [isLoading, sendWalkieTalkie, addWalkieTalkieEntry, addLocalMessage, conversationId, activeConversationId])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -1880,7 +1918,11 @@ export function WorkspaceChat({
             onPaste={handlePaste}
             placeholder={isLoading && firstMessageSent ? "Type to send via walkie-talkie..." : "Ask anything... (paste images with Ctrl+V)"}
             disabled={isLoadingConversation || (isLoading && !firstMessageSent)}
-            className="flex-1 resize-y min-h-[44px] max-h-[240px] rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none ring-ring focus:ring-1 disabled:cursor-not-allowed disabled:opacity-50"
+            className={`flex-1 resize-y min-h-[44px] max-h-[240px] rounded-md border px-3 py-2 text-sm outline-none focus:ring-1 disabled:cursor-not-allowed disabled:opacity-50 ${
+              isLoading && firstMessageSent
+                ? 'border-green-500 bg-green-50 dark:bg-green-950/20 text-foreground placeholder:text-green-600 dark:placeholder:text-green-400 ring-green-400'
+                : 'border-border bg-input text-foreground placeholder:text-muted-foreground ring-ring'
+            }`}
             rows={1}
           />
           {isLoading ? (
@@ -1890,7 +1932,7 @@ export function WorkspaceChat({
                   onClick={handleSend}
                   disabled={!inputValue.trim()}
                   title="Send via walkie-talkie (no extra API cost)"
-                  className="bg-amber-600 hover:bg-amber-700 text-white"
+                  className="bg-green-600 hover:bg-green-700 text-white"
                 >
                   <Send size={16} />
                 </Button>

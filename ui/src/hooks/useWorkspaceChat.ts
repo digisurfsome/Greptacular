@@ -302,8 +302,7 @@ export function useWorkspaceChat({
             setMessages((prev) => {
               // Find the streaming assistant message BY ID, not by position.
               // tool_call and status events insert system messages that push
-              // the streaming message away from the last position. Using the
-              // last-position check caused duplicate/out-of-order messages.
+              // the streaming message away from the last position.
               const streamingId = currentAssistantMessageRef.current;
               if (streamingId) {
                 const idx = prev.findIndex(m => m.id === streamingId);
@@ -395,8 +394,6 @@ export function useWorkspaceChat({
             setAgentWaitingQuestion(null);
 
             // Mark the streaming message as complete BY ID, not by position.
-            // The streaming message may not be the last message if tool_call
-            // or status events inserted system messages after it.
             setMessages((prev) => {
               if (!doneMessageId) return prev;
               const idx = prev.findIndex(m => m.id === doneMessageId && m.isStreaming);

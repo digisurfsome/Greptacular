@@ -228,7 +228,18 @@ export function WorkspaceChat({
   const [showInjectModal, setShowInjectModal] = useState(false)
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
   const [pendingImages, setPendingImages] = useState<ImageAttachment[]>([])
+
+  // Refs for frequently-changing values — keeps useCallback deps stable
+  // so React.memo on WorkspaceChatInput actually prevents re-renders
+  const inputValueRef = useRef(inputValue)
+  inputValueRef.current = inputValue
+  const pendingImagesRef = useRef(pendingImages)
+  pendingImagesRef.current = pendingImages
+  const pendingFilesRef = useRef(pendingFiles)
+  pendingFilesRef.current = pendingFiles
   const [attachedLibraryFiles, setAttachedLibraryFiles] = useState<LibraryFile[]>([])
+  const attachedLibraryFilesRef = useRef(attachedLibraryFiles)
+  attachedLibraryFilesRef.current = attachedLibraryFiles
   const [showLibraryPicker, setShowLibraryPicker] = useState(false)
   const [saveToLibraryContent, setSaveToLibraryContent] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -928,9 +939,14 @@ export function WorkspaceChat({
   const walkieTalkieVisible = isLoading && commCheckFrequency !== 'never'
 
   // Send handler — routes through walkie-talkie when agent is already in a turn
+  // Uses refs for inputValue/pendingImages/pendingFiles/attachedLibraryFiles so this
+  // callback stays stable and doesn't break WorkspaceChatInput's React.memo.
   const handleSend = useCallback(async () => {
-    let content = inputValue.trim()
-    if (!content && pendingImages.length === 0 && pendingFiles.length === 0) return
+    let content = inputValueRef.current.trim()
+    const curImages = pendingImagesRef.current
+    const curFiles = pendingFilesRef.current
+    const curLibFiles = attachedLibraryFilesRef.current
+    if (!content && curImages.length === 0 && curFiles.length === 0) return
 
     // If agent is in an active turn and we've already sent the first message,
     // route through walkie-talkie instead of starting a new API turn.
@@ -940,9 +956,9 @@ export function WorkspaceChat({
 
       // Append file text contents to walkie-talkie message (images cannot be sent)
       let wtContent = content
-      if (pendingFiles.length > 0) {
+      if (curFiles.length > 0) {
         const fileTexts = await Promise.all(
-          pendingFiles.map(async (file) => {
+          curFiles.map(async (file) => {
             try {
               const text = await fileToText(file)
               return `\n--- File: ${file.name} ---\n${text}\n--- End: ${file.name} ---`
@@ -953,13 +969,13 @@ export function WorkspaceChat({
         )
         wtContent = wtContent + fileTexts.join('\n')
       }
-      if (pendingImages.length > 0) {
-        wtContent += `\n[Note: ${pendingImages.length} image(s) could not be sent via walkie-talkie — images require a new turn]`
+      if (curImages.length > 0) {
+        wtContent += `\n[Note: ${curImages.length} image(s) could not be sent via walkie-talkie — images require a new turn]`
       }
 
       sendWalkieTalkie(wtContent)
       addWalkieTalkieEntry('user', wtContent)
-      addLocalMessage('user', content + (pendingImages.length > 0 ? ` (+${pendingImages.length} images dropped)` : ''))
+      addLocalMessage('user', content + (curImages.length > 0 ? ` (+${curImages.length} images dropped)` : ''))
       setInputValue('')
       setPendingImages([])
       setPendingFiles([])
@@ -973,9 +989,9 @@ export function WorkspaceChat({
     if (isLoading) return
 
     // Append file contents as text
-    if (pendingFiles.length > 0) {
+    if (curFiles.length > 0) {
       const fileContents = await Promise.all(
-        pendingFiles.map(async (file) => {
+        curFiles.map(async (file) => {
           try {
             const text = await fileToText(file)
             return `\n--- File: ${file.name} ---\n${text}\n--- End: ${file.name} ---`
@@ -987,8 +1003,8 @@ export function WorkspaceChat({
       content = content + fileContents.join('\n')
     }
 
-    const attachments = pendingImages.length > 0 ? [...pendingImages] : undefined
-    const libraryIds = attachedLibraryFiles.length > 0 ? attachedLibraryFiles.map(f => f.id) : undefined
+    const attachments = curImages.length > 0 ? [...curImages] : undefined
+    const libraryIds = curLibFiles.length > 0 ? curLibFiles.map(f => f.id) : undefined
 
     // If no conversation yet, start a new one first. The hook will queue
     // the message and dispatch it once the session is ready.
@@ -1020,7 +1036,7 @@ export function WorkspaceChat({
     if (effectiveId) {
       localStorage.removeItem(`${DRAFT_KEY_PREFIX}${effectiveId}`)
     }
-  }, [inputValue, isLoading, firstMessageSent, conversationId, activeConversationId, start, sendMessage, sendWalkieTalkie, addWalkieTalkieEntry, addLocalMessage, workingDirectory, pendingImages, pendingFiles, attachedLibraryFiles, conversationContextMode, conversationModel, effortLevel, providerProp])
+  }, [isLoading, firstMessageSent, conversationId, activeConversationId, start, sendMessage, sendWalkieTalkie, addWalkieTalkieEntry, addLocalMessage, workingDirectory, conversationContextMode, conversationModel, effortLevel, providerProp])
 
   // End Session: gracefully tell the agent to write a handoff and stop.
   // Do NOT reset firstMessageSent here — it will be reset automatically

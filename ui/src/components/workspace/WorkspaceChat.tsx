@@ -35,7 +35,7 @@ import {
 import { useWorkspaceChat } from '@/hooks/useWorkspaceChat'
 import { useWorkspaceConversation, useWorkspaceProviders } from '@/hooks/useWorkspaceConversations'
 import { ChatMessage } from '@/components/ChatMessage'
-import { isSubmitEnter } from '@/lib/keyboard'
+// isSubmitEnter moved to WorkspaceChatInput (child handles Enter key)
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -56,7 +56,8 @@ import { AutoSummaryPin } from './AutoSummaryPin'
 import { ChatForkModal } from './ChatForkModal'
 import { InjectFromChatModal } from './InjectFromChatModal'
 import { TokenLogPanel } from './TokenLogPanel'
-import { WorkspaceChatInput } from './WorkspaceChatInput'
+import { WorkspaceChatInput, type WorkspaceChatInputHandle } from './WorkspaceChatInput'
+import { PromptButtons } from './PromptButtons'
 import { AgentNotifications, stripStructuredBlocks, parseStructuredBlocks } from './AgentNotifications'
 import { SaveToLibraryModal } from './SaveToLibraryModal'
 import { LibraryPickerModal } from './LibraryPickerModal'
@@ -215,7 +216,7 @@ export function WorkspaceChat({
   onStreamingChange,
   provider: providerProp,
 }: WorkspaceChatProps): React.JSX.Element {
-  const [inputValue, setInputValue] = useState('')
+  const chatInputRef = useRef<WorkspaceChatInputHandle>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const internalInputRef = useRef<HTMLTextAreaElement>(null)
@@ -231,8 +232,6 @@ export function WorkspaceChat({
 
   // Refs for frequently-changing values — keeps useCallback deps stable
   // so React.memo on WorkspaceChatInput actually prevents re-renders
-  const inputValueRef = useRef(inputValue)
-  inputValueRef.current = inputValue
   const pendingImagesRef = useRef(pendingImages)
   pendingImagesRef.current = pendingImages
   const pendingFilesRef = useRef(pendingFiles)
@@ -738,28 +737,35 @@ export function WorkspaceChat({
   }, [newChatKey, inputRef])
 
   // Draft persistence: load draft when switching conversations
+  const [initialDraft, setInitialDraft] = useState('')
   useEffect(() => {
     if (conversationId !== null) {
       const draft = localStorage.getItem(`${DRAFT_KEY_PREFIX}${conversationId}`)
-      setInputValue(draft || '')
+      setInitialDraft(draft || '')
+      chatInputRef.current?.setValue(draft || '')
     } else {
-      setInputValue('')
+      setInitialDraft('')
+      chatInputRef.current?.clear()
     }
   }, [conversationId])
 
-  // Draft persistence: save draft on input change (debounced)
+  // Draft persistence: save draft on input change (debounced via child callback)
+  const [draftText, setDraftText] = useState('')
+  const handleDraftChange = useCallback((text: string) => {
+    setDraftText(text)
+  }, [])
   useEffect(() => {
     const effectiveId = conversationId ?? activeConversationId
     if (!effectiveId) return
     const timer = setTimeout(() => {
-      if (inputValue) {
-        localStorage.setItem(`${DRAFT_KEY_PREFIX}${effectiveId}`, inputValue)
+      if (draftText) {
+        localStorage.setItem(`${DRAFT_KEY_PREFIX}${effectiveId}`, draftText)
       } else {
         localStorage.removeItem(`${DRAFT_KEY_PREFIX}${effectiveId}`)
       }
     }, 300)
     return () => clearTimeout(timer)
-  }, [inputValue, conversationId, activeConversationId])
+  }, [draftText, conversationId, activeConversationId])
 
   // Handle injected messages (e.g. from passoff "Send to Execute")
   useEffect(() => {
@@ -951,11 +957,11 @@ export function WorkspaceChat({
   // Whether walkie-talkie UI should be visible
   const walkieTalkieVisible = isLoading && commCheckFrequency !== 'never'
 
-  // Send handler — routes through walkie-talkie when agent is already in a turn
-  // Uses refs for inputValue/pendingImages/pendingFiles/attachedLibraryFiles so this
-  // callback stays stable and doesn't break WorkspaceChatInput's React.memo.
-  const handleSend = useCallback(async () => {
-    let content = inputValueRef.current.trim()
+  // Send handler — receives text from child component (which owns inputValue state).
+  // Routes through walkie-talkie when agent is already in a turn.
+  // No dependency on inputValue — parent never re-renders on keystrokes.
+  const handleSend = useCallback(async (text: string) => {
+    let content = text.trim()
     const curImages = pendingImagesRef.current
     const curFiles = pendingFilesRef.current
     const curLibFiles = attachedLibraryFilesRef.current
@@ -989,13 +995,8 @@ export function WorkspaceChat({
       sendWalkieTalkie(wtContent)
       addWalkieTalkieEntry('user', wtContent)
       addLocalMessage('user', content + (curImages.length > 0 ? ` (+${curImages.length} images dropped)` : ''))
-      setInputValue('')
       setPendingImages([])
       setPendingFiles([])
-      const textarea = inputRef.current
-      if (textarea) {
-        textarea.style.height = 'auto'
-      }
       return
     }
 
@@ -1035,12 +1036,6 @@ export function WorkspaceChat({
     sendMessage(content, attachments, libraryIds)
     setFirstMessageSent(true)
 
-    setInputValue('')
-    // Reset textarea height back to single row after sending
-    const textarea = inputRef.current
-    if (textarea) {
-      textarea.style.height = 'auto'
-    }
     setPendingImages([])
     setPendingFiles([])
     setAttachedLibraryFiles([])
@@ -1077,15 +1072,10 @@ export function WorkspaceChat({
     }
   }, [isLoading, sendWalkieTalkie, addWalkieTalkieEntry, addLocalMessage, conversationId, activeConversationId])
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if (isSubmitEnter(e)) {
-        e.preventDefault()
-        handleSend()
-      }
-    },
-    [handleSend],
-  )
+  // Prompt button send: directly sends the preset message
+  const handlePromptButtonSend = useCallback((message: string) => {
+    handleSend(message)
+  }, [handleSend])
 
   // Stable callbacks for memoized WorkspaceChatInput
   const handleFileSelect = useCallback(() => fileInputRef.current?.click(), [])
@@ -1895,12 +1885,17 @@ export function WorkspaceChat({
           }}
         />
 
+        {/* Quick-action prompt buttons — only visible when input is empty */}
+        <PromptButtons
+          inputIsEmpty={!draftText.trim()}
+          isLoading={isLoading}
+          onSendMessage={handlePromptButtonSend}
+        />
+
         {/* Memoized input — prevents re-renders from WS message state changes */}
         <WorkspaceChatInput
-          inputValue={inputValue}
-          setInputValue={setInputValue}
+          ref={chatInputRef}
           onSend={handleSend}
-          onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           placeholder={isLoading && firstMessageSent ? "Type to send via walkie-talkie..." : "Ask anything... (paste images with Ctrl+V)"}
           disabled={isLoadingConversation || (isLoading && !firstMessageSent)}
@@ -1916,7 +1911,8 @@ export function WorkspaceChat({
           panelLabel={panelLabel}
           fixedContextMode={fixedContextMode}
           hasPendingContent={pendingImages.length > 0 || pendingFiles.length > 0}
-          inputRef={inputRef as React.RefObject<HTMLTextAreaElement>}
+          textareaRef={inputRef as React.RefObject<HTMLTextAreaElement>}
+          onDraftChange={handleDraftChange}
         />
       </div>
 

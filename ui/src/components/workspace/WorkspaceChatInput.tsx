@@ -7,15 +7,21 @@
  * NOT when messages/tokenLog/tool_call events arrive.
  */
 
-import React from 'react'
+import React, { useState, useCallback, useEffect, useImperativeHandle } from 'react'
 import { Send, Paperclip, ImagePlus, BookOpen, LogOut, Square } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
+/** Handle exposed to parent via ref — lets parent read/set input without owning state */
+export interface WorkspaceChatInputHandle {
+  getValue: () => string
+  setValue: (v: string) => void
+  clear: () => void
+}
+
 interface WorkspaceChatInputProps {
-  inputValue: string
-  setInputValue: (value: string) => void
-  onSend: () => void
-  onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void
+  /** Called when user presses Enter or clicks Send */
+  onSend: (text: string) => void
+  onKeyDown?: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void
   onPaste: (e: React.ClipboardEvent) => void
   placeholder: string
   disabled: boolean
@@ -31,12 +37,15 @@ interface WorkspaceChatInputProps {
   panelLabel?: string
   fixedContextMode?: '1m' | '200k'
   hasPendingContent: boolean
-  inputRef: React.RefObject<HTMLTextAreaElement | null>
+  textareaRef: React.RefObject<HTMLTextAreaElement | null>
+  /** Optional initial value (used for draft restore) */
+  initialValue?: string
+  /** Called on every keystroke for draft saving */
+  onDraftChange?: (text: string) => void
 }
 
-export const WorkspaceChatInput = React.memo(function WorkspaceChatInput({
-  inputValue,
-  setInputValue,
+export const WorkspaceChatInput = React.memo(
+  React.forwardRef<WorkspaceChatInputHandle, WorkspaceChatInputProps>(function WorkspaceChatInput({
   onSend,
   onKeyDown,
   onPaste,
@@ -54,8 +63,49 @@ export const WorkspaceChatInput = React.memo(function WorkspaceChatInput({
   panelLabel,
   fixedContextMode,
   hasPendingContent,
-  inputRef,
-}: WorkspaceChatInputProps) {
+  textareaRef,
+  initialValue,
+  onDraftChange,
+}, ref) {
+  // INPUT STATE LIVES HERE — not in parent. Parent re-renders do NOT trigger re-renders here.
+  const [inputValue, setInputValue] = useState(initialValue ?? '')
+
+  // Expose getValue/setValue/clear to parent via ref
+  useImperativeHandle(ref, () => ({
+    getValue: () => inputValue,
+    setValue: (v: string) => setInputValue(v),
+    clear: () => setInputValue(''),
+  }), [inputValue])
+
+  // Restore initial value when it changes (conversation switch)
+  useEffect(() => {
+    if (initialValue !== undefined) setInputValue(initialValue)
+  }, [initialValue])
+
+  // Notify parent of draft changes (debounced in parent)
+  useEffect(() => {
+    onDraftChange?.(inputValue)
+  }, [inputValue, onDraftChange])
+
+  const handleLocalSend = useCallback(() => {
+    const text = inputValue.trim()
+    if (!text && !hasPendingContent) return
+    onSend(text)
+    setInputValue('')
+    // Reset textarea height
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto'
+    }
+  }, [inputValue, hasPendingContent, onSend, textareaRef])
+
+  const handleLocalKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleLocalSend()
+      return
+    }
+    onKeyDown?.(e)
+  }, [handleLocalSend, onKeyDown])
   return (
     <>
       <div className="flex gap-2">
@@ -101,7 +151,7 @@ export const WorkspaceChatInput = React.memo(function WorkspaceChatInput({
         </Button>
 
         <textarea
-          ref={inputRef as React.RefObject<HTMLTextAreaElement>}
+          ref={textareaRef as React.RefObject<HTMLTextAreaElement>}
           value={inputValue}
           onChange={(e) => {
             setInputValue(e.target.value)
@@ -110,7 +160,7 @@ export const WorkspaceChatInput = React.memo(function WorkspaceChatInput({
             el.style.height = 'auto'
             el.style.height = `${Math.min(el.scrollHeight, 240)}px`
           }}
-          onKeyDown={onKeyDown}
+          onKeyDown={handleLocalKeyDown}
           onPaste={onPaste}
           placeholder={placeholder}
           disabled={disabled}
@@ -125,7 +175,7 @@ export const WorkspaceChatInput = React.memo(function WorkspaceChatInput({
           <div className="flex gap-1">
             {firstMessageSent && (
               <Button
-                onClick={onSend}
+                onClick={handleLocalSend}
                 disabled={!inputValue.trim()}
                 title="Send via walkie-talkie (no extra API cost)"
                 className="bg-emerald-600 hover:bg-emerald-700 text-white"
@@ -150,7 +200,7 @@ export const WorkspaceChatInput = React.memo(function WorkspaceChatInput({
           </div>
         ) : (
           <Button
-            onClick={onSend}
+            onClick={handleLocalSend}
             disabled={(!inputValue.trim() && !hasPendingContent) || disabled}
             title={fixedContextMode === '200k' ? 'Send (Subscription)' : fixedContextMode === '1m' ? 'Send (API)' : 'Send message'}
             className={
@@ -174,4 +224,4 @@ export const WorkspaceChatInput = React.memo(function WorkspaceChatInput({
       </p>
     </>
   )
-})
+}))

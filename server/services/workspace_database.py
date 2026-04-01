@@ -1475,6 +1475,14 @@ def get_messages_for_context(
 def fork_conversation(
     conversation_id: int,
     fork_at_message_id: int | None = None,
+    *,
+    title: str | None = None,
+    category: str | None = None,
+    context_mode: str | None = None,
+    model: str | None = None,
+    effort: str | None = None,
+    provider: str | None = None,
+    working_directory: str | None = None,
 ) -> dict:
     """Fork a conversation, copying messages up to fork_at_message_id.
 
@@ -1482,6 +1490,13 @@ def fork_conversation(
         conversation_id: The source conversation ID.
         fork_at_message_id: Copy messages up to and including this message.
             If None, copies all messages.
+        title: Override title (default: "{source title} (fork)").
+        category: Override category (default: source category).
+        context_mode: Override context mode (default: source context_mode).
+        model: Override model (default: source model).
+        effort: Override effort (default: source effort).
+        provider: Override provider (default: source provider).
+        working_directory: Override working directory (default: source working_directory).
 
     Returns:
         Dict representing the new conversation (same shape as get_conversations items).
@@ -1499,17 +1514,18 @@ def fork_conversation(
         if not source:
             raise ValueError(f"Conversation {conversation_id} not found")
 
-        fork_title = f"{source.title or 'Untitled'} (fork)"
+        fork_title = title or f"{source.title or 'Untitled'} (fork)"
 
         new_conv = WorkspaceConversation(
             title=fork_title,
-            category=source.category,
+            category=category or source.category,
             pinned=0,
             tags=source.tags,
-            context_mode=source.context_mode or "200k",
-            model=source.model or "opus",
-            effort=source.effort or "high",
-            working_directory=source.working_directory,
+            context_mode=context_mode or source.context_mode or "200k",
+            model=model or source.model or "opus",
+            effort=effort or source.effort or "high",
+            provider=provider or getattr(source, "provider", None) or "claude",
+            working_directory=working_directory or source.working_directory,
             token_count=0,
             forked_from_id=conversation_id,
         )
@@ -1560,6 +1576,7 @@ def fork_conversation(
             "context_mode": new_conv.context_mode or "200k",
             "model": new_conv.model or "opus",
             "effort": new_conv.effort or "high",
+            "provider": getattr(new_conv, "provider", None) or "claude",
             "working_directory": new_conv.working_directory,
             "token_count": new_conv.token_count,
             "forked_from_id": new_conv.forked_from_id,

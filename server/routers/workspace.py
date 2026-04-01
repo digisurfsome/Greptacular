@@ -132,6 +132,54 @@ async def create_new_conversation(body: ConversationCreateRequest):
     if provider not in ("claude", "codex", "gemini"):
         provider = "claude"
 
+    # If "Continue from" is set, use fork_conversation() to copy all messages
+    if body.fork_from:
+        from ..services.workspace_database import fork_conversation as db_fork
+
+        try:
+            forked = db_fork(
+                conversation_id=body.fork_from,
+                title=body.title,
+                category=body.category,
+                context_mode=body.context_mode,
+                model=body.model,
+                effort=body.effort,
+                provider=provider,
+                working_directory=body.working_directory,
+            )
+            logger.info(
+                "Continue-from: forked conv %s -> conv %s (%d messages copied)",
+                body.fork_from, forked["id"], forked.get("message_count", 0),
+            )
+
+            # Also copy handoff file if one exists (bonus context for system prompt)
+            from pathlib import Path as _P
+            handoff_dir = _P.home() / ".autoforge" / "handoffs"
+            source_handoff = handoff_dir / f"session-{body.fork_from}.md"
+            if source_handoff.is_file():
+                dest = handoff_dir / f"session-{forked['id']}.md"
+                dest.write_text(source_handoff.read_text(encoding="utf-8"), encoding="utf-8")
+                logger.info("Also copied handoff file for conv %s", forked["id"])
+
+            return WorkspaceConversationSummary(
+                id=forked["id"],
+                title=forked.get("title"),
+                category=forked.get("category", "general"),
+                working_directory=forked.get("working_directory"),
+                pinned=forked.get("pinned", False),
+                tags=forked.get("tags", ""),
+                context_mode=forked.get("context_mode", "200k"),
+                model=forked.get("model", "opus"),
+                effort=forked.get("effort", "high"),
+                provider=forked.get("provider", provider),
+                created_at=forked.get("created_at"),
+                updated_at=forked.get("updated_at"),
+                message_count=forked.get("message_count", 0),
+            )
+        except ValueError as e:
+            logger.warning("Continue-from failed (conv %s not found), creating fresh: %s", body.fork_from, e)
+            # Fall through to create a fresh conversation
+
     conversation = create_conversation(
         title=body.title,
         category=body.category,
@@ -141,18 +189,6 @@ async def create_new_conversation(body: ConversationCreateRequest):
         effort=body.effort,
         provider=provider,
     )
-
-    # If forking from a past conversation, copy its handoff to the new conversation's file
-    if body.fork_from:
-        from pathlib import Path as _P
-        handoff_dir = _P.home() / ".autoforge" / "handoffs"
-        source = handoff_dir / f"session-{body.fork_from}.md"
-        if not source.is_file():
-            source = handoff_dir / "session-latest.md"
-        if source.is_file():
-            dest = handoff_dir / f"session-{conversation.id}.md"
-            dest.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
-            logger.info("Forked handoff from conv %s to conv %s", body.fork_from, conversation.id)
 
     return WorkspaceConversationSummary(
         id=int(conversation.id),

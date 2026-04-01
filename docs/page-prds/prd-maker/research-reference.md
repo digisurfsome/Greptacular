@@ -276,47 +276,99 @@ Source: [affaan-m/everything-claude-code](https://github.com/affaan-m/everything
 
 **Scale:** 36 agents, 68 commands, 142 skills
 
-### Most Relevant to PRD Maker
+### THE BIG FIND: PRP (Product Ready Pipeline)
 
-**App Planning & Architecture:**
+The repo's flagship feature is a **5-command pipeline** that mirrors our 10-stage concept:
+
+| Command | What It Does | Maps to Our Stage |
+|---------|-------------|-------------------|
+| `/prp-prd` | Interactive 8-phase PRD generator (problem validation → market research → technical assessment → MVP scoping → complete PRD) | Stages 1-3 (Idea Capture → Gap Analysis → Structuring) |
+| `/prp-plan` | Converts PRDs into implementation plans with task breakdown, dependencies, validation strategies | Stages 4-5 (Mechanism Extraction → Scaffolding) |
+| `/prp-implement` | Executes plans step-by-step with continuous validation; never accumulates broken state | Stages 7-8 (Phase Sequencing → Protocol Injection) |
+| `/prp-pr` | Prepares pull requests with structured descriptions and validation checksums | Stage 10 (Output) |
+| `/prp-commit` | Ensures commits follow product-ready standards with message validation | Stage 10 (Output) |
+
+**This is the closest existing implementation to what we're building.** The key differences:
+- PRP is code-focused (PRD → implementation). Ours is spec-focused (rant → buildable spec).
+- PRP doesn't have our preamble system (boilerplate-aware structure half).
+- PRP doesn't have our mechanism taxonomy (A-N categories).
+- PRP doesn't have the Wall/Door/Room classification (Stage 5 engine).
+
+**Verdict:** Study `/prp-prd` closely before building Stage 1-3. It solves a subset of our problem well.
+
+### Most Relevant — Tier 1 (Directly Useful)
+
+**Planning & Architecture:**
 - `planner` agent — Feature implementation planning
 - `architect` agent — System design decisions
-- `/plan` command — Implementation planning
-- `/multi-plan` command — Multi-agent task decomposition
-- `backend-patterns`, `frontend-patterns`, `api-design` skills
+- `/plan` command — Implementation planning with risk identification
+- `/multi-plan` command — Multi-agent task decomposition for complex projects
+- `product-lens` skill — Product strategy framework for defining goals/features
+- `strategic-compact` skill — Strategic planning methodology
+- `architecture-decision-records` skill — Framework for documenting architectural choices
 
-**Code Quality (useful for Stage 8-9 verification):**
-- `code-reviewer`, `security-reviewer` agents
-- `tdd-guide` agent — Test-driven development
+**Pattern Libraries (feeds the preamble system):**
+- `backend-patterns` — Core backend architecture concepts
+- `frontend-patterns` — React/Vue/Angular structural patterns
+- `api-design` — RESTful and GraphQL API design principles
+- `design-system` — Component library architecture
+- `hexagonal-architecture` — Ports and adapters pattern
+
+**Verification (Stages 8-9):**
 - `/verify` command — Verification loop
 - `/quality-gate` command — Quality gate checks
-- `verification-loop`, `eval-harness` skills
+- `verification-loop` skill — Continuous verification patterns
 
-**Structured Documents:**
-- `doc-updater` agent — Documentation sync
-- `article-writing`, `content-engine` skills
-
-**Autonomous Workflows (useful for multi-stage pipeline):**
+**Pipeline Orchestration (multi-stage execution):**
 - `loop-operator` agent — Autonomous loop execution
 - `/orchestrate` command — Multi-agent coordination
-- `autonomous-loops` skill
+- `autonomous-loops` skill — Continuous feedback mechanisms
+
+### Most Relevant — Tier 2 (Useful Patterns)
+
+**Code Quality:**
+- `code-reviewer`, `security-reviewer` agents
+- `tdd-guide` agent + `tdd-workflow` skill
+- `e2e-testing`, `ai-regression-testing` skills
+
+**Documentation:**
+- `doc-updater` agent — Documentation sync
+- `content-engine` skill — Content generation pipeline
+- `codebase-onboarding` skill — Structured onboarding docs
+- `/docs` + `/update-docs` commands
+
+**Knowledge Management:**
+- `/skill-create` command — Auto-generates skills from git history
+- `/rules-distill` command — Extracts coding rules from repos
+- `/instinct-export` + `/instinct-import` — Pattern portability
+
+### Not Relevant (Skip)
+
+- Language-specific reviewers (Go, Python, TS, Java, Kotlin, Rust, C++) — too specialized
+- Language-specific build commands (go-build, kotlin-build, etc.)
+- Content/marketing skills (article-writing, investor-materials, lead-intelligence)
+- Healthcare, security, data integration specializations
 
 ### Verdict: What to Take
 
 | Category | Take? | Reason |
 |----------|-------|--------|
-| `planner` + `architect` agents | **YES** | Directly useful for Stages 3-4 (structuring and mechanism extraction) |
+| **PRP pipeline** (`/prp-prd`, `/prp-plan`) | **YES — PRIORITY** | Closest existing implementation to our pipeline. Study before building. |
+| `planner` + `architect` agents | **YES** | Stages 3-4 (structuring and mechanism extraction) |
+| `product-lens` + `strategic-compact` | **YES** | Feeds Stage 2 gap analysis with structured frameworks |
 | `/plan` + `/multi-plan` commands | **YES** | Pipeline orchestration across stages |
-| `code-reviewer` + `security-reviewer` | **MAYBE** | Stage 9 verification — but we may build our own |
+| Pattern libraries (backend/frontend/api/design-system) | **YES** | Feeds the preamble system (structural knowledge) |
 | `/verify` + `/quality-gate` | **YES** | Stage 8-9 protocol injection and verification |
-| `tdd-guide` + `tdd-workflow` | **MAYBE** | Useful pattern but not core to PRD generation |
-| `backend-patterns` + `frontend-patterns` | **YES** | Feeds into the preamble system (structural knowledge) |
-| `autonomous-loops` + `loop-operator` | **YES** | Multi-stage pipeline execution |
-| `doc-updater` | **MAYBE** | Keeping generated specs in sync |
-| Content/marketing skills | **NO** | Not relevant to PRD pipeline |
-| Language-specific reviewers | **NO** | Too specialized for our use case |
+| `autonomous-loops` + `loop-operator` + `/orchestrate` | **YES** | Multi-stage pipeline execution |
+| `architecture-decision-records` | **YES** | Document choices made during spec generation |
+| `/skill-create` + `/rules-distill` | **YES** | Bootstrap our 10 stage skills from patterns |
+| `code-reviewer` + `security-reviewer` | **MAYBE** | Stage 9 verification — but we may build our own |
+| `tdd-guide` + `tdd-workflow` | **MAYBE** | Pattern, not core to PRD generation |
+| `doc-updater` + `content-engine` | **MAYBE** | Keeping generated specs in sync |
+| Language-specific anything | **NO** | Too specialized |
+| Content/marketing skills | **NO** | Not relevant |
 
-**Bottom line:** ~8-10 skills/agents from affaan-m are directly useful. The `planner`, `architect`, `/verify`, `/quality-gate`, and `autonomous-loops` are the highest value. The rest are nice-to-have or not relevant.
+**Bottom line:** ~15 skills/agents/commands are directly useful, with the **PRP pipeline being the single highest-value find**. The `planner`, `architect`, pattern libraries, `/verify`, `/quality-gate`, and `autonomous-loops` round out the top tier.
 
 ---
 

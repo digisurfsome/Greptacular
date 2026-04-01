@@ -20,6 +20,7 @@ Organized PRD storage for each AutoForge UI page. When you want to improve a spe
 | `token-budget/` | TokenBudgetPage.tsx | Token budget management |
 | `tool-runner/` | ToolRunnerPage.tsx | Tool execution runner |
 | `component-dashboard/` | ComponentDashboardPage.tsx | Component overview dashboard |
+| `prd-maker/` | (planned) | PRD Maker — 10-stage pipeline turning app rants into buildable specs |
 
 ## How to Use
 

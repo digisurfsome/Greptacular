@@ -1,0 +1,344 @@
+# image:./small-arc42-logo.png[arc42] Template ("Golden Master")
+:version 8.2:
+:downloads https://arc42.org/downloads/:
+
+image:[https://vshymanskyy.github.io/StandWithUkraine](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/banner2-direct.svg)
+
+arc42 - the template for effective, practical and pragmatic software architecture documentation and communication.
+
+Initially created by Dr. Gernot Starke and Dr. Peter Hruschka (way back in 2005...), free and open source.
+
+
+This repository contains the (AsciiDoc) source of the arc42 template.
+
+It is used...
+
+*  as the basis for generating (by the [arc42-generator](https://github.com/arc42/arc42-generator) project) the official download formats (i.e. docx, markdown, docbook and others). To generate, THIS repo is included as submodule from the generator project. Use the gradle build contained here just for preview! 
+* to maintain structure, content and help for the template
+* to keep non-asciidoc, non-generable formats (like Sparx(R) Enterprise-Architect(R) EAP).
+
+In case you find issues within the template or its explanations, this is the repo to fix and issue pull requests :-)
+
+## Revisions
+* November 2025: first Chinese version
+* 9.0: July 2025: 
+  ** Clarified and re-structured section 10 (Quality Requirements) to include overview (10.1) and details (10.2). 
+  ** Unified concept-image in section 8. 
+  ** Unified usage of revision number by adding version.properties file to every language. 
+  ** Reworked the local build to facilitate translations
+* 8.2: Jan 28th 2023: Thx to A. Bentele, added imagedir def to all files, for easier editing asciidoc. See #178
+
+## Diagrams
+We intend to provide all diagrams in platform-neutral formats, mainly `drawio`. 
+
+The source of these diagrams is embedded in a `.png` file. To make this explicit, we use the combined extension `.drawio.png` for our diagrams.
+The drawio tools will recognize this and open such files in the editor instead of an image viewer.
+
+Therefore we will gradually remove all files under `./graphics-originals`
+
+
+
+## Downloads
+
+Please refer to the [official download page](https://arc42.org/download) for all downloads.
+
+## Languages
+
+The EN and DE versions are actively maintained by the founders (G.Starke & P.Hruschka).
+Translations to additional languages (see below) have been provided by volunteers, but won't be automatically updated.
+
+The following languages are currently available:
+[cols="1,1,1", options="header"]
+|===
+| Language | Translator | Available Since
+
+| Czech (CZ)
+| jakub_rc <jakub.tomisek@gmail.com>
+| 2022-10-12
+
+| Chinese (ZH)
+| Chris (Gentle) Y杨 (nodexy@gmail.com) with DannyGe
+| 2025-10-30
+
+| Dutch (NL)
+| mv <verburg.maarten@gmail.com> 
+| 2022-05-01
+
+| **English (EN)**
+| Gernot Starke, Peter Hruschka (founders)
+| 2005
+
+| Spanish (ES)
+| Isidoro (isidoro.trevino@vintec.mx)
+| 2017-09-19
+
+| French (FR)
+| Damien Lucas (d.lucas@groupeonepoint.com) 
+| 2023-06-05
+
+| **German (DE)**
+| Gernot Starke, Peter Hruschka (founders)
+| 2005
+
+| Italian (IT)
+| Mario Giustiniani (mariogiustiniani@gmail.com)
+| 2021-04-04
+
+| Dutch (NL)
+| Maarten Verburg (verburg.maarten@gmail.com)
+| 2022-05-01
+
+| Portuguese (PT)
+| Guilherme Weizenmann (g.weizenmann@gmail.com)
+| 2024-09-10
+
+| Russian (RU)
+| Various contributors, <nerilin@cinimex.ru>, max.arshinov@gmail.com
+| 2018-11-14
+
+| Ukrainian (UKR)
+| Ivan Bulyk, Larysa Visengeriyeva (visenger@gmail.com)
+| 2024-11-10  
+
+|===
+
+## Build a Local Version 
+
+In case you want to build the HTML or PDF version of the template on your local, just checkout this repo and call
+
+----
+$> gradle
+----
+
+on the command line.
+To select another language set the Gradle build property `languages` in the file `gradle.properties` to one of the provided languages (e.g. DE, EN, ES, IT, NL etc).
+
+[source, java]
+----
+include::gradle.properties[]
+----
+
+
+### Directory Structure
+
+The build process assumes the following directory structure:
+
+```
+<root>/
+  ├── DE/                     // German language files
+  │    ├── arc42-template.adoc  // Main document for German
+  │    ├── version.properties    // Version information for German
+  │    ├── adoc/                 // AsciiDoc chapter files
+  │    └── images/               // Language-specific images
+  │
+  ├── EN/                     // English language files 
+  │    ├── arc42-template.adoc  // Main document for English
+  │    ├── version.properties    // Version information for English
+  │    ├── adoc/                 // AsciiDoc chapter files
+  │    └── images/               // Language-specific images
+  │
+  ├── common/                 // Common files (e.g., styles)
+  │    └── styles/
+  │
+  ├── graphics-originals/     // Original diagram sources (being phased out)
+  │
+  └── build/                  // Generated output
+       ├── DE/                  // German output
+       │    ├── html/           // HTML output
+       │    └── pdf/            // PDF output
+       │
+       └── EN/                  // English output
+            ├── html/           // HTML output
+            └── pdf/            // PDF output
+  ├── <LC>/                     // Language files for language <LC>
+  │    ├── arc42-template.adoc  // Main document for <LC>
+  │    ├── version.properties    // Version information for <LC>
+  │    ├── adoc/                 // AsciiDoc chapter files
+  │    └── images/               // Language-specific images
+```
+
+## Requirements
+
+- Java 11 or newer
+- Gradle 8.0 or newer (or use the included Gradle wrapper)
+
+## Configuration
+
+Language configuration is done in the `gradle.properties` file:
+
+```properties
+# Configure languages to be built (comma-separated list)
+languages=DE
+```
+
+The project name is set to 'arc42-template' in the settings.gradle file.
+
+You can add multiple languages by separating them with commas:
+
+```properties
+languages=DE,EN,FR
+```
+
+
+### Clean the build directory
+
+```bash
+./gradlew clean
+```
+
+### Build all formats for all configured languages
+
+```bash
+./gradlew
+```
+
+or
+
+```bash
+./gradlew asciidoctorAll
+```
+
+### Build only HTML for all configured languages
+
+```bash
+./gradlew asciidoctorHtmlAll
+```
+
+### Build only PDF for all configured languages
+
+```bash
+./gradlew asciidoctorPdfAll
+```
+
+### Build specific language in HTML format
+
+```bash
+./gradlew asciidoctorHtmlDE
+```
+
+Replace `DE` with the desired language code.
+
+### Build specific language in PDF format
+
+```bash
+./gradlew asciidoctorPdfDE
+```
+
+Replace `DE` with the desired language code.
+
+### Validate Image References
+
+The build system automatically validates that all images referenced in AsciiDoc files exist before generating documentation. You can also run validation independently:
+
+```bash
+# Validate all configured languages (shortest form)
+./gradlew validate
+
+# Alternative commands (same result)
+./gradlew validateImages
+./gradlew validateImagesAll
+
+# Validate specific language
+./gradlew validateImagesDE
+./gradlew validateImagesEN
+```
+
+If images are missing, you'll see warnings like:
+
+```
+⚠ Image Reference Validation: DE
+WARNING: Missing image references found:
+
+  File: DE/adoc/01_introduction_and_goals.adoc:60
+  Missing: diagram.png
+  Expected: /path/to/DE/images/diagram.png
+
+Summary: 1 missing image(s) in DE
+```
+
+The build continues with warnings (permissive mode), but the generated documentation will show broken image placeholders. Image validation runs automatically before every HTML and PDF build.
+
+## Output
+
+Generated documentation will be available in the build directory:
+
+- HTML: `build/<LANGUAGE>/html/arc42-template-<LANGUAGE>.html`
+- PDF: `build/<LANGUAGE>/pdf/arc42-template-<LANGUAGE>.pdf`
+
+For example, German (DE) documentation would be in:
+- `build/DE/html/arc42-template-DE.html`
+- `build/DE/pdf/arc42-template-DE.pdf`
+
+## Adding a New Language
+
+1. Add the language code to the `languages` property in `gradle.properties`
+2. Create the necessary AsciiDoc source files for the new language
+3. Run the build
+
+## Building with Docker (Optional)
+
+If you prefer not to install Java locally, you can use Docker to build the documentation. This approach is optional and fully compatible with the traditional local build.
+
+### Requirements
+
+- Docker (version 20.10 or newer)
+- Docker Compose (version 1.29 or newer)
+
+### Building with Docker Compose
+
+```bash
+# Build all languages using Docker
+docker-compose up build
+
+# Build and verify images are referenced correctly
+docker-compose up validate
+
+# Build and run a web server (http://localhost:8080) to view HTML documentation
+docker-compose up server
+```
+
+### Building with Docker directly
+
+```bash
+# Build the Docker image
+docker build -t arc42-template .
+
+# Run a container to generate documentation
+docker run -v $(pwd)/build:/workspace/build arc42-template
+
+# Run validation
+docker run arc42-template ./gradlew validate
+
+# Build specific languages only (override languages in environment)
+docker run -e LANGUAGES=DE,EN -v $(pwd)/build:/workspace/build arc42-template
+```
+
+### Docker Advantages
+
+- No Java installation required
+- Guaranteed build reproducibility (same Java version for all)
+- Pre-installed fonts for proper PDF rendering of multi-language documents (especially CJK: Chinese, Japanese, Korean)
+- Consistent builds across Windows, macOS, and Linux
+
+### Docker Output
+
+Generated documentation will be available in the `build/` directory on your host system (same location as traditional builds):
+- HTML: `build/<LANGUAGE>/html/arc42-template-<LANGUAGE>.html`
+- PDF: `build/<LANGUAGE>/pdf/arc42-template-<LANGUAGE>.pdf`
+
+### Notes
+
+- The Docker image is built multi-stage for efficiency (one stage for building, one for runtime)
+- Build artifacts are mounted as volumes, so the output is accessible directly on your host
+- The optional Nginx server displays HTML documentation only (PDFs must be downloaded)
+
+
+## Questions on using arc42?
+
+* see the extensive [documentation website](https://docs.arc42.org)
+* see the [overview](https://arc42.org) 
+
+
+## Suggestions welcome
+
+Open an issue here!

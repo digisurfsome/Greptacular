@@ -1,0 +1,22 @@
+{
+  "name": "prd-generator",
+  "version": "2.0.0",
+  "license": "MIT",
+  "author": "rodrigo",
+  "repository": "https://github.com/rodrigo/prd-generator-plugin",
+  "description": "AI-powered PRD generator with official-source research validation, self-evolving project skills, CI/CD pipeline generation, and local documentation cache for AI-assisted development",
+  "keywords": [
+    "prd",
+    "product-requirements",
+    "architecture",
+    "documentation",
+    "ai-development",
+    "clean-architecture",
+    "ddd",
+    "research-validation",
+    "monorepo",
+    "cicd",
+    "docs-cache"
+  ],
+  "homepage": "https://github.com/rodrigo/prd-generator-plugin"
+}

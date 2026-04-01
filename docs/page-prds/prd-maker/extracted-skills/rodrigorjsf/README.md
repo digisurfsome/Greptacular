@@ -1,53 +1,118 @@
-# prd-generator-plugin
+# rodrigorjsf/prd-generator-plugin
 
-A Claude Code plugin that automates the creation of comprehensive Product Requirements Documents (PRDs) with supporting architecture, enforcement mechanisms, and CI/CD infrastructure. Given a product concept, it conducts structured interviews, researches official sources, validates findings, designs technology stacks, and generates enforcement skills to guide AI-assisted development.
+> Source: https://github.com/rodrigorjsf/prd-generator-plugin
+> Extracted: 2026-04-01
 
-## Key Workflow Phases
+## Overview
 
-The `/prd-new` command executes seven phases:
+AI-powered PRD generator Claude Code plugin that transforms product ideas into comprehensive, research-backed PRDs with modern architecture design, enforcement skills, CI/CD pipelines, documentation caching, and self-evolving project documentation for AI-assisted development.
 
-1. **Interactive Interrogation** — Seven-block interview covering identity, business model, core features, regulatory requirements, integrations, infrastructure preferences, and technology stack
-2. **Official Research** — Parallel researcher agents consult only vendor documentation, standards bodies, and regulatory portals (blocking forums, blogs, social media)
-3. **Validation** — Independent auditor in fresh context verifies research accuracy without prior project knowledge
-4. **Requirements Analysis** — Structures functional/non-functional requirements, domain rules, and compliance criteria
-5. **Architecture Design** — Proposes modern, compatible technology stack with justifications and diagrams
-6. **Artifact Generation** — Produces PRD, architecture documentation, ER diagrams, layer-specific guides, six enforcement skills, and CI/CD pipelines in parallel
-7. **Evolution** — Incrementally updates only affected artifacts when scope changes via `/prd-evolve`
+## Core Capabilities
 
-## Generated Artifacts
+- Conducts structured, sequential interviews across seven distinct blocks
+- Automatically researches official documentation sources (excluding forums/blogs)
+- Validates research findings in fresh, unbiased contexts to prevent hallucinations
+- Proposes compatible, modern technology stacks as monorepos
+- Generates complete PRD, architecture documents, and ER diagrams
+- Creates seven project-specific Claude skills preventing AI violations during development
+- Produces CLAUDE.md files per stack layer with Clean Code and Clean Architecture principles
+- Generates lean CI/CD pipelines (GitHub/GitLab/Bitbucket) with monorepo path-filtering
+- Atomically updates all documents and skills when product scope changes
 
-The plugin creates:
-- **docs/prd/** — PRD.md, ARCHITECTURE.md, ER.md (source of truth documents)
-- **Stack Guides** — CLAUDE.md files per layer applying Clean Code, Clean Architecture, DDD, and Pragmatic Programmer principles
-- **.claude/skills/** — Seven project-specific enforcement skills preventing development drift
-- **CI/CD Pipeline** — GitHub/GitLab/Bitbucket workflows with monorepo path-filtering
-- **docs/stack/** — Local documentation cache preventing redundant web searches
+## Installation
 
-## Mandatory Constraints
-
-All generated projects are **monorepos** with services as top-level directories (backend, frontend, infrastructure, docs). The `project-guardian` skill enforces this as a hard block.
-
-## Research Validation Philosophy
-
-The validator operates in "fresh context" without prior session memory, eliminating confirmation bias. It consults only official sources—blocking Reddit, Stack Overflow, Medium, dev.to, blogs, wikis, and similar platforms—ensuring accuracy and reducing hallucinations.
-
-## Project Evolution
-
-The `/prd-evolve` command applies delta-based updates: analyzing what changed, researching new topics if needed, updating only affected artifacts, and versioning all skills to track synchronization with the PRD.
+```bash
+claude plugin install prd-generator-plugin
+# or local:
+git clone https://github.com/rodrigo/prd-generator-plugin
+claude plugin install ./prd-generator-plugin
+```
 
 ## Commands
 
-- `/prd-new` — Generate a complete PRD from scratch (7-phase workflow)
-- `/prd-evolve` — Incrementally update artifacts after scope changes
+| Command | Usage |
+|---------|-------|
+| `/prd-new` | Create new PRD from product description |
+| `/prd-evolve` | Evolve existing PRD when scope changes |
+| `/prd-docs` | Refresh project documentation |
 
-## Agents
+## Repository Structure
 
-- **product-interrogator** — Conducts structured interviews and identifies information gaps
-- **requirements-analyst** — Transforms context into structured requirements (full/delta modes)
-- **architecture-designer** — Designs production-ready architectures (full/update modes)
-- **prd-writer** — Generates engineering-grade documentation (full/update modes)
-- **skills-generator** — Creates seven enforcement skills for AI-assisted development
+```
+prd-generator-plugin/
+├── .claude-plugin/
+│   └── plugin.json
+├── agents/
+│   ├── architecture-designer.md
+│   ├── cicd-generator.md
+│   ├── official-researcher.md
+│   ├── prd-writer.md
+│   ├── product-interrogator.md
+│   ├── requirements-analyst.md
+│   ├── research-validator.md
+│   ├── skills-generator.md
+│   └── stack-guide-generator.md
+├── commands/
+│   ├── prd-docs.md
+│   ├── prd-evolve.md
+│   └── prd-new.md
+├── docs/
+│   └── plans/
+├── skills/
+│   └── prd-guardian/
+│       └── SKILL.md
+├── .gitignore
+├── CHANGELOG.md
+├── LICENSE
+└── README.md
+```
 
-## Skills
+## Workflow: /prd-new (7 Phases)
 
-- **prd-guardian** — Enforces PRD consultation before implementation, architecture, or review work
+1. **Initialize** -- Set up context_packet JSON and progress tracking
+2. **Product Interrogation** -- 7-block conversational interview (Identity, Business, Features, Regulatory, Integrations, Infrastructure, Stack)
+3. **Official Research** -- Parallel researcher agents with blocked domains enforcement
+4. **Research Validation** -- Independent auditor in fresh context (no prior session memory)
+5. **Requirements Analysis** -- Structured RF/RNF/domain rules/compliance
+6. **Architecture Design** -- Modern stack proposal with user approval gate
+7. **Document Generation** -- Parallel generation of PRD, skills, guides, CI/CD
+
+## Agent Reference
+
+| Agent | Role | Model |
+|-------|------|-------|
+| product-interrogator | Gap analysis, research target identification | Sonnet |
+| official-researcher | Official source searches with blocked_domains enforcement | Sonnet |
+| research-validator | Independent audit, hallucination detection in fresh context | Sonnet |
+| requirements-analyst | RF/RNF/domain rules/compliance structuring; delta mode for evolution | Sonnet |
+| architecture-designer | Modern stack proposals, Mermaid diagrams, ADRs | Opus |
+| prd-writer | PRD.md, ARCHITECTURE.md, ER.md generation | Sonnet |
+| stack-guide-generator | Layer-specific CLAUDE.md, docs/stack/, .claude/settings.json | Sonnet |
+| skills-generator | Seven project enforcement skill generation | Sonnet |
+| cicd-generator | VCS-specific CI/CD pipeline generation with path-filtering | Sonnet |
+
+## Generated Skills (7 Total)
+
+1. `project-guardian` -- PRD compliance and monorepo rule enforcement
+2. `project-architecture` -- Stack canonical reference and ADR enforcement
+3. `project-domain-rules` -- Domain invariants and ubiquitous language
+4. `project-compliance` -- Compliance checklist per regulation
+5. `project-docs-stack` -- Local-first documentation cache enforcement
+6. `project-cicd` -- Pipeline consistency and evolution triggers
+7. `project-docs` -- Living documentation maintenance
+
+## Blocked Research Domains
+
+reddit.com, stackoverflow.com, medium.com, dev.to, hashnode.dev, hackernoon.com, dzone.com, freecodecamp.org, digitalocean.com, tutorialspoint.com, geeksforgeeks.org, w3schools.com, baeldung.com, towardsdatascience.com, quora.com, discord.com, twitter.com, linkedin.com, youtube.com, wikipedia.org
+
+## Token Efficiency Design
+
+- JSON context_packets instead of conversation history
+- Slice delivery: agents receive only necessary context
+- Parallel dispatch for concurrent research
+- Selective evolution: only changed artifacts regenerated
+- Compressed skills: tables and bullets, never lengthy paragraphs
+
+## License
+
+MIT

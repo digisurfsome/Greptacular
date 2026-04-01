@@ -19,7 +19,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/haberlah/replit-prd-skill.git"
+    "url": "https://github.com/YOUR_USERNAME/replit-prd-skill.git"
   },
   "triggers": [
     "build with Replit",

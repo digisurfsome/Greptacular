@@ -737,7 +737,7 @@ export function WorkspaceChat({
   }, [newChatKey, inputRef])
 
   // Draft persistence: load draft when switching conversations
-  const [initialDraft, setInitialDraft] = useState('')
+  const [, setInitialDraft] = useState('')
   useEffect(() => {
     if (conversationId !== null) {
       const draft = localStorage.getItem(`${DRAFT_KEY_PREFIX}${conversationId}`)

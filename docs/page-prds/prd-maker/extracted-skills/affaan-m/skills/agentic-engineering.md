@@ -1,57 +1,63 @@
+---
+name: agentic-engineering
+description: Operate as an agentic engineer using eval-first execution, decomposition, and cost-aware model routing.
+origin: ECC
+---
+
 # Agentic Engineering
 
-**Name**: agentic-engineering
-**Description**: Framework for AI-driven engineering with human quality oversight.
-**Origin**: ECC
+Use this skill for engineering workflows where AI agents perform most implementation work and humans enforce quality and risk controls.
 
-## Operating Principles (4 Rules)
+## Operating Principles
 
-1. Define completion criteria before execution
-2. Decompose work into agent-sized units
-3. Route model tiers by task complexity
-4. Measure with evals and regression checks
+1. Define completion criteria before execution.
+2. Decompose work into agent-sized units.
+3. Route model tiers by task complexity.
+4. Measure with evals and regression checks.
 
-## Eval-First Loop (4 Phases)
+## Eval-First Loop
 
-1. Define capability and regression evaluations
-2. Run baseline and document failure patterns
-3. Execute implementation
-4. Re-run evaluations and analyze improvements
+1. Define capability eval and regression eval.
+2. Run baseline and capture failure signatures.
+3. Execute implementation.
+4. Re-run evals and compare deltas.
 
-## Task Decomposition: 15-Minute Unit Rule
+## Task Decomposition
 
-Each unit should have:
-- Independent verification capability
-- Single dominant risk per unit
-- Clear done condition
+Apply the 15-minute unit rule:
+- each unit should be independently verifiable
+- each unit should have a single dominant risk
+- each unit should expose a clear done condition
 
-## Model Routing Guidelines
+## Model Routing
 
-| Model | Use For |
-|-------|---------|
-| **Haiku** | Classification, boilerplate transforms, narrow edits |
-| **Sonnet** | Implementation and refactors |
-| **Opus** | Architecture decisions, root-cause analysis, multi-file invariants |
+- Haiku: classification, boilerplate transforms, narrow edits
+- Sonnet: implementation and refactors
+- Opus: architecture, root-cause analysis, multi-file invariants
 
-## Session Strategy (3 Rules)
+## Session Strategy
 
-- Continue for interdependent units
-- Start fresh after major phase transitions
-- Compact after milestones, not during debugging
+- Continue session for closely-coupled units.
+- Start fresh session after major phase transitions.
+- Compact after milestone completion, not during active debugging.
 
-## Review Priorities
+## Review Focus for AI-Generated Code
 
-Focus review on:
-- Invariants and edge cases
-- Error boundaries
-- Security and authentication assumptions
-- Hidden coupling and rollout risk
+Prioritize:
+- invariants and edge cases
+- error boundaries
+- security and auth assumptions
+- hidden coupling and rollout risk
 
-## Cost Discipline Tracking
+Do not waste review cycles on style-only disagreements when automated format/lint already enforce style.
 
-Monitor per task:
-- Model selection
-- Token estimates
-- Retry count
-- Execution time
-- Outcome status
+## Cost Discipline
+
+Track per task:
+- model
+- token estimate
+- retries
+- wall-clock time
+- success/failure
+
+Escalate model tier only when lower tier fails with a clear reasoning gap.

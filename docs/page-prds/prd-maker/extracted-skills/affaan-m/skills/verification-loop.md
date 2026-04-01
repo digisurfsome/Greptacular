@@ -1,66 +1,126 @@
+---
+name: verification-loop
+description: "A comprehensive verification system for Claude Code sessions."
+origin: ECC
+---
+
 # Verification Loop Skill
 
-**Name**: verification-loop
-**Description**: A comprehensive verification system for Claude Code sessions.
-**Origin**: ECC
+A comprehensive verification system for Claude Code sessions.
 
 ## When to Use
 
+Invoke this skill:
 - After completing a feature or significant code change
 - Before creating a PR
-- When ensuring quality gates pass
+- When you want to ensure quality gates pass
 - After refactoring
 
-## Verification Phases (6 Total)
+## Verification Phases
 
 ### Phase 1: Build Verification
+```bash
+# Check if project builds
+npm run build 2>&1 | tail -20
+# OR
+pnpm build 2>&1 | tail -20
+```
 
-Commands:
-- npm: `npm run build 2>&1 | tail -20`
-- pnpm: `pnpm build 2>&1 | tail -20`
-
-**Rule:** Stop and fix if build fails.
+If build fails, STOP and fix before continuing.
 
 ### Phase 2: Type Check
+```bash
+# TypeScript projects
+npx tsc --noEmit 2>&1 | head -30
 
-- TypeScript: `npx tsc --noEmit 2>&1 | head -30`
-- Python: `pyright . 2>&1 | head -30`
+# Python projects
+pyright . 2>&1 | head -30
+```
 
-Report all type errors; fix critical ones before continuing.
+Report all type errors. Fix critical ones before continuing.
 
 ### Phase 3: Lint Check
+```bash
+# JavaScript/TypeScript
+npm run lint 2>&1 | head -30
 
-- JavaScript/TypeScript: `npm run lint 2>&1 | head -30`
-- Python: `ruff check . 2>&1 | head -30`
+# Python
+ruff check . 2>&1 | head -30
+```
 
 ### Phase 4: Test Suite
+```bash
+# Run tests with coverage
+npm run test -- --coverage 2>&1 | tail -50
 
-Command: `npm run test -- --coverage 2>&1 | tail -50`
+# Check coverage threshold
+# Target: 80% minimum
+```
 
-**Target:** 80% minimum coverage.
-
-Report: total tests, passed count, failed count, coverage percentage.
+Report:
+- Total tests: X
+- Passed: X
+- Failed: X
+- Coverage: X%
 
 ### Phase 5: Security Scan
+```bash
+# Check for secrets
+grep -rn "sk-" --include="*.ts" --include="*.js" . 2>/dev/null | head -10
+grep -rn "api_key" --include="*.ts" --include="*.js" . 2>/dev/null | head -10
 
-- Check for secrets: `grep -rn "sk-" --include="*.ts" --include="*.js" .`
-- Check for API keys: `grep -rn "api_key" --include="*.ts" --include="*.js" .`
-- Check for debug statements: `grep -rn "console.log" --include="*.ts" --include="*.tsx" src/`
+# Check for console.log
+grep -rn "console.log" --include="*.ts" --include="*.tsx" src/ 2>/dev/null | head -10
+```
 
 ### Phase 6: Diff Review
+```bash
+# Show what changed
+git diff --stat
+git diff HEAD~1 --name-only
+```
 
-Commands: `git diff --stat` and `git diff HEAD~1 --name-only`
-
-Review criteria: unintended changes, missing error handling, potential edge cases.
+Review each changed file for:
+- Unintended changes
+- Missing error handling
+- Potential edge cases
 
 ## Output Format
 
-Structured report showing: Build, Types, Lint, Tests, Security, Diff statuses with overall PR readiness determination and issues list.
+After running all phases, produce a verification report:
+
+```
+VERIFICATION REPORT
+==================
+
+Build:     [PASS/FAIL]
+Types:     [PASS/FAIL] (X errors)
+Lint:      [PASS/FAIL] (X warnings)
+Tests:     [PASS/FAIL] (X/Y passed, Z% coverage)
+Security:  [PASS/FAIL] (X issues)
+Diff:      [X files changed]
+
+Overall:   [READY/NOT READY] for PR
+
+Issues to Fix:
+1. ...
+2. ...
+```
 
 ## Continuous Mode
 
-Run verification every 15 minutes or after major changes; set checkpoints after each function/component completion.
+For long sessions, run verification every 15 minutes or after major changes:
 
-## Integration Note
+```markdown
+Set a mental checkpoint:
+- After completing each function
+- After finishing a component
+- Before moving to next task
 
-Complements PostToolUse hooks; hooks catch immediate issues while this skill provides comprehensive review.
+Run: /verify
+```
+
+## Integration with Hooks
+
+This skill complements PostToolUse hooks but provides deeper verification.
+Hooks catch issues immediately; this skill provides comprehensive review.

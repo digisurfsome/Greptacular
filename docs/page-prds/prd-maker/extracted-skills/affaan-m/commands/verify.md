@@ -1,45 +1,59 @@
 # Verification Command
 
-> Source: https://github.com/affaan-m/everything-claude-code/blob/main/commands/verify.md
+Run comprehensive verification on current codebase state.
 
-## Overview
+## Instructions
 
-A standardized verification workflow with conditional stopping points and multiple scope options for different development stages.
+Execute verification in this exact order:
 
-## Execution Order (5 Phases)
+1. **Build Check**
+   - Run the build command for this project
+   - If it fails, report errors and STOP
 
-1. **Build Check** - Execute build command; stop if failed
-2. **Type Check** - Run TypeScript checker; report errors with file:line
-3. **Lint Check** - Execute linter; report warnings and errors
-4. **Test Suite** - Run all tests; report pass/fail count and coverage %
-5. **Console.log Audit** - Search source files for console.log statements
+2. **Type Check**
+   - Run TypeScript/type checker
+   - Report all errors with file:line
 
-## Additional Checks
+3. **Lint Check**
+   - Run linter
+   - Report warnings and errors
 
-**Git Status** - Display uncommitted changes and files modified since last commit
+4. **Test Suite**
+   - Run all tests
+   - Report pass/fail count
+   - Report coverage percentage
 
-## Output Format
+5. **Console.log Audit**
+   - Search for console.log in source files
+   - Report locations
 
-Standard report template:
+6. **Git Status**
+   - Show uncommitted changes
+   - Show files modified since last commit
+
+## Output
+
+Produce a concise verification report:
 
 ```
-VERIFICATION: PASS/FAIL
-Build:        OK/FAIL
-Types:        OK/X errors
-Lint:         OK/X issues
-Tests:        X/Y passed, Z% coverage
-Secrets:      OK/X found
-Console logs: OK/X console.logs
-PR Ready:     YES/NO
+VERIFICATION: [PASS/FAIL]
+
+Build:    [OK/FAIL]
+Types:    [OK/X errors]
+Lint:     [OK/X issues]
+Tests:    [X/Y passed, Z% coverage]
+Secrets:  [OK/X found]
+Logs:     [OK/X console.logs]
+
+Ready for PR: [YES/NO]
 ```
+
+If any critical issues, list them with fix suggestions.
 
 ## Arguments
 
-Four execution modes supported:
-
-| Mode | Description |
-|------|-------------|
-| `quick` | Only build + types |
-| `full` | All checks (default) |
-| `pre-commit` | Checks relevant for commits |
-| `pre-pr` | Full checks plus security scan |
+$ARGUMENTS can be:
+- `quick` - Only build + types
+- `full` - All checks (default)
+- `pre-commit` - Checks relevant for commits
+- `pre-pr` - Full checks plus security scan

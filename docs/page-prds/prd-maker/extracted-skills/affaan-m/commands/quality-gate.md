@@ -1,32 +1,29 @@
 # Quality Gate Command
 
-> Source: https://github.com/affaan-m/everything-claude-code/blob/main/commands/quality-gate.md
-
-## Overview
-
-An on-demand quality pipeline that mirrors hook behavior but is operator-invoked. Provides file or project scope assessment.
+Run the ECC quality pipeline on demand for a file or project scope.
 
 ## Usage
 
-```
-/quality-gate [path|.] [--fix] [--strict]
-```
+`/quality-gate [path|.] [--fix] [--strict]`
 
-## Arguments
+- default target: current directory (`.`)
+- `--fix`: allow auto-format/fix where configured
+- `--strict`: fail on warnings where supported
 
-| Argument | Description |
-|----------|-------------|
-| `[path\|.]` | Optional target path (defaults to current directory) |
-| `--fix` | Allow auto-format/fix where configured |
-| `--strict` | Fail on warnings where supported |
+## Pipeline
 
-## Pipeline Phases
-
-1. **Detect** - Detect language/tooling for target
-2. **Format** - Run formatter checks
-3. **Lint/Type** - Run lint/type checks when available
-4. **Remediate** - Produce a concise remediation list
+1. Detect language/tooling for target.
+2. Run formatter checks.
+3. Run lint/type checks when available.
+4. Produce a concise remediation list.
 
 ## Notes
 
-This command mirrors hook behavior but is operator-invoked, providing on-demand execution of the quality pipeline for file or project scope assessment.
+This command mirrors hook behavior but is operator-invoked.
+
+## Arguments
+
+$ARGUMENTS:
+- `[path|.]` optional target path
+- `--fix` optional
+- `--strict` optional

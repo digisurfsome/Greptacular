@@ -1,72 +1,112 @@
-# PRP Commit - Smart Commit Workflow
+---
+description: Quick commit with natural language file targeting — describe what to commit in plain English
+argument-hint: [target description] (blank = all changes)
+---
 
-> Source: https://github.com/affaan-m/everything-claude-code/blob/main/commands/prp-commit.md
+# Smart Commit
 
-## Overview
+> Adapted from PRPs-agentic-eng by Wirasm. Part of the PRP workflow series.
 
-The Smart Commit tool enables quick commits using natural language file targeting. Users describe what to commit in plain English via the argument `$ARGUMENTS`.
+**Input**: $ARGUMENTS
 
-## Four Phases
+---
 
-### Phase 1 - ASSESS
+## Phase 1 — ASSESS
 
-Execute `git status --short` to check for changes. Stop if empty. Display a summary of added, modified, deleted, and untracked files.
+```bash
+git status --short
+```
 
-### Phase 2 - INTERPRET & STAGE
+If output is empty → stop: "Nothing to commit."
 
-Parse the user's input to determine staging strategy:
+Show the user a summary of what's changed (added, modified, deleted, untracked).
 
-| Input | Action |
-|-------|--------|
-| Blank input | Stage everything via `git add -A` |
-| "staged" | Use pre-staged files only |
-| Glob patterns like `*.ts` | Stage matching files |
-| "except tests" | Stage all then remove test files |
-| "only new files" | Stage untracked files |
-| Natural language like "the auth changes" | Cross-reference `git status` and `git diff` |
-| Specific filenames | Stage directly |
+---
 
-Verify staging with `git diff --cached --stat`. Stop if nothing matched.
+## Phase 2 — INTERPRET & STAGE
 
-### Phase 3 - COMMIT
+Interpret `$ARGUMENTS` to determine what to stage:
 
-Generate a single-line message using format `{type}: {description}`.
+| Input | Interpretation | Git Command |
+|---|---|---|
+| *(blank / empty)* | Stage everything | `git add -A` |
+| `staged` | Use whatever is already staged | *(no git add)* |
+| `*.ts` or `*.py` etc. | Stage matching glob | `git add '*.ts'` |
+| `except tests` | Stage all, then unstage tests | `git add -A && git reset -- '**/*.test.*' '**/*.spec.*' '**/test_*' 2>/dev/null \|\| true` |
+| `only new files` | Stage untracked files only | `git ls-files --others --exclude-standard \| grep . && git ls-files --others --exclude-standard \| xargs git add` |
+| `the auth changes` | Interpret from status/diff — find auth-related files | `git add <matched files>` |
+| Specific filenames | Stage those files | `git add <files>` |
 
-**Commit Types:**
+For natural language inputs (like "the auth changes"), cross-reference the `git status` output and `git diff` to identify relevant files. Show the user which files you're staging and why.
 
-| Type | Usage |
-|------|-------|
-| `feat` | New feature or capability |
-| `fix` | Bug fix |
-| `refactor` | Code restructuring without behavior change |
-| `docs` | Documentation changes |
-| `test` | Adding or updating tests |
-| `chore` | Build, config, dependencies |
-| `perf` | Performance improvement |
-| `ci` | CI/CD changes |
+```bash
+git add <determined files>
+```
 
-**Message Rules:**
+After staging, verify:
+```bash
+git diff --cached --stat
+```
 
-- Use imperative mood ("add feature" not "added feature")
-- Lowercase after type prefix
-- No period
+If nothing staged, stop: "No files matched your description."
+
+---
+
+## Phase 3 — COMMIT
+
+Craft a single-line commit message in imperative mood:
+
+```
+{type}: {description}
+```
+
+Types:
+- `feat` — New feature or capability
+- `fix` — Bug fix
+- `refactor` — Code restructuring without behavior change
+- `docs` — Documentation changes
+- `test` — Adding or updating tests
+- `chore` — Build, config, dependencies
+- `perf` — Performance improvement
+- `ci` — CI/CD changes
+
+Rules:
+- Imperative mood ("add feature" not "added feature")
+- Lowercase after the type prefix
+- No period at the end
 - Under 72 characters
-- Describe WHAT changed
+- Describe WHAT changed, not HOW
 
-### Phase 4 - OUTPUT
+```bash
+git commit -m "{type}: {description}"
+```
 
-Report:
+---
 
-- Commit hash
-- Message
-- File count
-- Next steps (push, create PR, or code review)
+## Phase 4 — OUTPUT
 
-## Usage Examples
+Report to user:
 
-- `/prp-commit` -- stages all, auto-generates message
-- `/prp-commit staged` -- commits pre-staged files
-- `/prp-commit *.ts` -- stages TypeScript files
-- `/prp-commit except tests` -- stages all except tests
-- `/prp-commit the database migration` -- finds and stages migration files
-- `/prp-commit only new files` -- stages untracked files
+```
+Committed: {hash_short}
+Message:   {type}: {description}
+Files:     {count} file(s) changed
+
+Next steps:
+  - git push           → push to remote
+  - /prp-pr            → create a pull request
+  - /code-review       → review before pushing
+```
+
+---
+
+## Examples
+
+| You say | What happens |
+|---|---|
+| `/prp-commit` | Stages all, auto-generates message |
+| `/prp-commit staged` | Commits only what's already staged |
+| `/prp-commit *.ts` | Stages all TypeScript files, commits |
+| `/prp-commit except tests` | Stages everything except test files |
+| `/prp-commit the database migration` | Finds DB migration files from status, stages them |
+| `/prp-commit only new files` | Stages untracked files only |

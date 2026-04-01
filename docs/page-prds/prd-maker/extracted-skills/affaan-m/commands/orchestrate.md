@@ -1,70 +1,231 @@
-# Orchestrate Command - Multi-Agent Workflow Orchestration
+---
+description: Sequential and tmux/worktree orchestration guidance for multi-agent workflows.
+---
 
-> Source: https://github.com/affaan-m/everything-claude-code/blob/main/commands/orchestrate.md
+# Orchestrate Command
 
-## Overview
+Sequential agent workflow for complex tasks.
 
-The `/orchestrate` command enables sequential multi-agent workflows for complex development tasks, with support for tmux/worktree orchestration across multiple sessions.
+## Usage
 
-## Workflow Types & Agent Chains
+`/orchestrate [workflow-type] [task-description]`
 
-| Type | Chain | Purpose |
-|------|-------|---------|
-| **Feature** | planner -> tdd-guide -> code-reviewer -> security-reviewer | Full feature implementation |
-| **Bugfix** | planner -> tdd-guide -> code-reviewer | Investigation and resolution |
-| **Refactor** | architect -> code-reviewer -> tdd-guide | Safe structural changes |
-| **Security** | security-reviewer -> code-reviewer -> architect | Risk-focused review |
+## Workflow Types
 
-## Execution Process
-
-Each agent:
-
-1. Receives context from predecessors
-2. Produces structured handoff documents
-3. Passes results forward
-
-**Handoff format includes sections for:**
-
-- Context
-- Findings
-- Modified files
-- Open questions
-- Recommendations
-
-## Key Phases
-
-1. Agent invocation with prior context
-2. Output collection in structured format
-3. Sequential or parallel handoff to next agent
-4. Results aggregation into final report
-
-## Distributed Execution
-
-For external workers, use:
-
-```bash
-node scripts/orchestrate-worktrees.js plan.json --execute
+### feature
+Full feature implementation workflow:
+```
+planner -> tdd-guide -> code-reviewer -> security-reviewer
 ```
 
-The `seedPaths` parameter overlays selected local files into isolated worker worktrees, maintaining branch isolation while exposing in-progress scripts and documentation.
+### bugfix
+Bug investigation and fix workflow:
+```
+planner -> tdd-guide -> code-reviewer
+```
 
-## Final Reporting
+### refactor
+Safe refactoring workflow:
+```
+architect -> code-reviewer -> tdd-guide
+```
 
-Reports consolidate:
+### security
+Security-focused review:
+```
+security-reviewer -> code-reviewer -> architect
+```
 
-- All agent outputs
-- List of modified files
-- Test results
-- Security findings
-- Clear recommendation: **SHIP / NEEDS WORK / BLOCKED**
+## Execution Pattern
 
-## Control Plane Snapshot
+For each agent in the workflow:
 
-Run `node scripts/orchestration-status.js` to export:
+1. **Invoke agent** with context from previous agent
+2. **Collect output** as structured handoff document
+3. **Pass to next agent** in chain
+4. **Aggregate results** into final report
 
-- Session metadata
-- Worker states
-- Branch information
-- Recent handoff summaries
+## Handoff Document Format
 
-For multi-session workflows.
+Between agents, create handoff document:
+
+```markdown
+## HANDOFF: [previous-agent] -> [next-agent]
+
+### Context
+[Summary of what was done]
+
+### Findings
+[Key discoveries or decisions]
+
+### Files Modified
+[List of files touched]
+
+### Open Questions
+[Unresolved items for next agent]
+
+### Recommendations
+[Suggested next steps]
+```
+
+## Example: Feature Workflow
+
+```
+/orchestrate feature "Add user authentication"
+```
+
+Executes:
+
+1. **Planner Agent**
+   - Analyzes requirements
+   - Creates implementation plan
+   - Identifies dependencies
+   - Output: `HANDOFF: planner -> tdd-guide`
+
+2. **TDD Guide Agent**
+   - Reads planner handoff
+   - Writes tests first
+   - Implements to pass tests
+   - Output: `HANDOFF: tdd-guide -> code-reviewer`
+
+3. **Code Reviewer Agent**
+   - Reviews implementation
+   - Checks for issues
+   - Suggests improvements
+   - Output: `HANDOFF: code-reviewer -> security-reviewer`
+
+4. **Security Reviewer Agent**
+   - Security audit
+   - Vulnerability check
+   - Final approval
+   - Output: Final Report
+
+## Final Report Format
+
+```
+ORCHESTRATION REPORT
+====================
+Workflow: feature
+Task: Add user authentication
+Agents: planner -> tdd-guide -> code-reviewer -> security-reviewer
+
+SUMMARY
+-------
+[One paragraph summary]
+
+AGENT OUTPUTS
+-------------
+Planner: [summary]
+TDD Guide: [summary]
+Code Reviewer: [summary]
+Security Reviewer: [summary]
+
+FILES CHANGED
+-------------
+[List all files modified]
+
+TEST RESULTS
+------------
+[Test pass/fail summary]
+
+SECURITY STATUS
+---------------
+[Security findings]
+
+RECOMMENDATION
+--------------
+[SHIP / NEEDS WORK / BLOCKED]
+```
+
+## Parallel Execution
+
+For independent checks, run agents in parallel:
+
+```markdown
+### Parallel Phase
+Run simultaneously:
+- code-reviewer (quality)
+- security-reviewer (security)
+- architect (design)
+
+### Merge Results
+Combine outputs into single report
+```
+
+For external tmux-pane workers with separate git worktrees, use `node scripts/orchestrate-worktrees.js plan.json --execute`. The built-in orchestration pattern stays in-process; the helper is for long-running or cross-harness sessions.
+
+When workers need to see dirty or untracked local files from the main checkout, add `seedPaths` to the plan file. ECC overlays only those selected paths into each worker worktree after `git worktree add`, which keeps the branch isolated while still exposing in-flight local scripts, plans, or docs.
+
+```json
+{
+  "sessionName": "workflow-e2e",
+  "seedPaths": [
+    "scripts/orchestrate-worktrees.js",
+    "scripts/lib/tmux-worktree-orchestrator.js",
+    ".claude/plan/workflow-e2e-test.json"
+  ],
+  "workers": [
+    { "name": "docs", "task": "Update orchestration docs." }
+  ]
+}
+```
+
+To export a control-plane snapshot for a live tmux/worktree session, run:
+
+```bash
+node scripts/orchestration-status.js .claude/plan/workflow-visual-proof.json
+```
+
+The snapshot includes session activity, tmux pane metadata, worker states, objectives, seeded overlays, and recent handoff summaries in JSON form.
+
+## Operator Command-Center Handoff
+
+When the workflow spans multiple sessions, worktrees, or tmux panes, append a control-plane block to the final handoff:
+
+```markdown
+CONTROL PLANE
+-------------
+Sessions:
+- active session ID or alias
+- branch + worktree path for each active worker
+- tmux pane or detached session name when applicable
+
+Diffs:
+- git status summary
+- git diff --stat for touched files
+- merge/conflict risk notes
+
+Approvals:
+- pending user approvals
+- blocked steps awaiting confirmation
+
+Telemetry:
+- last activity timestamp or idle signal
+- estimated token or cost drift
+- policy events raised by hooks or reviewers
+```
+
+This keeps planner, implementer, reviewer, and loop workers legible from the operator surface.
+
+## Arguments
+
+$ARGUMENTS:
+- `feature <description>` - Full feature workflow
+- `bugfix <description>` - Bug fix workflow
+- `refactor <description>` - Refactoring workflow
+- `security <description>` - Security review workflow
+- `custom <agents> <description>` - Custom agent sequence
+
+## Custom Workflow Example
+
+```
+/orchestrate custom "architect,tdd-guide,code-reviewer" "Redesign caching layer"
+```
+
+## Tips
+
+1. **Start with planner** for complex features
+2. **Always include code-reviewer** before merge
+3. **Use security-reviewer** for auth/payment/PII
+4. **Keep handoffs concise** - focus on what next agent needs
+5. **Run verification** between agents if needed

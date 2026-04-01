@@ -1,0 +1,38 @@
+{
+  "name": "replit-prd",
+  "description": "Generate sequential PRD prompt sequences optimized for Replit Agent development",
+  "version": "1.0.0",
+  "author": {
+    "name": "haberlah",
+    "url": "https://github.com/haberlah"
+  },
+  "license": "MIT",
+  "keywords": [
+    "replit",
+    "prd",
+    "product-requirements",
+    "vibe-coding",
+    "agent",
+    "specification",
+    "prompt-engineering",
+    "agentic-development"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/haberlah/replit-prd-skill.git"
+  },
+  "triggers": [
+    "build with Replit",
+    "Replit Agent",
+    "Replit PRD",
+    "vibe coding",
+    "create a PRD for Replit",
+    "Replit project"
+  ],
+  "compatibility": [
+    "claude-code",
+    "codex-cli",
+    "claude-ai"
+  ],
+  "category": "development"
+}

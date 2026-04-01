@@ -1,64 +1,82 @@
-# Design System — Generate & Audit Visual Systems
+---
+name: design-system
+description: Use this skill to generate or audit design systems, check visual consistency, and review PRs that touch styling.
+origin: ECC
+---
 
-**Name**: design-system
-**Description**: Use this skill to generate or audit design systems, check visual consistency, and review PRs that touch styling.
-**Origin**: ECC
+# Design System — Generate & Audit Visual Systems
 
 ## When to Use
 
-1. Starting a new project that needs a design system
-2. Auditing an existing codebase for visual consistency
-3. Before a redesign — understand what you have
-4. When the UI looks "off" but you can't pinpoint why
-5. Reviewing pull requests affecting styling
+- Starting a new project that needs a design system
+- Auditing an existing codebase for visual consistency
+- Before a redesign — understand what you have
+- When the UI looks "off" but you can't pinpoint why
+- Reviewing PRs that touch styling
 
-## Three Operating Modes
+## How It Works
 
 ### Mode 1: Generate Design System
 
-6-step pipeline:
-1. Scan styling code
-2. Extract design tokens
-3. Research competitors via browser MCP
-4. Propose token sets
-5. Generate documentation with rationale
-6. Create a self-contained preview page
+Analyzes your codebase and generates a cohesive design system:
 
-**Deliverables:**
-- `DESIGN.md`
-- `design-tokens.json`
-- `design-preview.html`
+```
+1. Scan CSS/Tailwind/styled-components for existing patterns
+2. Extract: colors, typography, spacing, border-radius, shadows, breakpoints
+3. Research 3 competitor sites for inspiration (via browser MCP)
+4. Propose a design token set (JSON + CSS custom properties)
+5. Generate DESIGN.md with rationale for each decision
+6. Create an interactive HTML preview page (self-contained, no deps)
+```
+
+Output: `DESIGN.md` + `design-tokens.json` + `design-preview.html`
 
 ### Mode 2: Visual Audit
 
-Evaluates ten dimensions on 0-10 scales:
+Scores your UI across 10 dimensions (0-10 each):
 
-1. Color consistency
-2. Typography hierarchy
-3. Spacing rhythm
-4. Component consistency
-5. Responsive behavior
-6. Dark mode implementation
-7. Animation appropriateness
-8. Accessibility standards
-9. Information density
-10. Polish (hover states, loading indicators)
+```
+1. Color consistency — are you using your palette or random hex values?
+2. Typography hierarchy — clear h1 > h2 > h3 > body > caption?
+3. Spacing rhythm — consistent scale (4px/8px/16px) or arbitrary?
+4. Component consistency — do similar elements look similar?
+5. Responsive behavior — fluid or broken at breakpoints?
+6. Dark mode — complete or half-done?
+7. Animation — purposeful or gratuitous?
+8. Accessibility — contrast ratios, focus states, touch targets
+9. Information density — cluttered or clean?
+10. Polish — hover states, transitions, loading states, empty states
+```
+
+Each dimension gets a score, specific examples, and a fix with exact file:line.
 
 ### Mode 3: AI Slop Detection
 
-Identifies overused AI-design patterns:
-- Gratuitous gradients
-- Purple-to-blue defaults
-- Glass morphism cards
-- Excessive rounded corners
-- Scroll animations
-- Generic hero layouts
-- Characterless sans-serif stacks
-
-## Command Examples
+Identifies generic AI-generated design patterns:
 
 ```
+- Gratuitous gradients on everything
+- Purple-to-blue defaults
+- "Glass morphism" cards with no purpose
+- Rounded corners on things that shouldn't be rounded
+- Excessive animations on scroll
+- Generic hero with centered text over stock gradient
+- Sans-serif font stack with no personality
+```
+
+## Examples
+
+**Generate for a SaaS app:**
+```
 /design-system generate --style minimal --palette earth-tones
+```
+
+**Audit existing UI:**
+```
 /design-system audit --url http://localhost:3000 --pages / /pricing /docs
+```
+
+**Check for AI slop:**
+```
 /design-system slop-check
 ```

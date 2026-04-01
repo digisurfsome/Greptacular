@@ -1,62 +1,74 @@
 # Feedback Loop Design Guide
 
-> Source: nicknisi/claude-plugins/plugins/ideation/skills/ideation/references/feedback-loop-guide.md
-
-## Purpose
-
-Guide for creating feedback loops in implementation specs, enabling validation during development through playgrounds, experiments, and check commands.
+Use this guide when generating feedback loops for implementation specs. Each iterative component should define a playground, experiment, and check command so the executing agent can validate its work *during* implementation.
 
 ## Component-Type Mapping
 
-| Component Type | Feedback Mechanism | Check Command |
+Match the feedback mechanism to the component type:
+
+| Component Type | Feedback Mechanism | Example |
 |---|---|---|
-| Data/logic layers | Test files with describe blocks | `pnpm test -- --filter {module}` |
-| UI components | Dev server or Storybook | Start before building; validate after changes |
-| API endpoints | curl/httpie scripts or test harnesses | Execute after adding routes |
-| CLI tools | The tool itself with test inputs | Validate subcommands as built |
-| Config/types/constants | Skip -- typecheck suffices | N/A |
+| Data/logic layers | Test file — create a spec file with a describe block before writing the implementation | `pnpm test -- --filter bookmark-store` |
+| UI components | Dev server or storybook — start before building, check renders after each change | `pnpm dev`, `pnpm storybook` |
+| API endpoints | curl/httpie script or test harness — hit the endpoint after each route is added | `curl -s localhost:3000/api/bookmarks \| jq .` |
+| CLI tools | The tool itself — run with test inputs after each subcommand is added | `./my-cli --help`, `./my-cli generate --dry-run` |
+| Config/types/constants | Skip — no feedback loop needed, typecheck covers it | `pnpm typecheck` |
 
-## Three Essential Design Questions
+## Three Design Questions
 
-### 1. Playground Identification
+For each component, answer:
 
-What environment enables agent interaction? Options:
-- Test suites
-- Dev servers
-- Storybook
-- Script harnesses
-- The tool itself
+### 1. What's the playground?
 
-The playground should be set up BEFORE writing implementation code.
+What environment lets the agent interact with its changes? The playground should be set up *before* writing implementation code.
 
-### 2. Experiment Design
+- **Test suite**: Create the test file with a describe block and one smoke test before writing the module
+- **Dev server**: Start it and navigate to the relevant page before building the component
+- **Storybook**: Start it and create a story file before building the component
+- **Script harness**: Create a shell script that exercises the module before implementing it
+- **The tool itself**: For CLIs, the tool's own `--help` and subcommands are the playground
 
-Create parameterized, reproducible checks using specific values. Examples:
-- Empty state
-- Single item
-- Many items
-- Error paths with concrete numbers
+### 2. What's the experiment?
 
-Avoid vague criteria.
+A parameterized, reproducible check. Not "does it work?" but "does it work with *these specific inputs*?" Good experiments:
 
-### 3. Fastest Check Command
+- Exercise edge cases: empty state, single item, many items
+- Test error paths: invalid input, missing data, network failure
+- Use specific values: "test with 0, 1, and 100 bookmarks" not "test with some bookmarks"
+- Are reproducible: same inputs produce same outputs every time
 
-Prioritize scoped, text-based commands executable in seconds. The inner-loop command should run in seconds, not minutes.
+### 3. What's the fastest check?
+
+A single command that runs in seconds and produces text output. The agent will run this dozens of times during implementation. Prefer:
+
+- `pnpm test -- --filter {module}` over `pnpm test` (scoped, fast)
+- `curl -s ... | jq .` over "open browser and check" (text, automatable)
+- `pnpm typecheck` over `pnpm build` (faster, sufficient for type-only changes)
+
+The inner-loop command should **run in seconds, not minutes**. If the check takes longer than 10 seconds, scope it tighter.
 
 ## When to Skip
 
-Skip feedback loops for:
-- Type definitions
+Not every component needs a feedback loop. Skip it for:
+
+- Type definition files
 - Config changes
-- Constants
+- Constant files
 - Simple re-exports
-- Migrations verified elsewhere
+- Migration files verified by the data layer's tests
 
-## Infrastructure Mapping
+**Rule of thumb**: "Will the agent make multiple iterations on this component?" If yes, add a loop. If it's write-once, skip it.
 
-Prefer existing tools:
-- Test runners for data layers
-- Dev servers for UI
-- Storybook for isolated components
-- API testing tools for endpoints
-- Makefiles for CLI tools
+## Mapping Discovered Infrastructure to Playgrounds
+
+When codebase exploration (Phase 2.2) discovers existing feedback tools, prefer them over creating new ones:
+
+| Discovered Infrastructure | Use As Playground For |
+|---|---|
+| Test runner (jest, vitest, pytest, go test) | Data layers, logic modules, utilities |
+| Dev server (vite, next, webpack-dev-server) | UI components, pages, layouts |
+| Storybook | Isolated UI components, design system pieces |
+| API testing tools (httpie, postman collections, test scripts) | API endpoints, middleware |
+| Makefile / script harnesses | CLI tools, build tools, multi-step processes |
+
+If the project has Storybook, prefer it as the UI playground over the dev server — it provides isolated component rendering. If the project has a test runner with watch mode, note it in the inner-loop command (e.g., `pnpm test --watch --filter {module}`).

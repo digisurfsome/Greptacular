@@ -1,45 +1,62 @@
 # Workflow Example
 
-> Source: nicknisi/claude-plugins/plugins/ideation/skills/ideation/references/workflow-example.md
+**User provides brain dump** (via dictation):
 
-## Overview
+```
+okay so i'm thinking about this feature where users can like save their
+favorite items you know like bookmarking but also they should be able to
+organize them into folders or something maybe tags actually tags might be
+better because folders are too rigid and oh we should probably have a
+search too because if they have a lot of bookmarks it'll be hard to find
+anything and maybe some kind of sharing eventually but that's probably
+phase 2 or something and it should work offline too because people might
+be on planes or whatever and sync when they come back online
+```
 
-Demonstrates the structured process for converting unstructured user input into actionable development specifications.
+**Process**:
 
-## Key Stages
+1. **Intake**: Accept without judgment
 
-### Intake and Exploration
+2. **Codebase Exploration**: Explore existing project structure, identify relevant patterns, understand current architecture
 
-Accept user ideas without judgment, then explore existing codebase patterns and architecture.
+3. **Analysis** (with anti-sycophancy):
+   - Problem: Users need to save and organize content
+   - Goals: Save items, organize with tags, search, offline support
+   - Unclear: What items? Why tags > folders? Sharing scope? Offline priority?
+   - **Pushback**: "You said 'tags might be better because folders are too rigid' — that's a preference, not evidence. Have users complained about folder-based organization, or is this an assumption? Also, 'people might be on planes' is hypothetical — how many of your users actually need offline access?"
+   - Confidence: ~55/100 (low problem clarity, unclear scope, vague justifications)
 
-### Critical Analysis (Anti-Sycophancy)
+4. **Questions** (round 1):
+   - "What type of items are users bookmarking? Articles, products, posts?"
+   - "You mentioned tags over folders. Should tags be user-created or predefined?"
+   - "Is offline support MVP or can it wait for phase 2?"
+   - "When you say 'sharing eventually,' what does that look like?"
 
-Actively question assumptions. For example, push back on "tags might be better because folders are too rigid" -- ask whether users complained or if this is speculation.
+5. **User responds** → Recalculate confidence → Repeat if needed
 
-### Iterative Clarification
+6. **Confidence reaches 96%** → Generate contract
 
-Round-trip questioning ("What type of items are users bookmarking?") continues until confidence reaches approximately 96%, then proceed to contract generation.
+7. **Contract approved** → Ask: "Straight to specs or PRDs first?"
 
-### Phasing Strategy
+8. **Determine phases**:
+   - Phase 1: Core bookmarking with tags
+   - Phase 2: Search and filtering
+   - Phase 3: Offline support
+   - Phase 4: Sharing (future)
 
-Complex features broken into phases. Example:
-- Phase 1: Core bookmarking with tags
-- Phase 2: Search/filtering
-- Phase 3: Offline support
-- Phase 4: Sharing
+9. **Generate specs** (referencing codebase patterns found in step 2)
+   - Each spec includes a **Feedback Strategy** (inner-loop command, playground type)
+   - Each iterative component gets a **Feedback Loop** (playground, experiment, check command)
+   - Self-review feedback loop quality before presenting — Strong/Adequate/Weak (see `confidence-rubric.md`)
 
-### Specification and Feedback
+10. **Execution handoff**: Analyze dependencies, present orchestration strategy
+    - Phases 2-4 are independent → recommend agent team
+    - Generate team prompt with per-teammate assignments
 
-Generated specs include explicit feedback strategies and confidence assessments (Strong/Adequate/Weak).
-
-### Execution Model
-
-Dependencies analyzed to determine if parallel agent teams can work simultaneously on independent phases.
-
-### Implementation Approach
-
-Fresh sessions per phase. Establish feedback environments first, then build incrementally with continuous checking and iteration.
-
-## Core Principle
-
-Prioritize clarity over speed -- question vague justifications like "people might be on planes" to separate actual user needs from hypothetical assumptions.
+11. **Implementation** (fresh sessions): For each phase:
+    - Start fresh Claude session (or use agent team for parallel phases)
+    - Run `/execute-spec spec-phase-{n}.md`
+    - Agent sets up feedback environment first (test runner, dev server, etc.)
+    - For each component: set up loop → build incrementally → check → iterate
+    - Review, test, commit
+    - Repeat for next phase

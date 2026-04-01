@@ -616,7 +616,7 @@ Every AutoForge UI page has its own PRD folder:
 | `docs/page-prds/token-budget/` | TokenBudgetPage |
 | `docs/page-prds/tool-runner/` | ToolRunnerPage |
 | `docs/page-prds/component-dashboard/` | ComponentDashboardPage |
-| `docs/page-prds/prd-maker/` | PRD Maker (planned) — 10-stage rant-to-spec pipeline |
+| `docs/page-prds/prd-maker/` | PRD Maker — 10-stage rant-to-spec pipeline with full stage extractions and build plans. **Start here:** `docs/page-prds/prd-maker/README.md` |
 
 ### Rules
 

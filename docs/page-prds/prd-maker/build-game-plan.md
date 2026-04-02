@@ -326,6 +326,126 @@ You take my prompts, spin up fresh agents, let them build. Come back with result
 
 ---
 
+## Nate B. Jones Skill Kit Integration
+
+**Reference file:** `nate-jones-skill-kit.md`
+
+Every stage skill is built using Nate's Prompt 2 (Output-Extraction Method) and audited using Prompt 3 (Agent-Readiness Audit with 4 criteria). See reference file for full details.
+
+Build process per skill:
+1. Agent gets the stage extraction + skill fragments + context packet schema
+2. Agent builds SKILL.md following Nate's Prompt 2 methodology
+3. A SECOND agent audits the skill using Nate's Prompt 3 (4 agent-readiness criteria)
+4. If any criterion fails → revise and re-audit
+5. Only skills passing all 4 criteria enter the pipeline
+
+---
+
+## Testing Architecture
+
+### In-Phase Testing (During Build)
+
+| Check Type | When | What It Does |
+|---|---|---|
+| **PULSE** (light) | Every 3 files | Lint, type check, import resolution |
+| **SEAM** (medium) | At component connections | Interface matching, data flow between connected parts |
+| **FULL** (heavy) | End of each phase | Full lint+type, unit tests, file sandbox verification, build order check |
+
+### Post-Build Testing (Stage 11)
+
+| Stage | What | How |
+|---|---|---|
+| **11A: Automated** | Lint, type, unit tests, integration tests, build succeeds, zero console errors | CLI — `npm run build`, `npm run test`, etc. |
+| **11B: Functional** | Navigate every route, test every form/CRUD/auth/error state, responsive check | Agent-driven walkthrough in terminal |
+| **11C: Computer-Use** | Generate user manual → generate test script → computer-use agent clicks every button | Automated UI testing via computer use |
+
+### Bug Feedback Loop
+
+```
+Bug found → Classify (structural/mechanism/UI/integration)
+  → Route to specific phase that caused it
+  → Re-run ONLY that phase
+  → Re-test from 11A
+  → Repeat until clean
+```
+
+**NOT re-run the whole pipeline. Fix the specific phase.**
+
+---
+
+## Escape Hatch Protocol
+
+Every stage includes this standard pattern:
+
+```
+Agent hits unsolvable problem
+  → SAVE context_packet to disk (nothing lost)
+  → LOG what happened, what was tried, what failed
+  → SIGNAL "NEEDS_HUMAN" to controller
+  → PRESENT: current stage, progress so far, specific problem, suggested options
+  → WAIT for human response
+  → RESUME from saved state
+```
+
+---
+
+## Context Packet Version Control
+
+Every stage saves a snapshot BEFORE modifying:
+```
+context_packet_v0.json  (after Stage 0)
+context_packet_v1.json  (after Stage 1)
+...
+context_packet_v10.json (after Stage 10)
+```
+
+If Stage N corrupts data → roll back to v(N-1) → re-run Stage N.
+
+---
+
+## Confidence Gate (Every Stage, Not Just Stage 2)
+
+Every stage outputs a confidence score with its results:
+- ≥ 90: Pass to next stage
+- 70-89: Flag concerns, ask human "proceed or revise?"
+- < 70: Do not proceed. Escape hatch.
+
+---
+
+## Scope Creep Detector
+
+Every stage checks: "Am I still within the scope defined in the Stage 2 contract?" If the agent is adding features/complexity not in the contract → flag it, don't add it.
+
+---
+
+## Existing App Path (Future — Phase 7+)
+
+Greenfield path (Stages 0-10) built first. Then add "Existing App" variant:
+- Stage 0 gets a CODEBASE ANALYSIS sub-step (scan what exists)
+- Martin's checklist → CHECK mode (which rules are already followed?)
+- Mechanisms → only NEW ones
+- Phases → must not break existing code
+
+---
+
+## Pipeline Execution Strategy
+
+### Phase 3-4 (Testing): Run manually in terminal, one stage at a time.
+### Phase 5+ (Production): Build AutoForge dashboard page.
+
+The AutoForge dashboard:
+- Visual pipeline showing all 11 stages
+- "Start" button kicks off Stage 0
+- Each stage runs via CLI
+- Chat box for human input when needed
+- Status per stage (pending/running/needs-input/complete/error)
+- Context packet saved after each stage
+- Escape hatch button on every stage
+
+**This dashboard IS the first app built with the PRD Maker.** The system builds itself.
+
+---
+
 ## Key Principles (Summary)
 
 1. **Skills before app.** Always. Skills are cheap to change, apps are expensive.
@@ -338,3 +458,10 @@ You take my prompts, spin up fresh agents, let them build. Come back with result
 8. **Contracts at every stage.** "Done" has a measurable definition. No vibes.
 9. **Iterate in small cycles.** Build 1 stage → test → fix → next stage. Not "build all 10 → pray."
 10. **Guard context window.** Subagents do the heavy lifting. Main agent consults.
+11. **Escape hatch everywhere.** Save state before crashing. Never lose work.
+12. **Version control on context packet.** Snapshots after every stage. Rollback capability.
+13. **Confidence gates between stages.** Don't pass garbage downstream.
+14. **Scope creep detection.** Flag anything not in the contract.
+15. **Nate's 4-criteria audit on every skill.** Agent-ready or don't ship it.
+16. **Test in terminal.** Real file system, real builds, real databases. Not sandboxes.
+17. **Bug feedback targets specific phases.** Don't rebuild everything for one bug.

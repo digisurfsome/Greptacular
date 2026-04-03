@@ -99,7 +99,10 @@ from .services.scheduler_service import cleanup_scheduler, get_scheduler
 from .services.screen_recorder import cleanup_all_capture_managers
 from .services.swarm_orchestrator import cleanup_all_swarms
 from .services.terminal_manager import cleanup_all_terminals
-from .services.workspace_chat_session import cleanup_all_workspace_sessions
+from .services.workspace_chat_session import (
+    cleanup_all_workspace_sessions,
+    get_all_sessions as get_all_workspace_sessions,
+)
 from .websocket import project_websocket
 
 # Paths
@@ -197,6 +200,55 @@ async def _recover_factory_sessions() -> None:
         _startup_logger.error("Factory session recovery scan failed: %s", e)
 
 
+async def _reap_orphaned_claude_processes() -> None:
+    """Periodically kill claude.exe processes that are children of this server
+    but not tracked by any active workspace chat session.
+
+    Runs every 60 seconds as a background safety net.  The primary cleanup
+    happens in ``WorkspaceChatSession.close()``, but if that fails (e.g.
+    timeout, crash), this reaper catches the stragglers.
+    """
+    import psutil
+
+    server_pid = os.getpid()
+
+    while True:
+        await asyncio.sleep(60)
+        try:
+            # Collect PIDs actively tracked by live sessions
+            active_pids: set[int] = set()
+            for session in get_all_workspace_sessions():
+                pid = getattr(session, '_subprocess_pid', None)
+                if pid:
+                    active_pids.add(pid)
+
+            # Scan for claude processes that are direct children of this server
+            for proc in psutil.process_iter(['pid', 'name']):
+                try:
+                    info = proc.info
+                    if not info['name'] or 'claude' not in info['name'].lower():
+                        continue
+                    if info['pid'] in active_pids:
+                        continue
+
+                    # Only kill processes that are children of this server
+                    try:
+                        parent = psutil.Process(info['pid']).parent()
+                        if parent and parent.pid == server_pid:
+                            _startup_logger.warning(
+                                "[reaper] Killing orphaned Claude process PID=%d",
+                                info['pid'],
+                            )
+                            from .utils.process_utils import kill_process_tree_by_pid
+                            kill_process_tree_by_pid(info['pid'])
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+        except Exception as e:
+            _startup_logger.debug("[reaper] Error in orphan reaper: %s", e)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown."""
@@ -236,7 +288,17 @@ async def lifespan(app: FastAPI):
     _prd_shredder = get_shredder()
     await _prd_shredder.start_loop()
 
+    # Start the orphan reaper to catch leaked claude.exe processes
+    _reaper_task = asyncio.create_task(_reap_orphaned_claude_processes())
+
     yield
+
+    # Cancel the orphan reaper
+    _reaper_task.cancel()
+    try:
+        await _reaper_task
+    except asyncio.CancelledError:
+        pass
 
     # Shutdown - cleanup scheduler first to stop triggering new starts
     await cleanup_scheduler()

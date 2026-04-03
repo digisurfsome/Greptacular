@@ -1605,12 +1605,17 @@ async def workspace_chat_websocket(websocket: WebSocket):
         if response_task and not response_task.done():
             response_task.cancel()
             try:
-                await response_task
-            except Exception:
+                await asyncio.wait_for(asyncio.shield(response_task), timeout=5.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError, Exception):
                 pass
         if session_id:
             try:
-                await ws_remove_session(session_id)
+                await asyncio.wait_for(ws_remove_session(session_id), timeout=15.0)
+            except asyncio.TimeoutError:
+                logger.error(
+                    "[ws] Timeout closing session %s -- process may be orphaned",
+                    session_id,
+                )
             except Exception as e:
                 logger.warning("Error closing workspace session on disconnect: %s", e)
         logger.info("Workspace WebSocket cleaned up")

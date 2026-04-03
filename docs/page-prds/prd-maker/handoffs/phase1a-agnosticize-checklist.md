@@ -48,7 +48,37 @@ Every rule gets exactly ONE of these three tags:
 | **STACK-SPECIFIC** | The rule is tied to Firebase, Firestore, Google Auth, importmap, Lucide React, or another specific technology. | REWRITE the "Technical Spec" column to use generic language. Preserve the original "Martin Says" column verbatim. |
 | **PATTERN** | The underlying principle is universal, but the example or implementation is stack-specific. | Extract the universal principle into "Technical Spec." Note the Firebase implementation as a parenthetical example. Preserve "Martin Says" verbatim. |
 
-### Column 2: Severity
+### Column 2: Verification
+
+Every rule gets a testable assertion — a way to CHECK if the rule is being followed. This directly feeds Stage 9 (Verification Agent) so it has an actual test suite, not subjective judgments.
+
+| Check Type | When to Use | Example |
+|---|---|---|
+| **AUTOMATED** | Can be verified with grep, lint, or a script | `grep -r "alert(" src/ --include="*.tsx"` — expect 0 results |
+| **BUILD** | Verified by the build/compile process | `npm run build` succeeds with zero errors |
+| **MANUAL** | Requires visual or functional inspection | "Navigate to each page and verify sidebar is hidden on mobile viewport" |
+
+**Rules for writing verification assertions:**
+- ~100 of the 191 rules can be checked with AUTOMATED assertions (grep, lint, AST checks)
+- ~40 can be checked via BUILD (TypeScript compiler, linter configs)
+- ~50 require MANUAL verification (visual, UX, behavioral checks)
+- Be SPECIFIC. Not "check the code" but `grep -r "console\.log" src/ --include="*.tsx" | wc -l` — expect 0
+- For MANUAL checks, describe exactly what to look for and where
+- Some rules may have BOTH an automated partial check AND a manual full check — include both
+
+**Examples of good verification assertions:**
+
+| Rule | Verification |
+|---|---|
+| No `alert()` | AUTOMATED: `grep -rn "alert(" src/ --include="*.tsx" --include="*.ts"` — expect 0 results |
+| One component per file | AUTOMATED: For each `.tsx` file in `src/components/`: count `export default` — expect exactly 1 per file |
+| All inputs have focus ring | AUTOMATED: `grep -rn "focus:ring" src/ --include="*.tsx"` — expect ≥ 1 result per input/button component. MANUAL: Tab through all form inputs and verify visible focus indicator |
+| Timestamps on all writes | AUTOMATED: `grep -rn "createdAt\|updatedAt\|timestamp" src/services/` — expect presence in every write/update function |
+| Mobile-first design | MANUAL: Open app at 375px width. Every page should render without horizontal scroll. All text readable, all buttons tappable |
+| Delete requires confirmation | MANUAL: Click every delete button in the app. Each one should show a confirmation dialog before executing |
+| Skeleton loading states | MANUAL: Throttle network to Slow 3G. Navigate to each page with data. Should show skeleton placeholders, never bare "Loading..." text |
+
+### Column 3: Severity
 
 Every rule gets exactly ONE of these three tags:
 
@@ -113,6 +143,21 @@ The original file has 43 banned patterns. Apply the same classification:
 
 ## Output File Structure
 
+### 0. Version Header
+
+At the very top of the file, before the theory section, add:
+
+```
+---
+version: "1.0"
+source: trial-idea-1-structural-checklist.md
+based_on: "Martin's 1,500-line Build PRD prompt"
+date_created: 2026-04-02
+---
+```
+
+This enables version tracking so when Martin updates his prompt, the checklist can be updated without breaking existing preambles.
+
 ### 1. Updated Theory Section
 
 Rewrite the theory section at the top of the file:
@@ -127,13 +172,14 @@ Rewrite the theory section at the top of the file:
 
 Each category table must have these columns:
 
-| # | Rule | Martin Says | Technical Spec (Agnostic) | Boilerplate Match | Type | Severity |
-|---|------|-------------|---------------------------|-------------------|------|----------|
+| # | Rule | Martin Says | Technical Spec (Agnostic) | Verification | Boilerplate Match | Type | Severity |
+|---|------|-------------|---------------------------|--------------|-------------------|------|----------|
 
 - **#** -- Original rule number (preserve exactly)
 - **Rule** -- Short rule name (preserve from original)
 - **Martin Says** -- Original quote (preserve VERBATIM, even if Firebase-specific)
 - **Technical Spec (Agnostic)** -- Your agnostic rewrite (or original text if UNIVERSAL)
+- **Verification** -- AUTOMATED/BUILD/MANUAL check with specific command or inspection steps
 - **Boilerplate Match** -- Keep as `_[to be filled]_` (filled by a later agent)
 - **Type** -- UNIVERSAL / STACK-SPECIFIC / PATTERN
 - **Severity** -- CRITICAL / STANDARD / POLISH
@@ -144,8 +190,8 @@ Keep every category heading and every rule. Do not skip, merge, split, or reorde
 
 ### 4. Banned Patterns Table
 
-| # | Banned Pattern | Martin Says | Why Banned (Agnostic) | Type | Severity |
-|---|----------------|-------------|----------------------|------|----------|
+| # | Banned Pattern | Martin Says | Why Banned (Agnostic) | Verification | Type | Severity |
+|---|----------------|-------------|----------------------|--------------|------|----------|
 
 ---
 
@@ -170,11 +216,16 @@ Run these checks on your output BEFORE considering the work done:
 Your output is complete when ALL of these are true:
 
 - [ ] Output file exists at `docs/page-prds/prd-maker/martin-agnostic-checklist.md`
-- [ ] Theory section updated to explain the agnostic version and Type/Severity system
+- [ ] Version header present at top (version: "1.0", source, date_created)
+- [ ] Theory section updated to explain the agnostic version, Type/Severity/Verification system
 - [ ] All ~192 rules present with original numbering preserved
 - [ ] All ~43 banned patterns present
 - [ ] Every rule has a Type tag (UNIVERSAL / STACK-SPECIFIC / PATTERN)
 - [ ] Every rule has a Severity tag (CRITICAL / STANDARD / POLISH)
+- [ ] Every rule has a Verification assertion (AUTOMATED / BUILD / MANUAL with specific check)
+- [ ] ~100 rules have AUTOMATED verification (grep/lint commands)
+- [ ] ~40 rules have BUILD verification (compiler/linter checks)
+- [ ] ~50 rules have MANUAL verification (specific visual/functional inspection steps)
 - [ ] All STACK-SPECIFIC rules rewritten to generic language in Technical Spec column
 - [ ] All PATTERN rules have universal principle extracted + implementation example
 - [ ] All UNIVERSAL rules preserved exactly as-is in both Martin Says and Technical Spec
@@ -182,4 +233,5 @@ Your output is complete when ALL of these are true:
 - [ ] No Firebase/Firestore/Google-specific terms in Technical Spec column (except as parenthetical examples in PATTERN rules)
 - [ ] Severity distribution is approximately 40 CRITICAL / 100 STANDARD / 52 POLISH
 - [ ] No vague or un-implementable language in any Technical Spec cell
+- [ ] No vague verification assertions ("check the code" — must be specific commands or inspection steps)
 - [ ] No rules deleted, merged, or invented -- exact same set as the original

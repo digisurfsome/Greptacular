@@ -132,3 +132,93 @@ def kill_process_tree(proc: subprocess.Popen, timeout: float = 5.0) -> KillResul
                 result.status = "failure"
 
     return result
+
+
+def kill_process_tree_by_pid(pid: int, timeout: float = 5.0) -> KillResult:
+    """Kill a process tree given only a PID (no subprocess.Popen required).
+
+    This is the PID-based counterpart to ``kill_process_tree()``.  It's used
+    when we only have a PID reference (e.g., from the Claude SDK transport)
+    rather than a ``subprocess.Popen`` handle.
+
+    Args:
+        pid: The PID of the root process to kill.
+        timeout: Seconds to wait for graceful termination before force-killing.
+
+    Returns:
+        KillResult with status and statistics about the termination.
+    """
+    result = KillResult(status="success", parent_pid=pid)
+
+    try:
+        parent = psutil.Process(pid)
+        children = parent.children(recursive=True)
+        result.children_found = len(children)
+
+        logger.debug(
+            "Killing process tree by PID: %d with %d children",
+            pid, len(children),
+        )
+
+        # Terminate children first (graceful)
+        for child in children:
+            try:
+                logger.debug("Terminating child PID %d (%s)", child.pid, child.name())
+                child.terminate()
+            except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+                logger.debug("Child PID %d already gone or inaccessible: %s", child.pid, e)
+
+        # Wait for children to terminate
+        gone, still_alive = psutil.wait_procs(children, timeout=timeout)
+        result.children_terminated = len(gone)
+
+        logger.debug(
+            "Children after graceful wait: %d terminated, %d still alive",
+            len(gone), len(still_alive),
+        )
+
+        # Force kill any remaining children
+        for child in still_alive:
+            try:
+                logger.debug("Force-killing child PID %d", child.pid)
+                child.kill()
+                result.children_killed += 1
+            except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+                logger.debug("Child PID %d gone during force-kill: %s", child.pid, e)
+
+        if result.children_killed > 0:
+            result.status = "partial"
+
+        # Terminate the parent process
+        logger.debug("Terminating parent PID %d", pid)
+        parent.terminate()
+        try:
+            parent.wait(timeout=timeout)
+            logger.debug("Parent PID %d terminated gracefully", pid)
+        except psutil.TimeoutExpired:
+            logger.debug("Parent PID %d did not terminate, force-killing", pid)
+            parent.kill()
+            result.parent_forcekilled = True
+            result.status = "partial"
+
+        logger.debug(
+            "Process tree kill by PID complete: status=%s, children=%d (terminated=%d, killed=%d)",
+            result.status, result.children_found,
+            result.children_terminated, result.children_killed,
+        )
+
+    except psutil.NoSuchProcess:
+        # Already dead -- nothing to do
+        logger.debug("PID %d already exited", pid)
+
+    except psutil.AccessDenied as e:
+        logger.debug("PID %d inaccessible (%s), attempting direct kill", pid, e)
+        try:
+            os_proc = psutil.Process(pid)
+            os_proc.kill()
+            logger.debug("Direct force-kill of PID %d succeeded", pid)
+        except (psutil.NoSuchProcess, psutil.AccessDenied, OSError) as kill_error:
+            logger.debug("Direct force-kill of PID %d failed: %s", pid, kill_error)
+            result.status = "failure"
+
+    return result

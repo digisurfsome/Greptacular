@@ -40,7 +40,7 @@ class CodexBridge:
         *,
         cwd: str,
         model: Optional[str] = None,
-        sandbox: str = "workspace-write",
+        sandbox: str = "danger-full-access",
         approval_policy: str = "never",
     ):
         self.cwd = str(Path(cwd).resolve())

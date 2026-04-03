@@ -430,16 +430,66 @@ class WorkspaceChatSession:
         # lost.  We keep them here and re-deliver at the start of the next turn.
         self._pending_walkie_deliveries: list[str] = []
 
+        # PID of the Claude subprocess spawned by the SDK.  Captured after
+        # __aenter__ so we can force-kill the process tree on close() even if
+        # the polite SDK shutdown hangs or the process becomes orphaned.
+        self._subprocess_pid: Optional[int] = None
+
     async def close(self) -> None:
-        """Clean up resources and close the Claude client (or Codex/Gemini bridge)."""
+        """Close the session and force-kill the Claude subprocess tree.
+
+        Two-step cleanup:
+        1. Try the polite SDK shutdown via __aexit__ (with a 10s timeout so it
+           cannot hang forever).
+        2. If the subprocess PID is still alive after that, force-kill the
+           entire process tree via psutil to prevent orphaned claude.exe leaks.
+        """
+        pid_to_kill = self._subprocess_pid
+
+        # Step 1: polite SDK shutdown (with timeout)
         if self.client and self._client_entered:
             try:
-                await self.client.__aexit__(None, None, None)
+                await asyncio.wait_for(self.client.__aexit__(None, None, None), timeout=10.0)
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "[ws-chat] Session %s: SDK __aexit__ timed out after 10s",
+                    self.session_id,
+                )
             except Exception as e:
-                logger.warning(f"Error closing Claude client for workspace session {self.session_id}: {e}")
+                logger.warning(
+                    "Error closing Claude client for workspace session %s: %s",
+                    self.session_id, e,
+                )
             finally:
                 self._client_entered = False
                 self.client = None
+
+        # Step 2: force-kill the subprocess tree if still alive
+        if pid_to_kill:
+            try:
+                import psutil as _psutil
+                if _psutil.pid_exists(pid_to_kill):
+                    logger.warning(
+                        "[ws-chat] Session %s: Force-killing orphaned Claude process tree PID=%d",
+                        self.session_id, pid_to_kill,
+                    )
+                    from server.utils.process_utils import kill_process_tree_by_pid
+                    await asyncio.to_thread(kill_process_tree_by_pid, pid_to_kill)
+                    logger.info(
+                        "[ws-chat] Session %s: Process tree PID=%d killed",
+                        self.session_id, pid_to_kill,
+                    )
+                else:
+                    logger.info(
+                        "[ws-chat] Session %s: Claude subprocess PID=%d already exited",
+                        self.session_id, pid_to_kill,
+                    )
+            except Exception as e:
+                logger.warning(
+                    "[ws-chat] Session %s: Failed to force-kill PID=%d: %s",
+                    self.session_id, pid_to_kill, e,
+                )
+            self._subprocess_pid = None
 
         # Close Codex/Gemini bridges
         if self._codex_bridge:
@@ -477,6 +527,31 @@ class WorkspaceChatSession:
                     logger.debug("Removed temporary .claude/settings.json at %s", self._project_settings_path)
             except Exception as e:
                 logger.warning("Failed to restore .claude/settings.json: %s", e)
+
+    def _capture_subprocess_pid(self) -> None:
+        """Capture the PID of the subprocess spawned by the Claude SDK.
+
+        Called after a successful ``__aenter__`` on the client.  The PID is
+        used by ``close()`` to force-kill the process tree when the polite
+        SDK shutdown hangs or fails, preventing orphaned claude.exe processes.
+        """
+        try:
+            transport = getattr(self.client, '_transport', None)
+            if transport is None:
+                # Try to reach the transport through the internal query object
+                query = getattr(self.client, '_query', None)
+                if query:
+                    transport = getattr(query, '_transport', None)
+            if transport:
+                proc = getattr(transport, '_process', None)
+                if proc:
+                    self._subprocess_pid = proc.pid
+                    logger.info(
+                        "[ws-chat] Session %s: Claude subprocess PID=%d",
+                        self.session_id, self._subprocess_pid,
+                    )
+        except Exception as e:
+            logger.warning("[ws-chat] Could not capture subprocess PID: %s", e)
 
     async def _fallback_to_api_key(self) -> bool:
         """Tear down the current client and recreate with API key billing.
@@ -534,6 +609,7 @@ class WorkspaceChatSession:
 
             await asyncio.wait_for(self.client.__aenter__(), timeout=60)
             self._client_entered = True
+            self._capture_subprocess_pid()
             logger.info("Workspace client recreated with API key billing (mid-session fallback)")
             return True
 
@@ -596,6 +672,7 @@ class WorkspaceChatSession:
 
             await asyncio.wait_for(self.client.__aenter__(), timeout=60)
             self._client_entered = True
+            self._capture_subprocess_pid()
             logger.info("Workspace client recreated with subscription OAuth (mid-session fallback)")
             return True
 
@@ -1085,6 +1162,7 @@ class WorkspaceChatSession:
             try:
                 await asyncio.wait_for(self.client.__aenter__(), timeout=60)
                 self._client_entered = True
+                self._capture_subprocess_pid()
                 logger.info("Workspace Claude client ready")
             except asyncio.TimeoutError:
                 if force_sub:
@@ -1164,6 +1242,7 @@ class WorkspaceChatSession:
                 try:
                     await asyncio.wait_for(self.client.__aenter__(), timeout=60)
                     self._client_entered = True
+                    self._capture_subprocess_pid()
                     logger.info("Workspace Claude client ready (API key fallback)")
                     yield {
                         "type": "text",
@@ -2206,6 +2285,16 @@ def get_session_by_conversation(conversation_id: int) -> Optional["WorkspaceChat
             if s.conversation_id == conversation_id:
                 return s
     return None
+
+
+def get_all_sessions() -> list[WorkspaceChatSession]:
+    """Return a snapshot of all active workspace chat sessions.
+
+    Used by the orphan reaper to determine which Claude subprocess PIDs
+    are still tracked by a live session.
+    """
+    with _sessions_lock:
+        return list(_sessions.values())
 
 
 async def create_session(

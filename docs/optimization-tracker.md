@@ -130,7 +130,25 @@
 
 ---
 
-## 8. Map Keeper Agent (IDEA)
+## 8. Org Agent — Background Organizer (PLANNED)
+
+**What:** A background agent (Haiku) that runs after every session or on-demand. Keeps the repo organized.
+**Why:** Every PRD an agent creates in the wrong spot, every file not in the index — that's cost for the NEXT agent who has to find it.
+**What it checks (every run):**
+- Every PRD file is in `docs/prd-index.md` with correct page, status, and location
+- Every new page/component/hook/router/service is in the right CLAUDE.md file map
+- Files follow naming conventions
+- DONE PRDs get archived, PLANNED PRDs older than 30 days get flagged STALE
+**PRD lifecycle it enforces:** IDEA → PLANNED → ACTIVE → DONE → ARCHIVED (+ STALE flag)
+**Trigger options:** Manual button in dashboard (start here) → post-session hook → periodic schedule
+**Full spec:** `docs/page-prds/workspace/prd-optimization-agents.md` (Feature 5)
+
+**Your Notes:**
+> _Write your ideas here..._
+
+---
+
+## 9. Map Keeper Agent (IDEA — may be absorbed into Org Agent)
 
 **What:** An agent whose only job is keeping the CLAUDE.md file maps up to date as the codebase changes.
 **Why:** If file maps go stale, agents start exploring again and we lose the savings.
@@ -144,7 +162,7 @@
 
 ---
 
-## 9. Log Analysis Dashboard (IDEA)
+## 10. Log Analysis Dashboard (IDEA)
 
 **What:** Pull the token log data (already tracked in workspace.db) into a visual optimization dashboard.
 **Why:** See which tools eat the most tokens, which conversations were expensive, and spot patterns.
@@ -163,7 +181,7 @@
 
 ---
 
-## 10. Root CLAUDE.md Optimization (PLANNED)
+## 11. Root CLAUDE.md Optimization (PLANNED)
 
 **What:** Slim down the root CLAUDE.md from ~500 lines to a routing table.
 **Why:** Every agent reads it every session. Most of it is irrelevant to most tasks.
@@ -179,7 +197,7 @@
 
 ---
 
-## 11. Deterministic Coding Patterns (IDEA)
+## 12. Deterministic Coding Patterns (IDEA)
 
 **What:** Build the Wall/Door/Room system (from PRD Maker) into AutoForge's coding workflow.
 **Why:** Deterministic steps (Walls) don't need AI. Only Doors and Rooms need AI thinking. This would massively reduce token usage for predictable work.
@@ -218,7 +236,8 @@ Quick reference for how much things cost (Opus 4.6):
 5. **Rant compressor** (NEXT) — Reduces your input cost
 6. **Task scout** (NEXT) — Gives workers a focused kit
 7. **Scope lock** (NEXT) — Prevents scope creep in agents
-8. **Token budget per task** (NEXT) — Prevents runaway sessions
-9. **Map keeper** (LATER) — Maintenance automation
-10. **Log dashboard** (LATER) — Visibility and ongoing optimization
-11. **Deterministic patterns** (LATER) — Highest ceiling but most complex
+8. **Org Agent** (NEXT) — Keeps PRDs indexed, file maps updated, naming enforced
+9. **Token budget per task** (NEXT) — Prevents runaway sessions
+10. **Map keeper** (LATER) — May be absorbed into Org Agent
+11. **Log dashboard** (LATER) — Visibility and ongoing optimization
+12. **Deterministic patterns** (LATER) — Highest ceiling but most complex

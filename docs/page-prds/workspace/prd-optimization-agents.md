@@ -335,6 +335,128 @@ Each agent card shows:
 
 ---
 
+## Feature 5: Org Agent (Background Organizer)
+
+### What It Is
+A background agent that runs after every workspace session completes (or on a schedule). Its job is to keep the repo organized: index new PRDs, update file maps, archive completed work, enforce naming rules, and flag anything out of place.
+
+### How It Works
+
+```
+Any workspace agent finishes a session
+  → Org Agent wakes up (triggered by session-end event or periodic schedule)
+  → Reads the session's action log (which files were created/modified)
+  → Runs through its checklist:
+    1. Were any new PRD files created? → Add to docs/prd-index.md
+    2. Were any new page files created? → Update ui/CLAUDE.md or server/CLAUDE.md
+    3. Were any PRDs marked as DONE in conversation? → Update status in index
+    4. Are there PRD files NOT in the index? → Add them
+    5. Are there files in wrong directories? → Flag for human review
+    6. Archive: Move DONE PRDs to an "archive" section in the index
+  → Writes a short summary of what it organized to a log
+```
+
+### The Checklist (What It Checks Every Run)
+
+#### PRD Organization
+- [ ] Every `prd-*.md` and `PRD_*.md` file appears in `docs/prd-index.md`
+- [ ] Every PRD has a status (ACTIVE/PLANNED/IDEA/DONE/STALE)
+- [ ] Every PRD has a page assignment (which page it relates to, or "System")
+- [ ] Page-specific PRDs are in `docs/page-prds/{page-name}/`
+- [ ] System PRDs are in `docs/`
+- [ ] DONE PRDs are moved to the Archive section of the index
+- [ ] PRDs older than 30 days with status PLANNED get flagged as potentially STALE
+
+#### File Map Organization
+- [ ] Every file in `ui/src/pages/` appears in `ui/CLAUDE.md`
+- [ ] Every folder in `ui/src/components/` appears in `ui/CLAUDE.md`
+- [ ] Every file in `ui/src/hooks/` appears in `ui/CLAUDE.md`
+- [ ] Every file in `server/routers/` appears in `server/CLAUDE.md`
+- [ ] Every file in `server/services/` appears in `server/CLAUDE.md`
+
+#### Naming Convention Enforcement
+- [ ] Page files follow `{PageName}Page.tsx` pattern
+- [ ] Hook files follow `use{PageName}.ts` pattern
+- [ ] Router files follow `snake_case.py` pattern
+- [ ] PRD files follow `prd-{feature-name}.md` pattern
+- [ ] Component folders follow `kebab-case` pattern
+
+### Trigger Options
+
+**Option A: Post-session hook (recommended)**
+After any workspace session ends, the background session manager triggers the Org Agent. This means organization happens automatically after every piece of work.
+
+**Option B: Periodic schedule**
+Runs every 4-6 hours via the scheduler service. Cheaper (fewer runs) but things stay messy between runs.
+
+**Option C: Manual**
+A button in the Optimization Dashboard: "Run Org Agent now." Owner clicks it when they want a cleanup pass.
+
+**Recommendation:** Start with Option C (manual button in dashboard), upgrade to Option A later once it's proven reliable.
+
+### Model
+Haiku. This is pure checklist work — read a list of files, compare against the index, update the index. No reasoning needed.
+
+### PRD Lifecycle (What the Org Agent Enforces)
+
+```
+IDEA → PLANNED → ACTIVE → DONE → ARCHIVED
+  ↑                                    |
+  |        (flagged STALE after 30d)   |
+  +-------- STALE ←-------------------+
+```
+
+- **IDEA:** Just a concept. May have a file, may just be a line in the index.
+- **PLANNED:** Has a full PRD file with spec. Ready to be built.
+- **ACTIVE:** Currently being worked on by an agent.
+- **DONE:** Feature is implemented and working.
+- **ARCHIVED:** Moved to archive section. Still accessible but not cluttering the active list.
+- **STALE:** Was PLANNED but hasn't been touched in 30+ days. Org Agent flags these for the owner to decide: still relevant? Archive it? Refresh it?
+
+### The Archive
+
+In `docs/prd-index.md`, DONE PRDs get moved to a `## Archived PRDs` section at the bottom. They stay in the file (searchable) but don't clutter the active sections. The original PRD file stays where it is — only the index entry moves.
+
+### Dashboard Integration
+
+In the Optimization Dashboard's PRD Manager section:
+- Filter dropdown includes "Archived" 
+- STALE PRDs show a yellow warning badge
+- "Run Org Agent" button at the top
+- Last run timestamp: "Last organized: 2 hours ago"
+- Summary: "3 new PRDs indexed, 2 marked STALE, 1 archived"
+
+### Backend
+
+**New files:**
+- `server/services/org_agent.py` — The checklist runner
+- No new router needed — triggered via background_session_manager or optimization router
+
+**Hooks into:**
+- `server/services/background_session_manager.py` — Post-session trigger (Option A)
+- `server/services/scheduler_service.py` — Periodic trigger (Option B)
+- `server/routers/optimization.py` — Manual trigger button (Option C)
+
+**What it reads:**
+- `docs/prd-index.md` — Current PRD index
+- `ui/CLAUDE.md` — Current UI file map
+- `server/CLAUDE.md` — Current server file map
+- Filesystem: `ui/src/pages/`, `ui/src/components/`, `ui/src/hooks/`, `server/routers/`, `server/services/`
+- `workspace_token_log` or action logs — To know what files were touched in the last session
+
+**What it writes:**
+- `docs/prd-index.md` — Updated index (new entries, status changes, archive moves)
+- `ui/CLAUDE.md` — New entries for new files
+- `server/CLAUDE.md` — New entries for new files
+- A log entry in the optimization dashboard showing what was organized
+
+### Estimated scope
+- Backend: ~200 lines (checklist logic + file scanning + index updating)
+- Frontend: ~50 lines (button + status display in dashboard)
+- Medium complexity
+
+---
+
 ## Build Order
 
 | Priority | Feature | Why This Order | Depends On |
@@ -342,9 +464,12 @@ Each agent card shows:
 | 1 | **Support Agent Registry** | Other features need it to register themselves | Nothing |
 | 2 | **Rant Compressor** | Saves money on every conversation immediately. Owner uses it daily. | Registry (to register itself) |
 | 3 | **Task Scout** | Saves money per task. Slightly more complex (touches chat session). | Registry + file maps (already done) |
-| 4 | **Optimization Dashboard** | Shows all the data. Most useful AFTER the other agents exist and generate data. | Registry + token_log data (already exists) |
+| 4 | **Optimization Dashboard** | Shows all the data including PRD Manager. Most useful AFTER the other agents exist and generate data. | Registry + token_log data (already exists) |
+| 5 | **Org Agent** | Keeps everything tidy going forward. Most useful AFTER dashboard exists (to show its results). | Dashboard (for UI), prd-index.md (already done) |
 
-**Alternative order if owner wants visibility first:** Swap Dashboard to #1. It works without the other agents — it just shows usage data from existing token logs. The support agent section would be empty until agents are built.
+**Alternative order if owner wants visibility first:** Swap Dashboard to #1. It works without the other agents — it just shows usage data from existing token logs and the PRD index. The support agent section would be empty until agents are built.
+
+**Quick win option:** Build Org Agent as Option C (manual button only) alongside the Dashboard. It's just a script that scans files and updates the index — doesn't need the registry or other agents.
 
 ---
 

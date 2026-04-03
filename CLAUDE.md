@@ -625,6 +625,40 @@ Every AutoForge UI page has its own PRD folder:
 3. **When writing a PRD for a page improvement**, save it as `docs/page-prds/<page-name>/prd-<feature-name>.md`.
 4. **Full index:** See `docs/page-prds/README.md` for the complete folder map.
 
+## 🎯 Tool Use Budget — MANDATORY
+
+**Every agent session has a tool call budget. Do NOT explore speculatively.**
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  MAX 10 exploratory tool calls before producing substantive output  │
+│  (Read, Glob, Grep, WebSearch, WebFetch count toward this cap)     │
+│  Write/Edit/Bash do NOT count — those are productive work.         │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Rules
+
+1. **Check the project structure first.** The directory tree is already in this file and in your context. If it tells you where a file is, go directly — don't Glob for it.
+2. **Parallel over serial.** One message with 3 Read calls > three messages with 1 Read call each. Batch your reads.
+3. **No speculative exploration.** Only read a file if you have a specific reason. "Might be useful" is not a reason.
+4. **No re-reading CLAUDE.md or README.** They're already in your context window. Reading them again wastes tokens.
+5. **Web search only when the task requires external info.** Don't search for docs on libraries you already know. Don't search for best practices unless the user asks.
+6. **Stop when you have enough.** If you've found the answer in 4 tool calls, start working. Don't keep exploring "for completeness."
+7. **15-call ceiling for complex investigations.** Deep-dive / research tasks get up to 15, not unlimited.
+
+### What counts as exploratory
+
+| Counts (cap applies) | Doesn't count (no cap) |
+|----------------------|----------------------|
+| Read (file inspection) | Edit (modifying code) |
+| Glob (finding files) | Write (creating files) |
+| Grep (searching code) | Bash (running commands) |
+| WebSearch | TodoWrite |
+| WebFetch | Committing / git ops |
+
+**If you hit 10 calls without producing output, STOP exploring and start working with what you have.**
+
 ## Key Patterns
 
 ### Prompt Loading Fallback Chain

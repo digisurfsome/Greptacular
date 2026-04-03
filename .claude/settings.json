@@ -1,0 +1,6 @@
+{
+  "effortLevel": "medium",
+  "env": {
+    "CLAUDE_CODE_EFFORT_LEVEL": "medium"
+  }
+}

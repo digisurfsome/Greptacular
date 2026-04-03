@@ -74,8 +74,9 @@ When reviewing code, you will systematically evaluate against these criteria:
    - Run any project-specific quality tools
    - Report all findings from these tools
 
-2. **Then, conduct manual review:**
-   - Read through the code thoroughly
+2. **Then, conduct targeted manual review:**
+   - Read only the files under review plus their direct imports — NOT the whole codebase
+   - Use CLAUDE.md project structure to go direct to files — don't Glob for them
    - Identify issues in each of the categories above
    - Note both critical issues and minor improvements
 

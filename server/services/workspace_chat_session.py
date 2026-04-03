@@ -1864,6 +1864,10 @@ class WorkspaceChatSession:
         is_opus = not is_sonnet  # Default to Opus timeouts (None/empty/opus all get Opus)
         query_timeout = 180 if is_opus else 90   # seconds to accept the query
         first_token_timeout = 300 if is_opus else 120  # seconds for first token
+        # Stream silence timeout — how long to wait between tokens during active work.
+        # Opus does heavy thinking + tool calls that can cause 5-10 min gaps in tokens.
+        # 15 min for Opus, 10 min for Sonnet.  These are SILENCE timeouts, not total time.
+        stream_silence_timeout = 900 if is_opus else 600
 
         # Build the message content -- multimodal if attachments are present
         if attachments and len(attachments) > 0:
@@ -1918,7 +1922,7 @@ class WorkspaceChatSession:
         response_iter = self.client.receive_response().__aiter__()
         while True:
             try:
-                timeout = first_token_timeout if not first_token_received else 300
+                timeout = first_token_timeout if not first_token_received else stream_silence_timeout
                 msg = await asyncio.wait_for(response_iter.__anext__(), timeout=timeout)
             except StopAsyncIteration:
                 break
@@ -1927,8 +1931,9 @@ class WorkspaceChatSession:
                     logger.error(f"Timeout ({first_token_timeout}s) waiting for first token from {self.model}")
                     yield {"type": "error", "content": f"No response from {self.model} after {first_token_timeout}s. The 1M context beta may not be available, or the model may be overloaded. Try the 200K context mode."}
                 else:
-                    logger.error(f"Timeout (300s) waiting for next token from {self.model}")
-                    yield {"type": "error", "content": f"Response stream from {self.model} timed out after 5 minutes of silence."}
+                    timeout_mins = stream_silence_timeout // 60
+                    logger.error(f"Timeout ({stream_silence_timeout}s) waiting for next token from {self.model}")
+                    yield {"type": "error", "content": f"Response stream from {self.model} timed out after {timeout_mins} minutes of silence."}
                 return
             except Exception as e:
                 # Catch "Unknown message type: rate_limit_event" which is a parse noise

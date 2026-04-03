@@ -201,15 +201,22 @@ async def _recover_factory_sessions() -> None:
 
 
 async def _reap_orphaned_claude_processes() -> None:
-    """Periodically kill claude.exe processes that are children of this server
-    but not tracked by any active workspace chat session.
+    """Periodically kill claude.exe processes not tracked by any active
+    workspace chat session.
 
     Runs every 60 seconds as a background safety net.  The primary cleanup
     happens in ``WorkspaceChatSession.close()``, but if that fails (e.g.
-    timeout, crash), this reaper catches the stragglers.
+    timeout, crash, Bun runtime error), this reaper catches the stragglers.
+
+    NOTE: We kill ANY untracked claude process, not just direct children of
+    the server.  The SDK spawn chain (Python → Bun → claude.exe) means
+    orphaned processes are often grandchildren whose parent already died,
+    breaking the parent-child chain.  Since AutoForge is the only thing
+    spawning Claude on this machine, untracked = orphaned.
     """
     import psutil
 
+    # Skip the server's own PID so we never kill ourselves
     server_pid = os.getpid()
 
     while True:
@@ -221,28 +228,28 @@ async def _reap_orphaned_claude_processes() -> None:
                 pid = getattr(session, '_subprocess_pid', None)
                 if pid:
                     active_pids.add(pid)
+                # Also track any child PIDs the session knows about
+                child_pids = getattr(session, '_child_pids', None)
+                if child_pids:
+                    active_pids.update(child_pids)
 
-            # Scan for claude processes that are direct children of this server
+            # Scan for ALL claude processes not tracked by active sessions
             for proc in psutil.process_iter(['pid', 'name']):
                 try:
                     info = proc.info
                     if not info['name'] or 'claude' not in info['name'].lower():
                         continue
+                    if info['pid'] == server_pid:
+                        continue
                     if info['pid'] in active_pids:
                         continue
 
-                    # Only kill processes that are children of this server
-                    try:
-                        parent = psutil.Process(info['pid']).parent()
-                        if parent and parent.pid == server_pid:
-                            _startup_logger.warning(
-                                "[reaper] Killing orphaned Claude process PID=%d",
-                                info['pid'],
-                            )
-                            from .utils.process_utils import kill_process_tree_by_pid
-                            kill_process_tree_by_pid(info['pid'])
-                    except (psutil.NoSuchProcess, psutil.AccessDenied):
-                        pass
+                    _startup_logger.warning(
+                        "[reaper] Killing orphaned Claude process PID=%d (name=%s)",
+                        info['pid'], info['name'],
+                    )
+                    from .utils.process_utils import kill_process_tree_by_pid
+                    kill_process_tree_by_pid(info['pid'])
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     pass
         except Exception as e:

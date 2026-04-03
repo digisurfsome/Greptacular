@@ -55,14 +55,36 @@ A persistent icon in the top nav bar (next to the existing G/GitHub icon) that o
 - List of support agents (Rant Compressor, Task Scout, Map Keeper)
 - Each shows: Enabled/Disabled toggle, calls today, tokens saved estimate
 
-#### Section E: Notes
+#### Section E: PRD Manager
+- **Full list of every PRD in the repo** — pulled from `docs/prd-index.md` or a database table
+- Sortable/filterable by:
+  - **Page:** Which page does this PRD relate to? (Workspace, Dashboard, DunkStack, System-wide, etc.)
+  - **Status:** ACTIVE, PLANNED, IDEA, DONE, STALE
+  - **Category:** Feature, Bug Fix, Infrastructure, External
+  - **Date:** When it was created/last updated
+- Each PRD row shows: Name | Page | Status | path (clickable to view)
+- Click a PRD to expand and see its content (rendered markdown) right in the panel
+- **"New PRD" button:** Opens a form with:
+  - Title
+  - Page (dropdown of all pages + "System-wide")
+  - Status (defaults to IDEA)
+  - Content (markdown editor)
+  - On save: creates the file in the correct location per naming rules AND adds it to the index
+- **Naming rules enforced automatically:**
+  - Page-specific → `docs/page-prds/{page-name}/prd-{feature}.md`
+  - System-wide → `docs/prd-{feature-name}.md`
+  - Bug fix → `docs/agent-briefs/PRD-{fix-name}.md`
+
+**Master index file:** `docs/prd-index.md` (already created — catalogs all 44 existing PRDs)
+
+#### Section F: Notes
 - Free-text area where the owner can jot ideas
 - Persisted to database (simple key-value store or a dedicated table)
 - Markdown rendered
 
 ### Backend
 
-**Data source:** All usage data already exists in `workspace_token_log` table. No new data collection needed.
+**Data source:** Usage data from `workspace_token_log` table. PRD data from filesystem scan or database table.
 
 **New API endpoints:**
 - `GET /api/workspace/optimization/summary` — Returns aggregated usage stats (today, this week)
@@ -70,15 +92,23 @@ A persistent icon in the top nav bar (next to the existing G/GitHub icon) that o
 - `GET /api/workspace/optimization/status` — Returns optimization checklist status
 - `GET /api/workspace/optimization/notes` — Get saved notes
 - `PUT /api/workspace/optimization/notes` — Save notes
+- `GET /api/workspace/prds` — List all PRDs (from index or filesystem scan)
+- `GET /api/workspace/prds/{id}` — Get PRD content (reads the markdown file)
+- `POST /api/workspace/prds` — Create new PRD (writes file + updates index)
+- `PUT /api/workspace/prds/{id}/status` — Update PRD status
 
 **New files:**
 - `server/routers/optimization.py` — API endpoints
 - `server/services/optimization_dashboard.py` — Aggregation queries against workspace_token_log
+- `server/services/prd_manager.py` — PRD index scanning, creation, status tracking
 - `ui/src/components/optimization/OptimizationPanel.tsx` — The pulldown panel
 - `ui/src/components/optimization/UsageSummary.tsx` — Live usage cards
 - `ui/src/components/optimization/ConversationCostTable.tsx` — Per-conversation breakdown
 - `ui/src/components/optimization/OptimizationChecklist.tsx` — Status checklist
 - `ui/src/components/optimization/AgentStatusList.tsx` — Support agent status
+- `ui/src/components/optimization/PRDManager.tsx` — PRD list with sort/filter
+- `ui/src/components/optimization/PRDViewer.tsx` — Markdown viewer for PRD content
+- `ui/src/components/optimization/PRDCreateForm.tsx` — New PRD creation form
 - `ui/src/components/optimization/NotesEditor.tsx` — Notes area
 - `ui/src/hooks/useOptimization.ts` — React Query hooks
 

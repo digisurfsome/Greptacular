@@ -119,7 +119,7 @@ export function PipelineSkillSlot({
         <textarea
           value={text}
           onChange={(e) => onUpdate('text', e.target.value)}
-          className="w-full resize-none min-h-[120px] max-h-[300px] px-2 py-1.5 text-[11px] font-mono bg-muted/20 border-t border-border/50 outline-none text-foreground"
+          className="w-full resize-y min-h-[120px] px-2 py-1.5 text-[11px] font-mono bg-muted/20 border-t border-border/50 outline-none text-foreground"
           placeholder="Paste skill prompt or upload a .md file..."
         />
       )}

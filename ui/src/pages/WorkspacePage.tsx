@@ -883,9 +883,9 @@ export function WorkspacePage(): React.JSX.Element {
           </div>
         )}
 
-        {/* Pipeline panel (slides in from right, before library) -- hidden on mobile */}
+        {/* Pipeline panel — full center takeover when active */}
         {showPipeline && (
-          <div className="hidden md:block w-80 border-l border-border shrink-0">
+          <div className="flex-1 min-w-0 border-l border-border">
             <PipelinePanel
               workingDirectory={workingDirectory}
               onClose={() => setShowPipeline(false)}

@@ -531,6 +531,32 @@ class SkillPipeline:
                             stage.index, context_tokens, self.token_budget,
                         )
 
+                    # Interactive stages (0 and 1) pause here and wait for the user
+                    # to click "Force Next" before advancing. Stages 2+ auto-advance.
+                    if stage.index <= 1:
+                        self._waiting_for_answer = True
+                        self._waiting_question = (
+                            f"Stage {stage.index} ({stage.label}) complete. "
+                            f"Review the output, then click 'Force Next' to advance to Stage {stage.index + 1}."
+                        )
+                        self._answer_event.clear()
+
+                        yield PipelineEvent(
+                            event_type="pipeline_stage_waiting",
+                            data={
+                                "stage_index": stage.index,
+                                "label": stage.label,
+                                "question": self._waiting_question,
+                            },
+                        )
+
+                        # Block until user clicks Force Next (or stops the pipeline)
+                        while not self._answer_event.is_set() and self._running:
+                            await asyncio.sleep(0.5)
+
+                        self._waiting_for_answer = False
+                        self._waiting_question = None
+
                 except asyncio.CancelledError:
                     stage.status = StageStatus.FAILED
                     stage.error = "Cancelled"

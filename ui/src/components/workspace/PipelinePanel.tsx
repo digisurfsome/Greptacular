@@ -565,6 +565,23 @@ export function PipelinePanel({
                 </div>
               </div>
 
+              {/* Working directory / repo */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                  Working Directory
+                </label>
+                {workingDirectory ? (
+                  <div className="flex items-center gap-1.5 h-7 rounded-md border border-border bg-muted/30 px-2 text-xs text-foreground">
+                    <FolderOpen size={12} className="text-emerald-500 flex-shrink-0" />
+                    <span className="truncate">{workingDirectory}</span>
+                  </div>
+                ) : (
+                  <div className="h-7 rounded-md border border-amber-500/50 bg-amber-500/10 px-2 flex items-center text-xs text-amber-600">
+                    Select a repo using the Repo button above
+                  </div>
+                )}
+              </div>
+
               {/* Kickoff message */}
               <div className="space-y-1">
                 <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">

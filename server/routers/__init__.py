@@ -29,6 +29,7 @@ from .github import router as github_router
 from .ingestion_sequences import router as ingestion_sequences_router
 from .meta_training import router as meta_training_router
 from .notifications import router as notifications_router
+from .pipeline import router as pipeline_router
 from .prd_shredder import router as prd_shredder_router
 from .projects import boilerplate_router, styles_router
 from .projects import router as projects_router
@@ -86,6 +87,7 @@ __all__ = [
     "execution_router",
     "execution_websocket",
     "token_budget_router",
+    "pipeline_router",
     "prd_shredder_router",
     "tool_analyzer_router",
     "tool_factory_router",

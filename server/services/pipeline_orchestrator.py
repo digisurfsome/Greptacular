@@ -210,6 +210,9 @@ class SkillPipeline:
                 f"1. Follow the skill instructions above completely.\n"
                 f"2. Your full response IS the output for this stage.\n"
                 f"3. Be thorough — your output feeds directly into the next stage.\n"
+                f"4. If the skill instructions tell you to ask the user questions, DO ask them.\n"
+                f"   Wrap each question block in [WAITING]...[/WAITING] tags so the pipeline\n"
+                f"   pauses and lets the user respond before you continue.\n"
             )
 
         # Stages 1+: include previous stage output
@@ -227,6 +230,9 @@ class SkillPipeline:
             f"1. Follow the skill instructions above completely.\n"
             f"2. Your full response IS the output for this stage.\n"
             f"3. Be thorough — your output feeds directly into the next stage.\n"
+            f"4. If the skill instructions tell you to ask the user questions, DO ask them.\n"
+            f"   Wrap each question block in [WAITING]...[/WAITING] tags so the pipeline\n"
+            f"   pauses and lets the user respond before you continue.\n"
         )
 
     async def run(self) -> AsyncGenerator[PipelineEvent, None]:
@@ -607,6 +613,7 @@ class SkillPipeline:
                     "session_id": s.session_id,
                     "started_at": s.started_at.isoformat() if s.started_at else None,
                     "completed_at": s.completed_at.isoformat() if s.completed_at else None,
+                    "output": s.output,
                     "output_length": len(s.output),
                     "full_response_length": len(s.full_response),
                     "error": s.error,

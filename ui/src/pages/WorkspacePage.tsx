@@ -22,6 +22,7 @@ import { WorkspaceKeyboardHelp } from '../components/workspace/WorkspaceKeyboard
 import { WorkspaceUserGuide } from '../components/workspace/WorkspaceUserGuide'
 import { PassoffEditor, type PassoffSection } from '../components/workspace/PassoffEditor'
 import { SwarmPanel } from '../components/workspace/SwarmPanel'
+import { PipelinePanel } from '../components/workspace/PipelinePanel'
 import { CIStatusWidget } from '../components/workspace/CIStatusWidget'
 import { GitActivityWidget } from '../components/GitActivityWidget'
 import { useWorkspaceKeyboardShortcuts } from '../hooks/useWorkspaceKeyboardShortcuts'
@@ -44,6 +45,7 @@ import {
   Menu,
   Factory,
   Swords,
+  Workflow,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -96,6 +98,7 @@ export function WorkspacePage(): React.JSX.Element {
   const [splitView, setSplitView] = useState(false)
   const [showSwarm, setShowSwarm] = useState(false)
   const [showFactory, setShowFactory] = useState(false)
+  const [showPipeline, setShowPipeline] = useState(false)
 
   // Three-panel state (split view)
   const [prdConversationId, setPrdConversationId] = useState<number | null>(null)
@@ -435,6 +438,19 @@ export function WorkspacePage(): React.JSX.Element {
           >
             <Factory size={14} />
             <span className="hidden sm:inline text-[10px]">Factory</span>
+          </Button>
+          <Button
+            variant={showPipeline ? 'default' : 'ghost'}
+            size="sm"
+            className={`h-7 px-2 gap-1.5 ${showPipeline
+              ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+              : 'text-muted-foreground hover:text-foreground'
+            }`}
+            onClick={() => setShowPipeline(v => !v)}
+            title="Pipeline: sequential skill prompt chain"
+          >
+            <Workflow size={14} />
+            <span className="hidden sm:inline text-[10px]">Pipeline</span>
           </Button>
           <Button
             variant="ghost"
@@ -863,6 +879,16 @@ export function WorkspacePage(): React.JSX.Element {
             <SwarmPanel
               workingDirectory={workingDirectory}
               onClose={() => setShowSwarm(false)}
+            />
+          </div>
+        )}
+
+        {/* Pipeline panel (slides in from right, before library) -- hidden on mobile */}
+        {showPipeline && (
+          <div className="hidden md:block w-80 border-l border-border shrink-0">
+            <PipelinePanel
+              workingDirectory={workingDirectory}
+              onClose={() => setShowPipeline(false)}
             />
           </div>
         )}

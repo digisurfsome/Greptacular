@@ -227,6 +227,8 @@ class SkillPipeline:
     # Shared stage lifecycle — used by ALL execution modes
     # ------------------------------------------------------------------
 
+    STAGE_COMPLETE_MARKER = "[STAGE_COMPLETE]"
+
     async def _run_stage(
         self,
         stage: PipelineStage,
@@ -236,20 +238,25 @@ class SkillPipeline:
     ) -> AsyncGenerator[PipelineEvent, None]:
         """Run a single stage: send prompt, collect output, emit events.
 
-        This is the shared lifecycle method that every execution mode calls.
-        It handles streaming, output extraction, persistence, and error handling.
+        The stage runs until the agent outputs [STAGE_COMPLETE] — that's the
+        agent's signal that its contract is met and the output is ready.
+        If the agent asks questions instead, the stage stays active and the
+        user can answer via inject_answer(). Each answer may produce more
+        output. The stage only advances when [STAGE_COMPLETE] appears.
 
         Args:
             stage: The stage to run.
             session: An already-started WorkspaceChatSession.
             prompt: The fully-built prompt for this stage.
-            start_time: ``time.monotonic()`` of the overall pipeline start (for total_duration).
+            start_time: ``time.monotonic()`` of the overall pipeline start.
         """
         full_text = ""
         context_tokens = 0
         stage_start = time.monotonic()
+        stage_complete = False
 
         try:
+            # Send the initial prompt
             async for chunk in session.send_message(prompt):
                 if not self._running:
                     break
@@ -263,6 +270,9 @@ class SkillPipeline:
                         event_type="pipeline_stage_text",
                         data={"stage_index": stage.index, "text": text},
                     )
+                    # Check for completion marker
+                    if self.STAGE_COMPLETE_MARKER in full_text:
+                        stage_complete = True
                 elif chunk_type == "token_usage":
                     context_tokens = chunk.get("context_tokens", 0)
                     output_tokens = chunk.get("output_tokens", 0)
@@ -278,6 +288,52 @@ class SkillPipeline:
                             "budget": self.token_budget,
                         },
                     )
+
+            # If no [STAGE_COMPLETE] marker, wait for user interaction.
+            # The user answers via inject_answer() which sends to the same
+            # session and collects more output. Each answer's response is
+            # checked for the marker too.
+            if not stage_complete and self._running:
+                self._waiting_for_answer = True
+                self._waiting_question = (
+                    f"Stage {stage.index} needs interaction. "
+                    f"Answer in the chat, or click Force Next to advance."
+                )
+                yield PipelineEvent(
+                    event_type="pipeline_stage_waiting",
+                    data={
+                        "stage_index": stage.index,
+                        "label": stage.label,
+                        "question": self._waiting_question,
+                    },
+                )
+
+                # Wait for [STAGE_COMPLETE] or Force Next
+                while not stage_complete and self._running:
+                    self._answer_event.clear()
+                    # Wait for user to send a message or click Force Next
+                    while not self._answer_event.is_set() and self._running:
+                        # Check if inject_answer added [STAGE_COMPLETE] to full_response
+                        if self.STAGE_COMPLETE_MARKER in (stage.full_response or ""):
+                            stage_complete = True
+                            full_text = stage.full_response
+                            break
+                        await asyncio.sleep(1.0)
+
+                    if stage_complete:
+                        break
+
+                    # Force Next was clicked (answer_event set but no new content with marker)
+                    if self._answer_event.is_set():
+                        full_text = stage.full_response or full_text
+                        break
+
+                self._waiting_for_answer = False
+                self._waiting_question = None
+
+            # Strip the marker from the output
+            if self.STAGE_COMPLETE_MARKER in full_text:
+                full_text = full_text.split(self.STAGE_COMPLETE_MARKER)[0].strip()
 
             # Extract output based on output_mode
             if self.output_mode == "json":
@@ -742,6 +798,9 @@ class SkillPipeline:
             if running_stage and response_text:
                 running_stage.output += "\n\n" + response_text
                 running_stage.full_response = running_stage.full_response or ""
+
+            # Signal the waiting loop to check for [STAGE_COMPLETE]
+            self._answer_event.set()
 
             logger.info("Pipeline %s: message sent, got %d chars back", self.pipeline_id, len(response_text))
             return {"success": True, "response": response_text}

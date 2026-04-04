@@ -3150,3 +3150,69 @@ export async function updateShredderConfig(updates: Partial<ShredderConfig>): Pr
     body: JSON.stringify(updates),
   })
 }
+
+// ============================================================================
+// Pipeline (Skill Pipeline)
+// ============================================================================
+
+export interface PipelineStageConfig {
+  label: string
+  skill_text: string
+}
+
+export interface PipelineStartRequest {
+  working_directory: string
+  kickoff_message: string
+  token_budget: number
+  model: string
+  stages: PipelineStageConfig[]
+}
+
+export interface PipelineStageStatus {
+  stage_index: number
+  label: string
+  status: 'pending' | 'running' | 'completed' | 'failed'
+  output: string
+  tokens_used: number
+  duration_seconds: number
+  error?: string
+}
+
+export interface PipelineStatusResponse {
+  pipeline_id: string
+  status: 'idle' | 'running' | 'completed' | 'failed' | 'stopped'
+  total_tokens: number
+  token_budget: number
+  total_duration: number
+  stages: PipelineStageStatus[]
+}
+
+export async function startPipeline(body: PipelineStartRequest): Promise<{ pipeline_id: string }> {
+  return fetchJSON('/pipeline/start', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+export async function stopPipeline(pipelineId: string): Promise<void> {
+  await fetchJSON('/pipeline/stop', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pipeline_id: pipelineId }),
+  })
+}
+
+export async function getPipelineStatus(pipelineId: string): Promise<PipelineStatusResponse> {
+  return fetchJSON(`/pipeline/status/${pipelineId}`)
+}
+
+export async function getPipelineHistory(): Promise<PipelineStatusResponse[]> {
+  return fetchJSON('/pipeline/history')
+}
+
+export async function exportPipelineOutputs(pipelineId: string): Promise<Blob> {
+  const res = await fetch(`/api/pipeline/export/${pipelineId}`)
+  if (!res.ok) throw new Error(`Export failed: ${res.status}`)
+  return res.blob()
+}

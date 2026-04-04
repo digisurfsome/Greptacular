@@ -252,20 +252,44 @@ class SkillPipeline:
             logger.warning("Failed to save initial pipeline run record: %s", e)
 
         try:
+            # ONE session for the entire pipeline — all stages are messages
+            # in the same conversation, like doing it manually in the chat.
+            session_id = f"pipeline-{self.pipeline_id}"
+            session = WorkspaceChatSession(
+                session_id=session_id,
+                working_directory=self.working_directory,
+                context_mode="1m",
+                model=self.model,
+            )
+            self._current_session = session
+
+            # Start the session once
+            async for chunk in session.start():
+                chunk_type = chunk.get("type", "")
+                if chunk_type == "conversation_created":
+                    conv_id = chunk.get("conversation_id")
+                    try:
+                        from .workspace_database import update_conversation
+                        update_conversation(conv_id, title=f"Pipeline: {self.pipeline_id}", category="pipeline")
+                    except Exception:
+                        pass
+                elif chunk_type == "error":
+                    logger.warning("Pipeline session start error: %s", chunk.get("content"))
+
             for stage in self.stages:
                 if not self._running:
                     break
 
                 stage.status = StageStatus.RUNNING
                 stage.started_at = datetime.now(timezone.utc)
-                stage.session_id = f"pipeline-{self.pipeline_id}-stage-{stage.index}"
+                stage.session_id = session_id
 
                 yield PipelineEvent(
                     event_type="pipeline_stage_started",
                     data={
                         "stage_index": stage.index,
                         "label": stage.label,
-                        "session_id": stage.session_id,
+                        "session_id": session_id,
                     },
                 )
 
@@ -275,36 +299,8 @@ class SkillPipeline:
                 stage_start = time.monotonic()
 
                 try:
-                    # Create a fresh session for this stage
-                    session = WorkspaceChatSession(
-                        session_id=stage.session_id,
-                        working_directory=self.working_directory,
-                        context_mode="1m",
-                        model=self.model,
-                    )
-                    self._current_session = session
-
-                    # Start the session
-                    async for chunk in session.start():
-                        chunk_type = chunk.get("type", "")
-                        if chunk_type == "conversation_created":
-                            stage.conversation_id = chunk.get("conversation_id")
-                            # Name the conversation after the pipeline + stage
-                            if stage.conversation_id:
-                                try:
-                                    from .workspace_database import update_conversation
-                                    conv_title = f"Pipeline: Stage {stage.index} — {stage.label}"
-                                    update_conversation(stage.conversation_id, title=conv_title, category="pipeline")
-                                except Exception as title_err:
-                                    logger.warning("Failed to set conversation title: %s", title_err)
-                        elif chunk_type == "error":
-                            logger.warning(
-                                "Stage %d (%s) start error: %s",
-                                stage.index, stage.label, chunk.get("content"),
-                            )
-
-                    # Send the skill prompt and collect the full response.
-                    # Pure prompt chain — no [WAITING], no interaction, just run and collect.
+                    # Send this stage's prompt as the next message in the conversation.
+                    # The agent has full context from all previous messages.
                     async for chunk in session.send_message(prompt):
                         if not self._running:
                             break
@@ -333,14 +329,6 @@ class SkillPipeline:
                                     "budget": self.token_budget,
                                 },
                             )
-                        # Ignore agent_waiting — just let the agent continue
-
-                    # Close the session after stage completes
-                    try:
-                        await session.close()
-                    except Exception:
-                        pass
-                    self._current_session = None
 
                     # Extract output based on mode
                     if self.output_mode == "json":
@@ -381,16 +369,12 @@ class SkillPipeline:
                     except Exception as e:
                         logger.warning("Failed to persist stage %d output: %s", stage.index, e)
 
-                    # If context tokens exceeded budget, log it (the session is already
-                    # closed above, so the next stage will get a fresh session regardless)
+                    # Log if context tokens are getting large
                     if context_tokens > self.token_budget:
                         logger.info(
-                            "Stage %d context tokens (%d) exceeded budget (%d). "
-                            "Next stage will use a fresh session.",
+                            "Stage %d context tokens (%d) exceeded budget (%d).",
                             stage.index, context_tokens, self.token_budget,
                         )
-
-                    # All stages auto-advance. No pausing, no interaction.
 
                 except asyncio.CancelledError:
                     stage.status = StageStatus.FAILED
@@ -449,6 +433,14 @@ class SkillPipeline:
                 event_type="pipeline_error",
                 data={"pipeline_id": self.pipeline_id, "error": str(e)},
             )
+
+        # Close the single session
+        if self._current_session:
+            try:
+                await self._current_session.close()
+            except Exception:
+                pass
+            self._current_session = None
 
         # Finalize
         self.completed_at = datetime.now(timezone.utc)

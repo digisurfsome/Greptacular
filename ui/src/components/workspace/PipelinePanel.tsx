@@ -33,6 +33,8 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PipelineSkillSlot } from './PipelineSkillSlot'
+import { WorkspaceChat } from './WorkspaceChat'
+import type { WalkieTalkieLogEntry } from '@/lib/types'
 import type { PipelineStatusResponse, PipelineStageStatus, PipelineProject } from '@/lib/api'
 import {
   startPipeline,
@@ -55,6 +57,16 @@ import {
 interface PipelinePanelProps {
   workingDirectory: string | null
   onClose: () => void
+  // WorkspaceChat props for embedded chat (all optional for graceful degradation)
+  activeConversationId?: number | null
+  onConversationCreated?: (id: number) => void
+  chatInputRef?: React.RefObject<HTMLTextAreaElement | null>
+  pendingModel?: string
+  pendingContextMode?: '1m' | '200k'
+  pendingEffort?: 'low' | 'medium' | 'high'
+  provider?: 'claude' | 'codex' | 'gemini'
+  onWalkieTalkieLog?: (log: WalkieTalkieLogEntry[]) => void
+  onStreamingChange?: (isStreaming: boolean) => void
 }
 
 interface SkillSlot {
@@ -139,7 +151,7 @@ function PipelineStageCard({
 
       {/* Expanded output */}
       {expanded && stage.output && (
-        <pre className="mt-2 p-2 bg-muted/50 rounded text-[10px] max-h-60 overflow-y-auto whitespace-pre-wrap">
+        <pre className="mt-2 p-2 bg-muted/50 rounded text-[11px] max-h-[600px] overflow-y-auto whitespace-pre-wrap">
           {stage.output}
         </pre>
       )}
@@ -151,7 +163,19 @@ function PipelineStageCard({
 // PipelinePanel (main export)
 // ---------------------------------------------------------------------------
 
-export function PipelinePanel({ workingDirectory, onClose }: PipelinePanelProps): React.JSX.Element {
+export function PipelinePanel({
+  workingDirectory,
+  onClose,
+  activeConversationId,
+  onConversationCreated,
+  chatInputRef,
+  pendingModel,
+  pendingContextMode,
+  pendingEffort,
+  provider,
+  onWalkieTalkieLog,
+  onStreamingChange,
+}: PipelinePanelProps): React.JSX.Element {
   // ---- State ----
   const [pipelineId, setPipelineId] = useState<string | null>(null)
   const [status, setStatus] = useState<PipelineStatusResponse | null>(null)
@@ -400,7 +424,7 @@ export function PipelinePanel({ workingDirectory, onClose }: PipelinePanelProps)
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `pipeline-${pipelineId}.zip`
+      a.download = `pipeline-${pipelineId}-output.md`
       a.click()
       URL.revokeObjectURL(url)
     } catch (e) {
@@ -457,334 +481,355 @@ export function PipelinePanel({ workingDirectory, onClose }: PipelinePanelProps)
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
-        {!pipelineId ? (
-          /* ============================================================
-           * CONFIGURE MODE — set up the pipeline before launching
-           * ============================================================ */
-          <>
-            {/* ── Project selector ── */}
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-                Project
-              </label>
-              <select
-                value={selectedProjectId ?? 'new'}
-                onChange={(e) => handleProjectSelect(e.target.value)}
-                className="w-full h-7 rounded-md border border-border bg-input px-2 text-xs text-foreground outline-none ring-ring focus:ring-1"
-              >
-                <option value="new">New Pipeline</option>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-              <input
-                value={projectName}
-                onChange={(e) => setProjectName(e.target.value)}
-                placeholder="Pipeline name"
-                className="w-full h-7 rounded-md border border-border bg-input px-2 text-xs text-foreground placeholder:text-muted-foreground/60 outline-none ring-ring focus:ring-1"
-              />
-              <div className="flex gap-1">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-6 px-2 text-[10px] gap-1"
-                  onClick={handleSave}
-                >
-                  <Save size={10} /> Save
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-6 px-2 text-[10px] gap-1"
-                  onClick={handleSaveAs}
-                >
-                  <Copy size={10} /> Save As
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-6 px-2 text-[10px] gap-1"
-                  onClick={handleCloneProject}
-                  disabled={!selectedProjectId}
-                >
-                  <Copy size={10} /> Clone
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-6 px-2 text-[10px] gap-1 text-red-600 hover:text-red-700"
-                  onClick={handleDeleteProject}
-                  disabled={!selectedProjectId}
-                >
-                  <Trash2 size={10} /> Delete
-                </Button>
-              </div>
-            </div>
-
-            {/* Kickoff message */}
-            <div className="space-y-1">
-              <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-                Kickoff Message
-              </label>
-              <textarea
-                value={kickoffMessage}
-                onChange={(e) => setKickoffMessage(e.target.value)}
-                placeholder="Optional context or instructions to prepend to every stage..."
-                className="w-full resize-none min-h-[60px] rounded-md border border-border bg-input px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/60 outline-none ring-ring focus:ring-1"
-                rows={3}
-              />
-            </div>
-
-            {/* Settings row: Token Budget + Model */}
-            <div className="flex gap-2">
-              <div className="flex-1 space-y-1">
+      {/* Two-column body: pipeline controls (left) + workspace chat (right) */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left column: Pipeline controls — scrolls independently */}
+        <div className="w-[350px] shrink-0 border-r border-border overflow-y-auto px-3 py-3 space-y-3">
+          {!pipelineId ? (
+            /* ============================================================
+             * CONFIGURE MODE — set up the pipeline before launching
+             * ============================================================ */
+            <>
+              {/* ── Project selector ── */}
+              <div className="space-y-1.5">
                 <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-                  Token Budget
+                  Project
                 </label>
                 <select
-                  value={tokenBudget}
-                  onChange={(e) => setTokenBudget(Number(e.target.value))}
+                  value={selectedProjectId ?? 'new'}
+                  onChange={(e) => handleProjectSelect(e.target.value)}
                   className="w-full h-7 rounded-md border border-border bg-input px-2 text-xs text-foreground outline-none ring-ring focus:ring-1"
                 >
-                  <option value={200_000}>200K</option>
-                  <option value={400_000}>400K</option>
-                  <option value={450_000}>450K</option>
+                  <option value="new">New Pipeline</option>
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
                 </select>
-              </div>
-              <div className="flex-1 space-y-1">
-                <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-                  Model
-                </label>
-                <select
-                  value={model}
-                  onChange={(e) => setModel(e.target.value)}
-                  className="w-full h-7 rounded-md border border-border bg-input px-2 text-xs text-foreground outline-none ring-ring focus:ring-1"
-                >
-                  <option value="opus">Opus</option>
-                  <option value="sonnet">Sonnet</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Output mode */}
-            <div className="space-y-1">
-              <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-                Output Mode
-              </label>
-              <select
-                value={outputMode}
-                onChange={(e) => setOutputMode(e.target.value as 'json' | 'text')}
-                className="w-full h-7 rounded-md border border-border bg-input px-2 text-xs text-foreground outline-none ring-ring focus:ring-1"
-              >
-                <option value="json">JSON Extract</option>
-                <option value="text">Full Text</option>
-              </select>
-            </div>
-
-            {/* Skills list */}
-            <div className="space-y-1">
-              <div className="flex items-center justify-between">
-                <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-                  Skills ({skills.length})
-                </label>
-                <button
-                  onClick={() => setShowFolderInput((v) => !v)}
-                  className="text-[10px] text-emerald-600 hover:text-emerald-700 font-medium flex items-center gap-1"
-                >
-                  <FolderOpen size={10} /> Load from folder
-                </button>
-              </div>
-
-              {/* Folder loader */}
-              {showFolderInput && (
+                <input
+                  value={projectName}
+                  onChange={(e) => setProjectName(e.target.value)}
+                  placeholder="Pipeline name"
+                  className="w-full h-7 rounded-md border border-border bg-input px-2 text-xs text-foreground placeholder:text-muted-foreground/60 outline-none ring-ring focus:ring-1"
+                />
                 <div className="flex gap-1">
-                  <input
-                    type="text"
-                    value={folderPath}
-                    onChange={(e) => setFolderPath(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleLoadFolder() }}
-                    placeholder="/path/to/skills/folder"
-                    className="flex-1 h-7 rounded-md border border-border bg-input px-2 text-xs text-foreground placeholder:text-muted-foreground/60 outline-none ring-ring focus:ring-1"
-                  />
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-7 px-2 text-[10px]"
-                    onClick={handleLoadFolder}
-                    disabled={!folderPath.trim()}
+                    className="h-6 px-2 text-[10px] gap-1"
+                    onClick={handleSave}
                   >
-                    Load
+                    <Save size={10} /> Save
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-6 px-2 text-[10px] gap-1"
+                    onClick={handleSaveAs}
+                  >
+                    <Copy size={10} /> Save As
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-6 px-2 text-[10px] gap-1"
+                    onClick={handleCloneProject}
+                    disabled={!selectedProjectId}
+                  >
+                    <Copy size={10} /> Clone
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-6 px-2 text-[10px] gap-1 text-red-600 hover:text-red-700"
+                    onClick={handleDeleteProject}
+                    disabled={!selectedProjectId}
+                  >
+                    <Trash2 size={10} /> Delete
                   </Button>
                 </div>
+              </div>
+
+              {/* Kickoff message */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                  Kickoff Message
+                </label>
+                <textarea
+                  value={kickoffMessage}
+                  onChange={(e) => setKickoffMessage(e.target.value)}
+                  placeholder="Optional context or instructions to prepend to every stage..."
+                  className="w-full resize-none min-h-[60px] rounded-md border border-border bg-input px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/60 outline-none ring-ring focus:ring-1"
+                  rows={3}
+                />
+              </div>
+
+              {/* Settings row: Token Budget + Model */}
+              <div className="flex gap-2">
+                <div className="flex-1 space-y-1">
+                  <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                    Token Budget
+                  </label>
+                  <select
+                    value={tokenBudget}
+                    onChange={(e) => setTokenBudget(Number(e.target.value))}
+                    className="w-full h-7 rounded-md border border-border bg-input px-2 text-xs text-foreground outline-none ring-ring focus:ring-1"
+                  >
+                    <option value={200_000}>200K</option>
+                    <option value={400_000}>400K</option>
+                    <option value={450_000}>450K</option>
+                  </select>
+                </div>
+                <div className="flex-1 space-y-1">
+                  <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                    Model
+                  </label>
+                  <select
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                    className="w-full h-7 rounded-md border border-border bg-input px-2 text-xs text-foreground outline-none ring-ring focus:ring-1"
+                  >
+                    <option value="opus">Opus</option>
+                    <option value="sonnet">Sonnet</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Output mode */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                  Output Mode
+                </label>
+                <select
+                  value={outputMode}
+                  onChange={(e) => setOutputMode(e.target.value as 'json' | 'text')}
+                  className="w-full h-7 rounded-md border border-border bg-input px-2 text-xs text-foreground outline-none ring-ring focus:ring-1"
+                >
+                  <option value="json">JSON Extract</option>
+                  <option value="text">Full Text</option>
+                </select>
+              </div>
+
+              {/* Skills list */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                    Skills ({skills.length})
+                  </label>
+                  <button
+                    onClick={() => setShowFolderInput((v) => !v)}
+                    className="text-[10px] text-emerald-600 hover:text-emerald-700 font-medium flex items-center gap-1"
+                  >
+                    <FolderOpen size={10} /> Load from folder
+                  </button>
+                </div>
+
+                {/* Folder loader */}
+                {showFolderInput && (
+                  <div className="flex gap-1">
+                    <input
+                      type="text"
+                      value={folderPath}
+                      onChange={(e) => setFolderPath(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') handleLoadFolder() }}
+                      placeholder="/path/to/skills/folder"
+                      className="flex-1 h-7 rounded-md border border-border bg-input px-2 text-xs text-foreground placeholder:text-muted-foreground/60 outline-none ring-ring focus:ring-1"
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2 text-[10px]"
+                      onClick={handleLoadFolder}
+                      disabled={!folderPath.trim()}
+                    >
+                      Load
+                    </Button>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  {skills.map((skill, i) => (
+                    <PipelineSkillSlot
+                      key={i}
+                      index={i}
+                      label={skill.label}
+                      text={skill.text}
+                      onUpdate={(field, val) => handleUpdateSkill(i, field, val)}
+                      onRemove={() => handleRemoveSkill(i)}
+                      onFileUpload={(file) => handleFileUpload(i, file)}
+                    />
+                  ))}
+                </div>
+                <button
+                  onClick={handleAddSkill}
+                  className="mt-1 text-xs text-emerald-600 hover:text-emerald-700 font-medium"
+                >
+                  + Add Skill
+                </button>
+              </div>
+
+              {/* Warning if no working directory */}
+              {!workingDirectory && (
+                <p className="text-[10px] text-amber-600">
+                  Select a working directory first (use the repo selector in the breadcrumb bar).
+                </p>
               )}
 
+              {/* Launch button */}
+              <Button
+                onClick={handleStart}
+                disabled={!workingDirectory || skills.every((s) => !s.text.trim()) || starting}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-2"
+              >
+                {starting ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Zap size={14} />
+                )}
+                Launch Pipeline
+              </Button>
+            </>
+          ) : (
+            /* ============================================================
+             * RUNNING MODE — monitor progress and view results
+             * ============================================================ */
+            <>
+              {/* Stop button */}
+              {isRunning && (
+                <Button
+                  onClick={handleStop}
+                  variant="outline"
+                  className="w-full text-xs gap-2"
+                >
+                  <Square size={14} /> Stop Pipeline
+                </Button>
+              )}
+
+              {/* New pipeline button when done */}
+              {isDone && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full h-6 text-[10px]"
+                  onClick={() => {
+                    setPipelineId(null)
+                    setStatus(null)
+                  }}
+                >
+                  New Pipeline
+                </Button>
+              )}
+
+              {/* Token budget progress bar */}
+              <div className="space-y-1">
+                <div className="flex justify-between text-[10px] text-muted-foreground">
+                  <span>Token Budget: {formatTokens(tokenBudget)}</span>
+                  <span>Used: {formatTokens(status?.total_tokens || 0)}</span>
+                </div>
+                <div className="h-2 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-emerald-500 rounded-full transition-all"
+                    style={{
+                      width: `${Math.min(100, ((status?.total_tokens || 0) / tokenBudget) * 100)}%`,
+                    }}
+                  />
+                </div>
+                <div className="text-right text-[10px] text-muted-foreground">
+                  {Math.round(((status?.total_tokens || 0) / tokenBudget) * 100)}%
+                </div>
+              </div>
+
+              {/* Stage progress cards */}
               <div className="space-y-2">
-                {skills.map((skill, i) => (
-                  <PipelineSkillSlot
+                {status?.stages.map((stage, i) => (
+                  <PipelineStageCard
                     key={i}
-                    index={i}
-                    label={skill.label}
-                    text={skill.text}
-                    onUpdate={(field, val) => handleUpdateSkill(i, field, val)}
-                    onRemove={() => handleRemoveSkill(i)}
-                    onFileUpload={(file) => handleFileUpload(i, file)}
+                    stage={stage}
+                    expanded={expandedOutput === i}
+                    onToggleOutput={() => setExpandedOutput(expandedOutput === i ? null : i)}
                   />
                 ))}
               </div>
-              <button
-                onClick={handleAddSkill}
-                className="mt-1 text-xs text-emerald-600 hover:text-emerald-700 font-medium"
-              >
-                + Add Skill
-              </button>
-            </div>
 
-            {/* Warning if no working directory */}
-            {!workingDirectory && (
-              <p className="text-[10px] text-amber-600">
-                Select a working directory first (use the repo selector in the breadcrumb bar).
-              </p>
-            )}
-
-            {/* Launch button */}
-            <Button
-              onClick={handleStart}
-              disabled={!workingDirectory || skills.every((s) => !s.text.trim()) || starting}
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-2"
-            >
-              {starting ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : (
-                <Zap size={14} />
-              )}
-              Launch Pipeline
-            </Button>
-          </>
-        ) : (
-          /* ============================================================
-           * RUNNING MODE — monitor progress and view results
-           * ============================================================ */
-          <>
-            {/* Stop button */}
-            {isRunning && (
-              <Button
-                onClick={handleStop}
-                variant="outline"
-                className="w-full text-xs gap-2"
-              >
-                <Square size={14} /> Stop Pipeline
-              </Button>
-            )}
-
-            {/* New pipeline button when done */}
-            {isDone && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="w-full h-6 text-[10px]"
-                onClick={() => {
-                  setPipelineId(null)
-                  setStatus(null)
-                }}
-              >
-                New Pipeline
-              </Button>
-            )}
-
-            {/* Token budget progress bar */}
-            <div className="space-y-1">
-              <div className="flex justify-between text-[10px] text-muted-foreground">
-                <span>Token Budget: {formatTokens(tokenBudget)}</span>
-                <span>Used: {formatTokens(status?.total_tokens || 0)}</span>
-              </div>
-              <div className="h-2 bg-muted rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-emerald-500 rounded-full transition-all"
-                  style={{
-                    width: `${Math.min(100, ((status?.total_tokens || 0) / tokenBudget) * 100)}%`,
-                  }}
-                />
-              </div>
-              <div className="text-right text-[10px] text-muted-foreground">
-                {Math.round(((status?.total_tokens || 0) / tokenBudget) * 100)}%
-              </div>
-            </div>
-
-            {/* Stage progress cards */}
-            <div className="space-y-2">
-              {status?.stages.map((stage, i) => (
-                <PipelineStageCard
-                  key={i}
-                  stage={stage}
-                  expanded={expandedOutput === i}
-                  onToggleOutput={() => setExpandedOutput(expandedOutput === i ? null : i)}
-                />
-              ))}
-            </div>
-
-            {/* Agent question / chat input */}
-            {isRunning && (
-              <div className="space-y-2 border border-border rounded-lg p-2 bg-muted/20">
-                {status?.waiting_for_answer && status?.waiting_question && (
-                  <div className="flex items-start gap-2 p-2 bg-amber-500/10 rounded border border-amber-500/20">
-                    <MessageSquare size={14} className="text-amber-600 mt-0.5 flex-shrink-0" />
-                    <div className="text-xs text-amber-800 dark:text-amber-200">
-                      <p className="font-semibold text-[10px] uppercase tracking-wider mb-1">Agent Question:</p>
-                      <p>{status.waiting_question}</p>
+              {/* Agent question / chat input */}
+              {isRunning && (
+                <div className="space-y-2 border border-border rounded-lg p-2 bg-muted/20">
+                  {status?.waiting_for_answer && status?.waiting_question && (
+                    <div className="flex items-start gap-2 p-2 bg-amber-500/10 rounded border border-amber-500/20">
+                      <MessageSquare size={14} className="text-amber-600 mt-0.5 flex-shrink-0" />
+                      <div className="text-xs text-amber-800 dark:text-amber-200">
+                        <p className="font-semibold text-[10px] uppercase tracking-wider mb-1">Agent Question:</p>
+                        <p>{status.waiting_question}</p>
+                      </div>
                     </div>
+                  )}
+                  <div className="flex gap-1.5">
+                    <input
+                      type="text"
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendAnswer() } }}
+                      placeholder={status?.waiting_for_answer ? 'Type your answer...' : 'Send message to agent...'}
+                      className="flex-1 h-7 rounded-md border border-border bg-input px-2 text-xs text-foreground placeholder:text-muted-foreground/60 outline-none ring-ring focus:ring-1"
+                      disabled={sendingAnswer}
+                    />
+                    <Button
+                      size="sm"
+                      className="h-7 px-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+                      onClick={handleSendAnswer}
+                      disabled={!chatInput.trim() || sendingAnswer}
+                    >
+                      {sendingAnswer ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+                    </Button>
                   </div>
-                )}
-                <div className="flex gap-1.5">
-                  <input
-                    type="text"
-                    value={chatInput}
-                    onChange={(e) => setChatInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendAnswer() } }}
-                    placeholder={status?.waiting_for_answer ? 'Type your answer...' : 'Send message to agent...'}
-                    className="flex-1 h-7 rounded-md border border-border bg-input px-2 text-xs text-foreground placeholder:text-muted-foreground/60 outline-none ring-ring focus:ring-1"
-                    disabled={sendingAnswer}
-                  />
-                  <Button
-                    size="sm"
-                    className="h-7 px-2 bg-emerald-600 hover:bg-emerald-700 text-white"
-                    onClick={handleSendAnswer}
-                    disabled={!chatInput.trim() || sendingAnswer}
-                  >
-                    {sendingAnswer ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
-                  </Button>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* Download button when pipeline is finished */}
-            {isDone && (
-              <Button
-                onClick={handleExport}
-                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-2"
-              >
-                <Download size={14} /> Download All Outputs
-              </Button>
-            )}
-
-            {/* Endpoint placeholder — future next-action routing */}
-            {isDone && (
-              <div className="border border-dashed border-border rounded-lg p-3 text-center">
-                <p className="text-[10px] text-muted-foreground">
-                  Next Action (coming soon)
-                </p>
-                <select
-                  disabled
-                  className="mt-1 h-7 w-full rounded-md border border-border bg-muted/50 text-xs text-muted-foreground"
+              {/* Download button when pipeline is finished */}
+              {isDone && (
+                <Button
+                  onClick={handleExport}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-2"
                 >
-                  <option>Done — no further action</option>
-                  <option>Send to Swarm Builder</option>
-                  <option>Send to Coder Agent</option>
-                </select>
-              </div>
-            )}
-          </>
-        )}
+                  <Download size={14} /> Download All Outputs
+                </Button>
+              )}
+
+              {/* Endpoint placeholder — future next-action routing */}
+              {isDone && (
+                <div className="border border-dashed border-border rounded-lg p-3 text-center">
+                  <p className="text-[10px] text-muted-foreground">
+                    Next Action (coming soon)
+                  </p>
+                  <select
+                    disabled
+                    className="mt-1 h-7 w-full rounded-md border border-border bg-muted/50 text-xs text-muted-foreground"
+                  >
+                    <option>Done — no further action</option>
+                    <option>Send to Swarm Builder</option>
+                    <option>Send to Coder Agent</option>
+                  </select>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Right column: Embedded WorkspaceChat for streaming output, token tracking, and logging */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <WorkspaceChat
+            conversationId={activeConversationId ?? null}
+            onConversationCreated={onConversationCreated ?? (() => {})}
+            workingDirectory={workingDirectory}
+            pendingModel={pendingModel}
+            pendingContextMode={pendingContextMode}
+            pendingEffort={pendingEffort}
+            provider={provider}
+            onWalkieTalkieLog={onWalkieTalkieLog}
+            onStreamingChange={onStreamingChange}
+            chatInputRef={chatInputRef}
+            panelLabel="Pipeline Output"
+          />
+        </div>
       </div>
     </div>
   )

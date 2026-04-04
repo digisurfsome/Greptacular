@@ -624,40 +624,68 @@ export function WorkspacePage(): React.JSX.Element {
         )}
 
         {/* Sidebar: fixed overlay on mobile, normal column on desktop */}
-        <div
-          className={`
-            shrink-0 transition-all duration-200
-            md:relative md:flex md:flex-col
-            ${mobileSidebarOpen
-              ? 'fixed inset-y-0 left-0 z-50 flex flex-col bg-card shadow-xl w-72'
-              : 'hidden md:flex'
-            }
-            ${sidebarCollapsed && !mobileSidebarOpen ? 'md:w-0 md:overflow-hidden' : ''}
-          `}
-        >
-          <WorkspaceSidebar
-            activeConversationId={activeConversationId}
-            streamingIds={streamingIds}
-            collapsed={sidebarCollapsed && !mobileSidebarOpen}
-            onToggleCollapse={() => {
-              setSidebarCollapsed(!sidebarCollapsed)
-              // On mobile, also close the drawer when collapsing via the sidebar button
-              setMobileSidebarOpen(false)
-            }}
-            onNewChat={handleNewChat}
-            onSelectConversation={handleSelectConversation}
-            onDeleteConversation={handleDeleteConversation}
-            selectedWorkingDirectory={workingDirectory}
-            onWorkingDirectoryChange={handleRepoSelect}
-            modelPresetIndex={modelPresetIndex}
-            onModelPresetChange={handleModelPresetChange}
-            effortLevel={pendingEffort}
-            onEffortChange={setPendingEffort}
-            activeProvider={activeProvider}
-          />
-        </div>
+        {!showPipeline && (
+          <div
+            className={`
+              shrink-0 transition-all duration-200
+              md:relative md:flex md:flex-col
+              ${mobileSidebarOpen
+                ? 'fixed inset-y-0 left-0 z-50 flex flex-col bg-card shadow-xl w-72'
+                : 'hidden md:flex'
+              }
+              ${sidebarCollapsed && !mobileSidebarOpen ? 'md:w-0 md:overflow-hidden' : ''}
+            `}
+          >
+            <WorkspaceSidebar
+              activeConversationId={activeConversationId}
+              streamingIds={streamingIds}
+              collapsed={sidebarCollapsed && !mobileSidebarOpen}
+              onToggleCollapse={() => {
+                setSidebarCollapsed(!sidebarCollapsed)
+                // On mobile, also close the drawer when collapsing via the sidebar button
+                setMobileSidebarOpen(false)
+              }}
+              onNewChat={handleNewChat}
+              onSelectConversation={handleSelectConversation}
+              onDeleteConversation={handleDeleteConversation}
+              selectedWorkingDirectory={workingDirectory}
+              onWorkingDirectoryChange={handleRepoSelect}
+              modelPresetIndex={modelPresetIndex}
+              onModelPresetChange={handleModelPresetChange}
+              effortLevel={pendingEffort}
+              onEffortChange={setPendingEffort}
+              activeProvider={activeProvider}
+            />
+          </div>
+        )}
 
-        {splitView ? (
+        {/* Pipeline panel — full center takeover when active (replaces chat panels) */}
+        {showPipeline ? (
+          <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+            <PipelinePanel
+              workingDirectory={workingDirectory}
+              onClose={() => setShowPipeline(false)}
+              activeConversationId={activeConversationId}
+              onConversationCreated={handleConversationCreated}
+              chatInputRef={chatInputRef}
+              pendingModel={pendingModel}
+              pendingContextMode={pendingContextMode}
+              pendingEffort={pendingEffort}
+              provider={activeProvider}
+              onWalkieTalkieLog={setWalkieTalkieLog}
+              onStreamingChange={(streaming) => {
+                if (activeConversationId != null) {
+                  setStreamingIds(prev => {
+                    const next = new Set(prev)
+                    if (streaming) next.add(activeConversationId)
+                    else next.delete(activeConversationId)
+                    return next
+                  })
+                }
+              }}
+            />
+          </div>
+        ) : splitView ? (
           /* Three-panel split view with accordion collapse */
           <div className="flex-1 flex overflow-hidden">
 
@@ -879,16 +907,6 @@ export function WorkspacePage(): React.JSX.Element {
             <SwarmPanel
               workingDirectory={workingDirectory}
               onClose={() => setShowSwarm(false)}
-            />
-          </div>
-        )}
-
-        {/* Pipeline panel — full center takeover when active */}
-        {showPipeline && (
-          <div className="flex-1 min-w-0 border-l border-border">
-            <PipelinePanel
-              workingDirectory={workingDirectory}
-              onClose={() => setShowPipeline(false)}
             />
           </div>
         )}

@@ -4,11 +4,17 @@ Pipeline Router
 
 REST endpoints for managing skill pipelines — sequential execution of
 skill prompts where output from stage N feeds into stage N+1.
+
+Also provides CRUD for pipeline projects (saved, reusable prompt chain
+configurations) and a folder-loading utility for discovering SKILL.md files.
 """
 
 import asyncio
 import io
 import logging
+import re
+from pathlib import Path
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
@@ -35,6 +41,7 @@ class PipelineStartRequest(BaseModel):
     kickoff_message: str
     token_budget: int = 400_000
     model: str = "opus"
+    output_mode: str = "json"
     stages: list[PipelineStageConfig]
 
 
@@ -47,6 +54,36 @@ class PipelineAnswerRequest(BaseModel):
     """Request body for answering a pipeline question or sending a message."""
     pipeline_id: str
     answer: str
+
+
+class PipelineProjectCreate(BaseModel):
+    """Request body for creating a pipeline project."""
+    name: str
+    description: Optional[str] = None
+    output_mode: str = "json"
+    default_model: str = "opus"
+    default_token_budget: int = 400_000
+    stages: list[PipelineStageConfig]
+
+
+class PipelineProjectUpdate(BaseModel):
+    """Request body for updating a pipeline project."""
+    name: Optional[str] = None
+    description: Optional[str] = None
+    output_mode: Optional[str] = None
+    default_model: Optional[str] = None
+    default_token_budget: Optional[int] = None
+    stages: Optional[list[PipelineStageConfig]] = None
+
+
+class PipelineProjectClone(BaseModel):
+    """Request body for cloning a pipeline project."""
+    new_name: str
+
+
+class FolderLoadRequest(BaseModel):
+    """Request body for loading SKILL.md files from a folder."""
+    folder_path: str
 
 
 # ============================================================================
@@ -74,6 +111,7 @@ async def start_pipeline(body: PipelineStartRequest):
         kickoff_message=body.kickoff_message,
         token_budget=body.token_budget,
         model=body.model,
+        output_mode=body.output_mode,
     )
 
     # Run the pipeline in the background so the POST returns immediately
@@ -207,3 +245,165 @@ async def export_pipeline(pipeline_id: str):
         media_type="text/markdown",
         headers={"Content-Disposition": f"attachment; filename=pipeline-{pipeline_id}-output.md"},
     )
+
+
+# ============================================================================
+# Pipeline Project Endpoints
+# ============================================================================
+
+@router.post("/projects")
+async def create_project(body: PipelineProjectCreate):
+    """Create a new pipeline project (saved prompt chain configuration)."""
+    import json
+
+    from ..services.workspace_database import save_pipeline_project
+
+    if not body.name.strip():
+        raise HTTPException(status_code=400, detail="Project name must not be empty")
+    if not body.stages:
+        raise HTTPException(status_code=400, detail="At least one stage is required")
+
+    stages_json = json.dumps([s.model_dump() for s in body.stages])
+    project = save_pipeline_project(
+        name=body.name.strip(),
+        stages_json=stages_json,
+        description=body.description,
+        output_mode=body.output_mode,
+        default_model=body.default_model,
+        default_token_budget=body.default_token_budget,
+    )
+    return project
+
+
+@router.get("/projects")
+async def list_projects():
+    """List all saved pipeline projects."""
+    from ..services.workspace_database import list_pipeline_projects
+    return list_pipeline_projects()
+
+
+@router.get("/projects/{project_id}")
+async def get_project(project_id: int):
+    """Get a pipeline project by ID."""
+    from ..services.workspace_database import get_pipeline_project
+
+    project = get_pipeline_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Pipeline project not found")
+    return project
+
+
+@router.patch("/projects/{project_id}")
+async def update_project(project_id: int, body: PipelineProjectUpdate):
+    """Update a pipeline project."""
+    import json
+
+    from ..services.workspace_database import update_pipeline_project
+
+    kwargs: dict = {}
+    if body.name is not None:
+        if not body.name.strip():
+            raise HTTPException(status_code=400, detail="Project name must not be empty")
+        kwargs["name"] = body.name.strip()
+    if body.description is not None:
+        kwargs["description"] = body.description
+    if body.output_mode is not None:
+        kwargs["output_mode"] = body.output_mode
+    if body.default_model is not None:
+        kwargs["default_model"] = body.default_model
+    if body.default_token_budget is not None:
+        kwargs["default_token_budget"] = body.default_token_budget
+    if body.stages is not None:
+        if not body.stages:
+            raise HTTPException(status_code=400, detail="At least one stage is required")
+        kwargs["stages_json"] = json.dumps([s.model_dump() for s in body.stages])
+
+    if not kwargs:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    result = update_pipeline_project(project_id, **kwargs)
+    if not result:
+        raise HTTPException(status_code=404, detail="Pipeline project not found")
+    return result
+
+
+@router.delete("/projects/{project_id}")
+async def delete_project(project_id: int):
+    """Delete a pipeline project."""
+    from ..services.workspace_database import delete_pipeline_project
+
+    deleted = delete_pipeline_project(project_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Pipeline project not found")
+    return {"success": True, "message": f"Pipeline project {project_id} deleted"}
+
+
+@router.post("/projects/{project_id}/clone")
+async def clone_project(project_id: int, body: PipelineProjectClone):
+    """Clone a pipeline project with a new name."""
+    from ..services.workspace_database import clone_pipeline_project
+
+    if not body.new_name.strip():
+        raise HTTPException(status_code=400, detail="New name must not be empty")
+
+    result = clone_pipeline_project(project_id, body.new_name.strip())
+    if not result:
+        raise HTTPException(status_code=404, detail="Source pipeline project not found")
+    return result
+
+
+# ============================================================================
+# Folder Loading
+# ============================================================================
+
+def _extract_label_from_markdown(content: str, fallback: str) -> str:
+    """Extract the label from the first ``# heading`` in a Markdown file.
+
+    Falls back to *fallback* if no heading is found.
+    """
+    match = re.search(r"^#\s+(.+)$", content, re.MULTILINE)
+    if match:
+        return match.group(1).strip()
+    return fallback
+
+
+@router.post("/load-folder")
+async def load_folder(body: FolderLoadRequest):
+    """Load SKILL.md files from subdirectories of the given folder.
+
+    Returns an array of ``{label, skill_text}`` objects, one per
+    subdirectory that contains a ``SKILL.md`` file.  Subdirectories
+    are sorted alphabetically.
+
+    Security:
+    - Path must be absolute.
+    - Path must exist and be a directory.
+    - Only reads ``.md`` files (specifically ``SKILL.md``).
+    """
+    folder = Path(body.folder_path)
+
+    if not folder.is_absolute():
+        raise HTTPException(status_code=400, detail="folder_path must be an absolute path")
+    if not folder.exists():
+        raise HTTPException(status_code=404, detail=f"Folder not found: {body.folder_path}")
+    if not folder.is_dir():
+        raise HTTPException(status_code=400, detail=f"Path is not a directory: {body.folder_path}")
+
+    stages: list[dict] = []
+    subdirs = sorted([d for d in folder.iterdir() if d.is_dir()])
+
+    for subdir in subdirs:
+        skill_file = subdir / "SKILL.md"
+        if not skill_file.is_file():
+            continue
+        try:
+            content = skill_file.read_text(encoding="utf-8")
+        except Exception as e:
+            logger.warning("Failed to read %s: %s", skill_file, e)
+            continue
+
+        label = _extract_label_from_markdown(content, fallback=subdir.name)
+        stages.append({"label": label, "skill_text": content})
+
+    logger.info("Loaded %d SKILL.md files from %s", len(stages), body.folder_path)
+    return stages

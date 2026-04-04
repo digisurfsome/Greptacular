@@ -33,7 +33,6 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PipelineSkillSlot } from './PipelineSkillSlot'
-import { RepoSelector } from './RepoSelector'
 import { WorkspaceChat } from './WorkspaceChat'
 import type { WalkieTalkieLogEntry } from '@/lib/types'
 import type { PipelineStatusResponse, PipelineStageStatus, PipelineProject } from '@/lib/api'
@@ -568,15 +567,20 @@ export function PipelinePanel({
                 </div>
               </div>
 
-              {/* Working directory / repo selector */}
+              {/* Working directory */}
               <div className="space-y-1">
                 <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-                  Repository
+                  Working Directory
                 </label>
-                <RepoSelector
-                  selectedPath={workingDirectory}
-                  onSelect={(path) => onWorkingDirectoryChange?.(path || null)}
-                />
+                <div className="flex gap-1">
+                  <input
+                    type="text"
+                    value={workingDirectory ?? ''}
+                    onChange={(e) => onWorkingDirectoryChange?.(e.target.value || null)}
+                    placeholder="C:\Users\...\your-project"
+                    className="flex-1 h-7 rounded-md border border-border bg-input px-2 text-xs text-foreground placeholder:text-muted-foreground/60 outline-none ring-ring focus:ring-1"
+                  />
+                </div>
               </div>
 
               {/* Kickoff message */}

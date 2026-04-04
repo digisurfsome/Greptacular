@@ -165,6 +165,7 @@ export function PipelinePanel({
   const [tokenBudget, setTokenBudget] = useState(400_000)
   const [model, setModel] = useState('opus')
   const [outputMode, setOutputMode] = useState<'json' | 'text'>('json')
+  const [executionMode, setExecutionMode] = useState<string>('same_session')
   const [skills, setSkills] = useState<SkillSlot[]>([{ label: 'Skill 1', text: '' }])
   const [starting, setStarting] = useState(false)
   const [expandedOutput, setExpandedOutput] = useState<number | null>(null)
@@ -365,6 +366,7 @@ export function PipelinePanel({
         token_budget: tokenBudget,
         model,
         output_mode: outputMode,
+        execution_mode: executionMode,
         stages: filledSkills.map((s) => ({ label: s.label, skill_text: s.text })),
       })
       setPipelineId(result.pipeline_id)
@@ -373,7 +375,7 @@ export function PipelinePanel({
     } finally {
       setStarting(false)
     }
-  }, [workingDirectory, kickoffMessage, tokenBudget, model, outputMode, skills])
+  }, [workingDirectory, kickoffMessage, tokenBudget, model, outputMode, executionMode, skills])
 
   const handleStop = useCallback(async () => {
     if (!pipelineId) return
@@ -606,6 +608,23 @@ export function PipelinePanel({
                 >
                   <option value="json">JSON Extract</option>
                   <option value="text">Full Text</option>
+                </select>
+              </div>
+
+              {/* Execution mode */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                  Execution Mode
+                </label>
+                <select
+                  value={executionMode}
+                  onChange={(e) => setExecutionMode(e.target.value)}
+                  className="w-full h-7 rounded-md border border-border bg-input px-2 text-xs text-foreground outline-none ring-ring focus:ring-1"
+                >
+                  <option value="same_session">Same Session (shared context)</option>
+                  <option value="new_session">New Session (fresh per stage)</option>
+                  <option value="file_based">File Based (disk handoff)</option>
+                  <option value="database">Database (DB handoff)</option>
                 </select>
               </div>
 

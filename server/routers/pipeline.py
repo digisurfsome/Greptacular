@@ -42,6 +42,7 @@ class PipelineStartRequest(BaseModel):
     token_budget: int = 400_000
     model: str = "opus"
     output_mode: str = "json"
+    execution_mode: str = "same_session"  # same_session | new_session | file_based | database
     stages: list[PipelineStageConfig]
 
 
@@ -112,6 +113,7 @@ async def start_pipeline(body: PipelineStartRequest):
         token_budget=body.token_budget,
         model=body.model,
         output_mode=body.output_mode,
+        execution_mode=body.execution_mode,
     )
 
     # Run the pipeline in the background so the POST returns immediately

@@ -223,10 +223,386 @@ class SkillPipeline:
             f"</previous_stage_output>\n\n"
         )
 
-    async def run(self) -> AsyncGenerator[PipelineEvent, None]:
-        """Execute stages sequentially.  Yields PipelineEvent objects."""
+    # ------------------------------------------------------------------
+    # Shared stage lifecycle — used by ALL execution modes
+    # ------------------------------------------------------------------
+
+    async def _run_stage(
+        self,
+        stage: PipelineStage,
+        session: "WorkspaceChatSession",  # noqa: F821
+        prompt: str,
+        start_time: float,
+    ) -> AsyncGenerator[PipelineEvent, None]:
+        """Run a single stage: send prompt, collect output, emit events.
+
+        This is the shared lifecycle method that every execution mode calls.
+        It handles streaming, output extraction, persistence, and error handling.
+
+        Args:
+            stage: The stage to run.
+            session: An already-started WorkspaceChatSession.
+            prompt: The fully-built prompt for this stage.
+            start_time: ``time.monotonic()`` of the overall pipeline start (for total_duration).
+        """
+        full_text = ""
+        context_tokens = 0
+        stage_start = time.monotonic()
+
+        try:
+            async for chunk in session.send_message(prompt):
+                if not self._running:
+                    break
+
+                chunk_type = chunk.get("type", "")
+                if chunk_type == "text":
+                    text = chunk.get("content", "")
+                    full_text += text
+                    stage.full_response = full_text
+                    yield PipelineEvent(
+                        event_type="pipeline_stage_text",
+                        data={"stage_index": stage.index, "text": text},
+                    )
+                elif chunk_type == "token_usage":
+                    context_tokens = chunk.get("context_tokens", 0)
+                    output_tokens = chunk.get("output_tokens", 0)
+                    stage.tokens_used = context_tokens + output_tokens
+                    self.total_tokens = sum(s.tokens_used for s in self.stages)
+                    yield PipelineEvent(
+                        event_type="pipeline_token_usage",
+                        data={
+                            "stage_index": stage.index,
+                            "context_tokens": context_tokens,
+                            "output_tokens": output_tokens,
+                            "total_tokens": self.total_tokens,
+                            "budget": self.token_budget,
+                        },
+                    )
+
+            # Extract output based on output_mode
+            if self.output_mode == "json":
+                stage.output = self.extract_json_output(full_text)
+                stage.full_response = full_text
+            else:
+                stage.output = full_text
+                stage.full_response = full_text
+
+            stage.status = StageStatus.COMPLETED
+            stage.completed_at = datetime.now(timezone.utc)
+            stage.duration_seconds = round(time.monotonic() - stage_start, 1)
+            self.total_duration = round(time.monotonic() - start_time, 1)
+
+            yield PipelineEvent(
+                event_type="pipeline_stage_completed",
+                data={
+                    "stage_index": stage.index,
+                    "label": stage.label,
+                    "tokens_used": stage.tokens_used,
+                    "duration_seconds": stage.duration_seconds,
+                    "output_length": len(full_text),
+                },
+            )
+
+            # Persist stage output
+            try:
+                from .workspace_database import save_pipeline_stage_output
+                save_pipeline_stage_output(
+                    pipeline_id=self.pipeline_id,
+                    stage_index=stage.index,
+                    label=stage.label,
+                    output_text=full_text,
+                    tokens_used=stage.tokens_used,
+                    duration_seconds=stage.duration_seconds,
+                    status=stage.status.value,
+                )
+            except Exception as e:
+                logger.warning("Failed to persist stage %d output: %s", stage.index, e)
+
+            # Log if context tokens are getting large
+            if context_tokens > self.token_budget:
+                logger.info(
+                    "Stage %d context tokens (%d) exceeded budget (%d).",
+                    stage.index, context_tokens, self.token_budget,
+                )
+
+        except asyncio.CancelledError:
+            stage.status = StageStatus.FAILED
+            stage.error = "Cancelled"
+            stage.completed_at = datetime.now(timezone.utc)
+            stage.duration_seconds = round(time.monotonic() - stage_start, 1)
+            yield PipelineEvent(
+                event_type="pipeline_stage_failed",
+                data={"stage_index": stage.index, "label": stage.label, "error": "Cancelled"},
+            )
+
+        except Exception as e:
+            stage.status = StageStatus.FAILED
+            stage.error = str(e)
+            stage.completed_at = datetime.now(timezone.utc)
+            stage.duration_seconds = round(time.monotonic() - stage_start, 1)
+            logger.exception("Pipeline stage %d (%s) failed: %s", stage.index, stage.label, e)
+
+            yield PipelineEvent(
+                event_type="pipeline_stage_failed",
+                data={"stage_index": stage.index, "label": stage.label, "error": str(e)},
+            )
+
+            # Persist failed stage
+            try:
+                from .workspace_database import save_pipeline_stage_output
+                save_pipeline_stage_output(
+                    pipeline_id=self.pipeline_id,
+                    stage_index=stage.index,
+                    label=stage.label,
+                    output_text=full_text,
+                    tokens_used=stage.tokens_used,
+                    duration_seconds=stage.duration_seconds,
+                    status=stage.status.value,
+                    error=str(e),
+                )
+            except Exception as persist_err:
+                logger.warning("Failed to persist failed stage %d: %s", stage.index, persist_err)
+
+    async def _create_and_start_session(self, session_id: str) -> "WorkspaceChatSession":  # noqa: F821
+        """Create a new WorkspaceChatSession and start it.
+
+        Returns the started session. Also sets ``self._current_session``.
+        """
         from .workspace_chat_session import WorkspaceChatSession
 
+        session = WorkspaceChatSession(
+            session_id=session_id,
+            working_directory=self.working_directory,
+            context_mode="1m",
+            model=self.model,
+        )
+        self._current_session = session
+
+        async for chunk in session.start():
+            chunk_type = chunk.get("type", "")
+            if chunk_type == "conversation_created":
+                conv_id = chunk.get("conversation_id")
+                try:
+                    from .workspace_database import update_conversation
+                    update_conversation(conv_id, title=f"Pipeline: {self.pipeline_id}", category="pipeline")
+                except Exception:
+                    pass
+            elif chunk_type == "error":
+                logger.warning("Pipeline session start error: %s", chunk.get("content"))
+
+        return session
+
+    async def _close_session(self, session: "WorkspaceChatSession") -> None:  # noqa: F821
+        """Close a session and clear ``_current_session`` if it matches."""
+        try:
+            await session.close()
+        except Exception:
+            pass
+        if self._current_session is session:
+            self._current_session = None
+
+    # ------------------------------------------------------------------
+    # Execution mode: same_session (original behavior)
+    # ------------------------------------------------------------------
+
+    async def _run_same_session(self, start_time: float) -> AsyncGenerator[PipelineEvent, None]:
+        """One session for the entire pipeline.  All stages are messages in the
+        same conversation — exactly the original behavior."""
+        session_id = f"pipeline-{self.pipeline_id}"
+        session = await self._create_and_start_session(session_id)
+
+        try:
+            for stage in self.stages:
+                if not self._running:
+                    break
+
+                stage.status = StageStatus.RUNNING
+                stage.started_at = datetime.now(timezone.utc)
+                stage.session_id = session_id
+
+                yield PipelineEvent(
+                    event_type="pipeline_stage_started",
+                    data={"stage_index": stage.index, "label": stage.label, "session_id": session_id},
+                )
+
+                prompt = self._build_stage_prompt(stage)
+                async for event in self._run_stage(stage, session, prompt, start_time):
+                    yield event
+
+                # Abort pipeline on stage failure
+                if stage.status == StageStatus.FAILED:
+                    self.status = PipelineStatus.FAILED
+                    break
+        finally:
+            await self._close_session(session)
+
+    # ------------------------------------------------------------------
+    # Execution mode: new_session (fresh session per stage)
+    # ------------------------------------------------------------------
+
+    async def _run_new_session(self, start_time: float) -> AsyncGenerator[PipelineEvent, None]:
+        """Fresh WorkspaceChatSession per stage.  Each stage gets an independent
+        conversation with the previous stage's output injected into its prompt."""
+        for stage in self.stages:
+            if not self._running:
+                break
+
+            session_id = f"pipeline-{self.pipeline_id}-stage-{stage.index}"
+            session = await self._create_and_start_session(session_id)
+
+            try:
+                stage.status = StageStatus.RUNNING
+                stage.started_at = datetime.now(timezone.utc)
+                stage.session_id = session_id
+
+                yield PipelineEvent(
+                    event_type="pipeline_stage_started",
+                    data={"stage_index": stage.index, "label": stage.label, "session_id": session_id},
+                )
+
+                prompt = self._build_stage_prompt(stage)
+                async for event in self._run_stage(stage, session, prompt, start_time):
+                    yield event
+
+                if stage.status == StageStatus.FAILED:
+                    self.status = PipelineStatus.FAILED
+                    break
+            finally:
+                await self._close_session(session)
+
+    # ------------------------------------------------------------------
+    # Execution mode: file_based (disk handoff between stages)
+    # ------------------------------------------------------------------
+
+    def _get_file_based_dir(self) -> Path:
+        """Return the directory for file-based pipeline outputs."""
+        base = Path.home() / ".autoforge" / "pipeline" / self.pipeline_id
+        base.mkdir(parents=True, exist_ok=True)
+        return base
+
+    def _build_stage_prompt_from_text(self, stage: PipelineStage, previous_output: str) -> str:
+        """Build a stage prompt using explicit previous output text (for file/db modes)."""
+        if stage.index == 0:
+            return (
+                f"{stage.skill_text}\n\n"
+                f"## User's Input\n\n"
+                f"{self.kickoff_message}\n\n"
+            )
+
+        prev_label = self.stages[stage.index - 1].label
+        return (
+            f"{stage.skill_text}\n\n"
+            f"## Output From Previous Stage ({prev_label})\n\n"
+            f"<previous_stage_output>\n"
+            f"{previous_output}\n"
+            f"</previous_stage_output>\n\n"
+        )
+
+    async def _run_file_based(self, start_time: float) -> AsyncGenerator[PipelineEvent, None]:
+        """Each stage writes output to a file on disk.  The next stage reads
+        the previous file and incorporates it into its prompt."""
+        output_dir = self._get_file_based_dir()
+
+        for stage in self.stages:
+            if not self._running:
+                break
+
+            session_id = f"pipeline-{self.pipeline_id}-stage-{stage.index}"
+            session = await self._create_and_start_session(session_id)
+
+            try:
+                stage.status = StageStatus.RUNNING
+                stage.started_at = datetime.now(timezone.utc)
+                stage.session_id = session_id
+
+                yield PipelineEvent(
+                    event_type="pipeline_stage_started",
+                    data={"stage_index": stage.index, "label": stage.label, "session_id": session_id},
+                )
+
+                # Read previous stage output from file (if not first stage)
+                if stage.index > 0:
+                    prev_file = output_dir / f"stage-{stage.index - 1}-output.txt"
+                    try:
+                        previous_output = prev_file.read_text(encoding="utf-8")
+                    except FileNotFoundError:
+                        previous_output = ""
+                        logger.warning("File-based mode: previous stage file not found: %s", prev_file)
+                    prompt = self._build_stage_prompt_from_text(stage, previous_output)
+                else:
+                    prompt = self._build_stage_prompt(stage)
+
+                async for event in self._run_stage(stage, session, prompt, start_time):
+                    yield event
+
+                # Write this stage's output to disk
+                if stage.status == StageStatus.COMPLETED:
+                    out_file = output_dir / f"stage-{stage.index}-output.txt"
+                    out_file.write_text(stage.output, encoding="utf-8")
+                    logger.info("File-based mode: wrote %d chars to %s", len(stage.output), out_file)
+
+                if stage.status == StageStatus.FAILED:
+                    self.status = PipelineStatus.FAILED
+                    break
+            finally:
+                await self._close_session(session)
+
+    # ------------------------------------------------------------------
+    # Execution mode: database (DB handoff between stages)
+    # ------------------------------------------------------------------
+
+    async def _run_database(self, start_time: float) -> AsyncGenerator[PipelineEvent, None]:
+        """Each stage reads the previous stage's output from the database
+        (already persisted by ``_run_stage``) and uses it in the prompt."""
+        for stage in self.stages:
+            if not self._running:
+                break
+
+            session_id = f"pipeline-{self.pipeline_id}-stage-{stage.index}"
+            session = await self._create_and_start_session(session_id)
+
+            try:
+                stage.status = StageStatus.RUNNING
+                stage.started_at = datetime.now(timezone.utc)
+                stage.session_id = session_id
+
+                yield PipelineEvent(
+                    event_type="pipeline_stage_started",
+                    data={"stage_index": stage.index, "label": stage.label, "session_id": session_id},
+                )
+
+                # Read previous stage output from database (if not first stage)
+                if stage.index > 0:
+                    from .workspace_database import get_pipeline_stage_outputs
+                    db_stages = get_pipeline_stage_outputs(self.pipeline_id)
+                    prev_output = ""
+                    for db_stage in db_stages:
+                        if db_stage.get("stage_index") == stage.index - 1:
+                            prev_output = db_stage.get("output_text", "")
+                            break
+                    prompt = self._build_stage_prompt_from_text(stage, prev_output)
+                else:
+                    prompt = self._build_stage_prompt(stage)
+
+                async for event in self._run_stage(stage, session, prompt, start_time):
+                    yield event
+
+                if stage.status == StageStatus.FAILED:
+                    self.status = PipelineStatus.FAILED
+                    break
+            finally:
+                await self._close_session(session)
+
+    # ------------------------------------------------------------------
+    # Main run() dispatcher
+    # ------------------------------------------------------------------
+
+    async def run(self) -> AsyncGenerator[PipelineEvent, None]:
+        """Execute stages sequentially.  Yields PipelineEvent objects.
+
+        Dispatches to the appropriate execution mode method based on
+        ``self.execution_mode``.
+        """
         self.status = PipelineStatus.RUNNING
         self._running = True
         start_time = time.monotonic()
@@ -238,6 +614,7 @@ class SkillPipeline:
                 "total_stages": len(self.stages),
                 "model": self.model,
                 "token_budget": self.token_budget,
+                "execution_mode": self.execution_mode,
             },
         )
 
@@ -259,175 +636,20 @@ class SkillPipeline:
         except Exception as e:
             logger.warning("Failed to save initial pipeline run record: %s", e)
 
+        # Dispatch to the correct execution mode
+        mode_runners = {
+            "same_session": self._run_same_session,
+            "new_session": self._run_new_session,
+            "file_based": self._run_file_based,
+            "database": self._run_database,
+        }
+        runner = mode_runners.get(self.execution_mode, self._run_same_session)
+
         try:
-            # ONE session for the entire pipeline — all stages are messages
-            # in the same conversation, like doing it manually in the chat.
-            session_id = f"pipeline-{self.pipeline_id}"
-            session = WorkspaceChatSession(
-                session_id=session_id,
-                working_directory=self.working_directory,
-                context_mode="1m",
-                model=self.model,
-            )
-            self._current_session = session
+            async for event in runner(start_time):
+                yield event
 
-            # Start the session once
-            async for chunk in session.start():
-                chunk_type = chunk.get("type", "")
-                if chunk_type == "conversation_created":
-                    conv_id = chunk.get("conversation_id")
-                    try:
-                        from .workspace_database import update_conversation
-                        update_conversation(conv_id, title=f"Pipeline: {self.pipeline_id}", category="pipeline")
-                    except Exception:
-                        pass
-                elif chunk_type == "error":
-                    logger.warning("Pipeline session start error: %s", chunk.get("content"))
-
-            for stage in self.stages:
-                if not self._running:
-                    break
-
-                stage.status = StageStatus.RUNNING
-                stage.started_at = datetime.now(timezone.utc)
-                stage.session_id = session_id
-
-                yield PipelineEvent(
-                    event_type="pipeline_stage_started",
-                    data={
-                        "stage_index": stage.index,
-                        "label": stage.label,
-                        "session_id": session_id,
-                    },
-                )
-
-                prompt = self._build_stage_prompt(stage)
-                full_text = ""
-                context_tokens = 0
-                stage_start = time.monotonic()
-
-                try:
-                    # Send this stage's prompt as the next message in the conversation.
-                    # The agent has full context from all previous messages.
-                    async for chunk in session.send_message(prompt):
-                        if not self._running:
-                            break
-
-                        chunk_type = chunk.get("type", "")
-                        if chunk_type == "text":
-                            text = chunk.get("content", "")
-                            full_text += text
-                            stage.full_response = full_text
-                            yield PipelineEvent(
-                                event_type="pipeline_stage_text",
-                                data={"stage_index": stage.index, "text": text},
-                            )
-                        elif chunk_type == "token_usage":
-                            context_tokens = chunk.get("context_tokens", 0)
-                            output_tokens = chunk.get("output_tokens", 0)
-                            stage.tokens_used = context_tokens + output_tokens
-                            self.total_tokens = sum(s.tokens_used for s in self.stages)
-                            yield PipelineEvent(
-                                event_type="pipeline_token_usage",
-                                data={
-                                    "stage_index": stage.index,
-                                    "context_tokens": context_tokens,
-                                    "output_tokens": output_tokens,
-                                    "total_tokens": self.total_tokens,
-                                    "budget": self.token_budget,
-                                },
-                            )
-
-                    # Extract output based on mode
-                    if self.output_mode == "json":
-                        stage.output = self.extract_json_output(full_text)
-                        stage.full_response = full_text
-                    else:
-                        stage.output = full_text
-                        stage.full_response = full_text
-
-                    stage.status = StageStatus.COMPLETED
-                    stage.completed_at = datetime.now(timezone.utc)
-                    stage.duration_seconds = round(time.monotonic() - stage_start, 1)
-                    self.total_duration = round(time.monotonic() - start_time, 1)
-
-                    yield PipelineEvent(
-                        event_type="pipeline_stage_completed",
-                        data={
-                            "stage_index": stage.index,
-                            "label": stage.label,
-                            "tokens_used": stage.tokens_used,
-                            "duration_seconds": stage.duration_seconds,
-                            "output_length": len(full_text),
-                        },
-                    )
-
-                    # Persist stage output
-                    try:
-                        from .workspace_database import save_pipeline_stage_output
-                        save_pipeline_stage_output(
-                            pipeline_id=self.pipeline_id,
-                            stage_index=stage.index,
-                            label=stage.label,
-                            output_text=full_text,
-                            tokens_used=stage.tokens_used,
-                            duration_seconds=stage.duration_seconds,
-                            status=stage.status.value,
-                        )
-                    except Exception as e:
-                        logger.warning("Failed to persist stage %d output: %s", stage.index, e)
-
-                    # Log if context tokens are getting large
-                    if context_tokens > self.token_budget:
-                        logger.info(
-                            "Stage %d context tokens (%d) exceeded budget (%d).",
-                            stage.index, context_tokens, self.token_budget,
-                        )
-
-                except asyncio.CancelledError:
-                    stage.status = StageStatus.FAILED
-                    stage.error = "Cancelled"
-                    stage.completed_at = datetime.now(timezone.utc)
-                    stage.duration_seconds = round(time.monotonic() - stage_start, 1)
-                    yield PipelineEvent(
-                        event_type="pipeline_stage_failed",
-                        data={"stage_index": stage.index, "label": stage.label, "error": "Cancelled"},
-                    )
-                    break
-
-                except Exception as e:
-                    stage.status = StageStatus.FAILED
-                    stage.error = str(e)
-                    stage.completed_at = datetime.now(timezone.utc)
-                    stage.duration_seconds = round(time.monotonic() - stage_start, 1)
-                    logger.exception("Pipeline stage %d (%s) failed: %s", stage.index, stage.label, e)
-
-                    yield PipelineEvent(
-                        event_type="pipeline_stage_failed",
-                        data={"stage_index": stage.index, "label": stage.label, "error": str(e)},
-                    )
-
-                    # Persist failed stage
-                    try:
-                        from .workspace_database import save_pipeline_stage_output
-                        save_pipeline_stage_output(
-                            pipeline_id=self.pipeline_id,
-                            stage_index=stage.index,
-                            label=stage.label,
-                            output_text=full_text,
-                            tokens_used=stage.tokens_used,
-                            duration_seconds=stage.duration_seconds,
-                            status=stage.status.value,
-                            error=str(e),
-                        )
-                    except Exception as persist_err:
-                        logger.warning("Failed to persist failed stage %d: %s", stage.index, persist_err)
-
-                    # Stop the entire pipeline on stage failure
-                    self.status = PipelineStatus.FAILED
-                    break
-
-            # Determine final status
+            # Determine final status (if not already set by a failed stage)
             if not self._running and self.status != PipelineStatus.FAILED:
                 self.status = PipelineStatus.STOPPED
             elif self.status != PipelineStatus.FAILED:
@@ -442,7 +664,7 @@ class SkillPipeline:
                 data={"pipeline_id": self.pipeline_id, "error": str(e)},
             )
 
-        # Close the single session
+        # Close any lingering session
         if self._current_session:
             try:
                 await self._current_session.close()
@@ -567,6 +789,7 @@ class SkillPipeline:
             "model": self.model,
             "token_budget": self.token_budget,
             "output_mode": self.output_mode,
+            "execution_mode": self.execution_mode,
             "total_tokens": self.total_tokens,
             "total_duration": self.total_duration,
             "working_directory": self.working_directory,
@@ -631,6 +854,7 @@ async def create_pipeline(
     model: str = "opus",
     pipeline_id: Optional[str] = None,
     output_mode: str = "json",
+    execution_mode: str = "same_session",
 ) -> SkillPipeline:
     """Create a new skill pipeline.
 
@@ -642,6 +866,8 @@ async def create_pipeline(
         model: Model shorthand (``"opus"`` or ``"sonnet"``).
         pipeline_id: Optional custom pipeline ID.
         output_mode: ``"json"`` to extract JSON from responses, ``"text"`` for raw output.
+        execution_mode: How stages share context — ``"same_session"``, ``"new_session"``,
+            ``"file_based"``, or ``"database"``.
 
     Returns:
         The created SkillPipeline instance.
@@ -663,6 +889,7 @@ async def create_pipeline(
         model=model,
         pipeline_id=pipeline_id,
         output_mode=output_mode,
+        execution_mode=execution_mode,
     )
 
     with _pipeline_lock:

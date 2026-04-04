@@ -3166,6 +3166,7 @@ export interface PipelineStartRequest {
   token_budget: number
   model: string
   output_mode: string
+  execution_mode: string  // same_session | new_session | file_based | database
   stages: PipelineStageConfig[]
 }
 
@@ -3184,6 +3185,7 @@ export interface PipelineStageStatus {
 export interface PipelineStatusResponse {
   pipeline_id: string
   status: 'idle' | 'running' | 'completed' | 'failed' | 'stopped'
+  execution_mode?: string
   total_tokens: number
   token_budget: number
   total_duration: number

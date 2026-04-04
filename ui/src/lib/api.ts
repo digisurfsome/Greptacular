@@ -3176,6 +3176,8 @@ export interface PipelineStageStatus {
   output: string
   tokens_used: number
   duration_seconds: number
+  conversation_id?: number
+  session_id?: string
   error?: string
 }
 

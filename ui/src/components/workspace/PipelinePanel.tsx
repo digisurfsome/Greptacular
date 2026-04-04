@@ -453,6 +453,19 @@ export function PipelinePanel({
   const isRunning = status?.status === 'running'
   const isDone = status?.status === 'completed' || status?.status === 'failed' || status?.status === 'stopped'
 
+  // Get the conversation_id of the currently running (or most recently completed) stage
+  // so WorkspaceChat displays that conversation's output, token log, etc.
+  const pipelineConversationId: number | null = (() => {
+    if (!status?.stages) return null
+    // First try: find the running stage
+    const running = status.stages.find(s => s.status === 'running')
+    if (running?.conversation_id) return running.conversation_id
+    // Fallback: last completed stage
+    const completed = [...status.stages].reverse().find(s => s.status === 'completed')
+    if (completed?.conversation_id) return completed.conversation_id
+    return null
+  })()
+
   return (
     <div className="flex flex-col h-full bg-background">
       {/* Header — emerald gradient */}
@@ -460,6 +473,9 @@ export function PipelinePanel({
         <div className="flex items-center gap-2">
           <Workflow size={14} className="text-emerald-500" />
           <span className="text-xs font-bold tracking-wide text-foreground">SKILL PIPELINE</span>
+          {projectName && projectName !== 'New Pipeline' && (
+            <span className="text-[10px] text-muted-foreground">— {projectName}</span>
+          )}
           {status && (
             <span
               className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
@@ -817,7 +833,7 @@ export function PipelinePanel({
         {/* Right column: Embedded WorkspaceChat for streaming output, token tracking, and logging */}
         <div className="flex-1 flex flex-col overflow-hidden">
           <WorkspaceChat
-            conversationId={activeConversationId ?? null}
+            conversationId={pipelineConversationId ?? activeConversationId ?? null}
             onConversationCreated={onConversationCreated ?? (() => {})}
             workingDirectory={workingDirectory}
             pendingModel={pendingModel}
@@ -827,7 +843,10 @@ export function PipelinePanel({
             onWalkieTalkieLog={onWalkieTalkieLog}
             onStreamingChange={onStreamingChange}
             chatInputRef={chatInputRef}
-            panelLabel="Pipeline Output"
+            panelLabel={pipelineConversationId
+              ? `Pipeline — ${status?.stages.find(s => s.conversation_id === pipelineConversationId)?.label ?? 'Running'}`
+              : 'Pipeline Output'
+            }
           />
         </div>
       </div>

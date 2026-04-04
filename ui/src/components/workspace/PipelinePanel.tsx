@@ -24,7 +24,6 @@ import {
   ChevronRight,
   Download,
   Workflow,
-  Send,
   MessageSquare,
   FolderOpen,
   Save,
@@ -170,8 +169,6 @@ export function PipelinePanel({
   const [skills, setSkills] = useState<SkillSlot[]>([{ label: 'Skill 1', text: '' }])
   const [starting, setStarting] = useState(false)
   const [expandedOutput, setExpandedOutput] = useState<number | null>(null)
-  const [chatInput, setChatInput] = useState('')
-  const [sendingAnswer, setSendingAnswer] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // ---- Project state ----
@@ -401,19 +398,6 @@ export function PipelinePanel({
       console.error('Failed to force advance:', e)
     }
   }, [pipelineId])
-
-  const handleSendAnswer = useCallback(async () => {
-    if (!pipelineId || !chatInput.trim()) return
-    setSendingAnswer(true)
-    try {
-      await sendPipelineAnswer(pipelineId, chatInput.trim())
-      setChatInput('')
-    } catch (e) {
-      console.error('Failed to send answer:', e)
-    } finally {
-      setSendingAnswer(false)
-    }
-  }, [pipelineId, chatInput])
 
   const handleExport = useCallback(async () => {
     if (!pipelineId) return

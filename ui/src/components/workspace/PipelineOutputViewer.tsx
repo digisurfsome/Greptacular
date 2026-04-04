@@ -22,7 +22,6 @@ import {
   XCircle,
   Upload,
   X,
-  ChevronDown,
   Image,
   FileText,
 } from 'lucide-react'

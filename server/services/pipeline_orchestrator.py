@@ -375,52 +375,81 @@ class SkillPipeline:
                                 await asyncio.sleep(0.5)
 
                             if self._pending_answer and self._running:
-                                answer = self._pending_answer
+                                user_answer = self._pending_answer
                                 self._pending_answer = None
                                 self._waiting_for_answer = False
                                 self._waiting_question = None
 
-                                # Wrap the answer with instructions to produce full output
-                                wrapped_answer = (
-                                    f"Here are the user's answers:\n\n"
-                                    f"{answer}\n\n"
-                                    f"Now continue with the skill instructions. Use these answers to produce "
-                                    f"the complete structured output as specified in the Output Format section "
-                                    f"of the skill. Do NOT just acknowledge the answers — produce the full "
-                                    f"context_packet output with all required fields."
+                                # Close this session and restart the stage with answers baked in.
+                                # Mid-conversation send_message() doesn't give the agent enough
+                                # context to produce full output. A fresh session with the skill
+                                # prompt + answers works reliably.
+                                try:
+                                    await session.close()
+                                except Exception:
+                                    pass
+                                self._current_session = None
+
+                                # Build a new prompt with the answers included
+                                retry_prompt = (
+                                    f"{prompt}\n\n"
+                                    f"## User's Answers to Your Questions\n\n"
+                                    f"{user_answer}\n\n"
+                                    f"You already asked these questions and received the answers above. "
+                                    f"Do NOT ask them again. Use the answers to produce the complete "
+                                    f"structured output as specified in the Output Format section of "
+                                    f"your skill instructions."
                                 )
 
-                                # Send the wrapped answer and continue collecting
-                                async for ans_chunk in session.send_message(wrapped_answer):
-                                    ans_type = ans_chunk.get("type", "")
-                                    if ans_type == "text":
-                                        text = ans_chunk.get("content", "")
+                                # Create fresh session
+                                retry_session = WorkspaceChatSession(
+                                    session_id=f"pipeline-{self.pipeline_id}-stage-{stage.index}-retry",
+                                    working_directory=self.working_directory,
+                                    context_mode="1m",
+                                    model=self.model,
+                                )
+                                self._current_session = retry_session
+
+                                # Start the retry session
+                                async for chunk in retry_session.start():
+                                    if chunk.get("type") == "conversation_created":
+                                        stage.conversation_id = chunk.get("conversation_id")
+                                        try:
+                                            from .workspace_database import update_conversation
+                                            update_conversation(
+                                                stage.conversation_id,
+                                                title=f"Pipeline: Stage {stage.index} — {stage.label} (retry)",
+                                                category="pipeline",
+                                            )
+                                        except Exception:
+                                            pass
+
+                                # Send the full prompt with answers and collect response
+                                full_text = ""  # Reset — fresh session produces the real output
+                                async for retry_chunk in retry_session.send_message(retry_prompt):
+                                    rt = retry_chunk.get("type", "")
+                                    if rt == "text":
+                                        text = retry_chunk.get("content", "")
                                         full_text += text
+                                        stage.full_response = full_text
                                         yield PipelineEvent(
                                             event_type="pipeline_stage_text",
                                             data={"stage_index": stage.index, "text": text},
                                         )
-                                    elif ans_type == "agent_waiting":
-                                        # Agent asked another question — re-enter waiting
-                                        question = ans_chunk.get("question", "")
-                                        self._waiting_for_answer = True
-                                        self._waiting_question = question
-                                        self._answer_event.clear()
-                                        yield PipelineEvent(
-                                            event_type="pipeline_stage_waiting",
-                                            data={
-                                                "stage_index": stage.index,
-                                                "label": stage.label,
-                                                "question": question,
-                                            },
-                                        )
-                                        while not self._answer_event.is_set() and self._running:
-                                            await asyncio.sleep(0.5)
-                                    elif ans_type == "token_usage":
-                                        ctx = ans_chunk.get("context_tokens", 0)
-                                        out = ans_chunk.get("output_tokens", 0)
+                                    elif rt == "token_usage":
+                                        ctx = retry_chunk.get("context_tokens", 0)
+                                        out = retry_chunk.get("output_tokens", 0)
                                         stage.tokens_used = ctx + out
                                         self.total_tokens = sum(s.tokens_used for s in self.stages)
+
+                                # Close retry session
+                                try:
+                                    await retry_session.close()
+                                except Exception:
+                                    pass
+                                self._current_session = None
+                                # Skip the rest of the original send_message loop
+                                break
 
                             self._waiting_for_answer = False
                             self._waiting_question = None

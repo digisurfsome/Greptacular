@@ -176,7 +176,8 @@ async def start_session(req: StartSessionRequest):
         cmd.extend(["--model", req.model])
 
     # Output format for structured parsing
-    cmd.extend(["--output-format", "stream-json"])
+    # stream-json requires --verbose when used with -p (print mode)
+    cmd.extend(["--output-format", "stream-json", "--verbose"])
 
     # -p must come last with the prompt as its value
     if req.prompt:

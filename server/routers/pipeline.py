@@ -393,7 +393,10 @@ async def load_folder(body: FolderLoadRequest):
     subdirs = sorted([d for d in folder.iterdir() if d.is_dir()])
 
     for subdir in subdirs:
-        skill_file = subdir / "SKILL.md"
+        # Prefer SKILL-COMPLETE.md (has all references baked in), fall back to SKILL.md
+        skill_file = subdir / "SKILL-COMPLETE.md"
+        if not skill_file.is_file():
+            skill_file = subdir / "SKILL.md"
         if not skill_file.is_file():
             continue
         try:

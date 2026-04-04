@@ -340,6 +340,7 @@ class SkillPipeline:
                         if chunk_type == "text":
                             text = chunk.get("content", "")
                             full_text += text
+                            stage.full_response = full_text  # Keep live copy for force_advance
                             yield PipelineEvent(
                                 event_type="pipeline_stage_text",
                                 data={
@@ -607,6 +608,50 @@ class SkillPipeline:
             except Exception as e:
                 logger.warning("Error closing current session: %s", e)
             self._current_session = None
+
+    async def force_advance(self) -> dict:
+        """Force-advance to the next stage.
+
+        Closes the current session, marks the running stage as completed
+        with whatever output has been collected so far, and unblocks the
+        run loop so it moves to the next stage.
+        """
+        running_stage = next((s for s in self.stages if s.status == StageStatus.RUNNING), None)
+        if not running_stage:
+            return {"success": False, "message": "No running stage to advance from"}
+
+        logger.info(
+            "Force-advancing pipeline %s from stage %d (%s)",
+            self.pipeline_id, running_stage.index, running_stage.label,
+        )
+
+        # Close the current session to stop the SDK
+        if self._current_session:
+            try:
+                await self._current_session.close()
+            except Exception:
+                pass
+            self._current_session = None
+
+        # Mark stage as completed with whatever we have
+        running_stage.status = StageStatus.COMPLETED
+        running_stage.completed_at = datetime.now(timezone.utc)
+        if not running_stage.output and running_stage.full_response:
+            if self.output_mode == "json":
+                running_stage.output = self.extract_json_output(running_stage.full_response)
+            else:
+                running_stage.output = running_stage.full_response
+
+        # Clear waiting state
+        self._waiting_for_answer = False
+        self._waiting_question = None
+        self._answer_event.set()
+
+        return {
+            "success": True,
+            "message": f"Force-advanced from stage {running_stage.index} ({running_stage.label})",
+            "stage_index": running_stage.index,
+        }
 
     def get_status(self) -> dict:
         """Return full status dict suitable for API responses."""

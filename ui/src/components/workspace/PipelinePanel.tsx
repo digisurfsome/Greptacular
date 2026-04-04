@@ -30,6 +30,7 @@ import {
   Save,
   Copy,
   Trash2,
+  SkipForward,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PipelineSkillSlot } from './PipelineSkillSlot'
@@ -39,6 +40,7 @@ import type { PipelineStatusResponse, PipelineStageStatus, PipelineProject } fro
 import {
   startPipeline,
   stopPipeline,
+  forceAdvancePipeline,
   getPipelineStatus,
   exportPipelineOutputs,
   sendPipelineAnswer,
@@ -406,6 +408,20 @@ export function PipelinePanel({
     }
   }, [pipelineId])
 
+  const handleForceAdvance = useCallback(async () => {
+    if (!pipelineId) return
+    try {
+      const result = await forceAdvancePipeline(pipelineId)
+      if (result.success) {
+        // Refresh status immediately
+        const s = await getPipelineStatus(pipelineId)
+        setStatus(s)
+      }
+    } catch (e) {
+      console.error('Failed to force advance:', e)
+    }
+  }, [pipelineId])
+
   const handleSendAnswer = useCallback(async () => {
     if (!pipelineId || !chatInput.trim()) return
     setSendingAnswer(true)
@@ -727,15 +743,24 @@ export function PipelinePanel({
              * RUNNING MODE — monitor progress and view results
              * ============================================================ */
             <>
-              {/* Stop button */}
+              {/* Stop + Force Next buttons */}
               {isRunning && (
-                <Button
-                  onClick={handleStop}
-                  variant="outline"
-                  className="w-full text-xs gap-2"
-                >
-                  <Square size={14} /> Stop Pipeline
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={handleStop}
+                    variant="outline"
+                    className="flex-1 text-xs gap-2"
+                  >
+                    <Square size={14} /> Stop
+                  </Button>
+                  <Button
+                    onClick={handleForceAdvance}
+                    variant="outline"
+                    className="flex-1 text-xs gap-2 border-emerald-500/50 text-emerald-600 hover:bg-emerald-500/10"
+                  >
+                    <SkipForward size={14} /> Force Next
+                  </Button>
+                </div>
               )}
 
               {/* New pipeline button when done */}

@@ -3208,6 +3208,14 @@ export async function stopPipeline(pipelineId: string): Promise<void> {
   })
 }
 
+export async function forceAdvancePipeline(pipelineId: string): Promise<{ success: boolean; message: string }> {
+  return fetchJSON('/pipeline/force-advance', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pipeline_id: pipelineId }),
+  })
+}
+
 export async function getPipelineStatus(pipelineId: string): Promise<PipelineStatusResponse> {
   return fetchJSON(`/pipeline/status/${pipelineId}`)
 }

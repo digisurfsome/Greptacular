@@ -164,6 +164,24 @@ async def answer_pipeline(body: PipelineAnswerRequest):
     return {"success": True}
 
 
+@router.post("/force-advance")
+async def force_advance_pipeline(body: PipelineStopRequest):
+    """Force-advance the pipeline to the next stage.
+
+    Closes the current session, marks the running stage as completed
+    with whatever output has been collected, and lets the pipeline
+    continue to the next stage.
+    """
+    from ..services.pipeline_orchestrator import get_pipeline
+
+    pipeline = get_pipeline(body.pipeline_id)
+    if not pipeline:
+        raise HTTPException(status_code=404, detail="Pipeline not found")
+
+    result = await pipeline.force_advance()
+    return result
+
+
 @router.get("/status/{pipeline_id}")
 async def get_pipeline_status(pipeline_id: str):
     """Get the current status of a skill pipeline.

@@ -33,6 +33,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PipelineSkillSlot } from './PipelineSkillSlot'
+import { RepoSelector } from './RepoSelector'
 import { WorkspaceChat } from './WorkspaceChat'
 import type { WalkieTalkieLogEntry } from '@/lib/types'
 import type { PipelineStatusResponse, PipelineStageStatus, PipelineProject } from '@/lib/api'
@@ -56,6 +57,7 @@ import {
 
 interface PipelinePanelProps {
   workingDirectory: string | null
+  onWorkingDirectoryChange?: (path: string | null) => void
   onClose: () => void
   // WorkspaceChat props for embedded chat (all optional for graceful degradation)
   activeConversationId?: number | null
@@ -165,6 +167,7 @@ function PipelineStageCard({
 
 export function PipelinePanel({
   workingDirectory,
+  onWorkingDirectoryChange,
   onClose,
   activeConversationId,
   onConversationCreated,
@@ -565,21 +568,15 @@ export function PipelinePanel({
                 </div>
               </div>
 
-              {/* Working directory / repo */}
+              {/* Working directory / repo selector */}
               <div className="space-y-1">
                 <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-                  Working Directory
+                  Repository
                 </label>
-                {workingDirectory ? (
-                  <div className="flex items-center gap-1.5 h-7 rounded-md border border-border bg-muted/30 px-2 text-xs text-foreground">
-                    <FolderOpen size={12} className="text-emerald-500 flex-shrink-0" />
-                    <span className="truncate">{workingDirectory}</span>
-                  </div>
-                ) : (
-                  <div className="h-7 rounded-md border border-amber-500/50 bg-amber-500/10 px-2 flex items-center text-xs text-amber-600">
-                    Select a repo using the Repo button above
-                  </div>
-                )}
+                <RepoSelector
+                  selectedPath={workingDirectory}
+                  onSelect={(path) => onWorkingDirectoryChange?.(path || null)}
+                />
               </div>
 
               {/* Kickoff message */}

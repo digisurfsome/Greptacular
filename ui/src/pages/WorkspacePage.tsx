@@ -664,6 +664,7 @@ export function WorkspacePage(): React.JSX.Element {
           <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
             <PipelinePanel
               workingDirectory={workingDirectory}
+              onWorkingDirectoryChange={setWorkingDirectory}
               onClose={() => setShowPipeline(false)}
               activeConversationId={activeConversationId}
               onConversationCreated={handleConversationCreated}

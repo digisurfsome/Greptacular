@@ -309,6 +309,14 @@ class SkillPipeline:
                         chunk_type = chunk.get("type", "")
                         if chunk_type == "conversation_created":
                             stage.conversation_id = chunk.get("conversation_id")
+                            # Name the conversation after the pipeline + stage
+                            if stage.conversation_id:
+                                try:
+                                    from .workspace_database import update_conversation
+                                    conv_title = f"Pipeline: Stage {stage.index} — {stage.label}"
+                                    update_conversation(stage.conversation_id, title=conv_title, category="pipeline")
+                                except Exception as title_err:
+                                    logger.warning("Failed to set conversation title: %s", title_err)
                         elif chunk_type == "error":
                             logger.warning(
                                 "Stage %d (%s) start error: %s",

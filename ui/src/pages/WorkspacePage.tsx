@@ -666,24 +666,6 @@ export function WorkspacePage(): React.JSX.Element {
               workingDirectory={workingDirectory}
               onWorkingDirectoryChange={setWorkingDirectory}
               onClose={() => setShowPipeline(false)}
-              activeConversationId={activeConversationId}
-              onConversationCreated={handleConversationCreated}
-              chatInputRef={chatInputRef}
-              pendingModel={pendingModel}
-              pendingContextMode={pendingContextMode}
-              pendingEffort={pendingEffort}
-              provider={activeProvider}
-              onWalkieTalkieLog={setWalkieTalkieLog}
-              onStreamingChange={(streaming) => {
-                if (activeConversationId != null) {
-                  setStreamingIds(prev => {
-                    const next = new Set(prev)
-                    if (streaming) next.add(activeConversationId)
-                    else next.delete(activeConversationId)
-                    return next
-                  })
-                }
-              }}
             />
           </div>
         ) : splitView ? (

@@ -34,8 +34,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PipelineSkillSlot } from './PipelineSkillSlot'
-import { WorkspaceChat } from './WorkspaceChat'
-import type { WalkieTalkieLogEntry } from '@/lib/types'
+import { PipelineOutputViewer } from './PipelineOutputViewer'
 import type { PipelineStatusResponse, PipelineStageStatus, PipelineProject } from '@/lib/api'
 import {
   startPipeline,
@@ -60,16 +59,6 @@ interface PipelinePanelProps {
   workingDirectory: string | null
   onWorkingDirectoryChange?: (path: string | null) => void
   onClose: () => void
-  // WorkspaceChat props for embedded chat (all optional for graceful degradation)
-  activeConversationId?: number | null
-  onConversationCreated?: (id: number) => void
-  chatInputRef?: React.RefObject<HTMLTextAreaElement | null>
-  pendingModel?: string
-  pendingContextMode?: '1m' | '200k'
-  pendingEffort?: 'low' | 'medium' | 'high'
-  provider?: 'claude' | 'codex' | 'gemini'
-  onWalkieTalkieLog?: (log: WalkieTalkieLogEntry[]) => void
-  onStreamingChange?: (isStreaming: boolean) => void
 }
 
 interface SkillSlot {
@@ -170,15 +159,6 @@ export function PipelinePanel({
   workingDirectory,
   onWorkingDirectoryChange,
   onClose,
-  activeConversationId,
-  onConversationCreated,
-  chatInputRef,
-  pendingModel,
-  pendingContextMode,
-  pendingEffort,
-  provider,
-  onWalkieTalkieLog,
-  onStreamingChange,
 }: PipelinePanelProps): React.JSX.Element {
   // ---- State ----
   const [pipelineId, setPipelineId] = useState<string | null>(null)
@@ -470,19 +450,6 @@ export function PipelinePanel({
   // ---- Derived state ----
   const isRunning = status?.status === 'running'
   const isDone = status?.status === 'completed' || status?.status === 'failed' || status?.status === 'stopped'
-
-  // Get the conversation_id of the currently running (or most recently completed) stage
-  // so WorkspaceChat displays that conversation's output, token log, etc.
-  const pipelineConversationId: number | null = (() => {
-    if (!status?.stages) return null
-    // First try: find the running stage
-    const running = status.stages.find(s => s.status === 'running')
-    if (running?.conversation_id) return running.conversation_id
-    // Fallback: last completed stage
-    const completed = [...status.stages].reverse().find(s => s.status === 'completed')
-    if (completed?.conversation_id) return completed.conversation_id
-    return null
-  })()
 
   return (
     <div className="flex flex-col h-full bg-background">
@@ -809,37 +776,11 @@ export function PipelinePanel({
                 ))}
               </div>
 
-              {/* Agent question / chat input */}
-              {isRunning && (
-                <div className="space-y-2 border border-border rounded-lg p-2 bg-muted/20">
-                  {status?.waiting_for_answer && status?.waiting_question && (
-                    <div className="flex items-start gap-2 p-2 bg-amber-500/10 rounded border border-amber-500/20">
-                      <MessageSquare size={14} className="text-amber-600 mt-0.5 flex-shrink-0" />
-                      <div className="text-xs text-amber-800 dark:text-amber-200">
-                        <p className="font-semibold text-[10px] uppercase tracking-wider mb-1">Agent Question:</p>
-                        <p>{status.waiting_question}</p>
-                      </div>
-                    </div>
-                  )}
-                  <div className="flex gap-1.5">
-                    <input
-                      type="text"
-                      value={chatInput}
-                      onChange={(e) => setChatInput(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendAnswer() } }}
-                      placeholder={status?.waiting_for_answer ? 'Type your answer...' : 'Send message to agent...'}
-                      className="flex-1 h-7 rounded-md border border-border bg-input px-2 text-xs text-foreground placeholder:text-muted-foreground/60 outline-none ring-ring focus:ring-1"
-                      disabled={sendingAnswer}
-                    />
-                    <Button
-                      size="sm"
-                      className="h-7 px-2 bg-emerald-600 hover:bg-emerald-700 text-white"
-                      onClick={handleSendAnswer}
-                      disabled={!chatInput.trim() || sendingAnswer}
-                    >
-                      {sendingAnswer ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
-                    </Button>
-                  </div>
+              {/* Agent waiting indicator (answers go through the output viewer on the right) */}
+              {isRunning && status?.waiting_for_answer && (
+                <div className="flex items-center gap-2 p-2 bg-amber-500/10 rounded border border-amber-500/20 text-xs text-amber-600">
+                  <MessageSquare size={12} />
+                  Agent is waiting — answer in the panel on the right
                 </div>
               )}
 
@@ -873,20 +814,11 @@ export function PipelinePanel({
           )}
         </div>
 
-        {/* Right column: Embedded WorkspaceChat for streaming output, token tracking, and logging */}
+        {/* Right column: Pipeline output viewer — no WorkspaceChat, no hanging */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          <WorkspaceChat
-            conversationId={activeConversationId ?? null}
-            onConversationCreated={onConversationCreated ?? (() => {})}
-            workingDirectory={workingDirectory}
-            pendingModel={pendingModel}
-            pendingContextMode={pendingContextMode}
-            pendingEffort={pendingEffort}
-            provider={provider}
-            onWalkieTalkieLog={onWalkieTalkieLog}
-            onStreamingChange={onStreamingChange}
-            chatInputRef={chatInputRef}
-            panelLabel="Pipeline Output"
+          <PipelineOutputViewer
+            pipelineId={pipelineId}
+            status={status}
           />
         </div>
       </div>

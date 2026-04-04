@@ -41,7 +41,6 @@ import {
   forceAdvancePipeline,
   getPipelineStatus,
   exportPipelineOutputs,
-  sendPipelineAnswer,
   listPipelineProjects,
   createPipelineProject,
   updatePipelineProject,

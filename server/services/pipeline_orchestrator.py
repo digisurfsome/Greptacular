@@ -200,53 +200,19 @@ class SkillPipeline:
 
         if stage.index == 0:
             return (
-                f"[SKILL PIPELINE — Stage 0: {stage.label}]\n\n"
-                f"You are executing stage 0 of a {total}-stage skill pipeline.\n\n"
-                f"## Your Skill Instructions\n\n"
                 f"{stage.skill_text}\n\n"
-                f"## User's Kickoff Message\n\n"
+                f"## User's Input\n\n"
                 f"{self.kickoff_message}\n\n"
-                f"## Rules\n"
-                f"1. Follow the skill instructions above completely.\n"
-                f"2. Your full response IS the output for this stage.\n"
-                f"3. Be thorough — your output feeds directly into the next stage.\n"
-                f"4. IMPORTANT: If the skill instructions say to ask the user questions,\n"
-                f"   you MUST ask them. Use [WAITING]...[/WAITING] tags around your questions.\n"
-                f"   The pipeline will pause and let the user answer. Example:\n"
-                f"   [WAITING]\n"
-                f"   1. What is your app idea?\n"
-                f"   2. Who is your target audience?\n"
-                f"   [/WAITING]\n"
-                f"5. After all questions are answered and your output is complete,\n"
-                f"   just stop. The pipeline advances to the next stage automatically.\n"
-                f"   Do NOT say 'send me the next stage' or similar.\n"
             )
 
         # Stages 1+: include previous stage output
         prev = self.stages[stage.index - 1]
         return (
-            f"[SKILL PIPELINE — Stage {stage.index}: {stage.label}]\n\n"
-            f"You are executing stage {stage.index} of a {total}-stage skill pipeline.\n\n"
-            f"## Your Skill Instructions\n\n"
             f"{stage.skill_text}\n\n"
             f"## Output From Previous Stage ({prev.label})\n\n"
-            f'<previous_stage_output stage="{stage.index - 1}" label="{prev.label}">\n'
+            f"<previous_stage_output>\n"
             f"{prev.output}\n"
             f"</previous_stage_output>\n\n"
-            f"## Rules\n"
-            f"1. Follow the skill instructions above completely.\n"
-            f"2. Your full response IS the output for this stage.\n"
-            f"3. Be thorough — your output feeds directly into the next stage.\n"
-            f"4. IMPORTANT: If the skill instructions say to ask the user questions,\n"
-            f"   you MUST ask them. Use [WAITING]...[/WAITING] tags around your questions.\n"
-            f"   The pipeline will pause and let the user answer. Example:\n"
-            f"   [WAITING]\n"
-            f"   1. What is your app idea?\n"
-            f"   2. Who is your target audience?\n"
-            f"   [/WAITING]\n"
-            f"5. After all questions are answered and your output is complete,\n"
-            f"   just stop. The pipeline advances to the next stage automatically.\n"
-            f"   Do NOT say 'send me the next stage' or similar.\n"
         )
 
     async def run(self) -> AsyncGenerator[PipelineEvent, None]:
@@ -337,7 +303,8 @@ class SkillPipeline:
                                 stage.index, stage.label, chunk.get("content"),
                             )
 
-                    # Send the skill prompt and collect the response
+                    # Send the skill prompt and collect the full response.
+                    # Pure prompt chain — no [WAITING], no interaction, just run and collect.
                     async for chunk in session.send_message(prompt):
                         if not self._running:
                             break
@@ -346,93 +313,11 @@ class SkillPipeline:
                         if chunk_type == "text":
                             text = chunk.get("content", "")
                             full_text += text
-                            stage.full_response = full_text  # Keep live copy for force_advance
+                            stage.full_response = full_text
                             yield PipelineEvent(
                                 event_type="pipeline_stage_text",
-                                data={
-                                    "stage_index": stage.index,
-                                    "text": text,
-                                },
+                                data={"stage_index": stage.index, "text": text},
                             )
-                        elif chunk_type == "agent_waiting":
-                            # Agent is asking the user a question — pause and wait
-                            question = chunk.get("question", "")
-                            self._waiting_for_answer = True
-                            self._waiting_question = question
-                            self._answer_event.clear()
-
-                            yield PipelineEvent(
-                                event_type="pipeline_stage_waiting",
-                                data={
-                                    "stage_index": stage.index,
-                                    "label": stage.label,
-                                    "question": question,
-                                },
-                            )
-
-                            # Block until user provides an answer or pipeline is stopped
-                            while not self._answer_event.is_set() and self._running:
-                                await asyncio.sleep(0.5)
-
-                            if self._pending_answer and self._running:
-                                user_answer = self._pending_answer
-                                self._pending_answer = None
-                                self._waiting_for_answer = False
-                                self._waiting_question = None
-
-                                # Send answer to the SAME session — no retry, no fresh session.
-                                # The agent continues the conversation naturally.
-                                async for ans_chunk in session.send_message(user_answer):
-                                    ans_type = ans_chunk.get("type", "")
-                                    if ans_type == "text":
-                                        text = ans_chunk.get("content", "")
-                                        full_text += text
-                                        stage.full_response = full_text
-                                        yield PipelineEvent(
-                                            event_type="pipeline_stage_text",
-                                            data={"stage_index": stage.index, "text": text},
-                                        )
-                                    elif ans_type == "agent_waiting":
-                                        # Agent asked another question
-                                        q2 = ans_chunk.get("question", "")
-                                        self._waiting_for_answer = True
-                                        self._waiting_question = q2
-                                        self._answer_event.clear()
-                                        yield PipelineEvent(
-                                            event_type="pipeline_stage_waiting",
-                                            data={"stage_index": stage.index, "label": stage.label, "question": q2},
-                                        )
-                                        while not self._answer_event.is_set() and self._running:
-                                            await asyncio.sleep(0.5)
-                                        if self._pending_answer and self._running:
-                                            a2 = self._pending_answer
-                                            self._pending_answer = None
-                                            self._waiting_for_answer = False
-                                            self._waiting_question = None
-                                            # Send follow-up answer
-                                            async for a2_chunk in session.send_message(a2):
-                                                a2t = a2_chunk.get("type", "")
-                                                if a2t == "text":
-                                                    t2 = a2_chunk.get("content", "")
-                                                    full_text += t2
-                                                    stage.full_response = full_text
-                                                    yield PipelineEvent(
-                                                        event_type="pipeline_stage_text",
-                                                        data={"stage_index": stage.index, "text": t2},
-                                                    )
-                                                elif a2t == "token_usage":
-                                                    ctx = a2_chunk.get("context_tokens", 0)
-                                                    out = a2_chunk.get("output_tokens", 0)
-                                                    stage.tokens_used = ctx + out
-                                    elif ans_type == "token_usage":
-                                        ctx = ans_chunk.get("context_tokens", 0)
-                                        out = ans_chunk.get("output_tokens", 0)
-                                        stage.tokens_used = ctx + out
-                                        self.total_tokens = sum(s.tokens_used for s in self.stages)
-
-                            self._waiting_for_answer = False
-                            self._waiting_question = None
-
                         elif chunk_type == "token_usage":
                             context_tokens = chunk.get("context_tokens", 0)
                             output_tokens = chunk.get("output_tokens", 0)
@@ -448,12 +333,7 @@ class SkillPipeline:
                                     "budget": self.token_budget,
                                 },
                             )
-
-                    # Clear any pending waiting state so the pipeline doesn't hang
-                    # (agent may have used [WAITING] at end of response)
-                    self._waiting_for_answer = False
-                    self._waiting_question = None
-                    self._answer_event.set()
+                        # Ignore agent_waiting — just let the agent continue
 
                     # Close the session after stage completes
                     try:
@@ -510,31 +390,7 @@ class SkillPipeline:
                             stage.index, context_tokens, self.token_budget,
                         )
 
-                    # Interactive stages (0 and 1) pause here and wait for the user
-                    # to click "Force Next" before advancing. Stages 2+ auto-advance.
-                    if stage.index <= 1:
-                        self._waiting_for_answer = True
-                        self._waiting_question = (
-                            f"Stage {stage.index} ({stage.label}) complete. "
-                            f"Review the output, then click 'Force Next' to advance to Stage {stage.index + 1}."
-                        )
-                        self._answer_event.clear()
-
-                        yield PipelineEvent(
-                            event_type="pipeline_stage_waiting",
-                            data={
-                                "stage_index": stage.index,
-                                "label": stage.label,
-                                "question": self._waiting_question,
-                            },
-                        )
-
-                        # Block until user clicks Force Next (or stops the pipeline)
-                        while not self._answer_event.is_set() and self._running:
-                            await asyncio.sleep(0.5)
-
-                        self._waiting_for_answer = False
-                        self._waiting_question = None
+                    # All stages auto-advance. No pausing, no interaction.
 
                 except asyncio.CancelledError:
                     stage.status = StageStatus.FAILED

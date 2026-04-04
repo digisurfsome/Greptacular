@@ -24,6 +24,8 @@ import {
   ChevronRight,
   Download,
   Workflow,
+  Send,
+  MessageSquare,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PipelineSkillSlot } from './PipelineSkillSlot'
@@ -33,6 +35,7 @@ import {
   stopPipeline,
   getPipelineStatus,
   exportPipelineOutputs,
+  sendPipelineAnswer,
 } from '@/lib/api'
 
 // ---------------------------------------------------------------------------
@@ -148,6 +151,8 @@ export function PipelinePanel({ workingDirectory, onClose }: PipelinePanelProps)
   const [skills, setSkills] = useState<SkillSlot[]>([{ label: 'Skill 1', text: '' }])
   const [starting, setStarting] = useState(false)
   const [expandedOutput, setExpandedOutput] = useState<number | null>(null)
+  const [chatInput, setChatInput] = useState('')
+  const [sendingAnswer, setSendingAnswer] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // ---- Poll for status when a pipeline is running (same pattern as SwarmPanel) ----
@@ -212,6 +217,19 @@ export function PipelinePanel({ workingDirectory, onClose }: PipelinePanelProps)
       console.error('Failed to stop pipeline:', e)
     }
   }, [pipelineId])
+
+  const handleSendAnswer = useCallback(async () => {
+    if (!pipelineId || !chatInput.trim()) return
+    setSendingAnswer(true)
+    try {
+      await sendPipelineAnswer(pipelineId, chatInput.trim())
+      setChatInput('')
+    } catch (e) {
+      console.error('Failed to send answer:', e)
+    } finally {
+      setSendingAnswer(false)
+    }
+  }, [pipelineId, chatInput])
 
   const handleExport = useCallback(async () => {
     if (!pipelineId) return
@@ -436,6 +454,40 @@ export function PipelinePanel({ workingDirectory, onClose }: PipelinePanelProps)
                 />
               ))}
             </div>
+
+            {/* Agent question / chat input */}
+            {isRunning && (
+              <div className="space-y-2 border border-border rounded-lg p-2 bg-muted/20">
+                {status?.waiting_for_answer && status?.waiting_question && (
+                  <div className="flex items-start gap-2 p-2 bg-amber-500/10 rounded border border-amber-500/20">
+                    <MessageSquare size={14} className="text-amber-600 mt-0.5 flex-shrink-0" />
+                    <div className="text-xs text-amber-800 dark:text-amber-200">
+                      <p className="font-semibold text-[10px] uppercase tracking-wider mb-1">Agent Question:</p>
+                      <p>{status.waiting_question}</p>
+                    </div>
+                  </div>
+                )}
+                <div className="flex gap-1.5">
+                  <input
+                    type="text"
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendAnswer() } }}
+                    placeholder={status?.waiting_for_answer ? 'Type your answer...' : 'Send message to agent...'}
+                    className="flex-1 h-7 rounded-md border border-border bg-input px-2 text-xs text-foreground placeholder:text-muted-foreground/60 outline-none ring-ring focus:ring-1"
+                    disabled={sendingAnswer}
+                  />
+                  <Button
+                    size="sm"
+                    className="h-7 px-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+                    onClick={handleSendAnswer}
+                    disabled={!chatInput.trim() || sendingAnswer}
+                  >
+                    {sendingAnswer ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+                  </Button>
+                </div>
+              </div>
+            )}
 
             {/* Download button when pipeline is finished */}
             {isDone && (

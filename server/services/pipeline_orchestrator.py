@@ -130,6 +130,10 @@ class SkillPipeline:
         # Internal state
         self._running = False
         self._current_session = None
+        self._waiting_for_answer = False
+        self._waiting_question: Optional[str] = None
+        self._answer_event: asyncio.Event = asyncio.Event()
+        self._pending_answer: Optional[str] = None
 
         logger.info(
             "SkillPipeline created: id=%s, stages=%d, model=%s, token_budget=%d",
@@ -270,6 +274,67 @@ class SkillPipeline:
                                     "text": text,
                                 },
                             )
+                        elif chunk_type == "agent_waiting":
+                            # Agent is asking the user a question — pause and wait
+                            question = chunk.get("question", "")
+                            self._waiting_for_answer = True
+                            self._waiting_question = question
+                            self._answer_event.clear()
+
+                            yield PipelineEvent(
+                                event_type="pipeline_stage_waiting",
+                                data={
+                                    "stage_index": stage.index,
+                                    "label": stage.label,
+                                    "question": question,
+                                },
+                            )
+
+                            # Block until user provides an answer or pipeline is stopped
+                            while not self._answer_event.is_set() and self._running:
+                                await asyncio.sleep(0.5)
+
+                            if self._pending_answer and self._running:
+                                answer = self._pending_answer
+                                self._pending_answer = None
+                                self._waiting_for_answer = False
+                                self._waiting_question = None
+
+                                # Send the answer to the session and continue collecting
+                                async for ans_chunk in session.send_message(answer):
+                                    ans_type = ans_chunk.get("type", "")
+                                    if ans_type == "text":
+                                        text = ans_chunk.get("content", "")
+                                        full_text += text
+                                        yield PipelineEvent(
+                                            event_type="pipeline_stage_text",
+                                            data={"stage_index": stage.index, "text": text},
+                                        )
+                                    elif ans_type == "agent_waiting":
+                                        # Agent asked another question — re-enter waiting
+                                        question = ans_chunk.get("question", "")
+                                        self._waiting_for_answer = True
+                                        self._waiting_question = question
+                                        self._answer_event.clear()
+                                        yield PipelineEvent(
+                                            event_type="pipeline_stage_waiting",
+                                            data={
+                                                "stage_index": stage.index,
+                                                "label": stage.label,
+                                                "question": question,
+                                            },
+                                        )
+                                        while not self._answer_event.is_set() and self._running:
+                                            await asyncio.sleep(0.5)
+                                    elif ans_type == "token_usage":
+                                        ctx = ans_chunk.get("context_tokens", 0)
+                                        out = ans_chunk.get("output_tokens", 0)
+                                        stage.tokens_used = ctx + out
+                                        self.total_tokens = sum(s.tokens_used for s in self.stages)
+
+                            self._waiting_for_answer = False
+                            self._waiting_question = None
+
                         elif chunk_type == "token_usage":
                             context_tokens = chunk.get("context_tokens", 0)
                             output_tokens = chunk.get("output_tokens", 0)
@@ -427,6 +492,24 @@ class SkillPipeline:
         except Exception as e:
             logger.warning("Failed to update pipeline run record: %s", e)
 
+    async def inject_answer(self, answer: str):
+        """Inject a user answer when the pipeline is waiting for input.
+
+        Also works as a general-purpose walkie-talkie message to the
+        currently running stage.
+        """
+        if self._waiting_for_answer:
+            self._pending_answer = answer
+            self._answer_event.set()
+            logger.info("Pipeline %s: answer injected (waiting mode)", self.pipeline_id)
+        elif self._current_session:
+            # Walkie-talkie mode: inject into running session
+            try:
+                async for chunk in self._current_session.send_message(answer):
+                    pass  # Response consumed; stage loop handles output
+            except Exception as e:
+                logger.warning("Pipeline %s: walkie-talkie inject failed: %s", self.pipeline_id, e)
+
     async def stop(self):
         """Stop the pipeline and close any active session."""
         logger.info("Stopping pipeline %s", self.pipeline_id)
@@ -453,6 +536,8 @@ class SkillPipeline:
             "kickoff_message": self.kickoff_message,
             "created_at": self.created_at.isoformat(),
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "waiting_for_answer": self._waiting_for_answer,
+            "waiting_question": self._waiting_question,
             "stages": [
                 {
                     "index": s.index,

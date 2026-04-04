@@ -213,6 +213,10 @@ class SkillPipeline:
                 f"4. If the skill instructions tell you to ask the user questions, DO ask them.\n"
                 f"   Wrap each question block in [WAITING]...[/WAITING] tags so the pipeline\n"
                 f"   pauses and lets the user respond before you continue.\n"
+                f"5. Do NOT say 'send me the next stage' or wait for the next prompt.\n"
+                f"   The pipeline advances automatically. Just produce your output and stop.\n"
+                f"6. Do NOT use [WAITING] tags at the END of your response. Only use them\n"
+                f"   mid-response when you need user answers before continuing.\n"
             )
 
         # Stages 1+: include previous stage output
@@ -233,6 +237,10 @@ class SkillPipeline:
             f"4. If the skill instructions tell you to ask the user questions, DO ask them.\n"
             f"   Wrap each question block in [WAITING]...[/WAITING] tags so the pipeline\n"
             f"   pauses and lets the user respond before you continue.\n"
+            f"5. Do NOT say 'send me the next stage' or wait for the next prompt.\n"
+            f"   The pipeline advances automatically. Just produce your output and stop.\n"
+            f"6. Do NOT use [WAITING] tags at the END of your response. Only use them\n"
+            f"   mid-response when you need user answers before continuing.\n"
         )
 
     async def run(self) -> AsyncGenerator[PipelineEvent, None]:
@@ -415,6 +423,12 @@ class SkillPipeline:
                                     "budget": self.token_budget,
                                 },
                             )
+
+                    # Clear any pending waiting state so the pipeline doesn't hang
+                    # (agent may have used [WAITING] at end of response)
+                    self._waiting_for_answer = False
+                    self._waiting_question = None
+                    self._answer_event.set()
 
                     # Close the session after stage completes
                     try:

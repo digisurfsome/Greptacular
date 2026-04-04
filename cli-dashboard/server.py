@@ -156,8 +156,8 @@ async def start_session(req: StartSessionRequest):
     session_id = str(uuid.uuid4())[:8]
     name = req.session_name or f"session-{session_id}"
 
-    # Build claude command
-    cmd = ["claude"]
+    # Build claude command — use --print for non-interactive mode with --output-format
+    cmd = ["claude", "--print"]
     if req.project_dir:
         cmd.extend(["--project-dir", req.project_dir])
     if req.model:
@@ -174,14 +174,29 @@ async def start_session(req: StartSessionRequest):
     env["CLI_DASHBOARD_SESSION_ID"] = session_id
     env["CLI_DASHBOARD_URL"] = "http://localhost:9111"
 
+    cmd_str = " ".join(cmd)
+    log_msg = f"[{session_id}] Launching: {cmd_str}"
+    print(log_msg)
+
     # Launch the process
-    process = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=env,
-        bufsize=1,
-    )
+    try:
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=env,
+            bufsize=1,
+        )
+    except FileNotFoundError:
+        error_msg = "ERROR: 'claude' command not found. Is Claude Code CLI installed and on PATH?"
+        print(f"[{session_id}] {error_msg}")
+        await broadcast({
+            "type": "log",
+            "session_id": session_id,
+            "text": error_msg,
+            "level": "error"
+        })
+        return {"error": error_msg}
 
     sessions[session_id] = {
         "id": session_id,
@@ -189,6 +204,7 @@ async def start_session(req: StartSessionRequest):
         "project_dir": req.project_dir,
         "prompt": req.prompt,
         "model": req.model,
+        "cmd": cmd_str,
         "pid": process.pid,
         "process": process,
         "status": "running",
@@ -197,12 +213,14 @@ async def start_session(req: StartSessionRequest):
         "tokens_out": 0,
         "messages": [{"role": "user", "content": req.prompt, "timestamp": datetime.now().isoformat()}],
         "tool_calls": [],
+        "logs": [f"CMD: {cmd_str}", f"PID: {process.pid}"],
         "event_count": 0,
         "last_event": None,
     }
 
-    # Start async reader for stdout
+    # Start async readers for stdout AND stderr
     asyncio.create_task(_read_process_output(session_id, process))
+    asyncio.create_task(_read_process_stderr(session_id, process))
 
     await broadcast({
         "type": "session_started",
@@ -212,9 +230,27 @@ async def start_session(req: StartSessionRequest):
     return {"session_id": session_id, "pid": process.pid, "status": "running"}
 
 
+async def _add_log(session_id: str, text: str, level: str = "info"):
+    """Add a log entry and broadcast it."""
+    if session_id in sessions:
+        sessions[session_id]["logs"].append(text)
+        # Keep max 500 log lines
+        if len(sessions[session_id]["logs"]) > 500:
+            sessions[session_id]["logs"] = sessions[session_id]["logs"][-500:]
+    print(f"[{session_id}] {text}")
+    await broadcast({
+        "type": "log",
+        "session_id": session_id,
+        "text": text,
+        "level": level,
+        "timestamp": datetime.now().isoformat()
+    })
+
+
 async def _read_process_output(session_id: str, process):
     """Read Claude Code's stream-json output and broadcast."""
     loop = asyncio.get_event_loop()
+    await _add_log(session_id, "stdout reader started")
     try:
         while True:
             line = await loop.run_in_executor(None, process.stdout.readline)
@@ -224,6 +260,8 @@ async def _read_process_output(session_id: str, process):
                 text = line.decode("utf-8", errors="replace").strip()
                 if not text:
                     continue
+
+                await _add_log(session_id, f"OUT: {text[:200]}")
 
                 # Try to parse as JSON (stream-json format)
                 try:
@@ -255,27 +293,71 @@ async def _read_process_output(session_id: str, process):
                         "data": data
                     })
                 except json.JSONDecodeError:
-                    # Raw text output
+                    # Raw text output — still show it as a message
+                    if session_id in sessions:
+                        sessions[session_id]["messages"].append({
+                            "role": "assistant",
+                            "content": text[:2000],
+                            "timestamp": datetime.now().isoformat()
+                        })
                     await broadcast({
                         "type": "output",
                         "session_id": session_id,
                         "text": text
                     })
             except Exception as e:
-                await broadcast({
-                    "type": "error",
-                    "session_id": session_id,
-                    "text": str(e)
-                })
+                await _add_log(session_id, f"ERROR reading stdout: {e}", "error")
     finally:
-        # Process ended
+        # Wait for process to finish and get exit code
+        exit_code = process.wait()
+        await _add_log(session_id, f"Process exited with code: {exit_code}",
+                       "error" if exit_code != 0 else "info")
+
         if session_id in sessions:
-            sessions[session_id]["status"] = "completed"
+            sessions[session_id]["status"] = "completed" if exit_code == 0 else "error"
+            sessions[session_id]["exit_code"] = exit_code
             sessions[session_id]["ended_at"] = datetime.now().isoformat()
+
+            # If process failed with no messages, add the exit info as a message
+            msgs = sessions[session_id]["messages"]
+            if len(msgs) <= 1:  # Only the user prompt
+                sessions[session_id]["messages"].append({
+                    "role": "system",
+                    "content": f"Process exited with code {exit_code}. Check the log panel for details.",
+                    "timestamp": datetime.now().isoformat()
+                })
+
         await broadcast({
             "type": "session_ended",
             "session_id": session_id
         })
+
+
+async def _read_process_stderr(session_id: str, process):
+    """Read stderr from the CLI process and broadcast as logs."""
+    loop = asyncio.get_event_loop()
+    try:
+        while True:
+            line = await loop.run_in_executor(None, process.stderr.readline)
+            if not line:
+                break
+            text = line.decode("utf-8", errors="replace").strip()
+            if text:
+                await _add_log(session_id, f"ERR: {text}", "error")
+                # Also add errors as system messages so they show in chat
+                if session_id in sessions:
+                    sessions[session_id]["messages"].append({
+                        "role": "system",
+                        "content": text,
+                        "timestamp": datetime.now().isoformat()
+                    })
+                await broadcast({
+                    "type": "output",
+                    "session_id": session_id,
+                    "text": text
+                })
+    except Exception as e:
+        await _add_log(session_id, f"ERROR reading stderr: {e}", "error")
 
 
 @app.post("/api/sessions/{session_id}/stop")

@@ -377,6 +377,29 @@
       border-bottom: 1px solid rgba(48, 54, 61, 0.5);
     }
 
+    /* ─── Log Panel ─────────────────────────────────────────────── */
+    .log-panel {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px;
+      margin-bottom: 12px;
+      max-height: 300px;
+      overflow-y: auto;
+      font-size: 11px;
+      line-height: 1.6;
+    }
+
+    .log-line {
+      font-family: var(--font);
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .log-line.error { color: var(--accent-red); }
+    .log-line.info { color: var(--text-dim); }
+    .log-line.cmd { color: var(--accent-yellow); }
+
     /* ─── New Session Modal ─────────────────────────────────────── */
     .modal-overlay {
       display: none;
@@ -554,6 +577,9 @@
         </div>
       </div>
 
+      <h2>Process Log</h2>
+      <div class="log-panel" id="logPanel"></div>
+
       <h2>Tool Calls</h2>
       <ul class="tool-log" id="toolLog"></ul>
 
@@ -662,6 +688,10 @@
 
         case 'output':
           handleOutput(data.session_id, data.text);
+          break;
+
+        case 'log':
+          addLogLine(data.session_id, data.text, data.level);
           break;
 
         case 'hook_event':
@@ -806,6 +836,7 @@
       renderChat();
       updateTokenPanel();
       renderToolLog();
+      renderLogPanel();
     }
 
     function renderChat() {
@@ -860,6 +891,41 @@
       const li = document.createElement('li');
       li.innerHTML = `<span class="tool-name">${escHtml(name)}</span> ${new Date().toLocaleTimeString()}`;
       el.insertBefore(li, el.firstChild);
+    }
+
+    function addLogLine(sessionId, text, level) {
+      // Store in session
+      if (sessions[sessionId]) {
+        sessions[sessionId].logs = sessions[sessionId].logs || [];
+        sessions[sessionId].logs.push({ text, level });
+      }
+      // Render if active
+      if (activeSessionId === sessionId) {
+        const el = document.getElementById('logPanel');
+        const div = document.createElement('div');
+        div.className = `log-line ${level || 'info'}`;
+        if (text.startsWith('CMD:')) div.className = 'log-line cmd';
+        div.textContent = text;
+        el.appendChild(div);
+        el.scrollTop = el.scrollHeight;
+      }
+    }
+
+    function renderLogPanel() {
+      const el = document.getElementById('logPanel');
+      el.innerHTML = '';
+      const s = sessions[activeSessionId];
+      if (!s) return;
+      (s.logs || []).forEach(log => {
+        const div = document.createElement('div');
+        const text = typeof log === 'string' ? log : log.text;
+        const level = typeof log === 'string' ? 'info' : (log.level || 'info');
+        div.className = `log-line ${level}`;
+        if (text.startsWith('CMD:')) div.className = 'log-line cmd';
+        div.textContent = text;
+        el.appendChild(div);
+      });
+      el.scrollTop = el.scrollHeight;
     }
 
     function addEventToStream(evt) {

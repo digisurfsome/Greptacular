@@ -18,12 +18,14 @@ Key concepts:
 import asyncio
 import json
 import logging
+import os
 import threading
 import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
+from pathlib import Path
 from typing import AsyncGenerator, Optional
 
 logger = logging.getLogger(__name__)
@@ -105,6 +107,9 @@ class SkillPipeline:
             handle(event)
     """
 
+    # Valid execution modes for the pipeline
+    VALID_EXECUTION_MODES = ("same_session", "new_session", "file_based", "database")
+
     def __init__(
         self,
         working_directory: str,
@@ -114,6 +119,7 @@ class SkillPipeline:
         model: str = "opus",
         pipeline_id: Optional[str] = None,
         output_mode: str = "json",
+        execution_mode: str = "same_session",
     ):
         self.pipeline_id = pipeline_id or f"pipeline-{uuid.uuid4().hex[:8]}"
         self.working_directory = working_directory
@@ -122,6 +128,7 @@ class SkillPipeline:
         self.token_budget = token_budget
         self.model = model
         self.output_mode = output_mode
+        self.execution_mode = execution_mode if execution_mode in self.VALID_EXECUTION_MODES else "same_session"
         self.status = PipelineStatus.IDLE
         self.created_at = datetime.now(timezone.utc)
         self.completed_at: Optional[datetime] = None
@@ -139,12 +146,13 @@ class SkillPipeline:
         self._pending_answer: Optional[str] = None
 
         logger.info(
-            "SkillPipeline created: id=%s, stages=%d, model=%s, token_budget=%d, output_mode=%s",
+            "SkillPipeline created: id=%s, stages=%d, model=%s, token_budget=%d, output_mode=%s, execution_mode=%s",
             self.pipeline_id,
             len(stages),
             model,
             token_budget,
             output_mode,
+            self.execution_mode,
         )
 
     @staticmethod

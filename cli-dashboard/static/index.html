@@ -1,0 +1,977 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CLI Dashboard</title>
+  <style>
+    /* ─── Reset & Theme ─────────────────────────────────────────── */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #0d1117;
+      --bg-card: #161b22;
+      --bg-input: #0d1117;
+      --border: #30363d;
+      --border-bright: #58a6ff;
+      --text: #e6edf3;
+      --text-dim: #8b949e;
+      --text-bright: #ffffff;
+      --accent: #58a6ff;
+      --accent-green: #3fb950;
+      --accent-yellow: #d29922;
+      --accent-red: #f85149;
+      --accent-purple: #bc8cff;
+      --font: 'SF Mono', 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 13px;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ─── Layout ────────────────────────────────────────────────── */
+    .app {
+      display: grid;
+      grid-template-rows: 48px 1fr;
+      grid-template-columns: 280px 1fr 300px;
+      height: 100vh;
+    }
+
+    .header {
+      grid-column: 1 / -1;
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 16px;
+    }
+
+    .header h1 {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .header .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent-green);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .header .stats {
+      margin-left: auto;
+      display: flex;
+      gap: 20px;
+      color: var(--text-dim);
+      font-size: 12px;
+    }
+
+    .header .stats span {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    /* ─── Sidebar ───────────────────────────────────────────────── */
+    .sidebar {
+      background: var(--bg-card);
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 12px;
+    }
+
+    .sidebar h2 {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: var(--text-dim);
+      margin-bottom: 12px;
+      padding: 0 4px;
+    }
+
+    .session-card {
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .session-card:hover {
+      border-color: var(--border-bright);
+      background: rgba(88, 166, 255, 0.04);
+    }
+
+    .session-card.active {
+      border-color: var(--accent);
+      background: rgba(88, 166, 255, 0.08);
+    }
+
+    .session-card .name {
+      font-weight: 600;
+      font-size: 13px;
+      margin-bottom: 4px;
+    }
+
+    .session-card .meta {
+      font-size: 11px;
+      color: var(--text-dim);
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .session-card .status-badge {
+      font-size: 10px;
+      padding: 1px 6px;
+      border-radius: 3px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .status-running { background: rgba(63, 185, 80, 0.15); color: var(--accent-green); }
+    .status-paused { background: rgba(210, 153, 34, 0.15); color: var(--accent-yellow); }
+    .status-stopped { background: rgba(248, 81, 73, 0.15); color: var(--accent-red); }
+    .status-completed { background: rgba(188, 140, 255, 0.15); color: var(--accent-purple); }
+
+    .new-session-btn {
+      width: 100%;
+      padding: 10px;
+      background: var(--accent);
+      color: var(--bg);
+      border: none;
+      border-radius: 6px;
+      font-family: var(--font);
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      margin-bottom: 12px;
+      transition: opacity 0.15s;
+    }
+
+    .new-session-btn:hover { opacity: 0.85; }
+
+    /* ─── Main Chat Area ────────────────────────────────────────── */
+    .main {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .chat-header {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .chat-header .session-title {
+      font-weight: 700;
+      font-size: 14px;
+    }
+
+    .chat-header .controls {
+      margin-left: auto;
+      display: flex;
+      gap: 6px;
+    }
+
+    .ctrl-btn {
+      padding: 4px 10px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--bg-card);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .ctrl-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .ctrl-btn.danger:hover { border-color: var(--accent-red); color: var(--accent-red); }
+
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .msg {
+      max-width: 85%;
+      padding: 10px 14px;
+      border-radius: 8px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 13px;
+    }
+
+    .msg.user {
+      align-self: flex-end;
+      background: var(--accent);
+      color: var(--bg);
+      border-bottom-right-radius: 2px;
+    }
+
+    .msg.assistant {
+      align-self: flex-start;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-bottom-left-radius: 2px;
+    }
+
+    .msg.system {
+      align-self: center;
+      background: rgba(210, 153, 34, 0.1);
+      border: 1px solid rgba(210, 153, 34, 0.3);
+      color: var(--accent-yellow);
+      font-size: 11px;
+      text-align: center;
+      max-width: 70%;
+    }
+
+    .msg .tool-badge {
+      display: inline-block;
+      background: rgba(188, 140, 255, 0.15);
+      color: var(--accent-purple);
+      padding: 1px 6px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .msg .timestamp {
+      display: block;
+      font-size: 10px;
+      color: var(--text-dim);
+      margin-top: 4px;
+      text-align: right;
+    }
+
+    .chat-input-area {
+      padding: 12px 16px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 8px;
+    }
+
+    .chat-input {
+      flex: 1;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 13px;
+      padding: 10px 14px;
+      outline: none;
+      resize: none;
+      min-height: 42px;
+      max-height: 120px;
+    }
+
+    .chat-input:focus { border-color: var(--accent); }
+
+    .send-btn {
+      padding: 10px 16px;
+      background: var(--accent);
+      color: var(--bg);
+      border: none;
+      border-radius: 6px;
+      font-family: var(--font);
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .send-btn:hover { opacity: 0.85; }
+    .send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ─── Right Panel ───────────────────────────────────────────── */
+    .panel {
+      background: var(--bg-card);
+      border-left: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 12px;
+    }
+
+    .panel h2 {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: var(--text-dim);
+      margin-bottom: 12px;
+      padding: 0 4px;
+    }
+
+    .token-display {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+
+    .token-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 6px;
+      font-size: 12px;
+    }
+
+    .token-row .label { color: var(--text-dim); }
+    .token-row .value { font-weight: 700; color: var(--accent-green); }
+    .token-row .value.out { color: var(--accent-purple); }
+    .token-row .value.total { color: var(--accent); }
+
+    .tool-log {
+      list-style: none;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .tool-log li {
+      padding: 4px 8px;
+      border-left: 2px solid var(--accent-purple);
+      margin-bottom: 4px;
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+
+    .tool-log li .tool-name {
+      color: var(--accent-purple);
+      font-weight: 600;
+    }
+
+    .event-stream {
+      list-style: none;
+      max-height: 250px;
+      overflow-y: auto;
+    }
+
+    .event-stream li {
+      padding: 3px 0;
+      font-size: 10px;
+      color: var(--text-dim);
+      border-bottom: 1px solid rgba(48, 54, 61, 0.5);
+    }
+
+    /* ─── New Session Modal ─────────────────────────────────────── */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-overlay.show { display: flex; }
+
+    .modal {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 24px;
+      width: 480px;
+      max-width: 90vw;
+    }
+
+    .modal h3 {
+      font-size: 16px;
+      margin-bottom: 16px;
+    }
+
+    .modal label {
+      display: block;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-dim);
+      margin-bottom: 4px;
+      margin-top: 12px;
+    }
+
+    .modal input, .modal textarea, .modal select {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 13px;
+      padding: 8px 10px;
+      outline: none;
+    }
+
+    .modal input:focus, .modal textarea:focus { border-color: var(--accent); }
+
+    .modal textarea { min-height: 80px; resize: vertical; }
+
+    .modal .actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 20px;
+      justify-content: flex-end;
+    }
+
+    .modal .actions button {
+      padding: 8px 16px;
+      border-radius: 4px;
+      font-family: var(--font);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid var(--border);
+    }
+
+    .modal .btn-cancel {
+      background: transparent;
+      color: var(--text);
+    }
+
+    .modal .btn-launch {
+      background: var(--accent);
+      color: var(--bg);
+      border-color: var(--accent);
+    }
+
+    /* ─── Empty State ───────────────────────────────────────────── */
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: var(--text-dim);
+      gap: 12px;
+    }
+
+    .empty-state .icon { font-size: 48px; opacity: 0.3; }
+    .empty-state p { font-size: 14px; }
+    .empty-state .hint { font-size: 11px; opacity: 0.6; }
+
+    /* ─── Scrollbar ─────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+
+    /* ─── Responsive ────────────────────────────────────────────── */
+    @media (max-width: 900px) {
+      .app {
+        grid-template-columns: 1fr;
+      }
+      .sidebar, .panel { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="status-dot" id="connStatus"></div>
+      <h1>CLI Dashboard</h1>
+      <span style="color: var(--text-dim); font-size: 11px;">Zero SDK / Pure CLI</span>
+      <div class="stats">
+        <div>Sessions: <span id="totalSessions">0</span></div>
+        <div>Tokens In: <span id="totalTokensIn">0</span></div>
+        <div>Tokens Out: <span id="totalTokensOut">0</span></div>
+      </div>
+    </header>
+
+    <!-- Sidebar: Sessions List -->
+    <aside class="sidebar">
+      <button class="new-session-btn" onclick="showNewSessionModal()">+ New Session</button>
+      <h2>Sessions</h2>
+      <div id="sessionList"></div>
+    </aside>
+
+    <!-- Main Chat Area -->
+    <main class="main" id="mainArea">
+      <div class="empty-state" id="emptyState">
+        <div class="icon">&#9655;</div>
+        <p>No session selected</p>
+        <p class="hint">Start a new session or select one from the sidebar</p>
+      </div>
+
+      <div id="chatView" style="display: none; flex: 1; display: none; flex-direction: column; height: 100%;">
+        <div class="chat-header">
+          <span class="session-title" id="chatTitle">Session</span>
+          <span class="status-badge status-running" id="chatStatus">running</span>
+          <div class="controls">
+            <button class="ctrl-btn" onclick="pauseActive()" id="btnPause">Pause</button>
+            <button class="ctrl-btn" onclick="resumeActive()" id="btnResume" style="display:none">Resume</button>
+            <button class="ctrl-btn danger" onclick="stopActive()">Stop</button>
+          </div>
+        </div>
+        <div class="chat-messages" id="chatMessages"></div>
+        <div class="chat-input-area">
+          <textarea class="chat-input" id="chatInput" placeholder="Send a message..." rows="1"
+                    onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage()}"></textarea>
+          <button class="send-btn" onclick="sendMessage()">Send</button>
+        </div>
+      </div>
+    </main>
+
+    <!-- Right Panel -->
+    <aside class="panel">
+      <h2>Token Usage</h2>
+      <div class="token-display" id="tokenDisplay">
+        <div class="token-row">
+          <span class="label">Input</span>
+          <span class="value" id="panelTokensIn">0</span>
+        </div>
+        <div class="token-row">
+          <span class="label">Output</span>
+          <span class="value out" id="panelTokensOut">0</span>
+        </div>
+        <div class="token-row" style="border-top: 1px solid var(--border); padding-top: 6px; margin-top: 2px;">
+          <span class="label">Total</span>
+          <span class="value total" id="panelTokensTotal">0</span>
+        </div>
+      </div>
+
+      <h2>Tool Calls</h2>
+      <ul class="tool-log" id="toolLog"></ul>
+
+      <h2 style="margin-top: 16px;">Event Stream</h2>
+      <ul class="event-stream" id="eventStream"></ul>
+    </aside>
+  </div>
+
+  <!-- New Session Modal -->
+  <div class="modal-overlay" id="newSessionModal">
+    <div class="modal">
+      <h3>Launch New Session</h3>
+      <label>Session Name</label>
+      <input type="text" id="inputName" placeholder="my-feature">
+      <label>Project Directory</label>
+      <input type="text" id="inputDir" placeholder="/path/to/project">
+      <label>Model</label>
+      <select id="inputModel">
+        <option value="sonnet">Sonnet</option>
+        <option value="opus">Opus</option>
+        <option value="haiku">Haiku</option>
+      </select>
+      <label>Prompt</label>
+      <textarea id="inputPrompt" placeholder="What should the agent do?"></textarea>
+      <div class="actions">
+        <button class="btn-cancel" onclick="hideNewSessionModal()">Cancel</button>
+        <button class="btn-launch" onclick="launchSession()">Launch</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ─── State ─────────────────────────────────────────────────────
+    let ws = null;
+    let sessions = {};
+    let activeSessionId = null;
+    let reconnectAttempts = 0;
+
+    // ─── WebSocket ─────────────────────────────────────────────────
+    function connect() {
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(`${proto}//${location.host}/ws`);
+
+      ws.onopen = () => {
+        document.getElementById('connStatus').style.background = 'var(--accent-green)';
+        reconnectAttempts = 0;
+      };
+
+      ws.onclose = () => {
+        document.getElementById('connStatus').style.background = 'var(--accent-red)';
+        // Auto-reconnect with backoff
+        const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 10000);
+        reconnectAttempts++;
+        setTimeout(connect, delay);
+      };
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        handleEvent(data);
+      };
+    }
+
+    function handleEvent(data) {
+      switch(data.type) {
+        case 'init':
+          sessions = data.sessions || {};
+          renderSessions();
+          // Show recent events
+          (data.recent_events || []).forEach(evt => addEventToStream(evt));
+          break;
+
+        case 'session_started':
+          sessions[data.session.id] = data.session;
+          renderSessions();
+          selectSession(data.session.id);
+          break;
+
+        case 'session_ended':
+        case 'session_stopped':
+          if (sessions[data.session_id]) {
+            sessions[data.session_id].status = data.type === 'session_ended' ? 'completed' : 'stopped';
+            renderSessions();
+            if (activeSessionId === data.session_id) renderChat();
+          }
+          break;
+
+        case 'session_paused':
+          if (sessions[data.session_id]) {
+            sessions[data.session_id].status = 'paused';
+            renderSessions();
+            if (activeSessionId === data.session_id) renderChat();
+          }
+          break;
+
+        case 'session_resumed':
+          if (sessions[data.session_id]) {
+            sessions[data.session_id].status = 'running';
+            renderSessions();
+            if (activeSessionId === data.session_id) renderChat();
+          }
+          break;
+
+        case 'stream':
+          handleStreamData(data.session_id, data.data);
+          break;
+
+        case 'output':
+          handleOutput(data.session_id, data.text);
+          break;
+
+        case 'hook_event':
+          addEventToStream(data.event);
+          handleHookEvent(data.event);
+          break;
+
+        case 'user_message':
+          if (sessions[data.session_id]) {
+            if (activeSessionId === data.session_id) renderChat();
+          }
+          break;
+      }
+
+      updateStats();
+    }
+
+    function handleStreamData(sessionId, data) {
+      if (!sessions[sessionId]) return;
+      const s = sessions[sessionId];
+      const msgType = data.type || '';
+
+      // Extract text content from assistant messages
+      if (msgType === 'assistant' && data.message) {
+        let content = '';
+        (data.message.content || []).forEach(block => {
+          if (block.type === 'text') content += block.text;
+        });
+        if (content) {
+          s.messages = s.messages || [];
+          s.messages.push({
+            role: 'assistant',
+            content: content.substring(0, 2000),
+            timestamp: new Date().toISOString()
+          });
+        }
+
+        // Token usage
+        const usage = data.message.usage || {};
+        if (usage.input_tokens) s.tokens_in = (s.tokens_in || 0) + usage.input_tokens;
+        if (usage.output_tokens) s.tokens_out = (s.tokens_out || 0) + usage.output_tokens;
+      }
+
+      // Tool use events
+      if (msgType === 'tool_use' || (data.message && data.message.content)) {
+        (data.message?.content || []).forEach(block => {
+          if (block.type === 'tool_use') {
+            s.tool_calls = s.tool_calls || [];
+            s.tool_calls.push({
+              tool: block.name,
+              timestamp: new Date().toISOString()
+            });
+            if (activeSessionId === sessionId) addToolToLog(block.name);
+          }
+        });
+      }
+
+      if (activeSessionId === sessionId) renderChat();
+    }
+
+    function handleOutput(sessionId, text) {
+      if (!sessions[sessionId]) return;
+      const s = sessions[sessionId];
+      s.messages = s.messages || [];
+
+      // Append to last assistant message or create new
+      const last = s.messages[s.messages.length - 1];
+      if (last && last.role === 'assistant' && !last.finalized) {
+        last.content += '\n' + text;
+      } else {
+        s.messages.push({
+          role: 'assistant',
+          content: text,
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      if (activeSessionId === sessionId) {
+        renderChat();
+        scrollToBottom();
+      }
+    }
+
+    function handleHookEvent(evt) {
+      const sid = evt.session_id;
+      if (!sid || !sessions[sid]) return;
+      const s = sessions[sid];
+
+      if (evt.tokens_in) s.tokens_in = (s.tokens_in || 0) + evt.tokens_in;
+      if (evt.tokens_out) s.tokens_out = (s.tokens_out || 0) + evt.tokens_out;
+
+      if (evt.event_type === 'tool_use' && evt.tool_name) {
+        s.tool_calls = s.tool_calls || [];
+        s.tool_calls.push({ tool: evt.tool_name, timestamp: evt.received_at });
+        if (activeSessionId === sid) addToolToLog(evt.tool_name);
+      }
+
+      if (evt.event_type === 'message' && evt.message) {
+        s.messages = s.messages || [];
+        s.messages.push({
+          role: 'assistant',
+          content: evt.message.substring(0, 2000),
+          timestamp: evt.received_at
+        });
+        if (activeSessionId === sid) {
+          renderChat();
+          scrollToBottom();
+        }
+      }
+
+      if (activeSessionId === sid) updateTokenPanel();
+    }
+
+    // ─── Rendering ─────────────────────────────────────────────────
+    function renderSessions() {
+      const el = document.getElementById('sessionList');
+      const ids = Object.keys(sessions).sort((a, b) => {
+        return (sessions[b].started_at || '').localeCompare(sessions[a].started_at || '');
+      });
+
+      el.innerHTML = ids.map(id => {
+        const s = sessions[id];
+        const active = id === activeSessionId ? ' active' : '';
+        const status = s.status || 'unknown';
+        return `
+          <div class="session-card${active}" onclick="selectSession('${id}')">
+            <div class="name">${escHtml(s.name || id)}</div>
+            <div class="meta">
+              <span class="status-badge status-${status}">${status}</span>
+              <span>${formatTokens(s.tokens_in || 0)} / ${formatTokens(s.tokens_out || 0)}</span>
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    function selectSession(id) {
+      activeSessionId = id;
+      document.getElementById('emptyState').style.display = 'none';
+      const chatView = document.getElementById('chatView');
+      chatView.style.display = 'flex';
+      renderSessions();
+      renderChat();
+      updateTokenPanel();
+      renderToolLog();
+    }
+
+    function renderChat() {
+      const s = sessions[activeSessionId];
+      if (!s) return;
+
+      document.getElementById('chatTitle').textContent = s.name || activeSessionId;
+      const statusEl = document.getElementById('chatStatus');
+      statusEl.textContent = s.status;
+      statusEl.className = `status-badge status-${s.status}`;
+
+      // Show/hide pause/resume
+      document.getElementById('btnPause').style.display = s.status === 'running' ? '' : 'none';
+      document.getElementById('btnResume').style.display = s.status === 'paused' ? '' : 'none';
+
+      const messagesEl = document.getElementById('chatMessages');
+      const msgs = s.messages || [];
+      messagesEl.innerHTML = msgs.map(m => {
+        const time = m.timestamp ? new Date(m.timestamp).toLocaleTimeString() : '';
+        return `
+          <div class="msg ${m.role}">
+            ${escHtml(m.content)}
+            ${time ? `<span class="timestamp">${time}</span>` : ''}
+          </div>`;
+      }).join('');
+
+      scrollToBottom();
+    }
+
+    function updateTokenPanel() {
+      const s = sessions[activeSessionId];
+      if (!s) return;
+      const tin = s.tokens_in || 0;
+      const tout = s.tokens_out || 0;
+      document.getElementById('panelTokensIn').textContent = formatTokens(tin);
+      document.getElementById('panelTokensOut').textContent = formatTokens(tout);
+      document.getElementById('panelTokensTotal').textContent = formatTokens(tin + tout);
+    }
+
+    function renderToolLog() {
+      const s = sessions[activeSessionId];
+      if (!s) return;
+      const el = document.getElementById('toolLog');
+      const tools = (s.tool_calls || []).slice(-50).reverse();
+      el.innerHTML = tools.map(t =>
+        `<li><span class="tool-name">${escHtml(t.tool)}</span> ${new Date(t.timestamp).toLocaleTimeString()}</li>`
+      ).join('');
+    }
+
+    function addToolToLog(name) {
+      const el = document.getElementById('toolLog');
+      const li = document.createElement('li');
+      li.innerHTML = `<span class="tool-name">${escHtml(name)}</span> ${new Date().toLocaleTimeString()}`;
+      el.insertBefore(li, el.firstChild);
+    }
+
+    function addEventToStream(evt) {
+      const el = document.getElementById('eventStream');
+      const li = document.createElement('li');
+      li.textContent = `[${evt.event_type || 'event'}] ${evt.tool_name || evt.message?.substring(0, 50) || ''}`;
+      el.insertBefore(li, el.firstChild);
+      // Keep max 100
+      while (el.children.length > 100) el.removeChild(el.lastChild);
+    }
+
+    function updateStats() {
+      let totalIn = 0, totalOut = 0, count = 0;
+      Object.values(sessions).forEach(s => {
+        count++;
+        totalIn += s.tokens_in || 0;
+        totalOut += s.tokens_out || 0;
+      });
+      document.getElementById('totalSessions').textContent = count;
+      document.getElementById('totalTokensIn').textContent = formatTokens(totalIn);
+      document.getElementById('totalTokensOut').textContent = formatTokens(totalOut);
+    }
+
+    // ─── Actions ───────────────────────────────────────────────────
+    function sendMessage() {
+      const input = document.getElementById('chatInput');
+      const text = input.value.trim();
+      if (!text || !activeSessionId) return;
+
+      ws.send(JSON.stringify({
+        command: 'send_message',
+        session_id: activeSessionId,
+        text: text
+      }));
+
+      // Optimistic UI
+      const s = sessions[activeSessionId];
+      s.messages = s.messages || [];
+      s.messages.push({
+        role: 'user',
+        content: text,
+        timestamp: new Date().toISOString()
+      });
+      renderChat();
+      input.value = '';
+    }
+
+    function pauseActive() {
+      if (!activeSessionId) return;
+      ws.send(JSON.stringify({ command: 'pause', session_id: activeSessionId }));
+    }
+
+    function resumeActive() {
+      if (!activeSessionId) return;
+      ws.send(JSON.stringify({ command: 'resume', session_id: activeSessionId }));
+    }
+
+    function stopActive() {
+      if (!activeSessionId) return;
+      ws.send(JSON.stringify({ command: 'stop', session_id: activeSessionId }));
+    }
+
+    // ─── Modal ─────────────────────────────────────────────────────
+    function showNewSessionModal() {
+      document.getElementById('newSessionModal').classList.add('show');
+      document.getElementById('inputName').focus();
+    }
+
+    function hideNewSessionModal() {
+      document.getElementById('newSessionModal').classList.remove('show');
+    }
+
+    function launchSession() {
+      const params = {
+        session_name: document.getElementById('inputName').value,
+        project_dir: document.getElementById('inputDir').value,
+        model: document.getElementById('inputModel').value,
+        prompt: document.getElementById('inputPrompt').value,
+      };
+
+      ws.send(JSON.stringify({ command: 'start', params }));
+      hideNewSessionModal();
+
+      // Clear inputs
+      document.getElementById('inputName').value = '';
+      document.getElementById('inputPrompt').value = '';
+    }
+
+    // ─── Utils ─────────────────────────────────────────────────────
+    function escHtml(str) {
+      if (!str) return '';
+      return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    function formatTokens(n) {
+      if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+      if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+      return String(n);
+    }
+
+    function scrollToBottom() {
+      const el = document.getElementById('chatMessages');
+      if (el) el.scrollTop = el.scrollHeight;
+    }
+
+    // ─── Init ──────────────────────────────────────────────────────
+    connect();
+
+    // Handle Escape for modal
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') hideNewSessionModal();
+    });
+  </script>
+</body>
+</html>

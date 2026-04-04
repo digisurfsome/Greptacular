@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(git *)",
+      "Bash(curl *)"
+    ]
+  },
+  "hooks": {
+    "afterToolUse": [
+      {
+        "command": "bash /path/to/cli-dashboard/hooks/on_tool_use.sh \"$TOOL_NAME\""
+      }
+    ],
+    "notification": [
+      {
+        "command": "bash /path/to/cli-dashboard/hooks/on_notification.sh \"$MESSAGE\""
+      }
+    ]
+  }
+}

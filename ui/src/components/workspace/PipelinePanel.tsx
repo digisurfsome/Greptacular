@@ -178,6 +178,24 @@ export function PipelinePanel({
   const [showFolderInput, setShowFolderInput] = useState(false)
   const [folderPath, setFolderPath] = useState('')
 
+  // ---- Stage Complete append ----
+  const [appendEnabled, setAppendEnabled] = useState(true)
+  const [appendText, setAppendText] = useState(`## Pipeline Integration — Stage Completion
+
+After completing ALL steps and producing your complete JSON output:
+
+1. Verify your confidence score meets the gate threshold (≥ 70)
+2. Verify the complete JSON output meets the contract
+3. Output the completion marker on its own line as the ABSOLUTE LAST thing:
+
+[STAGE_COMPLETE]
+
+Rules:
+- [STAGE_COMPLETE] MUST be the absolute last thing — nothing after it
+- Complete JSON output MUST come BEFORE the marker
+- Never output [STAGE_COMPLETE] if confidence score is below 70
+- If you need to ask questions, wait for answers first, produce final output, THEN output the marker`)
+
   // ---- Poll for status when a pipeline is running (same pattern as SwarmPanel) ----
   useEffect(() => {
     if (!pipelineId) return
@@ -367,7 +385,13 @@ export function PipelinePanel({
         model,
         output_mode: outputMode,
         execution_mode: executionMode,
-        stages: filledSkills.map((s) => ({ label: s.label, skill_text: s.text })),
+        stages: filledSkills.map((s, i) => ({
+          label: s.label,
+          // Append the [STAGE_COMPLETE] instructions to all skills except the last
+          skill_text: (appendEnabled && appendText.trim() && i < filledSkills.length - 1)
+            ? s.text + '\n\n' + appendText.trim()
+            : s.text,
+        })),
       })
       setPipelineId(result.pipeline_id)
     } catch (e) {
@@ -626,6 +650,38 @@ export function PipelinePanel({
                   <option value="file_based">File Based (disk handoff)</option>
                   <option value="database">Database (DB handoff)</option>
                 </select>
+              </div>
+
+              {/* Stage Complete append */}
+              <div className="space-y-1 border border-border rounded-lg p-2 bg-muted/10">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                    Auto-Append to Skills
+                  </label>
+                  <button
+                    onClick={() => setAppendEnabled(!appendEnabled)}
+                    className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                      appendEnabled
+                        ? 'bg-emerald-500/20 text-emerald-600'
+                        : 'bg-muted text-muted-foreground'
+                    }`}
+                  >
+                    {appendEnabled ? 'ON' : 'OFF'}
+                  </button>
+                </div>
+                {appendEnabled && (
+                  <>
+                    <p className="text-[9px] text-muted-foreground">
+                      Appended to every skill except the last. Contains [STAGE_COMPLETE] instructions.
+                    </p>
+                    <textarea
+                      value={appendText}
+                      onChange={(e) => setAppendText(e.target.value)}
+                      className="w-full resize-y min-h-[60px] max-h-[200px] rounded-md border border-border bg-input px-2 py-1.5 text-[10px] font-mono text-foreground outline-none ring-ring focus:ring-1"
+                      rows={4}
+                    />
+                  </>
+                )}
               </div>
 
               {/* Skills list */}

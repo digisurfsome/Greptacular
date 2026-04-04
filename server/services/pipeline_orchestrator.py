@@ -706,23 +706,49 @@ class SkillPipeline:
         except Exception as e:
             logger.warning("Failed to update pipeline run record: %s", e)
 
-    async def inject_answer(self, answer: str):
-        """Inject a user answer when the pipeline is waiting for input.
+    async def inject_answer(self, answer: str) -> dict:
+        """Send a user message to the currently running stage's session.
 
-        Also works as a general-purpose walkie-talkie message to the
-        currently running stage.
+        The message is sent to the same conversation the stage is using.
+        The agent's response is collected and appended to the stage's output.
+        Returns the response text so the frontend can display it.
         """
-        if self._waiting_for_answer:
-            self._pending_answer = answer
-            self._answer_event.set()
-            logger.info("Pipeline %s: answer injected (waiting mode)", self.pipeline_id)
-        elif self._current_session:
-            # Walkie-talkie mode: inject into running session
-            try:
-                async for chunk in self._current_session.send_message(answer):
-                    pass  # Response consumed; stage loop handles output
-            except Exception as e:
-                logger.warning("Pipeline %s: walkie-talkie inject failed: %s", self.pipeline_id, e)
+        if not self._current_session:
+            return {"success": False, "response": "", "error": "No active session"}
+
+        # Find the running stage
+        running_stage = next((s for s in self.stages if s.status == StageStatus.RUNNING), None)
+        if not running_stage:
+            # Try the most recently completed stage (pipeline might be between stages)
+            running_stage = next((s for s in reversed(self.stages) if s.status == StageStatus.COMPLETED), None)
+
+        response_text = ""
+        try:
+            async for chunk in self._current_session.send_message(answer):
+                chunk_type = chunk.get("type", "")
+                if chunk_type == "text":
+                    text = chunk.get("content", "")
+                    response_text += text
+                    if running_stage:
+                        running_stage.full_response += text
+                elif chunk_type == "token_usage":
+                    if running_stage:
+                        ctx = chunk.get("context_tokens", 0)
+                        out = chunk.get("output_tokens", 0)
+                        running_stage.tokens_used = ctx + out
+                        self.total_tokens = sum(s.tokens_used for s in self.stages)
+
+            # Update the stage output with the new response
+            if running_stage and response_text:
+                running_stage.output += "\n\n" + response_text
+                running_stage.full_response = running_stage.full_response or ""
+
+            logger.info("Pipeline %s: message sent, got %d chars back", self.pipeline_id, len(response_text))
+            return {"success": True, "response": response_text}
+
+        except Exception as e:
+            logger.warning("Pipeline %s: send message failed: %s", self.pipeline_id, e)
+            return {"success": False, "response": response_text, "error": str(e)}
 
     async def stop(self):
         """Stop the pipeline and close any active session."""

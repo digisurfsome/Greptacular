@@ -3232,8 +3232,8 @@ export async function exportPipelineOutputs(pipelineId: string): Promise<Blob> {
   return res.blob()
 }
 
-export async function sendPipelineAnswer(pipelineId: string, answer: string): Promise<void> {
-  await fetchJSON('/pipeline/answer', {
+export async function sendPipelineAnswer(pipelineId: string, answer: string): Promise<{ success: boolean; response: string }> {
+  return fetchJSON('/pipeline/answer', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ pipeline_id: pipelineId, answer }),

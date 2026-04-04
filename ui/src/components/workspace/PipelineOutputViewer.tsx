@@ -94,11 +94,13 @@ export function PipelineOutputViewer({ pipelineId, status }: PipelineOutputViewe
     }
   }, [status?.waiting_for_answer, status?.waiting_question])
 
+  // Chat messages shown in the output viewer (user messages + agent responses)
+  const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'agent'; text: string }>>([])
+
   const handleSend = useCallback(async () => {
     if (!pipelineId || !inputText.trim()) return
     setSending(true)
     try {
-      // Include attachment info in the message if any
       let message = inputText.trim()
       if (attachments.length > 0) {
         const attachmentText = attachments
@@ -106,11 +108,20 @@ export function PipelineOutputViewer({ pipelineId, status }: PipelineOutputViewe
           .join('')
         message += attachmentText
       }
-      await sendPipelineAnswer(pipelineId, message)
+
+      // Show user message immediately
+      setChatMessages(prev => [...prev, { role: 'user', text: message }])
       setInputText('')
       setAttachments([])
+
+      // Send to agent and get response
+      const result = await sendPipelineAnswer(pipelineId, message)
+      if (result.response) {
+        setChatMessages(prev => [...prev, { role: 'agent', text: result.response }])
+      }
     } catch (e) {
       console.error('Failed to send:', e)
+      setChatMessages(prev => [...prev, { role: 'agent', text: `Error: ${e}` }])
     } finally {
       setSending(false)
     }
@@ -254,6 +265,18 @@ export function PipelineOutputViewer({ pipelineId, status }: PipelineOutputViewe
             </div>
           )
         })}
+        {/* Chat messages (user answers + agent responses) */}
+        {chatMessages.map((msg, i) => (
+          <div key={`chat-${i}`} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div className={`max-w-[80%] rounded-lg px-3 py-2 text-xs ${
+              msg.role === 'user'
+                ? 'bg-emerald-600 text-white'
+                : 'bg-muted border border-border text-foreground'
+            }`}>
+              <pre className="whitespace-pre-wrap font-mono">{msg.text}</pre>
+            </div>
+          </div>
+        ))}
         <div ref={outputEndRef} />
       </div>
 

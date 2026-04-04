@@ -162,8 +162,8 @@ async def answer_pipeline(body: PipelineAnswerRequest):
     if not body.answer.strip():
         raise HTTPException(status_code=400, detail="Answer must not be empty")
 
-    await pipeline.inject_answer(body.answer.strip())
-    return {"success": True}
+    result = await pipeline.inject_answer(body.answer.strip())
+    return result
 
 
 @router.post("/force-advance")

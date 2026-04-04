@@ -3165,6 +3165,7 @@ export interface PipelineStartRequest {
   kickoff_message: string
   token_budget: number
   model: string
+  output_mode: string
   stages: PipelineStageConfig[]
 }
 
@@ -3224,5 +3225,72 @@ export async function sendPipelineAnswer(pipelineId: string, answer: string): Pr
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ pipeline_id: pipelineId, answer }),
+  })
+}
+
+// Pipeline Projects
+export interface PipelineProject {
+  id: number
+  name: string
+  description?: string
+  output_mode: 'json' | 'text'
+  default_model: string
+  default_token_budget: number
+  stages_json: string
+  created_at?: string
+  updated_at?: string
+}
+
+export async function listPipelineProjects(): Promise<PipelineProject[]> {
+  return fetchJSON('/pipeline/projects')
+}
+
+export async function createPipelineProject(body: {
+  name: string
+  description?: string
+  output_mode?: string
+  default_model?: string
+  default_token_budget?: number
+  stages: PipelineStageConfig[]
+}): Promise<PipelineProject> {
+  return fetchJSON('/pipeline/projects', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+export async function updatePipelineProject(projectId: number, body: {
+  name?: string
+  description?: string
+  output_mode?: string
+  default_model?: string
+  default_token_budget?: number
+  stages?: PipelineStageConfig[]
+}): Promise<PipelineProject> {
+  return fetchJSON(`/pipeline/projects/${projectId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+export async function deletePipelineProject(projectId: number): Promise<void> {
+  await fetchJSON(`/pipeline/projects/${projectId}`, { method: 'DELETE' })
+}
+
+export async function clonePipelineProject(projectId: number, newName: string): Promise<PipelineProject> {
+  return fetchJSON(`/pipeline/projects/${projectId}/clone`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ new_name: newName }),
+  })
+}
+
+export async function loadPipelineFolder(folderPath: string): Promise<PipelineStageConfig[]> {
+  return fetchJSON('/pipeline/load-folder', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ folder_path: folderPath }),
   })
 }

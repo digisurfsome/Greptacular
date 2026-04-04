@@ -62,6 +62,7 @@ class PipelineStage:
     skill_text: str
     status: StageStatus = StageStatus.PENDING
     output: str = ""
+    full_response: str = ""
     tokens_used: int = 0
     duration_seconds: float = 0.0
     conversation_id: Optional[int] = None
@@ -112,6 +113,7 @@ class SkillPipeline:
         token_budget: int = 400_000,
         model: str = "opus",
         pipeline_id: Optional[str] = None,
+        output_mode: str = "json",
     ):
         self.pipeline_id = pipeline_id or f"pipeline-{uuid.uuid4().hex[:8]}"
         self.working_directory = working_directory
@@ -119,6 +121,7 @@ class SkillPipeline:
         self.kickoff_message = kickoff_message
         self.token_budget = token_budget
         self.model = model
+        self.output_mode = output_mode
         self.status = PipelineStatus.IDLE
         self.created_at = datetime.now(timezone.utc)
         self.completed_at: Optional[datetime] = None
@@ -136,12 +139,60 @@ class SkillPipeline:
         self._pending_answer: Optional[str] = None
 
         logger.info(
-            "SkillPipeline created: id=%s, stages=%d, model=%s, token_budget=%d",
+            "SkillPipeline created: id=%s, stages=%d, model=%s, token_budget=%d, output_mode=%s",
             self.pipeline_id,
             len(stages),
             model,
             token_budget,
+            output_mode,
         )
+
+    @staticmethod
+    def extract_json_output(full_text: str) -> str:
+        """Extract the JSON context_packet from an agent's full response.
+
+        The agent outputs commentary (parsing tables, confidence scores, etc.)
+        mixed with the actual JSON output.  We need to extract just the JSON.
+
+        Detection strategy (in order):
+        1. Look for the LAST ``json ... `` code fence block (agents put the
+           final output JSON at the end)
+        2. Look for the LAST ``{ ... }`` block that is valid JSON and > 100 chars
+        3. Fall back to the full text if no JSON found
+        """
+        import re as _re
+
+        # Strategy 1: Last JSON code fence
+        json_blocks = _re.findall(r'```json\s*\n(.*?)\n\s*```', full_text, _re.DOTALL)
+        if json_blocks:
+            return json_blocks[-1].strip()
+
+        # Strategy 2: Last large JSON object — brace-depth scanning
+        candidates: list[str] = []
+        brace_depth = 0
+        start = -1
+        for i, ch in enumerate(full_text):
+            if ch == '{':
+                if brace_depth == 0:
+                    start = i
+                brace_depth += 1
+            elif ch == '}':
+                brace_depth -= 1
+                if brace_depth == 0 and start >= 0:
+                    block = full_text[start:i + 1]
+                    if len(block) > 100:
+                        try:
+                            json.loads(block)
+                            candidates.append(block)
+                        except (json.JSONDecodeError, ValueError):
+                            pass
+                    start = -1
+
+        if candidates:
+            return candidates[-1].strip()
+
+        # Strategy 3: Return full text as-is
+        return full_text.strip()
 
     def _build_stage_prompt(self, stage: PipelineStage) -> str:
         """Build the prompt for a given stage, incorporating previous output."""
@@ -358,8 +409,14 @@ class SkillPipeline:
                         pass
                     self._current_session = None
 
-                    # Mark stage completed
-                    stage.output = full_text
+                    # Extract output based on mode
+                    if self.output_mode == "json":
+                        stage.output = self.extract_json_output(full_text)
+                        stage.full_response = full_text
+                    else:
+                        stage.output = full_text
+                        stage.full_response = full_text
+
                     stage.status = StageStatus.COMPLETED
                     stage.completed_at = datetime.now(timezone.utc)
                     stage.duration_seconds = round(time.monotonic() - stage_start, 1)
@@ -530,6 +587,7 @@ class SkillPipeline:
             "status": self.status.value,
             "model": self.model,
             "token_budget": self.token_budget,
+            "output_mode": self.output_mode,
             "total_tokens": self.total_tokens,
             "total_duration": self.total_duration,
             "working_directory": self.working_directory,
@@ -550,6 +608,7 @@ class SkillPipeline:
                     "started_at": s.started_at.isoformat() if s.started_at else None,
                     "completed_at": s.completed_at.isoformat() if s.completed_at else None,
                     "output_length": len(s.output),
+                    "full_response_length": len(s.full_response),
                     "error": s.error,
                 }
                 for s in self.stages
@@ -591,6 +650,7 @@ async def create_pipeline(
     token_budget: int = 400_000,
     model: str = "opus",
     pipeline_id: Optional[str] = None,
+    output_mode: str = "json",
 ) -> SkillPipeline:
     """Create a new skill pipeline.
 
@@ -601,6 +661,7 @@ async def create_pipeline(
         token_budget: Maximum context tokens before forcing a fresh session.
         model: Model shorthand (``"opus"`` or ``"sonnet"``).
         pipeline_id: Optional custom pipeline ID.
+        output_mode: ``"json"`` to extract JSON from responses, ``"text"`` for raw output.
 
     Returns:
         The created SkillPipeline instance.
@@ -621,6 +682,7 @@ async def create_pipeline(
         token_budget=token_budget,
         model=model,
         pipeline_id=pipeline_id,
+        output_mode=output_mode,
     )
 
     with _pipeline_lock:

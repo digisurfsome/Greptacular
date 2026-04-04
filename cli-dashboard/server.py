@@ -156,26 +156,44 @@ async def start_session(req: StartSessionRequest):
     session_id = str(uuid.uuid4())[:8]
     name = req.session_name or f"session-{session_id}"
 
-    # Build claude command — use --print for non-interactive mode with --output-format
-    cmd = ["claude", "--print"]
-    if req.project_dir:
-        cmd.extend(["--project-dir", req.project_dir])
+    # Build claude command
+    # -p "prompt" = print mode (non-interactive, single prompt, exits when done)
+    # --output-format stream-json = structured JSON streaming output
+    # --model = which model to use
+    # --verbose = extra logging
+    # On Windows, use shell=True or find claude.cmd
+    claude_cmd = "claude"
+    if sys.platform == "win32":
+        # Try claude.cmd first (npm global install)
+        import shutil
+        claude_path = shutil.which("claude") or shutil.which("claude.cmd")
+        if claude_path:
+            claude_cmd = claude_path
+
+    cmd = [claude_cmd]
+
     if req.model:
         cmd.extend(["--model", req.model])
 
     # Output format for structured parsing
     cmd.extend(["--output-format", "stream-json"])
 
+    # -p must come last with the prompt as its value
     if req.prompt:
-        cmd.extend(["--prompt", req.prompt])
+        cmd.extend(["-p", req.prompt])
 
     # Set hook env vars so CLI knows where to POST
     env = os.environ.copy()
     env["CLI_DASHBOARD_SESSION_ID"] = session_id
     env["CLI_DASHBOARD_URL"] = "http://localhost:9111"
 
+    # Use project directory as the working directory
+    cwd = req.project_dir if req.project_dir else None
+
     cmd_str = " ".join(cmd)
     log_msg = f"[{session_id}] Launching: {cmd_str}"
+    if cwd:
+        log_msg += f"\n[{session_id}] Working dir: {cwd}"
     print(log_msg)
 
     # Launch the process
@@ -185,10 +203,21 @@ async def start_session(req: StartSessionRequest):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env=env,
+            cwd=cwd,
             bufsize=1,
         )
     except FileNotFoundError:
         error_msg = "ERROR: 'claude' command not found. Is Claude Code CLI installed and on PATH?"
+        print(f"[{session_id}] {error_msg}")
+        await broadcast({
+            "type": "log",
+            "session_id": session_id,
+            "text": error_msg,
+            "level": "error"
+        })
+        return {"error": error_msg}
+    except OSError as e:
+        error_msg = f"ERROR launching process: {e}"
         print(f"[{session_id}] {error_msg}")
         await broadcast({
             "type": "log",
@@ -205,6 +234,7 @@ async def start_session(req: StartSessionRequest):
         "prompt": req.prompt,
         "model": req.model,
         "cmd": cmd_str,
+        "cwd": cwd,
         "pid": process.pid,
         "process": process,
         "status": "running",

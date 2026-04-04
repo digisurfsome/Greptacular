@@ -380,8 +380,18 @@ class SkillPipeline:
                                 self._waiting_for_answer = False
                                 self._waiting_question = None
 
-                                # Send the answer to the session and continue collecting
-                                async for ans_chunk in session.send_message(answer):
+                                # Wrap the answer with instructions to produce full output
+                                wrapped_answer = (
+                                    f"Here are the user's answers:\n\n"
+                                    f"{answer}\n\n"
+                                    f"Now continue with the skill instructions. Use these answers to produce "
+                                    f"the complete structured output as specified in the Output Format section "
+                                    f"of the skill. Do NOT just acknowledge the answers — produce the full "
+                                    f"context_packet output with all required fields."
+                                )
+
+                                # Send the wrapped answer and continue collecting
+                                async for ans_chunk in session.send_message(wrapped_answer):
                                     ans_type = ans_chunk.get("type", "")
                                     if ans_type == "text":
                                         text = ans_chunk.get("content", "")

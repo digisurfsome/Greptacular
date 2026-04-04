@@ -416,6 +416,21 @@ class PipelineStageOutput(Base):
     completed_at = Column(DateTime, nullable=True)
 
 
+class PipelineProject(Base):
+    """A saved pipeline project (reusable prompt chain configuration)."""
+    __tablename__ = "pipeline_projects"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(200), nullable=False)
+    description = Column(Text, nullable=True)
+    output_mode = Column(String(20), default="json")  # "json" or "text"
+    default_model = Column(String(20), default="opus")
+    default_token_budget = Column(Integer, default=400000)
+    stages_json = Column(Text, nullable=False)  # JSON: [{label, skill_text}]
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
 # ============================================================================
 # Engine and Session Management
 # ============================================================================
@@ -3174,5 +3189,178 @@ def get_pipeline_stage_outputs(pipeline_id: str) -> list[dict]:
             }
             for s in stages
         ]
+    finally:
+        session.close()
+
+
+# ============================================================================
+# Pipeline Project CRUD
+# ============================================================================
+
+def _pipeline_project_to_dict(proj: "PipelineProject") -> dict:
+    """Convert a PipelineProject ORM instance to a plain dict."""
+    return {
+        "id": proj.id,
+        "name": proj.name,
+        "description": proj.description,
+        "output_mode": proj.output_mode,
+        "default_model": proj.default_model,
+        "default_token_budget": proj.default_token_budget,
+        "stages_json": proj.stages_json,
+        "created_at": proj.created_at.isoformat() if proj.created_at else None,
+        "updated_at": proj.updated_at.isoformat() if proj.updated_at else None,
+    }
+
+
+def save_pipeline_project(
+    name: str,
+    stages_json: str,
+    description: Optional[str] = None,
+    output_mode: str = "json",
+    default_model: str = "opus",
+    default_token_budget: int = 400_000,
+) -> dict:
+    """Create a new pipeline project.
+
+    Returns:
+        A dict representation of the created project.
+    """
+    session = get_db_session()
+    try:
+        proj = PipelineProject(
+            name=name,
+            stages_json=stages_json,
+            description=description,
+            output_mode=output_mode,
+            default_model=default_model,
+            default_token_budget=default_token_budget,
+        )
+        session.add(proj)
+        session.commit()
+        session.refresh(proj)
+        logger.info("Created pipeline project %d: %s", proj.id, name)
+        return _pipeline_project_to_dict(proj)
+    except Exception:
+        session.rollback()
+        logger.exception("Failed to create pipeline project %s", name)
+        raise
+    finally:
+        session.close()
+
+
+def update_pipeline_project(project_id: int, **kwargs) -> Optional[dict]:
+    """Update a pipeline project.
+
+    Accepts arbitrary keyword arguments corresponding to ``PipelineProject``
+    column names.
+
+    Returns:
+        The updated project dict, or ``None`` if not found.
+    """
+    session = get_db_session()
+    try:
+        proj = session.query(PipelineProject).filter(PipelineProject.id == project_id).first()
+        if not proj:
+            return None
+        for key, value in kwargs.items():
+            if hasattr(proj, key):
+                setattr(proj, key, value)
+        session.commit()
+        session.refresh(proj)
+        logger.info("Updated pipeline project %d: %s", project_id, list(kwargs.keys()))
+        return _pipeline_project_to_dict(proj)
+    except Exception:
+        session.rollback()
+        logger.exception("Failed to update pipeline project %d", project_id)
+        raise
+    finally:
+        session.close()
+
+
+def get_pipeline_project(project_id: int) -> Optional[dict]:
+    """Get a pipeline project by ID.
+
+    Returns:
+        A dict of the project, or ``None`` if not found.
+    """
+    session = get_db_session()
+    try:
+        proj = session.query(PipelineProject).filter(PipelineProject.id == project_id).first()
+        if not proj:
+            return None
+        return _pipeline_project_to_dict(proj)
+    finally:
+        session.close()
+
+
+def list_pipeline_projects() -> list[dict]:
+    """List all pipeline projects, most recent first.
+
+    Returns:
+        List of pipeline project dicts.
+    """
+    session = get_db_session()
+    try:
+        projects = (
+            session.query(PipelineProject)
+            .order_by(PipelineProject.updated_at.desc())
+            .all()
+        )
+        return [_pipeline_project_to_dict(p) for p in projects]
+    finally:
+        session.close()
+
+
+def delete_pipeline_project(project_id: int) -> bool:
+    """Delete a pipeline project.
+
+    Returns:
+        True if deleted, False if not found.
+    """
+    session = get_db_session()
+    try:
+        proj = session.query(PipelineProject).filter(PipelineProject.id == project_id).first()
+        if not proj:
+            return False
+        session.delete(proj)
+        session.commit()
+        logger.info("Deleted pipeline project %d", project_id)
+        return True
+    except Exception:
+        session.rollback()
+        logger.exception("Failed to delete pipeline project %d", project_id)
+        raise
+    finally:
+        session.close()
+
+
+def clone_pipeline_project(project_id: int, new_name: str) -> Optional[dict]:
+    """Clone a pipeline project with a new name.
+
+    Returns:
+        The cloned project dict, or ``None`` if the source was not found.
+    """
+    session = get_db_session()
+    try:
+        source = session.query(PipelineProject).filter(PipelineProject.id == project_id).first()
+        if not source:
+            return None
+        clone = PipelineProject(
+            name=new_name,
+            description=source.description,
+            output_mode=source.output_mode,
+            default_model=source.default_model,
+            default_token_budget=source.default_token_budget,
+            stages_json=source.stages_json,
+        )
+        session.add(clone)
+        session.commit()
+        session.refresh(clone)
+        logger.info("Cloned pipeline project %d -> %d (%s)", project_id, clone.id, new_name)
+        return _pipeline_project_to_dict(clone)
+    except Exception:
+        session.rollback()
+        logger.exception("Failed to clone pipeline project %d", project_id)
+        raise
     finally:
         session.close()

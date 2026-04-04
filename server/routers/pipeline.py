@@ -43,6 +43,12 @@ class PipelineStopRequest(BaseModel):
     pipeline_id: str
 
 
+class PipelineAnswerRequest(BaseModel):
+    """Request body for answering a pipeline question or sending a message."""
+    pipeline_id: str
+    answer: str
+
+
 # ============================================================================
 # REST Endpoints
 # ============================================================================
@@ -97,6 +103,27 @@ async def stop_pipeline(body: PipelineStopRequest):
 
     await pipeline.stop()
     return {"success": True, "message": f"Pipeline {body.pipeline_id} stopped"}
+
+
+@router.post("/answer")
+async def answer_pipeline(body: PipelineAnswerRequest):
+    """Send an answer or message to a running pipeline stage.
+
+    If the pipeline is waiting for user input (agent asked a question),
+    this delivers the answer and resumes execution.  Otherwise it acts
+    as a walkie-talkie message injected into the running stage.
+    """
+    from ..services.pipeline_orchestrator import get_pipeline
+
+    pipeline = get_pipeline(body.pipeline_id)
+    if not pipeline:
+        raise HTTPException(status_code=404, detail="Pipeline not found")
+
+    if not body.answer.strip():
+        raise HTTPException(status_code=400, detail="Answer must not be empty")
+
+    await pipeline.inject_answer(body.answer.strip())
+    return {"success": True}
 
 
 @router.get("/status/{pipeline_id}")

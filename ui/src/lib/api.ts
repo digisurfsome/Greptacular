@@ -3184,6 +3184,8 @@ export interface PipelineStatusResponse {
   total_tokens: number
   token_budget: number
   total_duration: number
+  waiting_for_answer?: boolean
+  waiting_question?: string
   stages: PipelineStageStatus[]
 }
 
@@ -3215,4 +3217,12 @@ export async function exportPipelineOutputs(pipelineId: string): Promise<Blob> {
   const res = await fetch(`/api/pipeline/export/${pipelineId}`)
   if (!res.ok) throw new Error(`Export failed: ${res.status}`)
   return res.blob()
+}
+
+export async function sendPipelineAnswer(pipelineId: string, answer: string): Promise<void> {
+  await fetchJSON('/pipeline/answer', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pipeline_id: pipelineId, answer }),
+  })
 }

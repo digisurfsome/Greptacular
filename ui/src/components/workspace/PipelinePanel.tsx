@@ -26,16 +26,26 @@ import {
   Workflow,
   Send,
   MessageSquare,
+  FolderOpen,
+  Save,
+  Copy,
+  Trash2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PipelineSkillSlot } from './PipelineSkillSlot'
-import type { PipelineStatusResponse, PipelineStageStatus } from '@/lib/api'
+import type { PipelineStatusResponse, PipelineStageStatus, PipelineProject } from '@/lib/api'
 import {
   startPipeline,
   stopPipeline,
   getPipelineStatus,
   exportPipelineOutputs,
   sendPipelineAnswer,
+  listPipelineProjects,
+  createPipelineProject,
+  updatePipelineProject,
+  deletePipelineProject,
+  clonePipelineProject,
+  loadPipelineFolder,
 } from '@/lib/api'
 
 // ---------------------------------------------------------------------------
@@ -148,12 +158,20 @@ export function PipelinePanel({ workingDirectory, onClose }: PipelinePanelProps)
   const [kickoffMessage, setKickoffMessage] = useState('')
   const [tokenBudget, setTokenBudget] = useState(400_000)
   const [model, setModel] = useState('opus')
+  const [outputMode, setOutputMode] = useState<'json' | 'text'>('json')
   const [skills, setSkills] = useState<SkillSlot[]>([{ label: 'Skill 1', text: '' }])
   const [starting, setStarting] = useState(false)
   const [expandedOutput, setExpandedOutput] = useState<number | null>(null)
   const [chatInput, setChatInput] = useState('')
   const [sendingAnswer, setSendingAnswer] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // ---- Project state ----
+  const [projects, setProjects] = useState<PipelineProject[]>([])
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null)
+  const [projectName, setProjectName] = useState('New Pipeline')
+  const [showFolderInput, setShowFolderInput] = useState(false)
+  const [folderPath, setFolderPath] = useState('')
 
   // ---- Poll for status when a pipeline is running (same pattern as SwarmPanel) ----
   useEffect(() => {
@@ -183,6 +201,149 @@ export function PipelinePanel({ workingDirectory, onClose }: PipelinePanelProps)
     }
   }, [pipelineId])
 
+  // ---- Load projects on mount ----
+  useEffect(() => {
+    listPipelineProjects().then(setProjects).catch(() => {})
+  }, [])
+
+  /** Refresh the project list from the server. */
+  const refreshProjects = useCallback(async () => {
+    try {
+      const list = await listPipelineProjects()
+      setProjects(list)
+    } catch { /* ignore */ }
+  }, [])
+
+  /** Load a project's config into the panel state. */
+  const loadProject = useCallback((project: PipelineProject) => {
+    setSelectedProjectId(project.id)
+    setProjectName(project.name)
+    setModel(project.default_model)
+    setTokenBudget(project.default_token_budget)
+    setOutputMode(project.output_mode)
+    try {
+      const stages = JSON.parse(project.stages_json) as { label: string; skill_text: string }[]
+      setSkills(stages.map((s) => ({ label: s.label, text: s.skill_text })))
+    } catch {
+      setSkills([{ label: 'Skill 1', text: '' }])
+    }
+  }, [])
+
+  /** Handle project dropdown change. */
+  const handleProjectSelect = useCallback((value: string) => {
+    if (value === 'new') {
+      setSelectedProjectId(null)
+      setProjectName('New Pipeline')
+      setSkills([{ label: 'Skill 1', text: '' }])
+      setOutputMode('json')
+      setModel('opus')
+      setTokenBudget(400_000)
+      setKickoffMessage('')
+      return
+    }
+    const id = Number(value)
+    const proj = projects.find((p) => p.id === id)
+    if (proj) loadProject(proj)
+  }, [projects, loadProject])
+
+  /** Save current config to existing project or create new one. */
+  const handleSave = useCallback(async () => {
+    const stages = skills.filter((s) => s.text.trim()).map((s) => ({
+      label: s.label,
+      skill_text: s.text,
+    }))
+    try {
+      if (selectedProjectId) {
+        const updated = await updatePipelineProject(selectedProjectId, {
+          name: projectName,
+          output_mode: outputMode,
+          default_model: model,
+          default_token_budget: tokenBudget,
+          stages,
+        })
+        setSelectedProjectId(updated.id)
+      } else {
+        const created = await createPipelineProject({
+          name: projectName,
+          output_mode: outputMode,
+          default_model: model,
+          default_token_budget: tokenBudget,
+          stages,
+        })
+        setSelectedProjectId(created.id)
+      }
+      await refreshProjects()
+    } catch (e) {
+      console.error('Failed to save project:', e)
+    }
+  }, [selectedProjectId, projectName, outputMode, model, tokenBudget, skills, refreshProjects])
+
+  /** Save As — prompt for a new name, then create. */
+  const handleSaveAs = useCallback(async () => {
+    const newName = window.prompt('Save pipeline as:', `${projectName} (copy)`)
+    if (!newName?.trim()) return
+    const stages = skills.filter((s) => s.text.trim()).map((s) => ({
+      label: s.label,
+      skill_text: s.text,
+    }))
+    try {
+      const created = await createPipelineProject({
+        name: newName.trim(),
+        output_mode: outputMode,
+        default_model: model,
+        default_token_budget: tokenBudget,
+        stages,
+      })
+      setSelectedProjectId(created.id)
+      setProjectName(created.name)
+      await refreshProjects()
+    } catch (e) {
+      console.error('Failed to save-as project:', e)
+    }
+  }, [projectName, outputMode, model, tokenBudget, skills, refreshProjects])
+
+  /** Delete the currently selected project. */
+  const handleDeleteProject = useCallback(async () => {
+    if (!selectedProjectId) return
+    if (!window.confirm(`Delete "${projectName}"?`)) return
+    try {
+      await deletePipelineProject(selectedProjectId)
+      setSelectedProjectId(null)
+      setProjectName('New Pipeline')
+      await refreshProjects()
+    } catch (e) {
+      console.error('Failed to delete project:', e)
+    }
+  }, [selectedProjectId, projectName, refreshProjects])
+
+  /** Clone the currently selected project. */
+  const handleCloneProject = useCallback(async () => {
+    if (!selectedProjectId) return
+    const newName = window.prompt('Clone name:', `${projectName} (clone)`)
+    if (!newName?.trim()) return
+    try {
+      const cloned = await clonePipelineProject(selectedProjectId, newName.trim())
+      setSelectedProjectId(cloned.id)
+      setProjectName(cloned.name)
+      await refreshProjects()
+    } catch (e) {
+      console.error('Failed to clone project:', e)
+    }
+  }, [selectedProjectId, projectName, refreshProjects])
+
+  /** Load stages from a folder on disk. */
+  const handleLoadFolder = useCallback(async () => {
+    if (!folderPath.trim()) return
+    try {
+      const stages = await loadPipelineFolder(folderPath.trim())
+      setSkills(stages.map((s) => ({ label: s.label, text: s.skill_text })))
+      setShowFolderInput(false)
+      setFolderPath('')
+    } catch (e) {
+      console.error('Failed to load folder:', e)
+    }
+  }, [folderPath])
+
   // ---- Handlers ----
 
   const handleStart = useCallback(async () => {
@@ -199,6 +360,7 @@ export function PipelinePanel({ workingDirectory, onClose }: PipelinePanelProps)
         kickoff_message: kickoffMessage.trim(),
         token_budget: tokenBudget,
         model,
+        output_mode: outputMode,
         stages: filledSkills.map((s) => ({ label: s.label, skill_text: s.text })),
       })
       setPipelineId(result.pipeline_id)

@@ -369,7 +369,7 @@ export function PipelinePanel({ workingDirectory, onClose }: PipelinePanelProps)
     } finally {
       setStarting(false)
     }
-  }, [workingDirectory, kickoffMessage, tokenBudget, model, skills])
+  }, [workingDirectory, kickoffMessage, tokenBudget, model, outputMode, skills])
 
   const handleStop = useCallback(async () => {
     if (!pipelineId) return
@@ -463,6 +463,65 @@ export function PipelinePanel({ workingDirectory, onClose }: PipelinePanelProps)
            * CONFIGURE MODE — set up the pipeline before launching
            * ============================================================ */
           <>
+            {/* ── Project selector ── */}
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                Project
+              </label>
+              <select
+                value={selectedProjectId ?? 'new'}
+                onChange={(e) => handleProjectSelect(e.target.value)}
+                className="w-full h-7 rounded-md border border-border bg-input px-2 text-xs text-foreground outline-none ring-ring focus:ring-1"
+              >
+                <option value="new">New Pipeline</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+              <input
+                value={projectName}
+                onChange={(e) => setProjectName(e.target.value)}
+                placeholder="Pipeline name"
+                className="w-full h-7 rounded-md border border-border bg-input px-2 text-xs text-foreground placeholder:text-muted-foreground/60 outline-none ring-ring focus:ring-1"
+              />
+              <div className="flex gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-6 px-2 text-[10px] gap-1"
+                  onClick={handleSave}
+                >
+                  <Save size={10} /> Save
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-6 px-2 text-[10px] gap-1"
+                  onClick={handleSaveAs}
+                >
+                  <Copy size={10} /> Save As
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-6 px-2 text-[10px] gap-1"
+                  onClick={handleCloneProject}
+                  disabled={!selectedProjectId}
+                >
+                  <Copy size={10} /> Clone
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-6 px-2 text-[10px] gap-1 text-red-600 hover:text-red-700"
+                  onClick={handleDeleteProject}
+                  disabled={!selectedProjectId}
+                >
+                  <Trash2 size={10} /> Delete
+                </Button>
+              </div>
+            </div>
+
             {/* Kickoff message */}
             <div className="space-y-1">
               <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
@@ -477,7 +536,7 @@ export function PipelinePanel({ workingDirectory, onClose }: PipelinePanelProps)
               />
             </div>
 
-            {/* Settings row */}
+            {/* Settings row: Token Budget + Model */}
             <div className="flex gap-2">
               <div className="flex-1 space-y-1">
                 <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
@@ -508,11 +567,58 @@ export function PipelinePanel({ workingDirectory, onClose }: PipelinePanelProps)
               </div>
             </div>
 
-            {/* Skills list */}
+            {/* Output mode */}
             <div className="space-y-1">
               <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-                Skills ({skills.length})
+                Output Mode
               </label>
+              <select
+                value={outputMode}
+                onChange={(e) => setOutputMode(e.target.value as 'json' | 'text')}
+                className="w-full h-7 rounded-md border border-border bg-input px-2 text-xs text-foreground outline-none ring-ring focus:ring-1"
+              >
+                <option value="json">JSON Extract</option>
+                <option value="text">Full Text</option>
+              </select>
+            </div>
+
+            {/* Skills list */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                  Skills ({skills.length})
+                </label>
+                <button
+                  onClick={() => setShowFolderInput((v) => !v)}
+                  className="text-[10px] text-emerald-600 hover:text-emerald-700 font-medium flex items-center gap-1"
+                >
+                  <FolderOpen size={10} /> Load from folder
+                </button>
+              </div>
+
+              {/* Folder loader */}
+              {showFolderInput && (
+                <div className="flex gap-1">
+                  <input
+                    type="text"
+                    value={folderPath}
+                    onChange={(e) => setFolderPath(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleLoadFolder() }}
+                    placeholder="/path/to/skills/folder"
+                    className="flex-1 h-7 rounded-md border border-border bg-input px-2 text-xs text-foreground placeholder:text-muted-foreground/60 outline-none ring-ring focus:ring-1"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 px-2 text-[10px]"
+                    onClick={handleLoadFolder}
+                    disabled={!folderPath.trim()}
+                  >
+                    Load
+                  </Button>
+                </div>
+              )}
+
               <div className="space-y-2">
                 {skills.map((skill, i) => (
                   <PipelineSkillSlot
@@ -659,6 +765,23 @@ export function PipelinePanel({ workingDirectory, onClose }: PipelinePanelProps)
               >
                 <Download size={14} /> Download All Outputs
               </Button>
+            )}
+
+            {/* Endpoint placeholder — future next-action routing */}
+            {isDone && (
+              <div className="border border-dashed border-border rounded-lg p-3 text-center">
+                <p className="text-[10px] text-muted-foreground">
+                  Next Action (coming soon)
+                </p>
+                <select
+                  disabled
+                  className="mt-1 h-7 w-full rounded-md border border-border bg-muted/50 text-xs text-muted-foreground"
+                >
+                  <option>Done — no further action</option>
+                  <option>Send to Swarm Builder</option>
+                  <option>Send to Coder Agent</option>
+                </select>
+              </div>
             )}
           </>
         )}

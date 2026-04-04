@@ -60,6 +60,7 @@ from .routers import (
     ingestion_sequences_router,
     meta_training_router,
     notifications_router,
+    pipeline_router,
     prd_shredder_router,
     projects_router,
     role_library_router,
@@ -94,6 +95,7 @@ from .services.dev_server_manager import (
     cleanup_orphaned_devserver_locks,
 )
 from .services.expand_chat_session import cleanup_all_expand_sessions
+from .services.pipeline_orchestrator import cleanup_all_pipelines
 from .services.process_manager import cleanup_all_managers, cleanup_orphaned_locks
 from .services.scheduler_service import cleanup_scheduler, get_scheduler
 from .services.screen_recorder import cleanup_all_capture_managers
@@ -319,6 +321,7 @@ async def lifespan(app: FastAPI):
     await cleanup_background_sessions()
     await cleanup_all_workspace_sessions()
     await cleanup_all_swarms()
+    await cleanup_all_pipelines()
     await cleanup_all_monitors()
     cleanup_all_agent_os_sessions()
     await cleanup_all_sessions()
@@ -413,6 +416,7 @@ app.include_router(notifications_router)
 app.include_router(role_library_router)
 app.include_router(seo_tools_router)
 app.include_router(swarm_router)
+app.include_router(pipeline_router)
 app.include_router(dunkstack_router)
 app.include_router(agent_os_router)
 app.include_router(yt_ingestion_router)

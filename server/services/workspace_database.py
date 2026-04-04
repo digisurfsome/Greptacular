@@ -377,6 +377,46 @@ class WorkspaceSessionEvent(Base):
 
 
 # ============================================================================
+# Pipeline Models
+# ============================================================================
+
+
+class PipelineRun(Base):
+    """A skill pipeline execution record."""
+    __tablename__ = "pipeline_runs"
+
+    id = Column(Integer, primary_key=True)
+    pipeline_id = Column(String(50), unique=True, index=True)
+    name = Column(String(200), nullable=True)
+    status = Column(String(20), default="idle")
+    model = Column(String(20), default="opus")
+    token_budget = Column(Integer, default=400000)
+    total_tokens = Column(Integer, default=0)
+    total_duration = Column(Float, default=0.0)
+    working_directory = Column(Text, nullable=True)
+    kickoff_message = Column(Text, nullable=True)
+    stages_json = Column(Text)  # JSON array of {label, skill_text}
+    created_at = Column(DateTime, default=_utc_now)
+    completed_at = Column(DateTime, nullable=True)
+
+
+class PipelineStageOutput(Base):
+    """Output from a single pipeline stage."""
+    __tablename__ = "pipeline_stage_outputs"
+
+    id = Column(Integer, primary_key=True)
+    pipeline_id = Column(String(50), index=True)
+    stage_index = Column(Integer)
+    label = Column(String(200))
+    output_text = Column(Text)
+    tokens_used = Column(Integer, default=0)
+    duration_seconds = Column(Float, default=0.0)
+    status = Column(String(20), default="pending")
+    error = Column(Text, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+
+
+# ============================================================================
 # Engine and Session Management
 # ============================================================================
 
@@ -2872,5 +2912,267 @@ def delete_session_events(session_id: str) -> int:
         session.rollback()
         logger.exception("Failed to delete session events for %s", session_id)
         raise
+    finally:
+        session.close()
+
+
+# ============================================================================
+# Pipeline CRUD Operations
+# ============================================================================
+
+def save_pipeline_run(
+    pipeline_id: str,
+    name: str,
+    status: str,
+    model: str,
+    token_budget: int,
+    working_directory: str,
+    kickoff_message: str,
+    stages_json: str,
+) -> dict:
+    """Create or update a pipeline run record.
+
+    If a record with the given ``pipeline_id`` already exists it is updated;
+    otherwise a new row is inserted.
+
+    Returns:
+        A dict representation of the saved record.
+    """
+    session = get_db_session()
+    try:
+        existing = session.query(PipelineRun).filter(PipelineRun.pipeline_id == pipeline_id).first()
+        if existing:
+            existing.name = name
+            existing.status = status
+            existing.model = model
+            existing.token_budget = token_budget
+            existing.working_directory = working_directory
+            existing.kickoff_message = kickoff_message
+            existing.stages_json = stages_json
+            session.commit()
+            session.refresh(existing)
+            run = existing
+        else:
+            run = PipelineRun(
+                pipeline_id=pipeline_id,
+                name=name,
+                status=status,
+                model=model,
+                token_budget=token_budget,
+                working_directory=working_directory,
+                kickoff_message=kickoff_message,
+                stages_json=stages_json,
+            )
+            session.add(run)
+            session.commit()
+            session.refresh(run)
+        logger.info("Saved pipeline run %s (status=%s)", pipeline_id, status)
+        return {
+            "pipeline_id": run.pipeline_id,
+            "name": run.name,
+            "status": run.status,
+            "model": run.model,
+            "token_budget": run.token_budget,
+            "total_tokens": run.total_tokens,
+            "total_duration": run.total_duration,
+            "created_at": run.created_at.isoformat() if run.created_at else None,
+        }
+    except Exception:
+        session.rollback()
+        logger.exception("Failed to save pipeline run %s", pipeline_id)
+        raise
+    finally:
+        session.close()
+
+
+def update_pipeline_run(pipeline_id: str, **kwargs) -> bool:
+    """Update fields on a pipeline run.
+
+    Accepts arbitrary keyword arguments corresponding to ``PipelineRun``
+    column names.
+
+    Returns:
+        True if the record was found and updated, False otherwise.
+    """
+    session = get_db_session()
+    try:
+        run = session.query(PipelineRun).filter(PipelineRun.pipeline_id == pipeline_id).first()
+        if not run:
+            return False
+        for key, value in kwargs.items():
+            if hasattr(run, key):
+                setattr(run, key, value)
+        session.commit()
+        logger.info("Updated pipeline run %s: %s", pipeline_id, list(kwargs.keys()))
+        return True
+    except Exception:
+        session.rollback()
+        logger.exception("Failed to update pipeline run %s", pipeline_id)
+        raise
+    finally:
+        session.close()
+
+
+def save_pipeline_stage_output(
+    pipeline_id: str,
+    stage_index: int,
+    label: str,
+    output_text: str,
+    tokens_used: int,
+    duration_seconds: float,
+    status: str,
+    error: Optional[str] = None,
+) -> dict:
+    """Save output for a pipeline stage.
+
+    If a record for the given ``pipeline_id`` / ``stage_index`` already
+    exists it is updated; otherwise a new row is inserted.
+
+    Returns:
+        A dict representation of the saved record.
+    """
+    session = get_db_session()
+    try:
+        existing = (
+            session.query(PipelineStageOutput)
+            .filter(
+                PipelineStageOutput.pipeline_id == pipeline_id,
+                PipelineStageOutput.stage_index == stage_index,
+            )
+            .first()
+        )
+        if existing:
+            existing.label = label
+            existing.output_text = output_text
+            existing.tokens_used = tokens_used
+            existing.duration_seconds = duration_seconds
+            existing.status = status
+            existing.error = error
+            existing.completed_at = _utc_now()
+            session.commit()
+            session.refresh(existing)
+            stage = existing
+        else:
+            stage = PipelineStageOutput(
+                pipeline_id=pipeline_id,
+                stage_index=stage_index,
+                label=label,
+                output_text=output_text,
+                tokens_used=tokens_used,
+                duration_seconds=duration_seconds,
+                status=status,
+                error=error,
+                completed_at=_utc_now(),
+            )
+            session.add(stage)
+            session.commit()
+            session.refresh(stage)
+        logger.info("Saved pipeline stage output: %s stage %d", pipeline_id, stage_index)
+        return {
+            "pipeline_id": stage.pipeline_id,
+            "stage_index": stage.stage_index,
+            "label": stage.label,
+            "status": stage.status,
+            "tokens_used": stage.tokens_used,
+            "duration_seconds": stage.duration_seconds,
+        }
+    except Exception:
+        session.rollback()
+        logger.exception("Failed to save pipeline stage output %s/%d", pipeline_id, stage_index)
+        raise
+    finally:
+        session.close()
+
+
+def get_pipeline_run(pipeline_id: str) -> Optional[dict]:
+    """Get a pipeline run by ID.
+
+    Returns:
+        A dict of the run record, or ``None`` if not found.
+    """
+    session = get_db_session()
+    try:
+        run = session.query(PipelineRun).filter(PipelineRun.pipeline_id == pipeline_id).first()
+        if not run:
+            return None
+        return {
+            "pipeline_id": run.pipeline_id,
+            "name": run.name,
+            "status": run.status,
+            "model": run.model,
+            "token_budget": run.token_budget,
+            "total_tokens": run.total_tokens,
+            "total_duration": run.total_duration,
+            "working_directory": run.working_directory,
+            "kickoff_message": run.kickoff_message,
+            "stages_json": run.stages_json,
+            "created_at": run.created_at.isoformat() if run.created_at else None,
+            "completed_at": run.completed_at.isoformat() if run.completed_at else None,
+        }
+    finally:
+        session.close()
+
+
+def list_pipeline_runs(limit: int = 50) -> list[dict]:
+    """List recent pipeline runs, most recent first.
+
+    Args:
+        limit: Maximum number of records to return.
+
+    Returns:
+        List of pipeline run dicts.
+    """
+    session = get_db_session()
+    try:
+        runs = (
+            session.query(PipelineRun)
+            .order_by(PipelineRun.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+        return [
+            {
+                "pipeline_id": r.pipeline_id,
+                "name": r.name,
+                "status": r.status,
+                "model": r.model,
+                "total_tokens": r.total_tokens,
+                "total_duration": r.total_duration,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "completed_at": r.completed_at.isoformat() if r.completed_at else None,
+            }
+            for r in runs
+        ]
+    finally:
+        session.close()
+
+
+def get_pipeline_stage_outputs(pipeline_id: str) -> list[dict]:
+    """Get all stage outputs for a pipeline, ordered by stage index.
+
+    Returns:
+        List of stage output dicts.
+    """
+    session = get_db_session()
+    try:
+        stages = (
+            session.query(PipelineStageOutput)
+            .filter(PipelineStageOutput.pipeline_id == pipeline_id)
+            .order_by(PipelineStageOutput.stage_index)
+            .all()
+        )
+        return [
+            {
+                "stage_index": s.stage_index,
+                "label": s.label,
+                "output_text": s.output_text,
+                "tokens_used": s.tokens_used,
+                "duration_seconds": s.duration_seconds,
+                "status": s.status,
+                "error": s.error,
+                "completed_at": s.completed_at.isoformat() if s.completed_at else None,
+            }
+            for s in stages
+        ]
     finally:
         session.close()

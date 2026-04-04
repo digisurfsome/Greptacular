@@ -1765,7 +1765,7 @@ export function WorkspaceChat({
           </div>
           {agentWaiting ? (
             <textarea
-              ref={walkieTalkieInputRef as React.RefObject<HTMLTextAreaElement>}
+              ref={walkieTalkieInputRef as unknown as React.RefObject<HTMLTextAreaElement>}
               value={walkieTalkieInput}
               onChange={(e) => setWalkieTalkieInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && e.ctrlKey) { e.preventDefault(); handleWalkieTalkieSend() } }}

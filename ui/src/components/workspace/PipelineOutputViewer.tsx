@@ -282,8 +282,8 @@ export function PipelineOutputViewer({ pipelineId, status }: PipelineOutputViewe
         </div>
       )}
 
-      {/* Input area — always visible when pipeline is running */}
-      {(isRunning || isWaiting) && (
+      {/* Input area — always visible when pipeline exists (running or completed) */}
+      {pipelineId && (
         <div className="border-t border-border px-4 py-3 shrink-0 bg-background">
           <div className="flex gap-2">
             <div className="flex-1 flex flex-col gap-1">

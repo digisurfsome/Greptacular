@@ -21,8 +21,18 @@ Activate when the context packet contains completed data from stages 0, 3, 4, 5,
   "stage_5": { "mechanism_blueprints": [...], "build_rules_applied": [...] },
   "stage_6": { "sub_6a": {...}, "sub_6b": {...}, "sub_6c": {...} },
   "stage_7": { "phases": [...], "token_budget": {...}, "mandatory_build_order": [...] },
-  "stage_8": { "protocol_injected_phases": [...], "overhead_breakdown": {...} },
+  "stage_8": { "instrumented_phases": [...], "total_overhead_tokens": 0, "budget_verified": true },
   "stage_9": {
+    "verifier_config": {
+      "approach": "automated | manual",
+      "verifier_prompt": "string",
+      "verifier_inputs": ["string"],
+      "verifier_token_budget": 10000,
+      "retry_config": { "max_retries": 2, "retry_action": "string", "escalation_action": "string" },
+      "persistent_verifier": true
+    },
+    "checker_builder_consistency": true,
+    "verification_overhead_total": 40000,
     "verification_mode": "automated_agent_b | manual_preamble_merge",
     "two_strike_rule": {...}, "verification_protocol": {...},
     "per_phase_checker_config": [...], "agent_b_config": {...}
@@ -37,7 +47,7 @@ Activate when the context packet contains completed data from stages 0, 3, 4, 5,
 
 Enumerate every file to generate. For each, record `file_path`, `file_type`, and `estimated_tokens`:
 
-- `phases/phase-N.md` (one per phase from `stage_7.phases`) — type: `"phase"`, tokens: `stage_7.token_budget.per_phase[N]` + `stage_8.overhead_breakdown.per_phase[N]`
+- `phases/phase-N.md` (one per phase from `stage_7.phases`) — type: `"phase"`, tokens: `stage_7.phases[N].estimated_content_tokens` + `stage_8.instrumented_phases[N].overhead_tokens`
 - `build.sh` — type: `"build_script"`, tokens: ~2,000
 - `CLAUDE.md` — type: `"claude_md"`, tokens: ~3,000 (must stay under 500 lines)
 - `BUILD_RULES.md` — type: `"build_rules"`, tokens: ~8,000
@@ -45,16 +55,16 @@ Enumerate every file to generate. For each, record `file_path`, `file_type`, and
 
 ### Step 2: Render Phase Files
 
-For each phase in `stage_8.protocol_injected_phases`, compile a standalone `phase-N.md` with exactly 9 sections in order. Use the template in `references/phase-file-template.md`. Each section's source:
+For each phase in `stage_8.instrumented_phases`, compile a standalone `phase-N.md` with exactly 9 sections in order. Use the template in `references/phase-file-template.md`. Each section's source:
 
 1. **Build Rules Preamble** (~8K tokens): From `stage_5.build_rules_applied` + `stage_3.drift_anchor`. Distribute Martin's rules as architecture principles — NEVER as a standalone "Martin's Rules" block.
-2. **File Sandbox Declaration** (~2K tokens): From `stage_7.phases[N].files_allowed`, `files_read_only`, `files_forbidden`.
-3. **Build Order with Pulse Points** (~3K tokens): From `stage_7.mandatory_build_order` + `stage_8.protocol_injected_phases[N].pulse_checks`.
-4. **Seam Check Definitions** (~2K tokens): From `stage_8.protocol_injected_phases[N].seam_checks`.
+2. **File Sandbox Declaration** (~2K tokens): From `stage_7.phases[N].file_sandbox.allowed`, `.read_only`, `.forbidden`.
+3. **Build Order with Pulse Points** (~3K tokens): From `stage_7.mandatory_build_order` + `stage_8.instrumented_phases[N].pulse_points`.
+4. **Seam Check Definitions** (~2K tokens): From `stage_8.instrumented_phases[N].seam_checks`.
 5. **Objective and Feature Requirements**: From `stage_7.phases[N].features` cross-referenced with `stage_4.mechanisms` and `stage_6.sub_6b`.
 6. **Pattern References**: From `stage_5.mechanism_blueprints` — file:line references for patterns to follow, informed by Wall/Door/Room classifications.
-7. **Violation Handling Instructions** (~2K tokens): From `stage_8.protocol_injected_phases[N].violation_rules`. Decision tree: LOW (log+continue), MEDIUM (fix first), HIGH (rollback to pulse), CRITICAL (stop+human).
-8. **Full Checkpoint at End** (~5K tokens): From `stage_8.protocol_injected_phases[N].full_checkpoint`. 4-step check: self-report, diff check, violation response, functional verification.
+7. **Violation Handling Instructions** (~2K tokens): From `stage_8.instrumented_phases[N].violation_handling`. Decision tree: low (log+continue), medium (fix first), high (rollback to pulse), critical (stop+human).
+8. **Full Checkpoint at End** (~5K tokens): From `stage_8.instrumented_phases[N].full_checkpoint`. 4-step check: self-report, diff check, violation response, functional verification.
 9. **Gate Condition**: "ALL FOUR STEPS MUST PASS BEFORE PHASE [N+1] BEGINS" (or "PIPELINE COMPLETE" for last phase).
 
 **Critical**: Each phase file MUST be self-contained — executable in a fresh agent context without cross-file references (except READ-ONLY codebase files).
@@ -68,7 +78,7 @@ Create the deterministic bash wrapper using the template in `references/build-sh
 - Phase chaining with `&&` (NEVER `;`)
 - Two-strike retry from `stage_9.two_strike_rule`: fail → rollback → retry with fresh agent → second fail → stop for human
 - Platform-adaptive commands from `stage_0.tech_stack` (build, lint, test commands)
-- Forbidden file detection: `git diff --name-only $SNAPSHOT | grep -E "forbidden_pattern"` built from each phase's `files_forbidden`
+- Forbidden file detection: `git diff --name-only $SNAPSHOT | grep -E "forbidden_pattern"` built from each phase's `file_sandbox.forbidden`
 
 Set `build_script_config`:
 ```json
@@ -200,7 +210,7 @@ Metadata updates:
 | Missing Field | Action |
 |---------------|--------|
 | `stage_7.phases` is null or empty | FAIL — escape hatch. No phases = no output. |
-| `stage_8.protocol_injected_phases` missing | FAIL — escape hatch. Cannot render phase files without protocols. |
+| `stage_8.instrumented_phases` missing | FAIL — escape hatch. Cannot render phase files without protocols. |
 | `stage_9` missing entirely | WARN — generate build.sh without verification/retry. Flag in confidence (Completeness -10). |
 | `stage_0.tech_stack` missing | WARN — default to Node/npm. Flag in confidence (Accuracy -5). |
 | `stage_5.build_rules_applied` empty | Generate minimal preamble from universal rules only. Flag in confidence (Specificity -5). |
@@ -273,7 +283,7 @@ Score each dimension 0-20 after producing output:
 {
   "stage_0": { "tech_stack": { "framework": "react", "database": "supabase", "build_command": "npm run build", "lint_command": "npm run lint" } },
   "stage_3": { "concept_and_context": { "name": "TaskFlow", "description": "Team task management app" }, "drift_anchor": "Task management for small teams" },
-  "stage_7": { "phases": [{ "phase_number": 1, "features": ["auth", "db-setup"], "files_allowed": ["src/lib/supabase.ts"] }, { "phase_number": 2, "features": ["task-board"], "files_allowed": ["src/components/Board.tsx"] }], "token_budget": { "per_phase": { "1": 20000, "2": 25000 } } }
+  "stage_7": { "phases": [{ "phase_number": 1, "features": ["auth", "db-setup"], "file_sandbox": { "allowed": ["src/lib/supabase.ts"] } }, { "phase_number": 2, "features": ["task-board"], "file_sandbox": { "allowed": ["src/components/Board.tsx"] } }], "token_budget": { "budget_per_phase_content": 325000 } }
 }
 ```
 
@@ -805,7 +815,7 @@ log "============================================"
 3. Replace `{phase_count}` with length of `stage_7.phases`
 4. Replace `BUILD_CMD`, `LINT_CMD`, `TEST_CMD` with actual values from `stage_0.tech_stack`
 5. Generate one `run_phase_with_retry N "pattern"` call per phase, chained with `&&`
-6. Build `FORBIDDEN_PATTERN` per phase from `stage_7.phases[N].files_forbidden` as a grep-compatible regex (pipe-separated paths, escaped dots)
+6. Build `FORBIDDEN_PATTERN` per phase from `stage_7.phases[N].file_sandbox.forbidden` as a grep-compatible regex (pipe-separated paths, escaped dots)
 7. The agent command inside `run_phase()` is platform-specific — see `platform-wrappers.md` for the correct command per platform
 8. `MAX_RETRIES` is always 2 (from `stage_9.two_strike_rule.max_retries`)
 9. If `stage_9.verification_mode` is `automated_agent_b`, add Agent B verification call between agent work and commit (see Stage 9 output for the exact command)
@@ -969,7 +979,7 @@ Quick checks:
 2. Replace `{build_command}`, `{lint_command}`, `{test_command}` from `stage_0.tech_stack`
 3. Generate "Architecture Principles" from `stage_5.build_rules_applied` — pick the 10-15 most impactful rules, adapted to the tech stack
 4. Generate "File Structure" tree from `stage_6.sub_6a` page arrangement and `stage_7.phases` file sandbox declarations — show the actual project structure
-5. Generate "Key Files" from the union of all phases' `files_forbidden` lists
+5. Generate "Key Files" from the union of all phases' `file_sandbox.forbidden` lists
 6. Keep all BUILD_RULES.md section references accurate — section names must match what Step 5 generates
 7. Martin's rules are EMBEDDED as architecture principles — NEVER reference "Martin" by name
 8. Total output MUST be under 500 lines. If approaching the limit, remove examples rather than removing rules
@@ -1045,7 +1055,7 @@ concept, flag it rather than improvising.
 
 ### Files You CAN Modify (Create or Edit)
 
-{From stage_7.phases[N].files_allowed}
+{From stage_7.phases[N].file_sandbox.allowed}
 
 ```
 {file_path_1}
@@ -1055,7 +1065,7 @@ concept, flag it rather than improvising.
 
 ### Files You CAN Read (But NOT Modify)
 
-{From stage_7.phases[N].files_read_only}
+{From stage_7.phases[N].file_sandbox.read_only}
 
 ```
 {file_path_1}
@@ -1065,7 +1075,7 @@ concept, flag it rather than improvising.
 
 ### Files You CANNOT Touch
 
-{From stage_7.phases[N].files_forbidden}
+{From stage_7.phases[N].file_sandbox.forbidden}
 
 ```
 {file_path_1}
@@ -1082,7 +1092,7 @@ was changed, the phase FAILS verification.
 
 {~3,000 tokens. Numbered implementation sequence with verification triggers.}
 
-{From stage_7.mandatory_build_order + stage_8.protocol_injected_phases[N].pulse_checks}
+{From stage_7.mandatory_build_order + stage_8.instrumented_phases[N].pulse_points}
 
 ### Implementation Sequence
 
@@ -1116,7 +1126,7 @@ was changed, the phase FAILS verification.
 
 {~2,000 tokens. Integration verification points where components meet.}
 
-{From stage_8.protocol_injected_phases[N].seam_checks}
+{From stage_8.instrumented_phases[N].seam_checks}
 
 | Seam | Components | Verification |
 |------|-----------|-------------|
@@ -1192,7 +1202,7 @@ When implementing features in this phase, follow these existing patterns:
 
 {~2,000 tokens. Decision tree for when rules are broken.}
 
-{From stage_8.protocol_injected_phases[N].violation_rules}
+{From stage_8.instrumented_phases[N].violation_handling}
 
 | Severity | Trigger | Action |
 |----------|---------|--------|
@@ -1217,7 +1227,7 @@ prescribed action.
 
 {~5,000 tokens. The final verification gate for this phase.}
 
-{From stage_8.protocol_injected_phases[N].full_checkpoint}
+{From stage_8.instrumented_phases[N].full_checkpoint}
 
 ### Step 1: Self-Report
 

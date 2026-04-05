@@ -9,24 +9,24 @@ Configure an independent verification agent that audits builder output after eac
 
 ## When to Use
 
-Activate when the context packet contains completed `stage_8.protocol_injected_phases`, `stage_7.phases`, and `stage_0.tech_stack`. This skill produces `stage_9.*` — the `verifier_config` wrapper (approach, prompt, inputs, token budget, retry config, persistence flag), `checker_builder_consistency` (Boolean confirming no builder/verifier contradictions), `verification_overhead_total` (total verification tokens across all phases), plus the detailed verification protocol, per-phase checker configs, Agent B config, and manual preamble config.
+Activate when the context packet contains completed `stage_8.instrumented_phases`, `stage_7.phases`, and `stage_0.tech_stack`. This skill produces `stage_9.*` — the `verifier_config` wrapper (approach, prompt, inputs, token budget, retry config, persistence flag), `checker_builder_consistency` (Boolean confirming no builder/verifier contradictions), `verification_overhead_total` (total verification tokens across all phases), plus the detailed verification protocol, per-phase checker configs, Agent B config, and manual preamble config.
 
 ## Input Format
 
 ```json
 {
   "stage_8": {
-    "protocol_injected_phases": [
+    "instrumented_phases": [
       {
         "phase_number": 1,
-        "pulse_checks": [...],
+        "pulse_points": [...],
         "seam_checks": [...],
         "full_checkpoint": {...},
-        "violation_rules": {
-          "LOW": { "action": "log_and_proceed" },
-          "MEDIUM": { "action": "review_change" },
-          "HIGH": { "action": "revert_entire_phase" },
-          "CRITICAL": { "action": "full_stop_revert_flag" }
+        "violation_handling": {
+          "low": { "response": "log_and_proceed" },
+          "medium": { "response": "review_and_decide" },
+          "high": { "response": "revert_entire_phase" },
+          "critical": { "response": "full_stop" }
         },
         "overhead_tokens": 25000
       }
@@ -36,9 +36,11 @@ Activate when the context packet contains completed `stage_8.protocol_injected_p
     "phases": [
       {
         "phase_number": 1,
-        "files_allowed": ["src/lib/auth.ts", "src/contexts/AuthContext.tsx"],
-        "files_read_only": ["package.json"],
-        "files_forbidden": [".env", "CLAUDE.md"],
+        "file_sandbox": {
+          "allowed": ["src/lib/auth.ts", "src/contexts/AuthContext.tsx"],
+          "read_only": ["package.json"],
+          "forbidden": [".env", "CLAUDE.md"]
+        },
         "build_order": [...]
       }
     ]
@@ -75,9 +77,9 @@ Read `stage_0.tech_stack`. Map to delivery approach:
 
 Define the universal verification protocol (identical for both modes):
 
-1. **Self-Report** — Agent lists every file created/modified. Compare against `files_allowed`.
-2. **Diff Check** — Run `git diff PHASE_N_BASELINE..HEAD --name-only`. Compare against BOTH self-report AND `files_allowed`. Mismatch between self-report and diff is itself a violation.
-3. **Violation Response** — For any file in diff NOT in `files_allowed`, apply `stage_8.protocol_injected_phases[N].violation_rules` decision tree.
+1. **Self-Report** — Agent lists every file created/modified. Compare against `file_sandbox.allowed`.
+2. **Diff Check** — Run `git diff PHASE_N_BASELINE..HEAD --name-only`. Compare against BOTH self-report AND `file_sandbox.allowed`. Mismatch between self-report and diff is itself a violation.
+3. **Violation Response** — For any file in diff NOT in `file_sandbox.allowed`, apply `stage_8.instrumented_phases[N].violation_handling` decision tree.
 4. **Functional Checks** — Run tech-stack-appropriate compile, test, render, and route checks.
 
 Map tech stack to functional check commands using the reference in `references/four-step-verification.md`.
@@ -86,7 +88,7 @@ Map tech stack to functional check commands using the reference in `references/f
 
 For each phase in `stage_7.phases`:
 
-1. Copy `files_allowed` as the verification baseline
+1. Copy `file_sandbox.allowed` as the verification baseline
 2. Set `baseline_snapshot` to `"git_commit_hash_before_phase_N_starts"`
 3. Determine applicable functional checks:
    - Phase 1: compile only (no prior features to regression-test)
@@ -95,7 +97,7 @@ For each phase in `stage_7.phases`:
 4. Define `expected_outcomes` — specific exit codes and observable results
 5. Add `overrides` for phase-specific deviations (e.g., Phase 1 skips test check)
 
-Cross-reference each phase's `violation_rules` from Stage 8 to ensure severity levels match.
+Cross-reference each phase's `violation_handling` from Stage 8 to ensure severity levels match.
 
 ### Step 4: Configure Agent B (Automated Verifier)
 
@@ -135,7 +137,7 @@ The preamble must reference specific checks from Phase N's `full_checkpoint`, NO
 
 Before writing output, verify and compute:
 
-1. Every violation severity in checker config matches Stage 8's `violation_rules`
+1. Every violation severity in checker config matches Stage 8's `violation_handling`
 2. Functional checks reference real commands from `stage_0.tech_stack`
 3. Stage 8's `full_checkpoint` gate aligns with the 4-step protocol
 4. No checker rule contradicts the builder's phase spec
@@ -183,7 +185,7 @@ If any contradiction is found during consistency validation, flag the specific c
     "verification_protocol": {
       "step_1_self_report": {
         "description": "Agent lists every file created or modified",
-        "compare_against": "files_allowed list from phase spec",
+        "compare_against": "file_sandbox.allowed list from phase spec",
         "output_format": "newline-separated file paths"
       },
       "step_2_diff_check": {
@@ -191,7 +193,7 @@ If any contradiction is found during consistency validation, flag the specific c
         "compare_against": ["self_report", "allowed_files_list"],
         "mismatch_is_violation": true
       },
-      "step_3_violation_response": "stage_8.protocol_injected_phases[N].violation_rules",
+      "step_3_violation_response": "stage_8.instrumented_phases[N].violation_handling",
       "step_4_functional": {
         "commands": ["tech-stack-specific compile", "test", "lint"],
         "page_render_check": true
@@ -201,7 +203,7 @@ If any contradiction is found during consistency validation, flag the specific c
       {
         "phase_number": 1,
         "baseline_snapshot": "git_commit_hash_before_phase_1_starts",
-        "allowed_files": ["copied from stage_7.phases[0].files_allowed"],
+        "allowed_files": ["copied from stage_7.phases[0].file_sandbox.allowed"],
         "functional_checks": ["npm run build"],
         "expected_outcomes": ["exit code 0"],
         "overrides": { "skip_test_check": true }
@@ -241,17 +243,17 @@ Metadata updates:
 
 | Missing Field | Action |
 |---------------|--------|
-| `stage_8.protocol_injected_phases` | FAIL — trigger escape hatch. Cannot configure verification without protocols. |
+| `stage_8.instrumented_phases` | FAIL — trigger escape hatch. Cannot configure verification without protocols. |
 | `stage_7.phases` | FAIL — trigger escape hatch. Cannot build per-phase configs without phase definitions. |
 | `stage_0.tech_stack` | WARN — default to Node/npm commands. Flag in confidence scoring (Accuracy penalty). |
-| `stage_8.*.violation_rules` empty for some phases | Generate default LOW/MEDIUM/HIGH/CRITICAL tree for those phases. Flag as override. |
+| `stage_8.*.violation_handling` empty for some phases | Generate default LOW/MEDIUM/HIGH/CRITICAL tree for those phases. Flag as override. |
 
 ### Ambiguous Input
 
 | Ambiguity | Resolution |
 |-----------|------------|
 | Tech stack has both `build_command` and `compile_command` | Use `build_command` for functional check. |
-| Phase has no `files_allowed` (empty list) | Treat as infrastructure-only phase. Set `skip_functional: true` in overrides. |
+| Phase has no `file_sandbox.allowed` (empty list) | Treat as infrastructure-only phase. Set `skip_functional: true` in overrides. |
 | Violation rules differ between Stage 8 phases | Use the strictest interpretation. Log the discrepancy. |
 
 ### Scope Overflow
@@ -269,7 +271,7 @@ Score each dimension 0-20 after producing output:
 
 2. **Accuracy** (0-20): Functional checks use real commands from `stage_0.tech_stack`? Agent B config matches spec (~10K tokens, clean context, persistent)? Violation severities match Stage 8 exactly? `verification_overhead_total` is within ±15% of actual sum?
 
-3. **Consistency** (0-20): Checker's `allowed_files` matches Stage 7's `files_allowed` per phase? Protocol aligns with Stage 8's `full_checkpoint`? Both approaches use identical core protocol? `checker_builder_consistency` is `true` — no case where builder rules and verifier rules contradict?
+3. **Consistency** (0-20): Checker's `allowed_files` matches Stage 7's `file_sandbox.allowed` per phase? Protocol aligns with Stage 8's `full_checkpoint`? Both approaches use identical core protocol? `checker_builder_consistency` is `true` — no case where builder rules and verifier rules contradict?
 
 4. **Specificity** (0-20): Git commands are exact (not "run a diff")? Preamble template is concrete text? Expected outcomes include exit codes? `verifier_config.verifier_prompt` is a complete, self-contained prompt (not a reference to another file)?
 
@@ -280,7 +282,7 @@ Score each dimension 0-20 after producing output:
 ## Escape Hatch
 
 **Trigger when:**
-- Required inputs missing (no `protocol_injected_phases`, no `phases`, no `tech_stack`)
+- Required inputs missing (no `instrumented_phases`, no `phases`, no `tech_stack`)
 - Tech stack unrecognized (cannot determine compile/test commands)
 - Stage 8 violation rules are incomplete or contradictory
 - Checker config would contradict builder's phase spec
@@ -426,7 +428,7 @@ Every phase ends with this 4-step verification. It is identical for automated an
 The builder agent lists every file it created, modified, or deleted during the phase.
 
 **Input**: Agent's own memory of what it changed.
-**Compare against**: `files_allowed` from the phase spec.
+**Compare against**: `file_sandbox.allowed` from the phase spec.
 **Output format**:
 ```
 FILES_CREATED:
@@ -450,18 +452,18 @@ Run the deterministic git diff command.
 
 **Compare against**:
 1. The self-report from Step 1
-2. The `files_allowed` list from the phase spec
+2. The `file_sandbox.allowed` list from the phase spec
 
 **Mismatch handling**:
 - File in diff but NOT in self-report: Agent forgot to mention it. This is a violation (agent honesty failure).
 - File in self-report but NOT in diff: Agent hallucinated a change. Flag but not critical.
-- File in diff but NOT in `files_allowed`: Unauthorized file change. Classify using violation tree.
+- File in diff but NOT in `file_sandbox.allowed`: Unauthorized file change. Classify using violation tree.
 
 **Why this is ground truth**: `git diff` is mechanical. It cannot lie, cannot forget, cannot hallucinate. It captures every byte that changed.
 
 ### Step 3: Violation Response
 
-For every unauthorized file (in diff but NOT in `files_allowed`), apply the violation decision tree from `stage_8.protocol_injected_phases[N].violation_rules`:
+For every unauthorized file (in diff but NOT in `file_sandbox.allowed`), apply the violation decision tree from `stage_8.instrumented_phases[N].violation_handling`:
 
 | Severity | Example | Action |
 |----------|---------|--------|
@@ -636,7 +638,7 @@ Example:
 
 ## Customization Rules
 
-1. **`ALLOWED_FILES_LIST`**: Copy directly from `stage_7.phases[N].files_allowed`. One file per line.
+1. **`ALLOWED_FILES_LIST`**: Copy directly from `stage_7.phases[N].file_sandbox.allowed`. One file per line.
 2. **`FUNCTIONAL_COMMANDS`**: Derive from `stage_0.tech_stack`:
    - Node/React: `npm run build`, `npm run test`, route checks
    - Python: `python -m pytest`, `ruff check .`, `mypy .`
@@ -753,7 +755,7 @@ ACTION_REQUIRED: Human review needed.
 REASON: Two fresh agents failed the same phase. The problem is likely the phase specification, not the agents.
 SUGGESTED_ACTIONS:
   1. Review the phase spec for ambiguity or contradictions
-  2. Check if files_allowed is too restrictive
+  2. Check if file_sandbox.allowed is too restrictive
   3. Check if the phase scope is too large (consider splitting)
   4. Review the functional check expectations
 REPORT

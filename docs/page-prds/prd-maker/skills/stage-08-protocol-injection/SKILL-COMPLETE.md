@@ -24,27 +24,30 @@ Do NOT activate for: phase splitting (Stage 7), verification agent setup (Stage 
     }
   },
   "stage_7": {
+    "phase_count": 1,
+    "total_estimated_tokens": 0,
     "phases": [{
       "phase_number": 1,
-      "name": "string",
-      "mechanism_ids": ["string"],
-      "estimated_tokens": 0,
+      "phase_name": "string",
+      "mechanisms_included": ["string"],
+      "estimated_content_tokens": 0,
+      "estimated_total_tokens": 0,
       "build_order": [
         { "file_path": "src/file1.ts", "operation": "create", "rationale": "string" },
         { "file_path": "src/file2.tsx", "operation": "create", "rationale": "string" }
       ],
-      "files_allowed": ["string"],
-      "files_read_only": ["string"],
-      "files_forbidden": ["string"],
+      "file_sandbox": {
+        "allowed": ["string"],
+        "read_only": ["string"],
+        "forbidden": ["string"]
+      },
       "depends_on": [],
       "do_not_change": ["string"]
     }],
     "token_budget": {
-      "total_spec_tokens": 0,
       "budget_per_phase_content": 0,
       "overhead_per_phase": 25000,
-      "total_budget": 0,
-      "phases_needed": 0
+      "total_budget": 0
     }
   },
   "stage_5": {
@@ -71,7 +74,7 @@ Do NOT activate for: phase splitting (Stage 7), verification agent setup (Stage 
 
 ### Step 1: Load and Index Phase Data
 
-Read `stage_7.phases`. For each phase, index its `build_order` (array of `{file_path, operation, rationale}` objects), `files_allowed` (sandbox), and `mechanism_ids`. Build a lookup: `mechanism_id → phase_number` so you know which mechanisms live in which phase.
+Read `stage_7.phases`. For each phase, index its `build_order` (array of `{file_path, operation, rationale}` objects), `file_sandbox.allowed` (sandbox), and `mechanisms_included`. Build a lookup: `mechanism_id → phase_number` so you know which mechanisms live in which phase.
 
 ### Step 2: Build Dependency Interface Map
 
@@ -107,8 +110,8 @@ For each phase, create a `full_checkpoint` with three parts:
 
 **pattern_checks** — sandbox compliance via git diff:
 - `"Run git diff --name-only $PHASE_N_BASELINE to list all modified files"`
-- `"Compare modified files against files_allowed list"`
-- `"Flag any file modified that is NOT in files_allowed"`
+- `"Compare modified files against file_sandbox.allowed list"`
+- `"Flag any file modified that is NOT in file_sandbox.allowed"`
 - `"Flag any file in build_order that was NOT created/modified"`
 - `"Flag any unexpected imports from files outside sandbox"`
 
@@ -142,7 +145,7 @@ For each phase, calculate `overhead_tokens` by summing the 7 overhead components
 4. Every phase has `full_checkpoint` with both `pattern_verification` and `functional_checks`
 5. `violation_handling` has all four severity levels (low, medium, high, critical) for every phase
 6. `overhead_tokens` ≤ 30,000 per phase
-7. `estimated_tokens` (Stage 7) + `overhead_tokens` ≤ 350,000 per phase
+7. `estimated_content_tokens` (Stage 7) + `overhead_tokens` ≤ 350,000 per phase
 8. For phases where `phase_number > 1`, `functional_checks` includes regression verification for all prior phases' features
 9. `total_overhead_tokens` equals sum of all phases' `overhead_tokens`
 10. `budget_verified` is `true` only if check #7 passes for ALL phases
@@ -170,7 +173,7 @@ If overhead exceeds 30,000 for any phase, trim verbose descriptions. If total ex
           }
         ],
         "full_checkpoint": {
-          "pattern_verification": ["git diff --name-only against files_allowed", "flag unauthorized modifications", "flag incomplete build_order items"],
+          "pattern_verification": ["git diff --name-only against file_sandbox.allowed", "flag unauthorized modifications", "flag incomplete build_order items"],
           "functional_checks": ["npm run build succeeds", "navigate to /sign-in renders login form"],
           "gate_condition": "ALL pattern_verification pass AND ALL functional_checks pass. Fix before next phase."
         },
@@ -180,7 +183,7 @@ If overhead exceeds 30,000 for any phase, trim verbose descriptions. If total ex
             "response": "log_and_proceed"
           },
           "medium": {
-            "triggers": ["modified file from another phase's files_allowed"],
+            "triggers": ["modified file from another phase's file_sandbox.allowed"],
             "response": "review_and_decide",
             "decision_tree": {
               "additive": "proceed_with_caution",
@@ -309,7 +312,7 @@ Phase 1: Auth System
 │      └─ SEAM: App.tsx routes point to SignIn and SignUp page components
 │
 ├── FULL CHECKPOINT (gate):
-│   ├─ Pattern: git diff --name-only vs files_allowed; flag unauthorized changes
+│   ├─ Pattern: git diff --name-only vs file_sandbox.allowed; flag unauthorized changes
 │   ├─ Functional: npm run build succeeds; /sign-in renders; /sign-up renders
 │   └─ Gate: ALL pass → proceed to Phase 2. ANY fail → fix first.
 │
@@ -335,7 +338,7 @@ Every protocol-injected phase adds a fixed overhead on top of Stage 7's `estimat
 | Component | Token Estimate | What It Contains |
 |-----------|---------------|------------------|
 | Build rules preamble | ~8,000 | Martin's structural rules applicable to this phase. Sourced from the agnostic checklist. Includes banned patterns, file naming conventions, component structure rules, state management rules. |
-| File sandbox declaration | ~2,000 | `files_allowed`, `files_read_only`, `files_forbidden` lists with explanations. Includes "DO NOT MODIFY" warnings for protected files. |
+| File sandbox declaration | ~2,000 | `file_sandbox.allowed`, `file_sandbox.read_only`, `file_sandbox.forbidden` lists with explanations. Includes "DO NOT MODIFY" warnings for protected files. |
 | Build order with pulse points | ~3,000 | The ordered file list with pulse check definitions after each entry. More files = more tokens, but pulse checks are concise (~50 tokens each). |
 | Seam check definitions | ~2,000 | Connection-point verification instructions. Typically 2-5 seam checks per phase at ~200-400 tokens each. Phases with no interfaces: ~200 tokens (just the "no seam checks needed" note). |
 | Full checkpoint | ~5,000 | Pattern verification instructions (~2,000), functional check commands (~1,500), gate condition (~500), checkpoint summary format (~1,000). |
@@ -455,7 +458,7 @@ Always placed at the END of each phase. Three mandatory parts:
 Always include these 5 checks:
 1. `"Run git diff --name-only $PHASE_N_BASELINE to list all actually modified files"`
 2. `"Compare actual modified files against this phase's files_allowed list"`
-3. `"FLAG: any file modified that is NOT in files_allowed"`
+3. `"FLAG: any file modified that is NOT in file_sandbox.allowed"`
 4. `"FLAG: any file in build_order that was NOT created or modified"`
 5. `"FLAG: any new imports from files outside this phase's sandbox"`
 
@@ -488,7 +491,7 @@ The gate is BINARY: pass or fail. No "proceed with warnings" at the gate level �
 
 ## The Four Severity Levels
 
-Every phase gets all four levels. Triggers are customized per phase based on its `files_allowed` sandbox.
+Every phase gets all four levels. Triggers are customized per phase based on its `file_sandbox.allowed` list.
 
 ```
 VIOLATION DETECTED (via git diff comparison)

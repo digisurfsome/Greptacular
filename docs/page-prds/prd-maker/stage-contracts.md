@@ -446,7 +446,7 @@ Arrange the classified mechanisms into visual structure — page layouts, naviga
 
 From `context_packet.stage_5`:
 
-- `blueprints`: Wall/Door/Room classifications for all mechanisms
+- `mechanism_blueprints`: Wall/Door/Room classifications for all mechanisms
 
 From `context_packet.stage_4`:
 
@@ -454,42 +454,46 @@ From `context_packet.stage_4`:
 
 From `context_packet.stage_3`:
 
-- `concept_document`: Product concept for context
+- `concept_and_context`: Product concept for context
 
 From `context_packet.stage_2`:
 
-- `matched_archetype`: App type for wireframe pattern lookup
+- `archetype_matches`: App type for wireframe pattern lookup
 
 ### Outputs
 
 Written to `context_packet.stage_6`:
 
-- `app_type`: Confirmed app type used for wireframe selection (may refine `matched_archetype`)
-- `arrangement`: Object describing the selected layout pattern:
-  - `navigation_pattern`: "sidebar" | "top_nav" | "tabbed" | "custom"
-  - `page_list`: Array of page objects, each with:
+- `sub_6a`: Arrangement selection:
+  - `app_type_classification`: Confirmed app type used for wireframe selection
+  - `arrangement_options`: Array of 2-3 layout options presented to user
+  - `selected_arrangement_id`: User's chosen arrangement
+  - `user_adjustments`: Any user modifications (or null)
+- `sub_6b`: Page mockups:
+  - `pages`: Array of page objects, each with:
     - `page_name`: Descriptive name
-    - `route`: URL path
-    - `mechanisms`: Array of mechanism IDs present on this page
-    - `components`: Array of component descriptions with placement
-    - `connections`: What each component triggers (which mechanism, which action)
+    - `route`: URL path (kebab-case)
+    - `layout_pattern`: Layout pattern from selected arrangement
+    - `components`: Array of component descriptions with `component_name`, `placement`, and `mechanism_ids`
+    - `backend_services`: Array of mechanism IDs for backend-only mechanisms served by this page
     - `user_approved`: Boolean
-- `style`: Object describing the selected visual style:
-  - `style_id`: One of the 12 predefined style IDs (or "custom")
-  - `color_tokens`: Full color token set (brand, surface, text, border, status)
-  - `typography`: Font family and hierarchy
-  - `component_styling`: Border radius, shadows, spacing
-- `all_mechanisms_mapped`: Boolean — every mechanism from Stage 4 appears on at least one page
-- `pages_approved`: Boolean — user has approved all page layouts
+  - `all_mechanisms_mapped`: Boolean — every mechanism from Stage 4 appears on at least one page
+  - `pages_approved`: Boolean — user has approved all page layouts
+- `sub_6c`: Style selection:
+  - `style_options_presented`: Array of 3 curated style options
+  - `selected_style_id`: One of the 12 predefined style IDs (or "custom")
+  - `design_tokens`: Object with `colors`, `typography`, `spacing`, `border_radius`, `shadows`
+  - `tailwind_config_overrides`: Tailwind config overrides
+  - `audience_scores`: Object with `audience_fit`, `vibe_match`, `age_range_fit`
 
 ### "Done When..." Criteria
 
-1. `page_list` contains at least 2 pages (login/auth + one functional page) and every page has a `route`, `mechanisms` array, `components` array, and `connections` defined
-2. Every mechanism from Stage 4 appears in at least one page's `mechanisms` array — `all_mechanisms_mapped` is `true`. No mechanism is "homeless"
-3. `navigation_pattern` is set and matches a recognized pattern for the `app_type`
-4. `user_approved` is `true` for every page in `page_list` — or, if running without human input, the layouts match the deterministic pattern for the app type
-5. `style` contains a valid `style_id` from the predefined set (or "custom" with full tokens provided), and all three sub-fields (color_tokens, typography, component_styling) are populated
-6. `pages_approved` is `true` — the overall layout has been confirmed
+1. `sub_6b.pages` contains at least 2 pages (login/auth + one functional page) and every page has a `route`, `components` array with `mechanism_ids`, and `layout_pattern` defined
+2. Every mechanism from Stage 4 appears in at least one page component's `mechanism_ids` array — `sub_6b.all_mechanisms_mapped` is `true`. No mechanism is "homeless"
+3. `sub_6a.selected_arrangement_id` is set and matches a recognized pattern for the `app_type_classification`
+4. `user_approved` is `true` for every page in `sub_6b.pages` — or, if running without human input, the layouts match the deterministic pattern for the app type
+5. `sub_6c` contains a valid `selected_style_id` from the predefined set (or "custom" with full tokens provided), and `design_tokens` is populated with `colors`, `typography`, `spacing`, `border_radius`, and `shadows`
+6. `sub_6b.pages_approved` is `true` — the overall layout has been confirmed
 
 ### Confidence Scoring
 
@@ -722,10 +726,10 @@ Render all preceding work (Stages 0-9) into a deliverable package of copy-paste-
 Full context packet from all prior stages:
 
 - `stage_0.platform_profile`: Stack context
-- `stage_3.concept_document`: Product concept (for CLAUDE.md context sections)
+- `stage_3.concept_and_context`: Product concept (for CLAUDE.md context sections)
 - `stage_4.mechanisms`: Mechanism inventory
-- `stage_5.blueprints`: Wall/Door/Room classifications
-- `stage_6.arrangement` + `style`: Page layouts and visual design
+- `stage_5.mechanism_blueprints`: Wall/Door/Room classifications
+- `stage_6.sub_6a` + `sub_6b` + `sub_6c`: Page layouts and visual design
 - `stage_7.phases`: Phase structure with sandboxes and build orders
 - `stage_8.instrumented_phases`: Phases with embedded protocols
 - `stage_9.verifier_config`: Verification agent setup
@@ -803,8 +807,8 @@ This section confirms that each stage's outputs match the next stage's expected 
 | 2 | `complete_raw_material`, `matched_archetype`, `mechanism_map` | 3 | Combined raw info, app type, category classifications | ✅ |
 | 3 | `concept_document` | 4 | Structured concept for mechanism extraction | ✅ |
 | 4 | `mechanisms`, `dual_design_flags` | 5 | Mechanism list with approaches for scaffolding | ✅ |
-| 5 | `blueprints` | 6 | Wall/Door/Room classifications for page layout | ✅ |
-| 6 | `arrangement`, `style` | 7 | Page layouts + style for phase splitting | ✅ |
+| 5 | `mechanism_blueprints` | 6 | Wall/Door/Room classifications for page layout | ✅ |
+| 6 | `sub_6a`, `sub_6b`, `sub_6c` | 7 | Page layouts + style for phase splitting | ✅ |
 | 7 | `phases` | 8 | Phase structure with sandboxes/build orders for protocol injection | ✅ |
 | 8 | `instrumented_phases` | 9 | Protocol-injected phases for verifier setup | ✅ |
 | 9 | `verifier_config` | 10 | Verification setup for output rendering | ✅ |

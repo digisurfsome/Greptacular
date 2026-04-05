@@ -103,44 +103,33 @@ These are boilerplates we use regularly. Their Exact Reality Sheets are pre-buil
 | Auth | Supabase Auth, Google OAuth, session management, route guards, role system | ON |
 | Payments | Stripe integration, webhook handling, subscription management, pricing page | OFF |
 
-**Toggle Combinations → Sheet Variants:**
+**Key concept:** DB/Auth/Payments code is always PRESENT in the boilerplate. "Wired up" means activated and connected. "Not wired" means dormant — the code is there, ready to activate later if you ever want to turn it into a standalone app.
+
+**Progressive sheet variants (each builds on the last):**
 
 | Variant | DB | Auth | Payments | Use Case |
 |---------|----|----|----------|----------|
-| `supabase_web_full` | ON | ON | ON | Full SaaS app |
-| `supabase_web_db_auth` | ON | ON | OFF | App with users but no payments |
-| `supabase_web_db_only` | ON | OFF | OFF | Data-driven app, no user accounts |
-| `supabase_web_minimal` | OFF | OFF | OFF | Static/utility app on the boilerplate scaffold |
+| `web_base` | - | - | - | Utility app, nothing wired. Starting point. |
+| `web_autoforge` | - | - | - (+AF) | Same as base but attached to AutoForge. Uses AF's auth/DB via SDK. |
+| `web_db` | ON | - | - | Data-driven app, no user accounts |
+| `web_db_auth` | ON | ON | - | App with users but no payments |
+| `web_db_auth_payments` | ON | ON | ON | Full SaaS app |
 
-Each variant is its own saved Exact Reality Sheet. The only difference between them is which rules are active vs marked "NOT ACTIVATED — skip."
+Each variant is its own saved Exact Reality Sheet. DB/Auth/Payments code stays in the codebase regardless — the sheet just tells the agent which pieces to wire up vs leave dormant.
 
 ### Boilerplate: Flutter Mobile (`flutter_mobile`)
 
 **Stack:** Flutter + Supabase backend + Supabase Auth + Supabase Storage
 
-**Same toggle system as web.** Same 4 variants (full, db_auth, db_only, minimal).
+**Same progressive system:** `mobile_base` → `mobile_db` → `mobile_db_auth` → `mobile_db_auth_payments`. No AutoForge variant for mobile-only (AutoForge is web-based).
 
 ### Boilerplate: Dual Web + Mobile (`dual`)
 
 **Stack:** Both boilerplates combined. Shared Supabase backend, separate Flutter and Next.js frontends.
 
-**Same toggles apply globally** (if auth is on, it's on for both platforms). Sheet includes platform-specific instructions for each rule where the implementation differs between web and mobile.
+**Same progressive system as web:** `dual_base` → `dual_autoforge` → `dual_db` → `dual_db_auth` → `dual_db_auth_payments`. The AutoForge variant lets you run a personal cross-platform app through AutoForge (mobile talks to AF server, web module lives inside AF — only works when AF server is running).
 
-### Boilerplate: AutoForge Add-On (`autoforge_addon`)
-
-**Stack:** Inherits from AutoForge's existing setup. Uses AutoForge's database via SDK. Uses AutoForge's subscription auth model. No separate auth, no separate database, no payments.
-
-**No toggles needed.** This is a fixed configuration:
-- Auth: OFF (uses AutoForge's existing subscription/OAuth)
-- Database: OFF as standalone (uses AutoForge's existing Supabase via SDK)  
-- Payments: OFF (handled by AutoForge's subscription)
-- Special rules: "This module attaches to AutoForge's server at port 8888. Use the existing FastAPI router pattern. Use the existing React component patterns. Follow CLAUDE.md conventions."
-
-**The Exact Reality Sheet for this variant includes:**
-- All 192 structural rules adapted for "module within existing app" context
-- File paths relative to AutoForge's directory structure
-- Import patterns that match AutoForge's existing codebase
-- No standalone deployment rules (it deploys WITH AutoForge)
+Same toggles apply globally (if auth is on, it's on for both platforms). Sheet includes platform-specific instructions where web and mobile implementations differ.
 
 ---
 
@@ -333,24 +322,51 @@ Step 2 (if new boilerplate): "Paste or upload"
 
 ---
 
-## Sheets We Need to Pre-Build
+## Sheets We Need to Pre-Build (14 total, 3 agents)
 
-| # | Sheet Name | Boilerplate | Toggles | Priority |
-|---|-----------|-------------|---------|----------|
-| 1 | `supabase_web_full` | Supabase Web | DB+Auth+Payments | HIGH |
-| 2 | `supabase_web_db_auth` | Supabase Web | DB+Auth | HIGH |
-| 3 | `supabase_web_db_only` | Supabase Web | DB only | MEDIUM |
-| 4 | `supabase_web_minimal` | Supabase Web | None | LOW |
-| 5 | `flutter_mobile_full` | Flutter Mobile | DB+Auth+Payments | HIGH |
-| 6 | `flutter_mobile_db_auth` | Flutter Mobile | DB+Auth | HIGH |
-| 7 | `flutter_mobile_db_only` | Flutter Mobile | DB only | MEDIUM |
-| 8 | `flutter_mobile_minimal` | Flutter Mobile | None | LOW |
-| 9 | `dual_full` | Dual | DB+Auth+Payments | MEDIUM |
-| 10 | `dual_db_auth` | Dual | DB+Auth | MEDIUM |
-| 11 | `autoforge_addon` | AutoForge | Fixed (no toggles) | HIGH |
-| 12 | `no_boilerplate_default` | None | DB+Auth (defaults) | HIGH |
+**Key concept:** DB/Auth/Payments code is always PRESENT in the boilerplate. "Wired up" means activated and connected. "Not wired" means the code is there but dormant — ready to activate later if needed.
 
-**Build order:** Start with #2 (`supabase_web_db_auth`) since that's 80% of builds. Then #11 (`autoforge_addon`), then #1, then #5, then #12.
+### Agent A: Web (5 sheets)
+
+| # | Sheet Name | DB | Auth | Payments | AutoForge | Priority |
+|---|------------|----|------|----------|-----------|----------|
+| 1 | `web_base` | - | - | - | - | HIGH |
+| 2 | `web_autoforge` | - | - | - | YES | HIGH |
+| 3 | `web_db` | ON | - | - | - | HIGH |
+| 4 | `web_db_auth` | ON | ON | - | - | HIGH |
+| 5 | `web_db_auth_payments` | ON | ON | ON | - | HIGH |
+
+### Agent B: Mobile (4 sheets)
+
+| # | Sheet Name | DB | Auth | Payments | Priority |
+|---|------------|----|------|----------|----------|
+| 6 | `mobile_base` | - | - | - | HIGH |
+| 7 | `mobile_db` | ON | - | - | MEDIUM |
+| 8 | `mobile_db_auth` | ON | ON | - | HIGH |
+| 9 | `mobile_db_auth_payments` | ON | ON | ON | MEDIUM |
+
+### Agent C: Dual (5 sheets)
+
+| # | Sheet Name | DB | Auth | Payments | AutoForge | Priority |
+|---|------------|----|------|----------|-----------|----------|
+| 10 | `dual_base` | - | - | - | - | MEDIUM |
+| 11 | `dual_autoforge` | - | - | - | YES | MEDIUM |
+| 12 | `dual_db` | ON | - | - | - | MEDIUM |
+| 13 | `dual_db_auth` | ON | ON | - | - | MEDIUM |
+| 14 | `dual_db_auth_payments` | ON | ON | ON | - | MEDIUM |
+
+### Build Order
+
+Each agent builds progressively — stripped-down first, then layers on:
+
+```
+Base (nothing wired) → AutoForge variant (branch)
+Base (nothing wired) → +DB → +DB+Auth → +DB+Auth+Payments
+```
+
+**Launch order:** Agent A first (web, 80% of builds). Then B (mobile). Then C (dual).
+
+**Default (no boilerplate):** Just use the web boilerplate sheets. User picks their toggles → corresponding sheet is loaded.
 
 ---
 

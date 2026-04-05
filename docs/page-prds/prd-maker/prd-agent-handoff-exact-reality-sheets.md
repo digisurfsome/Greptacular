@@ -12,15 +12,73 @@ You are a fresh agent assigned to **ONE specific boilerplate**. Your job is to p
 
 Each boilerplate type gets its own fresh agent session. This prevents cross-contamination — an agent that just analyzed a Flutter codebase might confuse patterns with a Next.js codebase.
 
-| Agent Session | Boilerplate | Sheets to Produce |
+**3 agents, 14 sheets total. No sub-agents. Each agent builds progressively: start stripped-down, layer on DB, then Auth, then Payments.**
+
+| Agent Session | Boilerplate | Sheets (14 total) |
 |---------------|-------------|-------------------|
-| **Agent A: Web** | DevToDollars (supabase_web) | `supabase_web_db_auth`, `supabase_web_full`, `supabase_web_db_only`, `supabase_web_minimal` |
-| **Agent B: Mobile** | ApparenceKit (flutter_mobile) | `flutter_mobile_db_auth`, `flutter_mobile_full`, `flutter_mobile_db_only`, `flutter_mobile_minimal` |
-| **Agent C: Dual** | Fullstack (dual) | `dual_db_auth`, `dual_full` |
-| **Agent D: AutoForge** | AutoForge Add-On | `autoforge_addon` (web only, no DB/Auth/Payments) |
-| **Agent E: No Boilerplate** | None | `no_boilerplate_default` |
+| **Agent A: Web** | DevToDollars (supabase_web) | 5 sheets (see matrix below) |
+| **Agent B: Mobile** | ApparenceKit (flutter_mobile) | 4 sheets (see matrix below) |
+| **Agent C: Dual** | Fullstack (dual) | 5 sheets (see matrix below) |
+
+**No separate AutoForge agent** — AutoForge is just the web/dual base sheet + AutoForge connection hooks. Agent A and Agent C each produce an AutoForge variant as sheet #2.
+
+**No separate "no boilerplate" agent** — the default is just the web boilerplate with the user's toggle selection. Same sheets, just used as-is.
 
 **When launching an agent, tell it which boilerplate it's responsible for.** Give it only the repo/docs for that ONE boilerplate.
+
+---
+
+## The Full Sheet Matrix
+
+### Agent A: Web Boilerplate — DevToDollars (5 sheets)
+
+| # | Sheet Name | DB | Auth | Payments | AutoForge | Build Strategy |
+|---|------------|----|------|----------|-----------|----------------|
+| 1 | `web_base` | - | - | - | - | **Start here.** Full boilerplate, nothing wired up. All DB/Auth/Payments code PRESENT but dormant. |
+| 2 | `web_autoforge` | - | - | - | YES | Take sheet 1, add AutoForge connection hooks (attaches to AutoForge's port 8888, uses AF's auth/DB via SDK). |
+| 3 | `web_db` | ON | - | - | - | Take sheet 1, wire up Supabase DB (activate client, RLS policies, CRUD service layer, migrations). |
+| 4 | `web_db_auth` | ON | ON | - | - | Take sheet 3, wire up Supabase Auth (activate OAuth, session management, route guards, role system). |
+| 5 | `web_db_auth_payments` | ON | ON | ON | - | Take sheet 4, wire up Stripe (activate webhooks, subscription management, pricing page). Full SaaS. |
+
+### Agent B: Mobile Boilerplate — ApparenceKit (4 sheets)
+
+| # | Sheet Name | DB | Auth | Payments | Build Strategy |
+|---|------------|----|------|----------|----------------|
+| 1 | `mobile_base` | - | - | - | **Start here.** Flutter scaffold, nothing wired up. Personal apps, phone-only storage. |
+| 2 | `mobile_db` | ON | - | - | Take sheet 1, wire up Supabase DB (activate Supabase client, data service layer). |
+| 3 | `mobile_db_auth` | ON | ON | - | Take sheet 2, wire up Supabase Auth (activate auth service, navigation guards). |
+| 4 | `mobile_db_auth_payments` | ON | ON | ON | Take sheet 3, wire up payments (activate in-app purchases or Stripe). Full SaaS. |
+
+### Agent C: Dual Web+Mobile Boilerplate — Fullstack (5 sheets)
+
+| # | Sheet Name | DB | Auth | Payments | AutoForge | Build Strategy |
+|---|------------|----|------|----------|-----------|----------------|
+| 1 | `dual_base` | - | - | - | - | **Start here.** Both frontends, shared nothing. Personal cross-platform app. |
+| 2 | `dual_autoforge` | - | - | - | YES | Take sheet 1, add AutoForge hooks (mobile app talks to AutoForge server, web module lives inside AF). |
+| 3 | `dual_db` | ON | - | - | - | Take sheet 1, wire up shared Supabase DB for both platforms. |
+| 4 | `dual_db_auth` | ON | ON | - | - | Take sheet 3, wire up Supabase Auth for both platforms. Personal app with users. |
+| 5 | `dual_db_auth_payments` | ON | ON | ON | - | Take sheet 4, wire up Stripe/payments for both platforms. Full SaaS. |
+
+### Progressive Build Order (same for each agent)
+
+```
+Sheet 1: Base (nothing wired)
+    ↓
+Sheet 2: AutoForge variant (branch off base — web and dual only)
+    
+Sheet 1: Base (nothing wired)
+    ↓
+Sheet 3: + DB wired up
+    ↓
+Sheet 4: + Auth wired up  
+    ↓
+Sheet 5: + Payments wired up (full SaaS)
+```
+
+Each sheet builds on the previous. The agent doesn't start from scratch each time — it takes the last sheet and adds the next layer. This means:
+- Sheet 1 is the most work (full 263 rules + 14 mechanisms + 43 bans from scratch)
+- Sheet 2 (AutoForge) is small — just the connection hooks added to sheet 1
+- Sheets 3-5 are incremental — just the rules that change when you activate DB/Auth/Payments
 
 ---
 
@@ -302,45 +360,44 @@ Use this exact structure for each sheet (matches the format in `prd-stage-0a-boi
 
 Since each boilerplate gets its own fresh agent, here's what each agent does:
 
-### Agent A: Web (DevToDollars)
+### Agent A: Web (DevToDollars) — 5 sheets
 1. Read all three source checklists (Martin's, Industry Standards, Mechanism Categories)
 2. Read `prd-stage-0a-boilerplate-matching.md` — understand the output format
 3. Clone/read DevToDollars web boilerplate (`digisurfsome/Web-BoilerPlate-D2D`)
-4. Produce `supabase_web_full.md` first (all toggles ON — this is the complete mapping)
-5. Derive `supabase_web_db_auth.md` from full (toggle Payments OFF)
-6. Derive `supabase_web_db_only.md` (toggle Auth + Payments OFF)
-7. Derive `supabase_web_minimal.md` (all toggles OFF)
+4. **Sheet 1: `web_base`** — Full boilerplate, nothing wired up. Go through all 263 rules + 14 mechanisms + 43 bans. This is the most work.
+5. **Sheet 2: `web_autoforge`** — Take sheet 1, add AutoForge connection section. Read AutoForge's `CLAUDE.md`, `server/main.py`, `ui/src/App.tsx` for patterns. Note: uses AF's auth/DB/subscription, not standalone.
+6. **Sheet 3: `web_db`** — Take sheet 1, change all DB-related rules from `PRESENT_NOT_WIRED` to `EXACT`/`ADAPTED`. Document the wiring: Supabase client activation, RLS policies, CRUD service layer, migration setup.
+7. **Sheet 4: `web_db_auth`** — Take sheet 3, change all Auth-related rules from `PRESENT_NOT_WIRED` to `EXACT`/`ADAPTED`. Document the wiring: OAuth activation, session management, route guards, role system.
+8. **Sheet 5: `web_db_auth_payments`** — Take sheet 4, change all Payments-related rules to active. Document the wiring: Stripe webhooks, subscription management, pricing page. Full SaaS.
 
-### Agent B: Mobile (ApparenceKit)
+### Agent B: Mobile (ApparenceKit) — 4 sheets
 1. Read all three source checklists
 2. Read the Stage 0a PRD for output format
 3. Clone/read ApparenceKit (`digisurfsome/apparence-kit-supabase`) + docs (`apparencekit.dev`)
-4. Produce `flutter_mobile_full.md` first
-5. Derive `flutter_mobile_db_auth.md`, `flutter_mobile_db_only.md`, `flutter_mobile_minimal.md`
+4. **Sheet 1: `mobile_base`** — Flutter scaffold, nothing wired. Personal phone-only apps.
+5. **Sheet 2: `mobile_db`** — Take sheet 1, wire up Supabase DB.
+6. **Sheet 3: `mobile_db_auth`** — Take sheet 2, wire up Supabase Auth.
+7. **Sheet 4: `mobile_db_auth_payments`** — Take sheet 3, wire up payments. Full SaaS.
 
-### Agent C: Dual (Fullstack)
+### Agent C: Dual (Fullstack) — 5 sheets
 1. Read all three source checklists
 2. Read the Stage 0a PRD for output format
 3. Clone/read fullstack boilerplate (`digisurfsome/fullstack-boilerplate`)
-4. Also reference the completed web + mobile sheets if available (for cross-platform differences)
-5. Produce `dual_full.md` and `dual_db_auth.md`
+4. **Sheet 1: `dual_base`** — Both frontends, shared nothing. Cross-platform personal app.
+5. **Sheet 2: `dual_autoforge`** — Take sheet 1, add AutoForge hooks. Mobile talks to AF server, web module lives inside AF.
+6. **Sheet 3: `dual_db`** — Take sheet 1, wire up shared Supabase DB for both platforms.
+7. **Sheet 4: `dual_db_auth`** — Take sheet 3, wire up Supabase Auth for both platforms.
+8. **Sheet 5: `dual_db_auth_payments`** — Take sheet 4, wire up Stripe. Full SaaS.
 
-### Agent D: AutoForge Add-On
-1. Read all three source checklists
-2. Read the Stage 0a PRD for output format
-3. Read AutoForge's own codebase (CLAUDE.md, server/, ui/, etc.)
-4. Produce `autoforge_addon.md` — **web only, no DB/Auth/Payments toggles**
-5. This is a fixed configuration: uses AutoForge's existing subscription auth, existing Supabase, no standalone payments
+### No Boilerplate Default
+Not a separate agent. The default is the web boilerplate — the user picks their toggles and that sheet is used. If someone brings a totally new boilerplate, Stage 0a runs the matching process from scratch.
 
-### Agent E: No Boilerplate Default
-1. Read all three source checklists
-2. Read the Stage 0a PRD for output format
-3. Produce `no_boilerplate_default.md` — uses Supabase/Next.js defaults but everything marked `NOT_PRESENT`
-4. This is the simplest sheet: just the rules with generic Supabase implementation guidance, no boilerplate code to reference
+**Estimated scope per agent:**
+- Sheet 1 (base): ~600-800 lines — full pass through all 263 rules + mechanisms + bans
+- Sheet 2 (AutoForge): ~100 lines of additions/changes on top of sheet 1
+- Sheets 3-5: ~50-150 lines of changes each — just the rules that change when wiring up DB/Auth/Payments
 
-**Estimated scope per agent:** 1-4 documents. Each full sheet is ~600-800 lines (covering all 263 rules + mechanisms + bans). Variant sheets are derived from the full sheet by toggling rules off.
-
-**Recommended launch order:** Agent A (web) first since it's 80% of builds. Then Agent D (AutoForge). Then B, E, C.
+**Recommended launch order:** Agent A (web) first since it's 80% of builds. Then B (mobile), then C (dual).
 
 ---
 

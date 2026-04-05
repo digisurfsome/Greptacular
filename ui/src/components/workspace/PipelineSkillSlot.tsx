@@ -13,7 +13,9 @@ interface PipelineSkillSlotProps {
   index: number
   label: string
   text: string
+  appendEnabled: boolean
   onUpdate: (field: 'label' | 'text', value: string) => void
+  onAppendToggle: (enabled: boolean) => void
   onRemove: () => void
   onFileUpload: (file: File) => void
 }
@@ -22,7 +24,9 @@ export function PipelineSkillSlot({
   index,
   label,
   text,
+  appendEnabled,
   onUpdate,
+  onAppendToggle,
   onRemove,
   onFileUpload,
 }: PipelineSkillSlotProps): React.JSX.Element {
@@ -73,6 +77,17 @@ export function PipelineSkillSlot({
             <CheckCircle2 size={10} /> loaded
           </span>
         )}
+
+        {/* Append toggle checkbox */}
+        <label className="flex items-center gap-0.5 cursor-pointer" title="Append [STAGE_COMPLETE] to this skill">
+          <input
+            type="checkbox"
+            checked={appendEnabled}
+            onChange={(e) => onAppendToggle(e.target.checked)}
+            className="w-3 h-3 accent-emerald-600"
+          />
+          <span className="text-[9px] text-muted-foreground">SC</span>
+        </label>
 
         {/* Upload button */}
         <button

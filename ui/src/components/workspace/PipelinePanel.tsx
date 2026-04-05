@@ -62,6 +62,7 @@ interface PipelinePanelProps {
 interface SkillSlot {
   label: string
   text: string
+  appendEnabled: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -166,7 +167,7 @@ export function PipelinePanel({
   const [model, setModel] = useState('opus')
   const [outputMode, setOutputMode] = useState<'json' | 'text'>('json')
   const [executionMode, setExecutionMode] = useState<string>('same_session')
-  const [skills, setSkills] = useState<SkillSlot[]>([{ label: 'Skill 1', text: '' }])
+  const [skills, setSkills] = useState<SkillSlot[]>([{ label: 'Skill 1', text: '', appendEnabled: true }])
   const [starting, setStarting] = useState(false)
   const [expandedOutput, setExpandedOutput] = useState<number | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -246,9 +247,9 @@ Rules:
     setOutputMode(project.output_mode)
     try {
       const stages = JSON.parse(project.stages_json) as { label: string; skill_text: string }[]
-      setSkills(stages.map((s) => ({ label: s.label, text: s.skill_text })))
+      setSkills(stages.map((s) => ({ label: s.label, text: s.skill_text, appendEnabled: true })))
     } catch {
-      setSkills([{ label: 'Skill 1', text: '' }])
+      setSkills([{ label: 'Skill 1', text: '', appendEnabled: true }])
     }
   }, [])
 
@@ -257,7 +258,7 @@ Rules:
     if (value === 'new') {
       setSelectedProjectId(null)
       setProjectName('New Pipeline')
-      setSkills([{ label: 'Skill 1', text: '' }])
+      setSkills([{ label: 'Skill 1', text: '', appendEnabled: true }])
       setOutputMode('json')
       setModel('opus')
       setTokenBudget(400_000)
@@ -359,7 +360,7 @@ Rules:
     if (!folderPath.trim()) return
     try {
       const stages = await loadPipelineFolder(folderPath.trim())
-      setSkills(stages.map((s) => ({ label: s.label, text: s.skill_text })))
+      setSkills(stages.map((s) => ({ label: s.label, text: s.skill_text, appendEnabled: true })))
       setShowFolderInput(false)
       setFolderPath('')
     } catch (e) {
@@ -387,8 +388,8 @@ Rules:
         execution_mode: executionMode,
         stages: filledSkills.map((s, i) => ({
           label: s.label,
-          // Append the [STAGE_COMPLETE] instructions to all skills except the last
-          skill_text: (appendEnabled && appendText.trim() && i < filledSkills.length - 1)
+          // Append the [STAGE_COMPLETE] instructions if: global toggle ON + per-skill toggle ON + not last skill
+          skill_text: (appendEnabled && s.appendEnabled && appendText.trim() && i < filledSkills.length - 1)
             ? s.text + '\n\n' + appendText.trim()
             : s.text,
         })),
@@ -440,7 +441,7 @@ Rules:
   }, [pipelineId])
 
   const handleAddSkill = useCallback(() => {
-    setSkills((prev) => [...prev, { label: `Skill ${prev.length + 1}`, text: '' }])
+    setSkills((prev) => [...prev, { label: `Skill ${prev.length + 1}`, text: '', appendEnabled: true }])
   }, [])
 
   const handleRemoveSkill = useCallback((index: number) => {
@@ -728,7 +729,9 @@ Rules:
                       index={i}
                       label={skill.label}
                       text={skill.text}
+                      appendEnabled={skill.appendEnabled}
                       onUpdate={(field, val) => handleUpdateSkill(i, field, val)}
+                      onAppendToggle={(enabled) => setSkills((prev) => prev.map((s, j) => j === i ? { ...s, appendEnabled: enabled } : s))}
                       onRemove={() => handleRemoveSkill(i)}
                       onFileUpload={(file) => handleFileUpload(i, file)}
                     />

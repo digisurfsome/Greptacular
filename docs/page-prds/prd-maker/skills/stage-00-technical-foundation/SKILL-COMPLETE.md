@@ -147,10 +147,10 @@ Write to `context_packet.stage_0`:
     "hosting": "string (e.g. 'Vercel')",
     "additional": {}
   },
-  "checklist_rule_ids": ["string — rule IDs that apply to this stack"],
+  "checklist_rule_ids": ["string — rule IDs that apply to this stack (see Rule ID Naming Convention below)"],
   "command_allowlist": ["string — allowed bash commands"],
   "resolved_rules": [{
-    "rule_id": "string",
+    "rule_id": "string (see Rule ID Naming Convention below)",
     "resolution": "MATCH|REPLACE|ENHANCE|HANDLED|N/A",
     "priority": "critical|important|nice",
     "enforcement": "hard|soft",
@@ -213,6 +213,54 @@ Also update `metadata`:
 6. Score < 70 → trigger escape hatch, do NOT write
 7. Score 70-89 → write with `gate_result: "flag"`
 8. Score ≥ 90 → write with `gate_result: "pass"`
+
+### Rule ID Naming Convention
+
+Rule IDs in `checklist_rule_ids` and `resolved_rules[].rule_id` follow the format `{category-prefix}-{sequential-number}`, where:
+
+1. **Category prefix**: A short kebab-case abbreviation derived from the checklist category name. The 22 Martin categories and their prefixes:
+
+| # | Category | Prefix | Example IDs |
+|---|----------|--------|-------------|
+| 1 | Stack Definition | `stack` | `stack-1`, `stack-2` |
+| 2 | File Structure | `file` | `file-1`, `file-2` |
+| 3 | Component Architecture | `comp` | `comp-1`, `comp-2` |
+| 4 | State Management | `state` | `state-1`, `state-2` |
+| 5 | Routing | `route` | `route-1`, `route-2` |
+| 6 | Styling | `style` | `style-1`, `style-2` |
+| 7 | Data Fetching | `fetch` | `fetch-1`, `fetch-2` |
+| 8 | Auth & Security | `auth` | `auth-1`, `auth-2` |
+| 9 | Forms & Validation | `form` | `form-1`, `form-2` |
+| 10 | Error Handling | `error` | `error-1`, `error-2` |
+| 11 | Testing | `test` | `test-1`, `test-2` |
+| 12 | Build & Bundle | `build` | `build-1`, `build-2` |
+| 13 | Type Safety | `type` | `type-1`, `type-2` |
+| 14 | Code Quality | `quality` | `quality-1`, `quality-2` |
+| 15 | Git & Version Control | `git` | `git-1`, `git-2` |
+| 16 | Environment Config | `env` | `env-1`, `env-2` |
+| 17 | Performance | `perf` | `perf-1`, `perf-2` |
+| 18 | SEO | `seo` | `seo-1`, `seo-2` |
+| 19 | Analytics & Monitoring | `analytics` | `analytics-1`, `analytics-2` |
+| 20 | Deployment | `deploy` | `deploy-1`, `deploy-2` |
+| 21 | Documentation | `docs` | `docs-1`, `docs-2` |
+| 22 | Banned Patterns | `ban` | `ban-1`, `ban-2`, ... `ban-43` |
+
+The 10 industry standards gap areas (categories 23-30) use prefixes derived from their area name. Rule numbers in the source checklist start at 200:
+
+| # | Category | Prefix | Source Rule Range |
+|---|----------|--------|-------------------|
+| 23 | Internationalization (i18n) | `i18n` | 200-207 |
+| 24 | Config Externalization | `config` | 208-214 |
+| 25 | Environment Parity | `parity` | 215-220 |
+| 26 | Logging Strategy | `log` | 221-228 |
+| 27 | Dependency Management | `deps` | 229-235 |
+| 28 | Legal/Compliance | `legal` | 236-243 |
+| 29 | Deep Accessibility (WCAG AA) | `a11y` | 244-253 |
+| 30 | API Versioning | `api-ver` | 254-258 |
+
+2. **Sequential number**: Rules are numbered sequentially within each category, starting at 1. The number corresponds to the row position within that category's section in the source checklist (e.g., the 3rd rule in category 8 "Auth & Security" becomes `auth-3`).
+
+3. **Examples**: Checklist row #1 in "Stack Definition" -> `stack-1`. The 1st rule in "Auth & Security" -> `auth-1`. The 15th banned pattern -> `ban-15`. Industry standards rule 201 (the 2nd i18n rule) -> `i18n-2`.
 
 ## Edge Cases
 

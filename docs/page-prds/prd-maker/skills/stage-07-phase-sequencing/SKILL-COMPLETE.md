@@ -10,6 +10,7 @@ Takes a complete spec (mechanisms scaffolded with Wall/Door/Room classifications
 ## When to Use
 
 Activate when ALL of the following are present in the context packet:
+- `stage_0.tech_stack` — framework and language (needed for file path conventions and tech-appropriate build orders)
 - `stage_5.mechanism_blueprints` — mechanisms with W/D/R classifications
 - `stage_4.mechanisms` and `stage_4.mechanism_dependencies` — mechanism list and dependency graph
 - `stage_6.sub_6a`, `stage_6.sub_6b`, `stage_6.sub_6c.design_tokens` — wireframes and style
@@ -32,7 +33,19 @@ This skill produces: `stage_7.token_budget`, `stage_7.phases`, `stage_7.mandator
   },
   "stage_6": {
     "sub_6a": { "arrangement_type": "...", "wireframe_pattern": "..." },
-    "sub_6b": [{ "page_name": "...", "components": [...], "mechanism_connections": [...] }],
+    "sub_6b": {
+      "pages": [
+        {
+          "page_name": "...",
+          "route": "/...",
+          "layout_pattern": "...",
+          "components": [
+            { "component_name": "...", "placement": "...", "mechanism_ids": ["M1"] }
+          ],
+          "user_approved": true
+        }
+      ]
+    },
     "sub_6c": { "design_tokens": { "colors": {...}, "typography": {...} } }
   },
   "stage_0": { "tech_stack": { "framework": "...", "language": "..." } }
@@ -43,12 +56,26 @@ This skill produces: `stage_7.token_budget`, `stage_7.phases`, `stage_7.mandator
 
 ### Step 1: Estimate Total Token Count
 
-Aggregate all build content from Stages 3–6. For each mechanism blueprint, estimate tokens based on complexity:
-- Simple mechanism (1–2 files, WALL-dominant): ~15,000–25,000 tokens
-- Medium mechanism (3–5 files, mixed W/D/R): ~30,000–60,000 tokens
-- Complex mechanism (6+ files, DOOR/ROOM-heavy): ~60,000–120,000 tokens
+Aggregate all build content from Stages 3–6. Use `stage_0.tech_stack` to select appropriate file path conventions and adjust estimates for framework-specific overhead (e.g., Next.js API routes vs plain Express handlers).
 
-Add per-page UI tokens from Stage 6b (~5,000–15,000 tokens per page depending on component count). Sum all estimates to get `total_spec_tokens`.
+For each mechanism blueprint, estimate tokens based on complexity:
+
+| Complexity | Criteria | Token Range |
+|------------|----------|-------------|
+| **Simple** | 1–2 files, WALL-dominant, single concern. No state management, no API calls. Example: a static config module, a utility library, a type definitions file. | ~15,000–25,000 tokens |
+| **Medium** | 3–5 files, mixed W/D/R, 2–3 connected components. Basic state management (one context or store), one API endpoint, possibly one database table. Example: a settings page with a form, an API route, and a service file. | ~30,000–60,000 tokens |
+| **Complex** | 6+ files, DOOR/ROOM-heavy, cross-cutting integrations. Shared state across multiple consumers, multiple API endpoints, database schema with relations, multi-page UI with interactive components. Example: an auth system with sign-in/sign-up pages, session management, protected routes, and a user profile. | ~60,000–120,000 tokens |
+
+Add per-page UI tokens from Stage 6b based on component count and page type:
+
+| Page Type | Criteria | Token Range |
+|-----------|----------|-------------|
+| **Simple** | Static or display-only, 1–2 components, no forms or data fetching | ~5,000–8,000 tokens |
+| **Form page** | User input, validation, 1 API call, 3–4 components | ~8,000–12,000 tokens |
+| **Data-heavy** | Tables, charts, filters, multiple API calls, 5+ components | ~12,000–20,000 tokens |
+| **Interactive** | Real-time updates, drag-and-drop, editors, complex state, 8+ components | ~20,000–40,000 tokens |
+
+Sum all mechanism and page estimates to get `total_spec_tokens`.
 
 ### Step 2: Calculate Phase Count
 
@@ -113,32 +140,37 @@ Written to `context_packet.stage_7`:
 
 ```json
 {
+  "phase_count": 2,
+  "total_estimated_tokens": 650000,
   "token_budget": {
-    "total_spec_tokens": 650000,
     "budget_per_phase_content": 325000,
     "overhead_per_phase": 25000,
-    "total_budget": 500000,
-    "phases_needed": 2
+    "total_budget": 500000
   },
   "phases": [
     {
       "phase_number": 1,
-      "name": "Core Auth & Data Layer",
-      "mechanism_ids": ["M1", "M2", "M3"],
-      "estimated_tokens": 310000,
+      "phase_name": "Core Auth & Data Layer",
+      "mechanisms_included": ["M1", "M2", "M3"],
+      "estimated_content_tokens": 310000,
+      "estimated_total_tokens": 335000,
       "build_order": [
         { "file_path": "src/lib/auth.ts", "operation": "create", "rationale": "Core auth logic — all other files depend on this" },
         { "file_path": "src/contexts/AuthContext.tsx", "operation": "create", "rationale": "State wrapper for auth — needed by UI" },
         { "file_path": "src/pages/SignIn.tsx", "operation": "create", "rationale": "UI consumes AuthContext" },
         { "file_path": "src/App.tsx", "operation": "modify", "rationale": "Wire auth routes — integration last" }
       ],
-      "files_allowed": ["src/lib/auth.ts", "src/contexts/AuthContext.tsx", "src/pages/SignIn.tsx", "src/pages/SignUp.tsx", "src/App.tsx"],
-      "files_read_only": ["CLAUDE.md", "package.json"],
-      "files_forbidden": ["src/lib/supabase.ts", ".env", "supabase/migrations/*"],
+      "file_sandbox": {
+        "allowed": ["src/lib/auth.ts", "src/contexts/AuthContext.tsx", "src/pages/SignIn.tsx", "src/pages/SignUp.tsx", "src/App.tsx"],
+        "read_only": ["CLAUDE.md", "package.json"],
+        "forbidden": ["src/lib/supabase.ts", ".env", "supabase/migrations/*"]
+      },
       "depends_on": [],
       "do_not_change": ["CLAUDE.md", ".env", "BUILD_RULES.md"]
     }
   ],
+  "no_mechanism_split": true,
+  "token_math_verified": true,
   "mandatory_build_order": [
     { "rule": "Core logic files before state management", "phases_affected": [1, 2] },
     { "rule": "State management before UI components", "phases_affected": [1, 2] },
@@ -238,22 +270,22 @@ phases_needed = ceil(580,000 / 325,000) = 2
 
 **Phase split** (at mechanism boundary between Tasks CRUD and Dashboard):
 
-Phase 1 — "Auth & Task Engine" (~290K content + 25K overhead = 315K):
-- Mechanisms: M1 (Auth, ~120K), M2 (Tasks CRUD, ~170K)
-- Build order: `src/lib/auth.ts` → `src/lib/tasks.ts` → `src/contexts/AuthContext.tsx` → `src/contexts/TaskContext.tsx` → `src/pages/SignIn.tsx` → `src/pages/TaskList.tsx` → `src/pages/TaskDetail.tsx` → modify `src/App.tsx`
-- files_allowed: all 8 files above
-- files_read_only: `CLAUDE.md`, `package.json`, `tsconfig.json`
-- files_forbidden: `.env`, `src/pages/Dashboard.tsx`, `src/lib/notifications.ts`
+Phase 1 — "Auth & Task Engine" (estimated_content_tokens: ~290K, estimated_total_tokens: ~315K):
+- mechanisms_included: M1 (Auth, ~120K), M2 (Tasks CRUD, ~170K)
+- build_order: `src/lib/auth.ts` → `src/lib/tasks.ts` → `src/contexts/AuthContext.tsx` → `src/contexts/TaskContext.tsx` → `src/pages/SignIn.tsx` → `src/pages/TaskList.tsx` → `src/pages/TaskDetail.tsx` → modify `src/App.tsx`
+- file_sandbox.allowed: all 8 files above
+- file_sandbox.read_only: `CLAUDE.md`, `package.json`, `tsconfig.json`
+- file_sandbox.forbidden: `.env`, `src/pages/Dashboard.tsx`, `src/lib/notifications.ts`
 
-Phase 2 — "Dashboard & Notifications" (~290K + 25K = 315K):
-- Mechanisms: M3 (Dashboard, ~160K), M4 (Notifications, ~130K)
-- Build order: `src/lib/dashboard.ts` → `src/lib/notifications.ts` → `src/contexts/NotificationContext.tsx` → `src/pages/Dashboard.tsx` → `src/pages/NotificationSettings.tsx` → modify `src/App.tsx`
-- files_allowed: all 6 files above
-- files_read_only: `src/lib/auth.ts`, `src/lib/tasks.ts`, `src/contexts/AuthContext.tsx`, `CLAUDE.md`
-- files_forbidden: `.env`, Phase 1's UI files
+Phase 2 — "Dashboard & Notifications" (estimated_content_tokens: ~290K, estimated_total_tokens: ~315K):
+- mechanisms_included: M3 (Dashboard, ~160K), M4 (Notifications, ~130K)
+- build_order: `src/lib/dashboard.ts` → `src/lib/notifications.ts` → `src/contexts/NotificationContext.tsx` → `src/pages/Dashboard.tsx` → `src/pages/NotificationSettings.tsx` → modify `src/App.tsx`
+- file_sandbox.allowed: all 6 files above
+- file_sandbox.read_only: `src/lib/auth.ts`, `src/lib/tasks.ts`, `src/contexts/AuthContext.tsx`, `CLAUDE.md`
+- file_sandbox.forbidden: `.env`, Phase 1's UI files
 - depends_on: [1]
 
-**Verification:** 290K + 25K = 315K ≤ 350K ✓ for both phases. All 4 mechanisms assigned. No splits. DAG is valid (2→1). Confidence: 94/100.
+**Verification:** 290K + 25K = 315K ≤ 350K for both phases. All 4 mechanisms assigned (no_mechanism_split: true). DAG is valid (2→1). token_math_verified: true. Confidence: 94/100.
 
 
 ---

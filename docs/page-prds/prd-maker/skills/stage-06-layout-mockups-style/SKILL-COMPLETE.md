@@ -124,12 +124,13 @@ Run all validation checks before writing output:
 2. `arrangement_options` has 2-3 entries, one selected
 3. `pages` has ≥ 2 pages (auth + one functional)
 4. Every page has `page_name`, `route`, `layout_pattern`, `components[]`, `user_approved`
-5. Every mechanism from Stage 4 is on ≥ 1 page's component `mechanism_ids`
-6. Every `mechanism_ids` entry references a real Stage 4 mechanism ID
-7. `style_options_presented` has exactly 3 entries
-8. `design_tokens` has `colors` and `typography` sub-objects with specific values
-9. `selected_style_id` is from the predefined set or `"developers_choice"`
-10. Run confidence scoring (see below)
+5. Every mechanism from Stage 4 is on ≥ 1 page's component `mechanism_ids` OR in a page's `backend_services` array (backend-only mechanisms)
+6. Every `mechanism_ids` and `backend_services` entry references a real Stage 4 mechanism ID
+7. `all_mechanisms_mapped` is `true` and `pages_approved` is `true`
+8. `style_options_presented` has exactly 3 entries
+9. `design_tokens` has `colors` and `typography` sub-objects with specific values
+10. `selected_style_id` is from the predefined set or `"developers_choice"`
+11. Run confidence scoring (see below)
 
 ## Output Format
 
@@ -157,9 +158,12 @@ Run all validation checks before writing output:
               "mechanism_ids": ["string"]
             }
           ],
+          "backend_services": ["string (mechanism IDs for backend-only mechanisms served by this page)"],
           "user_approved": true
         }
-      ]
+      ],
+      "all_mechanisms_mapped": true,
+      "pages_approved": true
     },
     "sub_6c": {
       "style_options_presented": [
@@ -613,7 +617,9 @@ When grouping mechanisms into pages:
         ],
         "user_approved": true
       }
-    ]
+    ],
+    "all_mechanisms_mapped": true,
+    "pages_approved": true
   }
 }
 ```

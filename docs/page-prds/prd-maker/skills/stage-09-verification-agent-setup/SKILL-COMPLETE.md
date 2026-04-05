@@ -9,7 +9,7 @@ Configure an independent verification agent that audits builder output after eac
 
 ## When to Use
 
-Activate when the context packet contains completed `stage_8.protocol_injected_phases`, `stage_7.phases`, and `stage_0.tech_stack`. This skill produces `stage_9.*` — the verification agent configuration, two-strike rule, 4-step verification protocol, per-phase checker configs, Agent B config, and manual preamble config.
+Activate when the context packet contains completed `stage_8.protocol_injected_phases`, `stage_7.phases`, and `stage_0.tech_stack`. This skill produces `stage_9.*` — the `verifier_config` wrapper (approach, prompt, inputs, token budget, retry config, persistence flag), `checker_builder_consistency` (Boolean confirming no builder/verifier contradictions), `verification_overhead_total` (total verification tokens across all phases), plus the detailed verification protocol, per-phase checker configs, Agent B config, and manual preamble config.
 
 ## Input Format
 
@@ -131,9 +131,9 @@ Build the `manual_preamble_config`:
 
 The preamble must reference specific checks from Phase N's `full_checkpoint`, NOT generic "validate the previous phase." See `references/manual-preamble-template.md`.
 
-### Step 7: Validate Consistency with Stage 8
+### Step 7: Validate Consistency and Compute Totals
 
-Before writing output, verify:
+Before writing output, verify and compute:
 
 1. Every violation severity in checker config matches Stage 8's `violation_rules`
 2. Functional checks reference real commands from `stage_0.tech_stack`
@@ -141,13 +141,39 @@ Before writing output, verify:
 4. No checker rule contradicts the builder's phase spec
 5. `per_phase_checker_config` has exactly one entry per phase from Stage 7
 
-If any contradiction is found, flag the specific conflict and attempt resolution. If unresolvable, trigger escape hatch.
+**Set `checker_builder_consistency`**: Cross-reference every severity level in the verifier's instructions against Stage 8's violation thresholds. Confirm there is no case where the builder is told "this is acceptable" but the verifier would classify it as a violation (or vice versa). Set to `true` if all severity levels, thresholds, and actions are aligned. Set to `false` and flag specific conflicts if any contradiction exists.
+
+**Compute `verification_overhead_total`**: Sum the estimated verification token cost across ALL phases. For automated mode, this is `verifier_config.verifier_token_budget` multiplied by the number of phases (e.g., 10,000 tokens/phase x 4 phases = 40,000 tokens). For manual mode, estimate the preamble overhead per phase (~2,000-3,000 tokens) and sum across phases. This number tells Stage 10 the total token cost of the verification layer.
+
+**Populate `verifier_config`**: Assemble the contract-required wrapper object:
+- `approach`: Set from Step 1's verification mode determination ("automated" or "manual")
+- `verifier_prompt`: The complete Agent B prompt (from Step 4) for automated, or the preamble template (from Step 6) for manual
+- `verifier_inputs`: The 4 items Agent B receives: `["allowed_files_list", "git_diff_output", "functional_check_results", "violation_decision_tree"]`
+- `verifier_token_budget`: ~10,000 for automated (from Agent B config), or ~2,000-3,000 for manual preamble
+- `retry_config`: Map from `two_strike_rule` — `max_retries` (always 2), `retry_action` (git reset + fresh agent), `escalation_action` (stop for human review)
+- `persistent_verifier`: `true` for automated (Agent B accumulates pattern knowledge), `false` for manual (each phase agent is independent)
+
+If any contradiction is found during consistency validation, flag the specific conflict and attempt resolution. If unresolvable, trigger escape hatch.
 
 ## Output Format
 
 ```json
 {
   "stage_9": {
+    "verifier_config": {
+      "approach": "automated | manual",
+      "verifier_prompt": "Complete self-contained prompt for Agent B (automated) or the validation preamble for Phase N+1 (manual) — a fresh agent can execute this without additional context",
+      "verifier_inputs": ["allowed_files_list", "git_diff_output", "functional_check_results", "violation_decision_tree"],
+      "verifier_token_budget": 10000,
+      "retry_config": {
+        "max_retries": 2,
+        "retry_action": "git reset --hard $PHASE_BASELINE, spawn fresh Agent A with clean context",
+        "escalation_action": "stop_for_human_review"
+      },
+      "persistent_verifier": true
+    },
+    "checker_builder_consistency": true,
+    "verification_overhead_total": 40000,
     "verification_mode": "automated_agent_b | manual_preamble_merge",
     "two_strike_rule": {
       "max_retries": 2,
@@ -239,15 +265,15 @@ Metadata updates:
 
 Score each dimension 0-20 after producing output:
 
-1. **Completeness** (0-20): Both verification approaches configured? Every phase has `per_phase_checker_config`? All 4 protocol steps defined? Two-strike rule set with `max_retries=2`?
+1. **Completeness** (0-20): Both verification approaches configured? Every phase has `per_phase_checker_config`? All 4 protocol steps defined? Two-strike rule set with `max_retries=2`? `verifier_config` wrapper fully populated (approach, verifier_prompt, verifier_inputs, verifier_token_budget, retry_config, persistent_verifier)? `checker_builder_consistency` set? `verification_overhead_total` computed?
 
-2. **Accuracy** (0-20): Functional checks use real commands from `stage_0.tech_stack`? Agent B config matches spec (~10K tokens, clean context, persistent)? Violation severities match Stage 8 exactly?
+2. **Accuracy** (0-20): Functional checks use real commands from `stage_0.tech_stack`? Agent B config matches spec (~10K tokens, clean context, persistent)? Violation severities match Stage 8 exactly? `verification_overhead_total` is within ±15% of actual sum?
 
-3. **Consistency** (0-20): Checker's `allowed_files` matches Stage 7's `files_allowed` per phase? Protocol aligns with Stage 8's `full_checkpoint`? Both approaches use identical core protocol?
+3. **Consistency** (0-20): Checker's `allowed_files` matches Stage 7's `files_allowed` per phase? Protocol aligns with Stage 8's `full_checkpoint`? Both approaches use identical core protocol? `checker_builder_consistency` is `true` — no case where builder rules and verifier rules contradict?
 
-4. **Specificity** (0-20): Git commands are exact (not "run a diff")? Preamble template is concrete text? Expected outcomes include exit codes?
+4. **Specificity** (0-20): Git commands are exact (not "run a diff")? Preamble template is concrete text? Expected outcomes include exit codes? `verifier_config.verifier_prompt` is a complete, self-contained prompt (not a reference to another file)?
 
-5. **Handoff Readiness** (0-20): Stage 10 can render `build.sh` from this output? Bash retry logic is copy-ready? Preamble is paste-ready into Phase N+1?
+5. **Handoff Readiness** (0-20): Stage 10 can render `build.sh` from this output? Bash retry logic is copy-ready? Preamble is paste-ready into Phase N+1? `verifier_config.retry_config` has all three fields (`max_retries`, `retry_action`, `escalation_action`) so Stage 10 can mechanically generate the retry loop?
 
 **Total /100: >= 90 PASS | 70-89 WARN (flag + proceed) | < 70 FAIL (escape hatch)**
 

@@ -17,13 +17,22 @@ Do NOT activate for: phase splitting (Stage 7), verification agent setup (Stage 
 
 ```json
 {
+  "stage_0": {
+    "tech_stack": {
+      "framework": "string",
+      "language": "string"
+    }
+  },
   "stage_7": {
     "phases": [{
       "phase_number": 1,
       "name": "string",
       "mechanism_ids": ["string"],
       "estimated_tokens": 0,
-      "build_order": ["src/file1.ts", "src/file2.tsx"],
+      "build_order": [
+        { "file_path": "src/file1.ts", "operation": "create", "rationale": "string" },
+        { "file_path": "src/file2.tsx", "operation": "create", "rationale": "string" }
+      ],
       "files_allowed": ["string"],
       "files_read_only": ["string"],
       "files_forbidden": ["string"],
@@ -54,11 +63,15 @@ Do NOT activate for: phase splitting (Stage 7), verification agent setup (Stage 
 }
 ```
 
+**Note on `stage_0.tech_stack`:** Required for generating tech-stack-specific functional check commands in the full checkpoint (Step 5). For example, `npm run build` for Node/React, `cargo build` for Rust, `python manage.py check` for Django.
+
+**Note on `build_order` format:** Each entry is an object with `file_path`, `operation` ("create" or "modify"), and `rationale` — matching Stage 7's output exactly. When iterating over build_order entries, use `entry.file_path` to get the file path.
+
 ## Process
 
 ### Step 1: Load and Index Phase Data
 
-Read `stage_7.phases`. For each phase, index its `build_order` (file sequence), `files_allowed` (sandbox), and `mechanism_ids`. Build a lookup: `mechanism_id → phase_number` so you know which mechanisms live in which phase.
+Read `stage_7.phases`. For each phase, index its `build_order` (array of `{file_path, operation, rationale}` objects), `files_allowed` (sandbox), and `mechanism_ids`. Build a lookup: `mechanism_id → phase_number` so you know which mechanisms live in which phase.
 
 ### Step 2: Build Dependency Interface Map
 
@@ -68,13 +81,13 @@ If two connected mechanisms are in DIFFERENT phases, the seam check goes in the 
 
 ### Step 3: Insert Pulse Checks (Every File)
 
-For EACH file in each phase's `build_order`, generate a pulse check:
+For EACH entry in each phase's `build_order`, generate a pulse check using `entry.file_path`:
 
 1. Read the file's name and purpose from context (mechanism blueprints, file sandbox)
 2. Generate SPECIFIC checks — not generic. Examples:
    - `auth.ts` → `["file exists", "exports loginUser function", "exports logoutUser function", "no syntax errors"]`
    - `AuthContext.tsx` → `["file exists", "exports AuthProvider component", "exports useAuth hook", "no syntax errors"]`
-3. Assign `file_path` = the file from build_order
+3. Assign `after_file` = `entry.file_path` from the build_order entry
 
 Use `references/protocol-tier-templates.md` for the check generation patterns. Every file gets a pulse check — no exceptions.
 
@@ -102,10 +115,12 @@ For each phase, create a `full_checkpoint` with three parts:
 **functional_checks** — runtime verification (tech-stack-specific):
 - Read `stage_0.tech_stack` to determine commands (e.g., `"npm run build"`, `"cargo build"`)
 - Add phase-specific checks: `"Navigate to /sign-in route"`, `"Verify dashboard page renders"`
-- Always include: compile check, existing features still work, new features render
+- Always include: compile check, new features render, existing features still work
+
+**Regression checks (for Phase N where N > 1):** When the phase is not the first phase, add explicit regression verification steps that confirm features from ALL earlier phases still work. For example, if Phase 1 built auth routes (/sign-in, /sign-up) and Phase 2 builds a dashboard, Phase 2's functional_checks MUST include: `"Navigate to /sign-in — still renders (Phase 1 regression)"` and `"Navigate to /sign-up — still renders (Phase 1 regression)"`. This ensures each phase boundary catches regressions immediately, not at the end of the entire build. The regression checks should be listed after the new-feature checks and labeled with which phase they verify.
 
 **gate_condition** — binary pass/fail:
-- `"ALL pattern_checks pass (zero unauthorized file modifications) AND ALL functional_checks pass (app compiles, new pages render, existing routes work). If ANY check fails, fix before next phase."`
+- `"ALL pattern_verification checks pass (zero unauthorized file modifications) AND ALL functional_checks pass (app compiles, new pages render, prior-phase features still work). If ANY check fails, fix before Phase N+1 starts."`
 
 ### Step 6: Embed Violation Rules Per Phase
 
@@ -121,13 +136,16 @@ For each phase, populate the 4-level violation tree using `references/violation-
 For each phase, calculate `overhead_tokens` by summing the 7 overhead components (see `references/overhead-budget-breakdown.md`). Standard total: ~25,000 tokens.
 
 **Validation checks:**
-1. Every phase from Stage 7 has a corresponding `protocol_injected_phases` entry
-2. Every file in every build_order has a pulse_check
+1. Every phase from Stage 7 has a corresponding `instrumented_phases` entry
+2. Every file in every build_order has a `pulse_points` entry (matched by `after_file`)
 3. Seam checks exist at every mechanism interface point within each phase
-4. Every phase has full_checkpoint with both pattern_checks and functional_checks
-5. violation_rules has all four severity levels for every phase
+4. Every phase has `full_checkpoint` with both `pattern_verification` and `functional_checks`
+5. `violation_handling` has all four severity levels (low, medium, high, critical) for every phase
 6. `overhead_tokens` ≤ 30,000 per phase
 7. `estimated_tokens` (Stage 7) + `overhead_tokens` ≤ 350,000 per phase
+8. For phases where `phase_number > 1`, `functional_checks` includes regression verification for all prior phases' features
+9. `total_overhead_tokens` equals sum of all phases' `overhead_tokens`
+10. `budget_verified` is `true` only if check #7 passes for ALL phases
 
 If overhead exceeds 30,000 for any phase, trim verbose descriptions. If total exceeds 350,000, signal back to Stage 7 for re-splitting.
 
@@ -136,28 +154,27 @@ If overhead exceeds 30,000 for any phase, trim verbose descriptions. If total ex
 ```json
 {
   "stage_8": {
-    "protocol_injected_phases": [
+    "instrumented_phases": [
       {
         "phase_number": 1,
-        "pulse_checks": [
+        "pulse_points": [
           {
-            "file_path": "src/lib/auth.ts",
+            "after_file": "src/lib/auth.ts",
             "checks": ["file exists", "exports loginUser", "exports logoutUser", "no syntax errors"]
           }
         ],
         "seam_checks": [
           {
-            "component_a": "src/lib/auth.ts",
-            "component_b": "src/contexts/AuthContext.tsx",
-            "verification": "AuthContext imports loginUser and logoutUser from auth.ts"
+            "location": "after src/contexts/AuthContext.tsx",
+            "checks": ["AuthContext imports loginUser and logoutUser from auth.ts"]
           }
         ],
         "full_checkpoint": {
-          "pattern_checks": ["git diff --name-only against files_allowed", "flag unauthorized modifications", "flag incomplete build_order items"],
+          "pattern_verification": ["git diff --name-only against files_allowed", "flag unauthorized modifications", "flag incomplete build_order items"],
           "functional_checks": ["npm run build succeeds", "navigate to /sign-in renders login form"],
-          "gate_condition": "ALL pattern_checks pass AND ALL functional_checks pass. Fix before next phase."
+          "gate_condition": "ALL pattern_verification pass AND ALL functional_checks pass. Fix before next phase."
         },
-        "violation_rules": {
+        "violation_handling": {
           "low": {
             "triggers": ["touched shared types file", "added import to existing utility"],
             "response": "log_and_proceed"
@@ -183,6 +200,8 @@ If overhead exceeds 30,000 for any phase, trim verbose descriptions. If total ex
         "overhead_tokens": 25000
       }
     ],
+    "total_overhead_tokens": 25000,
+    "budget_verified": true,
     "overhead_breakdown": {
       "build_rules_preamble": 8000,
       "file_sandbox_declaration": 2000,
@@ -202,6 +221,14 @@ If overhead exceeds 30,000 for any phase, trim verbose descriptions. If total ex
   }
 }
 ```
+
+**Output field mapping to stage-contracts.md:**
+- `instrumented_phases` (not `protocol_injected_phases`) — matches contract terminology
+- `pulse_points[].after_file` (not `pulse_checks[].file_path`) — clarifies placement semantics
+- `full_checkpoint.pattern_verification` (not `pattern_checks`) — matches contract field name
+- `violation_handling` (not `violation_rules`) — matches contract field name
+- `total_overhead_tokens` — sum of all phases' `overhead_tokens`, required by contract
+- `budget_verified` — boolean confirming all phases fit within token budget after injection
 
 ## Edge Cases
 

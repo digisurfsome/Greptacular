@@ -92,7 +92,15 @@ If no archetype matched, treat ALL 14 categories as potential gaps and ask about
 
 ### Step 4: Check Structural Checklist
 
-Scan the 30-category structural checklist (Martin's 22 + Industry Standards 10) for coverage gaps that affect mechanism identification:
+Scan the 30-category structural checklist (Martin's 22 + Industry Standards 10 − 2 overlaps = 30) for coverage gaps that affect mechanism identification. The 30 categories are:
+
+**Martin Checklist (22):** 1. Stack Definition, 2. File Structure, 3. Component Architecture, 4. State Management, 5. Routing, 6. Styling, 7. Data Fetching, 8. Auth & Security, 9. Forms & Validation, 10. Error Handling, 11. Testing, 12. Build & Bundle, 13. Type Safety, 14. Code Quality, 15. Git & Version Control, 16. Environment Config, 17. Performance, 18. SEO, 19. Analytics & Monitoring, 20. Deployment, 21. Documentation, 22. Banned Patterns.
+
+**Industry Standards Gap Areas (8 unique after overlap merge):** 23. Internationalization (i18n), 24. Config Externalization, 25. Environment Parity, 26. Logging Strategy, 27. Dependency Management, 28. Legal/Compliance, 29. Deep Accessibility (WCAG AA), 30. API Versioning.
+
+*Note: ADRs merged into #21 Documentation; Error Recovery/Retry merged into #10 Error Handling. See `stage-00-technical-foundation/references/structural-categories.md` for full definitions.*
+
+For each category, check whether the user's `raw_input` or gap answers address it:
 
 - Auth mentioned but no auth method specified? Flag.
 - Data storage implied but no strategy stated? Flag.
@@ -209,7 +217,7 @@ Written to `context_packet.metadata`:
 {
   "current_stage": 2,
   "archetype_matches": ["marketplace", "saas"],
-  "scope_contract_hash": "sha256 hex string",
+  "scope_contract_hash": "sha256 hex string (see computation below)",
   "confidence_scores": {
     "2": {
       "score": 88,
@@ -220,6 +228,8 @@ Written to `context_packet.metadata`:
   "stage_timestamps": { "2": "ISO 8601 timestamp" }
 }
 ```
+
+**`scope_contract_hash` computation:** Compute SHA-256 over the `scope_contract` string value (the exact text written to `context_packet.stage_2.scope_contract`, including newlines). Encode as lowercase hexadecimal. This hash allows downstream stages to detect if the scope contract has been modified since Stage 2 — if the hash in metadata no longer matches the SHA-256 of the current scope_contract text, scope drift has occurred.
 
 **Validation before writing:**
 1. All required fields populated (no null/empty where content expected)

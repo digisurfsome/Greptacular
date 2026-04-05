@@ -58,7 +58,7 @@ Using the app type, pull the standard wireframe pattern from the lookup table. G
 
 Each option has: `id`, `name` (e.g., "Sidebar + Top Nav + Content Grid"), `description` (what it looks like and why it fits).
 
-Present to user. User MUST pick or adjust — this is a WALL. Record `selected_arrangement_id` and `user_adjustments`.
+Present to user. User MUST pick or adjust — this is a WALL. Record `selected_arrangement_id` and `user_adjustments`. Set `navigation_pattern` to the pattern of the selected arrangement: `"sidebar"` | `"top_nav"` | `"tabbed"` | `"custom"`.
 
 ### Step 3: Identify UI-Facing Mechanisms (Sub-6b)
 
@@ -87,6 +87,8 @@ For each page, identify every UI component needed. For each component specify:
 - `placement`: Zone on the page — `"header"` | `"sidebar"` | `"main-content"` | `"footer"` | `"modal"` | `"drawer"`
 - `mechanism_ids`: Array of mechanism IDs from Stage 4 this component serves
 - Every `mechanism_id` must reference a real ID from `stage_4.mechanisms`
+
+For each page, also populate a `connections` array that maps each interactive component to the mechanism it triggers and what action it performs. Each entry has: `component_name`, `triggers_mechanism` (mechanism ID), and `action` (human-readable description of what happens, e.g., "opens create form", "submits auth request"). This tells Stage 7 exactly what each component DOES, not just what mechanism it belongs to.
 
 **Validation**: After all pages are defined, verify every mechanism from Stage 4 appears in at least one component's `mechanism_ids`. If any mechanism is "homeless," either add it to an existing page or create a new page.
 
@@ -139,6 +141,7 @@ Run all validation checks before writing output:
   "stage_6": {
     "sub_6a": {
       "app_type_classification": "string",
+      "navigation_pattern": "sidebar|top_nav|tabbed|custom",
       "arrangement_options": [
         { "id": "string", "name": "string", "description": "string" }
       ],
@@ -156,6 +159,13 @@ Run all validation checks before writing output:
               "component_name": "string",
               "placement": "header|sidebar|main-content|footer|modal|drawer",
               "mechanism_ids": ["string"]
+            }
+          ],
+          "connections": [
+            {
+              "component_name": "string",
+              "triggers_mechanism": "string (mechanism ID)",
+              "action": "string (what the component triggers — e.g., 'opens create form', 'submits auth request', 'fetches dashboard data')"
             }
           ],
           "backend_services": ["string (mechanism IDs for backend-only mechanisms served by this page)"],

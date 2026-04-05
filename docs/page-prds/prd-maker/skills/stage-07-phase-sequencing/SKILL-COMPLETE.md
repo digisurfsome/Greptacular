@@ -32,7 +32,12 @@ This skill produces: `stage_7.token_budget`, `stage_7.phases`, `stage_7.mandator
     "mechanism_blueprints": [{ "mechanism_id": "M1", "wdr_classification": {...} }]
   },
   "stage_6": {
-    "sub_6a": { "arrangement_type": "...", "wireframe_pattern": "..." },
+    "sub_6a": {
+      "app_type_classification": "dashboard|chat|wizard|marketplace|tool|landing|settings",
+      "arrangement_options": [{ "id": "...", "name": "...", "description": "..." }],
+      "selected_arrangement_id": "...",
+      "user_adjustments": "string | null"
+    },
     "sub_6b": {
       "pages": [
         {
@@ -42,13 +47,22 @@ This skill produces: `stage_7.token_budget`, `stage_7.phases`, `stage_7.mandator
           "components": [
             { "component_name": "...", "placement": "...", "mechanism_ids": ["M1"] }
           ],
+          "backend_services": ["M5"],
           "user_approved": true
         }
-      ]
+      ],
+      "all_mechanisms_mapped": true,
+      "pages_approved": true
     },
-    "sub_6c": { "design_tokens": { "colors": {...}, "typography": {...} } }
+    "sub_6c": {
+      "style_options_presented": [{ "id": "...", "name": "...", "vibe": "..." }],
+      "selected_style_id": "...",
+      "design_tokens": { "colors": {"primary": "#hex", "...":" ..."}, "typography": {"heading_font": "...", "body_font": "...", "sizes": {}} },
+      "tailwind_config_overrides": {},
+      "audience_scores": { "audience_fit": 0, "vibe_match": 0, "age_range_fit": 0 }
+    }
   },
-  "stage_0": { "tech_stack": { "framework": "...", "language": "..." } }
+  "stage_0": { "tech_stack": { "framework": "...", "language": "...", "database": "...", "auth_provider": "..." } }
 }
 ```
 
@@ -65,6 +79,18 @@ For each mechanism blueprint, estimate tokens based on complexity:
 | **Simple** | 1–2 files, WALL-dominant, single concern. No state management, no API calls. Example: a static config module, a utility library, a type definitions file. | ~15,000–25,000 tokens |
 | **Medium** | 3–5 files, mixed W/D/R, 2–3 connected components. Basic state management (one context or store), one API endpoint, possibly one database table. Example: a settings page with a form, an API route, and a service file. | ~30,000–60,000 tokens |
 | **Complex** | 6+ files, DOOR/ROOM-heavy, cross-cutting integrations. Shared state across multiple consumers, multiple API endpoints, database schema with relations, multi-page UI with interactive components. Example: an auth system with sign-in/sign-up pages, session management, protected routes, and a user profile. | ~60,000–120,000 tokens |
+
+For finer-grained estimation, use per-file token budgets when summing mechanism totals:
+
+| File Type | Criteria | Token Range |
+|-----------|----------|-------------|
+| **Trivial file** | Single-purpose, no logic branching — type definitions, constants, re-export barrels, static config | ~200–500 tokens |
+| **Simple file** | One function/component, no state, no API calls — a utility helper, a presentational component, a validation schema | ~500–1,500 tokens |
+| **Medium file** | 2–3 exports, basic state or one API call — a form component with validation, a service file with CRUD operations, a context provider | ~1,500–3,000 tokens |
+| **Complex file** | 4+ exports, shared state, multiple API calls, conditional logic — a page with data fetching + filtering + pagination, an auth service with multiple flows, a database migration with relations | ~3,000–6,000 tokens |
+| **Heavy file** | Full-page orchestration, multi-step workflows, real-time updates, complex UI interactions — a dashboard with charts + filters + live data, an editor with undo/redo, a checkout flow | ~6,000–12,000 tokens |
+
+To estimate a mechanism's total tokens: classify each file in its blueprint, sum the per-file estimates, then add 10–15% for build instruction prose (rationale text, sandbox declarations, build order commentary). Cross-check: the per-file sum should fall within the mechanism complexity range above.
 
 Add per-page UI tokens from Stage 6b based on component count and page type:
 

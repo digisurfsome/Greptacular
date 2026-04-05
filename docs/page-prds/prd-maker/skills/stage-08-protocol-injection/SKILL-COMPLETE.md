@@ -24,27 +24,30 @@ Do NOT activate for: phase splitting (Stage 7), verification agent setup (Stage 
     }
   },
   "stage_7": {
+    "phase_count": 0,
+    "total_estimated_tokens": 0,
     "phases": [{
       "phase_number": 1,
-      "name": "string",
-      "mechanism_ids": ["string"],
-      "estimated_tokens": 0,
+      "phase_name": "string",
+      "mechanisms_included": ["string"],
+      "estimated_content_tokens": 0,
+      "estimated_total_tokens": 0,
       "build_order": [
         { "file_path": "src/file1.ts", "operation": "create", "rationale": "string" },
         { "file_path": "src/file2.tsx", "operation": "create", "rationale": "string" }
       ],
-      "files_allowed": ["string"],
-      "files_read_only": ["string"],
-      "files_forbidden": ["string"],
+      "file_sandbox": {
+        "allowed": ["string"],
+        "read_only": ["string"],
+        "forbidden": ["string"]
+      },
       "depends_on": [],
       "do_not_change": ["string"]
     }],
     "token_budget": {
-      "total_spec_tokens": 0,
       "budget_per_phase_content": 0,
       "overhead_per_phase": 25000,
-      "total_budget": 0,
-      "phases_needed": 0
+      "total_budget": 0
     }
   },
   "stage_5": {
@@ -67,11 +70,13 @@ Do NOT activate for: phase splitting (Stage 7), verification agent setup (Stage 
 
 **Note on `build_order` format:** Each entry is an object with `file_path`, `operation` ("create" or "modify"), and `rationale` — matching Stage 7's output exactly. When iterating over build_order entries, use `entry.file_path` to get the file path.
 
+**Note on field name mapping from Stage 7:** Stage 7 outputs `phase_name` (not `name`), `mechanisms_included` (not `mechanism_ids`), `estimated_content_tokens` and `estimated_total_tokens` (not `estimated_tokens`), and nests sandbox lists under `file_sandbox.allowed` / `file_sandbox.read_only` / `file_sandbox.forbidden` (not flat `files_allowed` / `files_read_only` / `files_forbidden`). The input format above matches Stage 7's actual output schema. When referencing sandbox lists in process steps, use `phase.file_sandbox.allowed`, `phase.file_sandbox.read_only`, and `phase.file_sandbox.forbidden`.
+
 ## Process
 
 ### Step 1: Load and Index Phase Data
 
-Read `stage_7.phases`. For each phase, index its `build_order` (array of `{file_path, operation, rationale}` objects), `files_allowed` (sandbox), and `mechanism_ids`. Build a lookup: `mechanism_id → phase_number` so you know which mechanisms live in which phase.
+Read `stage_7.phases`. For each phase, index its `build_order` (array of `{file_path, operation, rationale}` objects), `file_sandbox.allowed` (sandbox allowlist), and `mechanisms_included`. Build a lookup: `mechanism_id → phase_number` so you know which mechanisms live in which phase.
 
 ### Step 2: Build Dependency Interface Map
 
@@ -107,8 +112,8 @@ For each phase, create a `full_checkpoint` with three parts:
 
 **pattern_checks** — sandbox compliance via git diff:
 - `"Run git diff --name-only $PHASE_N_BASELINE to list all modified files"`
-- `"Compare modified files against files_allowed list"`
-- `"Flag any file modified that is NOT in files_allowed"`
+- `"Compare modified files against file_sandbox.allowed list"`
+- `"Flag any file modified that is NOT in file_sandbox.allowed"`
 - `"Flag any file in build_order that was NOT created/modified"`
 - `"Flag any unexpected imports from files outside sandbox"`
 
@@ -127,7 +132,7 @@ For each phase, create a `full_checkpoint` with three parts:
 For each phase, populate the 4-level violation tree using `references/violation-decision-tree.md`. Customize triggers to the phase's specific sandbox:
 
 - **low**: `triggers` reference that phase's shared files. `response`: `"log_and_proceed"`
-- **medium**: `triggers` reference files from other phases' `files_allowed`. `response`: `"review_and_decide"`. Include `decision_tree`: `{"additive": "proceed_with_caution", "destructive": "revert_file", "unclear": "flag_human"}`
+- **medium**: `triggers` reference files from other phases' `file_sandbox.allowed`. `response`: `"review_and_decide"`. Include `decision_tree`: `{"additive": "proceed_with_caution", "destructive": "revert_file", "unclear": "flag_human"}`
 - **high**: `triggers`: file deletion, core config changes outside scope. `response`: `"revert_entire_phase"`
 - **critical**: `triggers`: `.env`, `CLAUDE.md`, `package.json scripts`, build config, CI/CD. `response`: `"full_stop"`
 
@@ -142,7 +147,7 @@ For each phase, calculate `overhead_tokens` by summing the 7 overhead components
 4. Every phase has `full_checkpoint` with both `pattern_verification` and `functional_checks`
 5. `violation_handling` has all four severity levels (low, medium, high, critical) for every phase
 6. `overhead_tokens` ≤ 30,000 per phase
-7. `estimated_tokens` (Stage 7) + `overhead_tokens` ≤ 350,000 per phase
+7. `estimated_total_tokens` (Stage 7) + `overhead_tokens` ≤ 350,000 per phase
 8. For phases where `phase_number > 1`, `functional_checks` includes regression verification for all prior phases' features
 9. `total_overhead_tokens` equals sum of all phases' `overhead_tokens`
 10. `budget_verified` is `true` only if check #7 passes for ALL phases
@@ -170,7 +175,7 @@ If overhead exceeds 30,000 for any phase, trim verbose descriptions. If total ex
           }
         ],
         "full_checkpoint": {
-          "pattern_verification": ["git diff --name-only against files_allowed", "flag unauthorized modifications", "flag incomplete build_order items"],
+          "pattern_verification": ["git diff --name-only against file_sandbox.allowed", "flag unauthorized modifications", "flag incomplete build_order items"],
           "functional_checks": ["npm run build succeeds", "navigate to /sign-in renders login form"],
           "gate_condition": "ALL pattern_verification pass AND ALL functional_checks pass. Fix before next phase."
         },
@@ -180,7 +185,7 @@ If overhead exceeds 30,000 for any phase, trim verbose descriptions. If total ex
             "response": "log_and_proceed"
           },
           "medium": {
-            "triggers": ["modified file from another phase's files_allowed"],
+            "triggers": ["modified file from another phase's file_sandbox.allowed"],
             "response": "review_and_decide",
             "decision_tree": {
               "additive": "proceed_with_caution",
@@ -309,7 +314,7 @@ Phase 1: Auth System
 │      └─ SEAM: App.tsx routes point to SignIn and SignUp page components
 │
 ├── FULL CHECKPOINT (gate):
-│   ├─ Pattern: git diff --name-only vs files_allowed; flag unauthorized changes
+│   ├─ Pattern: git diff --name-only vs file_sandbox.allowed; flag unauthorized changes
 │   ├─ Functional: npm run build succeeds; /sign-in renders; /sign-up renders
 │   └─ Gate: ALL pass → proceed to Phase 2. ANY fail → fix first.
 │

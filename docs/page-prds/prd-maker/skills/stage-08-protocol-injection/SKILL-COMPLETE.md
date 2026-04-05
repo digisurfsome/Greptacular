@@ -250,7 +250,7 @@ If overhead exceeds 30,000 for any phase, trim verbose descriptions. If total ex
 
 ### Scope Overflow
 
-- If protocol injection reveals that a phase needs files not in its sandbox (e.g., seam check requires reading a file from another phase) → Do NOT modify the sandbox. Note it as a read dependency. Stage 7 already handles `files_read_only`.
+- If protocol injection reveals that a phase needs files not in its sandbox (e.g., seam check requires reading a file from another phase) → Do NOT modify the sandbox. Note it as a read dependency. Stage 7 already handles `file_sandbox.read_only`.
 - If overhead exceeds 30,000 tokens → Trim check descriptions to single-line commands. If still over, flag for Stage 7 re-split.
 
 ## Confidence Scoring
@@ -325,7 +325,7 @@ Phase 1: Auth System
     └─ CRITICAL: modified .env, CLAUDE.md, build config → FULL STOP
 ```
 
-Overhead: ~25,000 tokens. Phase estimated_tokens (Stage 7): 80,000. Total: 105,000 ≤ 350,000. ✅
+Overhead: ~25,000 tokens. Phase estimated_content_tokens (Stage 7): 80,000. Total: 105,000 ≤ 350,000. ✅
 
 
 ---
@@ -335,12 +335,12 @@ Overhead: ~25,000 tokens. Phase estimated_tokens (Stage 7): 80,000. Total: 105,0
 
 ## Standard Per-Phase Overhead (~25,000 tokens)
 
-Every protocol-injected phase adds a fixed overhead on top of Stage 7's `estimated_tokens`. This overhead is predictable because it uses standardized templates.
+Every protocol-injected phase adds a fixed overhead on top of Stage 7's `estimated_content_tokens`. This overhead is predictable because it uses standardized templates.
 
 | Component | Token Estimate | What It Contains |
 |-----------|---------------|------------------|
 | Build rules preamble | ~8,000 | Martin's structural rules applicable to this phase. Sourced from the agnostic checklist. Includes banned patterns, file naming conventions, component structure rules, state management rules. |
-| File sandbox declaration | ~2,000 | `files_allowed`, `files_read_only`, `files_forbidden` lists with explanations. Includes "DO NOT MODIFY" warnings for protected files. |
+| File sandbox declaration | ~2,000 | `file_sandbox.allowed`, `file_sandbox.read_only`, `file_sandbox.forbidden` lists with explanations. Includes "DO NOT MODIFY" warnings for protected files. |
 | Build order with pulse points | ~3,000 | The ordered file list with pulse check definitions after each entry. More files = more tokens, but pulse checks are concise (~50 tokens each). |
 | Seam check definitions | ~2,000 | Connection-point verification instructions. Typically 2-5 seam checks per phase at ~200-400 tokens each. Phases with no interfaces: ~200 tokens (just the "no seam checks needed" note). |
 | Full checkpoint | ~5,000 | Pattern verification instructions (~2,000), functional check commands (~1,500), gate condition (~500), checkpoint summary format (~1,000). |
@@ -352,7 +352,7 @@ Every protocol-injected phase adds a fixed overhead on top of Stage 7's `estimat
 
 1. **Per-phase overhead MUST be ≤ 30,000 tokens.** If it exceeds this after injection, trim verbose descriptions. Checks should be single-line commands, not paragraphs.
 
-2. **Per-phase total MUST be ≤ 350,000 tokens.** Formula: `stage_7.phases[].estimated_tokens + overhead_tokens ≤ 350,000`. This leaves room for the Claude context window overhead (system prompt, tools, etc.).
+2. **Per-phase total MUST be ≤ 350,000 tokens.** Formula: `stage_7.phases[].estimated_total_tokens + overhead_tokens ≤ 350,000`. This leaves room for the Claude context window overhead (system prompt, tools, etc.).
 
 3. **If overhead exceeds 30,000**, apply these trims in order:
    - Reduce build rules preamble to only the rules relevant to this phase's mechanisms (can drop to ~4,000)
@@ -459,8 +459,8 @@ Always placed at the END of each phase. Three mandatory parts:
 
 Always include these 5 checks:
 1. `"Run git diff --name-only $PHASE_N_BASELINE to list all actually modified files"`
-2. `"Compare actual modified files against this phase's files_allowed list"`
-3. `"FLAG: any file modified that is NOT in files_allowed"`
+2. `"Compare actual modified files against this phase's file_sandbox.allowed list"`
+3. `"FLAG: any file modified that is NOT in file_sandbox.allowed"`
 4. `"FLAG: any file in build_order that was NOT created or modified"`
 5. `"FLAG: any new imports from files outside this phase's sandbox"`
 
@@ -493,7 +493,7 @@ The gate is BINARY: pass or fail. No "proceed with warnings" at the gate level �
 
 ## The Four Severity Levels
 
-Every phase gets all four levels. Triggers are customized per phase based on its `files_allowed` sandbox.
+Every phase gets all four levels. Triggers are customized per phase based on its `file_sandbox.allowed` list.
 
 ```
 VIOLATION DETECTED (via git diff comparison)
@@ -510,7 +510,7 @@ VIOLATION DETECTED (via git diff comparison)
 │
 ├─ MEDIUM: Modified another phase's domain file
 │   Triggers:
-│   - Modified a file listed in ANOTHER phase's files_allowed
+│   - Modified a file listed in ANOTHER phase's file_sandbox.allowed
 │   - Added a new export to a file owned by another phase
 │   - Changed import structure of a file from another phase
 │   Response: review_and_decide

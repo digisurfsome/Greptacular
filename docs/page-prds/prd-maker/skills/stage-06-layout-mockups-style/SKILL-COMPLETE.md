@@ -123,16 +123,18 @@ Calculate `audience_scores`: `audience_fit` (0-100), `vibe_match` (0-100), `age_
 Run all validation checks before writing output:
 
 1. `app_type_classification` is set and recognized
-2. `arrangement_options` has 2-3 entries, one selected
-3. `pages` has ≥ 2 pages (auth + one functional)
-4. Every page has `page_name`, `route`, `layout_pattern`, `components[]`, `user_approved`
-5. Every mechanism from Stage 4 is on ≥ 1 page's component `mechanism_ids` OR in a page's `backend_services` array (backend-only mechanisms)
-6. Every `mechanism_ids` and `backend_services` entry references a real Stage 4 mechanism ID
-7. `all_mechanisms_mapped` is `true` and `pages_approved` is `true`
-8. `style_options_presented` has exactly 3 entries
-9. `design_tokens` has `colors` and `typography` sub-objects with specific values
-10. `selected_style_id` is from the predefined set or `"developers_choice"`
-11. Run confidence scoring (see below)
+2. `navigation_pattern` is set to one of `"sidebar"` | `"top_nav"` | `"tabbed"` | `"custom"`
+3. `arrangement_options` has 2-3 entries, one selected
+4. `pages` has ≥ 2 pages (auth + one functional)
+5. Every page has `page_name`, `route`, `layout_pattern`, `components[]`, `connections[]`, `user_approved`
+6. Every page's `connections` array has at least one entry for each interactive component, and every `triggers_mechanism` references a real Stage 4 mechanism ID
+7. Every mechanism from Stage 4 is on ≥ 1 page's component `mechanism_ids` OR in a page's `backend_services` array (backend-only mechanisms)
+8. Every `mechanism_ids` and `backend_services` entry references a real Stage 4 mechanism ID
+9. `all_mechanisms_mapped` is `true` and `pages_approved` is `true`
+10. `style_options_presented` has exactly 3 entries
+11. `design_tokens` has `colors` and `typography` sub-objects with specific values
+12. `selected_style_id` is from the predefined set or `"developers_choice"`
+13. Run confidence scoring (see below)
 
 ## Output Format
 

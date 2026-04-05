@@ -26,7 +26,7 @@ This skill produces: `stage_7.token_budget`, `stage_7.phases`, `stage_7.mandator
   "stage_3": { "drift_anchor": "..." },
   "stage_4": {
     "mechanisms": [{ "id": "M1", "name": "...", "tags": ["OBVIOUS"] }],
-    "mechanism_dependencies": [{ "from": "M1", "to": "M2" }]
+    "mechanism_dependencies": [{ "from_id": "M1", "to_id": "M2", "relationship": "requires" }]
   },
   "stage_5": {
     "mechanism_blueprints": [{ "mechanism_id": "M1", "wdr_classification": {...} }]
@@ -127,7 +127,7 @@ Minimum 1 phase. If `total_spec_tokens` ≤ 325,000, use 1 phase.
 
 ### Step 4: Assign File Sandboxes
 
-For each phase, derive file paths from the mechanisms' blueprints and Stage 6b page layouts. Classify into three tiers (see [references/file-sandbox-template.md](references/file-sandbox-template.md)):
+For each phase, derive file paths from the mechanisms' blueprints and Stage 6b page layouts (using `stage_6.sub_6b.pages[].components[].mechanism_ids` to map mechanisms to UI files, and `stage_6.sub_6b.pages[].backend_services` to identify backend-only mechanism files). Use `stage_0.tech_stack` for file path conventions (e.g., Next.js `app/api/` vs Express `src/routes/`). Classify into three tiers (see [references/file-sandbox-template.md](references/file-sandbox-template.md)):
 
 - **files_allowed**: Exact file paths this phase creates or modifies. Mark each as NEW or MODIFY.
 - **files_read_only**: Files from prior phases this phase can reference for patterns (e.g., auth patterns, DB helpers). Always include CLAUDE.md.

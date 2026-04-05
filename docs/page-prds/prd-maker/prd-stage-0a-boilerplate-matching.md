@@ -14,6 +14,41 @@ The agnostic checklist says things like "use the configured authentication provi
 
 ---
 
+## Three Source Checklists (Not Just Martin's)
+
+The Exact Reality Sheet covers ALL structural knowledge, not just Martin's rules. Stage 0a resolves three source documents against the boilerplate:
+
+### 1. Martin's Agnostic Checklist (`martin-agnostic-checklist.md`)
+- **192 rules** across **22 categories** + **43 banned patterns**
+- Covers: file structure, component patterns, state management, auth setup, styling, data access, routing, banned anti-patterns
+- Rules numbered 1-192
+
+### 2. Industry Standards Checklist (`industry-standards-checklist.md`)
+- **71 rules** across **10 categories**
+- Covers everything Martin didn't address: i18n, config externalization, environment parity, accessibility (WCAG 2.1 AA), performance budgets, error handling, testing standards, CI/CD, observability, API design
+- Sources: IEEE 830, FURPS+, Volere, arc42, C4 Model, 12-Factor App, WCAG 2.1 AA
+- Rules numbered 200-270 (no collision with Martin's)
+
+### 3. Mechanism Coverage Matrix (`references/mechanism-categories.md`)
+- **14 categories** (A through N)
+- Not a rule-per-rule checklist — it's a coverage matrix showing which mechanism categories the boilerplate handles natively vs which need user input
+- Categories: Data Input, Data Storage, Data Processing, Data Output, Authentication, Authorization, Communication, Integration, Workflow, Search & Discovery, Collaboration, Monetization, Admin/Ops, Infrastructure
+
+### Combined Output
+
+The Exact Reality Sheet merges all three into one document:
+
+| Section | Source | Rule Count | What It Tells the Agent |
+|---------|--------|------------|------------------------|
+| Part 1: Structural Rules | Martin's checklist | 192 | Exact file paths, function names, import patterns, config values |
+| Part 2: Industry Standards | Industry checklist | 71 | Exact i18n setup, env var patterns, a11y implementation, testing config |
+| Part 3: Mechanism Coverage | Mechanism matrix | 14 categories | Which mechanisms are pre-built vs need building from scratch |
+| Part 4: Banned Patterns | Martin's checklist | 43 | Stack-specific things to watch for and reject |
+
+**Total: 263 rules + 14 mechanism categories + 43 banned patterns = one unified source of truth per boilerplate.**
+
+---
+
 ## Flow
 
 ```
@@ -114,20 +149,28 @@ Each variant is its own saved Exact Reality Sheet. The only difference between t
 When a user (or SaaS customer) brings a boilerplate we haven't pre-matched:
 
 ### Input
-1. The agnostic checklist (192 rules, all generic)
-2. The boilerplate's source code (or a summary/manifest of it)
+1. Martin's agnostic checklist (192 rules, 22 categories, 43 banned patterns)
+2. Industry standards checklist (71 rules, 10 categories)
+3. Mechanism categories reference (14 categories A-N)
+4. The boilerplate's source code (or a summary/manifest of it)
 
 ### Process
-The Stage 0a agent reads every rule in the agnostic checklist and cross-references it against the boilerplate:
+The Stage 0a agent reads all three source documents and cross-references every rule against the boilerplate:
 
-For each rule:
-1. **Find the matching implementation** in the boilerplate (file path, code pattern, config setting)
-2. **Write the Exact Reality** — not "use the configured database" but "use `supabase.from('table').select('*')`"
-3. **Tag the match type:**
-   - `EXACT` — boilerplate implements this rule exactly
-   - `ADAPTED` — rule principle applies but boilerplate does it differently (document how)
-   - `NOT_PRESENT` — boilerplate doesn't cover this; agent must implement from scratch
-   - `NOT_ACTIVATED` — boilerplate has this but the user toggled it off; skip this rule
+**Pass 1: Martin's Structural Rules (192 rules)**
+For each rule, find the matching implementation in the boilerplate and write the exact reality.
+
+**Pass 2: Industry Standards (71 rules)**
+Same process — find how the boilerplate handles i18n, config externalization, env parity, accessibility, performance, error handling, testing, CI/CD, observability, and API design.
+
+**Pass 3: Mechanism Coverage Matrix (14 categories)**
+For each mechanism category (A-N), determine whether the boilerplate covers it natively, partially, or not at all. Document what's built-in vs what the app-specific build must implement.
+
+For each rule across all passes, tag the match type:
+- `EXACT` — boilerplate implements this rule exactly
+- `ADAPTED` — rule principle applies but boilerplate does it differently (document how)
+- `NOT_PRESENT` — boilerplate doesn't cover this; agent must implement from scratch
+- `NOT_ACTIVATED` — boilerplate has this but the user toggled it off; skip this rule
 
 ### Output
 An **Exact Reality Sheet** with this format per rule:
@@ -178,25 +221,78 @@ The output document structure:
 | CSS | Tailwind CSS |
 | Payments | Stripe (via @stripe/stripe-js) |
 
-## Rules (192 total, X active for this variant)
+---
+
+## Part 1: Martin's Structural Rules (192 rules, X active)
 
 ### Category: Stack (Mandatory)
-| # | Rule | Exact Implementation | Severity |
-|---|------|---------------------|----------|
-| 1 | Framework with type safety | Next.js 14 with TypeScript strict mode (`"strict": true` in tsconfig.json) | STANDARD |
-| ... | ... | ... | ... |
+| # | Rule | Exact Implementation | Match | Severity |
+|---|------|---------------------|-------|----------|
+| 1 | Framework with type safety | Next.js 14 with TypeScript strict mode (`"strict": true` in tsconfig.json) | EXACT | STANDARD |
+| ... | ... | ... | ... | ... |
 
 ### Category: File Structure
-| # | Rule | Exact Implementation | Severity |
+| # | Rule | Exact Implementation | Match | Severity |
 | ... |
 
-[... all 22 categories + banned patterns ...]
+[... all 22 categories ...]
+
+---
+
+## Part 2: Industry Standards (71 rules, X active)
+
+### Category: Internationalization (i18n)
+| # | Rule | Exact Implementation | Match | Severity |
+|---|------|---------------------|-------|----------|
+| 200 | Externalize all user-facing strings | All strings in `src/locales/en.json`. Use `useTranslation()` hook. No hardcoded text in components. | NOT_PRESENT | STANDARD |
+| ... | ... | ... | ... | ... |
+
+### Category: Config Externalization
+| ... |
+
+[... all 10 industry categories ...]
+
+---
+
+## Part 3: Mechanism Coverage Matrix (14 categories)
+
+| ID | Category | Status | Boilerplate Implementation |
+|----|----------|--------|---------------------------|
+| A | Data Input | needs_user_input | Forms depend on app idea; boilerplate has no pre-built forms |
+| B | Data Storage | covered | Supabase/Postgres via `@supabase/supabase-js`. Client at `src/lib/supabase.ts`. RLS policies in `supabase/migrations/`. |
+| C | Data Processing | needs_user_input | App-specific logic |
+| D | Data Output | needs_user_input | App-specific views |
+| E | Authentication | covered | Supabase Auth. Sign-in at `src/app/auth/`. Callback at `src/app/auth/callback/route.ts`. |
+| F | Authorization | covered | Supabase RLS. Policies in `supabase/migrations/`. Role column on `profiles` table. |
+| G | Communication | needs_user_input | No notification system in boilerplate |
+| H | Integration | needs_user_input | No external integrations |
+| I | Workflow | needs_user_input | No workflow engine |
+| J | Search & Discovery | needs_user_input | Postgres full-text search available but needs app-specific setup |
+| K | Collaboration | needs_user_input | No collaboration features |
+| L | Monetization | covered/NOT_ACTIVATED | Stripe via `@stripe/stripe-js`. Webhooks at `src/app/api/webhooks/stripe/`. Toggle-dependent. |
+| M | Admin/Ops | needs_user_input | No admin panel |
+| N | Infrastructure | covered | Vercel hosting (auto from `next.config.js`). Supabase managed DB. |
+
+---
+
+## Part 4: Banned Patterns (43 total)
+
+| # | Pattern | Exact Enforcement |
+|---|---------|-------------------|
+| 1 | No inline styles | Grep for `style=` in JSX — reject any match except `style={cssVariableObj}` |
+| ... | ... | ... |
+
+[... all 43 banned patterns with stack-specific detection ...]
+
+---
 
 ## Deactivated Rules (toggled off)
-| # | Rule | Reason |
-|---|------|--------|
-| L-1 | Payment processor | Payments toggle OFF |
-| ... | ... | ... |
+| # | Rule | Source | Reason |
+|---|------|--------|--------|
+| L-1 | Payment processor | Martin | Payments toggle OFF |
+| 250 | Payment webhook validation | Industry | Payments toggle OFF |
+| L | Monetization (full category) | Mechanism | Payments toggle OFF |
+| ... | ... | ... | ... |
 ```
 
 ---

@@ -192,7 +192,16 @@ Written to `context_packet.stage_4`:
     { "from_id": "mech_002", "to_id": "mech_001", "relationship": "requires" }
   ],
   "mechanism_count": 8,
-  "dual_design_count": 1
+  "dual_design_count": 1,
+  "scope_creep_flags": [
+    {
+      "feature_name": "string — name of the mechanism or feature outside scope",
+      "flag_reason": "string — why this was flagged (e.g., 'not in scope_contract but appears critical for core mechanism')",
+      "severity": "critical | warning | info",
+      "related_mechanism_id": "string | null — mech_NNN ID if it relates to an extracted mechanism",
+      "recommendation": "string — suggested action (e.g., 'add to scope', 'defer to Phase 2', 'ask user')"
+    }
+  ]
 }
 ```
 
@@ -225,6 +234,12 @@ Written to `context_packet.metadata`:
 - `mechanism_dependencies[].relationship`: enum `"requires"` | `"uses_output_of"` | `"shares_data_with"`
 - `mechanism_count`: integer >= 3
 - `dual_design_count`: integer >= 0
+- `scope_creep_flags`: array of objects, may be empty `[]`
+- `scope_creep_flags[].feature_name`: string, required
+- `scope_creep_flags[].flag_reason`: string, required
+- `scope_creep_flags[].severity`: enum `"critical"` | `"warning"` | `"info"` — `critical` = appears essential but out of scope; `warning` = potentially useful but unclear; `info` = noted for future consideration
+- `scope_creep_flags[].related_mechanism_id`: string (format `mech_NNN`) or `null`
+- `scope_creep_flags[].recommendation`: string, required
 
 ## Edge Cases
 
@@ -377,9 +392,12 @@ Score each dimension 0-20 after producing output:
     { "from_id": "mech_003", "to_id": "mech_002", "relationship": "uses_output_of" }
   ],
   "mechanism_count": 3,
-  "dual_design_count": 1
+  "dual_design_count": 1,
+  "scope_creep_flags": []
 }
 ```
+
+No scope creep flags — all mechanisms trace to the concept document and scope contract.
 
 Confidence: Completeness 18, Accuracy 18, Consistency 19, Specificity 17, Handoff Readiness 18 = **90. Gate: pass.**
 

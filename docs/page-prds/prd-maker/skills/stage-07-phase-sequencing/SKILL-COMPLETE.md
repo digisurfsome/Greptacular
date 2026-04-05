@@ -32,7 +32,7 @@ This skill produces: `stage_7.token_budget`, `stage_7.phases`, `stage_7.mandator
     "mechanism_blueprints": [{ "mechanism_id": "M1", "wdr_classification": {...} }]
   },
   "stage_6": {
-    "sub_6a": { "arrangement_type": "...", "wireframe_pattern": "..." },
+    "sub_6a": { "app_type_classification": "...", "selected_arrangement_id": "...", "user_adjustments": "..." },
     "sub_6b": {
       "pages": [
         {
@@ -507,35 +507,37 @@ The sandbox is an **alarm system, not a fence**. The agent CAN touch any file du
 ```json
 {
   "phase_number": 2,
-  "name": "Dashboard & Analytics",
-  "files_allowed": [
-    "src/lib/dashboard.ts",
-    "src/lib/analytics.ts",
-    "src/contexts/DashboardContext.tsx",
-    "src/pages/Dashboard.tsx",
-    "src/pages/Analytics.tsx",
-    "src/components/charts/BarChart.tsx",
-    "src/components/charts/LineChart.tsx",
-    "src/App.tsx"
-  ],
-  "files_read_only": [
-    "CLAUDE.md",
-    "package.json",
-    "tsconfig.json",
-    "src/lib/auth.ts",
-    "src/contexts/AuthContext.tsx",
-    "src/lib/supabase.ts"
-  ],
-  "files_forbidden": [
-    ".env",
-    ".env.local",
-    "supabase/migrations/00001_auth.sql",
-    "src/pages/SignIn.tsx",
-    "src/pages/SignUp.tsx",
-    "src/contexts/AuthContext.tsx",
-    "node_modules/**",
-    ".git/**"
-  ],
+  "phase_name": "Dashboard & Analytics",
+  "file_sandbox": {
+    "allowed": [
+      "src/lib/dashboard.ts",
+      "src/lib/analytics.ts",
+      "src/contexts/DashboardContext.tsx",
+      "src/pages/Dashboard.tsx",
+      "src/pages/Analytics.tsx",
+      "src/components/charts/BarChart.tsx",
+      "src/components/charts/LineChart.tsx",
+      "src/App.tsx"
+    ],
+    "read_only": [
+      "CLAUDE.md",
+      "package.json",
+      "tsconfig.json",
+      "src/lib/auth.ts",
+      "src/contexts/AuthContext.tsx",
+      "src/lib/supabase.ts"
+    ],
+    "forbidden": [
+      ".env",
+      ".env.local",
+      "supabase/migrations/00001_auth.sql",
+      "src/pages/SignIn.tsx",
+      "src/pages/SignUp.tsx",
+      "src/contexts/AuthContext.tsx",
+      "node_modules/**",
+      ".git/**"
+    ]
+  },
   "do_not_change": [
     "CLAUDE.md",
     ".env",

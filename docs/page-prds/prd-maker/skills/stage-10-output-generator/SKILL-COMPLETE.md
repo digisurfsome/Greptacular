@@ -61,7 +61,7 @@ For each phase in `stage_8.instrumented_phases`, compile a standalone `phase-N.m
 2. **File Sandbox Declaration** (~2K tokens): From `stage_7.phases[N].file_sandbox.allowed`, `.read_only`, `.forbidden`.
 3. **Build Order with Pulse Points** (~3K tokens): From `stage_7.mandatory_build_order` + `stage_8.instrumented_phases[N].pulse_points`.
 4. **Seam Check Definitions** (~2K tokens): From `stage_8.instrumented_phases[N].seam_checks`.
-5. **Objective and Feature Requirements**: From `stage_7.phases[N].features` cross-referenced with `stage_4.mechanisms` and `stage_6.sub_6b`.
+5. **Objective and Feature Requirements**: From `stage_7.phases[N].mechanisms_included` cross-referenced with `stage_4.mechanisms` and `stage_6.sub_6b`.
 6. **Pattern References**: From `stage_5.mechanism_blueprints` — file:line references for patterns to follow, informed by Wall/Door/Room classifications.
 7. **Violation Handling Instructions** (~2K tokens): From `stage_8.instrumented_phases[N].violation_handling`. Decision tree: low (log+continue), medium (fix first), high (rollback to pulse), critical (stop+human).
 8. **Full Checkpoint at End** (~5K tokens): From `stage_8.instrumented_phases[N].full_checkpoint`. 4-step check: self-report, diff check, violation response, functional verification.
@@ -283,7 +283,7 @@ Score each dimension 0-20 after producing output:
 {
   "stage_0": { "tech_stack": { "framework": "react", "database": "supabase", "build_command": "npm run build", "lint_command": "npm run lint" } },
   "stage_3": { "concept_and_context": { "name": "TaskFlow", "description": "Team task management app" }, "drift_anchor": "Task management for small teams" },
-  "stage_7": { "phases": [{ "phase_number": 1, "features": ["auth", "db-setup"], "file_sandbox": { "allowed": ["src/lib/supabase.ts"] } }, { "phase_number": 2, "features": ["task-board"], "file_sandbox": { "allowed": ["src/components/Board.tsx"] } }], "token_budget": { "budget_per_phase_content": 325000 } }
+  "stage_7": { "phases": [{ "phase_number": 1, "mechanisms_included": ["M1", "M2"], "file_sandbox": { "allowed": ["src/lib/supabase.ts"] } }, { "phase_number": 2, "mechanisms_included": ["M3"], "file_sandbox": { "allowed": ["src/components/Board.tsx"] } }], "token_budget": { "budget_per_phase_content": 325000 } }
 }
 ```
 

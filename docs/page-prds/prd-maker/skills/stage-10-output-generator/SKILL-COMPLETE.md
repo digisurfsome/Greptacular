@@ -37,7 +37,7 @@ Activate when the context packet contains completed data from stages 0, 3, 4, 5,
 
 Enumerate every file to generate. For each, record `file_path`, `file_type`, and `estimated_tokens`:
 
-- `phases/phase-N.md` (one per phase from `stage_7.phases`) — type: `"phase"`, tokens: `stage_7.token_budget.per_phase[N]` + `stage_8.overhead_breakdown.per_phase[N]`
+- `phases/phase-N.md` (one per phase from `stage_7.phases`) — type: `"phase"`, tokens: `stage_7.token_budget.per_phase[N]` + `stage_8.protocol_injected_phases[N].overhead_tokens`
 - `build.sh` — type: `"build_script"`, tokens: ~2,000
 - `CLAUDE.md` — type: `"claude_md"`, tokens: ~3,000 (must stay under 500 lines)
 - `BUILD_RULES.md` — type: `"build_rules"`, tokens: ~8,000
@@ -45,7 +45,7 @@ Enumerate every file to generate. For each, record `file_path`, `file_type`, and
 
 ### Step 2: Render Phase Files
 
-For each phase in `stage_8.protocol_injected_phases`, compile a standalone `phase-N.md` with exactly 9 sections in order. Use the template in `references/phase-file-template.md`. Each section's source:
+For each phase in `stage_8.protocol_injected_phases`, compile a standalone `phase-N.md` with exactly 9 sections in order. Use the phase file template (see REFERENCE: phase-file-template below). Each section's source:
 
 1. **Build Rules Preamble** (~8K tokens): From `stage_5.build_rules_applied` + `stage_3.drift_anchor`. Distribute Martin's rules as architecture principles — NEVER as a standalone "Martin's Rules" block.
 2. **File Sandbox Declaration** (~2K tokens): From `stage_7.phases[N].files_allowed`, `files_read_only`, `files_forbidden`.
@@ -61,7 +61,7 @@ For each phase in `stage_8.protocol_injected_phases`, compile a standalone `phas
 
 ### Step 3: Generate build.sh
 
-Create the deterministic bash wrapper using the template in `references/build-sh-template.md`:
+Create the deterministic bash wrapper using the build script template (see REFERENCE: build-sh-template below):
 
 - `set -e` — stop on ANY error
 - Per-phase block: git snapshot (`SNAPSHOT=$(git rev-parse HEAD)`), pre-build validation, agent work marker, post-build validation, forbidden file detection via `git diff --name-only $SNAPSHOT`, commit
@@ -83,7 +83,7 @@ Set `build_script_config`:
 
 ### Step 4: Generate CLAUDE.md
 
-Create quick-reference guardrails file using `references/claude-md-template.md`. MUST be under 500 lines. Contents:
+Create quick-reference guardrails file using the CLAUDE.md template (see REFERENCE: claude-md-template below). MUST be under 500 lines. Contents:
 
 - **Architecture Principles**: Distilled from `stage_5.mechanism_blueprints` and `stage_5.build_rules_applied`. Single-responsibility, state placement, file size limits, import direction.
 - **Modification Rules**: Read before edit, don't refactor uninstructed, match existing style.
@@ -95,7 +95,7 @@ CLAUDE.md is distilled. BUILD_RULES.md has depth. They never contradict.
 
 ### Step 5: Generate BUILD_RULES.md
 
-Create detailed reference playbook using `references/build-rules-sections.md`. Map Martin's modules to sections adapted for `stage_0.tech_stack`:
+Create detailed reference playbook using the section templates (see REFERENCE: build-rules-sections below). Map Martin's modules to sections adapted for `stage_0.tech_stack`:
 
 | Martin Module | BUILD_RULES.md Section |
 |---------------|----------------------|
@@ -120,7 +120,7 @@ Document the build package:
 
 ### Step 7: Platform Picker Rendering
 
-Set `platform_target` based on user's chosen platform. Adapt wrapper instructions per `references/platform-wrappers.md`:
+Set `platform_wrapper` based on user's chosen platform. Adapt wrapper instructions per the platform wrappers (see REFERENCE: platform-wrappers below):
 
 | Platform | Method | Automation |
 |----------|--------|-----------|
@@ -155,12 +155,14 @@ Write results to `final_validation`. If ANY check fails, attempt auto-fix (reord
     "output_manifest": [
       { "file_path": "phases/phase-1.md", "file_type": "phase", "estimated_tokens": 45000 }
     ],
-    "generated_files": {
-      "phases/phase-1.md": "full markdown content...",
-      "build.sh": "#!/bin/bash\nset -e\n...",
-      "CLAUDE.md": "# Build Rules\n...",
-      "BUILD_RULES.md": "# Build Rules Reference\n...",
-      "README.md": "# Product Name\n..."
+    "output_package": {
+      "phase_files": [
+        { "phase_number": 1, "content": "full markdown content..." }
+      ],
+      "build_script": "#!/bin/bash\nset -e\n...",
+      "claude_md": "# Build Rules\n...",
+      "build_rules_md": "# Build Rules Reference\n...",
+      "readme_md": "# Product Name\n..."
     },
     "build_script_config": {
       "snapshot_enabled": true,
@@ -169,9 +171,12 @@ Write results to `final_validation`. If ANY check fails, attempt auto-fix (reord
       "two_strike_retry": true,
       "chaining_operator": "&&"
     },
-    "platform_target": "claude_cli",
-    "claude_md_content": "string (under 500 lines)",
-    "build_rules_content": "string",
+    "platform_wrapper": {
+      "platform": "claude_cli",
+      "execution_instructions": "string (platform-specific README section)"
+    },
+    "internal_consistency_verified": true,
+    "total_output_tokens": 0,
     "final_validation": {
       "open_questions_count": 0,
       "all_phases_fit_budget": true,
@@ -226,17 +231,19 @@ Metadata updates:
 
 Score each dimension 0-20 after producing output:
 
-1. **Completeness**: All files in manifest generated? Every phase file has all 9 sections? build.sh has verification + retry? CLAUDE.md + BUILD_RULES.md present and populated? No skeletal sections?
+| Dimension | 0-5 | 6-10 | 11-15 | 16-20 |
+|-----------|-----|------|-------|-------|
+| Completeness | Phase files missing; build.sh absent; CLAUDE.md not generated | Phase files exist but 2+ are missing required sections (no sandbox, no checkpoint); build.sh is skeletal | All phase files have all 9 sections; build.sh has core logic; CLAUDE.md and BUILD_RULES.md present; 1-2 phase files have thin requirement sections | Every file in the output package is complete; every phase file has comprehensive requirements with pattern references; build.sh has full verification and retry logic; CLAUDE.md + BUILD_RULES.md cover all relevant domains |
+| Accuracy | Phase files contain instructions that reference mechanisms, files, or patterns not defined anywhere in the pipeline | Most instructions are accurate but 3+ references point to nonexistent files or misnamed mechanisms | All references resolve correctly; build.sh commands are valid for the chosen platform; CLAUDE.md rules accurately reflect the project architecture | Every reference resolves; build.sh is tested-ready; CLAUDE.md and BUILD_RULES.md rules are precise, actionable, and correct for the chosen stack; zero dangling references |
+| Consistency | Phase files contradict each other (Phase 2 modifies a file Phase 1's sandbox forbids); build.sh commands conflict with phase instructions | Minor inconsistencies between phase files; build.sh mostly aligns with phase verification rules | Phase files are internally consistent; build.sh verification matches phase sandbox rules; CLAUDE.md doesn't contradict BUILD_RULES.md | Perfect consistency across all output files; sandbox rules are respected across phases; build.sh verification exactly mirrors the phase checkpoints; CLAUDE.md and BUILD_RULES.md are complementary without overlap |
+| Specificity | Phase requirements say "build the auth system" without specifying components, patterns, or expected outputs | Phase requirements name components but lack implementation detail; build.sh uses placeholder paths | Phase requirements specify components with file paths, import patterns, and expected behavior; build.sh uses real paths and commands | Phase requirements are detailed enough for a coding agent to build without asking questions — exact file paths, exact exports, exact patterns to follow, exact validation criteria; build.sh is production-ready |
+| Handoff Readiness | A coding agent would ask "what am I building?" before starting Phase 1 | A coding agent could start but would need clarification on 3+ implementation details within Phase 1 | A coding agent can complete Phase 1 asking at most 1 clarifying question; subsequent phases are equally clear | A coding agent can execute the entire build — all phases, in order — without asking a single question. The output package is the complete instruction set. |
 
-2. **Accuracy**: Every reference resolves? build.sh commands valid for platform? CLAUDE.md rules match project architecture? Zero dangling references to nonexistent files/mechanisms/patterns?
+### Threshold and Failure Handling
 
-3. **Consistency**: Phase sandbox rules respected across phases? build.sh verification matches phase checkpoints? CLAUDE.md and BUILD_RULES.md complement without contradiction? No phase modifies files another phase forbids?
-
-4. **Specificity**: Phase requirements specify exact file paths, exports, patterns? Not vague ("build the auth system")? build.sh uses real paths and commands?
-
-5. **Handoff Readiness**: Can a coding agent execute ALL phases without asking a single question? The output package IS the complete instruction set. If any question would need to be asked, score < 16.
-
-**Total /100: >= 90 PASS (deliver) | 70-89 WARN (deliver with warning) | < 70 FAIL (escape hatch)**
+- **Score >= 90:** Output package is ready for delivery. The pipeline is complete.
+- **Score 70-89:** Flag concerns. Present to user: "The output package scored below 18 on [dimensions]. Specific issues: [list files with problems]. Should I revise or deliver as-is?" If no human available, retry Stage 10 once. If retry still scores 70-89, deliver with a warning note documenting the weak areas.
+- **Score < 70:** Do NOT deliver. The output package has structural issues that would cause build failures. Trigger escape hatch. Most likely cause: upstream stages produced insufficient or inconsistent data. Log which phases have issues and trace back to the originating stage.
 
 ## Escape Hatch
 
@@ -289,18 +296,20 @@ Score each dimension 0-20 after producing output:
       { "file_path": "BUILD_RULES.md", "file_type": "build_rules", "estimated_tokens": 8000 },
       { "file_path": "README.md", "file_type": "readme", "estimated_tokens": 1500 }
     ],
-    "generated_files": {
-      "phases/phase-1.md": "# Phase 1: Foundation\n\n## Build Rules Preamble\n...[9 sections]...\n## Gate Condition\nALL FOUR STEPS MUST PASS BEFORE PHASE 2 BEGINS",
-      "phases/phase-2.md": "# Phase 2: Task Board\n...[9 sections]...\n## Gate Condition\nPIPELINE COMPLETE",
-      "build.sh": "#!/bin/bash\nset -e\n\nrun_phase() {\n  SNAPSHOT=$(git rev-parse HEAD)\n  npm run build || { echo 'ABORT'; exit 1; }\n  # ... agent work ...\n  npm run build && npm run lint || { git reset --hard $SNAPSHOT; exit 1; }\n}\n\nrun_phase 1 && run_phase 2",
-      "CLAUDE.md": "# Build Rules\n## Architecture Principles\n- Components do ONE thing...",
-      "BUILD_RULES.md": "# Build Rules Reference\n## Debugging Protocol\n...",
-      "README.md": "# TaskFlow\nTeam task management app..."
+    "output_package": {
+      "phase_files": [
+        { "phase_number": 1, "content": "# Phase 1: Foundation\n\n## Build Rules Preamble\n...[9 sections]...\n## Gate Condition\nALL FOUR STEPS MUST PASS BEFORE PHASE 2 BEGINS" },
+        { "phase_number": 2, "content": "# Phase 2: Task Board\n...[9 sections]...\n## Gate Condition\nPIPELINE COMPLETE" }
+      ],
+      "build_script": "#!/bin/bash\nset -e\n\nrun_phase() {\n  SNAPSHOT=$(git rev-parse HEAD)\n  npm run build || { echo 'ABORT'; exit 1; }\n  # ... agent work ...\n  npm run build && npm run lint || { git reset --hard $SNAPSHOT; exit 1; }\n}\n\nrun_phase 1 && run_phase 2",
+      "claude_md": "# Build Rules\n## Architecture Principles\n- Components do ONE thing...",
+      "build_rules_md": "# Build Rules Reference\n## Debugging Protocol\n...",
+      "readme_md": "# TaskFlow\nTeam task management app..."
     },
     "build_script_config": { "snapshot_enabled": true, "rollback_enabled": true, "forbidden_file_detection": true, "two_strike_retry": true, "chaining_operator": "&&" },
-    "platform_target": "claude_cli",
-    "claude_md_content": "# Build Rules\n...",
-    "build_rules_content": "# Build Rules Reference\n...",
+    "platform_wrapper": { "platform": "claude_cli", "execution_instructions": "Run phases sequentially via build.sh" },
+    "internal_consistency_verified": true,
+    "total_output_tokens": 109500,
     "final_validation": { "open_questions_count": 0, "all_phases_fit_budget": true, "all_mechanisms_covered": true, "all_pages_covered": true }
   }
 }

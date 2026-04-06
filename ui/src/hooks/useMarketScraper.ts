@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import * as api from '../lib/api'
+import type { TopicSearchParams } from '../lib/api'
 
 export function useScrapes() {
   return useQuery({
@@ -30,6 +31,29 @@ export function useDeleteScrape() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: number) => api.deleteMarketScrape(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['market-scraper'] })
+    },
+  })
+}
+
+export function useSearchOptions() {
+  return useQuery({
+    queryKey: ['market-scraper', 'search-options'],
+    queryFn: api.getSearchOptions,
+  })
+}
+
+export function useSearchReddit() {
+  return useMutation({
+    mutationFn: (params: TopicSearchParams) => api.searchReddit(params),
+  })
+}
+
+export function useSearchAndScrape() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (params: TopicSearchParams) => api.searchAndScrapeReddit(params),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['market-scraper'] })
     },

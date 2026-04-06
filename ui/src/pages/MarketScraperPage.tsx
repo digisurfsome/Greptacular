@@ -16,8 +16,20 @@ import {
   Heart,
   ThumbsUp,
   Loader2,
+  Link,
+  Globe,
+  ChevronDown,
+  ExternalLink,
+  Zap,
 } from 'lucide-react'
-import { useScrapes, useScrape, useScrapeThread, useDeleteScrape } from '@/hooks/useMarketScraper'
+import {
+  useScrapes,
+  useScrape,
+  useScrapeThread,
+  useDeleteScrape,
+  useSearchOptions,
+  useSearchAndScrape,
+} from '@/hooks/useMarketScraper'
 import { exportScrape } from '@/lib/api'
 import type { MarketScrape, MarketPhrase } from '@/lib/types'
 
@@ -40,12 +52,35 @@ const FILTER_TABS = [
 ]
 
 type SortMode = 'score' | 'validation' | 'recent'
+type InputMode = 'url' | 'topic'
 
 export function MarketScraperPage() {
+  // Input mode
+  const [inputMode, setInputMode] = useState<InputMode>('topic')
+
+  // URL mode state
   const [url, setUrl] = useState('')
+
+  // Topic mode state
+  const [topicQuery, setTopicQuery] = useState('')
+  const [selectedSubs, setSelectedSubs] = useState<string[]>([])
+  const [topicSort, setTopicSort] = useState('relevance')
+  const [topicTime, setTopicTime] = useState('week')
+  const [maxThreads, setMaxThreads] = useState(5)
+  const [showSubPicker, setShowSubPicker] = useState(false)
+  const [searchResult, setSearchResult] = useState<{
+    query: string
+    threads_found: number
+    threads_scraped: number
+    scrape_ids: number[]
+    total_phrases: number
+    category_counts: Record<string, number>
+  } | null>(null)
+
+  // Shared state
   const [activeScrapeId, setActiveScrapeId] = useState<number | null>(null)
   const [categoryFilter, setCategoryFilter] = useState('all')
-  const [sortMode, setSortMode] = useState<SortMode>('score')
+  const [sortMode, setSortMode] = useState<SortMode>('validation')
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null)
 
@@ -53,13 +88,19 @@ export function MarketScraperPage() {
   const { data: activeScrapeData } = useScrape(activeScrapeId)
   const scrapeThread = useScrapeThread()
   const deleteScrape = useDeleteScrape()
+  const { data: searchOptions } = useSearchOptions()
+  const searchAndScrape = useSearchAndScrape()
 
-  // Show a toast notification that auto-dismisses after 3 seconds
+  const defaultSubs: string[] = searchOptions?.default_subreddits ?? []
+  const sortOptions: string[] = searchOptions?.sort_options ?? ['relevance', 'hot', 'top', 'new', 'comments']
+  const timeFilters: string[] = searchOptions?.time_filters ?? ['all', 'year', 'month', 'week', 'day', 'hour']
+
   const showToast = useCallback((type: 'success' | 'error', message: string) => {
     setToast({ type, message })
     setTimeout(() => setToast(null), 3000)
   }, [])
 
+  // URL scrape handler
   const handleScrape = useCallback(() => {
     if (!url.trim()) return
     scrapeThread.mutate(url.trim(), {
@@ -73,6 +114,37 @@ export function MarketScraperPage() {
       },
     })
   }, [url, scrapeThread, showToast])
+
+  // Topic search + scrape handler
+  const handleTopicSearch = useCallback(() => {
+    if (!topicQuery.trim()) return
+    searchAndScrape.mutate(
+      {
+        query: topicQuery.trim(),
+        subreddits: selectedSubs.length > 0 ? selectedSubs : undefined,
+        sort: topicSort,
+        time_filter: topicTime,
+        max_threads: maxThreads,
+      },
+      {
+        onSuccess: (data) => {
+          setSearchResult(data)
+          if (data.scrape_ids?.length > 0) {
+            setActiveScrapeId(data.scrape_ids[0])
+            showToast(
+              'success',
+              `Found ${data.threads_found} threads, scraped ${data.threads_scraped}, got ${data.total_phrases} phrases`
+            )
+          } else {
+            showToast('error', 'No matching threads found — try different keywords or subreddits')
+          }
+        },
+        onError: (err: Error) => {
+          showToast('error', err.message || 'Search failed')
+        },
+      }
+    )
+  }, [topicQuery, selectedSubs, topicSort, topicTime, maxThreads, searchAndScrape, showToast])
 
   const handleDelete = useCallback((id: number) => {
     deleteScrape.mutate(id, {
@@ -108,6 +180,12 @@ export function MarketScraperPage() {
     })
   }, [showToast])
 
+  const toggleSub = useCallback((sub: string) => {
+    setSelectedSubs(prev =>
+      prev.includes(sub) ? prev.filter(s => s !== sub) : [...prev, sub]
+    )
+  }, [])
+
   // Derive filtered + sorted phrases from the active scrape
   const phrases: MarketPhrase[] = activeScrapeData?.phrases ?? []
   const filteredPhrases = phrases
@@ -123,6 +201,8 @@ export function MarketScraperPage() {
     acc[p.category] = (acc[p.category] || 0) + 1
     return acc
   }, {})
+
+  const isLoading = scrapeThread.isPending || searchAndScrape.isPending
 
   return (
     <div className="flex h-screen flex-col bg-background">
@@ -165,7 +245,7 @@ export function MarketScraperPage() {
           </h2>
           {(!scrapes || scrapes.length === 0) ? (
             <p className="text-xs text-muted-foreground italic">
-              No scrapes yet. Paste a URL above to get started.
+              No scrapes yet. Search a topic or paste a URL to get started.
             </p>
           ) : (
             <div className="space-y-2">
@@ -242,43 +322,249 @@ export function MarketScraperPage() {
 
         {/* Main Content Area */}
         <div className="flex-1 overflow-y-auto p-4">
-          {/* Section 1: Scrape Input */}
-          <Card className="mb-6 border-2 border-black shadow-[4px_4px_0_0_#000]">
-            <CardContent className="p-4">
-              <div className="flex gap-3">
-                <Input
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
-                  placeholder="Paste a Reddit thread URL..."
-                  className="flex-1 border-2 border-black"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleScrape()
-                  }}
-                />
-                <Button
-                  onClick={handleScrape}
-                  disabled={!url.trim() || scrapeThread.isPending}
-                  className="border-2 border-black shadow-[3px_3px_0_0_#000] transition-all hover:shadow-[1px_1px_0_0_#000]"
-                >
-                  {scrapeThread.isPending ? (
-                    <>
-                      <Loader2 size={16} className="mr-2 animate-spin" />
-                      Scraping...
-                    </>
-                  ) : (
-                    <>
-                      <Search size={16} className="mr-2" />
-                      Scrape Thread
-                    </>
-                  )}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+          {/* Input Mode Tabs */}
+          <div className="mb-4 flex gap-2">
+            <Button
+              variant={inputMode === 'topic' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setInputMode('topic')}
+              className="gap-2 border-2 border-black shadow-[2px_2px_0_0_#000]"
+            >
+              <Globe size={16} />
+              Topic Search
+            </Button>
+            <Button
+              variant={inputMode === 'url' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setInputMode('url')}
+              className="gap-2 border-2 border-black shadow-[2px_2px_0_0_#000]"
+            >
+              <Link size={16} />
+              URL Scrape
+            </Button>
+          </div>
 
-          {/* Section 2 + 3: Results dashboard + phrase cards (when a scrape is active) */}
+          {/* Topic Search Mode */}
+          {inputMode === 'topic' && (
+            <Card className="mb-6 border-2 border-black shadow-[4px_4px_0_0_#000]">
+              <CardContent className="p-4 space-y-3">
+                {/* Search query input */}
+                <div className="flex gap-3">
+                  <Input
+                    value={topicQuery}
+                    onChange={(e) => setTopicQuery(e.target.value)}
+                    placeholder='Search for a topic... (e.g., "app maker frustrations", "SaaS pricing complaints")'
+                    className="flex-1 border-2 border-black"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleTopicSearch()
+                    }}
+                  />
+                  <Button
+                    onClick={handleTopicSearch}
+                    disabled={!topicQuery.trim() || isLoading}
+                    className="border-2 border-black bg-[#22c55e] text-white shadow-[3px_3px_0_0_#000] transition-all hover:bg-[#16a34a] hover:shadow-[1px_1px_0_0_#000]"
+                  >
+                    {searchAndScrape.isPending ? (
+                      <>
+                        <Loader2 size={16} className="mr-2 animate-spin" />
+                        Searching...
+                      </>
+                    ) : (
+                      <>
+                        <Zap size={16} className="mr-2" />
+                        Search & Scrape
+                      </>
+                    )}
+                  </Button>
+                </div>
+
+                {/* Options row */}
+                <div className="flex flex-wrap items-center gap-3">
+                  {/* Subreddit picker */}
+                  <div className="relative">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowSubPicker(!showSubPicker)}
+                      className="gap-1 border-2 border-black text-xs"
+                    >
+                      <Globe size={12} />
+                      {selectedSubs.length === 0
+                        ? 'All of Reddit'
+                        : `${selectedSubs.length} subreddit${selectedSubs.length > 1 ? 's' : ''}`}
+                      <ChevronDown size={12} />
+                    </Button>
+                    {showSubPicker && (
+                      <div className="absolute top-full left-0 z-50 mt-1 w-72 rounded border-2 border-black bg-card p-3 shadow-[4px_4px_0_0_#000]">
+                        <p className="mb-2 text-xs font-bold uppercase text-muted-foreground">Pick subreddits</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {defaultSubs.map((sub) => (
+                            <Badge
+                              key={sub}
+                              variant={selectedSubs.includes(sub) ? 'default' : 'outline'}
+                              className={`cursor-pointer border-2 border-black text-xs transition-all ${
+                                selectedSubs.includes(sub)
+                                  ? 'bg-primary text-primary-foreground shadow-[2px_2px_0_0_#000]'
+                                  : 'hover:bg-accent'
+                              }`}
+                              onClick={() => toggleSub(sub)}
+                            >
+                              r/{sub}
+                            </Badge>
+                          ))}
+                        </div>
+                        <div className="mt-2 flex justify-between">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-xs"
+                            onClick={() => setSelectedSubs([])}
+                          >
+                            Clear all
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-xs"
+                            onClick={() => setSelectedSubs([...defaultSubs])}
+                          >
+                            Select all
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Sort */}
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs font-bold text-muted-foreground">Sort:</span>
+                    <select
+                      value={topicSort}
+                      onChange={(e) => setTopicSort(e.target.value)}
+                      className="rounded border-2 border-black bg-card px-2 py-1 text-xs"
+                    >
+                      {sortOptions.map((opt) => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Time */}
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs font-bold text-muted-foreground">Time:</span>
+                    <select
+                      value={topicTime}
+                      onChange={(e) => setTopicTime(e.target.value)}
+                      className="rounded border-2 border-black bg-card px-2 py-1 text-xs"
+                    >
+                      {timeFilters.map((opt) => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Max threads */}
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs font-bold text-muted-foreground">Threads:</span>
+                    <select
+                      value={maxThreads}
+                      onChange={(e) => setMaxThreads(Number(e.target.value))}
+                      className="rounded border-2 border-black bg-card px-2 py-1 text-xs"
+                    >
+                      {[3, 5, 10, 15, 20].map((n) => (
+                        <option key={n} value={n}>{n}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Search result summary */}
+                {searchResult && (
+                  <div className="rounded border-2 border-black bg-[#22c55e]/10 p-3">
+                    <div className="flex items-center gap-2 text-sm">
+                      <TrendingUp size={16} className="text-[#22c55e]" />
+                      <span className="font-bold">
+                        Found {searchResult.threads_found} threads for &quot;{searchResult.query}&quot;
+                      </span>
+                      <span className="text-muted-foreground">
+                        — scraped {searchResult.threads_scraped}, extracted {searchResult.total_phrases} phrases
+                      </span>
+                    </div>
+                    {searchResult.scrape_ids.length > 1 && (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {searchResult.scrape_ids.map((id, i) => (
+                          <Button
+                            key={id}
+                            variant={activeScrapeId === id ? 'default' : 'outline'}
+                            size="sm"
+                            className="border-2 border-black text-xs"
+                            onClick={() => setActiveScrapeId(id)}
+                          >
+                            Thread {i + 1}
+                          </Button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* URL Scrape Mode */}
+          {inputMode === 'url' && (
+            <Card className="mb-6 border-2 border-black shadow-[4px_4px_0_0_#000]">
+              <CardContent className="p-4">
+                <div className="flex gap-3">
+                  <Input
+                    value={url}
+                    onChange={(e) => setUrl(e.target.value)}
+                    placeholder="Paste a Reddit thread URL..."
+                    className="flex-1 border-2 border-black"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleScrape()
+                    }}
+                  />
+                  <Button
+                    onClick={handleScrape}
+                    disabled={!url.trim() || isLoading}
+                    className="border-2 border-black shadow-[3px_3px_0_0_#000] transition-all hover:shadow-[1px_1px_0_0_#000]"
+                  >
+                    {scrapeThread.isPending ? (
+                      <>
+                        <Loader2 size={16} className="mr-2 animate-spin" />
+                        Scraping...
+                      </>
+                    ) : (
+                      <>
+                        <Search size={16} className="mr-2" />
+                        Scrape Thread
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Results dashboard + phrase cards (when a scrape is active) */}
           {activeScrapeId && activeScrapeData && (
             <>
+              {/* Active scrape title */}
+              <div className="mb-4 flex items-center gap-2">
+                <h2 className="text-lg font-bold">
+                  r/{activeScrapeData.subreddit}: {activeScrapeData.title}
+                </h2>
+                <a
+                  href={activeScrapeData.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <ExternalLink size={14} />
+                </a>
+              </div>
+
               {/* Summary Cards */}
               <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-5">
                 <SummaryCard
@@ -378,13 +664,33 @@ export function MarketScraperPage() {
           )}
 
           {/* Empty state — no scrape selected */}
-          {!activeScrapeId && (
+          {!activeScrapeId && !searchResult && (
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <Search size={48} className="mb-4 text-muted-foreground/30" />
-              <h3 className="text-lg font-bold">No scrape selected</h3>
+              <h3 className="text-lg font-bold">Ready to research</h3>
               <p className="mt-1 max-w-md text-sm text-muted-foreground">
-                Paste a Reddit thread URL above and hit Scrape Thread, or select a past scrape from the sidebar.
+                Search for a topic like &quot;app maker frustrations&quot; or paste a specific Reddit URL.
+                The scraper will pull every comment and categorize them into pain points, desires, validation signals, and ad copy hooks.
               </p>
+              <div className="mt-6 grid max-w-lg gap-3 text-left text-sm">
+                <div className="rounded border-2 border-black bg-card p-3 shadow-[2px_2px_0_0_#000]">
+                  <p className="font-bold">Topic Search examples:</p>
+                  <ul className="mt-1 space-y-1 text-muted-foreground">
+                    <li>&bull; &quot;SaaS pricing complaints&quot;</li>
+                    <li>&bull; &quot;AI coding tools frustrations&quot;</li>
+                    <li>&bull; &quot;looking for project management app&quot;</li>
+                    <li>&bull; &quot;vibe coding app maker&quot;</li>
+                  </ul>
+                </div>
+                <div className="rounded border-2 border-black bg-card p-3 shadow-[2px_2px_0_0_#000]">
+                  <p className="font-bold">Rate limits (free, no API key):</p>
+                  <ul className="mt-1 space-y-1 text-muted-foreground">
+                    <li>&bull; ~10 requests/minute without key</li>
+                    <li>&bull; ~60 requests/minute with free Reddit API key</li>
+                    <li>&bull; Each thread = 1 request. Search = 1 request per subreddit.</li>
+                  </ul>
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -447,6 +753,11 @@ function PhraseCard({
             <CategoryIcon size={12} />
             {config.label}
           </Badge>
+          {phrase.subcategory && phrase.subcategory !== 'general' && (
+            <Badge variant="outline" className="border-2 border-black text-[10px]">
+              {phrase.subcategory}
+            </Badge>
+          )}
           <span className="text-xs text-muted-foreground">u/{phrase.author}</span>
           <Badge variant="outline" className="border-2 border-black text-xs">
             {phrase.score} pts

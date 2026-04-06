@@ -17,6 +17,9 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from ..services.market_scraper_service import (
+    DEFAULT_SUBREDDITS,
+    SORT_OPTIONS,
+    TIME_FILTERS,
     categorize_comments,
     delete_scrape,
     export_phrases_csv,
@@ -25,6 +28,8 @@ from ..services.market_scraper_service import (
     query_phrases,
     save_scrape,
     scrape_reddit_thread,
+    search_and_scrape,
+    search_reddit,
 )
 
 logger = logging.getLogger(__name__)
@@ -35,6 +40,15 @@ router = APIRouter(prefix="/api/market-scraper", tags=["market-scraper"])
 # ---------------------------------------------------------------------------
 # Request / Response models
 # ---------------------------------------------------------------------------
+
+
+class SearchRequest(BaseModel):
+    """Request body for topic-based Reddit search + scrape."""
+    query: str = Field(..., description="Search terms (e.g., 'app maker frustrations')")
+    subreddits: list[str] = Field(default=[], description="Subreddits to search (empty = all of Reddit)")
+    sort: str = Field(default="relevance", description="Sort: relevance, hot, top, new, comments")
+    time_filter: str = Field(default="week", description="Time: all, year, month, week, day, hour")
+    max_threads: int = Field(default=5, ge=1, le=20, description="Max threads to scrape")
 
 
 class ScrapeRequest(BaseModel):
@@ -101,6 +115,64 @@ class PhraseQueryOut(BaseModel):
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+
+
+@router.get("/search-options")
+async def get_search_options():
+    """Return available sort options, time filters, and default subreddits."""
+    return {
+        "sort_options": list(SORT_OPTIONS),
+        "time_filters": list(TIME_FILTERS),
+        "default_subreddits": DEFAULT_SUBREDDITS,
+    }
+
+
+@router.post("/search")
+async def search_topics(req: SearchRequest):
+    """Search Reddit for threads matching a topic, without scraping.
+
+    Returns thread summaries so the user can pick which ones to scrape.
+    """
+    if not req.query.strip():
+        raise HTTPException(status_code=400, detail="Search query is required")
+
+    try:
+        results = await search_reddit(
+            query=req.query.strip(),
+            subreddits=req.subreddits or None,
+            sort=req.sort,
+            time_filter=req.time_filter,
+            limit=25,
+        )
+    except Exception:
+        logger.exception("Search failed for '%s'", req.query)
+        raise HTTPException(status_code=500, detail="Reddit search failed")
+
+    return {"query": req.query, "threads": results}
+
+
+@router.post("/search-and-scrape")
+async def search_and_scrape_topics(req: SearchRequest):
+    """Search Reddit for a topic, auto-scrape the top threads, and categorize everything.
+
+    This is the "one-click" topic research endpoint.
+    """
+    if not req.query.strip():
+        raise HTTPException(status_code=400, detail="Search query is required")
+
+    try:
+        result = await search_and_scrape(
+            query=req.query.strip(),
+            subreddits=req.subreddits or None,
+            sort=req.sort,
+            time_filter=req.time_filter,
+            max_threads=req.max_threads,
+        )
+    except Exception:
+        logger.exception("Search-and-scrape failed for '%s'", req.query)
+        raise HTTPException(status_code=500, detail="Search and scrape failed")
+
+    return result
 
 
 @router.post("/scrape", response_model=ScrapeOut)

@@ -3344,3 +3344,31 @@ export async function exportScrape(id: number): Promise<Blob> {
   if (!response.ok) throw new Error(await response.text())
   return response.blob()
 }
+
+export async function getSearchOptions() {
+  return fetchJSON('/market-scraper/search-options')
+}
+
+export interface TopicSearchParams {
+  query: string
+  subreddits?: string[]
+  sort?: string
+  time_filter?: string
+  max_threads?: number
+}
+
+export async function searchReddit(params: TopicSearchParams) {
+  return fetchJSON('/market-scraper/search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  })
+}
+
+export async function searchAndScrapeReddit(params: TopicSearchParams) {
+  return fetchJSON('/market-scraper/search-and-scrape', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  })
+}

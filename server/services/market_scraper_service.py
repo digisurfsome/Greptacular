@@ -568,6 +568,217 @@ def delete_scrape(scrape_id: int) -> bool:
         conn.close()
 
 
+# ---------------------------------------------------------------------------
+# Reddit topic search
+# ---------------------------------------------------------------------------
+
+# Popular subreddits for app/SaaS/startup market research
+DEFAULT_SUBREDDITS = [
+    "SaaS", "startups", "Entrepreneur", "SideProject", "indiehackers",
+    "ClaudeAI", "ChatGPT", "artificial", "MachineLearning",
+    "webdev", "programming", "software",
+]
+
+SORT_OPTIONS = ("relevance", "hot", "top", "new", "comments")
+TIME_FILTERS = ("all", "year", "month", "week", "day", "hour")
+
+
+async def search_reddit(
+    query: str,
+    subreddits: Optional[list[str]] = None,
+    sort: str = "relevance",
+    time_filter: str = "week",
+    limit: int = 25,
+) -> list[dict[str, Any]]:
+    """Search Reddit for threads matching a topic query.
+
+    Args:
+        query: Search terms (e.g., "app maker frustrations")
+        subreddits: List of subreddits to search in, or None for all of Reddit
+        sort: One of relevance, hot, top, new, comments
+        time_filter: One of all, year, month, week, day, hour
+        limit: Max results per subreddit (Reddit caps at 100)
+
+    Returns a list of thread summaries with url, title, subreddit, score,
+    num_comments, and created_utc.
+    """
+    if sort not in SORT_OPTIONS:
+        sort = "relevance"
+    if time_filter not in TIME_FILTERS:
+        time_filter = "week"
+    limit = min(limit, 100)
+
+    results: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+
+    async with httpx.AsyncClient(
+        follow_redirects=True,
+        timeout=httpx.Timeout(30.0),
+        headers={"User-Agent": REDDIT_USER_AGENT},
+    ) as client:
+        # Build list of search URLs
+        search_urls: list[str] = []
+        if subreddits:
+            for sub in subreddits:
+                sub = sub.strip().strip("/")
+                search_urls.append(
+                    f"https://www.reddit.com/r/{sub}/search.json"
+                )
+        else:
+            search_urls.append("https://www.reddit.com/search.json")
+
+        for search_url in search_urls:
+            params: dict[str, Any] = {
+                "q": query,
+                "sort": sort,
+                "t": time_filter,
+                "limit": limit,
+                "type": "link",
+            }
+            # restrict_sr=on when searching within a subreddit
+            if "/r/" in search_url:
+                params["restrict_sr"] = "on"
+
+            try:
+                resp = await client.get(search_url, params=params)
+                resp.raise_for_status()
+                data = resp.json()
+
+                children = data.get("data", {}).get("children", [])
+                for child in children:
+                    post = child.get("data", {})
+                    post_id = post.get("id", "")
+                    if post_id in seen_ids:
+                        continue
+                    seen_ids.add(post_id)
+
+                    # Only include self-posts and discussions (skip link-only posts with no comments)
+                    num_comments = post.get("num_comments", 0)
+                    if num_comments < 2:
+                        continue
+
+                    permalink = post.get("permalink", "")
+                    url = f"https://www.reddit.com{permalink}" if permalink else ""
+
+                    results.append({
+                        "id": post_id,
+                        "url": url,
+                        "title": post.get("title", ""),
+                        "subreddit": post.get("subreddit", ""),
+                        "score": post.get("score", 0),
+                        "num_comments": num_comments,
+                        "selftext_preview": (post.get("selftext", "") or "")[:200],
+                        "created_utc": post.get("created_utc", 0),
+                        "is_self": post.get("is_self", False),
+                    })
+
+            except httpx.HTTPStatusError as exc:
+                logger.warning(
+                    "Reddit search failed for %s (HTTP %d)", search_url, exc.response.status_code
+                )
+            except Exception:
+                logger.exception("Error searching %s", search_url)
+
+    # Sort by score descending
+    results.sort(key=lambda x: x.get("score", 0), reverse=True)
+
+    logger.info("Reddit search for '%s' found %d threads", query, len(results))
+    return results
+
+
+async def search_and_scrape(
+    query: str,
+    subreddits: Optional[list[str]] = None,
+    sort: str = "relevance",
+    time_filter: str = "week",
+    max_threads: int = 5,
+    search_limit: int = 25,
+) -> dict[str, Any]:
+    """Search Reddit for a topic, then scrape the top threads and categorize everything.
+
+    Returns a combined result with all threads' phrases merged and categorized.
+    """
+    # Step 1: Search for matching threads
+    threads = await search_reddit(
+        query=query,
+        subreddits=subreddits,
+        sort=sort,
+        time_filter=time_filter,
+        limit=search_limit,
+    )
+
+    if not threads:
+        return {
+            "query": query,
+            "subreddits": subreddits or [],
+            "threads_found": 0,
+            "threads_scraped": 0,
+            "scrape_ids": [],
+            "total_phrases": 0,
+            "category_counts": {},
+        }
+
+    # Step 2: Scrape the top N threads
+    threads_to_scrape = threads[:max_threads]
+    scrape_ids: list[int] = []
+    total_phrases = 0
+    all_category_counts: dict[str, int] = {}
+    scraped_count = 0
+
+    for thread in threads_to_scrape:
+        url = thread.get("url", "")
+        if not url:
+            continue
+
+        try:
+            thread_data = await scrape_reddit_thread(url)
+            categorized = categorize_comments(
+                thread_data["comments"],
+                thread_data["subreddit"],
+            )
+
+            # Also categorize OP post body
+            post_body = thread_data.get("post_body", "")
+            if post_body and len(post_body) >= MIN_COMMENT_LENGTH:
+                post_as_comment = [{
+                    "author": "OP",
+                    "body": post_body,
+                    "score": thread.get("score", 0),
+                    "created_utc": thread.get("created_utc", 0),
+                }]
+                categorized_post = categorize_comments(post_as_comment, thread_data["subreddit"])
+                categorized = categorized_post + categorized
+
+            result = save_scrape(
+                url=url,
+                subreddit=thread_data["subreddit"],
+                title=thread_data["title"],
+                categorized_comments=categorized,
+            )
+
+            if result:
+                scrape_ids.append(result["id"])
+                total_phrases += result.get("total_phrases", 0)
+                for cat, count in result.get("category_counts", {}).items():
+                    all_category_counts[cat] = all_category_counts.get(cat, 0) + count
+                scraped_count += 1
+
+        except Exception:
+            logger.exception("Failed to scrape thread: %s", url)
+            continue
+
+    return {
+        "query": query,
+        "subreddits": subreddits or [],
+        "threads_found": len(threads),
+        "threads_scraped": scraped_count,
+        "scrape_ids": scrape_ids,
+        "total_phrases": total_phrases,
+        "category_counts": all_category_counts,
+        "threads": threads[:max_threads],  # Include thread summaries for the UI
+    }
+
+
 def export_phrases_csv(scrape_id: int) -> Optional[str]:
     """Export all phrases for a scrape as a CSV string. Returns None if scrape not found."""
     conn = _init_db()

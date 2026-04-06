@@ -2108,3 +2108,28 @@ export interface TokenBudgetHistory {
 export interface TokenBudgetSettings {
   [key: string]: string
 }
+
+// Market Scraper
+export interface MarketScrape {
+  id: number
+  url: string
+  subreddit: string
+  title: string
+  scraped_at: string
+  total_phrases: number
+  category_counts: Record<string, number>
+}
+
+export interface MarketPhrase {
+  id: number
+  scrape_id: number
+  raw_text: string
+  author: string
+  score: number
+  category: string
+  subcategory: string
+  ad_hook: string
+  social_post_idea: string
+  validation_signal: number
+  created_at: string
+}

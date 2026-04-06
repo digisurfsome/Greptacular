@@ -58,7 +58,7 @@ Using the app type, pull the standard wireframe pattern from the lookup table. G
 
 Each option has: `id`, `name` (e.g., "Sidebar + Top Nav + Content Grid"), `description` (what it looks like and why it fits).
 
-Present to user. User MUST pick or adjust — this is a WALL. Record `selected_arrangement_id` and `user_adjustments`.
+Present to user. User MUST pick or adjust — this is a WALL. Record `selected_arrangement_id` and `user_adjustments`. Set `navigation_pattern` to the pattern of the selected arrangement: `"sidebar"` | `"top_nav"` | `"tabbed"` | `"custom"`.
 
 ### Step 3: Identify UI-Facing Mechanisms (Sub-6b)
 
@@ -87,6 +87,8 @@ For each page, identify every UI component needed. For each component specify:
 - `placement`: Zone on the page — `"header"` | `"sidebar"` | `"main-content"` | `"footer"` | `"modal"` | `"drawer"`
 - `mechanism_ids`: Array of mechanism IDs from Stage 4 this component serves
 - Every `mechanism_id` must reference a real ID from `stage_4.mechanisms`
+
+For each page, also populate a `connections` array that maps each interactive component to the mechanism it triggers and what action it performs. Each entry has: `component_name`, `triggers_mechanism` (mechanism ID), and `action` (human-readable description of what happens, e.g., "opens create form", "submits auth request"). This tells Stage 7 exactly what each component DOES, not just what mechanism it belongs to.
 
 **Validation**: After all pages are defined, verify every mechanism from Stage 4 appears in at least one component's `mechanism_ids`. If any mechanism is "homeless," either add it to an existing page or create a new page.
 
@@ -121,16 +123,18 @@ Calculate `audience_scores`: `audience_fit` (0-100), `vibe_match` (0-100), `age_
 Run all validation checks before writing output:
 
 1. `app_type_classification` is set and recognized
-2. `arrangement_options` has 2-3 entries, one selected
-3. `pages` has ≥ 2 pages (auth + one functional)
-4. Every page has `page_name`, `route`, `layout_pattern`, `components[]`, `user_approved`
-5. Every mechanism from Stage 4 is on ≥ 1 page's component `mechanism_ids` OR in a page's `backend_services` array (backend-only mechanisms)
-6. Every `mechanism_ids` and `backend_services` entry references a real Stage 4 mechanism ID
-7. `all_mechanisms_mapped` is `true` and `pages_approved` is `true`
-8. `style_options_presented` has exactly 3 entries
-9. `design_tokens` has `colors` and `typography` sub-objects with specific values
-10. `selected_style_id` is from the predefined set or `"developers_choice"`
-11. Run confidence scoring (see below)
+2. `navigation_pattern` is set to one of `"sidebar"` | `"top_nav"` | `"tabbed"` | `"custom"`
+3. `arrangement_options` has 2-3 entries, one selected
+4. `pages` has ≥ 2 pages (auth + one functional)
+5. Every page has `page_name`, `route`, `layout_pattern`, `components[]`, `connections[]`, `user_approved`
+6. Every page's `connections` array has at least one entry for each interactive component, and every `triggers_mechanism` references a real Stage 4 mechanism ID
+7. Every mechanism from Stage 4 is on ≥ 1 page's component `mechanism_ids` OR in a page's `backend_services` array (backend-only mechanisms)
+8. Every `mechanism_ids` and `backend_services` entry references a real Stage 4 mechanism ID
+9. `all_mechanisms_mapped` is `true` and `pages_approved` is `true`
+10. `style_options_presented` has exactly 3 entries
+11. `design_tokens` has `colors` and `typography` sub-objects with specific values
+12. `selected_style_id` is from the predefined set or `"developers_choice"`
+13. Run confidence scoring (see below)
 
 ## Output Format
 
@@ -139,6 +143,7 @@ Run all validation checks before writing output:
   "stage_6": {
     "sub_6a": {
       "app_type_classification": "string",
+      "navigation_pattern": "sidebar|top_nav|tabbed|custom",
       "arrangement_options": [
         { "id": "string", "name": "string", "description": "string" }
       ],
@@ -156,6 +161,13 @@ Run all validation checks before writing output:
               "component_name": "string",
               "placement": "header|sidebar|main-content|footer|modal|drawer",
               "mechanism_ids": ["string"]
+            }
+          ],
+          "connections": [
+            {
+              "component_name": "string",
+              "triggers_mechanism": "string (mechanism ID)",
+              "action": "string (what the component triggers — e.g., 'opens create form', 'submits auth request', 'fetches dashboard data')"
             }
           ],
           "backend_services": ["string (mechanism IDs for backend-only mechanisms served by this page)"],
@@ -447,6 +459,7 @@ When grouping mechanisms into pages:
 {
   "sub_6a": {
     "app_type_classification": "dashboard",
+    "navigation_pattern": "sidebar",
     "arrangement_options": [
       {
         "id": "opt_1",
@@ -492,6 +505,10 @@ When grouping mechanisms into pages:
             "mechanism_ids": ["M1"]
           }
         ],
+        "connections": [
+          { "component_name": "LoginForm", "triggers_mechanism": "M1", "action": "submits credentials for authentication" },
+          { "component_name": "RegisterLink", "triggers_mechanism": "M1", "action": "navigates to registration page" }
+        ],
         "user_approved": true
       },
       {
@@ -504,6 +521,9 @@ When grouping mechanisms into pages:
             "placement": "main-content",
             "mechanism_ids": ["M1"]
           }
+        ],
+        "connections": [
+          { "component_name": "RegisterForm", "triggers_mechanism": "M1", "action": "submits new user registration" }
         ],
         "user_approved": true
       },
@@ -548,6 +568,15 @@ When grouping mechanisms into pages:
             "mechanism_ids": ["M2", "M7"]
           }
         ],
+        "connections": [
+          { "component_name": "BoardSidebar", "triggers_mechanism": "M3", "action": "navigates to selected board detail page" },
+          { "component_name": "SearchBar", "triggers_mechanism": "M4", "action": "searches and filters tasks across all boards" },
+          { "component_name": "UserMenu", "triggers_mechanism": "M1", "action": "opens profile/logout options" },
+          { "component_name": "UserMenu", "triggers_mechanism": "M8", "action": "opens quick preferences menu" },
+          { "component_name": "TaskSummaryCards", "triggers_mechanism": "M7", "action": "fetches and displays task count analytics" },
+          { "component_name": "RecentActivityFeed", "triggers_mechanism": "M7", "action": "streams recent activity data" },
+          { "component_name": "TeamOverviewWidget", "triggers_mechanism": "M2", "action": "displays team member list and invite action" }
+        ],
         "backend_services": ["M6"],
         "user_approved": true
       },
@@ -582,6 +611,15 @@ When grouping mechanisms into pages:
             "mechanism_ids": ["M4", "M5"]
           }
         ],
+        "connections": [
+          { "component_name": "BoardSidebar", "triggers_mechanism": "M3", "action": "switches between boards" },
+          { "component_name": "BoardHeader", "triggers_mechanism": "M3", "action": "opens board edit/settings modal" },
+          { "component_name": "TaskCardGrid", "triggers_mechanism": "M4", "action": "opens task detail drawer on card click" },
+          { "component_name": "TaskCardGrid", "triggers_mechanism": "M5", "action": "opens assignment dropdown on avatar click" },
+          { "component_name": "CreateTaskButton", "triggers_mechanism": "M4", "action": "opens new task creation form" },
+          { "component_name": "TaskDetailDrawer", "triggers_mechanism": "M4", "action": "edits task fields inline" },
+          { "component_name": "TaskDetailDrawer", "triggers_mechanism": "M5", "action": "reassigns task to another team member" }
+        ],
         "user_approved": true
       },
       {
@@ -614,6 +652,13 @@ When grouping mechanisms into pages:
             "placement": "main-content",
             "mechanism_ids": ["M8"]
           }
+        ],
+        "connections": [
+          { "component_name": "SettingsTabNav", "triggers_mechanism": "M8", "action": "switches between settings sections" },
+          { "component_name": "ProfileSection", "triggers_mechanism": "M1", "action": "updates user profile and password" },
+          { "component_name": "TeamManagementSection", "triggers_mechanism": "M2", "action": "invites/removes team members and updates roles" },
+          { "component_name": "NotificationPreferences", "triggers_mechanism": "M8", "action": "toggles notification channels and frequency" },
+          { "component_name": "ThemeToggle", "triggers_mechanism": "M8", "action": "switches between light and dark theme" }
         ],
         "user_approved": true
       }

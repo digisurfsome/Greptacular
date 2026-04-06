@@ -33,7 +33,7 @@ import { ShredderStatusBadge } from './components/prd-shredder/ShredderStatusBad
 import { ProjectSetupRequired } from './components/ProjectSetupRequired'
 import { GitActivityWidget } from './components/GitActivityWidget'
 import { getDependencyGraph, startAgent } from './lib/api'
-import { Loader2, Settings, Moon, Sun, RotateCcw, BookOpen, MessageSquare, Layers, LayoutDashboard, FlaskConical, Monitor, Search, Wrench, Terminal, Zap, FileText, Brain } from 'lucide-react'
+import { Loader2, Settings, Moon, Sun, RotateCcw, BookOpen, MessageSquare, Layers, LayoutDashboard, FlaskConical, Monitor, Search, Wrench, Terminal, Zap, FileText, Brain, TrendingUp } from 'lucide-react'
 import type { Feature } from './lib/types'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -440,6 +440,18 @@ function App() {
               >
                 <Search size={16} />
                 <span className="hidden sm:inline text-xs">SEO Tools</span>
+              </Button>
+
+              {/* Market Scraper link */}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => { window.location.hash = '#/market-scraper' }}
+                title="Market Scraper — Reddit pain points → ad copy"
+              >
+                <TrendingUp size={16} />
+                <span className="hidden sm:inline text-xs">Scraper</span>
               </Button>
 
               {/* PRD Shredder link */}

@@ -3306,3 +3306,41 @@ export async function loadPipelineFolder(folderPath: string): Promise<PipelineSt
     body: JSON.stringify({ folder_path: folderPath }),
   })
 }
+
+// ---------------------------------------------------------------------------
+// Market Scraper
+// ---------------------------------------------------------------------------
+
+export async function scrapeRedditThread(url: string) {
+  return fetchJSON('/market-scraper/scrape', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url }),
+  })
+}
+
+export async function getMarketScrapes() {
+  return fetchJSON('/market-scraper/scrapes')
+}
+
+export async function getMarketScrape(id: number) {
+  return fetchJSON(`/market-scraper/scrapes/${id}`)
+}
+
+export async function getMarketPhrases(params?: { category?: string; min_score?: number; min_validation?: number }) {
+  const query = new URLSearchParams()
+  if (params?.category) query.set('category', params.category)
+  if (params?.min_score) query.set('min_score', String(params.min_score))
+  if (params?.min_validation) query.set('min_validation', String(params.min_validation))
+  return fetchJSON(`/market-scraper/phrases?${query}`)
+}
+
+export async function deleteMarketScrape(id: number) {
+  return fetchJSON(`/market-scraper/scrapes/${id}`, { method: 'DELETE' })
+}
+
+export async function exportScrape(id: number): Promise<Blob> {
+  const response = await fetch(`${API_BASE}/market-scraper/export/${id}`)
+  if (!response.ok) throw new Error(await response.text())
+  return response.blob()
+}

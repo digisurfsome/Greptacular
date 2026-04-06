@@ -58,6 +58,7 @@ from .routers import (
     filesystem_router,
     github_router,
     ingestion_sequences_router,
+    market_scraper_router,
     meta_training_router,
     notifications_router,
     pipeline_router,
@@ -439,6 +440,7 @@ app.include_router(tool_runner_router)
 app.include_router(tool_themes_router)
 app.include_router(prd_shredder_router)
 app.include_router(ingestion_sequences_router)
+app.include_router(market_scraper_router)
 app.include_router(meta_training_router)
 
 

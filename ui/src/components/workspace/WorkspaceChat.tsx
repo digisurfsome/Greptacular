@@ -31,6 +31,7 @@ import {
   BookOpen,
   Eye,
   EyeOff,
+  Info,
 } from 'lucide-react'
 import { useWorkspaceChat } from '@/hooks/useWorkspaceChat'
 import { useWorkspaceConversation, useWorkspaceProviders } from '@/hooks/useWorkspaceConversations'
@@ -805,12 +806,10 @@ export function WorkspaceChat({
       }
       merged = Array.from(seen.values())
     }
-    // Append context warnings as system messages at the end
-    if (contextWarnings.length > 0) {
-      return [...merged, ...contextWarnings]
-    }
+    // Context warnings are now shown as a compact strip at the bottom,
+    // not as chat messages. No longer appended here.
     return merged
-  }, [initialMessages, liveMessages, contextWarnings])
+  }, [initialMessages, liveMessages])
 
   // Build WorkspaceMessage[] for the fork modal from REST conversation detail
   const forkableMessages: WorkspaceMessage[] = useMemo(() => {
@@ -1709,6 +1708,19 @@ export function WorkspaceChat({
           </div>
         )}
       </div>
+
+      {/* Compact context threshold warnings — single line at bottom */}
+      {contextWarnings.length > 0 && (
+        <div className="flex items-center gap-3 px-3 py-1 border-t border-amber-700/40 bg-amber-950/20 text-[11px] text-amber-400/80 font-mono overflow-x-auto whitespace-nowrap">
+          <Info size={12} className="flex-shrink-0 text-amber-500/70" />
+          {contextWarnings.map((w, i) => (
+            <span key={w.id}>
+              {w.content}
+              {i < contextWarnings.length - 1 && <span className="mx-1.5 text-amber-700">·</span>}
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* Loading indicator */}
       {isLoading && displayMessages.length > 0 && !agentWaiting && (

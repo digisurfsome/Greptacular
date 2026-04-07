@@ -2133,3 +2133,22 @@ export interface MarketPhrase {
   validation_signal: number
   created_at: string
 }
+
+export interface MarketScrapeDetail extends MarketScrape {
+  phrases: MarketPhrase[]
+}
+
+export interface MarketSearchOptions {
+  sort_options: string[]
+  time_filters: string[]
+  default_subreddits: string[]
+}
+
+export interface MarketSearchResult {
+  query: string
+  threads_found: number
+  threads_scraped: number
+  scrape_ids: number[]
+  total_phrases: number
+  category_counts: Record<string, number>
+}

@@ -31,7 +31,7 @@ import {
   useSearchAndScrape,
 } from '@/hooks/useMarketScraper'
 import { exportScrape } from '@/lib/api'
-import type { MarketScrape, MarketPhrase } from '@/lib/types'
+import type { MarketScrape, MarketScrapeDetail, MarketPhrase, MarketSearchOptions, MarketSearchResult } from '@/lib/types'
 
 /** Category display configuration: label, Tailwind classes, and icon */
 const CATEGORY_CONFIG: Record<string, { label: string; color: string; bg: string; icon: typeof AlertTriangle }> = {
@@ -84,16 +84,19 @@ export function MarketScraperPage() {
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null)
 
-  const { data: scrapes } = useScrapes()
-  const { data: activeScrapeData } = useScrape(activeScrapeId)
+  const { data: scrapesRaw } = useScrapes()
+  const { data: activeScrapeRaw } = useScrape(activeScrapeId)
+  const scrapes = scrapesRaw as MarketScrape[] | undefined
+  const activeScrapeData = activeScrapeRaw as MarketScrapeDetail | undefined
   const scrapeThread = useScrapeThread()
   const deleteScrape = useDeleteScrape()
   const { data: searchOptions } = useSearchOptions()
   const searchAndScrape = useSearchAndScrape()
 
-  const defaultSubs: string[] = searchOptions?.default_subreddits ?? []
-  const sortOptions: string[] = searchOptions?.sort_options ?? ['relevance', 'hot', 'top', 'new', 'comments']
-  const timeFilters: string[] = searchOptions?.time_filters ?? ['all', 'year', 'month', 'week', 'day', 'hour']
+  const opts = searchOptions as MarketSearchOptions | undefined
+  const defaultSubs: string[] = opts?.default_subreddits ?? []
+  const sortOptions: string[] = opts?.sort_options ?? ['relevance', 'hot', 'top', 'new', 'comments']
+  const timeFilters: string[] = opts?.time_filters ?? ['all', 'year', 'month', 'week', 'day', 'hour']
 
   const showToast = useCallback((type: 'success' | 'error', message: string) => {
     setToast({ type, message })
@@ -104,7 +107,8 @@ export function MarketScraperPage() {
   const handleScrape = useCallback(() => {
     if (!url.trim()) return
     scrapeThread.mutate(url.trim(), {
-      onSuccess: (data: MarketScrape) => {
+      onSuccess: (raw) => {
+        const data = raw as MarketScrapeDetail
         showToast('success', `Scraped ${data.total_phrases} phrases from r/${data.subreddit}`)
         setActiveScrapeId(data.id)
         setUrl('')
@@ -127,7 +131,8 @@ export function MarketScraperPage() {
         max_threads: maxThreads,
       },
       {
-        onSuccess: (data) => {
+        onSuccess: (raw) => {
+          const data = raw as MarketSearchResult
           setSearchResult(data)
           if (data.scrape_ids?.length > 0) {
             setActiveScrapeId(data.scrape_ids[0])
@@ -249,7 +254,7 @@ export function MarketScraperPage() {
             </p>
           ) : (
             <div className="space-y-2">
-              {(scrapes as MarketScrape[]).map((scrape) => (
+              {scrapes.map((scrape) => (
                 <div
                   key={scrape.id}
                   className={`group cursor-pointer rounded border-2 border-black p-2 transition-all hover:shadow-[3px_3px_0_0_#000] ${

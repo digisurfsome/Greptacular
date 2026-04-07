@@ -95,6 +95,11 @@ import type {
   TokenBudgetStatus,
   TokenBudgetHistory,
   TokenBudgetSettings,
+  MarketScrape,
+  MarketScrapeDetail,
+  MarketPhrase,
+  MarketSearchOptions,
+  MarketSearchResult,
 } from './types'
 
 const API_BASE = '/api'
@@ -3311,32 +3316,32 @@ export async function loadPipelineFolder(folderPath: string): Promise<PipelineSt
 // Market Scraper
 // ---------------------------------------------------------------------------
 
-export async function scrapeRedditThread(url: string) {
-  return fetchJSON('/market-scraper/scrape', {
+export async function scrapeRedditThread(url: string): Promise<MarketScrapeDetail> {
+  return fetchJSON<MarketScrapeDetail>('/market-scraper/scrape', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url }),
   })
 }
 
-export async function getMarketScrapes() {
-  return fetchJSON('/market-scraper/scrapes')
+export async function getMarketScrapes(): Promise<MarketScrape[]> {
+  return fetchJSON<MarketScrape[]>('/market-scraper/scrapes')
 }
 
-export async function getMarketScrape(id: number) {
-  return fetchJSON(`/market-scraper/scrapes/${id}`)
+export async function getMarketScrape(id: number): Promise<MarketScrapeDetail> {
+  return fetchJSON<MarketScrapeDetail>(`/market-scraper/scrapes/${id}`)
 }
 
-export async function getMarketPhrases(params?: { category?: string; min_score?: number; min_validation?: number }) {
+export async function getMarketPhrases(params?: { category?: string; min_score?: number; min_validation?: number }): Promise<MarketPhrase[]> {
   const query = new URLSearchParams()
   if (params?.category) query.set('category', params.category)
   if (params?.min_score) query.set('min_score', String(params.min_score))
   if (params?.min_validation) query.set('min_validation', String(params.min_validation))
-  return fetchJSON(`/market-scraper/phrases?${query}`)
+  return fetchJSON<MarketPhrase[]>(`/market-scraper/phrases?${query}`)
 }
 
-export async function deleteMarketScrape(id: number) {
-  return fetchJSON(`/market-scraper/scrapes/${id}`, { method: 'DELETE' })
+export async function deleteMarketScrape(id: number): Promise<{ status: string; scrape_id: number }> {
+  return fetchJSON<{ status: string; scrape_id: number }>(`/market-scraper/scrapes/${id}`, { method: 'DELETE' })
 }
 
 export async function exportScrape(id: number): Promise<Blob> {
@@ -3345,8 +3350,8 @@ export async function exportScrape(id: number): Promise<Blob> {
   return response.blob()
 }
 
-export async function getSearchOptions() {
-  return fetchJSON('/market-scraper/search-options')
+export async function getSearchOptions(): Promise<MarketSearchOptions> {
+  return fetchJSON<MarketSearchOptions>('/market-scraper/search-options')
 }
 
 export interface TopicSearchParams {
@@ -3358,15 +3363,15 @@ export interface TopicSearchParams {
 }
 
 export async function searchReddit(params: TopicSearchParams) {
-  return fetchJSON('/market-scraper/search', {
+  return fetchJSON<{ query: string; threads: unknown[] }>('/market-scraper/search', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params),
   })
 }
 
-export async function searchAndScrapeReddit(params: TopicSearchParams) {
-  return fetchJSON('/market-scraper/search-and-scrape', {
+export async function searchAndScrapeReddit(params: TopicSearchParams): Promise<MarketSearchResult> {
+  return fetchJSON<MarketSearchResult>('/market-scraper/search-and-scrape', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params),

@@ -226,3 +226,54 @@ ap --version   # confirm it installed
 - [ ] `ap --version` shows CLI is installed
 
 Do not start Spec 002 until all six are checked off.
+
+---
+
+## Protocol Checkpoints (Stage 08 Injection)
+
+### Pulse Checks — After Each File
+| File | Assertions |
+|------|-----------|
+| `docker-compose.yml` | File exists; contains `activepieces`, `postgres`, `redis` services; port 8080 mapped |
+| `.env` | File exists; `AP_API_KEY`, `AP_PROJECT_ID`, `AP_BASE_URL` all present and non-empty |
+| `test_api.py` | File exists; no syntax errors (`python -c "import ast; ast.parse(open('test_api.py').read())`); imports `requests` and `os` |
+| `test_import_flow.py` | File exists; no syntax errors; contains `IMPORT_FLOW` string |
+
+### Seam Checks — Connection Points
+**Seam 1: Docker → API** (check after `.env` is configured)
+- `docker-compose up -d` exits code 0
+- `curl http://localhost:8080/api/v1/flows -H "Authorization: Bearer $AP_API_KEY"` returns HTTP 200
+- Response body contains `"data":[]` or `"data":[...]` (valid JSON)
+
+**Seam 2: API → IMPORT_FLOW** (check after `test_import_flow.py` runs)
+- Script exits code 0
+- Flow ID returned is a non-empty string
+- `GET /api/v1/flows/{flow_id}` returns the flow with `trigger.type == "PIECE"`
+
+### Full Checkpoint (Phase 1 Gate)
+**Pattern checks (git diff):**
+```
+Expected new files: docker-compose.yml, .env, test_api.py, test_import_flow.py
+No other files should be modified.
+```
+
+**Functional checks:**
+```bash
+docker-compose up -d
+python test_api.py          # must print "✓ API connection works"
+python test_import_flow.py  # must print "✓ IMPORT_FLOW works"
+# Then: open http://localhost:8080 and confirm "Test Import Flow" appears with 2 steps
+```
+
+**Gate condition:** Both test scripts print success AND the flow is visible in the AP builder UI. Binary: PASS or FAIL. Do not start Phase 2 on FAIL.
+
+### Violation Rules
+| Level | Trigger | Action |
+|-------|---------|--------|
+| LOW | Test script runs but output format differs slightly | Log and proceed |
+| MEDIUM | API returns 200 but flow JSON is malformed | Review and fix before continuing |
+| HIGH | Docker fails to start; API returns 4xx/5xx | Revert, fix docker-compose.yml, retry |
+| CRITICAL | AP instance corrupted or DB migration failure | Full stop — rebuild from scratch |
+
+### Two-Strike Rule
+Max 2 retries on any failing check. If both fail: stop and ask human. Do not attempt a third retry — if 2 fresh attempts fail, the problem is in the spec or the environment, not the execution.

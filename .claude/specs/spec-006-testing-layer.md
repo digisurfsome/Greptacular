@@ -297,3 +297,71 @@ Code written  →  draft
 - [ ] Level 5 runs the full flow with test payload and reports which step failed and why
 - [ ] `quality_status` updates to `stable` automatically when Levels 1-4 pass
 - [ ] A node that fails Level 3 cannot be marked stable (blocked at the gate)
+
+---
+
+## Protocol Checkpoints (Stage 08 Injection)
+
+### Pulse Checks — After Each File
+| File | Assertions |
+|------|-----------|
+| `src/lib/validation/schema-validator.ts` | File exists; `validateInputSchema()` and `validateOutputSchema()` both exported; returns `{ valid: boolean, errors: string[] }` |
+| `src/lib/testing/mock-runner.ts` | File exists; `runInMockMode()` exported; `MOCK_RESPONSES` dict contains at least Gmail, Slack, HTTP entries |
+| Auto-generated test file | File exists at `tests/code-module/[node-name].test.ts`; contains at least 2 `it()` blocks; happy path and null input cases both present |
+| `copilot/quality_gate.py` | File exists; `attempt_stable_promotion()` function defined; returns `PromotionResult` with `success` boolean |
+
+### Seam Checks — Connection Points
+**Seam 1: schema-validator → node execution**
+- Schema validation runs BEFORE `new Function()` executes — verify in `run()` that validation is called first
+- A deliberately wrong input type (number where string expected) triggers a validation error, not a runtime crash
+
+**Seam 2: mock-runner → node function**
+- `runInMockMode()` intercepts the `context.externalCall()` path
+- Running a node that "calls Gmail" in mock mode returns `MOCK_RESPONSES['gmail.send_email']` without actually sending an email
+
+**Seam 3: quality_gate → node quality_status**
+- `attempt_stable_promotion()` calls all 3 sub-checks (schema, mock, unit tests)
+- On all-pass: `quality_status` field in the AP node config updates to `"stable"`
+- On any-fail: `quality_status` stays `"draft"` and returns the failed level name
+
+### Full Checkpoint (Phase 6 Gate)
+**Pattern checks (git diff):**
+```
+Expected new files: schema-validator.ts, mock-runner.ts, quality_gate.py
+Expected new directory: tests/code-module/
+No modification to pieces/code-module/src/index.ts (test layer is separate from piece code).
+```
+
+**Functional checks:**
+```bash
+# Level 1: Schema validation catches wrong types
+python -c "from copilot.quality_gate import run_schema_validation; r = run_schema_validation('test-node', None); assert not r['passed'], 'Should fail on null code'"
+
+# Level 3: Auto-generated test runs
+npx jest tests/code-module/ --passWithNoTests   # must exit 0 even if no tests yet
+
+# Full gate: deliberate failure → stays draft
+python -c "
+from copilot.quality_gate import attempt_stable_promotion
+result = attempt_stable_promotion('broken-node', 'THIS IS NOT VALID JS {{{{')
+assert not result.success, 'Broken node should not promote'
+print('✓ Gate correctly blocks broken node')
+"
+
+# Full gate: correct node → promotes to stable
+# (requires a real working node from Phase 4)
+echo "✓ Testing layer verified"
+```
+
+**Gate condition:** Schema validation catches deliberately bad input. A broken node fails promotion. A working node with passing test cases successfully promotes to `stable`. PASS or FAIL.
+
+### Violation Rules
+| Level | Trigger | Action |
+|-------|---------|--------|
+| LOW | Test file generates but has only 1 test case (not 2+) | Log, add second test case manually |
+| MEDIUM | `quality_gate.py` promotes a node that has a failing unit test | Critical logic bug — fix gate logic before continuing |
+| HIGH | `npx jest` crashes with module error | Fix test file imports, retry |
+| CRITICAL | Schema validator is bypassed and malformed code reaches `new Function()` | Stop — execution order is wrong; fix before any nodes are built |
+
+### Two-Strike Rule
+If the quality gate promotes a failing node twice in a row (bug in gate logic), stop for human review. The gate is the single most important safety mechanism — do not ship builds without a working gate.

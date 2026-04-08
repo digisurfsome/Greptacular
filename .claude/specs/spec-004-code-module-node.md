@@ -259,3 +259,68 @@ mechanism library
 - [ ] The node executes the generated code with flow input data
 - [ ] Quality status can be changed to `stable` after tests pass
 - [ ] A wrong module can be deleted and recreated without affecting any other step
+
+---
+
+## Protocol Checkpoints (Stage 08 Injection)
+
+### Pulse Checks — After Each File
+| File | Assertions |
+|------|-----------|
+| `pieces/code-module/src/index.ts` | File exists; `codeModule` const exported; `actions` array contains `buildWithAI`; no TypeScript errors (`npx tsc --noEmit`) |
+| `pieces/code-module/src/lib/actions/build-with-ai.ts` | File exists; `buildWithAI` exported; all 7 form props present (`purpose`, `input_description`, `output_description`, `constraints`, `failure_cases`, `ai_steps`, `success_definition`); `generated_code` and `quality_status` props present |
+| `pieces/code-module/package.json` | File exists; `@activepieces/pieces-framework` in dependencies; `name` field set |
+
+### Seam Checks — Connection Points
+**Seam 1: piece definition → AP CLI publish**
+- `ap update` exits code 0 (no publish errors)
+- The piece appears in AP builder's node picker under a "Custom" or "Community" category
+- Dragging the node onto a flow canvas shows the 7-step form fields
+
+**Seam 2: generated_code field → run() execution**
+- `run()` function receives `context.propsValue.generated_code`
+- `new Function('input', 'context', generated_code)` executes without throwing on a simple test function
+- Return value from the function is passed through as the step output
+
+**Seam 3: "Build It" trigger → Claude → generated_code fill**
+- Claude is called with the scoped prompt (verify prompt contains "You are writing a single TypeScript/JavaScript function")
+- Response fills `generated_code` field in the node's settings
+- UPDATE_ACTION API call saves the code to the flow blueprint
+
+### Full Checkpoint (Phase 4 Gate)
+**Pattern checks (git diff):**
+```
+Expected new directory: pieces/code-module/
+Expected files: src/index.ts, src/lib/actions/build-with-ai.ts, package.json, tsconfig.json
+No modification to skin/ or copilot/ files.
+```
+
+**Functional checks:**
+```bash
+cd pieces/code-module
+npm install
+npx tsc --noEmit      # must exit 0
+ap update             # must exit 0
+ap publish            # must exit 0
+
+# Then in AP builder:
+# 1. Create a new flow
+# 2. Drag "Code Module" node onto canvas — 7 form fields must appear
+# 3. Fill in a simple purpose ("Add two numbers"), fill input/output fields
+# 4. Click "Build It" via co-pilot → generated_code field fills with JS function
+# 5. Run the flow with test input — node must execute and return output
+echo "✓ Code Module node deployed and executable"
+```
+
+**Gate condition:** `ap publish` exits 0. Node appears in AP builder. All 7 form fields render. "Build It" fills generated_code. Node executes with test input. PASS or FAIL.
+
+### Violation Rules
+| Level | Trigger | Action |
+|-------|---------|--------|
+| LOW | TypeScript warning (not error) during compile | Log, proceed |
+| MEDIUM | Piece publishes but one form field is missing from AP UI | Fix property definition, republish |
+| HIGH | `npx tsc` fails; piece won't compile | Revert piece files, fix TypeScript errors, retry |
+| CRITICAL | `new Function()` execution causes AP sandbox crash | Stop — execution model needs redesign; do not retry same approach |
+
+### Two-Strike Rule
+Max 2 attempts at `ap publish`. If piece fails to appear in builder after 2 publishes, stop for human review — likely an AP CLI or framework version compatibility issue.

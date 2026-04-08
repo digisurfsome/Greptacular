@@ -277,3 +277,74 @@ This means dropping a new `theme.css` completely changes the entire look without
 - [ ] No hardcoded color values in any skin component (all via CSS vars)
 - [ ] Two completely different screenshots produce two completely different-looking skins
 - [ ] Component styles (button, card, input, nav) visually match the reference screenshot style
+
+---
+
+## Protocol Checkpoints (Stage 08 Injection)
+
+### Pulse Checks — After Each File
+| File | Assertions |
+|------|-----------|
+| `copilot/skin_builder.py` | File exists; `SkinBuilder` class defined; `build_from_screenshot()`, `apply_to_skin()`, `_run_stage()` all present; no syntax errors |
+| Stage prompt constants | All 5 stage prompts (`STAGE_1_PROMPT` through `STAGE_5_PROMPT`) defined as string constants; each contains the expected output format instructions |
+| Generated `theme.css` | After a test run: file exists at `skin/src/styles/theme.css`; contains `:root {`; at minimum 10 CSS custom properties defined |
+| Generated `theme-config.json` | After a test run: file exists; valid JSON; contains `colors`, `fonts`, `radii` keys |
+
+### Seam Checks — Connection Points
+**Seam 1: Stage 1 (extraction) → Stage 2 (token mapping)**
+- Stage 1 output is valid JSON (parseable without error)
+- Stage 2 receives Stage 1 JSON and produces a CSS `:root {}` block
+- The `:root {}` block contains all required custom property names
+
+**Seam 2: Stage 4 (final CSS) → skin template**
+- `apply_to_skin(theme_css, skin_path)` writes file to `skin/src/styles/theme.css`
+- `skin/src/main.tsx` imports `./styles/theme.css` (grep check)
+- After `npm run build` in skin/, CSS variables resolve in the output
+
+**Seam 3: theme.css → component rendering**
+- No component files in `skin/src/` use hardcoded hex values (grep `-r "#[0-9a-fA-F]{3,6}" skin/src/components/`)
+- CSS variables are defined in theme.css AND referenced in component styles — no orphaned variables
+
+### Full Checkpoint (Phase 7 Gate)
+**Pattern checks (git diff):**
+```
+Expected new file: copilot/skin_builder.py
+Expected modified file: skin/src/styles/theme.css (after test run)
+Expected new file: theme-config.json (output artifact, gitignore optional)
+No modification to pieces/ or AP configuration.
+```
+
+**Functional checks:**
+```bash
+# Test with a real screenshot (use any screenshot you have)
+python -c "
+from copilot.skin_builder import SkinBuilder
+builder = SkinBuilder()
+result = builder.build_from_screenshot('test_screenshot.png')
+assert result['theme_css'], 'No theme CSS generated'
+assert ':root {' in result['theme_css'], 'Missing :root block'
+import json
+config = json.loads(result['theme_config'])
+assert 'colors' in config, 'Missing colors in config'
+assert 'primary' in config['colors'], 'Missing primary color'
+builder.apply_to_skin(result['theme_css'], 'skin/')
+print('✓ Skin Builder working')
+"
+
+# Confirm CSS variables resolve in skin build
+cd skin && npm run build   # must exit 0
+grep -c "var(--color" src/components/*.tsx && echo "✓ CSS vars used in components"
+```
+
+**Gate condition:** `build_from_screenshot()` produces valid theme.css with ≥10 CSS custom properties. `npm run build` passes after theme is applied. Zero hardcoded colors in component files. PASS or FAIL.
+
+### Violation Rules
+| Level | Trigger | Action |
+|-------|---------|--------|
+| LOW | Generated colors are close but not exactly matching screenshot | Log, acceptable variance |
+| MEDIUM | Stage N output fails to parse for Stage N+1 (JSON error between stages) | Fix that stage's output format instruction |
+| HIGH | `npm run build` fails after theme.css applied (CSS syntax error) | Validate CSS before applying; fix stage 4 prompt |
+| CRITICAL | Claude Vision stage (Stage 1) refuses to process image or returns empty | Stop — check image format and size; may need a different input method |
+
+### Two-Strike Rule
+Max 2 end-to-end runs per screenshot. If theme.css is still invalid after 2 attempts, stop for human review — likely a prompt format issue in one of the 5 stages.

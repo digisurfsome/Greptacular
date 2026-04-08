@@ -213,3 +213,62 @@ The pipeline blueprints live in the Activepieces instance. The skin just connect
 - [ ] `api.ts` successfully triggers a flow run and returns status
 - [ ] Copying skin template + changing `.env` branding = new deployment in under 10 minutes
 - [ ] Skin Builder (Spec 007) output (CSS stylesheet) applies to the skin template correctly
+
+---
+
+## Protocol Checkpoints (Stage 08 Injection)
+
+### Pulse Checks — After Each File
+| File | Assertions |
+|------|-----------|
+| `skin/src/main.tsx` | File exists; imports `App`; imports `./styles/theme.css` and `./styles/globals.css` |
+| `skin/src/App.tsx` | File exists; `BUILDER_MODE` const defined from `import.meta.env`; two render paths (builder iframe + skin routes) both present |
+| `skin/src/api.ts` | File exists; `runFlow()` and `getFlowStatus()` exported; `apFetch()` helper uses `AP_BASE` and `Authorization` header |
+| `skin/.env` | `VITE_AP_BASE_URL`, `VITE_AP_PROJECT_ID`, `VITE_BUILDER_MODE` all present |
+| `skin/src/styles/theme.css` | File exists; at least `--color-primary`, `--color-bg`, `--color-text` defined |
+
+### Seam Checks — Connection Points
+**Seam 1: api.ts → Activepieces API**
+- `apFetch('/flows', {})` returns HTTP 200 when AP is running
+- Response is valid JSON with a `data` array
+
+**Seam 2: App.tsx → builder iframe**
+- When `VITE_BUILDER_MODE=true`, the rendered HTML contains an `<iframe>` with `src` pointing to `VITE_AP_BASE_URL`
+- Yellow admin banner renders above the iframe
+
+**Seam 3: theme.css → components**
+- CSS custom properties resolve correctly — `var(--color-primary)` returns a non-empty value in the browser
+- No hardcoded hex color values in any `.tsx` component file (grep check)
+
+### Full Checkpoint (Phase 3 Gate)
+**Pattern checks (git diff):**
+```
+Expected new directory: skin/
+Expected files: skin/src/main.tsx, App.tsx, api.ts, skin/.env, skin/src/styles/theme.css, skin/Dockerfile, skin/vite.config.ts
+No modification to copilot/ or AP docker config.
+```
+
+**Functional checks:**
+```bash
+cd skin
+npm install
+npm run build   # must exit 0 (TypeScript + Vite build passes)
+
+# Test BUILDER_MODE=false: skin renders without builder iframe
+# Test BUILDER_MODE=true: builder iframe visible, admin banner visible
+# Test api.ts: runFlow() call reaches AP and returns a response
+grep -r "#[0-9a-fA-F]\{3,6\}" src/components/ && echo "FAIL: hardcoded colors found" || echo "✓ No hardcoded colors"
+```
+
+**Gate condition:** `npm run build` exits 0. Both BUILDER_MODE states render correctly in browser. No hardcoded hex colors in component files. PASS or FAIL.
+
+### Violation Rules
+| Level | Trigger | Action |
+|-------|---------|--------|
+| LOW | Build succeeds but a non-critical warning in TypeScript | Log, proceed |
+| MEDIUM | `api.ts` returns data but type mismatches with AP response | Fix types, rebuild |
+| HIGH | `npm run build` fails (TypeScript errors or missing imports) | Revert skin changes, fix and retry |
+| CRITICAL | Hardcoded credentials or API keys found in committed files | Full stop — remove credentials, rotate key, then rebuild |
+
+### Two-Strike Rule
+Max 2 build attempts. If TypeScript errors persist after 2 attempts, stop for human review — the component structure may need rethinking.

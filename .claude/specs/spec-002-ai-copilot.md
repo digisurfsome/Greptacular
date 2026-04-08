@@ -242,3 +242,60 @@ After the flow is built, the builder panel above refreshes to show the newly cre
 - [ ] User says "add a step after step 2" → new step appears in correct position
 - [ ] No setting in any generated flow is guessed — all come from Context7 schemas
 - [ ] The flow runs successfully on first manual test trigger
+
+---
+
+## Protocol Checkpoints (Stage 08 Injection)
+
+### Pulse Checks — After Each File
+| File | Assertions |
+|------|-----------|
+| `copilot/flow_generator.py` | File exists; `FlowGenerator` class defined; `generate_plan()`, `generate_flow_json()`, `inject_flow()` all present; no syntax errors |
+| `copilot/mechanism_search.py` | File exists (even if minimal at this phase); `search_mechanisms()` function present |
+| System prompt constant | `SCOPED_CODE_PROMPT` or equivalent string constant exists in `flow_generator.py` or a prompts file; contains "IMPORT_FLOW" reference |
+
+### Seam Checks — Connection Points
+**Seam 1: generate_flow_json() → inject_flow()** (the critical one)
+- `generate_flow_json()` returns a dict with keys: `displayName`, `schemaVersion`, `trigger`
+- `inject_flow()` accepts that dict and posts it to AP — verify with a simple 2-node test flow
+- AP returns HTTP 200 on the IMPORT_FLOW call
+
+**Seam 2: Context7 → flow generation**
+- Prompt sent to Claude includes piece schema info (verify by checking prompt string contains `pieceName` and `actionName` references for the pieces used)
+- Generated JSON's `pieceName` values match known AP piece names (not guessed strings)
+
+### Full Checkpoint (Phase 2 Gate)
+**Pattern checks (git diff):**
+```
+Expected new files: copilot/__init__.py, copilot/flow_generator.py, copilot/mechanism_search.py (or similar)
+No modification to docker-compose.yml or AP core files.
+```
+
+**Functional checks:**
+```bash
+# Test: plain English → flow appears in AP builder
+python -c "
+from copilot.flow_generator import FlowGenerator
+gen = FlowGenerator()
+plan = gen.generate_plan('Fetch a URL every hour and save result to a file')
+print('Plan nodes:', len(plan['nodes']))
+flow_id = gen.inject_flow(gen.generate_flow_json(plan), 'Phase 2 Test')
+print('Flow ID:', flow_id)
+assert flow_id, 'No flow ID returned'
+print('✓ AI Co-Pilot working')
+"
+# Then: open AP builder and confirm the flow appears with correct node types
+```
+
+**Gate condition:** Test script prints `✓ AI Co-Pilot working` AND the generated flow appears in AP with the correct node types (trigger + at least one action). Zero wrong `pieceName` values. PASS or FAIL.
+
+### Violation Rules
+| Level | Trigger | Action |
+|-------|---------|--------|
+| LOW | Plan has correct nodes but display names are slightly off | Log, proceed |
+| MEDIUM | Flow injects but one node has wrong `actionName` | Fix schema lookup, regenerate |
+| HIGH | IMPORT_FLOW returns 4xx; flow does not appear in builder | Revert flow_generator.py, fix and retry |
+| CRITICAL | Claude generates hallucinated pieceName values not in AP | Stop — Context7 integration broken; fix before any further generation |
+
+### Two-Strike Rule
+Max 2 retries. On second failure: stop for human review. The problem is likely in the system prompt or Context7 integration — not fixable by retrying the same approach.

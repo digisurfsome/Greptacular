@@ -283,3 +283,101 @@ When starting a session to build a YouTube pipeline, load the YouTube skill + ma
 - [ ] All skill files reference exact pieceName strings (not approximate names)
 - [ ] Context7 integration instruction is present in every flow generation prompt
 - [ ] Skills saved in `.claude/skills/` folder and loadable per session
+
+---
+
+## Protocol Checkpoints (Stage 08 Injection)
+
+### Pulse Checks — After Each File
+| File | Assertions |
+|------|-----------|
+| `~/.claude/mcp.json` (or `~/.cursor/mcp.json`) | File exists; contains `"activepieces"` key under `mcpServers`; `AP_API_KEY` and `AP_BASE_URL` env vars set |
+| `.claude/skills/activepieces-master.md` | File exists; contains "IMPORT_FLOW" reference; contains "Context7" reference; "7 steps" of build process present |
+| `.claude/skills/activepieces-youtube.md` | File exists; contains exact `pieceName: "@activepieces/piece-youtube"` string; contains `channelId` field reference |
+| `.claude/skills/activepieces-llm-ops.md` | File exists; contains `"@activepieces/piece-anthropic"` pieceName; contains batch/loop pattern |
+| `.claude/skills/activepieces-gmail.md` | File exists; contains `"@activepieces/piece-gmail"` pieceName; contains `bodyType` field warning |
+
+### Seam Checks — Connection Points
+**Seam 1: mcp.json → Claude MCP tool availability**
+- After restart with mcp.json configured: Claude shows `activepieces__` prefixed tools available
+- At least one tool call to a piece (e.g., `activepieces__http__send_http_request`) succeeds without error
+
+**Seam 2: Skills → AI Co-Pilot flow generation**
+- When a YouTube skill is loaded AND co-pilot is asked for a YouTube pipeline, the generated `pieceName` matches exactly `@activepieces/piece-youtube`
+- No hallucinated piece names in generated flow JSON when skills are loaded
+
+**Seam 3: MCP Flow → single callable tool**
+- After exposing a complete pipeline as an MCP Flow in AP settings: the flow appears as a new `activepieces__flows__*` tool in the MCP server
+- Calling that tool triggers the pipeline run and returns the output
+
+### Full Checkpoint (Phase 8 Gate — Final Gate)
+**Pattern checks (git diff):**
+```
+Expected new files: .claude/skills/*.md (all skill files)
+Expected modified file: ~/.claude/mcp.json (or ~/.cursor/mcp.json)
+No modification to pieces/, skin/, or copilot/ files.
+```
+
+**Functional checks:**
+```bash
+# Test 1: MCP server connects
+npx -y @activepieces/cli --version   # must exit 0 and show version
+
+# Test 2: At least one MCP tool call works
+# (run inside a Claude session with MCP configured)
+# Call: activepieces__http__send_http_request with url=https://httpbin.org/get
+# Must return HTTP 200 response body
+
+# Test 3: Skills load correctly
+ls .claude/skills/*.md | wc -l   # must be >= 5
+
+# Test 4: YouTube skill prevents wrong pieceName
+# Prompt Claude with YouTube skill loaded: "build a pipeline that pulls YouTube videos"
+# Check generated JSON: must contain "@activepieces/piece-youtube" exactly
+echo "✓ MCP + Skills layer complete"
+```
+
+**Gate condition (Final Build Gate):** MCP server connects. At least 1 MCP tool call executes successfully. All skill files present. YouTube pipeline generated with correct `pieceName`. This is the final gate — all 8 phases complete. SYSTEM IS READY FOR USE.
+
+### Violation Rules
+| Level | Trigger | Action |
+|-------|---------|--------|
+| LOW | MCP server connects but one piece tool returns unexpected format | Log, check AP version |
+| MEDIUM | Skills load but one skill has wrong `pieceName` (typo) | Fix that skill file, reload |
+| HIGH | MCP server fails to connect (authentication or port issue) | Fix mcp.json credentials, retry |
+| CRITICAL | Skills cause Claude to generate invalid flow JSON more often than without them | Stop — skills are actively harmful; review all pieceName references against AP source |
+
+### Two-Strike Rule
+Max 2 MCP connection attempts. If still failing after 2 tries, stop for human review — likely an AP version incompatibility with the MCP server npm package.
+
+---
+
+## End-of-Build Full Protocol (Run After Phase 8 Gate Passes)
+
+Run this final verification across the entire system before declaring it production-ready:
+
+```bash
+# 1. Full pipeline test: plain English → built flow → run → output
+python -c "
+from copilot.flow_generator import FlowGenerator
+gen = FlowGenerator()
+flow_id = gen.inject_flow(
+    gen.generate_flow_json(gen.generate_plan('Fetch https://httpbin.org/get every hour and log the result')),
+    'Full System Test'
+)
+print('Flow created:', flow_id)
+# Manually trigger in AP and confirm it runs
+"
+
+# 2. Code Module node: build → test → promote
+# (Drop a Code Module in a flow, fill 7-step form, Build It, run through all 5 test levels, confirm stable)
+
+# 3. Skin Builder: screenshot in → theme.css → skin matches
+# (Run build_from_screenshot() on any reference screenshot, apply, check visual match)
+
+# 4. MCP: call 3 different pieces as direct tool calls
+# (Gmail send, YouTube search, HTTP request — all via MCP)
+
+# 5. End-to-end: build a real useful pipeline in under 30 minutes
+# If this takes longer than 30 minutes, something in the co-pilot UX needs fixing
+```

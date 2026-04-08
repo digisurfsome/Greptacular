@@ -242,3 +242,64 @@ After a node's code passes all tests and reaches "stable" status:
 - [ ] When a stable node is built, at least one mechanism is extracted and saved
 - [ ] All mechanism files have complete @metadata headers
 - [ ] Claude uses an existing mechanism (vs rewriting from scratch) at least once
+
+---
+
+## Protocol Checkpoints (Stage 08 Injection)
+
+### Pulse Checks — After Each File
+| File | Assertions |
+|------|-----------|
+| `mechanisms/README.md` | File exists; contains "How to Use", "How to Add", "Categories", "Quality Levels" sections |
+| Each starter mechanism (5 files) | File exists; `@mechanism`, `@tags`, `@input`, `@output`, `@tested`, `@quality` metadata headers all present; exported function has matching name |
+| `copilot/mechanism_search.py` | File exists; `search_mechanisms(tags, input_type, output_type)` function defined; `extract_header()` helper present; returns a list |
+
+### Seam Checks — Connection Points
+**Seam 1: mechanism files → search_mechanisms()**
+- `search_mechanisms(["array", "transform"], "any[][]", "any[]")` returns at least 1 result containing `flatten-array`
+- Returned objects have `name`, `description`, `tags`, `code`, `score` keys
+
+**Seam 2: search_mechanisms() → code generation prompt**
+- `build_code_generation_prompt()` (or equivalent) includes mechanism search results in the prompt string
+- When a match is found, the prompt contains "MECHANISM LIBRARY MATCHES:" followed by mechanism code
+- When no match, prompt contains "No matches found. Write from scratch."
+
+**Seam 3: stable node → mechanism extraction**
+- After a node passes all tests, the extraction prompt correctly identifies sub-functions
+- At least one mechanism file is created with proper metadata header
+- New file passes `search_mechanisms()` for its own tags
+
+### Full Checkpoint (Phase 5 Gate)
+**Pattern checks (git diff):**
+```
+Expected new directory: mechanisms/ with category subfolders
+Expected new files: mechanisms/README.md, 5 starter .ts files, copilot/mechanism_search.py
+No modification to pieces/ or skin/ files.
+```
+
+**Functional checks:**
+```bash
+python -c "
+from copilot.mechanism_search import search_mechanisms
+results = search_mechanisms(['array', 'transform'], 'any[][]', 'any[]')
+assert len(results) > 0, 'No results for array/transform search'
+assert results[0]['name'] == 'flatten-array', f'Wrong result: {results[0][\"name\"]}'
+print('✓ Mechanism search working')
+results2 = search_mechanisms(['retry', 'api'], 'any', 'any')
+assert len(results2) > 0, 'No results for retry/api search'
+print('✓ Found retry mechanism:', results2[0]['name'])
+"
+```
+
+**Gate condition:** `search_mechanisms()` returns correct results for at least 2 different category queries. Mechanism context appears in the code generation prompt. PASS or FAIL.
+
+### Violation Rules
+| Level | Trigger | Action |
+|-------|---------|--------|
+| LOW | Search returns mechanisms but score ordering is slightly off | Log, improve scoring later |
+| MEDIUM | Metadata header parsing fails for one mechanism file | Fix that file's header format |
+| HIGH | `search_mechanisms()` raises exception or returns empty for all queries | Fix extract_header() parsing, verify file format |
+| CRITICAL | Mechanism library causes circular imports with flow_generator | Stop — restructure imports before continuing |
+
+### Two-Strike Rule
+Max 2 attempts at fixing search failures. If results are still wrong after 2 fixes, stop for human review — the metadata header format or glob pattern may need redesign.

@@ -27,6 +27,7 @@
 {
   "sub_6a": {
     "app_type_classification": "dashboard",
+    "navigation_pattern": "sidebar",
     "arrangement_options": [
       {
         "id": "opt_1",
@@ -72,6 +73,10 @@
             "mechanism_ids": ["M1"]
           }
         ],
+        "connections": [
+          { "component_name": "LoginForm", "triggers_mechanism": "M1", "action": "submits credentials for authentication" },
+          { "component_name": "RegisterLink", "triggers_mechanism": "M1", "action": "navigates to registration page" }
+        ],
         "user_approved": true
       },
       {
@@ -84,6 +89,9 @@
             "placement": "main-content",
             "mechanism_ids": ["M1"]
           }
+        ],
+        "connections": [
+          { "component_name": "RegisterForm", "triggers_mechanism": "M1", "action": "submits new user registration" }
         ],
         "user_approved": true
       },
@@ -128,6 +136,15 @@
             "mechanism_ids": ["M2", "M7"]
           }
         ],
+        "connections": [
+          { "component_name": "BoardSidebar", "triggers_mechanism": "M3", "action": "navigates to selected board detail page" },
+          { "component_name": "SearchBar", "triggers_mechanism": "M4", "action": "searches and filters tasks across all boards" },
+          { "component_name": "UserMenu", "triggers_mechanism": "M1", "action": "opens profile/logout options" },
+          { "component_name": "UserMenu", "triggers_mechanism": "M8", "action": "opens quick preferences menu" },
+          { "component_name": "TaskSummaryCards", "triggers_mechanism": "M7", "action": "fetches and displays task count analytics" },
+          { "component_name": "RecentActivityFeed", "triggers_mechanism": "M7", "action": "streams recent activity data" },
+          { "component_name": "TeamOverviewWidget", "triggers_mechanism": "M2", "action": "displays team member list and invite action" }
+        ],
         "backend_services": ["M6"],
         "user_approved": true
       },
@@ -162,6 +179,15 @@
             "mechanism_ids": ["M4", "M5"]
           }
         ],
+        "connections": [
+          { "component_name": "BoardSidebar", "triggers_mechanism": "M3", "action": "switches between boards" },
+          { "component_name": "BoardHeader", "triggers_mechanism": "M3", "action": "opens board edit/settings modal" },
+          { "component_name": "TaskCardGrid", "triggers_mechanism": "M4", "action": "opens task detail drawer on card click" },
+          { "component_name": "TaskCardGrid", "triggers_mechanism": "M5", "action": "opens assignment dropdown on avatar click" },
+          { "component_name": "CreateTaskButton", "triggers_mechanism": "M4", "action": "opens new task creation form" },
+          { "component_name": "TaskDetailDrawer", "triggers_mechanism": "M4", "action": "edits task fields inline" },
+          { "component_name": "TaskDetailDrawer", "triggers_mechanism": "M5", "action": "reassigns task to another team member" }
+        ],
         "user_approved": true
       },
       {
@@ -194,6 +220,13 @@
             "placement": "main-content",
             "mechanism_ids": ["M8"]
           }
+        ],
+        "connections": [
+          { "component_name": "SettingsTabNav", "triggers_mechanism": "M8", "action": "switches between settings sections" },
+          { "component_name": "ProfileSection", "triggers_mechanism": "M1", "action": "updates user profile and password" },
+          { "component_name": "TeamManagementSection", "triggers_mechanism": "M2", "action": "invites/removes team members and updates roles" },
+          { "component_name": "NotificationPreferences", "triggers_mechanism": "M8", "action": "toggles notification channels and frequency" },
+          { "component_name": "ThemeToggle", "triggers_mechanism": "M8", "action": "switches between light and dark theme" }
         ],
         "user_approved": true
       }

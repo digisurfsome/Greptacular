@@ -489,11 +489,24 @@ export function WorkspaceChat({
   }, [walkieTalkieLog, onWalkieTalkieLog])
 
   // Focus walkie-talkie input when agent enters waiting state
+  // and pre-fill with formatted question template for easy answering
   useEffect(() => {
-    if (agentWaiting) {
+    if (agentWaiting && agentWaitingQuestion) {
+      // Parse numbered questions from the waiting text and format with answer slots
+      const lines = agentWaitingQuestion.split('\n').filter(l => l.trim())
+      const numbered = lines.filter(l => /^\d+[\.\)]\s/.test(l.trim()))
+
+      if (numbered.length > 0) {
+        // Format as numbered questions with "Answer:" slots
+        const formatted = numbered
+          .map(q => `${q.trim()}\nAnswer: \n`)
+          .join('\n')
+        setWalkieTalkieInput(formatted)
+      }
+
       walkieTalkieInputRef.current?.focus()
     }
-  }, [agentWaiting])
+  }, [agentWaiting, agentWaitingQuestion])
 
   // REST query for initial messages when resuming a conversation
   const { data: conversationDetail, isLoading: isLoadingConversation } =
@@ -1755,17 +1768,34 @@ export function WorkspaceChat({
 
       {/* Walkie-talkie input bar: shown when agent is actively working */}
       {walkieTalkieVisible && (
-        <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-950/20 border-t border-amber-300 dark:border-amber-700/40 border-l-[3px] border-l-amber-500">
-          <Radio size={16} className="flex-shrink-0 text-amber-600 dark:text-amber-400" />
-          <input
-            ref={walkieTalkieInputRef}
-            type="text"
-            value={walkieTalkieInput}
-            onChange={(e) => setWalkieTalkieInput(e.target.value)}
-            onKeyDown={handleWalkieTalkieKeyDown}
-            placeholder="Send message to working agent..."
-            className="flex-1 h-8 rounded-md border border-amber-300 dark:border-amber-700 bg-white dark:bg-amber-950/30 px-2.5 text-sm text-foreground placeholder:text-amber-400 dark:placeholder:text-amber-600 outline-none ring-amber-400 focus:ring-1"
-          />
+        <div className={`flex ${agentWaiting ? 'flex-col' : 'items-center'} gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-950/20 border-t border-amber-300 dark:border-amber-700/40 border-l-[3px] border-l-amber-500`}>
+          <div className="flex items-center gap-2 flex-1">
+            <Radio size={16} className="flex-shrink-0 text-amber-600 dark:text-amber-400" />
+            {agentWaiting ? (
+              <span className="text-xs font-semibold text-amber-700 dark:text-amber-300">Fill in your answers below, then press Send:</span>
+            ) : null}
+          </div>
+          {agentWaiting ? (
+            <textarea
+              ref={walkieTalkieInputRef as unknown as React.RefObject<HTMLTextAreaElement>}
+              value={walkieTalkieInput}
+              onChange={(e) => setWalkieTalkieInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && e.ctrlKey) { e.preventDefault(); handleWalkieTalkieSend() } }}
+              placeholder="Fill in answers above each 'Answer:' line..."
+              rows={Math.max(6, walkieTalkieInput.split('\n').length + 1)}
+              className="flex-1 w-full rounded-md border border-amber-300 dark:border-amber-700 bg-white dark:bg-amber-950/30 px-2.5 py-2 text-sm font-mono text-foreground placeholder:text-amber-400 dark:placeholder:text-amber-600 outline-none ring-amber-400 focus:ring-1 resize-y"
+            />
+          ) : (
+            <input
+              ref={walkieTalkieInputRef}
+              type="text"
+              value={walkieTalkieInput}
+              onChange={(e) => setWalkieTalkieInput(e.target.value)}
+              onKeyDown={handleWalkieTalkieKeyDown}
+              placeholder="Send message to working agent..."
+              className="flex-1 h-8 rounded-md border border-amber-300 dark:border-amber-700 bg-white dark:bg-amber-950/30 px-2.5 text-sm text-foreground placeholder:text-amber-400 dark:placeholder:text-amber-600 outline-none ring-amber-400 focus:ring-1"
+            />
+          )}
           {walkieTalkieSent ? (
             <span className="flex items-center gap-1 text-xs font-medium text-amber-600 dark:text-amber-400 animate-pulse">
               <Check size={14} />

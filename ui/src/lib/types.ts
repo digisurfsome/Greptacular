@@ -2108,3 +2108,47 @@ export interface TokenBudgetHistory {
 export interface TokenBudgetSettings {
   [key: string]: string
 }
+
+// Market Scraper
+export interface MarketScrape {
+  id: number
+  url: string
+  subreddit: string
+  title: string
+  scraped_at: string
+  total_phrases: number
+  category_counts: Record<string, number>
+}
+
+export interface MarketPhrase {
+  id: number
+  scrape_id: number
+  raw_text: string
+  author: string
+  score: number
+  category: string
+  subcategory: string
+  ad_hook: string
+  social_post_idea: string
+  validation_signal: number
+  created_at: string
+}
+
+export interface MarketScrapeDetail extends MarketScrape {
+  phrases: MarketPhrase[]
+}
+
+export interface MarketSearchOptions {
+  sort_options: string[]
+  time_filters: string[]
+  default_subreddits: string[]
+}
+
+export interface MarketSearchResult {
+  query: string
+  threads_found: number
+  threads_scraped: number
+  scrape_ids: number[]
+  total_phrases: number
+  category_counts: Record<string, number>
+}

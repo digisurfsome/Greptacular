@@ -20,6 +20,7 @@ import { ArenaPage } from './pages/ArenaPage'
 import { ArenaChatPage } from './pages/ArenaChatPage'
 import { ComponentDashboardPage } from './pages/ComponentDashboardPage'
 import { ToolRunnerPage } from './pages/ToolRunnerPage'
+import { MarketScraperPage } from './pages/MarketScraperPage'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import './styles/globals.css'
 
@@ -93,6 +94,9 @@ function Root() {
   }
   if (hash === '#/meta-engine' || hash.startsWith('#/meta-engine/')) {
     return <MetaEnginePage />
+  }
+  if (hash === '#/market-scraper' || hash.startsWith('#/market-scraper/')) {
+    return <MarketScraperPage />
   }
   if (hash === '#/components' || hash.startsWith('#/components/')) {
     return <ComponentDashboardPage />

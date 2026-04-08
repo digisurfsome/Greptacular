@@ -1267,7 +1267,26 @@ class WorkspaceChatSession:
 
         except Exception as e:
             logger.exception("Failed to create workspace Claude client")
-            yield {"type": "error", "content": f"Failed to initialize workspace: {str(e)}"}
+            # Clear the client so send_message() properly rejects instead of
+            # trying to write to the dead subprocess (cascading "Cannot write
+            # to terminated process" error).
+            self.client = None
+            self._client_entered = False
+            err_str = str(e)
+            # Exit code 15 = Claude CLI received SIGTERM (killed unexpectedly).
+            # Most common cause: expired subscription credentials.
+            if "exit code 15" in err_str or "exit code: 15" in err_str.lower():
+                yield {
+                    "type": "error",
+                    "content": (
+                        "Failed to initialize workspace: The Claude CLI exited unexpectedly "
+                        "(exit code 15). This usually means your subscription credentials have "
+                        "expired.\n\n"
+                        "**Fix:** Open a terminal and run `claude login`, then reload this page."
+                    ),
+                }
+            else:
+                yield {"type": "error", "content": f"Failed to initialize workspace: {err_str}"}
             yield {"type": "response_done"}
             return
 
@@ -1566,7 +1585,7 @@ class WorkspaceChatSession:
         elif self.provider == "gemini" and not self._gemini_bridge:
             yield {"type": "error", "content": "Gemini session not initialized. Call start() first."}
             return
-        elif self.provider == "claude" and not self.client:
+        elif self.provider == "claude" and (not self.client or not self._client_entered):
             yield {"type": "error", "content": "Session not initialized. Call start() first."}
             return
 

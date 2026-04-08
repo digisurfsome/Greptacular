@@ -22,6 +22,7 @@ import { WorkspaceKeyboardHelp } from '../components/workspace/WorkspaceKeyboard
 import { WorkspaceUserGuide } from '../components/workspace/WorkspaceUserGuide'
 import { PassoffEditor, type PassoffSection } from '../components/workspace/PassoffEditor'
 import { SwarmPanel } from '../components/workspace/SwarmPanel'
+import { PipelinePanel } from '../components/workspace/PipelinePanel'
 import { CIStatusWidget } from '../components/workspace/CIStatusWidget'
 import { GitActivityWidget } from '../components/GitActivityWidget'
 import { useWorkspaceKeyboardShortcuts } from '../hooks/useWorkspaceKeyboardShortcuts'
@@ -44,6 +45,7 @@ import {
   Menu,
   Factory,
   Swords,
+  Workflow,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -96,6 +98,7 @@ export function WorkspacePage(): React.JSX.Element {
   const [splitView, setSplitView] = useState(false)
   const [showSwarm, setShowSwarm] = useState(false)
   const [showFactory, setShowFactory] = useState(false)
+  const [showPipeline, setShowPipeline] = useState(false)
 
   // Three-panel state (split view)
   const [prdConversationId, setPrdConversationId] = useState<number | null>(null)
@@ -437,6 +440,19 @@ export function WorkspacePage(): React.JSX.Element {
             <span className="hidden sm:inline text-[10px]">Factory</span>
           </Button>
           <Button
+            variant={showPipeline ? 'default' : 'ghost'}
+            size="sm"
+            className={`h-7 px-2 gap-1.5 ${showPipeline
+              ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+              : 'text-muted-foreground hover:text-foreground'
+            }`}
+            onClick={() => setShowPipeline(v => !v)}
+            title="Pipeline: sequential skill prompt chain"
+          >
+            <Workflow size={14} />
+            <span className="hidden sm:inline text-[10px]">Pipeline</span>
+          </Button>
+          <Button
             variant="ghost"
             size="sm"
             className="h-7 px-2 gap-1.5 text-muted-foreground hover:text-foreground"
@@ -608,40 +624,51 @@ export function WorkspacePage(): React.JSX.Element {
         )}
 
         {/* Sidebar: fixed overlay on mobile, normal column on desktop */}
-        <div
-          className={`
-            shrink-0 transition-all duration-200
-            md:relative md:flex md:flex-col
-            ${mobileSidebarOpen
-              ? 'fixed inset-y-0 left-0 z-50 flex flex-col bg-card shadow-xl w-72'
-              : 'hidden md:flex'
-            }
-            ${sidebarCollapsed && !mobileSidebarOpen ? 'md:w-0 md:overflow-hidden' : ''}
-          `}
-        >
-          <WorkspaceSidebar
-            activeConversationId={activeConversationId}
-            streamingIds={streamingIds}
-            collapsed={sidebarCollapsed && !mobileSidebarOpen}
-            onToggleCollapse={() => {
-              setSidebarCollapsed(!sidebarCollapsed)
-              // On mobile, also close the drawer when collapsing via the sidebar button
-              setMobileSidebarOpen(false)
-            }}
-            onNewChat={handleNewChat}
-            onSelectConversation={handleSelectConversation}
-            onDeleteConversation={handleDeleteConversation}
-            selectedWorkingDirectory={workingDirectory}
-            onWorkingDirectoryChange={handleRepoSelect}
-            modelPresetIndex={modelPresetIndex}
-            onModelPresetChange={handleModelPresetChange}
-            effortLevel={pendingEffort}
-            onEffortChange={setPendingEffort}
-            activeProvider={activeProvider}
-          />
-        </div>
+        {!showPipeline && (
+          <div
+            className={`
+              shrink-0 transition-all duration-200
+              md:relative md:flex md:flex-col
+              ${mobileSidebarOpen
+                ? 'fixed inset-y-0 left-0 z-50 flex flex-col bg-card shadow-xl w-72'
+                : 'hidden md:flex'
+              }
+              ${sidebarCollapsed && !mobileSidebarOpen ? 'md:w-0 md:overflow-hidden' : ''}
+            `}
+          >
+            <WorkspaceSidebar
+              activeConversationId={activeConversationId}
+              streamingIds={streamingIds}
+              collapsed={sidebarCollapsed && !mobileSidebarOpen}
+              onToggleCollapse={() => {
+                setSidebarCollapsed(!sidebarCollapsed)
+                // On mobile, also close the drawer when collapsing via the sidebar button
+                setMobileSidebarOpen(false)
+              }}
+              onNewChat={handleNewChat}
+              onSelectConversation={handleSelectConversation}
+              onDeleteConversation={handleDeleteConversation}
+              selectedWorkingDirectory={workingDirectory}
+              onWorkingDirectoryChange={handleRepoSelect}
+              modelPresetIndex={modelPresetIndex}
+              onModelPresetChange={handleModelPresetChange}
+              effortLevel={pendingEffort}
+              onEffortChange={setPendingEffort}
+              activeProvider={activeProvider}
+            />
+          </div>
+        )}
 
-        {splitView ? (
+        {/* Pipeline panel — full center takeover when active (replaces chat panels) */}
+        {showPipeline ? (
+          <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+            <PipelinePanel
+              workingDirectory={workingDirectory}
+              onWorkingDirectoryChange={setWorkingDirectory}
+              onClose={() => setShowPipeline(false)}
+            />
+          </div>
+        ) : splitView ? (
           /* Three-panel split view with accordion collapse */
           <div className="flex-1 flex overflow-hidden">
 

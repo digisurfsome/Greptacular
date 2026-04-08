@@ -29,6 +29,7 @@ from .github import router as github_router
 from .ingestion_sequences import router as ingestion_sequences_router
 from .meta_training import router as meta_training_router
 from .notifications import router as notifications_router
+from .pipeline import router as pipeline_router
 from .prd_shredder import router as prd_shredder_router
 from .projects import boilerplate_router, styles_router
 from .projects import router as projects_router
@@ -48,6 +49,7 @@ from .verifications import router as verifications_router
 from .workspace import router as workspace_router
 from .yt_batch import router as yt_batch_router
 from .yt_ingestion import router as yt_ingestion_router
+from .market_scraper import router as market_scraper_router
 from .yt_processing import router as yt_processing_router
 
 __all__ = [
@@ -86,6 +88,7 @@ __all__ = [
     "execution_router",
     "execution_websocket",
     "token_budget_router",
+    "pipeline_router",
     "prd_shredder_router",
     "tool_analyzer_router",
     "tool_factory_router",
@@ -95,5 +98,6 @@ __all__ = [
     "verifications_router",
     "tool_themes_router",
     "ingestion_sequences_router",
+    "market_scraper_router",
     "meta_training_router",
 ]

@@ -95,6 +95,11 @@ import type {
   TokenBudgetStatus,
   TokenBudgetHistory,
   TokenBudgetSettings,
+  MarketScrape,
+  MarketScrapeDetail,
+  MarketPhrase,
+  MarketSearchOptions,
+  MarketSearchResult,
 } from './types'
 
 const API_BASE = '/api'
@@ -3148,5 +3153,227 @@ export async function updateShredderConfig(updates: Partial<ShredderConfig>): Pr
   return fetchJSON('/prd-shredder/config', {
     method: 'PUT',
     body: JSON.stringify(updates),
+  })
+}
+
+// ============================================================================
+// Pipeline (Skill Pipeline)
+// ============================================================================
+
+export interface PipelineStageConfig {
+  label: string
+  skill_text: string
+}
+
+export interface PipelineStartRequest {
+  working_directory: string
+  kickoff_message: string
+  token_budget: number
+  model: string
+  output_mode: string
+  execution_mode: string  // same_session | new_session | file_based | database
+  stages: PipelineStageConfig[]
+}
+
+export interface PipelineStageStatus {
+  stage_index: number
+  label: string
+  status: 'pending' | 'running' | 'completed' | 'failed'
+  output: string
+  tokens_used: number
+  duration_seconds: number
+  conversation_id?: number
+  session_id?: string
+  error?: string
+}
+
+export interface PipelineStatusResponse {
+  pipeline_id: string
+  status: 'idle' | 'running' | 'completed' | 'failed' | 'stopped'
+  execution_mode?: string
+  total_tokens: number
+  token_budget: number
+  total_duration: number
+  waiting_for_answer?: boolean
+  waiting_question?: string
+  stages: PipelineStageStatus[]
+}
+
+export async function startPipeline(body: PipelineStartRequest): Promise<{ pipeline_id: string }> {
+  return fetchJSON('/pipeline/start', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+export async function stopPipeline(pipelineId: string): Promise<void> {
+  await fetchJSON('/pipeline/stop', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pipeline_id: pipelineId }),
+  })
+}
+
+export async function forceAdvancePipeline(pipelineId: string): Promise<{ success: boolean; message: string }> {
+  return fetchJSON('/pipeline/force-advance', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pipeline_id: pipelineId }),
+  })
+}
+
+export async function getPipelineStatus(pipelineId: string): Promise<PipelineStatusResponse> {
+  return fetchJSON(`/pipeline/status/${pipelineId}`)
+}
+
+export async function getPipelineHistory(): Promise<PipelineStatusResponse[]> {
+  return fetchJSON('/pipeline/history')
+}
+
+export async function exportPipelineOutputs(pipelineId: string): Promise<Blob> {
+  const res = await fetch(`/api/pipeline/export/${pipelineId}`)
+  if (!res.ok) throw new Error(`Export failed: ${res.status}`)
+  return res.blob()
+}
+
+export async function sendPipelineAnswer(pipelineId: string, answer: string): Promise<{ success: boolean; response: string }> {
+  return fetchJSON('/pipeline/answer', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pipeline_id: pipelineId, answer }),
+  })
+}
+
+// Pipeline Projects
+export interface PipelineProject {
+  id: number
+  name: string
+  description?: string
+  output_mode: 'json' | 'text'
+  default_model: string
+  default_token_budget: number
+  stages_json: string
+  created_at?: string
+  updated_at?: string
+}
+
+export async function listPipelineProjects(): Promise<PipelineProject[]> {
+  return fetchJSON('/pipeline/projects')
+}
+
+export async function createPipelineProject(body: {
+  name: string
+  description?: string
+  output_mode?: string
+  default_model?: string
+  default_token_budget?: number
+  stages: PipelineStageConfig[]
+}): Promise<PipelineProject> {
+  return fetchJSON('/pipeline/projects', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+export async function updatePipelineProject(projectId: number, body: {
+  name?: string
+  description?: string
+  output_mode?: string
+  default_model?: string
+  default_token_budget?: number
+  stages?: PipelineStageConfig[]
+}): Promise<PipelineProject> {
+  return fetchJSON(`/pipeline/projects/${projectId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+export async function deletePipelineProject(projectId: number): Promise<void> {
+  await fetchJSON(`/pipeline/projects/${projectId}`, { method: 'DELETE' })
+}
+
+export async function clonePipelineProject(projectId: number, newName: string): Promise<PipelineProject> {
+  return fetchJSON(`/pipeline/projects/${projectId}/clone`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ new_name: newName }),
+  })
+}
+
+export async function loadPipelineFolder(folderPath: string): Promise<PipelineStageConfig[]> {
+  return fetchJSON('/pipeline/load-folder', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ folder_path: folderPath }),
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Market Scraper
+// ---------------------------------------------------------------------------
+
+export async function scrapeRedditThread(url: string): Promise<MarketScrapeDetail> {
+  return fetchJSON<MarketScrapeDetail>('/market-scraper/scrape', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url }),
+  })
+}
+
+export async function getMarketScrapes(): Promise<MarketScrape[]> {
+  return fetchJSON<MarketScrape[]>('/market-scraper/scrapes')
+}
+
+export async function getMarketScrape(id: number): Promise<MarketScrapeDetail> {
+  return fetchJSON<MarketScrapeDetail>(`/market-scraper/scrapes/${id}`)
+}
+
+export async function getMarketPhrases(params?: { category?: string; min_score?: number; min_validation?: number }): Promise<MarketPhrase[]> {
+  const query = new URLSearchParams()
+  if (params?.category) query.set('category', params.category)
+  if (params?.min_score) query.set('min_score', String(params.min_score))
+  if (params?.min_validation) query.set('min_validation', String(params.min_validation))
+  return fetchJSON<MarketPhrase[]>(`/market-scraper/phrases?${query}`)
+}
+
+export async function deleteMarketScrape(id: number): Promise<{ status: string; scrape_id: number }> {
+  return fetchJSON<{ status: string; scrape_id: number }>(`/market-scraper/scrapes/${id}`, { method: 'DELETE' })
+}
+
+export async function exportScrape(id: number): Promise<Blob> {
+  const response = await fetch(`${API_BASE}/market-scraper/export/${id}`)
+  if (!response.ok) throw new Error(await response.text())
+  return response.blob()
+}
+
+export async function getSearchOptions(): Promise<MarketSearchOptions> {
+  return fetchJSON<MarketSearchOptions>('/market-scraper/search-options')
+}
+
+export interface TopicSearchParams {
+  query: string
+  subreddits?: string[]
+  sort?: string
+  time_filter?: string
+  max_threads?: number
+}
+
+export async function searchReddit(params: TopicSearchParams) {
+  return fetchJSON<{ query: string; threads: unknown[] }>('/market-scraper/search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  })
+}
+
+export async function searchAndScrapeReddit(params: TopicSearchParams): Promise<MarketSearchResult> {
+  return fetchJSON<MarketSearchResult>('/market-scraper/search-and-scrape', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
   })
 }

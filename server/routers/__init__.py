@@ -53,6 +53,7 @@ from .yt_batch import router as yt_batch_router
 from .yt_ingestion import router as yt_ingestion_router
 from .market_scraper import router as market_scraper_router
 from .yt_processing import router as yt_processing_router
+from .pipeline_proxy import router as pipeline_proxy_router
 
 __all__ = [
     "actions_router",
@@ -104,4 +105,5 @@ __all__ = [
     "ingestion_sequences_router",
     "market_scraper_router",
     "meta_training_router",
+    "pipeline_proxy_router",
 ]

@@ -61,6 +61,7 @@ from .routers import (
     market_scraper_router,
     meta_training_router,
     notifications_router,
+    pipeline_proxy_router,
     pipeline_router,
     prd_shredder_router,
     projects_router,
@@ -418,6 +419,7 @@ app.include_router(role_library_router)
 app.include_router(seo_tools_router)
 app.include_router(swarm_router)
 app.include_router(pipeline_router)
+app.include_router(pipeline_proxy_router)
 app.include_router(dunkstack_router)
 app.include_router(agent_os_router)
 app.include_router(yt_ingestion_router)

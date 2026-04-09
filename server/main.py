@@ -10,6 +10,7 @@ import asyncio
 import logging
 import os
 import shutil
+import subprocess
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -496,6 +497,59 @@ async def setup_status():
         node=node,
         npm=npm,
     )
+
+
+@app.post("/api/claude-relogin")
+async def claude_relogin():
+    """Clear stale Claude credentials so the user can re-authenticate.
+
+    Runs ``claude auth logout`` to remove cached OAuth tokens. After this
+    succeeds the user must run ``claude /login`` in a terminal to open the
+    browser-based login flow (that step is interactive and cannot be done
+    from the server).
+    """
+    claude_path = shutil.which("claude")
+    if not claude_path:
+        raise HTTPException(
+            status_code=404,
+            detail="Claude CLI not found on PATH. Install it first.",
+        )
+
+    try:
+        result = subprocess.run(
+            [claude_path, "auth", "logout"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        # Exit code 0 = success, but some CLI versions return non-zero
+        # even on a successful logout if there were no credentials.
+        # Treat both as acceptable.
+        if result.returncode != 0 and "error" in (result.stderr or "").lower():
+            logger.warning("claude auth logout stderr: %s", result.stderr)
+            return {
+                "status": "warning",
+                "message": (
+                    "Logout returned an error. You may still need to run "
+                    "'claude /login' in a Command Prompt to re-authenticate."
+                ),
+                "detail": result.stderr.strip(),
+            }
+
+        return {
+            "status": "ok",
+            "message": (
+                "Credentials cleared. Open a Command Prompt and run:  claude /login"
+            ),
+        }
+    except subprocess.TimeoutExpired:
+        raise HTTPException(
+            status_code=504,
+            detail="claude auth logout timed out after 15 seconds.",
+        )
+    except Exception as exc:
+        logger.error("claude auth logout failed: %s", exc)
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 # ============================================================================

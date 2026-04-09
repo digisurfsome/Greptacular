@@ -1,6 +1,7 @@
-import { useState } from 'react'
-import { Loader2, AlertCircle, Check, Moon, Sun, Eye, EyeOff, ShieldCheck } from 'lucide-react'
+import { useState, useCallback } from 'react'
+import { Loader2, AlertCircle, Check, Moon, Sun, Eye, EyeOff, ShieldCheck, LogIn } from 'lucide-react'
 import { useSettings, useUpdateSettings, useAvailableModels, useAvailableProviders } from '../hooks/useProjects'
+import { claudeRelogin } from '../lib/api'
 import { useTheme, THEMES } from '../hooks/useTheme'
 import type { ProviderInfo } from '../lib/types'
 import {
@@ -39,6 +40,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [authTokenInput, setAuthTokenInput] = useState('')
   const [customModelInput, setCustomModelInput] = useState('')
   const [customBaseUrlInput, setCustomBaseUrlInput] = useState('')
+  const [reloginStatus, setReloginStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
+  const [reloginMessage, setReloginMessage] = useState('')
 
   const handleYoloToggle = () => {
     if (settings && !updateSettings.isPending) {
@@ -131,6 +134,19 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       setCustomModelInput('')
     }
   }
+
+  const handleClaudeRelogin = useCallback(async () => {
+    setReloginStatus('loading')
+    setReloginMessage('Clearing credentials...')
+    try {
+      const result = await claudeRelogin()
+      setReloginStatus(result.status === 'ok' ? 'success' : 'error')
+      setReloginMessage(result.message)
+    } catch (err) {
+      setReloginStatus('error')
+      setReloginMessage(err instanceof Error ? err.message : 'Failed to clear credentials')
+    }
+  }, [])
 
   const providers = providersData?.providers ?? []
   const models = modelsData?.models ?? []
@@ -859,6 +875,49 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   className="w-24"
                 />
               </div>
+            </div>
+
+            <hr className="border-border" />
+
+            {/* Claude Re-login */}
+            <div className="space-y-3">
+              <Label className="font-medium text-base">Claude Authentication</Label>
+              <p className="text-sm text-muted-foreground">
+                Getting exit code 15 errors? Clear stale credentials and re-login.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleClaudeRelogin}
+                disabled={reloginStatus === 'loading'}
+                className="gap-2"
+              >
+                {reloginStatus === 'loading' ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <LogIn size={14} />
+                )}
+                Re-login to Claude
+              </Button>
+              {reloginStatus === 'success' && (
+                <Alert>
+                  <Check className="h-4 w-4 text-emerald-500" />
+                  <AlertDescription className="text-sm">
+                    {reloginMessage}
+                  </AlertDescription>
+                </Alert>
+              )}
+              {reloginStatus === 'error' && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription className="text-sm">
+                    {reloginMessage}
+                  </AlertDescription>
+                </Alert>
+              )}
+              {reloginStatus === 'loading' && (
+                <p className="text-sm text-muted-foreground">Clearing credentials...</p>
+              )}
             </div>
 
             {/* Update Error */}

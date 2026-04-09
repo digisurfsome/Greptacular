@@ -127,6 +127,14 @@ async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
 }
 
 // ============================================================================
+// Claude Auth API
+// ============================================================================
+
+export async function claudeRelogin(): Promise<{ status: string; message: string; detail?: string }> {
+  return fetchJSON('/claude-relogin', { method: 'POST' })
+}
+
+// ============================================================================
 // Projects API
 // ============================================================================
 

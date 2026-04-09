@@ -154,6 +154,11 @@ async def _call_claude_sdk(
     CRITICAL: Uses ``permission_mode="acceptEdits"`` to match ALL working
     SDK clients in this codebase.  ``"bypassPermissions"`` causes exit
     code 3 (Bun runtime crash) on Windows.
+
+    WINDOWS FIX: When system_prompt exceeds ~25K chars, Windows CLI command
+    line limit (~32K chars) causes "Claude Code not found" errors.  In that
+    case, we move the large prompt into the user_message (sent via IPC, no
+    size limit) and use a short directive as system_prompt instead.
     """
     from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 
@@ -168,6 +173,27 @@ async def _call_claude_sdk(
 
     sdk_env = get_effective_sdk_env(force_subscription=True)
     sdk_env.pop("CLAUDECODE", None)
+
+    # WINDOWS FIX: If system_prompt is too large for the CLI command line,
+    # move it into the user_message (sent via IPC, no size limit).
+    MAX_SYSTEM_PROMPT_CHARS = 25000
+    actual_system_prompt = system_prompt
+    actual_user_message = user_message
+
+    if len(system_prompt) > MAX_SYSTEM_PROMPT_CHARS:
+        logger.info(
+            "[proxy] System prompt is %d chars (over %d limit) — moving to user message",
+            len(system_prompt), MAX_SYSTEM_PROMPT_CHARS,
+        )
+        actual_system_prompt = (
+            "You are a PRD pipeline assistant. Your full instructions are provided "
+            "at the start of the user's message inside [INSTRUCTIONS]...[/INSTRUCTIONS] tags. "
+            "Follow those instructions precisely."
+        )
+        actual_user_message = (
+            f"[INSTRUCTIONS]\n{system_prompt}\n[/INSTRUCTIONS]\n\n"
+            f"---\n\n{user_message}"
+        )
 
     # Use a temp directory as cwd so the CLI has somewhere to write
     scratch = tempfile.mkdtemp(prefix="pipeline_proxy_")
@@ -185,7 +211,7 @@ async def _call_claude_sdk(
         options=ClaudeAgentOptions(
             model=model,
             cli_path=system_cli,
-            system_prompt=system_prompt,
+            system_prompt=actual_system_prompt,
             env=sdk_env,
             max_turns=max_turns,
             permission_mode="acceptEdits",  # NEVER use "bypassPermissions"
@@ -214,7 +240,7 @@ async def _call_claude_sdk(
             ) from enter_err
 
         logger.info("[proxy] CLI ready in %.1fs, sending query...", time.time() - sdk_t0)
-        await client.query(user_message)
+        await client.query(actual_user_message)
 
         full_text = ""
         msg_count = 0

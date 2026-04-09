@@ -57,6 +57,7 @@ Each router handles one feature area. Find the right router = find the right end
 | `notifications.py` | `/api/notifications` | Notification system |
 | `swarm.py` | `/api/swarm` | Swarm orchestration |
 | `verifications.py` | `/api/verifications` | Build verification |
+| `ap_code_manager.py` | `/api/ap-code` | Activepieces Code step source code read/write via Docker psql |
 
 ---
 

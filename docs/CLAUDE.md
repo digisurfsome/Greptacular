@@ -35,6 +35,7 @@ Only read these if your task specifically needs them:
 
 | Doc | When You Need It |
 |-----|-----------------|
+| **`ACTIVEPIECES.md`** | **Activepieces MCP, flows, auth, setup, bearer token, curl patterns** |
 | `SUBSCRIPTION_AND_WEBSOCKET_GUIDE.md` | Working with Claude SDK auth or WebSocket connections |
 | `SONNET_OPUS_OPTIMIZATION.md` | Build pipeline Sonnet/Opus agent assignment |
 | `MODULARITY_GUIDE.md` | Understanding modular architecture patterns |

@@ -68,7 +68,7 @@ SDK_MAX_TURNS = 2
 #   .parent = project root (where docs/ lives)
 SKILLS_DIR = (
     Path(__file__).resolve().parent.parent.parent
-    / "docs" / "page-prds" / "prd-maker" / "skills-complete"
+    / "docs" / "page-prds" / "prd-maker" / "skills"
 )
 
 STAGE_FOLDER_NAMES: dict[int, str] = {

@@ -100,8 +100,28 @@ async def proxy_chat(body: ProxyChatRequest):
     # Resolve system prompt: use explicit value, or auto-load from SKILL.md
     system_prompt = body.system_prompt
     if body.stage_number is not None and not system_prompt.strip():
-        from server.routers.pipeline_chat import load_stage_prompt
-        system_prompt = load_stage_prompt(body.stage_number)
+        # Inline skill loading — avoids cross-module import issues at runtime
+        _stage_folders = {
+            0: "stage-00-technical-foundation",
+            1: "stage-01-idea-capture",
+            2: "stage-02-gap-analysis",
+            3: "stage-03-agent-os-structuring",
+            4: "stage-04-mechanism-extraction",
+            5: "stage-05-seven-question-scaffolding",
+            6: "stage-06-layout-mockups-style",
+            7: "stage-07-phase-sequencing",
+            8: "stage-08-protocol-injection",
+            9: "stage-09-verification-agent-setup",
+            10: "stage-10-output-generator",
+        }
+        _folder = _stage_folders.get(body.stage_number)
+        if _folder is None:
+            raise ValueError(f"Unknown stage number: {body.stage_number}")
+        _skills_dir = Path(__file__).resolve().parent.parent.parent / "docs" / "page-prds" / "prd-maker" / "skills"
+        _skill_path = _skills_dir / _folder / "SKILL.md"
+        if not _skill_path.exists():
+            raise FileNotFoundError(f"Skill file not found: {_skill_path}")
+        system_prompt = _skill_path.read_text(encoding="utf-8")
 
     model = body.model or DEFAULT_MODEL
     max_turns = body.max_turns or 2

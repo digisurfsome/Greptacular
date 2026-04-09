@@ -54,6 +54,7 @@ Find files here instead of searching:
 | Emergency UI fix | `docs/references/emergency-ui-fix.md` |
 | Subscription + WebSocket protocol | `docs/SUBSCRIPTION_AND_WEBSOCKET_GUIDE.md` |
 | Workspace UI standards | `ui/WORKSPACE_STANDARDS.md` |
+| **Activepieces (MCP, flows, auth, setup)** | **`docs/ACTIVEPIECES.md`** |
 
 ## After Edits
 Commit changed files only (never `git add -A`). Clear message. Don't push. Report files, hash, branch.

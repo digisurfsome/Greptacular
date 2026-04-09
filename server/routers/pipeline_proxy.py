@@ -42,11 +42,18 @@ SDK_TIMEOUT_SECONDS = 300
 # ============================================================================
 
 class ProxyChatRequest(BaseModel):
-    """Request body for the proxy chat endpoint."""
-    system_prompt: str
+    """Request body for the proxy chat endpoint.
+
+    Either provide ``system_prompt`` directly, or set ``stage_number`` to
+    auto-load the corresponding SKILL.md file from disk.  When both are
+    provided, ``system_prompt`` takes precedence (``stage_number`` is
+    only used as a fallback when ``system_prompt`` is empty).
+    """
+    system_prompt: str = ""
     user_message: str
     model: Optional[str] = None
     max_turns: Optional[int] = None
+    stage_number: Optional[int] = None
 
 
 class ProxyChatResponse(BaseModel):
@@ -90,13 +97,19 @@ async def proxy_chat(body: ProxyChatRequest):
     - ``permission_mode="acceptEdits"`` (never ``bypassPermissions``)
     - ``receive_response()`` wrapped in try/except for SDK stream errors
     """
+    # Resolve system prompt: use explicit value, or auto-load from SKILL.md
+    system_prompt = body.system_prompt
+    if body.stage_number is not None and not system_prompt.strip():
+        from server.routers.pipeline_chat import load_stage_prompt
+        system_prompt = load_stage_prompt(body.stage_number)
+
     model = body.model or DEFAULT_MODEL
     max_turns = body.max_turns or 2
     t0 = time.time()
 
     try:
         response_text = await _call_claude_sdk(
-            system_prompt=body.system_prompt,
+            system_prompt=system_prompt,
             user_message=body.user_message,
             model=model,
             max_turns=max_turns,

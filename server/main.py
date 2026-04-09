@@ -38,6 +38,7 @@ from .routers import (
     actions_router,
     agent_os_router,
     agent_router,
+    ap_code_manager_router,
     approvals_router,
     assistant_chat_router,
     boilerplate_router,
@@ -446,6 +447,7 @@ app.include_router(prd_shredder_router)
 app.include_router(ingestion_sequences_router)
 app.include_router(market_scraper_router)
 app.include_router(meta_training_router)
+app.include_router(ap_code_manager_router)
 
 
 # ============================================================================

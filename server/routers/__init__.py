@@ -8,6 +8,7 @@ FastAPI routers for different API endpoints.
 from .actions import commits_router
 from .actions import router as actions_router
 from .agent import router as agent_router
+from .ap_code_manager import router as ap_code_manager_router
 from .agent_os import router as agent_os_router
 from .approvals import router as approvals_router
 from .assistant_chat import router as assistant_chat_router
@@ -106,4 +107,5 @@ __all__ = [
     "market_scraper_router",
     "meta_training_router",
     "pipeline_proxy_router",
+    "ap_code_manager_router",
 ]

@@ -13,6 +13,7 @@ OAuth or API keys required.
 import logging
 import re
 import sqlite3
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -777,6 +778,169 @@ async def search_and_scrape(
         "category_counts": all_category_counts,
         "threads": threads[:max_threads],  # Include thread summaries for the UI
     }
+
+
+# ---------------------------------------------------------------------------
+# Phrase frequency analysis
+# ---------------------------------------------------------------------------
+
+# Common stop words to skip in n-gram extraction
+_STOP_WORDS = frozenset({
+    "i", "me", "my", "myself", "we", "our", "ours", "ourselves", "you", "your",
+    "yours", "yourself", "yourselves", "he", "him", "his", "himself", "she", "her",
+    "hers", "herself", "it", "its", "itself", "they", "them", "their", "theirs",
+    "themselves", "what", "which", "who", "whom", "this", "that", "these", "those",
+    "am", "is", "are", "was", "were", "be", "been", "being", "have", "has", "had",
+    "having", "do", "does", "did", "doing", "a", "an", "the", "and", "but", "if",
+    "or", "because", "as", "until", "while", "of", "at", "by", "for", "with",
+    "about", "against", "between", "through", "during", "before", "after", "above",
+    "below", "to", "from", "up", "down", "in", "out", "on", "off", "over", "under",
+    "again", "further", "then", "once", "here", "there", "when", "where", "why",
+    "how", "all", "both", "each", "few", "more", "most", "other", "some", "such",
+    "no", "nor", "not", "only", "own", "same", "so", "than", "too", "very", "s",
+    "t", "can", "will", "just", "don", "should", "now", "d", "ll", "m", "o", "re",
+    "ve", "y", "ain", "aren", "couldn", "didn", "doesn", "hadn", "hasn", "haven",
+    "isn", "ma", "mightn", "mustn", "needn", "shan", "shouldn", "wasn", "weren",
+    "won", "wouldn", "also", "like", "would", "could", "much", "get", "got", "go",
+    "going", "really", "thing", "things", "think", "know", "still", "even", "way",
+    "one", "use", "using", "used", "make", "makes", "made", "well", "want",
+    "need", "something", "anything", "everything", "nothing", "someone", "anyone",
+    "everyone", "lot", "lots", "many", "every", "right", "good", "new", "try",
+    "trying", "tried", "see", "look", "looking", "say", "said", "come", "back",
+    "take", "give", "people", "been", "done", "yeah", "yes", "sure",
+    "http", "https", "www", "com", "org", "reddit", "deleted", "removed",
+})
+
+# Regex to clean text for n-gram extraction
+_CLEAN_RE = re.compile(r"[^a-z0-9\s'-]")
+_MULTI_SPACE_RE = re.compile(r"\s+")
+
+
+def _tokenize(text: str) -> list[str]:
+    """Clean and tokenize text into lowercase words, filtering stop words."""
+    text = text.lower()
+    text = _CLEAN_RE.sub(" ", text)
+    text = _MULTI_SPACE_RE.sub(" ", text).strip()
+    return [w for w in text.split() if w not in _STOP_WORDS and len(w) > 1]
+
+
+def _extract_ngrams(tokens: list[str], n: int) -> list[str]:
+    """Extract n-grams from a token list."""
+    return [" ".join(tokens[i:i + n]) for i in range(len(tokens) - n + 1)]
+
+
+def get_phrase_frequencies(
+    scrape_ids: Optional[list[int]] = None,
+    min_ngram: int = 2,
+    max_ngram: int = 4,
+    top_n: int = 50,
+    category: Optional[str] = None,
+) -> list[dict[str, Any]]:
+    """Extract the most frequently used multi-word phrases from scraped comments.
+
+    Analyzes all raw_text in the phrases table, extracts 2-4 word n-grams,
+    counts their frequency, and returns the top phrases ranked by count.
+
+    Args:
+        scrape_ids: Limit to specific scrapes, or None for all
+        min_ngram: Minimum n-gram size (default 2)
+        max_ngram: Maximum n-gram size (default 4)
+        top_n: Number of top phrases to return (default 50)
+        category: Filter by category (e.g., "pain_point", "desire")
+
+    Returns a list of dicts: {phrase, count, ngram_size, sample_texts, categories}
+    """
+    conn = _init_db()
+    try:
+        conditions: list[str] = []
+        params: list[Any] = []
+
+        if scrape_ids:
+            placeholders = ",".join("?" * len(scrape_ids))
+            conditions.append(f"scrape_id IN ({placeholders})")
+            params.extend(scrape_ids)
+        if category:
+            conditions.append("category = ?")
+            params.append(category)
+
+        where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+
+        rows = conn.execute(
+            f"SELECT raw_text, category FROM phrases {where}",
+            params,
+        ).fetchall()
+
+        # Count n-grams across all comments
+        ngram_counter: Counter[str] = Counter()
+        # Track which categories each phrase appears in
+        ngram_categories: dict[str, Counter[str]] = {}
+        # Track sample texts for each phrase
+        ngram_samples: dict[str, list[str]] = {}
+
+        for row in rows:
+            text = row["raw_text"]
+            cat = row["category"]
+            tokens = _tokenize(text)
+
+            for n in range(min_ngram, max_ngram + 1):
+                for ngram in _extract_ngrams(tokens, n):
+                    ngram_counter[ngram] += 1
+
+                    if ngram not in ngram_categories:
+                        ngram_categories[ngram] = Counter()
+                    ngram_categories[ngram][cat] += 1
+
+                    if ngram not in ngram_samples:
+                        ngram_samples[ngram] = []
+                    if len(ngram_samples[ngram]) < 3:
+                        # Store a short preview of the source text
+                        preview = text[:150] + ("..." if len(text) > 150 else "")
+                        if preview not in ngram_samples[ngram]:
+                            ngram_samples[ngram].append(preview)
+
+        # Filter out phrases that only appear once (not a pattern)
+        meaningful = {k: v for k, v in ngram_counter.items() if v >= 2}
+
+        # Deduplicate: if a longer phrase contains a shorter one with similar count,
+        # prefer the longer one. We do this by sorting by count desc, then length desc.
+        sorted_phrases = sorted(meaningful.items(), key=lambda x: (-x[1], -len(x[0])))
+
+        # Remove sub-phrases that are subsumed by a higher-ranked longer phrase
+        seen_text: set[str] = set()
+        filtered: list[tuple[str, int]] = []
+        for phrase, count in sorted_phrases:
+            # Check if this phrase is a substring of an already-selected phrase
+            is_subphrase = False
+            for selected in seen_text:
+                if phrase in selected and count <= meaningful.get(selected, 0) * 1.2:
+                    is_subphrase = True
+                    break
+            if not is_subphrase:
+                filtered.append((phrase, count))
+                seen_text.add(phrase)
+            if len(filtered) >= top_n:
+                break
+
+        results: list[dict[str, Any]] = []
+        for phrase, count in filtered:
+            word_count = len(phrase.split())
+            cats = dict(ngram_categories.get(phrase, {}))
+            samples = ngram_samples.get(phrase, [])
+            results.append({
+                "phrase": phrase,
+                "count": count,
+                "ngram_size": word_count,
+                "categories": cats,
+                "sample_texts": samples,
+            })
+
+        logger.info(
+            "Phrase frequency analysis: %d unique n-grams, returning top %d",
+            len(meaningful), len(results),
+        )
+        return results
+    finally:
+        conn.close()
 
 
 def export_phrases_csv(scrape_id: int) -> Optional[str]:

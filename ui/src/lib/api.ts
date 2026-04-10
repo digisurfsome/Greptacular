@@ -100,6 +100,7 @@ import type {
   MarketPhrase,
   MarketSearchOptions,
   MarketSearchResult,
+  MarketPhraseFrequencyResult,
 } from './types'
 
 const API_BASE = '/api'
@@ -3376,4 +3377,16 @@ export async function searchAndScrapeReddit(params: TopicSearchParams): Promise<
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params),
   })
+}
+
+export async function getPhraseFrequency(params?: {
+  scrape_ids?: number[]
+  category?: string
+  top_n?: number
+}): Promise<MarketPhraseFrequencyResult> {
+  const query = new URLSearchParams()
+  if (params?.scrape_ids?.length) query.set('scrape_ids', params.scrape_ids.join(','))
+  if (params?.category) query.set('category', params.category)
+  if (params?.top_n) query.set('top_n', String(params.top_n))
+  return fetchJSON<MarketPhraseFrequencyResult>(`/market-scraper/phrase-frequency?${query}`)
 }

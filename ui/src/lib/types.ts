@@ -2152,3 +2152,16 @@ export interface MarketSearchResult {
   total_phrases: number
   category_counts: Record<string, number>
 }
+
+export interface MarketTopPhrase {
+  phrase: string
+  count: number
+  ngram_size: number
+  categories: Record<string, number>
+  sample_texts: string[]
+}
+
+export interface MarketPhraseFrequencyResult {
+  phrases: MarketTopPhrase[]
+  total: number
+}

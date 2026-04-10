@@ -23,6 +23,7 @@ from ..services.market_scraper_service import (
     categorize_comments,
     delete_scrape,
     export_phrases_csv,
+    get_phrase_frequencies,
     get_scrape,
     list_scrapes,
     query_phrases,
@@ -292,3 +293,34 @@ async def export_scrape_csv(scrape_id: int):
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename=market_scrape_{scrape_id}.csv"},
     )
+
+
+@router.get("/phrase-frequency")
+async def get_phrase_frequency(
+    scrape_ids: Optional[str] = Query(None, description="Comma-separated scrape IDs (empty = all)"),
+    category: Optional[str] = Query(None, description="Filter by category"),
+    top_n: int = Query(50, ge=1, le=200, description="Number of top phrases to return"),
+    min_ngram: int = Query(2, ge=2, le=5, description="Min words per phrase"),
+    max_ngram: int = Query(4, ge=2, le=6, description="Max words per phrase"),
+):
+    """Get the most frequently used multi-word phrases across scraped comments.
+
+    Returns phrases ranked by frequency — the exact language your market uses.
+    Useful for ad copy, social media messaging, and understanding how real
+    people describe their problems.
+    """
+    parsed_ids: Optional[list[int]] = None
+    if scrape_ids:
+        try:
+            parsed_ids = [int(x.strip()) for x in scrape_ids.split(",") if x.strip()]
+        except ValueError:
+            raise HTTPException(status_code=400, detail="scrape_ids must be comma-separated integers")
+
+    results = get_phrase_frequencies(
+        scrape_ids=parsed_ids,
+        min_ngram=min_ngram,
+        max_ngram=max_ngram,
+        top_n=top_n,
+        category=category,
+    )
+    return {"phrases": results, "total": len(results)}

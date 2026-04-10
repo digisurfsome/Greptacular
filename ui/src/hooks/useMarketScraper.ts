@@ -59,3 +59,16 @@ export function useSearchAndScrape() {
     },
   })
 }
+
+export function usePhraseFrequency(params?: {
+  scrape_ids?: number[]
+  category?: string
+  top_n?: number
+}) {
+  return useQuery({
+    queryKey: ['market-scraper', 'phrase-frequency', params],
+    queryFn: () => api.getPhraseFrequency(params),
+    // Only fetch when there's at least one scrape to analyze
+    enabled: true,
+  })
+}

@@ -29,9 +29,10 @@ import {
   useDeleteScrape,
   useSearchOptions,
   useSearchAndScrape,
+  usePhraseFrequency,
 } from '@/hooks/useMarketScraper'
 import { exportScrape } from '@/lib/api'
-import type { MarketScrape, MarketScrapeDetail, MarketPhrase, MarketSearchOptions, MarketSearchResult } from '@/lib/types'
+import type { MarketScrape, MarketScrapeDetail, MarketPhrase, MarketSearchOptions, MarketSearchResult, MarketTopPhrase } from '@/lib/types'
 
 /** Category display configuration: label, Tailwind classes, and icon */
 const CATEGORY_CONFIG: Record<string, { label: string; color: string; bg: string; icon: typeof AlertTriangle }> = {
@@ -53,6 +54,7 @@ const FILTER_TABS = [
 
 type SortMode = 'score' | 'validation' | 'recent'
 type InputMode = 'url' | 'topic'
+type ResultsView = 'phrases' | 'top-phrases'
 
 export function MarketScraperPage() {
   // Input mode
@@ -81,6 +83,7 @@ export function MarketScraperPage() {
   const [activeScrapeId, setActiveScrapeId] = useState<number | null>(null)
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [sortMode, setSortMode] = useState<SortMode>('validation')
+  const [resultsView, setResultsView] = useState<ResultsView>('phrases')
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null)
 
@@ -92,6 +95,9 @@ export function MarketScraperPage() {
   const deleteScrape = useDeleteScrape()
   const { data: searchOptions } = useSearchOptions()
   const searchAndScrape = useSearchAndScrape()
+  const { data: phraseFreqData } = usePhraseFrequency(
+    activeScrapeId ? { scrape_ids: [activeScrapeId], top_n: 50 } : { top_n: 50 }
+  )
 
   const opts = searchOptions as MarketSearchOptions | undefined
   const defaultSubs: string[] = opts?.default_subreddits ?? []
@@ -608,62 +614,117 @@ export function MarketScraperPage() {
                 />
               </div>
 
-              {/* Filter Tabs + Sort Controls */}
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                <div className="flex flex-wrap gap-1">
-                  {FILTER_TABS.map((tab) => (
-                    <Button
-                      key={tab.key}
-                      variant={categoryFilter === tab.key ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => setCategoryFilter(tab.key)}
-                      className={`border-2 border-black text-xs ${
-                        categoryFilter === tab.key ? 'shadow-[2px_2px_0_0_#000]' : ''
-                      }`}
-                    >
-                      {tab.label}
-                      {tab.key !== 'all' && categoryCounts[tab.key] ? (
-                        <span className="ml-1 opacity-70">({categoryCounts[tab.key]})</span>
-                      ) : null}
-                    </Button>
-                  ))}
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-muted-foreground">Sort:</span>
-                  {([
-                    { key: 'score' as SortMode, label: 'Score', icon: <TrendingUp size={12} /> },
-                    { key: 'validation' as SortMode, label: 'Validation', icon: <Star size={12} /> },
-                    { key: 'recent' as SortMode, label: 'Recent', icon: <MessageSquare size={12} /> },
-                  ]).map((s) => (
-                    <Button
-                      key={s.key}
-                      variant={sortMode === s.key ? 'default' : 'ghost'}
-                      size="sm"
-                      onClick={() => setSortMode(s.key)}
-                      className="gap-1 text-xs"
-                    >
-                      {s.icon}
-                      {s.label}
-                    </Button>
-                  ))}
-                </div>
+              {/* Results View Toggle */}
+              <div className="mb-4 flex gap-2">
+                <Button
+                  variant={resultsView === 'phrases' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setResultsView('phrases')}
+                  className="gap-1.5 border-2 border-black shadow-[2px_2px_0_0_#000]"
+                >
+                  <MessageSquare size={14} />
+                  Individual Phrases
+                </Button>
+                <Button
+                  variant={resultsView === 'top-phrases' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setResultsView('top-phrases')}
+                  className="gap-1.5 border-2 border-black shadow-[2px_2px_0_0_#000]"
+                >
+                  <TrendingUp size={14} />
+                  Top Phrases
+                  {phraseFreqData?.total ? (
+                    <Badge variant="secondary" className="ml-1 text-[10px]">{phraseFreqData.total}</Badge>
+                  ) : null}
+                </Button>
               </div>
 
-              {/* Phrase Cards */}
-              {filteredPhrases.length === 0 ? (
-                <Card className="border-2 border-black p-8 text-center shadow-[4px_4px_0_0_#000]">
-                  <p className="text-muted-foreground">No phrases match the current filter.</p>
-                </Card>
-              ) : (
-                <div className="space-y-4">
-                  {filteredPhrases.map((phrase: MarketPhrase) => (
-                    <PhraseCard
-                      key={phrase.id}
-                      phrase={phrase}
-                      onCopy={copyToClipboard}
-                    />
-                  ))}
-                </div>
+              {/* TOP PHRASES VIEW */}
+              {resultsView === 'top-phrases' && (
+                <>
+                  <div className="mb-3 rounded border-2 border-black bg-[#f59e0b]/10 p-3 shadow-[2px_2px_0_0_#000]">
+                    <p className="text-sm font-bold">
+                      These are the exact phrases people repeat most — the language your market actually speaks.
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Ranked by frequency. Copy them directly into ad copy, landing pages, and social posts.
+                    </p>
+                  </div>
+                  {phraseFreqData?.phrases?.length ? (
+                    <div className="space-y-2">
+                      {phraseFreqData.phrases.map((tp: MarketTopPhrase, idx: number) => (
+                        <TopPhraseRow key={tp.phrase} phrase={tp} rank={idx + 1} onCopy={copyToClipboard} />
+                      ))}
+                    </div>
+                  ) : (
+                    <Card className="border-2 border-black p-8 text-center shadow-[4px_4px_0_0_#000]">
+                      <p className="text-muted-foreground">No phrase patterns found yet. Scrape more threads to build up data.</p>
+                    </Card>
+                  )}
+                </>
+              )}
+
+              {/* INDIVIDUAL PHRASES VIEW */}
+              {resultsView === 'phrases' && (
+                <>
+                  {/* Filter Tabs + Sort Controls */}
+                  <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap gap-1">
+                      {FILTER_TABS.map((tab) => (
+                        <Button
+                          key={tab.key}
+                          variant={categoryFilter === tab.key ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => setCategoryFilter(tab.key)}
+                          className={`border-2 border-black text-xs ${
+                            categoryFilter === tab.key ? 'shadow-[2px_2px_0_0_#000]' : ''
+                          }`}
+                        >
+                          {tab.label}
+                          {tab.key !== 'all' && categoryCounts[tab.key] ? (
+                            <span className="ml-1 opacity-70">({categoryCounts[tab.key]})</span>
+                          ) : null}
+                        </Button>
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-muted-foreground">Sort:</span>
+                      {([
+                        { key: 'score' as SortMode, label: 'Score', icon: <TrendingUp size={12} /> },
+                        { key: 'validation' as SortMode, label: 'Validation', icon: <Star size={12} /> },
+                        { key: 'recent' as SortMode, label: 'Recent', icon: <MessageSquare size={12} /> },
+                      ]).map((s) => (
+                        <Button
+                          key={s.key}
+                          variant={sortMode === s.key ? 'default' : 'ghost'}
+                          size="sm"
+                          onClick={() => setSortMode(s.key)}
+                          className="gap-1 text-xs"
+                        >
+                          {s.icon}
+                          {s.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Phrase Cards */}
+                  {filteredPhrases.length === 0 ? (
+                    <Card className="border-2 border-black p-8 text-center shadow-[4px_4px_0_0_#000]">
+                      <p className="text-muted-foreground">No phrases match the current filter.</p>
+                    </Card>
+                  ) : (
+                    <div className="space-y-4">
+                      {filteredPhrases.map((phrase: MarketPhrase) => (
+                        <PhraseCard
+                          key={phrase.id}
+                          phrase={phrase}
+                          onCopy={copyToClipboard}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </>
               )}
             </>
           )}
@@ -825,6 +886,113 @@ function PhraseCard({
             <p className="text-sm">{phrase.social_post_idea}</p>
           </div>
         </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function TopPhraseRow({
+  phrase,
+  rank,
+  onCopy,
+}: {
+  phrase: MarketTopPhrase
+  rank: number
+  onCopy: (text: string, label: string) => void
+}) {
+  const [expanded, setExpanded] = useState(false)
+
+  // Determine the dominant category for color-coding
+  const topCategory = Object.entries(phrase.categories)
+    .sort(([, a], [, b]) => b - a)[0]?.[0] ?? 'uncategorized'
+  const config = CATEGORY_CONFIG[topCategory]
+
+  // Bar width based on count relative to #1 (rank 1 = 100%)
+  const maxCount = rank === 1 ? phrase.count : phrase.count // parent handles normalization
+
+  return (
+    <Card
+      className="cursor-pointer border-2 border-black shadow-[3px_3px_0_0_#000] transition-all hover:shadow-[4px_4px_0_0_#000]"
+      onClick={() => setExpanded(!expanded)}
+    >
+      <CardContent className="p-3">
+        <div className="flex items-center gap-3">
+          {/* Rank number */}
+          <span className="w-8 text-center text-lg font-black text-muted-foreground">
+            #{rank}
+          </span>
+
+          {/* Phrase + bar */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-bold">&ldquo;{phrase.phrase}&rdquo;</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-5 w-5 p-0 shrink-0"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onCopy(phrase.phrase, 'Phrase')
+                }}
+                title="Copy phrase"
+              >
+                <Copy size={10} />
+              </Button>
+            </div>
+            {/* Frequency bar */}
+            <div className="mt-1 h-2 w-full rounded-full bg-muted/50 border border-black/10">
+              <div
+                className={`h-full rounded-full ${config?.bg ?? 'bg-primary'}`}
+                style={{ width: `${Math.min(100, (phrase.count / maxCount) * 100)}%`, opacity: 0.7 }}
+              />
+            </div>
+          </div>
+
+          {/* Count badge */}
+          <Badge
+            variant="outline"
+            className="border-2 border-black text-sm font-bold shrink-0"
+          >
+            {phrase.count}x
+          </Badge>
+
+          {/* Category badges */}
+          <div className="hidden md:flex gap-1 shrink-0">
+            {Object.entries(phrase.categories)
+              .sort(([, a], [, b]) => b - a)
+              .slice(0, 2)
+              .map(([cat, count]) => {
+                const c = CATEGORY_CONFIG[cat]
+                return c ? (
+                  <Badge key={cat} className={`${c.bg} ${c.color} border-0 text-[10px]`}>
+                    {c.label} ({count})
+                  </Badge>
+                ) : null
+              })}
+          </div>
+
+          <ChevronDown
+            size={14}
+            className={`text-muted-foreground transition-transform ${expanded ? 'rotate-180' : ''}`}
+          />
+        </div>
+
+        {/* Expanded: sample texts */}
+        {expanded && phrase.sample_texts.length > 0 && (
+          <div className="mt-3 border-t-2 border-black/10 pt-3 space-y-2">
+            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              Sample comments containing this phrase:
+            </p>
+            {phrase.sample_texts.map((sample, i) => (
+              <blockquote
+                key={i}
+                className="border-l-4 border-primary/30 bg-muted/30 py-1.5 pl-3 pr-2 text-xs italic text-muted-foreground"
+              >
+                &ldquo;{sample}&rdquo;
+              </blockquote>
+            ))}
+          </div>
+        )}
       </CardContent>
     </Card>
   )

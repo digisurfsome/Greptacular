@@ -62,6 +62,7 @@ These are research, brainstorming, or one-time documents. **Do NOT read them unl
 
 | Folder | What's Inside |
 |--------|-------------|
+| `research/` | **General research, strategy breakdowns, concept docs, non-page PRDs** — see [`research/README.md`](research/README.md) |
 | `agent-briefs/` | Agent briefing documents for specific tasks |
 | `agent-os-phases/` | Agent OS implementation phases |
 | `references/` | External reference materials |

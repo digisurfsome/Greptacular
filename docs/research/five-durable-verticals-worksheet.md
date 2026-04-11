@@ -2,6 +2,7 @@
 
 **Source:** YouTube video transcript — AI app builder landscape analysis
 **Core thesis:** AI commoditizes production. The companies and builders that survive own layers that production cannot replace. There are five such layers.
+**Applied analysis:** See [AutoForge Pipeline Strategy](autoforge-pipeline-strategy.md) — how the AutoForge pipeline maps against these five verticals.
 
 ---
 

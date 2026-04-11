@@ -18,3 +18,4 @@
 | File | What it covers |
 |------|---------------|
 | `five-durable-verticals-worksheet.md` | The 5 layers of value AI can't replace (trust, context, distribution, taste, liability) — agentic economy strategy |
+| `autoforge-pipeline-strategy.md` | AutoForge pipeline positioning against the five verticals — context continuity, distribution gap, compartmentalized growth, exit optionality |

@@ -126,3 +126,14 @@ Save to: `outputs/internal-linking/[client-name]-link-strategy-[date].md`
 ## Notes
 
 This is one of the highest-ROI SEO activities and most agencies do it manually or not at all. A proper internal linking strategy can move rankings significantly with zero new content creation.
+
+## Context Needs
+
+| Context File | What It Provides | When to Load |
+|-------------|-----------------|-------------|
+| `references/brand-context.md` → Content Strategy | Content pillars, blog URL | Always — defines the hub-and-spoke structure for linking |
+| `references/brand-context.md` → Products & Services | Main offerings | During link prioritization — ensure money pages get link equity |
+| `references/brand-context.md` → SEO Specifics | Target keywords | During anchor text optimization — align anchor text with ranking targets |
+
+**Without brand context:** Maps existing pages and suggests logical links.
+**With brand context:** Prioritizes links toward money pages and conversion targets, uses strategically chosen anchor text aligned with keyword targets, and structures the link graph around content pillars.

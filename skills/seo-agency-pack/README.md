@@ -23,11 +23,38 @@ Skills designed for SEO agencies using Claude Code. Each skill replaces or reduc
 
 Each skill folder contains:
 - `skill.md` - The main instruction file (drop into Claude Code skills directory)
+- `learnings.md` - Auto-populated insights from each run (Level 6 feedback loop)
 - `reference/` - Templates, examples, and supporting docs (where applicable)
+
+All 10 skills are **Level 4** (contextualized) with brand context references. Fill out `references/brand-context-template.md` once per client and every skill automatically personalizes output.
 
 ## Installation
 
-Copy the skill folders into your `.claude/skills/` directory or the Agentic OS skills folder.
+1. Copy `references/brand-context-template.md` → fill it out for the client → save as `references/brand-context.md`
+2. Copy the skill folders into your `.claude/skills/` directory or the Agentic OS skills folder
+3. Each skill's Context Needs section tells Claude when to load brand context
+
+## Skill Level Status
+
+| Level | Status | What It Means |
+|-------|--------|--------------|
+| Level 2: Properly Built | Done | Under 200 lines, proper YAML, progressive disclosure |
+| Level 4: Contextualized | Done | Brand context references wired into every skill |
+| Level 5: Evaluated | Next | Define eval criteria, run benchmarks |
+| Level 6: Self-Improving | Scaffolded | learnings.md in every skill, ready for feedback loops |
+| Level 7: Orchestrated | Planned | Cross-skill references documented in Notes sections |
+
+## Supporting Documents
+
+| Document | What It Covers |
+|----------|---------------|
+| `BUSINESS_PITCH_REPORT.md` | Discovery framework, pitch formulas, 5 core concepts for business owners |
+| `SKILL_BUILDING_LEVELS.md` | 7-level framework for building and assessing skills |
+| `AGENTIC_PATTERNS.md` | 5 patterns for running Claude Code, decision engine |
+| `SKILL_TEMPLATES.md` | Questionnaire system for customizing skills per business |
+| `REVENUE_STRATEGY.md` | Affiliate math, content calendar, full funnel strategy |
+| `TOS_COMPLIANCE.md` | What you can/can't sell, OpenClaw analysis, safe business models |
+| `sales-tools/` | Quick-win demos, ROI calculator, business assessment |
 
 ---
 

@@ -202,3 +202,15 @@ For agencies with multiple clients:
 1. Process each client's data in sequence
 2. Generate individual reports
 3. Produce an agency-level summary showing all clients' performance
+
+## Context Needs
+
+| Context File | What It Provides | When to Load |
+|-------------|-----------------|-------------|
+| `references/brand-context.md` | Business name, industry, team size | Always — personalizes report headers and context |
+| `references/brand-context.md` → Goals | Business goals, bottlenecks, 90-day success metrics | During recommendations — tie SEO progress to business outcomes |
+| `references/brand-context.md` → SEO Specifics | Target keywords, current rankings, analytics platform | During performance tracking and keyword sections |
+| `references/brand-context.md` → Voice & Tone | Tone words | During report writing — match tone to audience (technical team vs business owner) |
+
+**Without brand context:** Produces generic monthly SEO report with data tables.
+**With brand context:** Report speaks the client's language, ties metrics to their specific goals, and frames recommendations around their business priorities.

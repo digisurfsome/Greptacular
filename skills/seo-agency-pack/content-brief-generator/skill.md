@@ -138,6 +138,21 @@ For producing multiple briefs at once:
 
 ## Notes
 
+## Context Needs
+
+| Context File | What It Provides | When to Load |
+|-------------|-----------------|-------------|
+| `references/brand-context.md` | Business identity, products/services | Always — frames content angle and expertise |
+| `references/brand-context.md` → Voice & Tone | Tone words, vocabulary rules, example sentence | During outline creation and content direction |
+| `references/brand-context.md` → Target Audience | Customer type, pain points, how they find us | During audience targeting and CTA strategy |
+| `references/brand-context.md` → Content Strategy | Content pillars, publishing frequency, content goals | During brief framing and internal linking suggestions |
+| `references/brand-context.md` → Competition | Competitor URLs, differentiators | During competitive content analysis |
+
+**Without brand context:** Produces generic SEO-optimized briefs.
+**With brand context:** Briefs include brand voice direction, audience-specific angles, product tie-ins, and competitive differentiation baked in.
+
+## Notes
+
 Pairs with:
 - **Keyword Research** skill (feeds target keywords in)
 - **Meta Tag Optimizer** skill (refine titles/descriptions)

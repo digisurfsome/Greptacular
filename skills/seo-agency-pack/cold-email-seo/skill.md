@@ -239,3 +239,16 @@ This skill generates the STRATEGY and COPY. For actually sending emails at scale
 - SPF/DKIM/DMARC configured
 
 The value here is replacing the $97/mo template libraries and copywriting time, not the sending infrastructure itself.
+
+## Context Needs
+
+| Context File | What It Provides | When to Load |
+|-------------|-----------------|-------------|
+| `references/brand-context.md` → Identity | Business name, one-line description | Always — sender identity in email sequences |
+| `references/brand-context.md` → Products & Services | Offerings, price ranges, what we're known for | During offer positioning and proof point selection |
+| `references/brand-context.md` → Target Audience | Customer type, pain points, decision factors | During personalization framework and pain-based hooks |
+| `references/brand-context.md` → Competition | Key differentiator | During objection handling — "why us vs them" |
+| `references/brand-context.md` → Goals | #1 business goal, 90-day success metrics | During CTA and urgency framing |
+
+**Without brand context:** Produces generic cold email templates for SEO agencies.
+**With brand context:** Emails reference your actual services and pricing, use proof points from your real results, handle objections specific to your competitive position, and CTAs match your actual offer structure.

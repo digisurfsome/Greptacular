@@ -202,3 +202,16 @@ For businesses with multiple locations:
 2. Generate individual location plans
 3. Track citation build progress per location
 4. Identify shared vs. location-specific content needs
+
+## Context Needs
+
+| Context File | What It Provides | When to Load |
+|-------------|-----------------|-------------|
+| `references/brand-context.md` → Identity | Business name, location(s), year founded | Always — NAP consistency, GBP profile data |
+| `references/brand-context.md` → Products & Services | Offerings, price ranges | During GBP category and service optimization |
+| `references/brand-context.md` → Target Audience | Geographic focus, customer type | During service area definition and local content strategy |
+| `references/brand-context.md` → Competition | Local competitor names and URLs | During competitive local analysis and citation gap identification |
+| `references/brand-context.md` → Voice & Tone | Tone words, vocabulary | During review response template creation |
+
+**Without brand context:** Produces a generic local SEO checklist.
+**With brand context:** GBP audit uses real business details, citation strategy targets industry-specific directories, review responses match brand voice, and local landing pages are pre-filled with actual service areas and offerings.

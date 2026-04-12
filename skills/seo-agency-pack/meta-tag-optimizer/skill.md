@@ -120,3 +120,15 @@ Can process 100+ pages at once. Provide a CSV or list with columns:
 - Target Keyword
 
 Output: Optimized versions for all pages in a single deliverable.
+
+## Context Needs
+
+| Context File | What It Provides | When to Load |
+|-------------|-----------------|-------------|
+| `references/brand-context.md` → Identity | Business name, one-line description | Always — brand name inclusion in title tags |
+| `references/brand-context.md` → Voice & Tone | Tone words, vocabulary rules | During meta description writing — match brand voice in SERPs |
+| `references/brand-context.md` → Products & Services | Main offerings | During CTA and value prop inclusion in meta descriptions |
+| `references/brand-context.md` → Target Audience | Customer type, pain points | During CTR optimization — speak to searcher intent |
+
+**Without brand context:** Optimizes for SEO best practices only.
+**With brand context:** Title tags include brand name correctly, meta descriptions use brand voice, CTAs reference actual products/services, and descriptions speak to the target audience's specific pain points.

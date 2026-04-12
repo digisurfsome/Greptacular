@@ -142,6 +142,20 @@ Save to: `outputs/competitor-analysis/[client-name]-gap-analysis-[date].md`
 
 ## Notes
 
+## Context Needs
+
+| Context File | What It Provides | When to Load |
+|-------------|-----------------|-------------|
+| `references/brand-context.md` | Business identity, one-line description | Always — defines what "our content" covers |
+| `references/brand-context.md` → Competition | Competitor names, URLs, strengths | Always — these ARE the competitors being analyzed |
+| `references/brand-context.md` → SEO Specifics | Current rankings, target keywords, domain authority | During gap scoring — assess realistic difficulty |
+| `references/brand-context.md` → Content Strategy | Content pillars, topics to avoid | During opportunity filtering — skip gaps outside content pillars |
+
+**Without brand context:** Compares generic content coverage between sites.
+**With brand context:** Identifies gaps specifically relevant to the client's niche, filters out irrelevant competitor content, and scores opportunities against the client's actual ranking ability.
+
+## Notes
+
 Pairs with:
 - **Keyword Research** skill (cross-reference keyword gaps)
 - **Content Brief Generator** skill (turn top gaps into briefs immediately)

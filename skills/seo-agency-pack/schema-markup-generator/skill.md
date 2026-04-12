@@ -142,3 +142,14 @@ For generating schema across a site:
 ## Notes
 
 This replaces the need for schema plugins on most platforms. The agency generates the markup, the client's dev pastes it in. Or if the client is on WordPress, provide the custom schema field instructions for their SEO plugin.
+
+## Context Needs
+
+| Context File | What It Provides | When to Load |
+|-------------|-----------------|-------------|
+| `references/brand-context.md` → Identity | Business name, website, location, year founded | Always — populates Organization and LocalBusiness schema fields |
+| `references/brand-context.md` → Products & Services | Offerings, price ranges | During Product/Service schema generation |
+| `references/brand-context.md` → Target Audience | Geographic focus | During LocalBusiness and service area schema |
+
+**Without brand context:** Generates schema templates with placeholder values.
+**With brand context:** Pre-fills business name, address, URLs, price ranges, and service areas directly into the JSON-LD output. Client gets copy-paste-ready markup.

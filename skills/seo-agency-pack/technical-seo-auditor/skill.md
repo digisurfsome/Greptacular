@@ -165,3 +165,14 @@ Save to: `outputs/technical-audits/[client-name]-audit-[date].md`
 ## Notes
 
 This produces the REPORT, not the crawl itself. For the actual crawl data, the agency still needs Screaming Frog or similar. This skill turns raw crawl data into a client-ready deliverable in minutes instead of hours.
+
+## Context Needs
+
+| Context File | What It Provides | When to Load |
+|-------------|-----------------|-------------|
+| `references/brand-context.md` | Business name, website URL, industry | Always — personalizes the report header and recommendations |
+| `references/brand-context.md` → SEO Specifics | Domain authority, analytics platform, GSC access | During audit scoping and data source identification |
+| `references/brand-context.md` → Goals | Business goals, bottlenecks | During priority scoring — align fix priorities with business goals |
+
+**Without brand context:** Produces a generic technical audit checklist.
+**With brand context:** Prioritizes fixes based on the client's specific goals, references their tech stack, and frames recommendations in language appropriate for the report audience (technical team vs business owner).

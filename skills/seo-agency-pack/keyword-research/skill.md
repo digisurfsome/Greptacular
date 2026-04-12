@@ -106,6 +106,18 @@ Before delivering:
 - [ ] Content calendar is realistic (not 50 posts in month 1)
 - [ ] Quick wins are genuinely low competition (check SERPs if possible)
 
+## Context Needs
+
+| Context File | What It Provides | When to Load |
+|-------------|-----------------|-------------|
+| `references/brand-context.md` | Business identity, target audience, geographic focus | Always — shapes keyword intent and audience targeting |
+| `references/brand-context.md` → SEO Specifics | Existing rankings, target keywords, domain authority | During seed expansion and priority scoring |
+| `references/brand-context.md` → Competition | Competitor URLs and differentiators | During gap identification and competitive keyword discovery |
+| `references/brand-context.md` → Content Strategy | Content pillars, topics to avoid | During cluster mapping and calendar creation |
+
+**Without brand context:** Produces generic keyword research for the industry.
+**With brand context:** Targets the client's specific audience, avoids irrelevant keywords, prioritizes based on their competitive position and goals.
+
 ## Notes
 
 This skill works best when combined with:

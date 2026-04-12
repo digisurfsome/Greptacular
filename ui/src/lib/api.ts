@@ -101,6 +101,8 @@ import type {
   MarketSearchOptions,
   MarketSearchResult,
   MarketPhraseFrequencyResult,
+  ResearchProject,
+  AngleTypeInfo,
 } from './types'
 
 const API_BASE = '/api'
@@ -3389,4 +3391,85 @@ export async function getPhraseFrequency(params?: {
   if (params?.category) query.set('category', params.category)
   if (params?.top_n) query.set('top_n', String(params.top_n))
   return fetchJSON<MarketPhraseFrequencyResult>(`/market-scraper/phrase-frequency?${query}`)
+}
+
+// Research Projects
+// ---------------------------------------------------------------------------
+
+export async function getAngleTypes(): Promise<{ angle_types: Record<string, AngleTypeInfo> }> {
+  return fetchJSON<{ angle_types: Record<string, AngleTypeInfo> }>('/market-scraper/angle-types')
+}
+
+export async function createResearchProject(data: {
+  name: string
+  niche: string
+  description?: string
+  angles?: { type: string; custom_keywords?: string }[]
+}): Promise<ResearchProject> {
+  return fetchJSON<ResearchProject>('/market-scraper/projects', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+}
+
+export async function getResearchProjects(): Promise<ResearchProject[]> {
+  return fetchJSON<ResearchProject[]>('/market-scraper/projects')
+}
+
+export async function getResearchProject(id: number): Promise<ResearchProject> {
+  return fetchJSON<ResearchProject>(`/market-scraper/projects/${id}`)
+}
+
+export async function updateResearchProject(id: number, data: {
+  name?: string
+  niche?: string
+  description?: string
+}): Promise<ResearchProject> {
+  return fetchJSON<ResearchProject>(`/market-scraper/projects/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+}
+
+export async function deleteResearchProject(id: number): Promise<void> {
+  return fetchJSON<void>(`/market-scraper/projects/${id}`, { method: 'DELETE' })
+}
+
+export async function addProjectAngle(projectId: number, data: {
+  angle_type: string
+  custom_keywords?: string
+}): Promise<ResearchProject> {
+  return fetchJSON<ResearchProject>(`/market-scraper/projects/${projectId}/angles`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+}
+
+export async function deleteProjectAngle(angleId: number): Promise<void> {
+  return fetchJSON<void>(`/market-scraper/angles/${angleId}`, { method: 'DELETE' })
+}
+
+export async function runProjectAngle(angleId: number, data?: {
+  max_threads?: number
+  subreddits?: string[]
+}): Promise<{ angle_id: number; queries_run: number; scrape_ids: number[]; total_phrases: number }> {
+  return fetchJSON<{ angle_id: number; queries_run: number; scrape_ids: number[]; total_phrases: number }>(`/market-scraper/angles/${angleId}/run`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data ?? {}),
+  })
+}
+
+export async function runAllProjectAngles(projectId: number, data?: {
+  max_threads?: number
+  subreddits?: string[]
+}): Promise<{ project_id: number; results: unknown[] }> {
+  return fetchJSON<{ project_id: number; results: unknown[] }>(`/market-scraper/projects/${projectId}/run-all`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data ?? {}),
+  })
 }

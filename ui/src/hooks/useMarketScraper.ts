@@ -72,3 +72,70 @@ export function usePhraseFrequency(params?: {
     enabled: true,
   })
 }
+
+// Research Project hooks
+// ---------------------------------------------------------------------------
+
+export function useAngleTypes() {
+  return useQuery({
+    queryKey: ['market-scraper', 'angle-types'],
+    queryFn: api.getAngleTypes,
+  })
+}
+
+export function useResearchProjects() {
+  return useQuery({
+    queryKey: ['market-scraper', 'projects'],
+    queryFn: api.getResearchProjects,
+  })
+}
+
+export function useResearchProject(id: number | null) {
+  return useQuery({
+    queryKey: ['market-scraper', 'project', id],
+    queryFn: () => api.getResearchProject(id!),
+    enabled: id !== null,
+  })
+}
+
+export function useCreateProject() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: api.createResearchProject,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['market-scraper', 'projects'] })
+    },
+  })
+}
+
+export function useDeleteProject() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => api.deleteResearchProject(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['market-scraper', 'projects'] })
+    },
+  })
+}
+
+export function useRunAngle() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ angleId, data }: { angleId: number; data?: { max_threads?: number; subreddits?: string[] } }) =>
+      api.runProjectAngle(angleId, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['market-scraper'] })
+    },
+  })
+}
+
+export function useRunAllAngles() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ projectId, data }: { projectId: number; data?: { max_threads?: number; subreddits?: string[] } }) =>
+      api.runAllProjectAngles(projectId, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['market-scraper'] })
+    },
+  })
+}

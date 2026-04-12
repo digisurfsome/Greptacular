@@ -2165,3 +2165,34 @@ export interface MarketPhraseFrequencyResult {
   phrases: MarketTopPhrase[]
   total: number
 }
+
+// Research Projects
+export interface ResearchProject {
+  id: number
+  name: string
+  niche: string
+  description: string
+  status: 'draft' | 'running' | 'complete'
+  created_at: string
+  updated_at: string
+  angle_count: number
+  total_phrases: number
+  angles?: ProjectAngle[]
+}
+
+export interface ProjectAngle {
+  id: number
+  project_id: number
+  angle_type: string
+  custom_keywords: string
+  status: 'pending' | 'running' | 'complete' | 'error'
+  search_queries: string[]
+  scrape_ids: number[]
+  total_phrases: number
+  created_at: string
+}
+
+export interface AngleTypeInfo {
+  label: string
+  description: string
+}

@@ -1458,3 +1458,127 @@ function TopPhraseRow({
     </Card>
   )
 }
+
+/** Angle card used in the project detail view */
+function AngleCard({
+  angle,
+  angleTypes,
+  onRun,
+  isRunning,
+  onViewScrape,
+}: {
+  angle: ProjectAngle
+  angleTypes: Record<string, AngleTypeInfo> | undefined
+  onRun: (angleId: number) => void
+  isRunning: boolean
+  onViewScrape: (scrapeId: number) => void
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const config = ANGLE_TYPE_CONFIG[angle.angle_type]
+  const Icon = config?.icon ?? Target
+  const info = angleTypes?.[angle.angle_type]
+  const statusBadge = STATUS_BADGE[angle.status] ?? STATUS_BADGE.pending
+
+  return (
+    <Card
+      className="border-2 border-black shadow-[3px_3px_0_0_#000] transition-all hover:shadow-[4px_4px_0_0_#000]"
+    >
+      <CardContent className="p-4">
+        <div className="flex items-center gap-3">
+          {/* Angle type icon + label */}
+          <div className={`flex h-10 w-10 items-center justify-center rounded border-2 border-black ${config?.bg ?? 'bg-gray-200'}`}>
+            <Icon size={20} className={config?.color ?? 'text-black'} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-bold">{info?.label ?? angle.angle_type}</span>
+              <Badge className={`border text-[10px] ${statusBadge.className}`}>
+                {statusBadge.label}
+              </Badge>
+            </div>
+            {angle.custom_keywords && (
+              <p className="mt-0.5 text-xs text-muted-foreground">Keywords: {angle.custom_keywords}</p>
+            )}
+          </div>
+
+          {/* Phrase count */}
+          <Badge variant="outline" className="border-2 border-black text-sm font-bold">
+            {angle.total_phrases} phrases
+          </Badge>
+
+          {/* Run button */}
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 border-2 border-black shadow-[2px_2px_0_0_#000]"
+            onClick={() => onRun(angle.id)}
+            disabled={isRunning || angle.status === 'running'}
+          >
+            {angle.status === 'running' || isRunning ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : angle.status === 'complete' ? (
+              <Check size={14} className="text-[#22c55e]" />
+            ) : (
+              <Play size={14} />
+            )}
+            {angle.status === 'complete' ? 'Re-run' : 'Run'}
+          </Button>
+
+          {/* Expand toggle */}
+          <button
+            className="text-muted-foreground transition-transform"
+            onClick={() => setExpanded(!expanded)}
+          >
+            <ChevronDown size={16} className={expanded ? 'rotate-180' : ''} />
+          </button>
+        </div>
+
+        {/* Expanded details: search queries and scrape links */}
+        {expanded && (
+          <div className="mt-4 border-t-2 border-black/10 pt-3 space-y-3">
+            {angle.search_queries.length > 0 && (
+              <div>
+                <p className="mb-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  Generated Search Queries
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {angle.search_queries.map((q, i) => (
+                    <Badge key={i} variant="outline" className="border border-black text-xs">
+                      {q}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+            {angle.scrape_ids.length > 0 && (
+              <div>
+                <p className="mb-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  Linked Scrapes
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {angle.scrape_ids.map((sid) => (
+                    <Button
+                      key={sid}
+                      variant="outline"
+                      size="sm"
+                      className="gap-1 border-2 border-black text-xs"
+                      onClick={() => onViewScrape(sid)}
+                    >
+                      <BookOpen size={12} />
+                      Scrape #{sid}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {angle.search_queries.length === 0 && angle.scrape_ids.length === 0 && (
+              <p className="text-xs text-muted-foreground italic">
+                Run this angle to generate search queries and gather data.
+              </p>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}

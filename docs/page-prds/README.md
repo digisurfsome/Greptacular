@@ -19,6 +19,7 @@ Organized PRD storage for each AutoForge UI page. When you want to improve a spe
 | `seo-tools/` | SEOToolsPage.tsx | SEO optimization tools |
 | `token-budget/` | TokenBudgetPage.tsx | Token budget management |
 | `tool-runner/` | ToolRunnerPage.tsx | Tool execution runner |
+| `market-scraper/` | MarketScraperPage.tsx | Reddit market scraper — pain points, ad copy, phrase frequency, research projects |
 | `component-dashboard/` | ComponentDashboardPage.tsx | Component overview dashboard |
 | `prd-maker/` | (planned) | PRD Maker — 10-stage pipeline turning app rants into buildable specs |
 

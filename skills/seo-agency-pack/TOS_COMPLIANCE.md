@@ -1,8 +1,61 @@
 # TOS Compliance Analysis: What You Can and Can't Sell
 
 > **Last Updated:** April 12, 2026
-> **Sources:** Anthropic Terms of Service, Claude Code Legal & Compliance docs, OpenClaw enforcement actions
+> **Sources:** Anthropic Terms of Service, Claude Code Legal & Compliance docs, Agent SDK docs, OpenClaw enforcement actions
 > **Status:** ACTIONABLE — clear rules now exist
+
+---
+
+## The Two Paths: What OpenClaw Did vs What the SDK Does
+
+**This is the critical distinction.** OpenClaw and AutoForge are NOT in the same category.
+
+### What OpenClaw Did (BANNED)
+
+OpenClaw **"reverse-engineered or intercepted the communication between a browser session and Claude.ai's backend, then re-exposed that connection as something your own tools could call."**
+
+> Source: [MindStudio analysis](https://www.mindstudio.ai/blog/anthropic-openclaw-ban-third-party-harnesses-claude-subscriptions)
+
+It exploited session-based authentication — browser fingerprints, cookies, behavioral signals — to pretend to BE Claude.ai. It spoofed the headers. It routed subscription tokens through unauthorized third-party interfaces.
+
+Anthropic engineer Thariq Shihipar:
+> "Third-party harnesses using Claude subscriptions create problems for users and are prohibited by our Terms of Service. **They generate unusual traffic patterns without any of the usual telemetry that the Claude Code harness provides.**"
+> — Source: [The Register, Feb 2026](https://www.theregister.com/2026/02/20/anthropic_clarifies_ban_third_party_claude_access/)
+
+### What the Agent SDK Does (ALLOWED — Anthropic Built It For This)
+
+The Agent SDK is Anthropic's official product for building custom applications. From their own docs:
+
+> "Build AI agents that autonomously read files, run commands, search the web, edit code, and more. The Agent SDK gives you the same tools, agent loop, and context management that power Claude Code, **programmable in Python and TypeScript.**"
+> — Source: [Agent SDK Overview](https://code.claude.com/docs/en/agent-sdk/overview)
+
+Authentication is via API keys:
+```bash
+export ANTHROPIC_API_KEY=your-api-key
+```
+
+The SDK explicitly supports building products for customers:
+> "Use of the Claude Agent SDK is governed by Anthropic's Commercial Terms of Service, **including when you use it to power products and services that you make available to your own customers and end users.**"
+> — Source: [Agent SDK Overview](https://code.claude.com/docs/en/agent-sdk/overview), License section
+
+The SDK even has a comparison table showing it's DESIGNED for custom apps:
+
+| Use case | Best choice |
+|----------|------------|
+| Interactive development | CLI |
+| CI/CD pipelines | SDK |
+| **Custom applications** | **SDK** |
+| Production automation | SDK |
+
+### The Auth Rule (Why The Distinction Matters)
+
+> "**Unless previously approved, Anthropic does not allow third party developers to offer claude.ai login or rate limits for their products, including agents built on the Claude Agent SDK. Please use the API key authentication methods described in this document instead.**"
+> — Source: [Agent SDK Overview](https://code.claude.com/docs/en/agent-sdk/overview), Step 2 setup note
+
+This means:
+- **Using API keys to build a product** → ALLOWED, encouraged, designed for this
+- **Using subscription OAuth in a product** → NOT ALLOWED
+- **Spoofing browser sessions** → ABSOLUTELY NOT ALLOWED (what OpenClaw did)
 
 ---
 
@@ -10,19 +63,59 @@
 
 ### What Happened
 
-On April 4, 2026, Anthropic blocked all third-party tools from using Claude subscription OAuth tokens. This affected:
-- **OpenClaw** — AI agent framework (WhatsApp, Telegram, Slack, Discord, Teams)
-- **NanoClaw** — Similar third-party agent tool
-- **OpenCode** — Community-developed coding assistant
-- **Any non-official tool** using subscription OAuth authentication
+On April 4, 2026, Anthropic blocked third-party tools from using Claude subscription OAuth tokens. Affected:
+- **OpenClaw** — reverse-engineered Claude.ai browser sessions
+- **NanoClaw** — similar approach
+- **OpenCode** — removed Claude subscription support after "Anthropic legal requests"
+- **Any tool** routing subscription OAuth on behalf of users
 
-~135,000 OpenClaw instances were running at the time. Users faced cost increases up to **50x** their previous monthly bill.
+~135,000 OpenClaw instances were running. Users faced cost increases up to **50x** (from $200/mo subscription to $1,000-$5,000/mo API costs).
 
 ### Why It Happened
 
-Anthropic's stated reason: "Subscriptions weren't built for the usage patterns of these third-party tools." The real issue was **token arbitrage** — people running $1,000-$5,000 worth of compute through a $200/month subscription via third-party wrappers.
+1. **Token arbitrage** — running $1,000-$5,000 of compute through a $200/mo subscription
+2. **Header spoofing** — pretending to be official Claude.ai clients
+3. **No telemetry** — generating traffic patterns without Claude Code's standard telemetry
+4. **Capacity strain** — "Capacity is a resource we manage thoughtfully"
 
-OpenClaw's creator Peter Steinberger joined OpenAI on Feb 14, 2026. Anthropic's restrictions came within weeks. His account was temporarily suspended on April 10 for "suspicious activity" (reinstated within hours after it went viral).
+OpenClaw's creator Peter Steinberger joined OpenAI on Feb 14, 2026. Enforcement came within weeks. His account was temporarily suspended April 10 (reinstated hours later after going viral).
+
+---
+
+## AutoForge: WHY It's Different
+
+AutoForge uses the Claude Agent SDK with API key authentication. This is fundamentally different from OpenClaw:
+
+| Factor | OpenClaw | AutoForge |
+|--------|----------|-----------|
+| **Authentication** | Spoofed browser sessions/OAuth | API keys (official method) |
+| **SDK** | None — reverse-engineered Claude.ai | Official Claude Agent SDK |
+| **Telemetry** | "Unusual traffic patterns" | Standard SDK telemetry |
+| **Anthropic's stance** | Banned, accounts suspended | SDK designed for this exact use case |
+| **Commercial Terms** | Violated Consumer TOS | Covered under Commercial TOS |
+| **Branding** | Impersonated Claude.ai | Own branding (AutoForge) |
+
+### What AutoForge Does Right
+1. Uses **API keys** — the authentication method Anthropic tells developers to use
+2. Uses the **official SDK** — not a reverse-engineered hack
+3. Provides its own **UI/branding** — doesn't pretend to be Claude Code
+4. Each user provides **their own API key** — no credential routing
+5. Adds value through the **dashboard layer** — same tools, better interface
+
+### The Branding Rules (From SDK Docs)
+
+**Allowed:**
+- "Claude Agent" (for dropdown menus)
+- "Claude" (within a menu already labeled "Agents")
+- "{YourAgentName} Powered by Claude" → "AutoForge Powered by Claude"
+
+**Not permitted:**
+- "Claude Code" or "Claude Code Agent"
+- Claude Code-branded ASCII art or visuals that mimic Claude Code
+
+> Source: [Agent SDK Overview](https://code.claude.com/docs/en/agent-sdk/overview), Branding section
+
+AutoForge has its own branding. No issue here.
 
 ---
 
@@ -35,171 +128,115 @@ From [Claude Code Legal & Compliance](https://code.claude.com/docs/en/legal-and-
 | Auth Method | Who It's For | Allowed Use |
 |------------|-------------|-------------|
 | **OAuth tokens** | Subscribers (Free/Pro/Max/Team/Enterprise) | ONLY for native Anthropic apps: Claude.ai, Claude Code, Claude Desktop, Claude Cowork |
-| **API keys** | Developers building products/services | Third-party tools, Agent SDK apps, commercial products |
+| **API keys** | Developers building products/services | Third-party tools, Agent SDK apps, **commercial products for your own customers** |
 
-**The hard rule:** "Anthropic does not permit third-party developers to offer Claude.ai login or to route requests through Free, Pro, or Max plan credentials on behalf of their users."
-
-### What's Still Allowed on Subscriptions
+### What's Allowed on Subscriptions (OAuth)
 
 - Claude.ai (web interface)
 - Claude Code (official CLI)
 - Claude Desktop (desktop client)
 - Claude Cowork (team collaboration)
-- Skills within Claude Code (they're just markdown files Claude reads)
-- Agent SDK usage with subscription auth for **personal/ordinary use**
+- Skills within Claude Code (just markdown files)
+- Personal/ordinary Agent SDK usage
 
 ### What Requires API Keys
 
-- Any product or service you BUILD for others
-- Agent SDK usage in commercial products
-- Anything that routes requests through your credentials on behalf of users
-- Any wrapper, dashboard, or tool that sits between users and Claude
+- Products you build for others (like AutoForge)
+- Agent SDK in commercial products
+- Any tool that serves multiple users
+- Custom dashboards and UIs
 
 ---
 
-## What This Means for Our Business Models
+## Business Models: Compliance Status
 
-### Model 1: Selling Skills/Frameworks (SAFE)
+### Model 1: Selling Skills/Frameworks (SAFE — No Auth Involved)
 
-**What it is:** Selling markdown files (skill.md), reference docs, templates, brand context files.
+Skills are markdown files. They don't route API calls, act as intermediary, or access Claude in any non-standard way. Customer installs them in their own Claude Code using their own subscription or API key.
 
-**TOS Status: COMPLIANT**
+**Pricing:** $200-$500 per skill, $750-$1,000 for packs, $2,000-$3,000 for orchestrated systems.
 
-Skills are just text files. They don't:
-- Route API calls through anyone's credentials
-- Act as a wrapper or intermediary
-- Require any special authentication
-- Access Claude in any non-standard way
+### Model 2: Setup & Training Service (SAFE — Customer's Own Auth)
 
-The customer installs them in their own Claude Code instance, using their own subscription or API key. This is identical to selling a recipe book — you're selling knowledge and structure, not access.
+Configuring a client's own Claude Code instance. You're working on THEIR computer with THEIR subscription. Standard consulting work.
 
-**Pricing:** $200-$500 per skill, $750-$1,000 for contextualized packs, $2,000-$3,000 for full orchestrated systems.
+**Pricing:** $500-$1,000 one-time, $200-$500/mo ongoing.
 
-### Model 2: Setup & Training Service (SAFE)
+### Model 3: Affiliate Marketing (SAFE — No TOS Implications)
 
-**What it is:** Configuring a client's own Claude Code instance — installing skills, building brand context files, training their team.
+Referring people to Caleb's group (Agentic Academy) for 40% commission ($30/mo recurring). Standard affiliate marketing.
 
-**TOS Status: COMPLIANT**
+### Model 4: Dashboard/Product Built on Agent SDK (SAFE — With API Keys)
 
-You're working on THEIR computer, with THEIR subscription. This is consulting/services work. No different from an IT consultant setting up someone's Microsoft Office.
+This is AutoForge's category. The Agent SDK is designed for this:
 
-**Pricing:** $500-$1,000 one-time setup, $200-$500/mo ongoing tuning.
+> "Use of the Claude Agent SDK is governed by Anthropic's Commercial Terms of Service, including when you use it to power products and services that you make available to your own customers and end users."
 
-### Model 3: Affiliate Marketing (SAFE)
+Requirements:
+- Must use API key authentication (not subscription OAuth)
+- Must not pretend to be Claude Code (own branding)
+- Users bring their own API keys or you use your own (paid per token)
 
-**What it is:** Referring people to Caleb's group (Agentic Academy) for 40% commission ($30/mo recurring).
+**Cost note:** API key usage costs more than subscription. But this is the legitimate path and Anthropic explicitly supports it.
 
-**TOS Status: COMPLIANT**
+### Model 5: "Free Dashboard + Paid Internals" (SAFE)
 
-Standard affiliate marketing. No TOS implications — you're just referring people to a legitimate product. The group is Caleb's responsibility to keep compliant.
-
-**Pricing:** $30/mo per signup, recurring.
-
-### Model 4: Selling a Dashboard/Wrapper (RISKY → REQUIRES API KEYS)
-
-**What it is:** Building and selling a UI that wraps Claude Code functionality.
-
-**TOS Status: ONLY COMPLIANT WITH API KEY AUTH**
-
-If you build a dashboard:
-- It CANNOT use OAuth/subscription tokens on behalf of users
-- Users MUST authenticate via their own API keys
-- You CANNOT route requests through your own credentials
-- You MUST use API key authentication, not subscription auth
-
-**The cost problem:** API key usage costs ~7x more than subscription. A $200/mo subscription workload becomes $1,000-$1,400/mo on API keys. This fundamentally changes the economics of selling a wrapper product.
-
-**The Caleb question:** If Caleb's dashboard uses subscription OAuth on behalf of users, it's in the same crosshairs as OpenClaw. If it uses API keys, it's compliant but expensive. This is THE question to answer when you get access tomorrow.
-
-### Model 5: "Free Dashboard + Paid Internals" (MOSTLY SAFE)
-
-**What it is:** Give away a basic dashboard (or just help them use Claude Code directly), sell the skills/frameworks/brand context that make it powerful.
-
-**TOS Status: COMPLIANT IF...**
-- The "free dashboard" is just Claude Code itself (not a wrapper)
-- OR the dashboard uses API key auth (not subscription OAuth)
-- The "paid internals" are just skill files, reference docs, templates
-
-**This is the safest commercial model.** You're not building a wrapper. You're selling the knowledge layer that makes Claude Code actually useful for a specific business. The customer uses their own Claude Code installation.
+Give people the dashboard (or just Claude Code itself), sell the skills/frameworks that make it powerful. Safest model because you're selling knowledge, not compute.
 
 ---
 
 ## Decision Matrix
 
-| Business Activity | Auth Needed | TOS Risk | Revenue Potential |
-|------------------|-------------|----------|-------------------|
-| Sell skill packs (markdown files) | None — customer's own | NONE | $200-$3,000 per sale |
-| Setup & training service | Customer's own sub | NONE | $500-$1,000/client |
-| Affiliate referrals | N/A | NONE | $30/mo recurring |
-| YouTube content + bonuses | N/A | NONE | Ad revenue + affiliate |
-| Cold email service | Your own tools | NONE | $500-$2,000/mo |
-| Build a dashboard (API keys) | API keys only | LOW | High but expensive |
-| Build a dashboard (subscription) | OAuth tokens | HIGH — BANNED | N/A — don't do this |
-| Route requests for users | Your credentials | HIGH — BANNED | N/A — don't do this |
+| Business Activity | Auth Method | TOS Status | Notes |
+|------------------|------------|------------|-------|
+| Sell skill packs (markdown files) | None needed | **SAFE** | Just text files |
+| Setup & training service | Customer's own | **SAFE** | Consulting work |
+| Affiliate referrals | N/A | **SAFE** | Standard affiliate |
+| YouTube content + bonuses | N/A | **SAFE** | Content business |
+| Cold email service | Your own tools | **SAFE** | Service business |
+| AutoForge (SDK + API keys) | API keys | **SAFE** | Explicitly supported by SDK docs |
+| Dashboard with API keys | API keys | **SAFE** | SDK designed for this |
+| Dashboard with subscription OAuth | OAuth tokens | **BANNED** | What OpenClaw did |
+| Spoofing browser sessions | None/stolen | **BANNED** | Illegal, accounts suspended |
 
 ---
 
-## The Safe Business Stack
+## Simon's Dashboard — Still Unknown
 
-```
-Revenue Layer 1: Content (YouTube + 8 platforms)
-  → Drives affiliate signups ($30/mo recurring)
-  → Drives skill pack sales ($200-$3,000)
-  → Builds authority for service sales
+Simon's Agentic OS dashboard — we don't know how it authenticates yet. When you get access, check:
 
-Revenue Layer 2: Skill Packs (Digital Products)
-  → SEO Agency Pack (10+ skills): $500-$1,000
-  → Custom skill creation: $200-$500 each
-  → Ongoing skill updates: $200-$500/mo
+1. Does it ask for an API key? → **Safe** (same as AutoForge)
+2. Does it use your Claude subscription login? → **Risky** (same category as OpenClaw)
+3. Does it use its own API key on your behalf? → **Fine for Simon** but he's paying per-token
 
-Revenue Layer 3: Services (Consulting)
-  → Setup & configuration: $500-$1,000
-  → Brand context building: included in setup
-  → Team training: included or $500 add-on
-  → Monthly optimization: $200-$500/mo
-
-Revenue Layer 4: Cold Email (Lead Gen)
-  → For yourself: drives all above
-  → As a service for clients: $500-$2,000/mo
-```
-
-**What's NOT in the stack:** Wrapping Claude's API, routing subscription tokens, building a competing interface, reselling Claude access. Stay away from the access layer entirely. Sell knowledge, not compute.
+This determines whether his dashboard is sustainable and whether the affiliate strategy holds up long-term.
 
 ---
 
-## Key Quotes from Anthropic
+## Key Quotes (With Sources)
 
-> "Anthropic does not permit third-party developers to offer Claude.ai login or to route requests through Free, Pro, or Max plan credentials on behalf of their users."
-> — Claude Code Legal & Compliance
+> "Unless previously approved, Anthropic does not allow third party developers to offer claude.ai login or rate limits for their products, including agents built on the Claude Agent SDK. Please use the API key authentication methods described in this document instead."
+> — [Agent SDK Overview](https://code.claude.com/docs/en/agent-sdk/overview)
 
-> "Advertised usage limits for Pro and Max plans assume ordinary, individual usage of Claude Code and the Agent SDK."
-> — Claude Code Legal & Compliance
+> "Use of the Claude Agent SDK is governed by Anthropic's Commercial Terms of Service, including when you use it to power products and services that you make available to your own customers and end users."
+> — [Agent SDK Overview](https://code.claude.com/docs/en/agent-sdk/overview)
 
-> "Subscriptions weren't built for the usage patterns of these third-party tools."
+> "Third-party harnesses using Claude subscriptions create problems for users and are prohibited by our Terms of Service. They generate unusual traffic patterns without any of the usual telemetry that the Claude Code harness provides."
+> — Thariq Shihipar, Anthropic engineer, [The Register](https://www.theregister.com/2026/02/20/anthropic_clarifies_ban_third_party_claude_access/)
+
+> "Subscriptions weren't built for the usage patterns of these third-party tools. Capacity is a resource we manage thoughtfully."
 > — Anthropic Head of Claude Code, April 2026
 
-> "Anthropic reserves the right to take measures to enforce these restrictions and may do so without prior notice."
-> — Claude Code Legal & Compliance
-
----
-
-## AutoForge Implications
-
-AutoForge (your project) uses Claude Agent SDK with a React UI. Key questions:
-
-1. **How does it authenticate?** If it uses subscription OAuth on behalf of users → at risk. If it uses API keys → safe.
-2. **Who are the users?** If it's just you using your own subscription → fine (ordinary personal use). If it's a product others log into → must use API keys.
-3. **Does it route requests?** If it proxies Claude calls through your server → must use API keys, not subscription tokens.
-
-**Safe path for AutoForge:** Use API key authentication. Let users bring their own API keys. The UI layer is fine — it's the auth method that matters.
+> "[OpenClaw] reverse-engineered or intercepted the communication between a browser session and Claude.ai's backend, then re-exposed that connection as something your own tools could call"
+> — [MindStudio](https://www.mindstudio.ai/blog/anthropic-openclaw-ban-third-party-harnesses-claude-subscriptions)
 
 ---
 
 ## Action Items
 
-- [ ] Check Caleb's dashboard auth method when you get access (OAuth vs API key)
-- [ ] If OAuth → his product is at risk, adjust your affiliate strategy accordingly
+- [ ] Check Simon's dashboard auth method when you get access (API key vs OAuth)
+- [ ] If OAuth → his product is at risk long-term, factor into affiliate strategy
 - [ ] If API key → confirm total cost to users ($77/mo group + API usage)
-- [ ] Verify AutoForge auth method — ensure API key path, not subscription OAuth
+- [ ] AutoForge is SAFE — uses SDK + API keys, which is the explicitly supported path
 - [ ] Build the "sell skills, not access" business model as primary revenue stream
-- [ ] Position yourself as a Claude Code consultant, not a Claude Code reseller
+- [ ] Consider "AutoForge Powered by Claude" branding if going public

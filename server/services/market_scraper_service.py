@@ -224,10 +224,35 @@ def _extract_subreddit(url: str) -> str:
     return match.group(1) if match else ""
 
 
-def _flatten_comments(children: list[dict[str, Any]], depth: int = 0) -> list[dict[str, Any]]:
-    """Recursively flatten the Reddit comment tree into a flat list."""
+def _flatten_comments(
+    children: list[dict[str, Any]],
+    depth: int = 0,
+    max_comments: int = 0,
+    skip_comments: bool = False,
+    _counter: list[int] | None = None,
+) -> list[dict[str, Any]]:
+    """Recursively flatten the Reddit comment tree into a flat list.
+
+    Args:
+        children: Reddit API comment children list.
+        depth: Current recursion depth (internal).
+        max_comments: Stop collecting after this many comments. 0 = unlimited.
+        skip_comments: If True, return empty list immediately.
+        _counter: Internal mutable counter shared across recursion levels.
+    """
+    if skip_comments:
+        return []
+
+    # Initialise shared counter on the top-level call
+    if _counter is None:
+        _counter = [0]
+
     results: list[dict[str, Any]] = []
     for child in children:
+        # Bail early if we hit the cap
+        if max_comments > 0 and _counter[0] >= max_comments:
+            break
+
         if child.get("kind") != "t1":
             continue
         data = child.get("data", {})
@@ -242,18 +267,33 @@ def _flatten_comments(children: list[dict[str, Any]], depth: int = 0) -> list[di
             "score": data.get("score", 0),
             "created_utc": data.get("created_utc", 0),
         })
+        _counter[0] += 1
 
         # Recurse into replies
         replies = data.get("replies")
         if isinstance(replies, dict):
             reply_children = replies.get("data", {}).get("children", [])
-            results.extend(_flatten_comments(reply_children, depth + 1))
+            results.extend(_flatten_comments(
+                reply_children, depth + 1,
+                max_comments=max_comments,
+                skip_comments=False,
+                _counter=_counter,
+            ))
 
     return results
 
 
-async def scrape_reddit_thread(url: str) -> dict[str, Any]:
+async def scrape_reddit_thread(
+    url: str,
+    max_comments: int = 0,
+    skip_comments: bool = False,
+) -> dict[str, Any]:
     """Fetch a Reddit thread's JSON and extract the post + all comments.
+
+    Args:
+        url: Full Reddit thread URL.
+        max_comments: Cap on comments to extract (0 = unlimited).
+        skip_comments: If True, skip comment extraction entirely.
 
     Returns a dict with keys: url, subreddit, title, post_body, comments.
     Raises httpx.HTTPStatusError or ValueError on failure.
@@ -281,7 +321,11 @@ async def scrape_reddit_thread(url: str) -> dict[str, Any]:
     post_body = post_data.get("selftext", "")
 
     comment_children = data[1]["data"]["children"]
-    comments = _flatten_comments(comment_children)
+    comments = _flatten_comments(
+        comment_children,
+        max_comments=max_comments,
+        skip_comments=skip_comments,
+    )
 
     logger.info("Scraped r/%s — %d comments from '%s'", subreddit, len(comments), title)
 
@@ -670,12 +714,19 @@ SORT_OPTIONS = ("relevance", "hot", "top", "new", "comments")
 TIME_FILTERS = ("all", "year", "month", "week", "day", "hour")
 
 
+SEARCH_TYPES = ("link", "comment", "sr", "user")
+
+
 async def search_reddit(
     query: str,
     subreddits: Optional[list[str]] = None,
     sort: str = "relevance",
     time_filter: str = "week",
     limit: int = 25,
+    search_type: str = "link",
+    include_nsfw: bool = False,
+    after_date: Optional[str] = None,
+    min_comments: int = 2,
 ) -> list[dict[str, Any]]:
     """Search Reddit for threads matching a topic query.
 
@@ -685,6 +736,10 @@ async def search_reddit(
         sort: One of relevance, hot, top, new, comments
         time_filter: One of all, year, month, week, day, hour
         limit: Max results per subreddit (Reddit caps at 100)
+        search_type: Reddit search type — link (posts), comment, sr, user
+        include_nsfw: Include NSFW/over-18 results
+        after_date: ISO date string; only include results created after this date
+        min_comments: Minimum number of comments on posts (only for link type)
 
     Returns a list of thread summaries with url, title, subreddit, score,
     num_comments, and created_utc.
@@ -693,7 +748,17 @@ async def search_reddit(
         sort = "relevance"
     if time_filter not in TIME_FILTERS:
         time_filter = "week"
+    if search_type not in SEARCH_TYPES:
+        search_type = "link"
     limit = min(limit, 100)
+
+    # Parse after_date into a UTC timestamp for filtering
+    after_utc: float = 0.0
+    if after_date:
+        try:
+            after_utc = datetime.fromisoformat(after_date.replace("Z", "+00:00")).timestamp()
+        except (ValueError, TypeError):
+            logger.warning("Invalid after_date '%s', ignoring", after_date)
 
     results: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
@@ -720,11 +785,14 @@ async def search_reddit(
                 "sort": sort,
                 "t": time_filter,
                 "limit": limit,
-                "type": "link",
+                "type": search_type,
             }
             # restrict_sr=on when searching within a subreddit
             if "/r/" in search_url:
                 params["restrict_sr"] = "on"
+
+            if include_nsfw:
+                params["include_over_18"] = "on"
 
             try:
                 resp = await client.get(search_url, params=params)
@@ -739,25 +807,65 @@ async def search_reddit(
                         continue
                     seen_ids.add(post_id)
 
-                    # Only include self-posts and discussions (skip link-only posts with no comments)
-                    num_comments = post.get("num_comments", 0)
-                    if num_comments < 2:
+                    created_utc = post.get("created_utc", 0)
+
+                    # Apply after_date filter
+                    if after_utc > 0 and created_utc < after_utc:
                         continue
 
-                    permalink = post.get("permalink", "")
-                    url = f"https://www.reddit.com{permalink}" if permalink else ""
+                    if search_type == "comment":
+                        # Comments have 'body' instead of 'title'
+                        body = post.get("body", "")
+                        if not body or body in ("[deleted]", "[removed]"):
+                            continue
+                        permalink = post.get("permalink", "")
+                        url = f"https://www.reddit.com{permalink}" if permalink else ""
+                        results.append({
+                            "id": post_id,
+                            "url": url,
+                            "title": body[:200],
+                            "body": body,
+                            "subreddit": post.get("subreddit", ""),
+                            "score": post.get("score", 0),
+                            "num_comments": 0,
+                            "author": post.get("author", ""),
+                            "created_utc": created_utc,
+                            "is_comment": True,
+                        })
+                    elif search_type in ("sr", "user"):
+                        # Subreddit / user results — delegate to dedicated functions
+                        # but still return them in the standard list format
+                        display = post.get("display_name", "") or post.get("name", "")
+                        results.append({
+                            "id": post_id,
+                            "url": f"https://www.reddit.com{post.get('url', '')}",
+                            "title": post.get("title", display),
+                            "subreddit": display,
+                            "score": post.get("subscribers", 0) or post.get("link_karma", 0),
+                            "num_comments": 0,
+                            "created_utc": created_utc,
+                            "is_self": False,
+                        })
+                    else:
+                        # Default: link (posts)
+                        num_comments = post.get("num_comments", 0)
+                        if num_comments < min_comments:
+                            continue
 
-                    results.append({
-                        "id": post_id,
-                        "url": url,
-                        "title": post.get("title", ""),
-                        "subreddit": post.get("subreddit", ""),
-                        "score": post.get("score", 0),
-                        "num_comments": num_comments,
-                        "selftext_preview": (post.get("selftext", "") or "")[:200],
-                        "created_utc": post.get("created_utc", 0),
-                        "is_self": post.get("is_self", False),
-                    })
+                        permalink = post.get("permalink", "")
+                        url = f"https://www.reddit.com{permalink}" if permalink else ""
+
+                        results.append({
+                            "id": post_id,
+                            "url": url,
+                            "title": post.get("title", ""),
+                            "subreddit": post.get("subreddit", ""),
+                            "score": post.get("score", 0),
+                            "num_comments": num_comments,
+                            "selftext_preview": (post.get("selftext", "") or "")[:200],
+                            "created_utc": created_utc,
+                            "is_self": post.get("is_self", False),
+                        })
 
             except httpx.HTTPStatusError as exc:
                 logger.warning(
@@ -769,7 +877,7 @@ async def search_reddit(
     # Sort by score descending
     results.sort(key=lambda x: x.get("score", 0), reverse=True)
 
-    logger.info("Reddit search for '%s' found %d threads", query, len(results))
+    logger.info("Reddit search for '%s' found %d results (type=%s)", query, len(results), search_type)
     return results
 
 

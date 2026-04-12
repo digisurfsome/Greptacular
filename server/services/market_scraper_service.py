@@ -10,6 +10,7 @@ Uses Reddit's public JSON API (append .json to any thread URL) — no
 OAuth or API keys required.
 """
 
+import json
 import logging
 import re
 import sqlite3
@@ -167,6 +168,30 @@ def _init_db() -> sqlite3.Connection:
         CREATE INDEX IF NOT EXISTS idx_phrases_scrape ON phrases(scrape_id);
         CREATE INDEX IF NOT EXISTS idx_phrases_category ON phrases(category);
         CREATE INDEX IF NOT EXISTS idx_phrases_validation ON phrases(validation_signal);
+
+        CREATE TABLE IF NOT EXISTS research_projects (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            name        TEXT NOT NULL,
+            niche       TEXT NOT NULL DEFAULT '',
+            description TEXT NOT NULL DEFAULT '',
+            status      TEXT NOT NULL DEFAULT 'draft',
+            created_at  TEXT NOT NULL,
+            updated_at  TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS project_angles (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id      INTEGER NOT NULL REFERENCES research_projects(id) ON DELETE CASCADE,
+            angle_type      TEXT NOT NULL,
+            custom_keywords TEXT NOT NULL DEFAULT '',
+            status          TEXT NOT NULL DEFAULT 'pending',
+            search_queries  TEXT NOT NULL DEFAULT '[]',
+            scrape_ids      TEXT NOT NULL DEFAULT '[]',
+            total_phrases   INTEGER NOT NULL DEFAULT 0,
+            created_at      TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_angles_project ON project_angles(project_id);
     """)
     conn.commit()
     return conn
@@ -580,6 +605,67 @@ DEFAULT_SUBREDDITS = [
     "webdev", "programming", "software",
 ]
 
+# Research angle types — each generates search queries based on niche + keywords
+ANGLE_TYPES: dict[str, dict[str, Any]] = {
+    "discovery": {
+        "label": "Discovery",
+        "description": "What tools, automations, and frameworks people ARE using",
+        "seed_phrases": [
+            "using {niche} for", "my {niche} setup", "{niche} automation",
+            "{niche} tools I use", "{niche} stack", "{niche} workflow",
+            "built a {niche}", "{niche} with Claude", "{niche} with AI",
+        ],
+    },
+    "desire": {
+        "label": "Desire",
+        "description": "What tools and automations people WANT",
+        "seed_phrases": [
+            "{niche} looking for", "{niche} wish there was",
+            "{niche} need a tool", "anyone know {niche}",
+            "{niche} recommendation", "best {niche} tool",
+            "{niche} alternative", "help me find {niche}",
+        ],
+    },
+    "pain_point": {
+        "label": "Pain Point",
+        "description": "Frustrations, complaints, and broken things",
+        "seed_phrases": [
+            "{niche} frustrated", "{niche} hate", "{niche} broken",
+            "{niche} waste of time", "{niche} terrible", "{niche} struggling",
+            "{niche} complaint", "{niche} problem with",
+        ],
+    },
+    "validation": {
+        "label": "Validation",
+        "description": "Purchase intent and willingness to pay",
+        "seed_phrases": [
+            "{niche} would pay for", "{niche} take my money",
+            "{niche} game changer", "{niche} worth it",
+            "{niche} best investment", "{niche} subscription",
+            "pay for {niche}", "{niche} pricing",
+        ],
+    },
+    "workflow": {
+        "label": "Workflow",
+        "description": "Step-by-step processes and frameworks people share",
+        "seed_phrases": [
+            "{niche} my workflow", "{niche} step by step",
+            "{niche} how I automate", "{niche} my process",
+            "{niche} framework", "{niche} system I built",
+            "{niche} SOP", "how I run {niche}",
+        ],
+    },
+    "education": {
+        "label": "Education",
+        "description": "Learning resources, tutorials, and courses discussed",
+        "seed_phrases": [
+            "{niche} tutorial", "{niche} course", "{niche} guide",
+            "learn {niche}", "{niche} for beginners", "{niche} training",
+            "{niche} certification", "{niche} bootcamp",
+        ],
+    },
+}
+
 SORT_OPTIONS = ("relevance", "hot", "top", "new", "comments")
 TIME_FILTERS = ("all", "year", "month", "week", "day", "hour")
 
@@ -975,3 +1061,309 @@ def export_phrases_csv(scrape_id: int) -> Optional[str]:
         return output.getvalue()
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Research Project — query generation
+# ---------------------------------------------------------------------------
+
+
+def generate_search_queries(niche: str, angle_type: str, custom_keywords: str = "") -> list[str]:
+    """Generate Reddit search queries for a niche + angle combination.
+
+    Takes the niche (e.g., "SEO agency"), the angle type, and optional
+    custom keywords, and produces a list of search queries.
+    """
+    angle = ANGLE_TYPES.get(angle_type)
+    if not angle:
+        return []
+
+    queries: list[str] = []
+    niche_clean = niche.strip()
+
+    for template in angle["seed_phrases"]:
+        query = template.format(niche=niche_clean)
+        queries.append(query)
+
+    # Add custom keywords as additional queries
+    if custom_keywords.strip():
+        for kw in custom_keywords.split(","):
+            kw = kw.strip()
+            if kw:
+                queries.append(f"{niche_clean} {kw}")
+
+    return queries
+
+
+# ---------------------------------------------------------------------------
+# Research Project — CRUD
+# ---------------------------------------------------------------------------
+
+
+def create_research_project(
+    name: str,
+    niche: str,
+    description: str = "",
+    angles: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Create a new research project with selected angles."""
+    conn = _init_db()
+    now = datetime.now(timezone.utc).isoformat()
+    try:
+        cur = conn.execute(
+            "INSERT INTO research_projects (name, niche, description, status, created_at, updated_at) VALUES (?, ?, ?, 'draft', ?, ?)",
+            (name, niche, description, now, now),
+        )
+        project_id = cur.lastrowid
+
+        # Create angles if provided
+        if angles:
+            for angle in angles:
+                angle_type = angle.get("type", "")
+                custom_kw = angle.get("custom_keywords", "")
+                queries = generate_search_queries(niche, angle_type, custom_kw)
+                conn.execute(
+                    "INSERT INTO project_angles (project_id, angle_type, custom_keywords, search_queries, created_at) VALUES (?, ?, ?, ?, ?)",
+                    (project_id, angle_type, custom_kw, json.dumps(queries), now),
+                )
+
+        conn.commit()
+        return get_research_project(project_id)  # type: ignore[return-value]
+    finally:
+        conn.close()
+
+
+def list_research_projects() -> list[dict[str, Any]]:
+    """List all research projects with angle counts."""
+    conn = _init_db()
+    try:
+        rows = conn.execute("SELECT * FROM research_projects ORDER BY updated_at DESC").fetchall()
+        results = []
+        for row in rows:
+            project = dict(row)
+            angle_count = conn.execute(
+                "SELECT COUNT(*) as count FROM project_angles WHERE project_id = ?",
+                (row["id"],),
+            ).fetchone()
+            project["angle_count"] = angle_count["count"] if angle_count else 0
+
+            # Total phrases across all angles
+            total = conn.execute(
+                "SELECT SUM(total_phrases) as total FROM project_angles WHERE project_id = ?",
+                (row["id"],),
+            ).fetchone()
+            project["total_phrases"] = total["total"] or 0 if total else 0
+            results.append(project)
+        return results
+    finally:
+        conn.close()
+
+
+def get_research_project(project_id: int) -> Optional[dict[str, Any]]:
+    """Get a project with all its angles and their details."""
+    conn = _init_db()
+    try:
+        row = conn.execute("SELECT * FROM research_projects WHERE id = ?", (project_id,)).fetchone()
+        if not row:
+            return None
+        project = dict(row)
+
+        angles = conn.execute(
+            "SELECT * FROM project_angles WHERE project_id = ? ORDER BY id",
+            (project_id,),
+        ).fetchall()
+        project["angles"] = []
+        for a in angles:
+            angle_dict = dict(a)
+            angle_dict["search_queries"] = json.loads(angle_dict["search_queries"] or "[]")
+            angle_dict["scrape_ids"] = json.loads(angle_dict["scrape_ids"] or "[]")
+            project["angles"].append(angle_dict)
+
+        return project
+    finally:
+        conn.close()
+
+
+def update_research_project(
+    project_id: int,
+    name: Optional[str] = None,
+    niche: Optional[str] = None,
+    description: Optional[str] = None,
+) -> Optional[dict[str, Any]]:
+    """Update a research project's basic info."""
+    conn = _init_db()
+    now = datetime.now(timezone.utc).isoformat()
+    try:
+        existing = conn.execute("SELECT * FROM research_projects WHERE id = ?", (project_id,)).fetchone()
+        if not existing:
+            return None
+
+        conn.execute(
+            "UPDATE research_projects SET name=?, niche=?, description=?, updated_at=? WHERE id=?",
+            (
+                name if name is not None else existing["name"],
+                niche if niche is not None else existing["niche"],
+                description if description is not None else existing["description"],
+                now, project_id,
+            ),
+        )
+
+        # If niche changed, regenerate all angle queries
+        new_niche = niche if niche is not None else existing["niche"]
+        if niche is not None and niche != existing["niche"]:
+            angles = conn.execute("SELECT * FROM project_angles WHERE project_id = ?", (project_id,)).fetchall()
+            for a in angles:
+                queries = generate_search_queries(new_niche, a["angle_type"], a["custom_keywords"])
+                conn.execute(
+                    "UPDATE project_angles SET search_queries=? WHERE id=?",
+                    (json.dumps(queries), a["id"]),
+                )
+
+        conn.commit()
+        return get_research_project(project_id)
+    finally:
+        conn.close()
+
+
+def delete_research_project(project_id: int) -> bool:
+    """Delete a project and all its angles."""
+    conn = _init_db()
+    try:
+        row = conn.execute("SELECT id FROM research_projects WHERE id = ?", (project_id,)).fetchone()
+        if not row:
+            return False
+        conn.execute("DELETE FROM research_projects WHERE id = ?", (project_id,))
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def add_project_angle(project_id: int, angle_type: str, custom_keywords: str = "") -> Optional[dict[str, Any]]:
+    """Add a new angle to an existing project."""
+    conn = _init_db()
+    now = datetime.now(timezone.utc).isoformat()
+    try:
+        project = conn.execute("SELECT niche FROM research_projects WHERE id = ?", (project_id,)).fetchone()
+        if not project:
+            return None
+
+        queries = generate_search_queries(project["niche"], angle_type, custom_keywords)
+        conn.execute(
+            "INSERT INTO project_angles (project_id, angle_type, custom_keywords, search_queries, created_at) VALUES (?, ?, ?, ?, ?)",
+            (project_id, angle_type, custom_keywords, json.dumps(queries), now),
+        )
+        conn.commit()
+        return get_research_project(project_id)
+    finally:
+        conn.close()
+
+
+def remove_project_angle(angle_id: int) -> bool:
+    """Remove an angle from a project."""
+    conn = _init_db()
+    try:
+        row = conn.execute("SELECT id FROM project_angles WHERE id = ?", (angle_id,)).fetchone()
+        if not row:
+            return False
+        conn.execute("DELETE FROM project_angles WHERE id = ?", (angle_id,))
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+async def run_project_angle(
+    angle_id: int,
+    max_threads: int = 5,
+    subreddits: Optional[list[str]] = None,
+) -> dict[str, Any]:
+    """Run a single angle — execute its search queries and scrape results.
+
+    Updates the angle's scrape_ids and total_phrases in the DB.
+    """
+    conn = _init_db()
+    try:
+        angle = conn.execute("SELECT * FROM project_angles WHERE id = ?", (angle_id,)).fetchone()
+        if not angle:
+            raise ValueError(f"Angle {angle_id} not found")
+
+        project = conn.execute("SELECT * FROM research_projects WHERE id = ?", (angle["project_id"],)).fetchone()
+        if not project:
+            raise ValueError(f"Project not found for angle {angle_id}")
+
+        queries = json.loads(angle["search_queries"] or "[]")
+        if not queries:
+            raise ValueError("No search queries for this angle")
+
+        # Mark as running
+        conn.execute("UPDATE project_angles SET status='running' WHERE id=?", (angle_id,))
+        conn.execute(
+            "UPDATE research_projects SET status='running', updated_at=? WHERE id=?",
+            (datetime.now(timezone.utc).isoformat(), project["id"]),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    # Run searches (outside DB connection)
+    all_scrape_ids: list[int] = []
+    total_phrases = 0
+
+    for query in queries[:10]:  # Cap at 10 queries per angle to avoid rate limits
+        try:
+            result = await search_and_scrape(
+                query=query,
+                subreddits=subreddits,
+                sort="relevance",
+                time_filter="month",
+                max_threads=max_threads,
+                search_limit=10,
+            )
+            if result.get("scrape_ids"):
+                all_scrape_ids.extend(result["scrape_ids"])
+                total_phrases += result.get("total_phrases", 0)
+        except Exception:
+            logger.exception("Failed query for angle %d: %s", angle_id, query)
+            continue
+
+    # Update angle with results
+    conn = _init_db()
+    try:
+        # Merge with existing scrape_ids
+        existing = conn.execute("SELECT scrape_ids FROM project_angles WHERE id = ?", (angle_id,)).fetchone()
+        existing_ids = json.loads(existing["scrape_ids"] or "[]") if existing else []
+        merged_ids = list(set(existing_ids + all_scrape_ids))
+
+        conn.execute(
+            "UPDATE project_angles SET status='complete', scrape_ids=?, total_phrases=? WHERE id=?",
+            (json.dumps(merged_ids), total_phrases, angle_id),
+        )
+
+        # Check if all angles are complete
+        project_id = angle["project_id"]
+        pending = conn.execute(
+            "SELECT COUNT(*) as count FROM project_angles WHERE project_id=? AND status != 'complete'",
+            (project_id,),
+        ).fetchone()
+        if pending and pending["count"] == 0:
+            conn.execute(
+                "UPDATE research_projects SET status='complete', updated_at=? WHERE id=?",
+                (datetime.now(timezone.utc).isoformat(), project_id),
+            )
+        else:
+            conn.execute(
+                "UPDATE research_projects SET updated_at=? WHERE id=?",
+                (datetime.now(timezone.utc).isoformat(), project_id),
+            )
+
+        conn.commit()
+    finally:
+        conn.close()
+
+    return {
+        "angle_id": angle_id,
+        "queries_run": min(len(queries), 10),
+        "scrape_ids": all_scrape_ids,
+        "total_phrases": total_phrases,
+    }

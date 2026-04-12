@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -21,6 +21,17 @@ import {
   ChevronDown,
   ExternalLink,
   Zap,
+  FolderPlus,
+  Play,
+  Check,
+  Plus,
+  ChevronLeft,
+  BookOpen,
+  Target,
+  Lightbulb,
+  ShieldCheck,
+  Workflow,
+  GraduationCap,
 } from 'lucide-react'
 import {
   useScrapes,
@@ -30,9 +41,16 @@ import {
   useSearchOptions,
   useSearchAndScrape,
   usePhraseFrequency,
+  useAngleTypes,
+  useResearchProjects,
+  useResearchProject,
+  useCreateProject,
+  useDeleteProject,
+  useRunAngle,
+  useRunAllAngles,
 } from '@/hooks/useMarketScraper'
 import { exportScrape } from '@/lib/api'
-import type { MarketScrape, MarketScrapeDetail, MarketPhrase, MarketSearchOptions, MarketSearchResult, MarketTopPhrase } from '@/lib/types'
+import type { MarketScrape, MarketScrapeDetail, MarketPhrase, MarketSearchOptions, MarketSearchResult, MarketTopPhrase, ResearchProject, ProjectAngle, AngleTypeInfo } from '@/lib/types'
 
 /** Category display configuration: label, Tailwind classes, and icon */
 const CATEGORY_CONFIG: Record<string, { label: string; color: string; bg: string; icon: typeof AlertTriangle }> = {
@@ -55,8 +73,32 @@ const FILTER_TABS = [
 type SortMode = 'score' | 'validation' | 'recent'
 type InputMode = 'url' | 'topic'
 type ResultsView = 'phrases' | 'top-phrases'
+type PageView = 'scraper' | 'projects' | 'project-detail' | 'project-create'
+
+/** Angle type display config: color, icon */
+const ANGLE_TYPE_CONFIG: Record<string, { color: string; bg: string; icon: typeof Target }> = {
+  discovery: { color: 'text-white', bg: 'bg-[#3b82f6]', icon: Search },
+  desire: { color: 'text-white', bg: 'bg-[#8b5cf6]', icon: Heart },
+  pain_point: { color: 'text-white', bg: 'bg-[#ef4444]', icon: AlertTriangle },
+  validation: { color: 'text-white', bg: 'bg-[#22c55e]', icon: ShieldCheck },
+  workflow: { color: 'text-black', bg: 'bg-[#f59e0b]', icon: Workflow },
+  education: { color: 'text-white', bg: 'bg-[#06b6d4]', icon: GraduationCap },
+}
+
+/** Status badge styling */
+const STATUS_BADGE: Record<string, { label: string; className: string }> = {
+  draft: { label: 'Draft', className: 'bg-gray-200 text-gray-700 border-gray-400' },
+  running: { label: 'Running', className: 'bg-[#06b6d4]/20 text-[#06b6d4] border-[#06b6d4] animate-pulse' },
+  complete: { label: 'Complete', className: 'bg-[#22c55e]/20 text-[#22c55e] border-[#22c55e]' },
+  pending: { label: 'Pending', className: 'bg-gray-200 text-gray-700 border-gray-400' },
+  error: { label: 'Error', className: 'bg-[#ef4444]/20 text-[#ef4444] border-[#ef4444]' },
+}
 
 export function MarketScraperPage() {
+  // Top-level page view
+  const [pageView, setPageView] = useState<PageView>('scraper')
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null)
+
   // Input mode
   const [inputMode, setInputMode] = useState<InputMode>('topic')
 
@@ -98,6 +140,102 @@ export function MarketScraperPage() {
   const { data: phraseFreqData } = usePhraseFrequency(
     activeScrapeId ? { scrape_ids: [activeScrapeId], top_n: 50 } : { top_n: 50 }
   )
+
+  // Research Project hooks
+  const { data: angleTypesData } = useAngleTypes()
+  const { data: projectsRaw } = useResearchProjects()
+  const { data: selectedProjectRaw, refetch: refetchProject } = useResearchProject(selectedProjectId)
+  const createProject = useCreateProject()
+  const deleteProject = useDeleteProject()
+  const runAngle = useRunAngle()
+  const runAllAngles = useRunAllAngles()
+
+  const projects = projectsRaw as ResearchProject[] | undefined
+  const selectedProject = selectedProjectRaw as ResearchProject | undefined
+  const angleTypes = angleTypesData?.angle_types as Record<string, AngleTypeInfo> | undefined
+
+  // Project create wizard state
+  const [wizardName, setWizardName] = useState('')
+  const [wizardNiche, setWizardNiche] = useState('')
+  const [wizardDescription, setWizardDescription] = useState('')
+  const [wizardAngles, setWizardAngles] = useState<Record<string, { selected: boolean; keywords: string }>>({})
+
+  // Initialize wizard angles when angle types load
+  const angleTypeKeys = useMemo(() => Object.keys(angleTypes ?? {}), [angleTypes])
+
+  const resetWizard = useCallback(() => {
+    setWizardName('')
+    setWizardNiche('')
+    setWizardDescription('')
+    setWizardAngles({})
+  }, [])
+
+  const handleCreateProject = useCallback(() => {
+    if (!wizardName.trim() || !wizardNiche.trim()) return
+    const selectedAngles = Object.entries(wizardAngles)
+      .filter(([, v]) => v.selected)
+      .map(([type, v]) => ({
+        type,
+        custom_keywords: v.keywords.trim() || undefined,
+      }))
+    createProject.mutate(
+      {
+        name: wizardName.trim(),
+        niche: wizardNiche.trim(),
+        description: wizardDescription.trim() || undefined,
+        angles: selectedAngles.length > 0 ? selectedAngles : undefined,
+      },
+      {
+        onSuccess: (proj) => {
+          const created = proj as ResearchProject
+          showToast('success', `Project "${created.name}" created`)
+          resetWizard()
+          setSelectedProjectId(created.id)
+          setPageView('project-detail')
+        },
+        onError: (err: Error) => showToast('error', err.message || 'Failed to create project'),
+      },
+    )
+  }, [wizardName, wizardNiche, wizardDescription, wizardAngles, createProject, showToast, resetWizard])
+
+  const handleDeleteProject = useCallback((id: number) => {
+    deleteProject.mutate(id, {
+      onSuccess: () => {
+        showToast('success', 'Project deleted')
+        if (selectedProjectId === id) {
+          setSelectedProjectId(null)
+          setPageView('projects')
+        }
+      },
+      onError: (err: Error) => showToast('error', err.message || 'Failed to delete'),
+    })
+  }, [deleteProject, selectedProjectId, showToast])
+
+  const handleRunAngle = useCallback((angleId: number) => {
+    runAngle.mutate(
+      { angleId },
+      {
+        onSuccess: (result) => {
+          showToast('success', `Angle complete: ${result.total_phrases} phrases from ${result.queries_run} queries`)
+          refetchProject()
+        },
+        onError: (err: Error) => showToast('error', err.message || 'Failed to run angle'),
+      },
+    )
+  }, [runAngle, showToast, refetchProject])
+
+  const handleRunAll = useCallback((projectId: number) => {
+    runAllAngles.mutate(
+      { projectId },
+      {
+        onSuccess: () => {
+          showToast('success', 'All angles complete')
+          refetchProject()
+        },
+        onError: (err: Error) => showToast('error', err.message || 'Failed to run all angles'),
+      },
+    )
+  }, [runAllAngles, showToast, refetchProject])
 
   const opts = searchOptions as MarketSearchOptions | undefined
   const defaultSubs: string[] = opts?.default_subreddits ?? []
@@ -233,6 +371,27 @@ export function MarketScraperPage() {
           <p className="text-sm text-muted-foreground">
             Scrape Reddit for pain points, desires, and ad copy gold
           </p>
+        </div>
+        {/* Top-level nav: Scraper vs Projects */}
+        <div className="ml-auto flex gap-2">
+          <Button
+            variant={pageView === 'scraper' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setPageView('scraper')}
+            className="gap-2 border-2 border-black shadow-[2px_2px_0_0_#000]"
+          >
+            <Search size={16} />
+            Scraper
+          </Button>
+          <Button
+            variant={pageView !== 'scraper' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setPageView('projects')}
+            className="gap-2 border-2 border-black shadow-[2px_2px_0_0_#000]"
+          >
+            <FolderPlus size={16} />
+            Projects
+          </Button>
         </div>
       </div>
 

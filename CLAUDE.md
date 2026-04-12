@@ -58,6 +58,7 @@ Find files here instead of searching:
 
 | Topic | File |
 |-------|------|
+| **Market Scraper (Reddit scraper PRD)** | **`docs/page-prds/market-scraper/README.md`** |
 | SDK client bugs (3-bug fix pattern) | `docs/references/sdk-client-pattern.md` |
 | Full architecture + key patterns | `docs/references/architecture.md` |
 | Commands (CLI, npm, Python, UI) | `docs/references/commands-reference.md` |

@@ -39,7 +39,19 @@ Find files here instead of searching:
 - **UI files:** `ui/CLAUDE.md` — every page, component, hook, utility
 - **Server files:** `server/CLAUDE.md` — every router, service, database model
 - **Docs:** `docs/CLAUDE.md` — doc structure and PRD locations
-- **Page PRDs:** `docs/page-prds/README.md` — check before modifying any page
+
+## 🚨 ALL PAGE PRDs LIVE IN `docs/page-prds/` 🚨
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  EVERY page has a PRD folder: docs/page-prds/{page-name}/          │
+│  ALL specs, features, file maps, and design docs go THERE.         │
+│  If the folder doesn't exist, CREATE IT before writing anything.   │
+│  Index: docs/page-prds/README.md                                   │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+Check `docs/page-prds/README.md` BEFORE modifying any page. If your page isn't listed, add it.
 
 ## References — Read ONLY When Your Task Needs It
 

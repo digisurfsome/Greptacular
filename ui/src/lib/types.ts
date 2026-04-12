@@ -2142,6 +2142,7 @@ export interface MarketSearchOptions {
   sort_options: string[]
   time_filters: string[]
   default_subreddits: string[]
+  search_types: string[]
 }
 
 export interface MarketSearchResult {
@@ -2164,6 +2165,39 @@ export interface MarketTopPhrase {
 export interface MarketPhraseFrequencyResult {
   phrases: MarketTopPhrase[]
   total: number
+}
+
+// Reddit community & user types
+
+export interface RedditCommunity {
+  name: string
+  title: string
+  description: string
+  members: number
+  url: string
+  over_18: boolean
+  created_utc: number
+  active_users?: number
+  full_description?: string
+  category?: string
+}
+
+export interface RedditUserProfile {
+  username: string
+  link_karma: number
+  comment_karma: number
+  total_karma: number
+  created_utc: number
+  is_gold: boolean
+  verified: boolean
+  recent_posts: {
+    title: string
+    subreddit: string
+    score: number
+    num_comments: number
+    url: string
+    created_utc: number
+  }[]
 }
 
 // Research Projects

@@ -888,6 +888,12 @@ async def search_and_scrape(
     time_filter: str = "week",
     max_threads: int = 5,
     search_limit: int = 25,
+    search_type: str = "link",
+    include_nsfw: bool = False,
+    after_date: Optional[str] = None,
+    min_comments: int = 2,
+    max_comments_per_post: int = 0,
+    skip_comments: bool = False,
 ) -> dict[str, Any]:
     """Search Reddit for a topic, then scrape the top threads and categorize everything.
 
@@ -900,6 +906,10 @@ async def search_and_scrape(
         sort=sort,
         time_filter=time_filter,
         limit=search_limit,
+        search_type=search_type,
+        include_nsfw=include_nsfw,
+        after_date=after_date,
+        min_comments=min_comments,
     )
 
     if not threads:
@@ -926,7 +936,11 @@ async def search_and_scrape(
             continue
 
         try:
-            thread_data = await scrape_reddit_thread(url)
+            thread_data = await scrape_reddit_thread(
+                url,
+                max_comments=max_comments_per_post,
+                skip_comments=skip_comments,
+            )
             categorized = categorize_comments(
                 thread_data["comments"],
                 thread_data["subreddit"],
@@ -971,6 +985,119 @@ async def search_and_scrape(
         "total_phrases": total_phrases,
         "category_counts": all_category_counts,
         "threads": threads[:max_threads],  # Include thread summaries for the UI
+    }
+
+
+# ---------------------------------------------------------------------------
+# Community & user discovery
+# ---------------------------------------------------------------------------
+
+
+async def discover_subreddits(query: str, limit: int = 10) -> list[dict[str, Any]]:
+    """Search Reddit for communities matching a query.
+
+    Uses Reddit's search API with type=sr to find relevant subreddits.
+    Returns list of {name, title, description, members, url, over_18}.
+    """
+    async with httpx.AsyncClient(
+        follow_redirects=True,
+        timeout=httpx.Timeout(30.0),
+        headers={"User-Agent": REDDIT_USER_AGENT},
+    ) as client:
+        resp = await client.get(
+            "https://www.reddit.com/search.json",
+            params={"q": query, "type": "sr", "limit": limit},
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+    results = []
+    for child in data.get("data", {}).get("children", []):
+        sub = child.get("data", {})
+        results.append({
+            "name": sub.get("display_name", ""),
+            "title": sub.get("title", ""),
+            "description": (sub.get("public_description", "") or "")[:200],
+            "members": sub.get("subscribers", 0),
+            "url": f"https://www.reddit.com{sub.get('url', '')}",
+            "over_18": sub.get("over18", False),
+            "created_utc": sub.get("created_utc", 0),
+        })
+
+    results.sort(key=lambda x: x.get("members", 0), reverse=True)
+    return results
+
+
+async def scrape_user_profile(username: str, max_posts: int = 10) -> dict[str, Any]:
+    """Scrape a Reddit user's profile and recent activity.
+
+    Returns profile info and recent posts/comments for identifying
+    power users and influencers in a niche.
+    """
+    async with httpx.AsyncClient(
+        follow_redirects=True,
+        timeout=httpx.Timeout(30.0),
+        headers={"User-Agent": REDDIT_USER_AGENT},
+    ) as client:
+        # User about
+        about_resp = await client.get(f"https://www.reddit.com/user/{username}/about.json")
+        about_resp.raise_for_status()
+        about = about_resp.json().get("data", {})
+
+        # Recent posts
+        posts_resp = await client.get(
+            f"https://www.reddit.com/user/{username}/submitted.json",
+            params={"limit": max_posts, "sort": "top", "t": "year"},
+        )
+        posts_resp.raise_for_status()
+        posts_data = posts_resp.json()
+
+        recent_posts = []
+        for child in posts_data.get("data", {}).get("children", []):
+            p = child.get("data", {})
+            recent_posts.append({
+                "title": p.get("title", ""),
+                "subreddit": p.get("subreddit", ""),
+                "score": p.get("score", 0),
+                "num_comments": p.get("num_comments", 0),
+                "url": f"https://www.reddit.com{p.get('permalink', '')}",
+                "created_utc": p.get("created_utc", 0),
+            })
+
+    return {
+        "username": username,
+        "link_karma": about.get("link_karma", 0),
+        "comment_karma": about.get("comment_karma", 0),
+        "created_utc": about.get("created_utc", 0),
+        "is_gold": about.get("is_gold", False),
+        "verified": about.get("verified", False),
+        "total_karma": about.get("total_karma", 0),
+        "recent_posts": recent_posts,
+    }
+
+
+async def scrape_community_info(subreddit: str) -> dict[str, Any]:
+    """Get metadata about a subreddit — members, description, rules, etc."""
+    async with httpx.AsyncClient(
+        follow_redirects=True,
+        timeout=httpx.Timeout(30.0),
+        headers={"User-Agent": REDDIT_USER_AGENT},
+    ) as client:
+        resp = await client.get(f"https://www.reddit.com/r/{subreddit}/about.json")
+        resp.raise_for_status()
+        data = resp.json().get("data", {})
+
+    return {
+        "name": data.get("display_name", subreddit),
+        "title": data.get("title", ""),
+        "description": data.get("public_description", ""),
+        "full_description": (data.get("description", "") or "")[:500],
+        "members": data.get("subscribers", 0),
+        "active_users": data.get("accounts_active", 0),
+        "created_utc": data.get("created_utc", 0),
+        "over_18": data.get("over18", False),
+        "url": f"https://www.reddit.com/r/{subreddit}/",
+        "category": data.get("advertiser_category", ""),
     }
 
 

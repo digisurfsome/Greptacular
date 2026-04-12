@@ -73,6 +73,32 @@ export function usePhraseFrequency(params?: {
   })
 }
 
+// Community & User Discovery hooks
+// ---------------------------------------------------------------------------
+
+export function useDiscoverSubreddits() {
+  return useMutation({
+    mutationFn: ({ query, limit }: { query: string; limit?: number }) =>
+      api.discoverSubreddits(query, limit),
+  })
+}
+
+export function useCommunityInfo(subreddit: string | null) {
+  return useQuery({
+    queryKey: ['market-scraper', 'community', subreddit],
+    queryFn: () => api.getCommunityInfo(subreddit!),
+    enabled: subreddit !== null,
+  })
+}
+
+export function useUserProfile(username: string | null, maxPosts?: number) {
+  return useQuery({
+    queryKey: ['market-scraper', 'user', username, maxPosts],
+    queryFn: () => api.getUserProfile(username!, maxPosts),
+    enabled: username !== null,
+  })
+}
+
 // Research Project hooks
 // ---------------------------------------------------------------------------
 

@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 from ..services.market_scraper_service import (
     ANGLE_TYPES,
     DEFAULT_SUBREDDITS,
+    SEARCH_TYPES,
     SORT_OPTIONS,
     TIME_FILTERS,
     add_project_angle,
@@ -26,6 +27,7 @@ from ..services.market_scraper_service import (
     create_research_project,
     delete_research_project,
     delete_scrape,
+    discover_subreddits,
     export_phrases_csv,
     get_phrase_frequencies,
     get_research_project,
@@ -36,7 +38,9 @@ from ..services.market_scraper_service import (
     remove_project_angle,
     run_project_angle,
     save_scrape,
+    scrape_community_info,
     scrape_reddit_thread,
+    scrape_user_profile,
     search_and_scrape,
     search_reddit,
     update_research_project,
@@ -59,6 +63,12 @@ class SearchRequest(BaseModel):
     sort: str = Field(default="relevance", description="Sort: relevance, hot, top, new, comments")
     time_filter: str = Field(default="week", description="Time: all, year, month, week, day, hour")
     max_threads: int = Field(default=5, ge=1, le=20, description="Max threads to scrape")
+    search_type: str = Field(default="link", description="Search type: link (posts), comment, sr (communities), user")
+    include_nsfw: bool = Field(default=False, description="Include NSFW content")
+    after_date: Optional[str] = Field(default=None, description="Only include results after this ISO date")
+    min_comments: int = Field(default=2, ge=0, description="Minimum number of comments on posts")
+    max_comments_per_post: int = Field(default=0, ge=0, description="Max comments to extract per post (0 = unlimited)")
+    skip_comments: bool = Field(default=False, description="Skip comment extraction entirely")
 
 
 class ScrapeRequest(BaseModel):
@@ -134,6 +144,7 @@ async def get_search_options():
         "sort_options": list(SORT_OPTIONS),
         "time_filters": list(TIME_FILTERS),
         "default_subreddits": DEFAULT_SUBREDDITS,
+        "search_types": list(SEARCH_TYPES),
     }
 
 
@@ -153,6 +164,10 @@ async def search_topics(req: SearchRequest):
             sort=req.sort,
             time_filter=req.time_filter,
             limit=25,
+            search_type=req.search_type,
+            include_nsfw=req.include_nsfw,
+            after_date=req.after_date,
+            min_comments=req.min_comments,
         )
     except Exception:
         logger.exception("Search failed for '%s'", req.query)
@@ -177,6 +192,12 @@ async def search_and_scrape_topics(req: SearchRequest):
             sort=req.sort,
             time_filter=req.time_filter,
             max_threads=req.max_threads,
+            search_type=req.search_type,
+            include_nsfw=req.include_nsfw,
+            after_date=req.after_date,
+            min_comments=req.min_comments,
+            max_comments_per_post=req.max_comments_per_post,
+            skip_comments=req.skip_comments,
         )
     except Exception:
         logger.exception("Search-and-scrape failed for '%s'", req.query)
@@ -333,6 +354,58 @@ async def get_phrase_frequency(
         category=category,
     )
     return {"phrases": results, "total": len(results)}
+
+
+# ---------------------------------------------------------------------------
+# Community & user discovery endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.get("/discover-subreddits")
+async def discover_subs(
+    query: str = Query(..., description="Search query to find relevant subreddits"),
+    limit: int = Query(10, ge=1, le=50, description="Max subreddits to return"),
+):
+    """Discover relevant subreddits for a niche/topic."""
+    try:
+        results = await discover_subreddits(query=query, limit=limit)
+        return {"subreddits": results}
+    except Exception:
+        logger.exception("Subreddit discovery failed for '%s'", query)
+        raise HTTPException(status_code=500, detail="Subreddit discovery failed")
+
+
+@router.get("/community/{subreddit}")
+async def get_community_info(subreddit: str):
+    """Get metadata about a specific subreddit."""
+    try:
+        info = await scrape_community_info(subreddit)
+        return info
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 404:
+            raise HTTPException(status_code=404, detail=f"Subreddit r/{subreddit} not found")
+        raise HTTPException(status_code=502, detail=f"Reddit returned HTTP {exc.response.status_code}")
+    except Exception:
+        logger.exception("Community info failed for r/%s", subreddit)
+        raise HTTPException(status_code=500, detail="Failed to get community info")
+
+
+@router.get("/user/{username}")
+async def get_user_profile(
+    username: str,
+    max_posts: int = Query(10, ge=1, le=50),
+):
+    """Scrape a Reddit user's profile and recent activity."""
+    try:
+        profile = await scrape_user_profile(username, max_posts=max_posts)
+        return profile
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 404:
+            raise HTTPException(status_code=404, detail=f"User u/{username} not found")
+        raise HTTPException(status_code=502, detail=f"Reddit returned HTTP {exc.response.status_code}")
+    except Exception:
+        logger.exception("User profile failed for u/%s", username)
+        raise HTTPException(status_code=500, detail="Failed to get user profile")
 
 
 # ---------------------------------------------------------------------------

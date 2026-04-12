@@ -101,6 +101,8 @@ import type {
   MarketSearchOptions,
   MarketSearchResult,
   MarketPhraseFrequencyResult,
+  RedditCommunity,
+  RedditUserProfile,
   ResearchProject,
   AngleTypeInfo,
 } from './types'
@@ -3363,6 +3365,12 @@ export interface TopicSearchParams {
   sort?: string
   time_filter?: string
   max_threads?: number
+  search_type?: string
+  include_nsfw?: boolean
+  after_date?: string
+  min_comments?: number
+  max_comments_per_post?: number
+  skip_comments?: boolean
 }
 
 export async function searchReddit(params: TopicSearchParams) {
@@ -3391,6 +3399,24 @@ export async function getPhraseFrequency(params?: {
   if (params?.category) query.set('category', params.category)
   if (params?.top_n) query.set('top_n', String(params.top_n))
   return fetchJSON<MarketPhraseFrequencyResult>(`/market-scraper/phrase-frequency?${query}`)
+}
+
+// Community & User Discovery
+// ---------------------------------------------------------------------------
+
+export async function discoverSubreddits(query: string, limit?: number) {
+  const params = new URLSearchParams({ query })
+  if (limit) params.set('limit', String(limit))
+  return fetchJSON<{ subreddits: RedditCommunity[] }>(`/market-scraper/discover-subreddits?${params}`)
+}
+
+export async function getCommunityInfo(subreddit: string) {
+  return fetchJSON<RedditCommunity>(`/market-scraper/community/${encodeURIComponent(subreddit)}`)
+}
+
+export async function getUserProfile(username: string, maxPosts?: number) {
+  const params = maxPosts ? `?max_posts=${maxPosts}` : ''
+  return fetchJSON<RedditUserProfile>(`/market-scraper/user/${encodeURIComponent(username)}${params}`)
 }
 
 // Research Projects

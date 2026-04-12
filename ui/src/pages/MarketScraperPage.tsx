@@ -111,6 +111,11 @@ export function MarketScraperPage() {
   const [topicSort, setTopicSort] = useState('relevance')
   const [topicTime, setTopicTime] = useState('week')
   const [maxThreads, setMaxThreads] = useState(5)
+  const [searchType, setSearchType] = useState('link')
+  const [includeNsfw, setIncludeNsfw] = useState(false)
+  const [minComments, setMinComments] = useState(2)
+  const [maxCommentsPerPost, setMaxCommentsPerPost] = useState(0)
+  const [skipComments, setSkipComments] = useState(false)
   const [showSubPicker, setShowSubPicker] = useState(false)
   const [searchResult, setSearchResult] = useState<{
     query: string
@@ -273,6 +278,11 @@ export function MarketScraperPage() {
         sort: topicSort,
         time_filter: topicTime,
         max_threads: maxThreads,
+        search_type: searchType,
+        include_nsfw: includeNsfw,
+        min_comments: minComments,
+        max_comments_per_post: maxCommentsPerPost,
+        skip_comments: skipComments,
       },
       {
         onSuccess: (raw) => {
@@ -293,7 +303,7 @@ export function MarketScraperPage() {
         },
       }
     )
-  }, [topicQuery, selectedSubs, topicSort, topicTime, maxThreads, searchAndScrape, showToast])
+  }, [topicQuery, selectedSubs, topicSort, topicTime, maxThreads, searchType, includeNsfw, minComments, maxCommentsPerPost, skipComments, searchAndScrape, showToast])
 
   const handleDelete = useCallback((id: number) => {
     deleteScrape.mutate(id, {
@@ -947,6 +957,70 @@ export function MarketScraperPage() {
                       ))}
                     </select>
                   </div>
+
+                  {/* Search type */}
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs font-bold text-muted-foreground">Type:</span>
+                    <select
+                      value={searchType}
+                      onChange={(e) => setSearchType(e.target.value)}
+                      className="rounded border-2 border-black bg-card px-2 py-1 text-xs"
+                    >
+                      <option value="link">Posts</option>
+                      <option value="comment">Comments</option>
+                      <option value="sr">Communities</option>
+                      <option value="user">Users</option>
+                    </select>
+                  </div>
+
+                  {/* Min comments — only relevant for link/post search */}
+                  {searchType === 'link' && (
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs font-bold text-muted-foreground">Min comments:</span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={1000}
+                        value={minComments}
+                        onChange={(e) => setMinComments(Number(e.target.value))}
+                        className="w-16 rounded border-2 border-black bg-card px-2 py-1 text-xs"
+                      />
+                    </div>
+                  )}
+
+                  {/* Max comments per post */}
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs font-bold text-muted-foreground">Max comments:</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={5000}
+                      value={maxCommentsPerPost}
+                      onChange={(e) => setMaxCommentsPerPost(Number(e.target.value))}
+                      className="w-16 rounded border-2 border-black bg-card px-2 py-1 text-xs"
+                      title="0 = unlimited"
+                    />
+                  </div>
+
+                  {/* NSFW toggle */}
+                  <label className="flex items-center gap-1 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={includeNsfw}
+                      onChange={(e) => setIncludeNsfw(e.target.checked)}
+                    />
+                    NSFW
+                  </label>
+
+                  {/* Skip comments toggle */}
+                  <label className="flex items-center gap-1 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={skipComments}
+                      onChange={(e) => setSkipComments(e.target.checked)}
+                    />
+                    Skip comments
+                  </label>
                 </div>
 
                 {/* Search result summary */}

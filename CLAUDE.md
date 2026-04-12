@@ -20,6 +20,20 @@
 - **`ui/dist/` is gitignored.** `start_ui.bat` auto-rebuilds. Source changes alone fix the UI.
 - **Sonnet builds, Opus reviews.** Never assign Opus to per-phase Reviewer role. See `docs/SONNET_OPUS_OPTIMIZATION.md`
 
+## 🚨 WHERE DOCS GO — 3 DIRECTORIES, NO EXCEPTIONS 🚨
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  docs/page-prds/{page-name}/  — PRDs, specs, file maps for a page  │
+│  docs/ideas/                  — brainstorms, concepts, "what if"   │
+│  docs/info/                   — research, guides, saved context    │
+│                                                                     │
+│  NEVER drop loose .md files in docs/. Everything has a home.       │
+│  Page PRD index: docs/page-prds/README.md                          │
+│  If your page folder doesn't exist, CREATE IT.                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
 ## ⚠️ MANDATORY READS — Before Calling AI Models or Editing Pages
 
 **If your task calls an AI model, creates an SDK client, or adds/edits a UI page, you MUST read these files first. Not optional. Not "if you have time." MUST.**
@@ -39,28 +53,6 @@ Find files here instead of searching:
 - **UI files:** `ui/CLAUDE.md` — every page, component, hook, utility
 - **Server files:** `server/CLAUDE.md` — every router, service, database model
 - **Docs:** `docs/CLAUDE.md` — doc structure and PRD locations
-
-## 🚨 ALL PAGE PRDs LIVE IN `docs/page-prds/` 🚨
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│  EVERY page has a PRD folder: docs/page-prds/{page-name}/          │
-│  ALL specs, features, file maps, and design docs go THERE.         │
-│  If the folder doesn't exist, CREATE IT before writing anything.   │
-│  Index: docs/page-prds/README.md                                   │
-└─────────────────────────────────────────────────────────────────────┘
-```
-
-Check `docs/page-prds/README.md` BEFORE modifying any page. If your page isn't listed, add it.
-
-## Saved Docs — Two Directories for Everything Else
-
-| Folder | What Goes Here |
-|--------|---------------|
-| `docs/ideas/` | Brainstorms, concepts, "what if" notes — anything that isn't a PRD yet |
-| `docs/info/` | Research, reference, guides, saved context — anything worth finding later |
-
-**Rule: If you write an .md that doesn't belong to a page PRD, put it in `docs/ideas/` or `docs/info/`. Not loose in `docs/`.**
 
 ## References — Read ONLY When Your Task Needs It
 

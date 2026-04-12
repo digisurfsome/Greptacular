@@ -53,6 +53,15 @@ Find files here instead of searching:
 
 Check `docs/page-prds/README.md` BEFORE modifying any page. If your page isn't listed, add it.
 
+## Saved Docs — Two Directories for Everything Else
+
+| Folder | What Goes Here |
+|--------|---------------|
+| `docs/ideas/` | Brainstorms, concepts, "what if" notes — anything that isn't a PRD yet |
+| `docs/info/` | Research, reference, guides, saved context — anything worth finding later |
+
+**Rule: If you write an .md that doesn't belong to a page PRD, put it in `docs/ideas/` or `docs/info/`. Not loose in `docs/`.**
+
 ## References — Read ONLY When Your Task Needs It
 
 | Topic | File |

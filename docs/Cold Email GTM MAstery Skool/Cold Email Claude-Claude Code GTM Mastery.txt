@@ -1,0 +1,791 @@
+Claude Code GTM Mastery
+
+0.1 — Welcome + How This Works
+This isn't theory. This is the exact system I run for clients right now. You're going to build a pipeline that searches for your ideal prospects, verifies their contact info, writes a completely unique cold email for each one using AI, pushes them into live campaigns, and notifies you when replies come in. Fully automated. 200+ leads per day.
+Community Rules
+Search before posting — your question might already be answered
+Use specific titles when posting under “Support Needed”
+Include screenshots or a Loom when reporting issues
+@mention people when replying to their thread
+Mark posts as [SOLVED] when you get your answer
+Like helpful responses — it helps others find them
+Action
+
+Introduce yourself in the community feed. 
+Where you're from, what you're building,
+what you want to be charging for cold email services in 90 days.
+0.2 — The Mindset
+Of all the things you could sell as an AI service, cold email is the easiest to prove and the hardest to churn. Here's why:
+Measurable
+Open rates, reply rates, meetings booked. Clients see the numbers every week.
+Recurring
+Monthly retainers. Campaigns run continuously. Clients don't cancel something that's booking meetings.
+AI-Native
+The entire pipeline — from search to send — can be automated with AI. No manual work at scale.
+Low Barrier to Sell
+“I'll book you 15 meetings this month” is an easy conversation. Try selling “AI workflow automation” cold.
+
+0.3 — Account Setup Checklist
+
+Action
+Create all accounts. Save API keys in a.envfile. Do NOT proceed to Module 1 until every account is created.
+0.4 — Environment Setup
+1 - Install Node.js 18+
+2 - Install VS Code
+3 - Install Claude Code: npm install -g @anthropic-ai/claude-code
+4 - Create your project folder
+5 - Run claude in your terminal to verify it works
+6 - Create a .env file with your API keys
+7 - Install dependencies: npm init -y && npm install dotenv node-fetch
+verify.js — Test all connections
+require('dotenv').config();
+
+async function verify() {
+  const keys = {
+    'Apollo': process.env.APOLLO_API_KEY,
+    'Anthropic': process.env.ANTHROPIC_API_KEY,
+    'SmartLead': process.env.SMARTLEAD_API_KEY,
+    'Supabase': process.env.SUPABASE_URL,
+  };
+
+  for (const [name, key] of Object.entries(keys)) {
+    if (key) {
+      console.log(`✓ ${name} — connected`);
+    } else {
+      console.log(`✗ ${name} — missing`);
+    }
+  }
+}
+
+verify();
+Action
+All four should say “connected.” Post your screenshot in the community.
+0.5 — Your First Pipeline Test
+1 - Search Apollo for 5 contacts in your target market
+2 - Verify one email through Blitz
+3 - Write one email script using the Claude API
+4 - Push to a SmartLead test campaign
+5 - Send it to yourself
+Pro Tip
+If you get a cold email in your inbox that sounds like a real person wrote it specifically for you — you're ready for Module 1.
+Action
+Post a screenshot of the email you received. That's your first pipeline completion.
+
+
+
+
+1.1 — The State of Cold Email in 2026
+What's changed:
+Deliverability got harder
+Google and Microsoft cracked down. Bulk senders get flagged. Domains get burned. The bar for getting into the inbox is higher than ever.
+Personalization is mandatory
+Generic templates don't land anymore. Prospects can smell a mail merge from the subject line. If it doesn't feel written for them, it's getting deleted.
+AI makes per-contact personalization possible at scale
+You can now write a unique email for every single contact — 200 per run — that references their company, role, and pain points. That wasn't possible two years ago.
+The gap: Most agencies still send templates.
+ The ones using AI still sound generic — “I noticed your company does X” copy-paste jobs. The opportunity is emails that sound like a human researched each prospect individually, at 200 per run.
+
+
+1.2 — The AI Agent Era
+The shift:
+2023 — Chat
+Ask a question, get an answer, copy-paste it somewhere. You do the work. The AI assists.
+2026 — Agent
+Searches Apollo, verifies via Blitz, writes via Claude, pushes to SmartLead, notifies on Telegram. You don't touch it.
+What this means for cold email:
+The full pipeline runs autonomously end-to-end
+Each step uses a different AI capability
+Human designs the system and reviews the output
+1.3 — The Market Opportunity
+The math:
+TRADITIONAL SDR
+$50-80K/year salary
+50-100 templated emails/day
+1-3% reply rate
+YOUR PIPELINE
+~$500/month in tools
+200+ personalized emails/day
+5-15% reply rate
+You're replacing SDR output at 2-4x the quality for 10% of the cost. That's why businesses pay $3-5K/month for this and don't blink.
+Who's buying:
+B2B SaaS companies
+Marketing agencies
+Professional services (law, accounting, consulting)
+Home services and local businesses
+
+1.4 — The Two Business Models
+MODEL A
+DFY Agency (the Cenra model)
+You build and run the pipeline for clients. $2-5K/month retainer. More hands-on, higher revenue per client.
+MODEL B
+Sell the System
+Teach others to build it. $500-2K one-time + membership. More scalable, less per-client work.
+MODEL C
+Both
+Teach the system. Upsell done-for-you for those who don't want to run it themselves. Best of both worlds.
+1.5 — What You're Building (System Overview)
+
+Action
+Write down your first target market. What industry? What titles? What pain points? Post in the community for feedback.
+
+
+
+
+
+2.1 — The Stack Philosophy
+Every tool in this stack earns its spot. If it doesn't meet all four principles, it gets replaced.
+
+2.2 — Apollo (Lead Search)
+Apollo is your lead source. It holds 275M+ contacts with verified company data, job titles, and filters that let you target exactly who you want.
+What it does: You define your ICP (industry, title, company size, location), Apollo returns matching contacts with names, emails, companies, and LinkedIn URLs.
+Apollo API Call:
+POST https://api.apollo.io/api/v1/mixed_people/search
+Headers:
+  Content-Type: application/json
+  X-Api-Key: YOUR_APOLLO_API_KEY
+
+
+Body:
+{
+  "person_titles": ["CEO", "Founder", "Head of Marketing"],
+  "organization_num_employees_ranges": ["1,50", "51,200"],
+  "person_locations": ["United States"],
+  "organization_industry_tag_ids": ["construction"],
+  "per_page": 50,
+  "page": 1
+}
+Key filters:
+person_titles — Job titles to target
+organization_num_employees_ranges — Company size brackets
+person_locations — Geographic targeting
+organization_industry_tag_ids — Industry filters
+What you get back: An array of people objects — each with name, email, title, company name, company domain, LinkedIn URL, and company metadata.
+Warning
+Apollo Basic plan is required. The free plan blocks mixed_people/search— you'll get a 403 error. Don't waste time debugging auth when it's a plan restriction.
+Action
+Run your first Apollo search. Pull 50 contacts. Save the JSON to a file and inspect the data structure.
+2.3 — Blitz OR Prospeo (Email Enrichment)
+I personally use Blitz API so that will be what I use in this example
+Apollo emails aren't always verified. Blitz runs contacts through multiple verification providers to get you clean, deliverable emails.
+Two endpoints you'll use:
+Waterfall ICP Search
+POST https://app.useblitz.co/api/search/waterfall-icp
+// Searches + enriches in one call
+// Good for bulk discovery
+Email Finder
+POST https://app.useblitz.co/v2/enrichment/email
+// Requires person_linkedin_url
+// Best for targeted enrichment of known contacts
+Warning
+The cascade gotcha. The cascade field must be an array, and include_title must be an array of strings. This will silently fail if you get it wrong.
+WRONG
+{
+  "cascade": "waterfall",
+  "include_title": "CEO"
+}
+RIGHT
+{
+  "cascade": ["waterfall"],
+  "include_title": ["CEO", "Founder"]
+}
+Rate limit: 5 requests per second. Build a delay into your enrichment loop or you'll get throttled.
+Action
+Run 10 Apollo contacts through Blitz. What's your verification rate? Track how many come back with verified emails vs. how many you sent in.
+
+
+2.4 — Claude API (Script Generation)
+This is the differentiator. You're not writing templates with merge fields like {{first_name}}. You're generating actual unique emails per contact — different angle, different hook, different language every time.
+Claude API Call
+POST https://api.anthropic.com/v1/messages
+Headers:
+  x-api-key: YOUR_CLAUDE_API_KEY
+  anthropic-version: 2023-06-01
+  Content-Type: application/json
+What to pass in the prompt: Name, title, company, industry, pain points, your offer, and constraints. The more context Claude has, the better the script.
+The rules every script must follow:
+No signatures or sign-offs
+No Subject lines
+Under 80-100 words
+End with a question
+Never start with "I"
+No "I hope this finds you well" or similar filler
+Pro Tip
+Run 5 concurrent workers. Sequential = slow. Parallel = 200 scripts in minutes instead of hours. Use Promise.all() with batches of 5.
+Action
+Write your prompt template. Generate 10 test scripts. Post in the community for tone feedback — are they reading like a human wrote them?
+
+2.5 — SmartLead (Campaign Management)
+SmartLead handles everything after you generate scripts: account rotation, email warmup, send throttling, and reply detection. You push leads in, it sends them out across multiple mailboxes.
+What it handles:
+Account rotation across multiple sending mailboxes
+Email warmup to build sender reputation
+Send throttling to stay under provider limits
+Reply detection and lead status tracking
+The key: Use the custom_script field when pushing leads. In your SmartLead campaign template, use the {{custom_script}} variable in the email body. This lets every email be unique.
+Deduplication is critical.
+ Before pushing new leads, check what's already in the campaign:
+
+
+// 1. GET existing leads from SmartLead campaign
+const existing = await fetch(
+  `https://server.smartlead.ai/api/v1/campaigns/${campaignId}/leads?api_key=${apiKey}`
+).then(r => r.json());
+
+// 2. Build a Set of existing emails
+const existingEmails = new Set(existing.map(l => l.email));
+
+// 3. Filter out duplicates
+const newLeads = leads.filter(l => !existingEmails.has(l.email));
+
+console.log(`${leads.length} total, ${newLeads.length} new, ${leads.length - newLeads.length} dupes skipped`);
+Action
+Create your first SmartLead campaign. Push 5 test leads with custom scripts. Send to your own inbox and verify the emails look right.
+2.6 — Supabase (CRM)
+Why not HubSpot or Salesforce? Because they're built for sales teams clicking buttons, not engineers running pipelines. You need a database you can query, not a GUI you have to click through.
+What Supabase gives you:
+Full PostgreSQL database
+REST API auto-generated from your schema
+Real-time subscriptions
+Generous free tier (500MB, 50K rows)
+What we store: Contacts, enrichment data, campaign tracking, daily pipeline logs. Everything your pipeline touches gets logged here.
+Action
+Create a Supabase project. Build a contacts table with: name, email, title, company, industry, campaign_id, status, created_at.
+2.7 — Apify (Local Business Scraping)
+Apollo is built for B2B — tech companies, SaaS, agencies. But what about plumbers, dentists, restaurants, contractors? They're not in Apollo. That's where Apify + Google Maps comes in.
+When to use which:
+Apollo — B2B companies with employees, job titles, and company domains
+Apify + Google Maps — Local businesses, service providers, brick-and-mortar
+What you get from a Google Maps scrape: Business name, address, phone, website, rating, review count, category, and hours. Feed the website domain into Blitz for email enrichment.
+Action
+Run an Apify Google Maps scrape for a local business category (e.g., "plumbers in Austin TX"). How many results did you get?
+2.8 — Telegram (Notifications)
+When your pipeline finishes processing 200 leads at 3am, you want to know. Telegram is the simplest notification system — takes 5 minutes to set up.
+1 Message @BotFather on Telegram. Send /newbot. Follow the prompts. Save the token.
+2 Message your new bot, then hit https://api.telegram.org/bot<TOKEN>/getUpdates to get your chat_id.
+3 Test with a simple fetch call:
+Send Telegram Notification
+const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
+const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+
+async function notify(message) {
+  await fetch(
+    `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: CHAT_ID,
+        text: message,
+        parse_mode: "Markdown",
+      }),
+    }
+  );
+}
+
+notify("Pipeline complete — 200 leads pushed to SmartLead.");
+Action
+Send yourself a test notification: "Pipeline test — Module 2 complete."
+2.9 — The Full Stack Map
+Here's how everything connects. The main pipeline flows left to right. Supporting tools feed in from below.
+
+Action
+Verify all 7 tools are set up and connected. Post your verification checklist:
+Apollo API key working
+Blitz API key working
+Claude API key working
+SmartLead API key + campaign created
+Supabase project + contacts table
+Apify account + Google Maps actor
+Telegram bot sending notifications
+
+
+3.1 — Pipeline Architecture
+The pipeline is 7 steps, run in sequence. Each step takes the output of the previous one and transforms it.
+1 Apollo Search — Query your ICP filters, pull raw contacts with names, titles, companies, and LinkedIn URLs.
+2 Blitz Enrichment— Run contacts through Blitz to get verified email addresses. Discard anything that doesn't verify.
+3 Deduplication — Check against SmartLead and your Supabase CRM. Never email the same person twice from the same campaign.
+4 Claude Script Generation — Generate a unique, personalized email for every contact. No templates — fully written scripts.
+5 SmartLead Push — Push leads with their custom scripts into the campaign. SmartLead handles rotation and sending.
+6 Telegram Notify — Send a summary notification: how many leads, verification rate, campaign name.
+7 CSV Log — Append a row to your daily log with date, client, count, campaign ID, and verification rate.
+Pro Tip
+Save incrementally. Every 10 rows. If your script crashes at row 150, you don't lose 149 contacts. Write to disk frequently — memory is volatile, files are not.
+3.2 — Building the Apollo Search Module
+Build: search.js
+This module takes your ICP parameters (industry, titles, company size, location), calls the Apollo API, returns clean contact objects, and handles pagination automatically. If you need 200 contacts and Apollo returns 50 per page, it fetches 4 pages.
+Intent signals to prioritize: Not all contacts are equal. Prioritize companies showing buying signals:
+Hiring for sales/marketing— They're investing in growth
+Recent funding — They have budget to spend
+No CRM tools detected — Gap in their stack you can fill
+New CMO/CRO in last 90 days — New leaders bring new tools and new budgets
+Action
+Build search.js. Pull 100 contacts for your target market. Inspect the data — are the titles and companies matching your ICP?
+3.3 — Building the Enrichment Module
+Build: enrich.js
+Takes Apollo contacts, runs them through Blitz's email verification, respects the 5 req/sec rate limit, and returns contacts with verified emails. Track your hit rate — it tells you how clean your data source is.
+Warning
+The cascade gotcha will waste hours if you miss it.
+WRONG — will silently return empty results
+{
+  "cascade": "waterfall",
+  "include_title": "CEO"
+}
+RIGHT — arrays for both fields
+{
+  "cascade": ["waterfall"],
+  "include_title": ["CEO", "Founder", "Owner"]
+}
+Action
+Build enrich.js. Run it on 100 contacts. What's your verification rate? 60%+ is good. Below 40% means your source data needs work.
+3.4 — Building the Script Generator
+Build: generate.js
+This is the heart of the system. It takes a verified contact, builds a detailed prompt with all their context, calls the Claude API, and returns a unique cold email script.
+The prompt template structure:
+You are writing a cold email for {client_name}.
+
+Contact:
+- Name: {name}
+- Title: {title}
+- Company: {company}
+- Industry: {industry}
+
+Offer: {offer_description}
+
+Pain points to reference: {pain_points}
+
+Rules:
+- No signature or sign-off
+- No Subject line
+- Under 80 words
+- End with a question
+- Never start with "I"
+- No filler phrases like "I hope this finds you well"
+- Write like a peer, not a salesperson
+
+Write one cold email.
+Client-specific personalization examples:
+Your agency
+Lead with manual processes AI automates — "Still building prospect lists by hand?"
+Employee advocacy client
+LinkedIn engagement gap — "Your team has 50 people on LinkedIn and none of them post."
+Digital marketing client
+Relevant case study — "Helped a {industry} company cut CAC by 40%."
+Website client
+Star rating and review count — "Noticed your 4.2 stars on Google with 89 reviews."
+Pro Tip
+Run 5 concurrent workers for speed. Use Promise.all() with batches of 5. Sequential generation is painfully slow at scale.
+Action
+Build generate.js. Generate 20 scripts. Post your best and worst in the community — what made the good ones good and the bad ones bad?
+3.5 — Building the SmartLead Push Module
+Build: push.js
+This module handles deduplication and pushing leads into SmartLead with their custom scripts attached.
+Deduplication logic:
+// 1. GET existing leads from the campaign
+const existing = await fetch(
+  `https://server.smartlead.ai/api/v1/campaigns/${campaignId}/leads?api_key=${apiKey}`
+).then(r => r.json());
+
+// 2. Build a Set for O(1) lookups
+const existingEmails = new Set(existing.map(l => l.email));
+
+// 3. Filter new leads only
+const newLeads = leads.filter(l => !existingEmails.has(l.email));
+console.log(`Pushing ${newLeads.length} new leads (${leads.length - newLeads.length} dupes skipped)`);
+Push with custom_script: When pushing each lead, include the custom_script field with the generated email body.
+SmartLead campaign setup:
+Use {{custom_script}}in your email body template — this gets replaced with each lead's unique script
+Add 2-3 follow-up steps (these can be templated)
+Warm your sending accounts for 2 weeks before pushing volume — skip this and you'll land in spam
+Action
+Build push.js. Push 20 leads to a test campaign. Check SmartLead to verify the custom scripts are showing correctly.
+3.6 — Notification + Logging
+Build: notify.js
+Two jobs: send a Telegram notification when the pipeline finishes, and log results to CSV for tracking.
+What to send on Telegram:
+Notification Message
+Pipeline complete:
+- Client: {client_name}
+- Contacts found: {total}
+- Emails verified: {verified} ({rate}%)
+- Scripts generated: {scripts}
+- Pushed to campaign: {pushed}
+- Dupes skipped: {dupes}
+What to log to CSV:
+CSV Log Format
+date,client,count,campaign_id,verification_rate,scripts_generated,pushed,errors
+2024-01-15,cenra,200,camp_abc123,72%,144,138,2
+Error tracking: Log every failure — API timeouts, verification failures, script generation errors. If your pipeline processes 200 leads and 15 fail, you need to know which 15 and why.
+3.7 — The Master Pipeline Script
+Build: pipeline.js
+The orchestrator. One command runs the entire pipeline from search to notification.
+Run Command
+node pipeline.js --client cenra --industry construction --count 200
+It calls every module in sequence:
+Parse CLI args (client, industry, count)
+Load client config (API keys, campaign IDs, prompt template)
+Run search.js — pull contacts from Apollo
+Run enrich.js — verify emails through Blitz
+Deduplicate against existing campaign leads
+Run generate.js — generate unique scripts
+Run push.js — push to SmartLead
+Run notify.js — Telegram alert + CSV log
+Automate it with a cron job for daily runs, or run manually when you need a fresh batch. Either way, one command does everything.
+Pro Tip
+I run mine for 9 campaigns across 4 clients. 1,800 new personalized contacts per day. Same script, different configs.
+Action
+Build pipeline.js. Run end-to-end with 50 leads. Post your Telegram notification screenshot in the community.
+3.8 — Optimizing Based on Results
+The Feedback Loop — Scripts That Get Replies
+The pipeline is only as good as its output. After your first week of sending, you need to track what works and feed it back into the system.
+What to track:
+Which industries reply most
+Which titles engage
+Which script angles get responses
+Which company sizes convert
+Store winning patterns in a JSON file and feed them back into your prompt template:
+winning_patterns.json
+{
+  "high_reply_industries": ["construction", "real estate", "home services"],
+  "high_reply_titles": ["Owner", "CEO", "VP of Marketing"],
+  "winning_angles": [
+    "Lead with automation of manual process",
+    "Reference specific tech stack gap",
+    "Mention competitor using similar approach"
+  ],
+  "avoid": [
+    "Generic ROI claims",
+    "Mentioning AI explicitly",
+    "Long paragraphs — keep to 2-3 sentences"
+  ],
+  "best_performing_scripts": [
+    {
+      "industry": "construction",
+      "title": "Owner",
+      "angle": "Manual bid process",
+      "reply_rate": "12%"
+    }
+  ]
+}
+Update your prompt to include these patterns. Tell Claude which angles work, which to avoid, and reference your best-performing scripts as examples.
+Action
+After your first week of sending, pull reply data from SmartLead. Which scripts got replies? Which didn't? Update your prompt template with what you learned.
+
+
+The System in Production
+Everything you built in Module 3 is the foundation. This is what it looks like when it's running for real clients, at real volume, every single day.
+
+ I'm going to walk you through my exact setup — the clients, the campaigns, the daily pipeline, and the lessons that cost me hours so they don't cost you.
+The Daily Pipeline — How It Actually Runs
+200 Leads Per Campaign, Every Day, On Autopilot
+Every day, the engine adds fresh verified leads with unique personalized scripts to every active campaign. The default is 200 leads per campaign per day. Here's the exact sequence:
+1 - Search Apollo — Find fresh ICP contacts NOT already in SmartLead. Deduplicate by email before anything else.
+2 - Verify via Blitz API Key (Or Prospeo) — Waterfall ICP Search + Email Finder at 5 req/sec. No unverified emails touch SmartLead.
+3 - Generate unique script — Claude API writes a completely unique email per contact based on their title, company, industry, and specific pain points. No templates. No signatures.
+4 - Push to SmartLead — Add to the correct campaign with {{custom_script}} custom field.
+5 - Notify via Telegram — Message with counts per campaign so I know it ran.
+6 - Log results — Append to daily_lead_log.csv with date, client, count, campaign_id.
+Pro Tip
+When starting a new session, I always ask: "How many intent-based verified email leads should I add per campaign today?"
+Default is 200, but sometimes I ramp up or down based on warmup status and deliverability.
+Active Clients — Real Campaigns, Real Numbers
+4 Clients, 9 Campaigns — The Full Breakdown
+Cenra (Own Campaigns)
+5 industry-specific campaigns
+Offer: AI workflow automation + cold email done-for-you
+ICP: Construction, Healthcare, Logistics, Legal, Accounting. 50-500 employees. CEO/COO/VP level.
+Pain points by industry:
+Construction — bid estimation, project scheduling
+Healthcare — patient scheduling, claims processing
+Logistics — freight quoting, dispatch coordination
+Legal — client intake, document drafting
+Accounting — tax prep, client onboarding
+Campaigns: (Construction) · (Healthcare) · (Logistics) · (Legal) · (Accounting)
+(Client 1)
+Employee advocacy platform
+Product: Marketing loads content, employees share to LinkedIn in one click.
+ICP: Law, CPA, wealth management, pharma, B2B tech, PR, consulting, insurance. All sizes, North America.
+Titles: CMO, VP Marketing, VP Communications, CCO, CRO, Head of Growth, VP Sales, Head of Talent
+(Client 2)
+Revenue-focused digital marketing agency
+Product: Paid ads, SEO, automation, tracking. 500+ clients.
+ICP: B2B SaaS, professional services, healthcare, franchise, education, tech. 11-500 employees, US.
+Titles: Founder, CEO, CMO, VP Marketing, Head of Growth
+SiteSprint (Own Project)
+$1K website builds for service businesses
+Model: Build websites for high-rated service businesses, sell at $1K/site.
+Two segments: Businesses with no website (opportunity) + businesses with bad websites (redesign).
+Lead source: Apify Google Maps scraper — not Apollo/Blitz. Different pipeline for local businesses.
+Campaigns: (Service Businesses) · (Website Redesign)
+Script Personalization Rules — Per Client
+VIDEO
+How Each Client Gets Different Script Angles
+Every client has different pain points they're solving for their prospects. The Claude prompt changes per client to reflect this. Here are the exact angles I use:
+CENRA
+Lead with industry-specific manual processes that AI can automate. Mention cold email done-for-you as a bundled service. The hook is: "You're doing X manually. AI does it in minutes."
+
+
+(Client 1 Rules)
+Lead with the gap between employee count and LinkedIn engagement. Reference Turbonomic/Lonza/Spencer Stuart results. The hook is: "You have 200 employees and none of them are visible on LinkedIn."
+
+
+(Client 2 Rules)
+Lead with the one case study most relevant to their industry. Propricer for SaaS, $500M for financial services, 321 leads for service businesses. Match the proof to the prospect.
+
+
+SITESPRINT (NO WEBSITE)
+Lead with their star rating and review count. "You have 4.8 stars and 200 reviews — but no website. Every customer searching for your service can't find you."
+SITESPRINT (REDESIGN)
+Lead with "your reputation deserves a better website." These businesses have a site — it's just terrible. Reference their reviews to show the gap between their quality and their online presence.
+Cold Email Rules — The Non-Negotiables
+The Rules That Keep Reply Rates Above 5%
+These rules are burned into every Claude prompt. Break any of them and your reply rates drop or you sound like every other cold email.
+01: Every email MUST be unique per contact. No templates. Claude writes fresh for each person.
+02: No signatures in custom_script.SmartLead handles signatures. Never include a name, company, "Best,", "Cheers,", "Thanks,", or any sign-off.
+03: No "Subject:" lines. SmartLead handles subject lines separately.
+04: Under 80-100 words. End with a question, not a hard CTA.
+05: Human tone, direct. Reference specific industry pain points.
+06: Never say "I hope this finds you well" or "I noticed." Never start with "I".
+07: The script ends with the final sentence. Usually a question. Nothing after it.
+…
+Intent Signals — Who to Prioritize
+
+Finding the Prospects Most Likely to Reply
+
+Not all leads are equal. These are the signals I filter for that correlate with higher reply and close rates:
+
+
+Learning From Results
+The Feedback Loop That Makes the System Smarter
+The system doesn't learn on its own. It gets smarter because I feed it better data. Here's the weekly optimization loop:
+1: Pull reply data from SmartLead — which industries and titles got the highest reply rates.
+2: Read the actual scripts that got replies. What angle did they use? What tone? What pain point?
+3: Update the Claude prompt to mirror winning patterns. Double down on what works.
+4: Cut what's not working. If an industry is getting <2% reply rate after 500 sends, drop it or change the angle completely.
+5: Store winning patterns in winning_patterns.json so the system remembers across sessions.
+{
+  "construction_ceo": {
+    "best_angle": "bid estimation time savings",
+    "avg_reply_rate": "8.2%",
+    "avoid": "generic AI messaging"
+  },
+  "healthcare_vp_ops": {
+    "best_angle": "patient scheduling automation",
+    "avg_reply_rate": "6.7%",
+    "avoid": "HIPAA scare tactics"
+  },
+  "saas_cmo": {
+    "best_angle": "employee advocacy + case study",
+    "avg_reply_rate": "11.3%",
+    "avoid": "tool comparison pitches"
+  }
+}
+Deduplication — The Step Everyone Skips
+Why You'll Burn Campaigns Without This
+Before adding leads to any campaign, check SmartLead for existing emails. Sending to someone who's already in the campaign tanks your deliverability and makes you look amateur.
+// Pull all existing leads from the campaign
+const response = await fetch(
+  `https://server.smartlead.ai/api/v1/campaigns/${campaignId}/leads?api_key=${key}&limit=10000`
+);
+const existing = await response.json();
+
+// Build a Set of existing emails
+const existingEmails = new Set(existing.map(l => l.email.toLowerCase()));
+
+// Filter out duplicates
+const newLeads = contacts.filter(
+  c => !existingEmails.has(c.email.toLowerCase())
+);
+
+console.log(`${contacts.length} total → ${newLeads.length} new (filtered ${contacts.length - newLeads.length} dupes)`);
+Warning
+Always deduplicate before pushing. I learned this the hard way — duplicate sends to the same prospect kill your sender reputation and get you flagged as spam.
+
+
+Active Campaign Map
+
+Here is an example of my current process with clients:
+
+
+Key Lessons — The Stuff That Cost Me Hours
+Mistakes I Made So You Don't Have To
+
+Adding a New Client — The Playbook
+From Signed Contract to Live Campaign in 48 Hours
+When a new client signs, here's the exact sequence:
+1: Create a new SmartLead campaign. Get the campaign ID.
+2: Add the client to the config with campaign ID, ICP definition, and industry-specific pain points.
+3: Write their email sequences in SmartLead. First touch uses {{custom_script}}. Follow-ups can be templated.
+4: Connect and warm email accounts (2 weeks before full volume) / (I had pre-warmed up inboxes ready to go).
+5: Build their Claude prompt template — test 20 scripts, get tone approval.
+6: Start the daily lead engine for that client. Ramp from 50/day to 200/day over the first week.
+Action
+This is the system running in production. Not a demo. Not a proof of concept. The exact pipeline that generates leads for 4 clients every day. Now go back to Module 4 and learn how to sell this to your first client.
+
+
+
+4.1 — The Offer
+What You're Actually Selling
+Not “AI automation.” Not “cold email software.” Meetings on their calendar.
+The one-sentence offer:
+“I'll put 15-30 qualified meetings on your calendar every month using AI-powered cold email. You don't touch anything.”
+What's included:
+ICP definition
+Lead sourcing + verification
+AI-written scripts
+Campaign management
+Weekly reporting
+Ongoing optimization
+
+4.2 — Pricing
+MODEL A
+Flat Retainer
+$2-5K/month. Set number of leads/day. Simple, predictable for both sides.
+MODEL B
+Setup + Retainer BEST FOR NEW AGENCIES
+$1.5-3K setup + $1.5-3K/month. Covers infrastructure costs upfront, recurring for management.
+MODEL C
+Performance-Based
+Lower base + per-meeting fee. Advanced only — requires trust and tracking infrastructure.
+Pro Tip
+The math for the client:Pay $3K → 15-20 meetings → close 2-3 deals worth $10-50K → 3-15x ROI.
+4.3 — Finding Clients
+The 4 Channels That Actually Work
+01 Use Your Own System
+Run your pipeline on YOUR ideal clients. You're the proof. If your system books meetings for you, that's the case study.
+02 LinkedIn Content
+Post 3-5x/week. Show results — reply rate screenshots, pipeline screenshots.
+“Here's a cold email that got a 12% reply rate — and the prompt I used”
+“I sent 500 emails this week. Here's what happened.”
+“The 3 mistakes killing your cold email reply rate”
+03 Communities
+Skool, Slack, Discord. Be helpful, don't pitch. Answer cold email questions. People will come to you when they see you know your stuff.
+04 Referrals
+After your first client sees results, ask who else needs meetings. Offer a free month or $500 credit for every referral that closes.
+4.4 — The Free Audit
+Before the call (5 min prep):
+Check their website
+Check their LinkedIn
+Look at their current outreach (if any)
+Identify their ICP
+The 5-step call framework:
+1 Map their current outbound (5 min)
+What are they doing now? Manual LinkedIn? Referrals only? Nothing?
+2 Find the pain (5 min)
+How many meetings per month? What's their close rate? What would 15 more meetings mean?
+3 Show the system live (10 min)
+Screen share. Run an Apollo search for THEIR industry. Show a Claude-generated script targeting their ICP. Make it real.
+4 Present the offer with ROI math (5 min)
+“If we book you 15 meetings and you close 2 at $20K, that's $40K from a $3K investment.”
+5 Handle objections (5 min)
+“Cold email doesn't work in my industry.” → “That's exactly what my last client said. Here are their reply rates after 30 days.”
+“I've tried cold email before.” → “Did you have AI writing personalized scripts for every prospect? That's why this is different.”
+“It's too expensive.” → “What's the cost of NOT having 15 meetings on your calendar next month?”
+Action
+Practice the audit with a friend. Record it. Watch it back. Refine.
+4.5 — The Proposal
+Three sections: The Problem, The Solution, The Investment. Keep it to one page. No fluff.
+
+Action
+Write your proposal for your target market. Post in community for feedback.
+4.6 — Client Onboarding
+The First 48 Hours With a New Client
+Day 1 Kick-off
+Kick-off call — define ICP, get offer details + case studies
+Set up SmartLead campaign
+Start email warmup
+Day 2-3 Build
+Build prompt template for their industry/offer
+Generate test scripts — get tone approval
+Set up Supabase tracking
+Configure Telegram notifications
+Week 2 Ramp
+Start pipeline at 50/day
+Monitor deliverability
+First optimization pass
+Week 3+ Full Volume
+Full volume — 200/day
+Weekly reporting
+Ongoing optimization
+Action
+Create your client onboarding checklist. This becomes your SOP.
+
+
+
+5.1 — The Solo Ceiling
+How Many Clients Can You Run Alone?
+The answer: 5-8 clients, solo.
+PER CLIENT TIME COMMITMENT
+30 min/day — pipeline management
+1 hr/week — optimization + reporting
+1 call/month — review
+At 5 clients x $3K = $15K/monthat 80%+ margins. That's the solo ceiling before quality drops.
+5.2 — Automating the Daily Engine
+The Pipeline That Runs Without You
+OPTION 1
+Cron Job
+Simple. Schedule your pipeline script to run daily. Works, but no error handling or multi-client support.
+OPTION 2 — BETTER
+n8n Orchestrator
+Daily trigger → loop through clients → run pipeline per client → log results → send summary. Visual, debuggable, scalable.
+OPTION 3 — BEST
+Full Autopilot
+Master script that pulls clients from Supabase, runs per-client pipelines, handles errors independently, sends Telegram notifications. One command, done.
+Pro Tip
+I run 9 campaigns across 4 clients. One command, Telegram pings when done. 5 minutes daily.
+5.3 — Multi-Client Management
+Running 4+ Clients Without Losing Your Mind
+Supabase becomes your command center. Four tables power everything:
+
+Client dashboard concept (Next.js + Supabase): leads added, reply rate trend, meetings booked, pipeline health — all in one view per client.
+5.4 — Hiring and Delegation
+When to Hire and What to Hand Off
+Warning
+Don't hire until: 5+ clients, $15K+/month, and all SOPs templated.
+FIRST HIRE - Campaign Manager — $2-3K/month (remote)
+Hand off:
+Pipeline review
+Client reporting
+SmartLead monitoring
+Script optimization
+Keep for yourself:
+Sales
+Prompt engineering
+System architecture
+Strategy
+SECOND HIRE - Sales/Closer (commission-based) — when at 8+ clients
+5.5 — Pricing Evolution
+Raising Prices as You Get Better
+
+New clients always get the new rate. Never discount to match old pricing.
+5.6 — Adding Revenue Streams
+Beyond Monthly Retainers
+
+5.7 — The 90-Day Plan
+From Zero to Paid in 90 Days
+Weeks 1-2 - Build
+Complete Modules 0-3
+Have a working pipeline end-to-end
+Run your own outbound
+Weeks 3-4 - Prove
+Send 1,000+ emails
+Track open rates, reply rates, meeting rates
+Create proof — screenshots, data, testimonials
+Weeks 5-6 - Sell
+Run 10 free audits
+Close 1-2 clients at $2-3K
+Weeks 7-8 - Deliver
+Run daily pipelines
+Collect data and optimize
+First weekly reports
+Weeks 9-12 - Compound
+Ask for referrals
+Raise prices for new clients
+Start LinkedIn content
+Close 2-3 more clients
+Target: $8-15K/month
+Action
+Write your 90-day plan with specific dates. Post in community. Revisit every 2 weeks.
+
+
+
+

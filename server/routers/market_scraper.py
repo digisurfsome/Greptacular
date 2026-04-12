@@ -17,20 +17,33 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from ..services.market_scraper_service import (
+    ANGLE_TYPES,
     DEFAULT_SUBREDDITS,
+    SEARCH_TYPES,
     SORT_OPTIONS,
     TIME_FILTERS,
+    add_project_angle,
     categorize_comments,
+    create_research_project,
+    delete_research_project,
     delete_scrape,
+    discover_subreddits,
     export_phrases_csv,
     get_phrase_frequencies,
+    get_research_project,
     get_scrape,
+    list_research_projects,
     list_scrapes,
     query_phrases,
+    remove_project_angle,
+    run_project_angle,
     save_scrape,
+    scrape_community_info,
     scrape_reddit_thread,
+    scrape_user_profile,
     search_and_scrape,
     search_reddit,
+    update_research_project,
 )
 
 logger = logging.getLogger(__name__)
@@ -50,6 +63,12 @@ class SearchRequest(BaseModel):
     sort: str = Field(default="relevance", description="Sort: relevance, hot, top, new, comments")
     time_filter: str = Field(default="week", description="Time: all, year, month, week, day, hour")
     max_threads: int = Field(default=5, ge=1, le=20, description="Max threads to scrape")
+    search_type: str = Field(default="link", description="Search type: link (posts), comment, sr (communities), user")
+    include_nsfw: bool = Field(default=False, description="Include NSFW content")
+    after_date: Optional[str] = Field(default=None, description="Only include results after this ISO date")
+    min_comments: int = Field(default=2, ge=0, description="Minimum number of comments on posts")
+    max_comments_per_post: int = Field(default=0, ge=0, description="Max comments to extract per post (0 = unlimited)")
+    skip_comments: bool = Field(default=False, description="Skip comment extraction entirely")
 
 
 class ScrapeRequest(BaseModel):
@@ -125,6 +144,7 @@ async def get_search_options():
         "sort_options": list(SORT_OPTIONS),
         "time_filters": list(TIME_FILTERS),
         "default_subreddits": DEFAULT_SUBREDDITS,
+        "search_types": list(SEARCH_TYPES),
     }
 
 
@@ -144,6 +164,10 @@ async def search_topics(req: SearchRequest):
             sort=req.sort,
             time_filter=req.time_filter,
             limit=25,
+            search_type=req.search_type,
+            include_nsfw=req.include_nsfw,
+            after_date=req.after_date,
+            min_comments=req.min_comments,
         )
     except Exception:
         logger.exception("Search failed for '%s'", req.query)
@@ -168,6 +192,12 @@ async def search_and_scrape_topics(req: SearchRequest):
             sort=req.sort,
             time_filter=req.time_filter,
             max_threads=req.max_threads,
+            search_type=req.search_type,
+            include_nsfw=req.include_nsfw,
+            after_date=req.after_date,
+            min_comments=req.min_comments,
+            max_comments_per_post=req.max_comments_per_post,
+            skip_comments=req.skip_comments,
         )
     except Exception:
         logger.exception("Search-and-scrape failed for '%s'", req.query)
@@ -324,3 +354,216 @@ async def get_phrase_frequency(
         category=category,
     )
     return {"phrases": results, "total": len(results)}
+
+
+# ---------------------------------------------------------------------------
+# Community & user discovery endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.get("/discover-subreddits")
+async def discover_subs(
+    query: str = Query(..., description="Search query to find relevant subreddits"),
+    limit: int = Query(10, ge=1, le=50, description="Max subreddits to return"),
+):
+    """Discover relevant subreddits for a niche/topic."""
+    try:
+        results = await discover_subreddits(query=query, limit=limit)
+        return {"subreddits": results}
+    except Exception:
+        logger.exception("Subreddit discovery failed for '%s'", query)
+        raise HTTPException(status_code=500, detail="Subreddit discovery failed")
+
+
+@router.get("/community/{subreddit}")
+async def get_community_info(subreddit: str):
+    """Get metadata about a specific subreddit."""
+    try:
+        info = await scrape_community_info(subreddit)
+        return info
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 404:
+            raise HTTPException(status_code=404, detail=f"Subreddit r/{subreddit} not found")
+        raise HTTPException(status_code=502, detail=f"Reddit returned HTTP {exc.response.status_code}")
+    except Exception:
+        logger.exception("Community info failed for r/%s", subreddit)
+        raise HTTPException(status_code=500, detail="Failed to get community info")
+
+
+@router.get("/user/{username}")
+async def get_user_profile(
+    username: str,
+    max_posts: int = Query(10, ge=1, le=50),
+):
+    """Scrape a Reddit user's profile and recent activity."""
+    try:
+        profile = await scrape_user_profile(username, max_posts=max_posts)
+        return profile
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 404:
+            raise HTTPException(status_code=404, detail=f"User u/{username} not found")
+        raise HTTPException(status_code=502, detail=f"Reddit returned HTTP {exc.response.status_code}")
+    except Exception:
+        logger.exception("User profile failed for u/%s", username)
+        raise HTTPException(status_code=500, detail="Failed to get user profile")
+
+
+# ---------------------------------------------------------------------------
+# Research Project models
+# ---------------------------------------------------------------------------
+
+
+class ProjectCreateRequest(BaseModel):
+    name: str = Field(..., description="Project name")
+    niche: str = Field(..., description="Target niche (e.g., 'SEO agency')")
+    description: str = Field(default="", description="Optional description")
+    angles: list[dict] = Field(default=[], description="List of {type, custom_keywords}")
+
+
+class ProjectUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    niche: Optional[str] = None
+    description: Optional[str] = None
+
+
+class AngleAddRequest(BaseModel):
+    angle_type: str = Field(..., description="Angle type: discovery, desire, pain_point, validation, workflow, education")
+    custom_keywords: str = Field(default="", description="Comma-separated custom keywords")
+
+
+class RunAngleRequest(BaseModel):
+    max_threads: int = Field(default=3, ge=1, le=10, description="Max threads to scrape per query")
+    subreddits: list[str] = Field(default=[], description="Subreddits to search (empty = all)")
+
+
+# ---------------------------------------------------------------------------
+# Research Project endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.get("/angle-types")
+async def get_angle_types():
+    """Get all available angle types with descriptions and seed phrases."""
+    return {
+        "angle_types": {
+            k: {"label": v["label"], "description": v["description"]}
+            for k, v in ANGLE_TYPES.items()
+        }
+    }
+
+
+@router.post("/projects")
+async def create_project(req: ProjectCreateRequest):
+    """Create a new research project with optional angles."""
+    if not req.name.strip():
+        raise HTTPException(status_code=400, detail="Project name is required")
+    if not req.niche.strip():
+        raise HTTPException(status_code=400, detail="Niche is required")
+    result = create_research_project(
+        name=req.name.strip(),
+        niche=req.niche.strip(),
+        description=req.description,
+        angles=req.angles,
+    )
+    return result
+
+
+@router.get("/projects")
+async def get_projects():
+    """List all research projects."""
+    return list_research_projects()
+
+
+@router.get("/projects/{project_id}")
+async def get_project_detail(project_id: int):
+    """Get a research project with all angles."""
+    result = get_research_project(project_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return result
+
+
+@router.patch("/projects/{project_id}")
+async def update_project(project_id: int, req: ProjectUpdateRequest):
+    """Update a research project."""
+    result = update_research_project(
+        project_id=project_id,
+        name=req.name,
+        niche=req.niche,
+        description=req.description,
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return result
+
+
+@router.delete("/projects/{project_id}")
+async def delete_project(project_id: int):
+    """Delete a research project and all its angles."""
+    deleted = delete_research_project(project_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return {"status": "deleted", "project_id": project_id}
+
+
+@router.post("/projects/{project_id}/angles")
+async def add_angle(project_id: int, req: AngleAddRequest):
+    """Add a new angle to a project."""
+    if req.angle_type not in ANGLE_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid angle type. Must be one of: {', '.join(ANGLE_TYPES.keys())}",
+        )
+    result = add_project_angle(project_id, req.angle_type, req.custom_keywords)
+    if not result:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return result
+
+
+@router.delete("/angles/{angle_id}")
+async def delete_angle(angle_id: int):
+    """Remove an angle from a project."""
+    deleted = remove_project_angle(angle_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Angle not found")
+    return {"status": "deleted", "angle_id": angle_id}
+
+
+@router.post("/angles/{angle_id}/run")
+async def run_angle(angle_id: int, req: RunAngleRequest):
+    """Execute a single angle — runs its search queries and scrapes results."""
+    try:
+        result = await run_project_angle(
+            angle_id=angle_id,
+            max_threads=req.max_threads,
+            subreddits=req.subreddits or None,
+        )
+        return result
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except Exception:
+        logger.exception("Failed to run angle %d", angle_id)
+        raise HTTPException(status_code=500, detail="Failed to run angle")
+
+
+@router.post("/projects/{project_id}/run-all")
+async def run_all_angles(project_id: int, req: RunAngleRequest):
+    """Run ALL angles for a project sequentially."""
+    project = get_research_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    results = []
+    for angle in project.get("angles", []):
+        try:
+            result = await run_project_angle(
+                angle_id=angle["id"],
+                max_threads=req.max_threads,
+                subreddits=req.subreddits or None,
+            )
+            results.append(result)
+        except Exception:
+            logger.exception("Failed angle %d in project %d", angle["id"], project_id)
+            results.append({"angle_id": angle["id"], "error": "failed"})
+
+    return {"project_id": project_id, "results": results}

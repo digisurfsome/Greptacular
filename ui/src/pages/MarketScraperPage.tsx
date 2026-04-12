@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -21,6 +21,17 @@ import {
   ChevronDown,
   ExternalLink,
   Zap,
+  FolderPlus,
+  Play,
+  Check,
+  Plus,
+  ChevronLeft,
+  BookOpen,
+  Target,
+  Lightbulb,
+  ShieldCheck,
+  Workflow,
+  GraduationCap,
 } from 'lucide-react'
 import {
   useScrapes,
@@ -30,9 +41,16 @@ import {
   useSearchOptions,
   useSearchAndScrape,
   usePhraseFrequency,
+  useAngleTypes,
+  useResearchProjects,
+  useResearchProject,
+  useCreateProject,
+  useDeleteProject,
+  useRunAngle,
+  useRunAllAngles,
 } from '@/hooks/useMarketScraper'
 import { exportScrape } from '@/lib/api'
-import type { MarketScrape, MarketScrapeDetail, MarketPhrase, MarketSearchOptions, MarketSearchResult, MarketTopPhrase } from '@/lib/types'
+import type { MarketScrape, MarketScrapeDetail, MarketPhrase, MarketSearchOptions, MarketSearchResult, MarketTopPhrase, ResearchProject, ProjectAngle, AngleTypeInfo } from '@/lib/types'
 
 /** Category display configuration: label, Tailwind classes, and icon */
 const CATEGORY_CONFIG: Record<string, { label: string; color: string; bg: string; icon: typeof AlertTriangle }> = {
@@ -55,8 +73,32 @@ const FILTER_TABS = [
 type SortMode = 'score' | 'validation' | 'recent'
 type InputMode = 'url' | 'topic'
 type ResultsView = 'phrases' | 'top-phrases'
+type PageView = 'scraper' | 'projects' | 'project-detail' | 'project-create'
+
+/** Angle type display config: color, icon */
+const ANGLE_TYPE_CONFIG: Record<string, { color: string; bg: string; icon: typeof Target }> = {
+  discovery: { color: 'text-white', bg: 'bg-[#3b82f6]', icon: Search },
+  desire: { color: 'text-white', bg: 'bg-[#8b5cf6]', icon: Heart },
+  pain_point: { color: 'text-white', bg: 'bg-[#ef4444]', icon: AlertTriangle },
+  validation: { color: 'text-white', bg: 'bg-[#22c55e]', icon: ShieldCheck },
+  workflow: { color: 'text-black', bg: 'bg-[#f59e0b]', icon: Workflow },
+  education: { color: 'text-white', bg: 'bg-[#06b6d4]', icon: GraduationCap },
+}
+
+/** Status badge styling */
+const STATUS_BADGE: Record<string, { label: string; className: string }> = {
+  draft: { label: 'Draft', className: 'bg-gray-200 text-gray-700 border-gray-400' },
+  running: { label: 'Running', className: 'bg-[#06b6d4]/20 text-[#06b6d4] border-[#06b6d4] animate-pulse' },
+  complete: { label: 'Complete', className: 'bg-[#22c55e]/20 text-[#22c55e] border-[#22c55e]' },
+  pending: { label: 'Pending', className: 'bg-gray-200 text-gray-700 border-gray-400' },
+  error: { label: 'Error', className: 'bg-[#ef4444]/20 text-[#ef4444] border-[#ef4444]' },
+}
 
 export function MarketScraperPage() {
+  // Top-level page view
+  const [pageView, setPageView] = useState<PageView>('scraper')
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null)
+
   // Input mode
   const [inputMode, setInputMode] = useState<InputMode>('topic')
 
@@ -69,6 +111,11 @@ export function MarketScraperPage() {
   const [topicSort, setTopicSort] = useState('relevance')
   const [topicTime, setTopicTime] = useState('week')
   const [maxThreads, setMaxThreads] = useState(5)
+  const [searchType, setSearchType] = useState('link')
+  const [includeNsfw, setIncludeNsfw] = useState(false)
+  const [minComments, setMinComments] = useState(2)
+  const [maxCommentsPerPost, setMaxCommentsPerPost] = useState(0)
+  const [skipComments, setSkipComments] = useState(false)
   const [showSubPicker, setShowSubPicker] = useState(false)
   const [searchResult, setSearchResult] = useState<{
     query: string
@@ -98,6 +145,102 @@ export function MarketScraperPage() {
   const { data: phraseFreqData } = usePhraseFrequency(
     activeScrapeId ? { scrape_ids: [activeScrapeId], top_n: 50 } : { top_n: 50 }
   )
+
+  // Research Project hooks
+  const { data: angleTypesData } = useAngleTypes()
+  const { data: projectsRaw } = useResearchProjects()
+  const { data: selectedProjectRaw, refetch: refetchProject } = useResearchProject(selectedProjectId)
+  const createProject = useCreateProject()
+  const deleteProject = useDeleteProject()
+  const runAngle = useRunAngle()
+  const runAllAngles = useRunAllAngles()
+
+  const projects = projectsRaw as ResearchProject[] | undefined
+  const selectedProject = selectedProjectRaw as ResearchProject | undefined
+  const angleTypes = angleTypesData?.angle_types as Record<string, AngleTypeInfo> | undefined
+
+  // Project create wizard state
+  const [wizardName, setWizardName] = useState('')
+  const [wizardNiche, setWizardNiche] = useState('')
+  const [wizardDescription, setWizardDescription] = useState('')
+  const [wizardAngles, setWizardAngles] = useState<Record<string, { selected: boolean; keywords: string }>>({})
+
+  // Initialize wizard angles when angle types load
+  const angleTypeKeys = useMemo(() => Object.keys(angleTypes ?? {}), [angleTypes])
+
+  const resetWizard = useCallback(() => {
+    setWizardName('')
+    setWizardNiche('')
+    setWizardDescription('')
+    setWizardAngles({})
+  }, [])
+
+  const handleCreateProject = useCallback(() => {
+    if (!wizardName.trim() || !wizardNiche.trim()) return
+    const selectedAngles = Object.entries(wizardAngles)
+      .filter(([, v]) => v.selected)
+      .map(([type, v]) => ({
+        type,
+        custom_keywords: v.keywords.trim() || undefined,
+      }))
+    createProject.mutate(
+      {
+        name: wizardName.trim(),
+        niche: wizardNiche.trim(),
+        description: wizardDescription.trim() || undefined,
+        angles: selectedAngles.length > 0 ? selectedAngles : undefined,
+      },
+      {
+        onSuccess: (proj) => {
+          const created = proj as ResearchProject
+          showToast('success', `Project "${created.name}" created`)
+          resetWizard()
+          setSelectedProjectId(created.id)
+          setPageView('project-detail')
+        },
+        onError: (err: Error) => showToast('error', err.message || 'Failed to create project'),
+      },
+    )
+  }, [wizardName, wizardNiche, wizardDescription, wizardAngles, createProject, showToast, resetWizard])
+
+  const handleDeleteProject = useCallback((id: number) => {
+    deleteProject.mutate(id, {
+      onSuccess: () => {
+        showToast('success', 'Project deleted')
+        if (selectedProjectId === id) {
+          setSelectedProjectId(null)
+          setPageView('projects')
+        }
+      },
+      onError: (err: Error) => showToast('error', err.message || 'Failed to delete'),
+    })
+  }, [deleteProject, selectedProjectId, showToast])
+
+  const handleRunAngle = useCallback((angleId: number) => {
+    runAngle.mutate(
+      { angleId },
+      {
+        onSuccess: (result) => {
+          showToast('success', `Angle complete: ${result.total_phrases} phrases from ${result.queries_run} queries`)
+          refetchProject()
+        },
+        onError: (err: Error) => showToast('error', err.message || 'Failed to run angle'),
+      },
+    )
+  }, [runAngle, showToast, refetchProject])
+
+  const handleRunAll = useCallback((projectId: number) => {
+    runAllAngles.mutate(
+      { projectId },
+      {
+        onSuccess: () => {
+          showToast('success', 'All angles complete')
+          refetchProject()
+        },
+        onError: (err: Error) => showToast('error', err.message || 'Failed to run all angles'),
+      },
+    )
+  }, [runAllAngles, showToast, refetchProject])
 
   const opts = searchOptions as MarketSearchOptions | undefined
   const defaultSubs: string[] = opts?.default_subreddits ?? []
@@ -135,6 +278,11 @@ export function MarketScraperPage() {
         sort: topicSort,
         time_filter: topicTime,
         max_threads: maxThreads,
+        search_type: searchType,
+        include_nsfw: includeNsfw,
+        min_comments: minComments,
+        max_comments_per_post: maxCommentsPerPost,
+        skip_comments: skipComments,
       },
       {
         onSuccess: (raw) => {
@@ -155,7 +303,7 @@ export function MarketScraperPage() {
         },
       }
     )
-  }, [topicQuery, selectedSubs, topicSort, topicTime, maxThreads, searchAndScrape, showToast])
+  }, [topicQuery, selectedSubs, topicSort, topicTime, maxThreads, searchType, includeNsfw, minComments, maxCommentsPerPost, skipComments, searchAndScrape, showToast])
 
   const handleDelete = useCallback((id: number) => {
     deleteScrape.mutate(id, {
@@ -234,6 +382,27 @@ export function MarketScraperPage() {
             Scrape Reddit for pain points, desires, and ad copy gold
           </p>
         </div>
+        {/* Top-level nav: Scraper vs Projects */}
+        <div className="ml-auto flex gap-2">
+          <Button
+            variant={pageView === 'scraper' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setPageView('scraper')}
+            className="gap-2 border-2 border-black shadow-[2px_2px_0_0_#000]"
+          >
+            <Search size={16} />
+            Scraper
+          </Button>
+          <Button
+            variant={pageView !== 'scraper' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setPageView('projects')}
+            className="gap-2 border-2 border-black shadow-[2px_2px_0_0_#000]"
+          >
+            <FolderPlus size={16} />
+            Projects
+          </Button>
+        </div>
       </div>
 
       {/* Toast notification */}
@@ -247,7 +416,308 @@ export function MarketScraperPage() {
         </div>
       )}
 
-      {/* Main layout: sidebar + content */}
+      {/* ========== PROJECT VIEWS ========== */}
+      {pageView === 'projects' && (
+        <div className="flex-1 overflow-y-auto p-4">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-lg font-bold">Research Projects</h2>
+            <Button
+              onClick={() => { resetWizard(); setPageView('project-create') }}
+              className="gap-2 border-2 border-black bg-[#22c55e] text-white shadow-[3px_3px_0_0_#000] hover:bg-[#16a34a]"
+            >
+              <Plus size={16} />
+              New Project
+            </Button>
+          </div>
+          {(!projects || projects.length === 0) ? (
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <FolderPlus size={48} className="mb-4 text-muted-foreground/30" />
+              <h3 className="text-lg font-bold">No research projects yet</h3>
+              <p className="mt-1 max-w-md text-sm text-muted-foreground">
+                Create a project to organize your market research by niche. Add scrape angles to systematically gather Reddit data.
+              </p>
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {projects.map((proj) => {
+                const statusBadge = STATUS_BADGE[proj.status] ?? STATUS_BADGE.draft
+                return (
+                  <Card
+                    key={proj.id}
+                    className="cursor-pointer border-2 border-black shadow-[4px_4px_0_0_#000] transition-all hover:shadow-[6px_6px_0_0_#000]"
+                    onClick={() => { setSelectedProjectId(proj.id); setPageView('project-detail') }}
+                  >
+                    <CardContent className="p-4">
+                      <div className="mb-2 flex items-start justify-between">
+                        <h3 className="text-base font-bold">{proj.name}</h3>
+                        <Badge className={`border text-[10px] ${statusBadge.className}`}>
+                          {statusBadge.label}
+                        </Badge>
+                      </div>
+                      <p className="mb-3 text-xs text-muted-foreground">{proj.niche}</p>
+                      {proj.description && (
+                        <p className="mb-3 line-clamp-2 text-sm text-foreground/80">{proj.description}</p>
+                      )}
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                        <span className="font-semibold">{proj.angle_count} angle{proj.angle_count !== 1 ? 's' : ''}</span>
+                        <span>{proj.total_phrases} phrases</span>
+                        <span className="ml-auto">{new Date(proj.created_at).toLocaleDateString()}</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ========== PROJECT CREATE WIZARD ========== */}
+      {pageView === 'project-create' && (
+        <div className="flex-1 overflow-y-auto p-4">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="mb-4 gap-1"
+            onClick={() => setPageView('projects')}
+          >
+            <ChevronLeft size={16} />
+            Back to Projects
+          </Button>
+          <Card className="mx-auto max-w-2xl border-2 border-black shadow-[4px_4px_0_0_#000]">
+            <CardContent className="p-6 space-y-6">
+              <h2 className="text-xl font-bold">Create Research Project</h2>
+
+              {/* Step 1: Basic info */}
+              <div className="space-y-3">
+                <div>
+                  <label className="mb-1 block text-sm font-bold">Project Name *</label>
+                  <Input
+                    value={wizardName}
+                    onChange={(e) => setWizardName(e.target.value)}
+                    placeholder='e.g., "AI Coding Tools Research"'
+                    className="border-2 border-black"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-bold">Niche *</label>
+                  <Input
+                    value={wizardNiche}
+                    onChange={(e) => setWizardNiche(e.target.value)}
+                    placeholder='e.g., "AI-powered code editors"'
+                    className="border-2 border-black"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-bold">Description (optional)</label>
+                  <textarea
+                    value={wizardDescription}
+                    onChange={(e) => setWizardDescription(e.target.value)}
+                    placeholder="Brief notes about what you want to learn..."
+                    className="w-full rounded border-2 border-black bg-background px-3 py-2 text-sm"
+                    rows={3}
+                  />
+                </div>
+              </div>
+
+              {/* Step 2: Angle selection */}
+              <div>
+                <h3 className="mb-2 text-sm font-bold">Scrape Angles</h3>
+                <p className="mb-3 text-xs text-muted-foreground">
+                  Select the research angles you want to explore. Each angle generates targeted search queries.
+                </p>
+                <div className="space-y-3">
+                  {angleTypeKeys.map((key) => {
+                    const info = angleTypes?.[key]
+                    const config = ANGLE_TYPE_CONFIG[key]
+                    const Icon = config?.icon ?? Target
+                    const isSelected = wizardAngles[key]?.selected ?? false
+                    return (
+                      <div
+                        key={key}
+                        className={`rounded border-2 border-black p-3 transition-all ${
+                          isSelected
+                            ? `${config?.bg ?? 'bg-primary'}/10 shadow-[3px_3px_0_0_#000]`
+                            : 'bg-card hover:bg-accent/50'
+                        }`}
+                      >
+                        <label className="flex cursor-pointer items-start gap-3">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() =>
+                              setWizardAngles((prev) => ({
+                                ...prev,
+                                [key]: { selected: !isSelected, keywords: prev[key]?.keywords ?? '' },
+                              }))
+                            }
+                            className="mt-1 h-4 w-4 accent-black"
+                          />
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <Icon size={16} className={config?.color ?? ''} />
+                              <span className="text-sm font-bold">{info?.label ?? key}</span>
+                            </div>
+                            <p className="mt-0.5 text-xs text-muted-foreground">{info?.description ?? ''}</p>
+                            {isSelected && (
+                              <Input
+                                value={wizardAngles[key]?.keywords ?? ''}
+                                onChange={(e) =>
+                                  setWizardAngles((prev) => ({
+                                    ...prev,
+                                    [key]: { ...prev[key], keywords: e.target.value },
+                                  }))
+                                }
+                                placeholder="Custom keywords (optional)"
+                                className="mt-2 border-2 border-black text-xs"
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                            )}
+                          </div>
+                        </label>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Create button */}
+              <Button
+                onClick={handleCreateProject}
+                disabled={!wizardName.trim() || !wizardNiche.trim() || createProject.isPending}
+                className="w-full border-2 border-black bg-[#22c55e] text-white shadow-[3px_3px_0_0_#000] hover:bg-[#16a34a]"
+              >
+                {createProject.isPending ? (
+                  <>
+                    <Loader2 size={16} className="mr-2 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <FolderPlus size={16} className="mr-2" />
+                    Create Project
+                  </>
+                )}
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* ========== PROJECT DETAIL VIEW ========== */}
+      {pageView === 'project-detail' && selectedProject && (
+        <div className="flex-1 overflow-y-auto p-4">
+          <div className="mb-4 flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1"
+              onClick={() => { setSelectedProjectId(null); setPageView('projects') }}
+            >
+              <ChevronLeft size={16} />
+              Back to Projects
+            </Button>
+          </div>
+
+          {/* Project header */}
+          <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-3">
+                <h2 className="text-xl font-bold">{selectedProject.name}</h2>
+                <Badge className={`border text-xs ${(STATUS_BADGE[selectedProject.status] ?? STATUS_BADGE.draft).className}`}>
+                  {(STATUS_BADGE[selectedProject.status] ?? STATUS_BADGE.draft).label}
+                </Badge>
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">{selectedProject.niche}</p>
+              {selectedProject.description && (
+                <p className="mt-1 text-sm text-foreground/80">{selectedProject.description}</p>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button
+                onClick={() => handleRunAll(selectedProject.id)}
+                disabled={runAllAngles.isPending || !selectedProject.angles?.length}
+                className="gap-2 border-2 border-black bg-[#22c55e] text-white shadow-[3px_3px_0_0_#000] hover:bg-[#16a34a]"
+              >
+                {runAllAngles.isPending ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <Play size={16} />
+                )}
+                Run All Angles
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                className="border-2 border-black shadow-[2px_2px_0_0_#000]"
+                onClick={() => handleDeleteProject(selectedProject.id)}
+              >
+                <Trash2 size={14} />
+              </Button>
+            </div>
+          </div>
+
+          {/* Summary stats */}
+          <div className="mb-6 grid grid-cols-3 gap-3">
+            <SummaryCard
+              label="Angles"
+              count={selectedProject.angle_count}
+              color="bg-card"
+              icon={<Target size={18} />}
+            />
+            <SummaryCard
+              label="Total Phrases"
+              count={selectedProject.total_phrases}
+              color="bg-card"
+              icon={<MessageSquare size={18} />}
+            />
+            <SummaryCard
+              label="Complete"
+              count={selectedProject.angles?.filter((a) => a.status === 'complete').length ?? 0}
+              color="bg-[#22c55e]/10"
+              textColor="text-[#22c55e]"
+              icon={<Check size={18} className="text-[#22c55e]" />}
+            />
+          </div>
+
+          {/* Angle cards */}
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-base font-bold">Scrape Angles</h3>
+          </div>
+
+          {(!selectedProject.angles || selectedProject.angles.length === 0) ? (
+            <Card className="border-2 border-black p-8 text-center shadow-[4px_4px_0_0_#000]">
+              <p className="text-muted-foreground">No angles yet. Add angles to start researching.</p>
+            </Card>
+          ) : (
+            <div className="space-y-3">
+              {selectedProject.angles.map((angle) => (
+                <AngleCard
+                  key={angle.id}
+                  angle={angle}
+                  angleTypes={angleTypes}
+                  onRun={handleRunAngle}
+                  isRunning={runAngle.isPending}
+                  onViewScrape={(scrapeId) => {
+                    setActiveScrapeId(scrapeId)
+                    setPageView('scraper')
+                  }}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Loading state for project detail */}
+      {pageView === 'project-detail' && !selectedProject && selectedProjectId !== null && (
+        <div className="flex flex-1 items-center justify-center">
+          <Loader2 size={32} className="animate-spin text-muted-foreground" />
+        </div>
+      )}
+
+      {/* ========== SCRAPER VIEW (original) ========== */}
+      {pageView === 'scraper' && (
       <div className="flex flex-1 overflow-hidden">
         {/* Left Sidebar — Past Scrapes */}
         <aside className="w-64 flex-shrink-0 overflow-y-auto border-r-2 border-border bg-card p-3">
@@ -487,6 +957,70 @@ export function MarketScraperPage() {
                       ))}
                     </select>
                   </div>
+
+                  {/* Search type */}
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs font-bold text-muted-foreground">Type:</span>
+                    <select
+                      value={searchType}
+                      onChange={(e) => setSearchType(e.target.value)}
+                      className="rounded border-2 border-black bg-card px-2 py-1 text-xs"
+                    >
+                      <option value="link">Posts</option>
+                      <option value="comment">Comments</option>
+                      <option value="sr">Communities</option>
+                      <option value="user">Users</option>
+                    </select>
+                  </div>
+
+                  {/* Min comments — only relevant for link/post search */}
+                  {searchType === 'link' && (
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs font-bold text-muted-foreground">Min comments:</span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={1000}
+                        value={minComments}
+                        onChange={(e) => setMinComments(Number(e.target.value))}
+                        className="w-16 rounded border-2 border-black bg-card px-2 py-1 text-xs"
+                      />
+                    </div>
+                  )}
+
+                  {/* Max comments per post */}
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs font-bold text-muted-foreground">Max comments:</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={5000}
+                      value={maxCommentsPerPost}
+                      onChange={(e) => setMaxCommentsPerPost(Number(e.target.value))}
+                      className="w-16 rounded border-2 border-black bg-card px-2 py-1 text-xs"
+                      title="0 = unlimited"
+                    />
+                  </div>
+
+                  {/* NSFW toggle */}
+                  <label className="flex items-center gap-1 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={includeNsfw}
+                      onChange={(e) => setIncludeNsfw(e.target.checked)}
+                    />
+                    NSFW
+                  </label>
+
+                  {/* Skip comments toggle */}
+                  <label className="flex items-center gap-1 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={skipComments}
+                      onChange={(e) => setSkipComments(e.target.checked)}
+                    />
+                    Skip comments
+                  </label>
                 </div>
 
                 {/* Search result summary */}
@@ -761,6 +1295,7 @@ export function MarketScraperPage() {
           )}
         </div>
       </div>
+      )}
     </div>
   )
 }
@@ -991,6 +1526,130 @@ function TopPhraseRow({
                 &ldquo;{sample}&rdquo;
               </blockquote>
             ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+/** Angle card used in the project detail view */
+function AngleCard({
+  angle,
+  angleTypes,
+  onRun,
+  isRunning,
+  onViewScrape,
+}: {
+  angle: ProjectAngle
+  angleTypes: Record<string, AngleTypeInfo> | undefined
+  onRun: (angleId: number) => void
+  isRunning: boolean
+  onViewScrape: (scrapeId: number) => void
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const config = ANGLE_TYPE_CONFIG[angle.angle_type]
+  const Icon = config?.icon ?? Target
+  const info = angleTypes?.[angle.angle_type]
+  const statusBadge = STATUS_BADGE[angle.status] ?? STATUS_BADGE.pending
+
+  return (
+    <Card
+      className="border-2 border-black shadow-[3px_3px_0_0_#000] transition-all hover:shadow-[4px_4px_0_0_#000]"
+    >
+      <CardContent className="p-4">
+        <div className="flex items-center gap-3">
+          {/* Angle type icon + label */}
+          <div className={`flex h-10 w-10 items-center justify-center rounded border-2 border-black ${config?.bg ?? 'bg-gray-200'}`}>
+            <Icon size={20} className={config?.color ?? 'text-black'} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-bold">{info?.label ?? angle.angle_type}</span>
+              <Badge className={`border text-[10px] ${statusBadge.className}`}>
+                {statusBadge.label}
+              </Badge>
+            </div>
+            {angle.custom_keywords && (
+              <p className="mt-0.5 text-xs text-muted-foreground">Keywords: {angle.custom_keywords}</p>
+            )}
+          </div>
+
+          {/* Phrase count */}
+          <Badge variant="outline" className="border-2 border-black text-sm font-bold">
+            {angle.total_phrases} phrases
+          </Badge>
+
+          {/* Run button */}
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 border-2 border-black shadow-[2px_2px_0_0_#000]"
+            onClick={() => onRun(angle.id)}
+            disabled={isRunning || angle.status === 'running'}
+          >
+            {angle.status === 'running' || isRunning ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : angle.status === 'complete' ? (
+              <Check size={14} className="text-[#22c55e]" />
+            ) : (
+              <Play size={14} />
+            )}
+            {angle.status === 'complete' ? 'Re-run' : 'Run'}
+          </Button>
+
+          {/* Expand toggle */}
+          <button
+            className="text-muted-foreground transition-transform"
+            onClick={() => setExpanded(!expanded)}
+          >
+            <ChevronDown size={16} className={expanded ? 'rotate-180' : ''} />
+          </button>
+        </div>
+
+        {/* Expanded details: search queries and scrape links */}
+        {expanded && (
+          <div className="mt-4 border-t-2 border-black/10 pt-3 space-y-3">
+            {angle.search_queries.length > 0 && (
+              <div>
+                <p className="mb-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  Generated Search Queries
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {angle.search_queries.map((q, i) => (
+                    <Badge key={i} variant="outline" className="border border-black text-xs">
+                      {q}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+            {angle.scrape_ids.length > 0 && (
+              <div>
+                <p className="mb-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  Linked Scrapes
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {angle.scrape_ids.map((sid) => (
+                    <Button
+                      key={sid}
+                      variant="outline"
+                      size="sm"
+                      className="gap-1 border-2 border-black text-xs"
+                      onClick={() => onViewScrape(sid)}
+                    >
+                      <BookOpen size={12} />
+                      Scrape #{sid}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {angle.search_queries.length === 0 && angle.scrape_ids.length === 0 && (
+              <p className="text-xs text-muted-foreground italic">
+                Run this angle to generate search queries and gather data.
+              </p>
+            )}
           </div>
         )}
       </CardContent>

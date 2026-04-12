@@ -2142,6 +2142,7 @@ export interface MarketSearchOptions {
   sort_options: string[]
   time_filters: string[]
   default_subreddits: string[]
+  search_types: string[]
 }
 
 export interface MarketSearchResult {
@@ -2164,4 +2165,68 @@ export interface MarketTopPhrase {
 export interface MarketPhraseFrequencyResult {
   phrases: MarketTopPhrase[]
   total: number
+}
+
+// Reddit community & user types
+
+export interface RedditCommunity {
+  name: string
+  title: string
+  description: string
+  members: number
+  url: string
+  over_18: boolean
+  created_utc: number
+  active_users?: number
+  full_description?: string
+  category?: string
+}
+
+export interface RedditUserProfile {
+  username: string
+  link_karma: number
+  comment_karma: number
+  total_karma: number
+  created_utc: number
+  is_gold: boolean
+  verified: boolean
+  recent_posts: {
+    title: string
+    subreddit: string
+    score: number
+    num_comments: number
+    url: string
+    created_utc: number
+  }[]
+}
+
+// Research Projects
+export interface ResearchProject {
+  id: number
+  name: string
+  niche: string
+  description: string
+  status: 'draft' | 'running' | 'complete'
+  created_at: string
+  updated_at: string
+  angle_count: number
+  total_phrases: number
+  angles?: ProjectAngle[]
+}
+
+export interface ProjectAngle {
+  id: number
+  project_id: number
+  angle_type: string
+  custom_keywords: string
+  status: 'pending' | 'running' | 'complete' | 'error'
+  search_queries: string[]
+  scrape_ids: number[]
+  total_phrases: number
+  created_at: string
+}
+
+export interface AngleTypeInfo {
+  label: string
+  description: string
 }

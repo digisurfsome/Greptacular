@@ -406,7 +406,308 @@ export function MarketScraperPage() {
         </div>
       )}
 
-      {/* Main layout: sidebar + content */}
+      {/* ========== PROJECT VIEWS ========== */}
+      {pageView === 'projects' && (
+        <div className="flex-1 overflow-y-auto p-4">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-lg font-bold">Research Projects</h2>
+            <Button
+              onClick={() => { resetWizard(); setPageView('project-create') }}
+              className="gap-2 border-2 border-black bg-[#22c55e] text-white shadow-[3px_3px_0_0_#000] hover:bg-[#16a34a]"
+            >
+              <Plus size={16} />
+              New Project
+            </Button>
+          </div>
+          {(!projects || projects.length === 0) ? (
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <FolderPlus size={48} className="mb-4 text-muted-foreground/30" />
+              <h3 className="text-lg font-bold">No research projects yet</h3>
+              <p className="mt-1 max-w-md text-sm text-muted-foreground">
+                Create a project to organize your market research by niche. Add scrape angles to systematically gather Reddit data.
+              </p>
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {projects.map((proj) => {
+                const statusBadge = STATUS_BADGE[proj.status] ?? STATUS_BADGE.draft
+                return (
+                  <Card
+                    key={proj.id}
+                    className="cursor-pointer border-2 border-black shadow-[4px_4px_0_0_#000] transition-all hover:shadow-[6px_6px_0_0_#000]"
+                    onClick={() => { setSelectedProjectId(proj.id); setPageView('project-detail') }}
+                  >
+                    <CardContent className="p-4">
+                      <div className="mb-2 flex items-start justify-between">
+                        <h3 className="text-base font-bold">{proj.name}</h3>
+                        <Badge className={`border text-[10px] ${statusBadge.className}`}>
+                          {statusBadge.label}
+                        </Badge>
+                      </div>
+                      <p className="mb-3 text-xs text-muted-foreground">{proj.niche}</p>
+                      {proj.description && (
+                        <p className="mb-3 line-clamp-2 text-sm text-foreground/80">{proj.description}</p>
+                      )}
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                        <span className="font-semibold">{proj.angle_count} angle{proj.angle_count !== 1 ? 's' : ''}</span>
+                        <span>{proj.total_phrases} phrases</span>
+                        <span className="ml-auto">{new Date(proj.created_at).toLocaleDateString()}</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ========== PROJECT CREATE WIZARD ========== */}
+      {pageView === 'project-create' && (
+        <div className="flex-1 overflow-y-auto p-4">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="mb-4 gap-1"
+            onClick={() => setPageView('projects')}
+          >
+            <ChevronLeft size={16} />
+            Back to Projects
+          </Button>
+          <Card className="mx-auto max-w-2xl border-2 border-black shadow-[4px_4px_0_0_#000]">
+            <CardContent className="p-6 space-y-6">
+              <h2 className="text-xl font-bold">Create Research Project</h2>
+
+              {/* Step 1: Basic info */}
+              <div className="space-y-3">
+                <div>
+                  <label className="mb-1 block text-sm font-bold">Project Name *</label>
+                  <Input
+                    value={wizardName}
+                    onChange={(e) => setWizardName(e.target.value)}
+                    placeholder='e.g., "AI Coding Tools Research"'
+                    className="border-2 border-black"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-bold">Niche *</label>
+                  <Input
+                    value={wizardNiche}
+                    onChange={(e) => setWizardNiche(e.target.value)}
+                    placeholder='e.g., "AI-powered code editors"'
+                    className="border-2 border-black"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-bold">Description (optional)</label>
+                  <textarea
+                    value={wizardDescription}
+                    onChange={(e) => setWizardDescription(e.target.value)}
+                    placeholder="Brief notes about what you want to learn..."
+                    className="w-full rounded border-2 border-black bg-background px-3 py-2 text-sm"
+                    rows={3}
+                  />
+                </div>
+              </div>
+
+              {/* Step 2: Angle selection */}
+              <div>
+                <h3 className="mb-2 text-sm font-bold">Scrape Angles</h3>
+                <p className="mb-3 text-xs text-muted-foreground">
+                  Select the research angles you want to explore. Each angle generates targeted search queries.
+                </p>
+                <div className="space-y-3">
+                  {angleTypeKeys.map((key) => {
+                    const info = angleTypes?.[key]
+                    const config = ANGLE_TYPE_CONFIG[key]
+                    const Icon = config?.icon ?? Target
+                    const isSelected = wizardAngles[key]?.selected ?? false
+                    return (
+                      <div
+                        key={key}
+                        className={`rounded border-2 border-black p-3 transition-all ${
+                          isSelected
+                            ? `${config?.bg ?? 'bg-primary'}/10 shadow-[3px_3px_0_0_#000]`
+                            : 'bg-card hover:bg-accent/50'
+                        }`}
+                      >
+                        <label className="flex cursor-pointer items-start gap-3">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() =>
+                              setWizardAngles((prev) => ({
+                                ...prev,
+                                [key]: { selected: !isSelected, keywords: prev[key]?.keywords ?? '' },
+                              }))
+                            }
+                            className="mt-1 h-4 w-4 accent-black"
+                          />
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <Icon size={16} className={config?.color ?? ''} />
+                              <span className="text-sm font-bold">{info?.label ?? key}</span>
+                            </div>
+                            <p className="mt-0.5 text-xs text-muted-foreground">{info?.description ?? ''}</p>
+                            {isSelected && (
+                              <Input
+                                value={wizardAngles[key]?.keywords ?? ''}
+                                onChange={(e) =>
+                                  setWizardAngles((prev) => ({
+                                    ...prev,
+                                    [key]: { ...prev[key], keywords: e.target.value },
+                                  }))
+                                }
+                                placeholder="Custom keywords (optional)"
+                                className="mt-2 border-2 border-black text-xs"
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                            )}
+                          </div>
+                        </label>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Create button */}
+              <Button
+                onClick={handleCreateProject}
+                disabled={!wizardName.trim() || !wizardNiche.trim() || createProject.isPending}
+                className="w-full border-2 border-black bg-[#22c55e] text-white shadow-[3px_3px_0_0_#000] hover:bg-[#16a34a]"
+              >
+                {createProject.isPending ? (
+                  <>
+                    <Loader2 size={16} className="mr-2 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <FolderPlus size={16} className="mr-2" />
+                    Create Project
+                  </>
+                )}
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* ========== PROJECT DETAIL VIEW ========== */}
+      {pageView === 'project-detail' && selectedProject && (
+        <div className="flex-1 overflow-y-auto p-4">
+          <div className="mb-4 flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1"
+              onClick={() => { setSelectedProjectId(null); setPageView('projects') }}
+            >
+              <ChevronLeft size={16} />
+              Back to Projects
+            </Button>
+          </div>
+
+          {/* Project header */}
+          <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-3">
+                <h2 className="text-xl font-bold">{selectedProject.name}</h2>
+                <Badge className={`border text-xs ${(STATUS_BADGE[selectedProject.status] ?? STATUS_BADGE.draft).className}`}>
+                  {(STATUS_BADGE[selectedProject.status] ?? STATUS_BADGE.draft).label}
+                </Badge>
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">{selectedProject.niche}</p>
+              {selectedProject.description && (
+                <p className="mt-1 text-sm text-foreground/80">{selectedProject.description}</p>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button
+                onClick={() => handleRunAll(selectedProject.id)}
+                disabled={runAllAngles.isPending || !selectedProject.angles?.length}
+                className="gap-2 border-2 border-black bg-[#22c55e] text-white shadow-[3px_3px_0_0_#000] hover:bg-[#16a34a]"
+              >
+                {runAllAngles.isPending ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <Play size={16} />
+                )}
+                Run All Angles
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                className="border-2 border-black shadow-[2px_2px_0_0_#000]"
+                onClick={() => handleDeleteProject(selectedProject.id)}
+              >
+                <Trash2 size={14} />
+              </Button>
+            </div>
+          </div>
+
+          {/* Summary stats */}
+          <div className="mb-6 grid grid-cols-3 gap-3">
+            <SummaryCard
+              label="Angles"
+              count={selectedProject.angle_count}
+              color="bg-card"
+              icon={<Target size={18} />}
+            />
+            <SummaryCard
+              label="Total Phrases"
+              count={selectedProject.total_phrases}
+              color="bg-card"
+              icon={<MessageSquare size={18} />}
+            />
+            <SummaryCard
+              label="Complete"
+              count={selectedProject.angles?.filter((a) => a.status === 'complete').length ?? 0}
+              color="bg-[#22c55e]/10"
+              textColor="text-[#22c55e]"
+              icon={<Check size={18} className="text-[#22c55e]" />}
+            />
+          </div>
+
+          {/* Angle cards */}
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-base font-bold">Scrape Angles</h3>
+          </div>
+
+          {(!selectedProject.angles || selectedProject.angles.length === 0) ? (
+            <Card className="border-2 border-black p-8 text-center shadow-[4px_4px_0_0_#000]">
+              <p className="text-muted-foreground">No angles yet. Add angles to start researching.</p>
+            </Card>
+          ) : (
+            <div className="space-y-3">
+              {selectedProject.angles.map((angle) => (
+                <AngleCard
+                  key={angle.id}
+                  angle={angle}
+                  angleTypes={angleTypes}
+                  onRun={handleRunAngle}
+                  isRunning={runAngle.isPending}
+                  onViewScrape={(scrapeId) => {
+                    setActiveScrapeId(scrapeId)
+                    setPageView('scraper')
+                  }}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Loading state for project detail */}
+      {pageView === 'project-detail' && !selectedProject && selectedProjectId !== null && (
+        <div className="flex flex-1 items-center justify-center">
+          <Loader2 size={32} className="animate-spin text-muted-foreground" />
+        </div>
+      )}
+
+      {/* ========== SCRAPER VIEW (original) ========== */}
+      {pageView === 'scraper' && (
       <div className="flex flex-1 overflow-hidden">
         {/* Left Sidebar — Past Scrapes */}
         <aside className="w-64 flex-shrink-0 overflow-y-auto border-r-2 border-border bg-card p-3">
@@ -920,6 +1221,7 @@ export function MarketScraperPage() {
           )}
         </div>
       </div>
+      )}
     </div>
   )
 }

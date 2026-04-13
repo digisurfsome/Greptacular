@@ -20,6 +20,20 @@
 - **`ui/dist/` is gitignored.** `start_ui.bat` auto-rebuilds. Source changes alone fix the UI.
 - **Sonnet builds, Opus reviews.** Never assign Opus to per-phase Reviewer role. See `docs/SONNET_OPUS_OPTIMIZATION.md`
 
+## 🚨 WHERE DOCS GO — 3 DIRECTORIES, NO EXCEPTIONS 🚨
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  docs/page-prds/{page-name}/  — PRDs, specs, file maps for a page  │
+│  docs/ideas/                  — brainstorms, concepts, "what if"   │
+│  docs/info/                   — research, guides, saved context    │
+│                                                                     │
+│  NEVER drop loose .md files in docs/. Everything has a home.       │
+│  Page PRD index: docs/page-prds/README.md                          │
+│  If your page folder doesn't exist, CREATE IT.                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
 ## ⚠️ MANDATORY READS — Before Calling AI Models or Editing Pages
 
 **If your task calls an AI model, creates an SDK client, or adds/edits a UI page, you MUST read these files first. Not optional. Not "if you have time." MUST.**
@@ -39,12 +53,12 @@ Find files here instead of searching:
 - **UI files:** `ui/CLAUDE.md` — every page, component, hook, utility
 - **Server files:** `server/CLAUDE.md` — every router, service, database model
 - **Docs:** `docs/CLAUDE.md` — doc structure and PRD locations
-- **Page PRDs:** `docs/page-prds/README.md` — check before modifying any page
 
 ## References — Read ONLY When Your Task Needs It
 
 | Topic | File |
 |-------|------|
+| **Market Scraper (Reddit scraper PRD)** | **`docs/page-prds/market-scraper/README.md`** |
 | SDK client bugs (3-bug fix pattern) | `docs/references/sdk-client-pattern.md` |
 | Full architecture + key patterns | `docs/references/architecture.md` |
 | Commands (CLI, npm, Python, UI) | `docs/references/commands-reference.md` |

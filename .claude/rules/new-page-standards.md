@@ -3,6 +3,20 @@
 > **Read this before building ANY new page.** Follow this structure exactly.
 > Also read `ui/WORKSPACE_STANDARDS.md` for layout patterns, state management, and component patterns.
 
+## 🚨 WHERE DOCS GO — 3 DIRECTORIES, NO EXCEPTIONS 🚨
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  docs/page-prds/{page-name}/  — PRDs, specs, file maps for a page  │
+│  docs/ideas/                  — brainstorms, concepts, "what if"   │
+│  docs/info/                   — research, guides, saved context    │
+│                                                                     │
+│  NEVER drop loose .md files in docs/. Everything has a home.       │
+│  Page PRD index: docs/page-prds/README.md                          │
+│  If your page folder doesn't exist, CREATE IT.                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
 ---
 
 ## Directory Structure

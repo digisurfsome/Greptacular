@@ -23,6 +23,7 @@ Every AutoForge UI page has a PRD folder. **Before modifying any page, check its
 | `seo-tools/` | SEOToolsPage | SEO tools PRDs |
 | `token-budget/` | TokenBudgetPage | Token budget PRDs |
 | `tool-runner/` | ToolRunnerPage | Tool runner PRDs |
+| `market-scraper/` | MarketScraperPage | Reddit market scraper — pain points, ad copy, research projects |
 | `component-dashboard/` | ComponentDashboardPage | Component dashboard PRDs |
 
 **Index:** See `docs/page-prds/README.md` for the complete folder map.

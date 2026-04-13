@@ -1,0 +1,68 @@
+{
+  "ideas": [
+    {
+      "name": "Chat Distiller",
+      "description": "Extract and compile key insights from iterative AI chat conversations into a final baked-down version. Solves the problem of important ideas scattered across long chats where early principles get lost.",
+      "keywords": ["AI chat history", "save claude conversation", "chatgpt notes", "compile chat insights", "AI conversation export"],
+      "competitors": ["ChatGPT memory", "TypingMind", "Notion AI"],
+      "queries": [
+        "lost important info in chatgpt conversation",
+        "how to save best parts of AI chat",
+        "chatgpt context lost between sessions",
+        "extract insights from long AI conversation",
+        "AI chat too long lost the good parts"
+      ]
+    },
+    {
+      "name": "Sugar Scanner",
+      "description": "Barcode scanner that detects hidden sugars using a 92-alias database. Keto-focused. Beat Sugar AI (50K downloads) with user accounts, scan history, and affiliate revenue.",
+      "keywords": ["sugar scanner", "hidden sugar", "keto barcode", "food scanner app"],
+      "competitors": ["Sugar AI", "Yuka", "MyFitnessPal"],
+      "queries": [
+        "why is it so hard to avoid hidden sugar",
+        "keto barcode scanner app",
+        "food label sugar names confusing",
+        "best app to check sugar content"
+      ]
+    },
+    {
+      "name": "CageGuard",
+      "description": "Safety layer between AI coding agents and your machine. Intercepts dangerous commands before execution. Prevents the horror stories of AI deleting production databases.",
+      "keywords": ["AI agent safety", "AI code agent dangerous", "AI deleted my files"],
+      "competitors": ["Docker", "E2B"],
+      "queries": [
+        "AI agent deleted my database",
+        "claude code dangerous commands",
+        "replit AI destroyed my project",
+        "how to sandbox AI coding agent",
+        "AI agent ran wrong command production"
+      ]
+    },
+    {
+      "name": "AI Visibility Tracker",
+      "description": "Monitor when and how AI chatbots mention your brand across ChatGPT, Perplexity, Claude, and Google AI Overviews. First-mover at indie level.",
+      "keywords": ["AI brand monitoring", "ChatGPT mentions brand", "AI search visibility"],
+      "competitors": [],
+      "queries": [
+        "does ChatGPT recommend my product",
+        "how to get mentioned by AI",
+        "AI search optimization",
+        "brand visibility in AI answers",
+        "perplexity mentions competitors not me"
+      ]
+    },
+    {
+      "name": "BookBrain",
+      "description": "Upload any book, AI extracts every technique and framework into a queryable knowledge base. Solves 'I read this 5 years ago and cant find that technique from Chapter 14.'",
+      "keywords": ["book knowledge base", "searchable book notes", "book summary AI"],
+      "competitors": ["Readwise", "Blinkist", "Shortform"],
+      "queries": [
+        "cant find technique I read in a book",
+        "how to remember everything from books",
+        "searchable book notes app",
+        "readwise alternative",
+        "AI book summary searchable"
+      ]
+    }
+  ]
+}

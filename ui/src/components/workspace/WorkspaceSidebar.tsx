@@ -204,7 +204,7 @@ export function WorkspaceSidebar({
     localStorage.setItem('workspace-sort-mode', mode)
   }, [])
 
-  const { data: conversations, isLoading } = useWorkspaceConversations()
+  const { data: conversations, isLoading, isError } = useWorkspaceConversations()
 
   const createConversationMut = useCreateWorkspaceConversation()
   const updateConversationMut = useUpdateWorkspaceConversation()
@@ -228,6 +228,14 @@ export function WorkspaceSidebar({
     if (!providers || !providers[newChatProvider]) return CLAUDE_MODEL_PRESETS
     return buildPresetsForProvider(newChatProvider, providers[newChatProvider])
   }, [providers, newChatProvider])
+
+  // Default the folder to the first category when the form opens (prevents
+  // new conversations from landing in the hidden "general" group at the bottom).
+  useEffect(() => {
+    if (showNewChatForm && categories.length > 0 && !newChatCategory) {
+      setNewChatCategory(categories[0].name)
+    }
+  }, [showNewChatForm, categories, newChatCategory])
 
   // Focus the naming input when the form appears
   useEffect(() => {
@@ -286,6 +294,9 @@ export function WorkspaceSidebar({
       fork_from: forkFromConvId || undefined,
     }, {
       onSuccess: (newConv) => {
+        // Ensure the group containing this conversation is expanded so it's visible
+        const convCategory = newConv.category || 'Uncategorized'
+        setCollapsedGroups(prev => ({ ...prev, [convCategory]: false }))
         onSelectConversation(newConv.id, newConv.provider)
         setShowNewChatForm(false)
         setNewChatName('')
@@ -710,6 +721,10 @@ export function WorkspaceSidebar({
               {mode === 'recent' ? 'Recent' : 'Sequential'}
             </button>
           ))}
+          {/* Total conversation count */}
+          <span className="ml-auto text-[10px] text-muted-foreground/50">
+            {conversations?.length ?? 0} chats
+          </span>
         </div>
       </div>
 
@@ -748,6 +763,12 @@ export function WorkspaceSidebar({
 
       {/* Conversation list */}
       <div className="flex-1 overflow-y-auto px-1">
+        {/* Error indicator — visible when conversation list fetch fails silently */}
+        {isError && (
+          <div className="mx-2 mb-2 px-2 py-1.5 rounded bg-destructive/10 border border-destructive/30 text-destructive text-[10px]">
+            ⚠ Failed to refresh conversation list
+          </div>
+        )}
         {isLoading ? (
           <div className="flex items-center justify-center py-8 text-muted-foreground text-xs">
             Loading...

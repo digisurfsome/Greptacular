@@ -1722,16 +1722,16 @@ export function WorkspaceChat({
         )}
       </div>
 
-      {/* Compact context threshold warnings — single line at bottom */}
+      {/* Compact context threshold warnings — single line at bottom, latest warning shown */}
       {contextWarnings.length > 0 && (
-        <div className="flex items-center gap-3 px-3 py-1 border-t border-amber-700/40 bg-amber-950/20 text-[11px] text-amber-400/80 font-mono overflow-x-auto whitespace-nowrap">
+        <div className="flex items-center gap-2 px-3 py-1 border-t border-amber-700/40 bg-amber-950/20 text-[11px] text-amber-400/80 font-mono overflow-hidden">
           <Info size={12} className="flex-shrink-0 text-amber-500/70" />
-          {contextWarnings.map((w, i) => (
-            <span key={w.id}>
-              {w.content}
-              {i < contextWarnings.length - 1 && <span className="mx-1.5 text-amber-700">·</span>}
+          {contextWarnings.length > 1 && (
+            <span className="flex-shrink-0 bg-amber-700/40 text-amber-300 px-1.5 rounded text-[10px] font-bold">
+              {contextWarnings.length}
             </span>
-          ))}
+          )}
+          <span className="truncate">{contextWarnings[contextWarnings.length - 1].content}</span>
         </div>
       )}
 

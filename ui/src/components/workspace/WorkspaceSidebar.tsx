@@ -199,6 +199,9 @@ export function WorkspaceSidebar({
     const saved = localStorage.getItem('workspace-sort-mode')
     return (saved === 'recent' || saved === 'sequential') ? saved : 'recent'
   })
+
+  // Folder filter: null = show all folders, string = show only that folder
+  const [selectedFolder, setSelectedFolder] = useState<string | null>(null)
   const handleSortChange = useCallback((mode: SortMode) => {
     setSortMode(mode)
     localStorage.setItem('workspace-sort-mode', mode)
@@ -348,14 +351,19 @@ export function WorkspaceSidebar({
   const grouped = useMemo(() => {
     const groups: Record<string, WorkspaceConversation[]> = {}
 
+    // Apply folder filter before grouping
+    const folderFiltered = selectedFolder
+      ? filtered.filter(c => (c.category || 'Uncategorized') === selectedFolder)
+      : filtered
+
     // Pinned conversations go in a special group
-    const pinned = filtered.filter(c => c.pinned)
+    const pinned = folderFiltered.filter(c => c.pinned)
     if (pinned.length > 0) {
       groups['__pinned__'] = pinned
     }
 
     // Group remaining by category
-    const unpinned = filtered.filter(c => !c.pinned)
+    const unpinned = folderFiltered.filter(c => !c.pinned)
     for (const conv of unpinned) {
       const cat = conv.category || 'Uncategorized'
       if (!groups[cat]) groups[cat] = []
@@ -363,7 +371,7 @@ export function WorkspaceSidebar({
     }
 
     return groups
-  }, [filtered])
+  }, [filtered, selectedFolder])
 
   const categoryOrder = useMemo(() => {
     const order: string[] = []
@@ -726,6 +734,35 @@ export function WorkspaceSidebar({
             {conversations?.length ?? 0} chats
           </span>
         </div>
+        {/* Folder filter tabs — only shown when there are multiple folders */}
+        {categories.length > 0 && (
+          <div className="flex items-center gap-1 flex-wrap">
+            <span className="text-[10px] text-muted-foreground mr-1">Folder:</span>
+            <button
+              onClick={() => setSelectedFolder(null)}
+              className={`px-2 py-0.5 text-[10px] rounded-full transition-colors ${
+                selectedFolder === null
+                  ? 'bg-primary text-primary-foreground font-semibold'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+              }`}
+            >
+              All
+            </button>
+            {categories.map((cat) => (
+              <button
+                key={cat.id}
+                onClick={() => setSelectedFolder(selectedFolder === cat.name ? null : cat.name)}
+                className={`px-2 py-0.5 text-[10px] rounded-full transition-colors ${
+                  selectedFolder === cat.name
+                    ? 'bg-primary text-primary-foreground font-semibold'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                }`}
+              >
+                {cat.name}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Bulk action bar */}

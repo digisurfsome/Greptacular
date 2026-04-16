@@ -795,6 +795,10 @@ export interface TokenLogSummary {
   // Current context window utilization (from LATEST turn only).
   // This is the real number for the context meter — not the sum.
   current_context_tokens?: number
+  // Context window size for this conversation: 200000 or 1000000 depending
+  // on context_mode. Used by the header Ctx meter to render "used / max".
+  context_mode?: string
+  max_context_tokens?: number
   latest_input_tokens?: number
   latest_output_tokens?: number
   latest_cache_read_tokens?: number

@@ -73,6 +73,46 @@ Kept connected (they don't cost tokens in Claude Code — they're Claude.ai chat
 
 Mid-conversation effort shifter — Low / Medium / High pill next to the send button. Lets the owner dial effort per-message. Replaced the idea of auto-dropping default effort to low.
 
+### 7. Header token meter rewired + 5-hour ledger now captures workspace chat
+**Date:** 2026-04-16
+
+**The problem:** The top-bar token meter (`TokenBudgetBadge`) was displaying the 5-hour rolling total from the `token_budget.db` ledger — but that ledger was only being written by CLI Scripter, NOT by workspace chat. Workspace runs wrote only to the per-conversation `workspace_token_log` table. Net effect: the meter jumped around randomly, dropped between messages, and gave numbers you couldn't trust. There was also no way to distinguish main-agent usage from subagent usage (the SDK already rolls subagent tokens into each main-agent turn, so this "bug" was a false premise — but the meter was still broken for a different reason).
+
+**What changed:**
+
+| Area | File | Change |
+|------|------|--------|
+| Frontend hook | `ui/src/hooks/useTokenBudget.ts` | Added `useCurrentWorkspaceConversationId()` (parses URL hash, listens to `hashchange`) and `useCurrentWorkspaceTokenUsage()` (polls per-conversation summary every 5s). Zero WebSocket impact — does NOT touch `useWorkspaceChat.ts`. |
+| Header badge | `ui/src/components/TokenBudgetBadge.tsx` | Rewritten. Now shows `Ctx: 156K / 200K` format using the active conversation's `current_context_tokens` / `max_context_tokens`. Color thresholds are % of max (50/75/90) so they work for both 200K and 1M context modes. Hides when you're not on a workspace conversation page. |
+| Backend summary | `server/services/workspace_database.py` → `get_token_log_summary` | Now also returns `context_mode` and `max_context_tokens` (200000 or 1000000) so the frontend can render the denominator. |
+| Backend type | `ui/src/lib/types.ts` → `TokenLogSummary` | Added `context_mode?: string` and `max_context_tokens?: number`. |
+| Ledger write hook | `server/services/workspace_chat_session.py` | After each `result_summary` writes to `workspace_token_log`, now ALSO calls `token_budget.log_session(session_type="workspace_chat", source="workspace", ...)`. This mirrors every main-agent turn into the global 5-hour ledger, so the Token Budget dashboard and (pre-existing) 5-hour views finally capture workspace chat usage — not just CLI Scripter runs. |
+
+**What the header meter now means (post-change):**
+- `Ctx: X / Y` — X is context tokens in use for the current conversation's most recent turn; Y is that conversation's context window size (200K or 1M).
+- Monotonically grows within a conversation as context accumulates; resets on `/compact` or a new conversation.
+- "Main agent only" by construction — subagent work is already bundled into each parent turn by the SDK, so NO filtering or per-agent-type field is needed.
+- Hides on non-workspace pages (badge lives in global `App.tsx` header, so it renders on every page).
+
+**What the 5-hour / Token Budget dashboard views now capture (post-change):**
+- CLI Scripter sessions (unchanged)
+- Workspace chat turns (NEW — previously invisible)
+- AutoForge calibration entries (unchanged)
+
+Each workspace turn writes one row to the `token_log` table with `session_type="workspace_chat"` and `source="workspace"`. Rows age out of the 5-hour window naturally as they always did.
+
+**False starts / things NOT done:**
+- Did NOT add an `agent_type` column to the workspace DB. Subagent usage is already rolled up into parent turns — adding a column would have been wasted work.
+- Did NOT touch `useWorkspaceChat.ts` or `WorkspaceChat.tsx` (CLAUDE.md ban on fiddling with the WebSocket hook). The new badge logic gets the conversation ID by reading the URL hash directly — same mechanism `WorkspacePage.tsx` uses.
+- Did NOT add a backfill for old workspace conversations that ran before this change. Their turns were never logged to `token_budget.db` and never will be. Going forward only.
+
+**Verification after pulling:**
+1. Open a fresh workspace chat. Send one message and wait for the response.
+2. Top-bar badge should show `Ctx: ~XK / 200K` (or `/ 1M`) with color based on %.
+3. Navigate away (e.g. to Dashboard). Badge should disappear.
+4. Navigate back to the conversation. Badge should reappear with the correct number.
+5. Hit `/api/token-budget/status` in browser — `five_hour.total_tokens` should now include your workspace turn (previously it wouldn't have).
+
 ---
 
 ## What's Still on the Table (Remaining Levers)
@@ -121,7 +161,11 @@ To check the changes are live after pulling to `C:\Users\lober\Greptacular`:
 | `docs/references/page-index.md` | **NEW** — unified per-page file index |
 | `docs/references/deploy-chain.md` | **NEW** — moved out of root |
 | `docs/references/communication.md` | **NEW** — moved out of root |
-| `server/services/workspace_chat_session.py` | `max_turns` 50 → 34 |
+| `server/services/workspace_chat_session.py` | `max_turns` 50 → 34; mirror workspace turns into `token_budget.db` ledger |
+| `server/services/workspace_database.py` | `get_token_log_summary` now returns `context_mode` + `max_context_tokens` |
+| `ui/src/hooks/useTokenBudget.ts` | Added `useCurrentWorkspaceConversationId` + `useCurrentWorkspaceTokenUsage` hooks |
+| `ui/src/components/TokenBudgetBadge.tsx` | Rewritten — per-conversation `Ctx: X / Y` meter, % color thresholds |
+| `ui/src/lib/types.ts` | `TokenLogSummary` gained `context_mode` + `max_context_tokens` fields |
 
 ---
 

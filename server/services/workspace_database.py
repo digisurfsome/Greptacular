@@ -2526,6 +2526,16 @@ def get_token_log_summary(conversation_id: int) -> dict:
     """
     session = get_db_session()
     try:
+        # Look up context window size for this conversation so the UI can
+        # render an accurate "used / max" meter.
+        conv_row = (
+            session.query(WorkspaceConversation)
+            .filter(WorkspaceConversation.id == conversation_id)
+            .first()
+        )
+        context_mode = (conv_row.context_mode if conv_row else None) or "200k"
+        max_context_tokens = 1_000_000 if context_mode == "1m" else 200_000
+
         entries = (
             session.query(WorkspaceTokenLog)
             .filter(WorkspaceTokenLog.conversation_id == conversation_id)
@@ -2541,6 +2551,8 @@ def get_token_log_summary(conversation_id: int) -> dict:
                 "total_api_cache_creation_tokens": 0,
                 "total_api_cache_read_tokens": 0,
                 "current_context_tokens": 0,
+                "context_mode": context_mode,
+                "max_context_tokens": max_context_tokens,
                 "total_cost_usd": 0.0,
                 "per_tool_breakdown": [],
                 "entries": [],
@@ -2628,6 +2640,8 @@ def get_token_log_summary(conversation_id: int) -> dict:
             "total_cost_usd": round(total_cost, 6),
             # Current context window utilization (from LATEST turn only)
             "current_context_tokens": current_context_tokens,
+            "context_mode": context_mode,
+            "max_context_tokens": max_context_tokens,
             "latest_input_tokens": latest_input,
             "latest_output_tokens": latest_output,
             "latest_cache_read_tokens": latest_cache_read,

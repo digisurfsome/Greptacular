@@ -229,6 +229,16 @@ export function WorkspaceSidebar({
     setNewChatProvider(activeProvider)
   }, [activeProvider, showNewChatForm])
 
+  // Auto-downgrade effort if the selected model doesn't support it (e.g. xhigh on 4.6)
+  useEffect(() => {
+    const preset = (providers && providers[newChatProvider])
+      ? buildPresetsForProvider(newChatProvider, providers[newChatProvider])[modelPresetIndex]
+      : CLAUDE_MODEL_PRESETS[modelPresetIndex]
+    if (effortLevel === 'xhigh' && preset?.model !== 'claude-opus-4-7') {
+      onEffortChange?.('high')
+    }
+  }, [modelPresetIndex, newChatProvider, providers, effortLevel, onEffortChange])
+
   // Build model presets for the new-chat form based on its local provider selection
   const isNewChatClaude = newChatProvider === 'claude'
   const newChatModelPresets: ModelPreset[] = useMemo(() => {
@@ -659,7 +669,15 @@ export function WorkspaceSidebar({
           {/* Effort level selector — only shown for Claude provider, active for Opus 1M */}
           {isNewChatClaude && (() => {
             const selectedPreset = newChatModelPresets[modelPresetIndex]
-            const isOpus1M = selectedPreset?.context === '1m' && selectedPreset?.model === 'opus'
+            const isOpus46 = selectedPreset?.model === 'opus'
+            const isOpus47 = selectedPreset?.model === 'claude-opus-4-7'
+            const isOpus1M = selectedPreset?.context === '1m' && (isOpus46 || isOpus47)
+            // Per Anthropic docs: xhigh is Opus 4.7 only. max is on both 4.6 and 4.7.
+            const isEffortAvailable = (key: EffortLevel): boolean => {
+              if (!isOpus1M) return false
+              if (key === 'xhigh') return isOpus47
+              return true
+            }
             return (
               <div className={`mb-1.5 transition-opacity duration-150 ${isOpus1M ? '' : 'opacity-35 pointer-events-none'}`}>
                 <span className="text-[10px] text-muted-foreground mb-0.5 block">
@@ -668,23 +686,31 @@ export function WorkspaceSidebar({
                 <div className="flex rounded-full border border-border overflow-hidden shadow-sm" role="radiogroup" aria-label="Thinking effort level">
                   {EFFORT_PRESETS.map((preset, idx) => {
                     const isActive = effortLevel === preset.key
+                    const available = isEffortAvailable(preset.key)
                     const activeClass = preset.key === 'low'
                       ? 'bg-emerald-500 text-white shadow-inner'
                       : preset.key === 'medium'
                         ? 'bg-blue-500 text-white shadow-inner'
-                        : 'bg-orange-500 text-white shadow-inner'
+                        : preset.key === 'xhigh'
+                          ? 'bg-red-500 text-white shadow-inner'
+                          : preset.key === 'max'
+                            ? 'bg-fuchsia-600 text-white shadow-inner'
+                            : 'bg-orange-500 text-white shadow-inner'
+                    const unavailableTitle = !available && isOpus1M && preset.key === 'xhigh'
+                      ? 'Extra High is Opus 4.7 only'
+                      : preset.useCases
                     return (
                       <button
                         key={preset.key}
                         type="button"
                         role="radio"
                         aria-checked={isActive}
-                        disabled={!isOpus1M}
+                        disabled={!available}
                         onClick={() => onEffortChange?.(preset.key)}
-                        title={preset.useCases}
+                        title={unavailableTitle}
                         className={`flex-1 px-1.5 py-1 text-[10px] font-semibold whitespace-nowrap transition-all duration-150 ${
                           isActive ? activeClass : 'bg-card text-muted-foreground hover:bg-muted hover:text-foreground'
-                        } ${idx === 0 ? 'rounded-l-full' : ''} ${idx === EFFORT_PRESETS.length - 1 ? 'rounded-r-full' : 'border-r border-border'}`}
+                        } ${!available && isOpus1M ? 'opacity-40 cursor-not-allowed' : ''} ${idx === 0 ? 'rounded-l-full' : ''} ${idx === EFFORT_PRESETS.length - 1 ? 'rounded-r-full' : 'border-r border-border'}`}
                       >
                         {preset.label}
                       </button>

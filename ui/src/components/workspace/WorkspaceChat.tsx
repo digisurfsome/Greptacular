@@ -1471,8 +1471,16 @@ export function WorkspaceChat({
 
       {/* Compact control bar: Effort pill + thin context budget bar + message count */}
       {(() => {
-        // Effort levels only work on Opus 4.6 — Sonnet ignores them entirely.
-        const isOpus1M = conversationContextMode === '1m' && conversationModel === 'opus'
+        // Effort levels only work on Opus (4.6 or 4.7) at 1M — Sonnet/Haiku ignore them entirely.
+        const isOpus46 = conversationModel === 'opus'
+        const isOpus47 = conversationModel === 'claude-opus-4-7'
+        const isOpus1M = conversationContextMode === '1m' && (isOpus46 || isOpus47)
+        // Per Anthropic docs: xhigh is Opus 4.7 only. max is on both 4.6 and 4.7.
+        const isEffortAvailable = (key: EffortLevel): boolean => {
+          if (!isOpus1M) return false
+          if (key === 'xhigh') return isOpus47
+          return true
+        }
         const effortLabels: Record<EffortLevel, string> = { low: 'Low', medium: 'Med', high: 'High', xhigh: 'XHi', max: 'Max' }
         const effortUseCases: Record<EffortLevel, string> = {
           low: 'Quick lookups, classification, routing, sub-agents',
@@ -1516,7 +1524,7 @@ export function WorkspaceChat({
                   className={`px-2 py-0.5 text-[10px] font-bold rounded-full shrink-0 transition-opacity ${
                     isOpus1M ? effortColors[conversationEffort] : 'bg-muted text-muted-foreground opacity-40'
                   }`}
-                  title={isOpus1M ? effortUseCases[conversationEffort] : 'Effort levels are Opus 4.6 only'}
+                  title={isOpus1M ? effortUseCases[conversationEffort] : 'Effort levels are Opus 1M only'}
                 >
                   {effortLabels[conversationEffort]}
                   {isOpus1M && <ChevronDown size={8} className="inline ml-0.5 opacity-70" />}
@@ -1524,24 +1532,36 @@ export function WorkspaceChat({
               </DropdownMenuTrigger>
               {isOpus1M && (
                 <DropdownMenuContent align="start" className="w-64">
-                  <DropdownMenuLabel className="text-xs">Anthropic Use Cases</DropdownMenuLabel>
+                  <DropdownMenuLabel className="text-xs">
+                    Anthropic Use Cases {isOpus47 ? '(Opus 4.7)' : '(Opus 4.6)'}
+                  </DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  {(['low', 'medium', 'high'] as const).map((level) => (
-                    <DropdownMenuItem
-                      key={level}
-                      className={`gap-2 text-xs cursor-default ${conversationEffort === level ? 'bg-accent' : ''}`}
-                      onSelect={(e) => e.preventDefault()}
-                    >
-                      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                        level === 'low' ? 'bg-emerald-500' : level === 'medium' ? 'bg-blue-500' : 'bg-orange-500'
-                      }`} />
-                      <div className="flex flex-col gap-0.5">
-                        <span className="font-semibold">{effortLabels[level]}</span>
-                        <span className="text-[10px] text-muted-foreground">{effortUseCases[level]}</span>
-                      </div>
-                      {conversationEffort === level && <Check size={12} className="ml-auto text-primary" />}
-                    </DropdownMenuItem>
-                  ))}
+                  {(['low', 'medium', 'high', 'xhigh', 'max'] as const).map((level) => {
+                    const available = isEffortAvailable(level)
+                    const dotColor = level === 'low' ? 'bg-emerald-500'
+                      : level === 'medium' ? 'bg-blue-500'
+                      : level === 'high' ? 'bg-orange-500'
+                      : level === 'xhigh' ? 'bg-red-500'
+                      : 'bg-fuchsia-600'
+                    return (
+                      <DropdownMenuItem
+                        key={level}
+                        disabled={!available}
+                        className={`gap-2 text-xs cursor-default ${conversationEffort === level ? 'bg-accent' : ''} ${!available ? 'opacity-40' : ''}`}
+                        onSelect={(e) => e.preventDefault()}
+                      >
+                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dotColor}`} />
+                        <div className="flex flex-col gap-0.5">
+                          <span className="font-semibold">
+                            {effortLabels[level]}
+                            {!available && level === 'xhigh' && <span className="ml-1 text-[9px] text-muted-foreground">(4.7 only)</span>}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground">{effortUseCases[level]}</span>
+                        </div>
+                        {conversationEffort === level && <Check size={12} className="ml-auto text-primary" />}
+                      </DropdownMenuItem>
+                    )
+                  })}
                 </DropdownMenuContent>
               )}
             </DropdownMenu>

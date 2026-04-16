@@ -27,7 +27,7 @@ import { CIStatusWidget } from '../components/workspace/CIStatusWidget'
 import { GitActivityWidget } from '../components/GitActivityWidget'
 import { useWorkspaceKeyboardShortcuts } from '../hooks/useWorkspaceKeyboardShortcuts'
 import { exportConversationMarkdown, getSettings } from '../lib/api'
-import type { WalkieTalkieLogEntry, WorkspaceProvider } from '../lib/types'
+import type { WalkieTalkieLogEntry, WorkspaceProvider, EffortLevel } from '../lib/types'
 import { CountdownTimerBar } from '../components/workspace/CountdownTimerBar'
 import { FactoryPanel } from '../components/factory/FactoryPanel'
 import {
@@ -216,10 +216,10 @@ export function WorkspacePage(): React.JSX.Element {
   // state changes even when the same model is selected twice in a row.
   const [pendingModel, setPendingModel] = useState<string>('opus')
   const [pendingContextMode, setPendingContextMode] = useState<'1m' | '200k'>('200k')
-  const [pendingEffort, setPendingEffort] = useState<'low' | 'medium' | 'high'>('high')
+  const [pendingEffort, setPendingEffort] = useState<EffortLevel>('high')
   const [newChatKey, setNewChatKey] = useState(0)
 
-  const handleNewChat = useCallback((model: string, contextMode: '1m' | '200k', effort: 'low' | 'medium' | 'high' = 'high', provider?: WorkspaceProvider) => {
+  const handleNewChat = useCallback((model: string, contextMode: '1m' | '200k', effort: EffortLevel = 'high', provider?: WorkspaceProvider) => {
     if (provider && provider !== activeProvider) {
       setActiveProvider(provider)
     }

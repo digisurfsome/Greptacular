@@ -63,7 +63,7 @@ import { AgentNotifications, stripStructuredBlocks, parseStructuredBlocks } from
 import { SaveToLibraryModal } from './SaveToLibraryModal'
 import { LibraryPickerModal } from './LibraryPickerModal'
 import { parseUtcTimestamp } from '@/lib/utils'
-import type { ChatMessage as ChatMessageType, WorkspaceMessage, PendingInjection, ImageAttachment, WalkieTalkieLogEntry, LibraryFile } from '@/lib/types'
+import type { ChatMessage as ChatMessageType, WorkspaceMessage, PendingInjection, ImageAttachment, WalkieTalkieLogEntry, LibraryFile, EffortLevel } from '@/lib/types'
 
 const DRAFT_KEY_PREFIX = 'workspace-draft-'
 const TOKEN_LOG_MODE_KEY = 'workspace-token-log-mode'
@@ -143,7 +143,7 @@ interface WorkspaceChatProps {
    * Only used when conversationId is null. For existing conversations,
    * effort is read from the conversation data.
    */
-  pendingEffort?: 'low' | 'medium' | 'high'
+  pendingEffort?: EffortLevel
   /** Called when agent streaming starts or stops, so the sidebar can show an activity indicator. */
   onStreamingChange?: (isStreaming: boolean) => void
   /** CLI provider for this pane ('claude' | 'codex' | 'gemini'). Passed to backend on conversation create. */
@@ -515,7 +515,7 @@ export function WorkspaceChat({
   // Effort level — read from conversation data (set at chat creation time).
   // For new chats, uses pendingEffortProp from the sidebar.
   // This is read-only in the chat area; effort is only chosen at chat start.
-  const conversationEffort: 'low' | 'medium' | 'high' =
+  const conversationEffort: EffortLevel =
     conversationDetail?.effort
     ?? pendingEffortProp
     ?? 'high'
@@ -1473,17 +1473,21 @@ export function WorkspaceChat({
       {(() => {
         // Effort levels only work on Opus 4.6 — Sonnet ignores them entirely.
         const isOpus1M = conversationContextMode === '1m' && conversationModel === 'opus'
-        const effortLabels = { low: 'Low', medium: 'Med', high: 'High' } as const
-        const effortUseCases = {
+        const effortLabels: Record<EffortLevel, string> = { low: 'Low', medium: 'Med', high: 'High', xhigh: 'XHi', max: 'Max' }
+        const effortUseCases: Record<EffortLevel, string> = {
           low: 'Quick lookups, classification, routing, sub-agents',
           medium: 'Agentic coding, tool use, code generation',
           high: 'Complex analysis, nuanced reasoning, quality-critical',
-        } as const
-        const effortColors = {
+          xhigh: 'Extra high reasoning — deep analysis, harder problems',
+          max: 'Maximum reasoning — hardest problems, quality-critical',
+        }
+        const effortColors: Record<EffortLevel, string> = {
           low: 'bg-emerald-500 text-white',
           medium: 'bg-blue-500 text-white',
           high: 'bg-orange-500 text-white',
-        } as const
+          xhigh: 'bg-red-500 text-white',
+          max: 'bg-fuchsia-600 text-white',
+        }
         // Use CURRENT context window utilization from the latest API response,
         // NOT cumulative totals. The API returns how many tokens are in the
         // context window RIGHT NOW (input_tokens + cache_read + cache_create).

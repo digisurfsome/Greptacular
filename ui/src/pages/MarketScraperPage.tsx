@@ -28,7 +28,6 @@ import {
   ChevronLeft,
   BookOpen,
   Target,
-  Lightbulb,
   ShieldCheck,
   Workflow,
   GraduationCap,
@@ -175,6 +174,11 @@ export function MarketScraperPage() {
     setWizardAngles({})
   }, [])
 
+  const showToast = useCallback((type: 'success' | 'error', message: string) => {
+    setToast({ type, message })
+    setTimeout(() => setToast(null), 3000)
+  }, [])
+
   const handleCreateProject = useCallback(() => {
     if (!wizardName.trim() || !wizardNiche.trim()) return
     const selectedAngles = Object.entries(wizardAngles)
@@ -246,11 +250,6 @@ export function MarketScraperPage() {
   const defaultSubs: string[] = opts?.default_subreddits ?? []
   const sortOptions: string[] = opts?.sort_options ?? ['relevance', 'hot', 'top', 'new', 'comments']
   const timeFilters: string[] = opts?.time_filters ?? ['all', 'year', 'month', 'week', 'day', 'hour']
-
-  const showToast = useCallback((type: 'success' | 'error', message: string) => {
-    setToast({ type, message })
-    setTimeout(() => setToast(null), 3000)
-  }, [])
 
   // URL scrape handler
   const handleScrape = useCallback(() => {

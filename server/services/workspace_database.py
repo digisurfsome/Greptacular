@@ -2568,9 +2568,23 @@ def get_token_log_summary(conversation_id: int) -> dict:
         total_api_cache_read = sum(s.api_cache_read_tokens or 0 for s in summaries)
         total_cost = sum(s.api_total_cost_usd or 0.0 for s in summaries)
 
-        # Current context window utilization from the LATEST result_summary.
-        # This is the real number that tells you how much of the context
-        # window is occupied right now: input + cache_read + cache_creation.
+        # Current context window utilization.
+        #
+        # Context only ever GROWS within a conversation (until /compact),
+        # so the correct reading is the MAX across all ``result_summary``
+        # entries of (input + cache_read + cache_creation), not the latest.
+        #
+        # Why not "latest"?  Every subagent (Task tool) call produces its
+        # own ``result_summary`` row with its own small context window
+        # (subagents start fresh with just their task).  Using the latest
+        # entry makes the meter flicker between main-agent context and
+        # subagent context.  MAX is stable, matches the mental model
+        # ("context only grows"), and inherently reflects the main-agent
+        # turn which always has the largest context.
+        #
+        # We still surface the LATEST turn's raw input/output/cache fields
+        # (``latest_*`` return values) because some UI panels show
+        # per-last-turn numbers; those are unchanged.
         current_context_tokens = 0
         latest_cache_read = 0
         latest_cache_create = 0
@@ -2582,7 +2596,12 @@ def get_token_log_summary(conversation_id: int) -> dict:
             latest_output = latest.api_output_tokens or 0
             latest_cache_read = latest.api_cache_read_tokens or 0
             latest_cache_create = latest.api_cache_creation_tokens or 0
-            current_context_tokens = latest_input + latest_cache_read + latest_cache_create
+            current_context_tokens = max(
+                (s.api_input_tokens or 0)
+                + (s.api_cache_read_tokens or 0)
+                + (s.api_cache_creation_tokens or 0)
+                for s in summaries
+            )
 
         # Per-tool breakdown matching frontend TokenLogToolBreakdown
         tool_usage: dict[str, dict[str, int]] = {}

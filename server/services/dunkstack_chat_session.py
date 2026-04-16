@@ -132,7 +132,7 @@ class DunkStackChatSession:
             model_id: Full model ID (e.g. "claude-opus-4-6", "claude-sonnet-4-6").
             working_directory: Absolute path for the agent's cwd.
             context_mode: Context window size -- "1m" or "200k".
-            effort: Thinking effort level -- "low", "medium", "high".
+            effort: Thinking effort level -- "low", "medium", "high", "xhigh", "max".
             on_token_usage: Optional async callback for reporting token usage.
                 Called with (input_tokens, output_tokens, cache_read, cache_create, cost_usd).
         """

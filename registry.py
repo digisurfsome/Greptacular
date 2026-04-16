@@ -46,7 +46,8 @@ def _migrate_registry_dir() -> None:
 # Available models with display names
 # To add a new model: add an entry here with {"id": "model-id", "name": "Display Name"}
 AVAILABLE_MODELS = [
-    {"id": "claude-opus-4-6", "name": "Claude Opus"},
+    {"id": "claude-opus-4-7", "name": "Claude Opus 4.7"},
+    {"id": "claude-opus-4-6", "name": "Claude Opus 4.6"},
     {"id": "claude-sonnet-4-6", "name": "Claude Sonnet"},
 ]
 
@@ -753,7 +754,8 @@ WORKSPACE_PROVIDERS: dict[str, dict[str, Any]] = {
         "auth_env_var": "ANTHROPIC_API_KEY",
         "supports_subscription": True,
         "models": [
-            {"id": "opus", "name": "Claude Opus"},
+            {"id": "opus", "name": "Claude Opus 4.6"},
+            {"id": "claude-opus-4-7", "name": "Claude Opus 4.7"},
             {"id": "sonnet", "name": "Claude Sonnet"},
             {"id": "haiku", "name": "Claude Haiku"},
         ],

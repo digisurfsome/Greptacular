@@ -606,7 +606,7 @@ def create_conversation(
         working_directory: Optional working directory path for the conversation.
         context_mode: Context window mode ("1m" or "200k").
         model: Model shorthand ("opus" or "sonnet").
-        effort: Thinking effort level ("low", "medium", "high").
+        effort: Thinking effort level ("low", "medium", "high", "xhigh", "max").
         provider: CLI provider ("claude", "codex", or "gemini").
 
     Returns:

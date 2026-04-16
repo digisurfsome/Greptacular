@@ -671,7 +671,7 @@ export type AssistantChatServerMessage =
 // Workspace Chat Types
 // ============================================================================
 
-export type EffortLevel = 'low' | 'medium' | 'high'
+export type EffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 
 /** CLI provider for workspace conversations. */
 export type WorkspaceProvider = 'claude' | 'codex' | 'gemini'

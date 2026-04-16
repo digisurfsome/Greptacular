@@ -15,6 +15,7 @@ from __future__ import annotations
 # Model Constants
 # ---------------------------------------------------------------------------
 
+MODEL_OPUS_47 = "claude-opus-4-7"
 MODEL_OPUS = "claude-opus-4-6"
 MODEL_SONNET = "claude-sonnet-4-6"
 MODEL_HAIKU = "claude-haiku-4-5"
@@ -49,6 +50,7 @@ def select_model(step_title: str) -> str:
 def get_model_label(model_id: str) -> str:
     """Return a human-readable label for a model ID."""
     labels = {
+        MODEL_OPUS_47: "Opus 4.7 (Most capable)",
         MODEL_OPUS: "Opus 4.6 (Heavy thinking)",
         MODEL_SONNET: "Sonnet 4.6 (Balanced)",
         MODEL_HAIKU: "Haiku 4.5 (Fast & light)",

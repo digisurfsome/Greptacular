@@ -57,9 +57,11 @@ interface ModelPreset {
 /** Claude-only fallback presets (used when providers haven't loaded yet). */
 const CLAUDE_MODEL_PRESETS: ModelPreset[] = [
   { model: 'opus', context: '200k', label: 'Opus 4.6 · 200K' },
+  { model: 'claude-opus-4-7', context: '200k', label: 'Opus 4.7 · 200K' },
   { model: 'sonnet', context: '200k', label: 'Sonnet 4.6 · 200K' },
   { model: 'haiku', context: '200k', label: 'Haiku · 200K' },
   { model: 'opus', context: '1m', label: 'Opus 4.6 · 1M' },
+  { model: 'claude-opus-4-7', context: '1m', label: 'Opus 4.7 · 1M' },
   { model: 'sonnet', context: '1m', label: 'Sonnet 4.6 · 1M' },
 ]
 
@@ -95,6 +97,8 @@ const EFFORT_PRESETS: EffortPreset[] = [
   { key: 'low', label: 'Low', useCases: 'Quick lookups, classification, routing, sub-agents' },
   { key: 'medium', label: 'Medium', useCases: 'Agentic coding, tool use, code generation' },
   { key: 'high', label: 'High', useCases: 'Complex analysis, nuanced reasoning, quality-critical' },
+  { key: 'xhigh', label: 'Extra High', useCases: 'Coding, agentic workflows, demanding multi-step tasks' },
+  { key: 'max', label: 'Max', useCases: 'Hardest problems, maximum intelligence, may overthink simple tasks' },
 ]
 
 interface WorkspaceSidebarProps {

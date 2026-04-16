@@ -584,7 +584,7 @@ class WorkspaceChatSession:
             self._force_sub = False
 
             # Re-inject effort level env var
-            if self._effort in ("low", "medium", "high"):
+            if self._effort in ("low", "medium", "high", "xhigh", "max"):
                 sdk_env["CLAUDE_CODE_EFFORT_LEVEL"] = self._effort
 
             # Update shared options: new env + enable 1M context beta
@@ -651,7 +651,7 @@ class WorkspaceChatSession:
             self._force_sub = True
 
             # Re-inject effort level env var
-            if self._effort in ("low", "medium", "high"):
+            if self._effort in ("low", "medium", "high", "xhigh", "max"):
                 sdk_env["CLAUDE_CODE_EFFORT_LEVEL"] = self._effort
 
             # Update shared options: subscription = no 1M beta
@@ -826,7 +826,7 @@ class WorkspaceChatSession:
                     "allow": permissions_list,
                 },
             }
-            if effort_for_settings in ("low", "medium", "high"):
+            if effort_for_settings in ("low", "medium", "high", "xhigh", "max"):
                 # Top-level effortLevel key (recognized by some CLI versions)
                 security_settings["effortLevel"] = effort_for_settings
                 # Also set via the "env" block — this is a documented settings
@@ -932,7 +932,7 @@ class WorkspaceChatSession:
                 project_settings = json.loads(self._original_project_settings)
             except (json.JSONDecodeError, ValueError):
                 project_settings = {}
-        if effort_level in ("low", "medium", "high"):
+        if effort_level in ("low", "medium", "high", "xhigh", "max"):
             project_settings["effortLevel"] = effort_level
             # Also inject via the "env" settings block (documented mechanism)
             if "env" not in project_settings:
@@ -1078,7 +1078,7 @@ class WorkspaceChatSession:
 
             # Env var fallback for effort (known buggy per #23604, but harmless).
             effort = cs.get("effort", "high")
-            if effort in ("low", "medium", "high"):
+            if effort in ("low", "medium", "high", "xhigh", "max"):
                 sdk_env["CLAUDE_CODE_EFFORT_LEVEL"] = effort
             logger.info(
                 "EFFORT WIRING: effort=%s, settings_file_effortLevel=%s, "
@@ -1216,7 +1216,7 @@ class WorkspaceChatSession:
                 self._force_sub = False
 
                 # Re-inject effort level env var
-                if effort in ("low", "medium", "high"):
+                if effort in ("low", "medium", "high", "xhigh", "max"):
                     sdk_env["CLAUDE_CODE_EFFORT_LEVEL"] = effort
 
                 # Update shared options: new env + enable 1M context beta

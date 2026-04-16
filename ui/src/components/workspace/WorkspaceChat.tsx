@@ -1471,13 +1471,15 @@ export function WorkspaceChat({
 
       {/* Compact control bar: Effort pill + thin context budget bar + message count */}
       {(() => {
-        // Effort levels only work on Opus (4.6 or 4.7) at 1M — Sonnet/Haiku ignore them entirely.
+        // Effort levels work on Opus 4.6, Opus 4.7, and Sonnet 4.6 at 1M. Haiku/others ignore them.
         const isOpus46 = conversationModel === 'opus'
         const isOpus47 = conversationModel === 'claude-opus-4-7'
-        const isOpus1M = conversationContextMode === '1m' && (isOpus46 || isOpus47)
-        // Per Anthropic docs: xhigh is Opus 4.7 only. max is on both 4.6 and 4.7.
+        const isSonnet = conversationModel === 'sonnet'
+        const effortEnabled = conversationContextMode === '1m' && (isOpus46 || isOpus47 || isSonnet)
+        const isOpus1M = effortEnabled  // kept as alias for downstream refs
+        // Per Anthropic docs: xhigh is Opus 4.7 only. max works on 4.6, 4.7, and Sonnet 4.6.
         const isEffortAvailable = (key: EffortLevel): boolean => {
-          if (!isOpus1M) return false
+          if (!effortEnabled) return false
           if (key === 'xhigh') return isOpus47
           return true
         }
@@ -1524,7 +1526,7 @@ export function WorkspaceChat({
                   className={`px-2 py-0.5 text-[10px] font-bold rounded-full shrink-0 transition-opacity ${
                     isOpus1M ? effortColors[conversationEffort] : 'bg-muted text-muted-foreground opacity-40'
                   }`}
-                  title={isOpus1M ? effortUseCases[conversationEffort] : 'Effort levels are Opus 1M only'}
+                  title={isOpus1M ? effortUseCases[conversationEffort] : 'Effort levels are 1M Claude models only'}
                 >
                   {effortLabels[conversationEffort]}
                   {isOpus1M && <ChevronDown size={8} className="inline ml-0.5 opacity-70" />}
@@ -1533,7 +1535,7 @@ export function WorkspaceChat({
               {isOpus1M && (
                 <DropdownMenuContent align="start" className="w-64">
                   <DropdownMenuLabel className="text-xs">
-                    Anthropic Use Cases {isOpus47 ? '(Opus 4.7)' : '(Opus 4.6)'}
+                    Anthropic Use Cases {isOpus47 ? '(Opus 4.7)' : isSonnet ? '(Sonnet 4.6)' : '(Opus 4.6)'}
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   {(['low', 'medium', 'high', 'xhigh', 'max'] as const).map((level) => {

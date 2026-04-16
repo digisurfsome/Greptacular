@@ -299,8 +299,14 @@ export function WorkspaceSidebar({
     const safeIdx = Math.min(modelPresetIndex, newChatModelPresets.length - 1)
     const preset = newChatModelPresets[safeIdx]
     if (!preset) return
-    // Only pass effort for Claude 1M context models; others don't support it
-    const effort = (isNewChatClaude && preset.context === '1m') ? effortLevel : 'high'
+    // Only pass effort for Claude 1M context models (Opus 4.6/4.7, Sonnet 4.6); others default
+    const claudeEffortModels = new Set(['opus', 'claude-opus-4-7', 'sonnet'])
+    const supportsEffort = isNewChatClaude && preset.context === '1m' && claudeEffortModels.has(preset.model)
+    // Sonnet doesn't support xhigh — downgrade to high if user had it selected
+    const effortForCreate: EffortLevel = supportsEffort
+      ? (effortLevel === 'xhigh' && preset.model !== 'claude-opus-4-7' ? 'high' : effortLevel)
+      : 'high'
+    const effort = effortForCreate
     createConversationMut.mutate({
       title,
       category: newChatCategory || undefined,
@@ -666,22 +672,24 @@ export function WorkspaceSidebar({
             </div>
           </div>
 
-          {/* Effort level selector — only shown for Claude provider, active for Opus 1M */}
+          {/* Effort level selector — only shown for Claude provider, active for Opus 1M or Sonnet 1M */}
           {isNewChatClaude && (() => {
             const selectedPreset = newChatModelPresets[modelPresetIndex]
             const isOpus46 = selectedPreset?.model === 'opus'
             const isOpus47 = selectedPreset?.model === 'claude-opus-4-7'
-            const isOpus1M = selectedPreset?.context === '1m' && (isOpus46 || isOpus47)
-            // Per Anthropic docs: xhigh is Opus 4.7 only. max is on both 4.6 and 4.7.
+            const isSonnet = selectedPreset?.model === 'sonnet'
+            const is1M = selectedPreset?.context === '1m'
+            const effortEnabled = is1M && (isOpus46 || isOpus47 || isSonnet)
+            // Per Anthropic docs: xhigh is Opus 4.7 only. max works on 4.6, 4.7, and Sonnet 4.6.
             const isEffortAvailable = (key: EffortLevel): boolean => {
-              if (!isOpus1M) return false
+              if (!effortEnabled) return false
               if (key === 'xhigh') return isOpus47
               return true
             }
             return (
-              <div className={`mb-1.5 transition-opacity duration-150 ${isOpus1M ? '' : 'opacity-35 pointer-events-none'}`}>
+              <div className={`mb-1.5 transition-opacity duration-150 ${effortEnabled ? '' : 'opacity-35 pointer-events-none'}`}>
                 <span className="text-[10px] text-muted-foreground mb-0.5 block">
-                  Thinking Effort {!isOpus1M && <span className="italic">(Opus 1M only)</span>}
+                  Thinking Effort {!effortEnabled && <span className="italic">(1M Claude models only)</span>}
                 </span>
                 <div className="flex rounded-full border border-border overflow-hidden shadow-sm" role="radiogroup" aria-label="Thinking effort level">
                   {EFFORT_PRESETS.map((preset, idx) => {
@@ -696,7 +704,7 @@ export function WorkspaceSidebar({
                           : preset.key === 'max'
                             ? 'bg-fuchsia-600 text-white shadow-inner'
                             : 'bg-orange-500 text-white shadow-inner'
-                    const unavailableTitle = !available && isOpus1M && preset.key === 'xhigh'
+                    const unavailableTitle = !available && effortEnabled && preset.key === 'xhigh'
                       ? 'Extra High is Opus 4.7 only'
                       : preset.useCases
                     return (
@@ -710,14 +718,14 @@ export function WorkspaceSidebar({
                         title={unavailableTitle}
                         className={`flex-1 px-1.5 py-1 text-[10px] font-semibold whitespace-nowrap transition-all duration-150 ${
                           isActive ? activeClass : 'bg-card text-muted-foreground hover:bg-muted hover:text-foreground'
-                        } ${!available && isOpus1M ? 'opacity-40 cursor-not-allowed' : ''} ${idx === 0 ? 'rounded-l-full' : ''} ${idx === EFFORT_PRESETS.length - 1 ? 'rounded-r-full' : 'border-r border-border'}`}
+                        } ${!available && effortEnabled ? 'opacity-40 cursor-not-allowed' : ''} ${idx === 0 ? 'rounded-l-full' : ''} ${idx === EFFORT_PRESETS.length - 1 ? 'rounded-r-full' : 'border-r border-border'}`}
                       >
                         {preset.label}
                       </button>
                     )
                   })}
                 </div>
-                {isOpus1M && (
+                {effortEnabled && (
                   <span className="text-[9px] text-muted-foreground mt-0.5 block">
                     {EFFORT_PRESETS.find(p => p.key === effortLevel)?.useCases}
                   </span>

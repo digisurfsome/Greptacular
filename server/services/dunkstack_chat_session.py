@@ -179,7 +179,7 @@ class DunkStackChatSession:
 
             sdk_env = get_effective_sdk_env(force_subscription=False)
             self._force_sub = False
-            if self.effort in ("low", "medium", "high"):
+            if self.effort in ("low", "medium", "high", "xhigh", "max"):
                 sdk_env["CLAUDE_CODE_EFFORT_LEVEL"] = self.effort
 
             self._shared_opts["env"] = sdk_env
@@ -230,7 +230,7 @@ class DunkStackChatSession:
 
             sdk_env = get_effective_sdk_env(force_subscription=True)
             self._force_sub = True
-            if self.effort in ("low", "medium", "high"):
+            if self.effort in ("low", "medium", "high", "xhigh", "max"):
                 sdk_env["CLAUDE_CODE_EFFORT_LEVEL"] = self.effort
 
             self._shared_opts["env"] = sdk_env
@@ -287,7 +287,7 @@ class DunkStackChatSession:
                     "allow": DUNKSTACK_BUILTIN_TOOLS,
                 },
             }
-            if self.effort in ("low", "medium", "high"):
+            if self.effort in ("low", "medium", "high", "xhigh", "max"):
                 security_settings["effortLevel"] = self.effort
                 security_settings["env"] = {
                     "CLAUDE_CODE_EFFORT_LEVEL": self.effort,
@@ -312,7 +312,7 @@ class DunkStackChatSession:
             force_sub = True
             self._force_sub = force_sub
             sdk_env = get_effective_sdk_env(force_subscription=force_sub)
-            if self.effort in ("low", "medium", "high"):
+            if self.effort in ("low", "medium", "high", "xhigh", "max"):
                 sdk_env["CLAUDE_CODE_EFFORT_LEVEL"] = self.effort
 
             logger.info(
@@ -434,7 +434,7 @@ class DunkStackChatSession:
                 self.client = None
 
                 sdk_env = get_effective_sdk_env(force_subscription=False)
-                if self.effort in ("low", "medium", "high"):
+                if self.effort in ("low", "medium", "high", "xhigh", "max"):
                     sdk_env["CLAUDE_CODE_EFFORT_LEVEL"] = self.effort
                 shared_opts["env"] = sdk_env
                 if not is_alternative_api:

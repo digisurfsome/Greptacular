@@ -97,7 +97,7 @@ COST_SETTING_RANGES = {
     "history_budget": (25_000, 400_000),
     "library_cap": (10_000, 200_000),
 }
-VALID_EFFORT_LEVELS = ("low", "medium", "high")
+VALID_EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
 
 
 def validate_cost_settings(raw: dict) -> dict:

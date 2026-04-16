@@ -59,6 +59,7 @@ Never drop loose `.md` files in `docs/`. Create the page folder if missing.
 | Activepieces (MCP, flows, auth) | `docs/ACTIVEPIECES.md` |
 | New page checklist | `.claude/rules/new-page-standards.md` |
 | Communication / walkie-talkie / tags | `docs/references/communication.md` |
+| Token/tool control history + remaining levers | `docs/info/token-tool-control-history.md` |
 
 ## After Edits
 Commit changed files only (never `git add -A`). Clear message. Report files, hash, branch.

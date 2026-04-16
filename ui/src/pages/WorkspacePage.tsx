@@ -46,8 +46,12 @@ import {
   Factory,
   Swords,
   Workflow,
+  Sun,
+  Moon,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useTheme } from '../hooks/useTheme'
+import { ThemeSelector } from '../components/ThemeSelector'
 
 /** Collapsed panel bar — a thin vertical strip with a rotated label. */
 function CollapsedPanelBar({
@@ -122,6 +126,9 @@ export function WorkspacePage(): React.JSX.Element {
   const [coderCollapsed, setCoderCollapsed] = useState(() => {
     try { return localStorage.getItem('workspace-panel-coder') === 'collapsed' } catch { return false }
   })
+
+  // Theme + dark mode — persisted via useTheme hook
+  const { theme, setTheme, darkMode, toggleDarkMode, themes } = useTheme()
 
   // Active provider (claude, codex, gemini) — persisted to localStorage
   const [activeProvider, setActiveProvider] = useState<WorkspaceProvider>(() => {
@@ -589,6 +596,22 @@ export function WorkspacePage(): React.JSX.Element {
             title="Keyboard shortcuts (?)"
           >
             <Keyboard size={14} />
+          </Button>
+          {/* Theme selector */}
+          <ThemeSelector
+            themes={themes}
+            currentTheme={theme}
+            onThemeChange={setTheme}
+          />
+          {/* Dark mode toggle */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-muted-foreground hover:text-foreground"
+            onClick={toggleDarkMode}
+            title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+          >
+            {darkMode ? <Sun size={14} /> : <Moon size={14} />}
           </Button>
         </div>
       </div>

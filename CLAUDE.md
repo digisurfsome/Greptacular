@@ -1,74 +1,64 @@
 # CLAUDE.md
 
-## Owner Context
-- Owner is NOT a coder. Plain language. Move fast.
+## Owner
+- NOT a coder. Plain language. Move fast.
 - **Dev repo:** `c:\Users\lober\GitHub\Greptacular - AutoForge Build\Greptacular`
 - **Live install:** `C:\Users\lober\Greptacular` (port 8888)
 - Commit directly to `main`. No branches.
-- AutoForge: autonomous coding agent system with React UI + Claude Agent SDK.
+- AutoForge = autonomous coding agent system (React UI + Claude Agent SDK).
 
-## Deploy Chain (after every server/UI code change)
-1. `cd ui && npm run build` (in dev repo)
-2. `git push origin main`
-3. `cd C:\Users\lober\Greptacular && git pull origin main --no-edit`
-4. Kill python processes, restart `start_ui.bat`
-5. Ctrl+Shift+R in browser
+## Critical Rules
+- **Always merge to `main`.** User pulls from `main`.
+- **`ui/dist/` is gitignored.** `start_ui.bat` auto-rebuilds from source.
+- **Sonnet builds, Opus reviews.** Never assign Opus as per-phase Reviewer. See `docs/SONNET_OPUS_OPTIMIZATION.md`.
 
-## Critical Rules — Violating These Causes Real Damage
+## File Maps — Use These Before Searching
 
-- **Always merge to `main`.** User pulls from main, not feature branches.
-- **`ui/dist/` is gitignored.** `start_ui.bat` auto-rebuilds. Source changes alone fix the UI.
-- **Sonnet builds, Opus reviews.** Never assign Opus to per-phase Reviewer role. See `docs/SONNET_OPUS_OPTIMIZATION.md`
+- **Unified page index** (one row per page = all its files) → `docs/references/page-index.md`
+- UI inventory → `ui/CLAUDE.md`
+- Server inventory → `server/CLAUDE.md`
+- Docs inventory → `docs/CLAUDE.md`
 
-## 🚨 WHERE DOCS GO — 3 DIRECTORIES, NO EXCEPTIONS 🚨
+## Tool Efficiency — Mandatory
+Full rules: `.claude/rules/tool-efficiency.md`. Short version: use the map, stay in your lane, max 3 exploratory searches, max 15 tool calls per single-page task.
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│  docs/page-prds/{page-name}/  — PRDs, specs, file maps for a page  │
-│  docs/ideas/                  — brainstorms, concepts, "what if"   │
-│  docs/info/                   — research, guides, saved context    │
-│                                                                     │
-│  NEVER drop loose .md files in docs/. Everything has a home.       │
-│  Page PRD index: docs/page-prds/README.md                          │
-│  If your page folder doesn't exist, CREATE IT.                     │
-└─────────────────────────────────────────────────────────────────────┘
-```
+### Subagent-First Rule (enforce this hard)
+**Default:** for any search, file discovery, or code exploration, spawn an **Explore subagent** instead of searching in main context. Main context = the user's conversation; every Glob/Grep/Read result stays there forever. Subagents return a short summary and keep main context clean.
 
-## ⚠️ MANDATORY READS — Before Calling AI Models or Editing Pages
+- **Use a subagent for:** finding files by pattern, searching where a symbol is used, understanding how a feature is wired across files, answering "is there code that does X?"
+- **Stay in main context ONLY when:** the task requires multi-step decision-making with course correction between results, you already know the exact path (just Read it), or you're about to edit (subagents shouldn't edit except for scoped bulk work).
 
-**If your task calls an AI model, creates an SDK client, or adds/edits a UI page, you MUST read these files first. Not optional. Not "if you have time." MUST.**
+Default: subagent. Main-context exploration is the exception, not the rule.
 
-1. **Subscription vs API Key Auth** → `docs/SUBSCRIPTION_AND_WEBSOCKET_GUIDE.md`
-   EVERY Claude call MUST use subscription auth (`force_subscription=True`). Never use API keys for subscription models. The guide has code examples, good/bad patterns, and pre-commit checks. Agents have failed this 20+ times — read the full doc before writing a single line.
+## Where Docs Go — 3 Directories Only
+- `docs/page-prds/{page-name}/` — PRDs, specs per page
+- `docs/ideas/` — brainstorms
+- `docs/info/` — research, guides, saved context
 
-2. **SDK Client Pattern (3 Bugs)** → `docs/references/sdk-client-pattern.md`
-   Never use `bypassPermissions` (crashes CLI). Always wrap `receive_response()` in try/except. Always pass `on_progress` callbacks. 20+ agents missed these stacked bugs. Read the doc, copy the working pattern from `yt_processor.py._call_via_sdk()`.
+Never drop loose `.md` files in `docs/`. Create the page folder if missing.
 
-3. **WebSocket Rule** → `docs/SUBSCRIPTION_AND_WEBSOCKET_GUIDE.md` (WebSocket section)
-   ONE WebSocket per page. Do NOT create new connections. Do NOT modify `useWorkspaceChat.ts` or `WorkspaceChat.tsx`. The hook and component already exist — build around them.
+## Mandatory Reads (ONLY if task applies)
+- Task calls a Claude model or creates an SDK client → `docs/SUBSCRIPTION_AND_WEBSOCKET_GUIDE.md` + `docs/references/sdk-client-pattern.md`
+- Task touches `useWorkspaceChat.ts` or `WorkspaceChat.tsx` → don't. One WebSocket per page, hook already exists.
 
-## File Maps — Read BEFORE Exploring
-
-Find files here instead of searching:
-- **UI files:** `ui/CLAUDE.md` — every page, component, hook, utility
-- **Server files:** `server/CLAUDE.md` — every router, service, database model
-- **Docs:** `docs/CLAUDE.md` — doc structure and PRD locations
-
-## References — Read ONLY When Your Task Needs It
+## References (load only when needed)
 
 | Topic | File |
 |-------|------|
-| **Market Scraper (Reddit scraper PRD)** | **`docs/page-prds/market-scraper/README.md`** |
-| SDK client bugs (3-bug fix pattern) | `docs/references/sdk-client-pattern.md` |
-| Full architecture + key patterns | `docs/references/architecture.md` |
-| Commands (CLI, npm, Python, UI) | `docs/references/commands-reference.md` |
-| Testing (Python, React, CI/CD) | `docs/references/testing-guide.md` |
-| Security model + allowed commands | `docs/references/security-model.md` |
-| AI providers (Vertex, Ollama, etc.) | `docs/references/providers.md` |
+| Deploy chain (after code changes) | `docs/references/deploy-chain.md` |
+| Market Scraper PRD | `docs/page-prds/market-scraper/README.md` |
+| SDK client 3-bug pattern | `docs/references/sdk-client-pattern.md` |
+| Architecture | `docs/references/architecture.md` |
+| Commands | `docs/references/commands-reference.md` |
+| Testing | `docs/references/testing-guide.md` |
+| Security model | `docs/references/security-model.md` |
+| AI providers | `docs/references/providers.md` |
 | Emergency UI fix | `docs/references/emergency-ui-fix.md` |
-| Subscription + WebSocket protocol | `docs/SUBSCRIPTION_AND_WEBSOCKET_GUIDE.md` |
+| Subscription + WebSocket | `docs/SUBSCRIPTION_AND_WEBSOCKET_GUIDE.md` |
 | Workspace UI standards | `ui/WORKSPACE_STANDARDS.md` |
-| **Activepieces (MCP, flows, auth, setup)** | **`docs/ACTIVEPIECES.md`** |
+| Activepieces (MCP, flows, auth) | `docs/ACTIVEPIECES.md` |
+| New page checklist | `.claude/rules/new-page-standards.md` |
+| Communication / walkie-talkie / tags | `docs/references/communication.md` |
 
 ## After Edits
-Commit changed files only (never `git add -A`). Clear message. Don't push. Report files, hash, branch.
+Commit changed files only (never `git add -A`). Clear message. Report files, hash, branch.

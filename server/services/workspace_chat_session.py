@@ -85,7 +85,7 @@ CONTEXT_WINDOW_200K = 200_000
 DEFAULT_COST_SETTINGS = {
     "effort": "high",             # Thinking effort: "low", "medium", "high"
     "max_tokens": 16384,          # Output token cap per response (4096-65536)
-    "max_turns": 50,              # Max agent turns per message (10-100)
+    "max_turns": 34,              # Runaway cap — kills stuck agents. Normal work stays well under this. (10-100)
     "history_budget": 100_000,    # Token budget for history on resume (25000-400000)
     "library_cap": 50_000,        # Token cap for library file injection (10000-200000)
 }

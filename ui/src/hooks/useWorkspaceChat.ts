@@ -41,7 +41,7 @@ interface UseWorkspaceChatReturn {
   /** The question the agent asked when entering waiting state. */
   agentWaitingQuestion: string | null;
   start: (conversationId?: number | null, workingDirectory?: string, contextMode?: string, costSettings?: Record<string, unknown>, model?: string, provider?: string) => void;
-  sendMessage: (content: string, attachments?: ImageAttachment[], libraryFileIds?: number[]) => void;
+  sendMessage: (content: string, attachments?: ImageAttachment[], libraryFileIds?: number[], costOverride?: { effort?: string }) => void;
   /** Send a walkie-talkie message to the running agent (injected via PreToolUse hook). */
   sendWalkieTalkie: (content: string) => void;
   /** Walkie-talkie conversation log for display in the sidebar panel. */
@@ -695,7 +695,13 @@ export function useWorkspaceChat({
   );
 
   const sendMessage = useCallback(
-    (content: string, attachments?: ImageAttachment[], libraryFileIds?: number[]) => {
+    (
+      content: string,
+      attachments?: ImageAttachment[],
+      libraryFileIds?: number[],
+      /** Optional per-turn cost overrides (e.g. {effort: 'max'}) — applied for this message only */
+      costOverride?: { effort?: string },
+    ) => {
       let fullMessage = content;
 
       // Prepend injection content if present
@@ -742,6 +748,9 @@ export function useWorkspaceChat({
       }
       if (libraryFileIds && libraryFileIds.length > 0) {
         payload.library_file_ids = libraryFileIds;
+      }
+      if (costOverride && costOverride.effort) {
+        payload.cost_settings = { effort: costOverride.effort };
       }
 
       // If session is ready (greeting received), send immediately.

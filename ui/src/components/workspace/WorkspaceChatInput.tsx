@@ -8,8 +8,17 @@
  */
 
 import React, { useState, useCallback, useEffect, useImperativeHandle } from 'react'
-import { Send, Paperclip, ImagePlus, BookOpen, LogOut, Square } from 'lucide-react'
+import { Send, Paperclip, ImagePlus, BookOpen, LogOut, Square, ChevronUp, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import type { EffortLevel } from '@/lib/types'
 
 /** Handle exposed to parent via ref — lets parent read/set input without owning state */
 export interface WorkspaceChatInputHandle {
@@ -42,6 +51,11 @@ interface WorkspaceChatInputProps {
   initialValue?: string
   /** Called on every keystroke for draft saving */
   onDraftChange?: (text: string) => void
+  /** Per-turn effort pill next to send button — only shown when effort applies */
+  turnEffort?: EffortLevel
+  onTurnEffortChange?: (effort: EffortLevel) => void
+  /** Which effort keys are available for this turn's model (xhigh is 4.7 only) */
+  availableEfforts?: EffortLevel[]
 }
 
 export const WorkspaceChatInput = React.memo(
@@ -66,6 +80,9 @@ export const WorkspaceChatInput = React.memo(
   textareaRef,
   initialValue,
   onDraftChange,
+  turnEffort,
+  onTurnEffortChange,
+  availableEfforts,
 }, ref) {
   // INPUT STATE LIVES HERE — not in parent. Parent re-renders do NOT trigger re-renders here.
   const [inputValue, setInputValue] = useState(initialValue ?? '')
@@ -171,6 +188,62 @@ export const WorkspaceChatInput = React.memo(
           }`}
           rows={1}
         />
+        {/* Per-turn effort pill — tiny dropdown right before send, only when effort applies */}
+        {turnEffort && onTurnEffortChange && availableEfforts && availableEfforts.length > 0 && (() => {
+          const EFFORT_META: Record<EffortLevel, { label: string; short: string; tip: string; color: string }> = {
+            low:    { label: 'Low',        short: 'Lo',  tip: 'Quick lookups, classification, routing', color: 'bg-emerald-500' },
+            medium: { label: 'Medium',     short: 'Me',  tip: 'Agentic coding, tool use, code generation', color: 'bg-blue-500' },
+            high:   { label: 'High',       short: 'Hi',  tip: 'Complex analysis, nuanced reasoning', color: 'bg-orange-500' },
+            xhigh:  { label: 'Extra High', short: 'XHi', tip: 'Coding, agentic workflows, deep multi-step (4.7 only)', color: 'bg-red-500' },
+            max:    { label: 'Max',        short: 'Max', tip: 'Hardest problems, maximum intelligence', color: 'bg-fuchsia-600' },
+          }
+          const current = EFFORT_META[turnEffort]
+          return (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  disabled={disabled}
+                  title={`Thinking effort for next turn: ${current.label}. Click to change.`}
+                  className={`h-[44px] px-2 rounded-md border border-border text-[10px] font-bold text-white flex items-center gap-1 shrink-0 ${current.color} hover:opacity-90 disabled:opacity-50`}
+                >
+                  <span>{current.short}</span>
+                  <ChevronUp size={10} className="opacity-80" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" side="top" className="w-60">
+                <DropdownMenuLabel className="text-xs">Effort for this turn</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {(['low', 'medium', 'high', 'xhigh', 'max'] as const).map((level) => {
+                  const meta = EFFORT_META[level]
+                  const available = availableEfforts.includes(level)
+                  return (
+                    <DropdownMenuItem
+                      key={level}
+                      disabled={!available}
+                      onSelect={(e) => {
+                        if (!available) { e.preventDefault(); return }
+                        onTurnEffortChange(level)
+                      }}
+                      className={`gap-2 text-xs ${turnEffort === level ? 'bg-accent' : ''} ${!available ? 'opacity-40' : ''}`}
+                    >
+                      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${meta.color}`} />
+                      <div className="flex flex-col gap-0.5">
+                        <span className="font-semibold">
+                          {meta.label}
+                          {!available && level === 'xhigh' && <span className="ml-1 text-[9px] text-muted-foreground">(4.7 only)</span>}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground">{meta.tip}</span>
+                      </div>
+                      {turnEffort === level && <Check size={12} className="ml-auto text-primary" />}
+                    </DropdownMenuItem>
+                  )
+                })}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )
+        })()}
+
         {isLoading ? (
           <div className="flex gap-1">
             {firstMessageSent && (

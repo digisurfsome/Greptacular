@@ -530,6 +530,37 @@ class WorkspaceChatSession:
             except Exception as e:
                 logger.warning("Failed to restore .claude/settings.json: %s", e)
 
+    def _write_project_settings_effort(self, new_effort: str) -> None:
+        """Rewrite .claude/settings.json to update effortLevel for the current working dir.
+
+        Used for per-turn effort changes — lets the Claude Code CLI pick up the new
+        effort on its next turn without restarting the SDK client. Preserves all other
+        keys in the existing settings file.
+        """
+        path = self._project_settings_path
+        if path is None:
+            return
+        existing: dict = {}
+        if path.exists():
+            try:
+                existing = json.loads(path.read_text(encoding="utf-8"))
+                if not isinstance(existing, dict):
+                    existing = {}
+            except (json.JSONDecodeError, ValueError, OSError):
+                existing = {}
+        existing["effortLevel"] = new_effort
+        env = existing.get("env")
+        if not isinstance(env, dict):
+            env = {}
+        env["CLAUDE_CODE_EFFORT_LEVEL"] = new_effort
+        existing["env"] = env
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(existing, f, indent=2)
+        logger.info(
+            "Per-turn effort rewrite: %s -> effortLevel=%s", path, new_effort,
+        )
+
     def _capture_subprocess_pid(self) -> None:
         """Capture the PID of the subprocess spawned by the Claude SDK.
 
@@ -1563,6 +1594,7 @@ class WorkspaceChatSession:
         user_message: str,
         attachments: list[ImageAttachment] | None = None,
         library_file_ids: list[int] | None = None,
+        cost_override: dict | None = None,
     ) -> AsyncGenerator[dict, None]:
         """Send a user message and stream the provider's response.
 
@@ -1595,6 +1627,39 @@ class WorkspaceChatSession:
         if self.conversation_id is None:
             yield {"type": "error", "content": "No conversation ID set."}
             return
+
+        # --- Per-turn effort override (Claude only) ---
+        # The UI can send {"effort": "..."} to change thinking effort for this turn only.
+        # Updates self._effort, the SDK env var, and rewrites .claude/settings.json so the
+        # Claude Code CLI picks up the new level on its next read.
+        if cost_override and self.provider == "claude":
+            override_effort = cost_override.get("effort")
+            if (
+                override_effort
+                and override_effort in ("low", "medium", "high", "xhigh", "max")
+                and override_effort != self._effort
+            ):
+                logger.info(
+                    "Per-turn effort change: %s -> %s (conversation_id=%s)",
+                    self._effort, override_effort, self.conversation_id,
+                )
+                self._effort = override_effort
+                self.cost_settings["effort"] = override_effort
+                # Update env var on the shared options so future client recreations inherit it.
+                if isinstance(self._shared_opts, dict):
+                    env = self._shared_opts.get("env")
+                    if isinstance(env, dict):
+                        env["CLAUDE_CODE_EFFORT_LEVEL"] = override_effort
+                # Rewrite project-level .claude/settings.json so the CLI reads the new level
+                # on its next turn. Non-fatal if it fails.
+                try:
+                    await asyncio.to_thread(self._write_project_settings_effort, override_effort)
+                except Exception:
+                    logger.exception("Failed to rewrite .claude/settings.json for per-turn effort change")
+                yield {
+                    "type": "status",
+                    "content": f"Thinking effort for this turn: {override_effort}",
+                }
 
         # Estimate tokens and store the user message in the global database.
         # Run off the event loop to prevent blocking WebSocket frame flushing.

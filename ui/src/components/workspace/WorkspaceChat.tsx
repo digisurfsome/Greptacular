@@ -230,6 +230,9 @@ export function WorkspaceChat({
   const [showInjectModal, setShowInjectModal] = useState(false)
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
   const [pendingImages, setPendingImages] = useState<ImageAttachment[]>([])
+  // Per-turn effort override — can be changed between turns without starting a new chat.
+  // Initialized from conversation effort; reset when conversation changes.
+  const [turnEffort, setTurnEffort] = useState<EffortLevel | null>(null)
 
   // Refs for frequently-changing values — keeps useCallback deps stable
   // so React.memo on WorkspaceChatInput actually prevents re-renders
@@ -522,6 +525,14 @@ export function WorkspaceChat({
   // Alias for backward-compat in cost_settings payloads
   const effortLevel = conversationEffort
 
+  // Effective per-turn effort (falls back to conversation default if user hasn't overridden)
+  const effectiveTurnEffort: EffortLevel = turnEffort ?? conversationEffort
+
+  // Reset per-turn effort when the conversation changes so it starts from the conv default again
+  useEffect(() => {
+    setTurnEffort(null)
+  }, [conversationId])
+
   // Derive the active model from the conversation data (read-only display).
   // For split-view panels, use preferredModel. For normal mode, use the conversation's model field.
   // Model can be any string (e.g. 'opus', 'sonnet', 'o3', 'pro', 'flash', etc.)
@@ -534,6 +545,16 @@ export function WorkspaceChat({
     ?? knownContextMode
     ?? pendingContextModeProp
     ?? '200k'
+
+  // Which effort levels apply to the current turn's model (send-bar pill).
+  // Per Anthropic docs: Opus 4.7 supports all 5; Opus 4.6 and Sonnet 4.6 support 4 (no xhigh); others none.
+  const availableTurnEfforts = useMemo<EffortLevel[]>(() => {
+    if (effectiveProvider !== 'claude') return []
+    if (conversationContextMode !== '1m') return []
+    if (conversationModel === 'claude-opus-4-7') return ['low', 'medium', 'high', 'xhigh', 'max']
+    if (conversationModel === 'opus' || conversationModel === 'sonnet') return ['low', 'medium', 'high', 'max']
+    return []
+  }, [effectiveProvider, conversationContextMode, conversationModel])
 
   // Derive the active preset index from the conversation's actual model + context_mode (read-only).
   const activePresetIndex = useMemo(() => {
@@ -1045,7 +1066,9 @@ export function WorkspaceChat({
         conversationContextMode, conversationModel, conversationId, activeConversationId,
       })
     }
-    sendMessage(content, attachments, libraryIds)
+    // If user picked a per-turn effort different from the conversation default, send it as an override
+    const costOverride = (turnEffort && turnEffort !== effortLevel) ? { effort: turnEffort } : undefined
+    sendMessage(content, attachments, libraryIds, costOverride)
     setFirstMessageSent(true)
 
     setPendingImages([])
@@ -1056,7 +1079,7 @@ export function WorkspaceChat({
     if (effectiveId) {
       localStorage.removeItem(`${DRAFT_KEY_PREFIX}${effectiveId}`)
     }
-  }, [conversationId, activeConversationId, start, sendMessage, sendWalkieTalkie, addWalkieTalkieEntry, addLocalMessage, workingDirectory, conversationContextMode, conversationModel, effortLevel, providerProp])
+  }, [conversationId, activeConversationId, start, sendMessage, sendWalkieTalkie, addWalkieTalkieEntry, addLocalMessage, workingDirectory, conversationContextMode, conversationModel, effortLevel, turnEffort, providerProp])
 
   // End Session: gracefully tell the agent to write a handoff and stop.
   // Do NOT reset firstMessageSent here — it will be reset automatically
@@ -1981,6 +2004,9 @@ export function WorkspaceChat({
           hasPendingContent={pendingImages.length > 0 || pendingFiles.length > 0}
           textareaRef={inputRef as React.RefObject<HTMLTextAreaElement>}
           onDraftChange={handleDraftChange}
+          turnEffort={availableTurnEfforts.length > 0 ? effectiveTurnEffort : undefined}
+          onTurnEffortChange={setTurnEffort}
+          availableEfforts={availableTurnEfforts}
         />
       </div>
 

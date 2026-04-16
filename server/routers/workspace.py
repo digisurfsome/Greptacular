@@ -1495,6 +1495,15 @@ async def workspace_chat_websocket(websocket: WebSocket):
                     if library_file_ids and not isinstance(library_file_ids, list):
                         library_file_ids = None
 
+                    # Per-turn cost override (e.g. effort change mid-conversation).
+                    # Only 'effort' is currently supported for per-turn override.
+                    per_turn_cost: dict | None = None
+                    raw_override = message.get("cost_settings")
+                    if isinstance(raw_override, dict):
+                        override_effort = raw_override.get("effort")
+                        if override_effort in ("low", "medium", "high", "xhigh", "max"):
+                            per_turn_cost = {"effort": override_effort}
+
                     # Stream the response in a background task so we can still
                     # receive ping/walkie_talkie messages concurrently.
                     response_task = asyncio.create_task(
@@ -1503,6 +1512,7 @@ async def workspace_chat_websocket(websocket: WebSocket):
                                 user_content,
                                 attachments=attachments,
                                 library_file_ids=library_file_ids,
+                                cost_override=per_turn_cost,
                             )
                         )
                     )

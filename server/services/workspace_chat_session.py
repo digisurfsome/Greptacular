@@ -221,9 +221,11 @@ def get_workspace_system_prompt(working_directory: str, model: str = "", context
     context_tokens = "1,000,000" if context_mode == "1m" else "200,000"
     # Map raw model IDs to human-friendly names so the model self-identifies correctly.
     MODEL_DISPLAY_NAMES: dict[str, str] = {
+        "claude-opus-4-7": "Claude Opus 4.7",
         "claude-opus-4-6": "Claude Opus 4.6",
         "claude-sonnet-4-6": "Claude Sonnet 4.6",
         "claude-haiku-4-5-20251001": "Claude Haiku 4.5",
+        "claude-haiku-4-5": "Claude Haiku 4.5",
     }
     display_name = MODEL_DISPLAY_NAMES.get(model or "", model or "Claude")
     model_id_note = f" (model ID: {model})" if model else ""
@@ -874,6 +876,7 @@ class WorkspaceChatSession:
                 sdk_env.get("ANTHROPIC_DEFAULT_OPUS_MODEL")
                 or os.getenv("ANTHROPIC_DEFAULT_OPUS_MODEL", DEFAULT_MODEL)
             ),
+            "claude-opus-4-7": "claude-opus-4-7",
             "sonnet": (
                 sdk_env.get("ANTHROPIC_DEFAULT_SONNET_MODEL")
                 or os.getenv("ANTHROPIC_DEFAULT_SONNET_MODEL", "claude-sonnet-4-6")

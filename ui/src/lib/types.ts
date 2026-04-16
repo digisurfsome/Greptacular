@@ -2230,3 +2230,158 @@ export interface AngleTypeInfo {
   label: string
   description: string
 }
+
+// ============================================================================
+// YT Lab Filing Types
+// ============================================================================
+
+export interface YTFolder {
+  id: number
+  name: string
+  parent_id: number | null
+  created_at: string
+}
+
+export interface YTTag {
+  id: number
+  name: string
+  created_at: string
+}
+
+export interface YTTranscript {
+  id: number
+  video_id: string
+  title: string | null
+  source: 'youtube' | 'paste' | 'upload'
+  transcript_text: string
+  created_at: string
+  updated_at: string
+}
+
+export interface YTWorksheet {
+  id: number
+  video_id: string
+  data: YTWorksheetData
+  model: string
+  created_at: string
+}
+
+export interface YTWorksheetData {
+  title: string
+  action_items: YTWorksheetItem[]
+  prerequisites: string[]
+  estimated_total_time: string
+}
+
+export interface YTWorksheetItem {
+  order: number
+  title: string
+  description: string
+  prerequisites: string[]
+  tools_needed: string[]
+  time_estimate: string
+  difficulty: 'easy' | 'medium' | 'hard'
+  category: string
+}
+
+export interface YTGamePlan {
+  id: number
+  video_id: string
+  data: YTGamePlanData
+  model: string
+  created_at: string
+}
+
+export interface YTGamePlanData {
+  key_strategy: string
+  prerequisites: string[]
+  steps_overview: YTGamePlanStep[]
+  estimated_effort: 'low' | 'medium' | 'high'
+  estimated_time: string
+  key_insights: string[]
+  potential_pitfalls: string[]
+  expected_outcome: string
+}
+
+export interface YTGamePlanStep {
+  order: number
+  title: string
+  description: string
+  key_actions: string[]
+}
+
+export interface YTBatchJob {
+  id: number
+  status: 'pending' | 'running' | 'complete' | 'failed' | 'paused'
+  total_urls: number
+  processed: number
+  failed: number
+  items: YTBatchItem[]
+  created_at: string
+  updated_at: string
+}
+
+export interface YTBatchItem {
+  id: number
+  batch_id: number
+  url: string
+  video_id: string | null
+  status: 'pending' | 'processing' | 'complete' | 'failed' | 'skipped'
+  error: string | null
+  created_at: string
+  updated_at: string
+}
+
+// ============================================================================
+// YT Lab Execution & Warehouse Types
+// ============================================================================
+
+export interface ToolPage {
+  tool_id: string
+  name: string
+  description: string
+  input_schema: InputSchemaField[]
+}
+
+export interface InputSchemaField {
+  name: string
+  type: 'text' | 'number' | 'url' | 'select'
+  label: string
+  required: boolean
+  options?: string[]
+  placeholder?: string
+  default?: string | number
+}
+
+export interface ExecutionProgressEvent {
+  type: string
+  step_number?: number
+  message?: string
+  data?: Record<string, unknown>
+}
+
+export interface ExecutionResultData {
+  status: 'success' | 'failure' | 'partial'
+  data: Record<string, unknown>
+  metadata: Record<string, unknown>
+  error: string | null
+  duration: number
+}
+
+export interface GapRecord {
+  id: number
+  component_type: string
+  required_capability: string
+  frequency: number
+  status: 'open' | 'resolved' | 'in_progress'
+  affected_tools: string[]
+}
+
+export interface BuildSpec {
+  id: number
+  component_name: string
+  interface_contract: string
+  complexity: 'low' | 'medium' | 'high'
+  status: 'pending_review' | 'approved' | 'built'
+  similar_components: string[]
+}

@@ -85,6 +85,11 @@ from .routers import (
     yt_batch_router,
     yt_ingestion_router,
     yt_processing_router,
+    filing_router,
+    transcript_router,
+    worksheet_router,
+    game_plan_router,
+    warehouse_router,
 )
 from .schemas import SetupStatus
 from .services.agent_os_session import cleanup_all_agent_os_sessions
@@ -448,6 +453,11 @@ app.include_router(ingestion_sequences_router)
 app.include_router(market_scraper_router)
 app.include_router(meta_training_router)
 app.include_router(ap_code_manager_router)
+app.include_router(filing_router)
+app.include_router(transcript_router)
+app.include_router(worksheet_router)
+app.include_router(game_plan_router)
+app.include_router(warehouse_router)
 
 
 # ============================================================================

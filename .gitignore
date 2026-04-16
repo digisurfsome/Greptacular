@@ -117,6 +117,13 @@ ui/.vite/
 *.tgz
 
 # ===================
+# Database files
+# ===================
+*.db
+*.sqlite
+*.sqlite3
+
+# ===================
 # Environment files
 # ===================
 .env

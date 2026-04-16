@@ -547,7 +547,7 @@ class ToolRunner:
     # ------------------------------------------------------------------
 
     async def _execute_action(self, step: "ChainConfigRow", content: str) -> dict:
-        """Route to the appropriate API adapter based on step type and detected APIs."""
+        """Route to the appropriate execution node or API adapter based on step type."""
         from ..models.tool_factory import StepType
         from .api_adapters.base import get_adapter
 
@@ -568,6 +568,40 @@ class ToolRunner:
                 "expected_output": step.expected_output,
                 "title": step.title,
             })
+
+        # Try execution node registry for step types that map to nodes
+        # Mapping: step_type.value -> node_type string in the registry
+        node_type_map = {
+            "browser_action": "browser_action",
+            "api_call": "api_call",
+        }
+        node_type = node_type_map.get(step_type.value)
+        if node_type:
+            from .execution_nodes import get_node
+            node = get_node(node_type)
+            if node:
+                task = {
+                    "content": content,
+                    "step_title": step.title,
+                    "variables": dict(self._vars),
+                    "apis_required": list(step.apis_required) if step.apis_required else [],
+                }
+                # For api_call nodes, inject service/action from the first API key
+                if node_type == "api_call" and step.apis_required:
+                    task["service"] = step.apis_required[0]
+                    task["action"] = "call"
+                    task["payload"] = {"prompt": content, "step": step.title}
+
+                valid, err = await node.validate(task)
+                if valid:
+                    result = await node.execute(task)
+                    return {
+                        "output": result.data.get("output", str(result.data)),
+                        "status": result.status,
+                        "metadata": result.metadata,
+                    }
+                else:
+                    logger.warning("Node %s validation failed: %s", node_type, err)
 
         # For API_CALL steps, try to route to a known adapter
         for api_key in step.apis_required:

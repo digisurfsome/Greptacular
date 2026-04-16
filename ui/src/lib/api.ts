@@ -105,6 +105,15 @@ import type {
   RedditUserProfile,
   ResearchProject,
   AngleTypeInfo,
+  YTFolder,
+  YTTag,
+  YTTranscript,
+  YTWorksheet,
+  YTGamePlan,
+  YTBatchJob,
+  ToolPage,
+  GapRecord,
+  BuildSpec,
 } from './types'
 
 const API_BASE = '/api'
@@ -3498,4 +3507,172 @@ export async function runAllProjectAngles(projectId: number, data?: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data ?? {}),
   })
+}
+
+// ============================================================================
+// YT Lab Filing API
+// ============================================================================
+
+export async function createFolder(name: string, parentId?: number): Promise<YTFolder> {
+  return fetchJSON<YTFolder>('/filing/folders', {
+    method: 'POST',
+    body: JSON.stringify({ name, parent_id: parentId }),
+  })
+}
+
+export async function listFolders(): Promise<YTFolder[]> {
+  return fetchJSON<YTFolder[]>('/filing/folders')
+}
+
+export async function updateFolder(folderId: number, name?: string, parentId?: number): Promise<YTFolder> {
+  return fetchJSON<YTFolder>(`/filing/folders/${folderId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ name, parent_id: parentId }),
+  })
+}
+
+export async function deleteFolder(folderId: number): Promise<{ ok: boolean }> {
+  return fetchJSON<{ ok: boolean }>(`/filing/folders/${folderId}`, { method: 'DELETE' })
+}
+
+export async function createTag(name: string): Promise<YTTag> {
+  return fetchJSON<YTTag>('/filing/tags', {
+    method: 'POST',
+    body: JSON.stringify({ name }),
+  })
+}
+
+export async function listTags(): Promise<YTTag[]> {
+  return fetchJSON<YTTag[]>('/filing/tags')
+}
+
+export async function deleteTag(tagId: number): Promise<{ ok: boolean }> {
+  return fetchJSON<{ ok: boolean }>(`/filing/tags/${tagId}`, { method: 'DELETE' })
+}
+
+export async function assignVideoToFolder(videoId: string, folderId: number): Promise<{ video_id: string; folder_id: number }> {
+  return fetchJSON('/filing/videos/folder', {
+    method: 'POST',
+    body: JSON.stringify({ video_id: videoId, folder_id: folderId }),
+  })
+}
+
+export async function tagVideo(videoId: string, tagId: number): Promise<{ video_id: string; tag_id: number }> {
+  return fetchJSON('/filing/videos/tag', {
+    method: 'POST',
+    body: JSON.stringify({ video_id: videoId, tag_id: tagId }),
+  })
+}
+
+export async function untagVideo(videoId: string, tagId: number): Promise<{ ok: boolean }> {
+  return fetchJSON<{ ok: boolean }>(`/filing/videos/${videoId}/tags/${tagId}`, { method: 'DELETE' })
+}
+
+export async function getVideoTags(videoId: string): Promise<YTTag[]> {
+  return fetchJSON<YTTag[]>(`/filing/videos/${videoId}/tags`)
+}
+
+export async function searchVideos(query: string, folderId?: number, tagIds?: number[]): Promise<{ video_ids: string[] }> {
+  return fetchJSON<{ video_ids: string[] }>('/filing/search', {
+    method: 'POST',
+    body: JSON.stringify({ query, folder_id: folderId, tag_ids: tagIds || [] }),
+  })
+}
+
+// ============================================================================
+// YT Lab Transcript API
+// ============================================================================
+
+export async function saveTranscript(videoId: string, transcriptText: string, title?: string, source?: string): Promise<YTTranscript> {
+  return fetchJSON<YTTranscript>('/transcript/save', {
+    method: 'POST',
+    body: JSON.stringify({ video_id: videoId, transcript_text: transcriptText, title, source: source || 'youtube' }),
+  })
+}
+
+export async function getTranscript(videoId: string): Promise<YTTranscript> {
+  return fetchJSON<YTTranscript>(`/transcript/${videoId}`)
+}
+
+export async function listTranscripts(limit?: number, offset?: number): Promise<YTTranscript[]> {
+  const params = new URLSearchParams()
+  if (limit !== undefined) params.set('limit', String(limit))
+  if (offset !== undefined) params.set('offset', String(offset))
+  return fetchJSON<YTTranscript[]>(`/transcript/?${params}`)
+}
+
+// ============================================================================
+// YT Lab Worksheet API
+// ============================================================================
+
+export async function generateWorksheet(videoId: string, transcriptText: string, model?: string): Promise<YTWorksheet> {
+  return fetchJSON<YTWorksheet>('/worksheet/generate', {
+    method: 'POST',
+    body: JSON.stringify({ video_id: videoId, transcript_text: transcriptText, model: model || 'claude-sonnet-4-6' }),
+  })
+}
+
+export async function getWorksheet(videoId: string): Promise<YTWorksheet> {
+  return fetchJSON<YTWorksheet>(`/worksheet/${videoId}`)
+}
+
+// ============================================================================
+// YT Lab Game Plan API
+// ============================================================================
+
+export async function generateGamePlan(videoId: string, transcriptText: string, model?: string): Promise<YTGamePlan> {
+  return fetchJSON<YTGamePlan>('/game-plan/generate', {
+    method: 'POST',
+    body: JSON.stringify({ video_id: videoId, transcript_text: transcriptText, model: model || 'claude-sonnet-4-6' }),
+  })
+}
+
+export async function getGamePlan(videoId: string): Promise<YTGamePlan> {
+  return fetchJSON<YTGamePlan>(`/game-plan/${videoId}`)
+}
+
+// ============================================================================
+// YT Lab Batch Import API
+// ============================================================================
+
+export async function createBatchJob(urls: string[]): Promise<YTBatchJob> {
+  return fetchJSON<YTBatchJob>('/filing/batch', {
+    method: 'POST',
+    body: JSON.stringify({ urls }),
+  })
+}
+
+export async function getBatchJob(jobId: number): Promise<YTBatchJob> {
+  return fetchJSON<YTBatchJob>(`/filing/batch/${jobId}`)
+}
+
+export async function listBatchJobs(): Promise<YTBatchJob[]> {
+  return fetchJSON<YTBatchJob[]>('/filing/batch')
+}
+
+// ============================================================================
+// YT Lab Warehouse API
+// ============================================================================
+
+export async function loadToolPage(toolId: string): Promise<ToolPage> {
+  return fetchJSON<ToolPage>(`/warehouse/tools/${toolId}`)
+}
+
+export async function submitExecution(toolId: string, inputs: Record<string, unknown>): Promise<{ execution_id: string }> {
+  return fetchJSON<{ execution_id: string }>('/warehouse/execute', {
+    method: 'POST',
+    body: JSON.stringify({ tool_id: toolId, inputs }),
+  })
+}
+
+// ============================================================================
+// YT Lab Gap Dashboard API
+// ============================================================================
+
+export async function getGapDashboard(): Promise<GapRecord[]> {
+  return fetchJSON<GapRecord[]>('/tool-analyzer/gaps')
+}
+
+export async function listBuildSpecs(): Promise<BuildSpec[]> {
+  return fetchJSON<BuildSpec[]>('/tool-analyzer/build-specs')
 }

@@ -129,3 +129,43 @@ async def refresh_components():
     registry = get_component_registry()
     registry.refresh()
     return {"status": "refreshed", "components": [c.model_dump() for c in registry.get_all()]}
+
+
+# ---------------------------------------------------------------------------
+# Gap Dashboard + Build Specs (tool analyzer flywheel)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/gaps")
+async def get_gaps():
+    """Get all detected capability gaps for the dashboard."""
+    from ..services.tool_analyzer_service import get_gap_dashboard_data
+    try:
+        return await get_gap_dashboard_data()
+    except Exception as e:
+        logger.exception("Failed to get gap dashboard data")
+        raise HTTPException(status_code=500, detail=f"Failed: {e}")
+
+
+@router.get("/build-specs")
+async def get_build_specs():
+    """List all generated build specs."""
+    from ..services.tool_analyzer_service import list_build_specs
+    try:
+        return await list_build_specs()
+    except Exception as e:
+        logger.exception("Failed to list build specs")
+        raise HTTPException(status_code=500, detail=f"Failed: {e}")
+
+
+@router.post("/build-specs/{gap_id}")
+async def create_build_spec(gap_id: int):
+    """Generate a build spec for a specific gap."""
+    from ..services.tool_analyzer_service import generate_build_spec
+    try:
+        return await generate_build_spec(gap_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except Exception as e:
+        logger.exception("Failed to generate build spec for gap %d", gap_id)
+        raise HTTPException(status_code=500, detail=f"Failed: {e}")

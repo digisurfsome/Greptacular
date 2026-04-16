@@ -64,6 +64,15 @@ import { DiscoveryPanel } from '@/components/yt-lab/DiscoveryPanel'
 import { processVideoStream, startExecution } from '@/lib/api'
 import type { ProcessingLogEntry, GenerateBlueprintParams } from '@/lib/api'
 import { BatchImportView } from '@/components/yt-lab/BatchImportView'
+import FolderSidebar from '@/components/yt-lab/FolderSidebar'
+import SearchBar from '@/components/yt-lab/SearchBar'
+import TagFilterChips from '@/components/yt-lab/TagFilterChips'
+import PasteTranscriptForm from '@/components/yt-lab/PasteTranscriptForm'
+import WorksheetView from '@/components/yt-lab/WorksheetView'
+import GamePlanView from '@/components/yt-lab/GamePlanView'
+import BulkImportPanel from '@/components/yt-lab/BulkImportPanel'
+import ToolWarehousePage from '@/components/yt-lab/ToolWarehousePage'
+import GapDashboard from '@/components/yt-lab/GapDashboard'
 import { ToolFactoryGuidePanel } from '@/components/tool-factory/ToolFactoryGuidePanel'
 import { GenerationProgress } from '@/components/tool-factory/GenerationProgress'
 import { BlueprintPreview } from '@/components/tool-factory/BlueprintPreview'
@@ -1936,6 +1945,24 @@ function StrategyBuilder({
             </div>
           )}
 
+          {/* Worksheet & Game Plan panels — shown after ingestion */}
+          {ingestResult?.transcript?.length > 0 && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="rounded-lg border border-border bg-card">
+                <WorksheetView
+                  videoId={project.sourceUrl?.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/)?.[1] || project.id}
+                  transcriptText={ingestResult.transcript.map((s: { text: string }) => s.text).join(' ')}
+                />
+              </div>
+              <div className="rounded-lg border border-border bg-card">
+                <GamePlanView
+                  videoId={project.sourceUrl?.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/)?.[1] || project.id}
+                  transcriptText={ingestResult.transcript.map((s: { text: string }) => s.text).join(' ')}
+                />
+              </div>
+            </div>
+          )}
+
           {steps.length === 0 ? (
             <NoStepsYet onAddStep={addStep} />
           ) : selectedStep ? (
@@ -1962,7 +1989,7 @@ function StrategyBuilder({
 // Main Page Component
 // ============================================================================
 
-type View = 'list' | 'create' | 'edit' | 'detail' | 'execution' | 'batch'
+type View = 'list' | 'create' | 'edit' | 'detail' | 'execution' | 'batch' | 'warehouse' | 'gaps' | 'paste'
 
 export function YTStrategyLabPage(): React.JSX.Element {
   const [view, setView] = useState<View>('list')
@@ -1977,6 +2004,15 @@ export function YTStrategyLabPage(): React.JSX.Element {
   const [saveError, setSaveError] = useState<string | null>(null)
   const [showGuide, setShowGuide] = useState(false)
   const [showPRDModal, setShowPRDModal] = useState(false)
+  const [selectedFolderId, setSelectedFolderId] = useState<number | null>(null)
+  const [selectedTagIds, setSelectedTagIds] = useState<number[]>([])
+  const [warehouseToolId, setWarehouseToolId] = useState<string | null>(null)
+
+  const handleToggleTag = useCallback((tagId: number) => {
+    setSelectedTagIds(prev =>
+      prev.includes(tagId) ? prev.filter(id => id !== tagId) : [...prev, tagId]
+    )
+  }, [])
 
   // Auto-restore from server if localStorage is empty (e.g., browser cache cleared)
   useEffect(() => {
@@ -2342,6 +2378,51 @@ export function YTStrategyLabPage(): React.JSX.Element {
               </span>
             </>
           )}
+
+          {view === 'paste' && (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground hover:text-foreground h-7 px-2"
+                onClick={() => setView('list')}
+              >
+                <span className="text-xs">YT Strategy Lab</span>
+              </Button>
+              <ChevronRight size={12} className="text-muted-foreground" />
+              <span className="text-xs font-semibold text-foreground">Paste Transcript</span>
+            </>
+          )}
+
+          {view === 'warehouse' && (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground hover:text-foreground h-7 px-2"
+                onClick={() => setView('list')}
+              >
+                <span className="text-xs">YT Strategy Lab</span>
+              </Button>
+              <ChevronRight size={12} className="text-muted-foreground" />
+              <span className="text-xs font-semibold text-foreground">Tool Warehouse</span>
+            </>
+          )}
+
+          {view === 'gaps' && (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground hover:text-foreground h-7 px-2"
+                onClick={() => setView('list')}
+              >
+                <span className="text-xs">YT Strategy Lab</span>
+              </Button>
+              <ChevronRight size={12} className="text-muted-foreground" />
+              <span className="text-xs font-semibold text-foreground">Gap Dashboard</span>
+            </>
+          )}
         </nav>
 
         {/* Right side: Run button (detail view) */}
@@ -2392,7 +2473,16 @@ export function YTStrategyLabPage(): React.JSX.Element {
 
       {/* Main content */}
       {view === 'list' && (
-        <div className="flex-1 overflow-auto p-6">
+        <div className="flex-1 flex overflow-hidden">
+          {/* Folder sidebar */}
+          <div className="w-52 shrink-0">
+            <FolderSidebar
+              selectedFolderId={selectedFolderId}
+              onSelectFolder={setSelectedFolderId}
+            />
+          </div>
+
+          <div className="flex-1 overflow-auto p-6">
           <div className="max-w-7xl mx-auto space-y-6">
             {/* Page header + controls */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -2423,9 +2513,17 @@ export function YTStrategyLabPage(): React.JSX.Element {
                   <FileText size={16} />
                   From PRD
                 </Button>
+                <Button variant="outline" onClick={() => setView('paste')} className="gap-1.5 shrink-0">
+                  <ClipboardCopy size={16} />
+                  Paste Transcript
+                </Button>
                 <Button variant="outline" onClick={() => setView('batch')} className="gap-1.5 shrink-0">
                   <Layers size={16} />
                   Batch Import
+                </Button>
+                <Button variant="outline" onClick={() => setView('gaps')} className="gap-1.5 shrink-0">
+                  <AlertCircle size={16} />
+                  Gaps
                 </Button>
                 <Button onClick={() => setView('create')} className="gap-1.5 shrink-0">
                   <Plus size={16} />
@@ -2470,6 +2568,9 @@ export function YTStrategyLabPage(): React.JSX.Element {
               </div>
             )}
 
+            {/* Tag filter chips */}
+            <TagFilterChips selectedTagIds={selectedTagIds} onToggleTag={handleToggleTag} />
+
             {/* Project grid or empty state */}
             {projects.length === 0 ? (
               <EmptyProjectState onCreate={() => setView('create')} />
@@ -2508,17 +2609,21 @@ export function YTStrategyLabPage(): React.JSX.Element {
             )}
           </div>
         </div>
+        </div>
       )}
 
       {view === 'batch' && (
         <div className="flex-1 overflow-auto p-6">
-          <div className="max-w-4xl mx-auto">
+          <div className="max-w-4xl mx-auto space-y-6">
             <BatchImportView
               onBack={() => setView('list')}
               onBatchComplete={() => {
                 // Batch complete — user can navigate back to list
               }}
             />
+            <div className="rounded-lg border border-border bg-card">
+              <BulkImportPanel />
+            </div>
           </div>
         </div>
       )}
@@ -2558,6 +2663,35 @@ export function YTStrategyLabPage(): React.JSX.Element {
           project={selectedProject}
           onUpdateProject={handleUpdateProject}
         />
+      )}
+
+      {view === 'paste' && (
+        <div className="flex-1 overflow-auto p-6">
+          <div className="max-w-2xl mx-auto">
+            <PasteTranscriptForm
+              onSaved={(videoId) => {
+                // After saving a transcript, return to the list view
+                setView('list')
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {view === 'warehouse' && warehouseToolId && (
+        <div className="flex-1 overflow-auto p-6">
+          <div className="max-w-4xl mx-auto">
+            <ToolWarehousePage toolId={warehouseToolId} />
+          </div>
+        </div>
+      )}
+
+      {view === 'gaps' && (
+        <div className="flex-1 overflow-auto p-6">
+          <div className="max-w-4xl mx-auto">
+            <GapDashboard />
+          </div>
+        </div>
       )}
 
       {/* Delete confirmation overlay */}

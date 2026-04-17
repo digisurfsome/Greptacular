@@ -29,6 +29,12 @@ load_dotenv()
 from .ws_flush import _apply_uvicorn_tcp_nodelay_patch  # noqa: E402, F401
 _apply_uvicorn_tcp_nodelay_patch()
 
+# Apply caveman-mode patch globally BEFORE any service imports
+# ClaudeAgentOptions — this makes every SDK client (main + sub-agents)
+# inherit terse-output rules via prompt-cached system prompt.
+from .caveman_patch import apply_caveman_patch  # noqa: E402
+apply_caveman_patch()
+
 from fastapi import FastAPI, HTTPException, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse

@@ -9,6 +9,7 @@ Organized PRD storage for each AutoForge UI page. When you want to improve a spe
 | `dashboard/` | DashboardPage.tsx | Main AutoForge dashboard |
 | `workspace/` | WorkspacePage.tsx | Workspace chat and project management |
 | `yt-strategy-lab/` | YTStrategyLabPage.tsx | YouTube Strategy Lab - video analysis, PRD ingestion, tool factory |
+| `yt-lab/` | YTLabPage.tsx | YT Lab — transcript ingestion (YouTube, Twitter/X, TikTok, file uploads), bulk batches, cross-video synthesis |
 | `dunkstack/` | DunkStackPage.tsx | DunkStack benchmarking |
 | `arena/` | ArenaPage.tsx, ArenaChatPage.tsx | Arena comparison chat |
 | `cli-scripter/` | CliScripterPage.tsx | CLI script builder |

@@ -1,8 +1,15 @@
 # YT Lab — Ingestion Expansion PRD
 
-**Status:** Draft
+**Status:** Ready to build (open questions resolved)
 **Owner:** Lober
 **Goal:** Turn YT Lab from "YouTube-only, single-URL, captions-only" into "any video, any platform, one-at-a-time or bulk, with cross-video synthesis."
+
+## Locked-in Decisions
+1. **Whisper engine:** Local Whisper is default. User can add OpenAI Whisper API key in settings → toggle per job or globally to switch to paid API (faster, ~$0.006/min).
+2. **Batch size cap:** 50 URLs per batch.
+3. **Storage:** Audio deleted immediately after transcription. Video NOT downloaded by default (toggle per job). Transcripts kept forever. "Save video" is a v2 feature (Google Drive target) — skip for v1.
+4. **Synthesis model:** Sonnet default, Opus toggle. Auto-generate a worksheet/checklist (Sonnet) after every transcription. Opus reserved for deep reasoning / tool-spec generation from transcripts.
+5. **YouTube Live retry logic:** When a live video has no captions yet, retry `youtube-transcript-api` every 6 hours for up to 48 hours before falling back to Whisper. Most lives get auto-captions within 24 hours — this saves money on the 95% case.
 
 ---
 
@@ -38,14 +45,24 @@ User pastes any URL or uploads any file. Backend runs this chain automatically, 
    YES → youtube-transcript-api (fast, free)            [existing path]
    NO  → continue
 
-2. Is it a URL yt-dlp can handle? (~1000 supported sites)
+2. Is it a YouTube Live URL with no captions yet?
+   YES → queue a retry job: check every 6h for 48h       [NEW]
+         if captions appear → use free path
+         if timeout → fall back to Whisper (step 4)
+
+3. Is it a URL yt-dlp can handle? (~1000 supported sites)
    YES → yt-dlp downloads audio → Whisper transcribes   [NEW]
    NO  → continue
 
-3. Is it an uploaded audio/video file?
+4. Is it an uploaded audio/video file?
    YES → Whisper transcribes                             [NEW]
    NO  → show "unsupported source" error
 ```
+
+### Whisper engine selection (inside step 3 / 4)
+- Default: local Whisper (free, slow)
+- If user has Whisper API key configured AND toggle is on → use OpenAI Whisper API (paid, ~10x faster)
+- Auto-compress audio to mono 32kbps mp3 before API upload (stays under 25MB limit for files up to ~2 hours)
 
 User sees one progress bar. Behind the scenes the backend picks the right path.
 
@@ -90,10 +107,12 @@ Three options. Recommend **hybrid**: local for personal use, API as fallback/opt
 
 **Decision for v1:** Local Whisper only. Add API toggle in v2 when bulk ingestion makes speed matter.
 
-### File storage
-- Raw downloads (mp3, mp4) land in: `server/storage/yt_lab/{job_id}/`
-- Transcripts saved to the existing YT Lab transcript store
-- Cleanup policy: TBD (probably keep audio 7 days, video 30 days, transcripts forever)
+### File storage (disk-space-conscious)
+Lober's system has ~10-15GB free. Video/audio files cannot accumulate locally.
+- Transcripts → existing YT Lab transcript store, kept forever (tiny text files)
+- Audio files → temp folder, **deleted immediately after transcription completes** (success or failure)
+- Video files → **not downloaded by default.** "Save video" feature deferred to v2 (Google Drive target)
+- No "pin" feature needed in v1 since nothing local persists by default
 
 ## Data Model (new fields)
 Extend existing YT Lab job record:
@@ -325,8 +344,15 @@ Segments 1 + 2 are the immediate PRD. Segment 3 is on the roadmap but not scoped
 
 ---
 
-# Open Questions for Lober
-1. Whisper local vs API for v1? (Recommendation: local, switch to API later if CPU is too slow for bulk jobs)
-2. Batch size cap? (Recommendation: 50 URLs max per batch to start)
-3. Storage cleanup policy — auto-delete audio/video after X days? (Recommendation: 7 days audio, 30 days video, transcripts forever)
-4. Should synthesis use Sonnet or Opus? (Recommendation: Sonnet for cost, Opus when you want deep reasoning — make it a dropdown)
+# Open Questions — RESOLVED
+See "Locked-in Decisions" at top of document.
+
+# Post-Transcription Auto-Worksheet (default behavior)
+Every successful transcription automatically kicks off a Sonnet pass that converts the narrative transcript into a structured worksheet:
+- Key features / claims highlighted
+- Action items / steps extracted
+- Quotes worth keeping
+- Open questions / edge cases
+- One-line summary
+
+Worksheet is stored alongside the transcript. User can re-run with Opus via a toggle for higher-stakes content (e.g. "turn this into a buildable tool spec").

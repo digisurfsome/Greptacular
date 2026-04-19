@@ -76,18 +76,47 @@ def search_keyword(keyword: str, location_name: str = None, location_code: int =
             return []
 
         items = tasks[0]["result"][0].get("items", [])
+
+        # Track local_pack rank separately — these are the Google Maps 3-pack.
+        # For local service searches they appear ABOVE organic results and dominate
+        # phone calls. We give local_pack businesses effective organic ranks 1-3.
+        local_pack_count = 0
+
         for item in items:
-            if item.get("type") != "organic":
+            item_type = item.get("type")
+
+            if item_type == "local_pack":
+                # Skip paid local pack entries
+                if item.get("is_paid"):
+                    continue
+                local_pack_count += 1
+                domain = item.get("domain", "").replace("www.", "")
+                title = item.get("title", "")
+                url = item.get("url", "")
+
+                # Pull rating data — useful for reviews hook later
+                rating = item.get("rating") or {}
+
+                results.append({
+                    "rank": local_pack_count,  # 1, 2, 3 — maps pack position
+                    "domain": domain,
+                    "title": title,
+                    "url": url,
+                    "traffic_estimate": 0,
+                    "result_type": "local_pack",
+                    "rating": rating.get("value"),
+                    "review_count": rating.get("votes_count"),
+                    "phone": item.get("phone"),
+                })
+                continue
+
+            if item_type != "organic":
                 continue
 
             rank = item.get("rank_absolute")
             url = item.get("url", "")
             domain = item.get("domain", "")
             title = item.get("title", "")
-
-            # DataForSEO provides estimated traffic via breadcrumb/clickstream data
-            # etv = estimated traffic value, available in advanced endpoints
-            # For live/regular endpoint this is not always present — use rank as proxy
             etv = item.get("etv", 0) or 0
 
             results.append({
@@ -96,6 +125,10 @@ def search_keyword(keyword: str, location_name: str = None, location_code: int =
                 "title": title,
                 "url": url,
                 "traffic_estimate": etv,
+                "result_type": "organic",
+                "rating": None,
+                "review_count": None,
+                "phone": None,
             })
     except (KeyError, IndexError, TypeError) as e:
         print(f"[serp_search] Parse error for '{keyword}': {e}")

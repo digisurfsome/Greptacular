@@ -2,405 +2,459 @@
 
 ## What This Is
 
-A pipeline that takes a list of business websites and a pre-written email, then automatically finds each site's contact form and submits the email — mimicking exactly what a human would do manually.
+A two-phase pipeline that takes a raw list of business websites, filters it down to only clean targets (no CAPTCHA, no Cloudflare, form confirmed present), then automatically fills and submits the contact form on each — mimicking exactly what a human would do.
 
-This is NOT a bulk email blaster. It sends one human-like form submission per website.
+**V1 has zero CAPTCHA solving and zero proxies.** The filter eliminates those sites before the agent ever touches them. Complexity added only when actually needed.
 
 ---
 
-## The Stack (Confirmed From Docs)
+## The Stack
 
 | Component | Tool | Purpose |
 |-----------|------|---------|
-| Contact form finder | Python scraper (no AI) | Finds the actual contact form URL on each site |
-| Browser automation | Skyvern (self-hosted via Docker) | Navigates and fills the form |
-| AI brain | Claude Haiku (vision) via Anthropic API | Tells Skyvern what to click |
-| CAPTCHA solving | 2captcha.com | Solves reCAPTCHA v2/v3, hCaptcha, Turnstile |
-| Proxy rotation | Smartproxy residential | Rotates IPs so sites don't block |
-| Orchestrator | Python script | Loops through CSV, calls everything |
+| List filter | Python + BeautifulSoup + requests | Finds contact URL, confirms form exists, detects all blockers |
+| Browser automation | browser-use (open source Python library) | Navigates and fills the form |
+| AI brain | Claude Haiku 4.5 via Anthropic API | Tells browser-use what to click (DOM-first, not screenshot-heavy) |
+| Orchestrator | Python async script | Loops through clean CSV, calls browser-use per row |
+
+**No Docker. No Skyvern. No 2captcha. No proxies. Just pip install and run.**
+
+---
+
+## Why browser-use Over Skyvern
+
+- **Skyvern** = Docker container, separate API server, database, 20-minute setup minimum
+- **browser-use** = `pip install browser-use`, done. It's a Python library.
+- **Skyvern** = screenshot-first (every step sends an image to the LLM — expensive)
+- **browser-use** = DOM-first (reads page HTML as text, only screenshots when truly needed — 5-10x cheaper per step)
+- Both use Haiku as the brain. browser-use is just cheaper and simpler.
 
 ---
 
 ## Honest Success Rate
 
-| Scenario | Expected Rate |
-|----------|--------------|
-| Clean contact form, no CAPTCHA | ~90% |
-| Contact form with reCAPTCHA (2captcha enabled) | ~80-85% |
-| Site behind Cloudflare (proxies enabled) | ~70-80% |
-| Site has no form (only email address shown) | 0% — skip |
-| Login-walled or broken site | 0% — skip |
+**On the raw unfiltered list:**
+- ~40-60% of random business sites have CAPTCHAs, Cloudflare, or no form at all
+- Don't run the agent on these — it's wasted money
 
-**Realistic blended rate across random business list: 70-85%**
+**After the filter script runs:**
+- 95-98% of what's left should fill successfully
+- Failures will be: JS-only form submissions, broken sites, silent reCAPTCHA v3 rejections
 
-The 15-30% failures are not fixable without manual work. Log them, skip them, move on.
+**The filter is the product.** The agent just executes.
 
 ---
 
-## Input Format
+## Input / Output
 
-CSV file with these columns:
-
+**Input CSV (raw list):**
 ```
-website_url, contact_name, sender_name, sender_email, subject, message
-https://acmeplumbing.com, John, Your Name, you@yourdomain.com, Quick question, Hi John...
-https://bestlawyers.com, Sarah, Your Name, you@yourdomain.com, Partnership idea, Hey Sarah...
+website_url, sender_name, sender_email, subject, message
+https://acmeplumbing.com, Your Name, you@yourdomain.com, Quick question, Hi there...
+https://bestlawyers.com, Your Name, you@yourdomain.com, Partnership idea, Hey...
 ```
 
-The `message` column contains your pre-written email — fully written, ready to paste.
-
----
-
-## Pipeline Architecture
-
+**After Phase 1 filter — clean CSV:**
 ```
-CSV (website_url + pre-written fields)
-         |
-         v
-Phase 1: Contact Form Finder
-  - Fetch homepage HTML
-  - Check nav, footer for "Contact", "Get in Touch", etc.
-  - Try common paths: /contact, /contact-us, /reach-us, /get-in-touch
-  - Output: actual contact form URL (or SKIP if none found)
-         |
-         v
-Phase 2: Skyvern Task
-  - POST to local Skyvern API with form URL + prompt
-  - Skyvern takes screenshots, uses Haiku to navigate
-  - Fills: name, email, subject (if exists), message
-  - Submits
-         |
-         v
-Phase 3: CAPTCHA Handler (fires if Skyvern detects CAPTCHA)
-  - 2captcha solves it
-  - Returns token, Skyvern injects it, continues
-         |
-         v
-Phase 4: Result Logger
-  - Log: success / failed / skipped (no form) / blocked
-  - Timestamp, site URL, error message if failed
+contact_url, sender_name, sender_email, subject, message
+https://acmeplumbing.com/contact, Your Name, you@yourdomain.com, Quick question, Hi there...
+```
+
+**Output log:**
+```
+2026-04-19 10:01:22 SUCCESS: acmeplumbing.com -> /contact
+2026-04-19 10:02:45 SUCCESS: bestlawyers.com -> /contact-us
+2026-04-19 10:03:12 FAILED (timeout): somebrokenshop.com
 ```
 
 ---
 
-## Component 1: Skyvern Setup
+## Phase 1: The Filter Script
 
-**Self-hosted via Docker (recommended — free compute, your Haiku key):**
+Runs once on your raw list. No AI. Costs $0. Processes 200 sites in under 2 minutes.
 
-```bash
-git clone https://github.com/Skyvern-AI/skyvern.git
-cd skyvern
+**What it checks:**
+1. Is the site reachable? (not 403, not Cloudflare challenge page)
+2. Can it find a contact form page? (common paths + link scraping)
+3. Does that page have an actual `<form>` with name/email/message fields?
+4. Does the page source contain any CAPTCHA or bot-protection signatures?
 
-# Create .env file
-ANTHROPIC_API_KEY=your_haiku_api_key_here
+**CAPTCHA signatures to detect:**
+- `google.com/recaptcha` or `grecaptcha` or `g-recaptcha` → reCAPTCHA v2
+- `grecaptcha.execute` or `grecaptcha.render` → **reCAPTCHA v3 (invisible — must catch this)**
+- `hcaptcha.com` or `h-captcha` → hCaptcha
+- `challenges.cloudflare.com` or `cf-turnstile` → Cloudflare Turnstile
+- `friendlycaptcha.com` → FriendlyCaptcha
+- Honeypot fields: hidden inputs named `website`, `url`, `phone2`, `fax` → flag as suspicious
 
-# Start
-docker compose up -d
-
-# API runs at: http://localhost:8000
-# UI runs at: http://localhost:8080
-```
-
-**Creating a task (real API call):**
+**Cloudflare network block detection:**
+- HTTP 403 response = blocked
+- Response HTML contains `cf-browser-verification` or `Checking your browser` = Cloudflare challenge
 
 ```python
 import requests
+import csv
 import time
-
-SKYVERN_URL = "http://localhost:8000"
-SKYVERN_KEY = "your_local_key"  # Found in Skyvern UI settings
-
-def run_skyvern_task(contact_url, sender_name, sender_email, subject, message):
-    payload = {
-        "url": contact_url,
-        "prompt": f"""
-            Find the contact form on this page.
-            Fill in the following fields:
-            - Name or Full Name: {sender_name}
-            - Email: {sender_email}
-            - Subject (if the field exists): {subject}
-            - Message or Comment: {message}
-            If there is a phone field, skip it or leave it blank.
-            After filling all fields, click the Submit or Send button.
-            Do not click any other buttons.
-        """,
-        "engine": "skyvern-2.0",
-        "max_steps": 25
-    }
-
-    headers = {
-        "x-api-key": SKYVERN_KEY,
-        "Content-Type": "application/json"
-    }
-
-    response = requests.post(
-        f"{SKYVERN_URL}/v1/run/tasks",
-        json=payload,
-        headers=headers
-    )
-    task = response.json()
-    run_id = task["run_id"]
-
-    # Poll for result
-    for _ in range(60):  # max 5 minutes
-        time.sleep(5)
-        result = requests.get(
-            f"{SKYVERN_URL}/v1/run/tasks/{run_id}",
-            headers=headers
-        ).json()
-        status = result["status"]
-        if status in ["completed", "failed", "timed_out"]:
-            return status, result
-    
-    return "timeout", {}
-```
-
-**Key facts from docs:**
-- `engine: "skyvern-2.0"` is their best engine for multi-step tasks
-- `max_steps: 25` — each screenshot+action = 1 step; form fills usually take 8-15 steps
-- Tasks take 30-60 seconds each
-- Self-hosted uses whatever LLM you configure via env vars
-- For Haiku specifically: set `LLM_CONFIG_NAME=ANTHROPIC_CLAUDE` in .env and configure model name
-
----
-
-## Component 2: 2captcha Integration
-
-**Install:**
-```bash
-pip install 2captcha-python
-```
-
-**Basic reCAPTCHA v2 solve:**
-```python
-from twocaptcha import TwoCaptcha, TimeoutException, ApiException
-
-solver = TwoCaptcha('YOUR_2CAPTCHA_API_KEY')
-
-def solve_captcha(sitekey, page_url):
-    try:
-        result = solver.recaptcha(
-            sitekey=sitekey,
-            url=page_url
-        )
-        return result['code']  # This is the token to inject
-    except TimeoutException:
-        return None  # Captcha took too long, skip this site
-    except ApiException as e:
-        return None  # API error, skip
-
-def solve_captcha_v3(sitekey, page_url, action='submit'):
-    try:
-        result = solver.recaptcha(
-            sitekey=sitekey,
-            url=page_url,
-            version='v3',
-            action=action,
-            score=0.7
-        )
-        return result['code']
-    except Exception:
-        return None
-```
-
-**Supported types (all relevant to contact forms):**
-- reCAPTCHA v2 — standard checkbox: `solver.recaptcha(sitekey, url)`
-- reCAPTCHA v3 — invisible score-based: `solver.recaptcha(sitekey, url, version='v3')`
-- hCaptcha — common on Squarespace/Wix sites: `solver.hcaptcha(sitekey, url)`
-- Cloudflare Turnstile — increasingly common: `solver.turnstile(sitekey, url)`
-
-**Cost reality:**
-- reCAPTCHA v2: $1.00–$2.99 per 1,000 solves
-- reCAPTCHA v3: $1.45–$2.99 per 1,000 solves
-- At 100/day, max $0.30/day for CAPTCHAs
-
-**Note on Skyvern + 2captcha integration:**
-Skyvern has partial native CAPTCHA handling. The integration point is: when Skyvern's task fails or stalls on a CAPTCHA, the orchestrator catches it, calls 2captcha directly with the sitekey (extracted from page HTML), gets the token back, and resumes. This requires a webhook or polling on the Skyvern task to detect the stall — OR you configure 2captcha credentials directly in Skyvern's `.env` so it handles it internally (check Skyvern docs for `TWOCAPTCHA_KEY` env var).
-
----
-
-## Component 3: Contact Form URL Finder
-
-This runs BEFORE Skyvern. Cheap, fast, no AI needed. Finds the real contact form URL so Skyvern doesn't waste steps hunting.
-
-```python
-import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
 
-CONTACT_KEYWORDS = [
-    'contact', 'contact-us', 'reach-us', 'get-in-touch',
-    'touch', 'connect', 'write-us', 'message-us', 'talk-to-us'
+HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+TIMEOUT = 8
+
+CONTACT_PATHS = [
+    '/contact', '/contact-us', '/contact_us', '/contactus',
+    '/reach-us', '/get-in-touch', '/connect', '/about/contact',
+    '/about-us/contact', '/support/contact', '/help/contact'
 ]
 
-def find_contact_url(website_url):
-    # Normalize URL
-    if not website_url.startswith('http'):
-        website_url = 'https://' + website_url
+CONTACT_KEYWORDS = [
+    'contact', 'contact us', 'get in touch', 'reach us',
+    'write to us', 'message us', 'talk to us', 'connect'
+]
 
-    # Step 1: Try common paths directly
-    common_paths = ['/contact', '/contact-us', '/contact_us', '/reach-us',
-                    '/get-in-touch', '/contactus', '/connect', '/about/contact']
-    
-    for path in common_paths:
-        test_url = website_url.rstrip('/') + path
+CAPTCHA_SIGNATURES = [
+    'google.com/recaptcha',
+    'grecaptcha',
+    'g-recaptcha',
+    'hcaptcha.com',
+    'h-captcha',
+    'challenges.cloudflare.com',
+    'cf-turnstile',
+    'friendlycaptcha.com',
+]
+
+# reCAPTCHA v3 is invisible — must detect separately
+RECAPTCHA_V3_SIGNATURES = [
+    'grecaptcha.execute',
+    'grecaptcha.render',
+    "'v3'",
+    '"v3"',
+]
+
+CLOUDFLARE_SIGNATURES = [
+    'cf-browser-verification',
+    'Checking your browser',
+    'DDoS protection by Cloudflare',
+    'cf_clearance',
+]
+
+HONEYPOT_NAMES = ['website', 'url', 'phone2', 'fax', 'address2', 'company_url']
+
+
+def normalize_url(url):
+    if not url.startswith('http'):
+        return 'https://' + url
+    return url
+
+
+def is_cloudflare_blocked(response):
+    if response.status_code == 403:
+        return True
+    text = response.text
+    return any(sig in text for sig in CLOUDFLARE_SIGNATURES)
+
+
+def find_contact_url(base_url):
+    # Try common paths first
+    for path in CONTACT_PATHS:
+        test_url = base_url.rstrip('/') + path
         try:
-            r = requests.head(test_url, timeout=5, allow_redirects=True)
+            r = requests.head(test_url, timeout=5, headers=HEADERS, allow_redirects=True)
             if r.status_code == 200:
                 return test_url
-        except:
+        except Exception:
             continue
 
-    # Step 2: Scrape homepage for contact links
+    # Scrape homepage for contact links
     try:
-        r = requests.get(website_url, timeout=8, headers={
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        })
+        r = requests.get(base_url, timeout=TIMEOUT, headers=HEADERS)
+        if is_cloudflare_blocked(r):
+            return None
         soup = BeautifulSoup(r.text, 'html.parser')
-        
         for a in soup.find_all('a', href=True):
-            href = a['href'].lower()
-            text = a.get_text().lower()
-            if any(kw in href or kw in text for kw in CONTACT_KEYWORDS):
-                full_url = urljoin(website_url, a['href'])
-                # Make sure it's same domain
-                if urlparse(full_url).netloc == urlparse(website_url).netloc:
+            href = a.get('href', '').lower()
+            text = a.get_text().lower().strip()
+            if any(kw in href or kw == text or kw in text for kw in CONTACT_KEYWORDS):
+                full_url = urljoin(base_url, a['href'])
+                if urlparse(full_url).netloc == urlparse(base_url).netloc:
                     return full_url
-    except:
+    except Exception:
         pass
 
-    return None  # No contact form found — skip this site
-```
+    return None
 
----
 
-## Component 4: Proxy Rotation (Smartproxy)
+def analyze_contact_page(contact_url):
+    result = {
+        'reachable': False,
+        'has_form': False,
+        'captcha_type': 'none',
+        'cloudflare_blocked': False,
+        'honeypot_detected': False,
+    }
 
-Only needed if you start hitting Cloudflare blocks. Start WITHOUT proxies, add when you see failures.
+    try:
+        r = requests.get(contact_url, timeout=TIMEOUT, headers=HEADERS)
+        result['reachable'] = True
 
-**Skyvern self-hosted proxy config (in .env):**
-```
-PROXY_HOST=gate.smartproxy.com
-PROXY_PORT=10001
-PROXY_USERNAME=your_username
-PROXY_PASSWORD=your_password
-```
+        if is_cloudflare_blocked(r):
+            result['cloudflare_blocked'] = True
+            return result
 
-**Or pass per-task via Playwright proxy config inside Skyvern** (check Skyvern docs for `proxy` parameter in task payload — may be available in newer versions).
+        html = r.text
+        soup = BeautifulSoup(html, 'html.parser')
 
-**Smartproxy cost:** Pay-as-you-go residential starts around $7-10/GB. At 100 form fills/day with ~2MB per session, that's ~0.2GB/day = ~$1.50-2/day if you need proxies for everything.
+        # Check for actual form with email-like fields
+        forms = soup.find_all('form')
+        for form in forms:
+            inputs = form.find_all(['input', 'textarea'])
+            input_names = [i.get('name', '').lower() + i.get('type', '').lower() for i in inputs]
+            input_text = ' '.join(input_names)
+            if any(kw in input_text for kw in ['email', 'message', 'name', 'comment', 'text']):
+                result['has_form'] = True
+                break
 
----
+        # Detect honeypots
+        all_inputs = soup.find_all('input', {'type': 'hidden'})
+        for inp in all_inputs:
+            name = inp.get('name', '').lower()
+            if name in HONEYPOT_NAMES:
+                result['honeypot_detected'] = True
 
-## Component 5: The Orchestrator (Full Flow)
+        # Detect CAPTCHA type (check v3 first — it's the sneaky one)
+        if any(sig in html for sig in RECAPTCHA_V3_SIGNATURES):
+            result['captcha_type'] = 'recaptcha_v3'
+        elif any(sig in html for sig in CAPTCHA_SIGNATURES):
+            for sig in CAPTCHA_SIGNATURES:
+                if sig in html:
+                    if 'hcaptcha' in sig:
+                        result['captcha_type'] = 'hcaptcha'
+                    elif 'turnstile' in sig or 'cloudflare' in sig:
+                        result['captcha_type'] = 'turnstile'
+                    else:
+                        result['captcha_type'] = 'recaptcha_v2'
+                    break
 
-```python
-import csv
-import json
-import time
-import logging
-from datetime import datetime
+    except Exception as e:
+        result['error'] = str(e)
 
-logging.basicConfig(
-    filename=f'outreach_log_{datetime.now().strftime("%Y%m%d")}.txt',
-    level=logging.INFO,
-    format='%(asctime)s %(message)s'
-)
+    return result
 
-def run_outreach(csv_path, rate_per_hour=40):
-    delay_seconds = 3600 / rate_per_hour  # seconds between submissions
 
-    with open(csv_path, 'r') as f:
-        reader = csv.DictReader(f)
-        rows = list(reader)
+def run_filter(input_csv, output_csv):
+    with open(input_csv, 'r') as f:
+        rows = list(csv.DictReader(f))
 
-    results = {'success': 0, 'failed': 0, 'skipped': 0, 'total': len(rows)}
+    clean = []
+    skipped = []
 
     for i, row in enumerate(rows):
-        site = row['website_url']
-        print(f"[{i+1}/{len(rows)}] Processing: {site}")
+        url = normalize_url(row['website_url'])
+        print(f"[{i+1}/{len(rows)}] {url}")
 
-        # Phase 1: Find contact form
-        contact_url = find_contact_url(site)
+        contact_url = find_contact_url(url)
         if not contact_url:
-            logging.info(f"SKIPPED (no form found): {site}")
-            results['skipped'] += 1
+            skipped.append({**row, 'skip_reason': 'no_contact_url_found'})
             continue
 
-        # Phase 2: Run Skyvern
-        status, result = run_skyvern_task(
-            contact_url=contact_url,
+        analysis = analyze_contact_page(contact_url)
+
+        if analysis.get('cloudflare_blocked'):
+            skipped.append({**row, 'skip_reason': 'cloudflare_blocked'})
+        elif not analysis.get('has_form'):
+            skipped.append({**row, 'skip_reason': 'no_form_detected'})
+        elif analysis.get('captcha_type') != 'none':
+            skipped.append({**row, 'skip_reason': f"captcha_{analysis['captcha_type']}"})
+        else:
+            clean.append({**row, 'contact_url': contact_url})
+
+        time.sleep(0.3)  # be polite
+
+    # Write clean list
+    if clean:
+        with open(output_csv, 'w', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=clean[0].keys())
+            writer.writeheader()
+            writer.writerows(clean)
+
+    # Write skipped list for review
+    if skipped:
+        with open(output_csv.replace('.csv', '_skipped.csv'), 'w', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=skipped[0].keys())
+            writer.writeheader()
+            writer.writerows(skipped)
+
+    print(f"\nClean: {len(clean)} | Skipped: {len(skipped)} | Total: {len(rows)}")
+    return clean
+
+
+if __name__ == '__main__':
+    run_filter('raw_list.csv', 'clean_list.csv')
+```
+
+---
+
+## Phase 2: browser-use Runner
+
+**Install:**
+```bash
+pip install browser-use langchain-anthropic
+playwright install chromium
+```
+
+**Set env var:**
+```
+ANTHROPIC_API_KEY=your_key_here
+```
+
+**The runner:**
+```python
+import asyncio
+import csv
+import logging
+from datetime import datetime
+from browser_use import Agent
+from langchain_anthropic import ChatAnthropic
+
+logging.basicConfig(
+    filename=f'outreach_log_{datetime.now().strftime("%Y%m%d_%H%M")}.txt',
+    level=logging.INFO,
+    format='%(asctime)s %(levelname)s %(message)s'
+)
+
+llm = ChatAnthropic(model='claude-haiku-4-5-20251001')
+
+
+async def fill_form(contact_url, sender_name, sender_email, subject, message):
+    task = f"""
+    Go to this URL: {contact_url}
+
+    Find the contact form and fill it with exactly these values:
+    - Name / Full Name field: {sender_name}
+    - Email field: {sender_email}
+    - Subject field (only if it exists): {subject}
+    - Message / Comment / Body field: {message}
+
+    Rules:
+    - Do NOT fill phone, company, or website fields
+    - Do NOT check any checkboxes unless required to submit
+    - After all fields are filled, click the Submit or Send button once
+    - Do NOT navigate away or click anything else
+    - If there is no form visible, stop and report failure
+    """
+
+    try:
+        agent = Agent(task=task, llm=llm)
+        result = await agent.run(max_steps=20)
+        return 'success', str(result)
+    except Exception as e:
+        return 'failed', str(e)
+
+
+async def run_outreach(clean_csv, delay_seconds=45):
+    with open(clean_csv, 'r') as f:
+        rows = list(csv.DictReader(f))
+
+    counts = {'success': 0, 'failed': 0, 'total': len(rows)}
+
+    for i, row in enumerate(rows):
+        url = row['contact_url']
+        print(f"[{i+1}/{len(rows)}] {url}")
+
+        status, detail = await fill_form(
+            contact_url=url,
             sender_name=row['sender_name'],
             sender_email=row['sender_email'],
             subject=row['subject'],
             message=row['message']
         )
 
-        if status == 'completed':
-            logging.info(f"SUCCESS: {site} -> {contact_url}")
-            results['success'] += 1
+        if status == 'success':
+            logging.info(f"SUCCESS: {url}")
+            counts['success'] += 1
         else:
-            logging.info(f"FAILED ({status}): {site} -> {contact_url}")
-            results['failed'] += 1
+            logging.warning(f"FAILED: {url} | {detail}")
+            counts['failed'] += 1
 
-        # Rate limiting — don't look like a bot
-        time.sleep(delay_seconds)
+        if i < len(rows) - 1:
+            await asyncio.sleep(delay_seconds)
 
-    print(f"\nDone. Success: {results['success']} | Failed: {results['failed']} | Skipped: {results['skipped']}")
-    return results
+    print(f"\nDone — Success: {counts['success']} | Failed: {counts['failed']}")
 
-# Run it
-if __name__ == "__main__":
-    run_outreach('my_list.csv', rate_per_hour=40)
+
+if __name__ == '__main__':
+    asyncio.run(run_outreach('clean_list.csv', delay_seconds=45))
 ```
+
+**Key settings:**
+- `max_steps=20` — a pre-filtered clean form should take 5-10 steps max; 20 is a safety ceiling
+- `delay_seconds=45` — 45 seconds between submissions at 100/day = ~80 per working day, casual pace
+- Reduce delay to 20s for 200+/day, but monitor for any blocks
 
 ---
 
-## Cost Per Email (Operational)
+## Cost Per Email
+
+browser-use reads DOM (text) first, not screenshots. Steps are cheaper than Skyvern.
 
 | Item | Cost |
 |------|------|
-| Claude Haiku (form fill ~30k tokens) | ~$0.02-0.04 |
-| 2captcha (if CAPTCHA present, ~40% of sites) | ~$0.001 avg |
-| Smartproxy (if needed, ~2MB/session) | ~$0.01-0.02 |
-| **Total per successful email** | **~$0.03-0.07** |
+| Haiku tokens (DOM text, ~5-10 steps, ~5k-15k tokens) | ~$0.005-0.015 |
+| No CAPTCHA service needed (filtered out) | $0 |
+| No proxies needed (filtered out) | $0 |
+| **Total per successful submission** | **~$0.01-0.03** |
 
-100/day = ~$3-7/day in API costs. Essentially nothing.
+| Volume | Est. daily cost |
+|--------|----------------|
+| 100/day | $1-3 |
+| 500/day | $5-15 |
+
+Run 10 real submissions first and check your Anthropic usage dashboard to get your actual per-task cost before scaling.
 
 ---
 
 ## Build Order
 
-1. **Get Skyvern running locally** — Docker compose up, verify UI at localhost:8080
-2. **Test one manual task** — paste one contact URL into Skyvern UI, confirm it fills a form
-3. **Build the contact form finder** — test on 20 URLs, verify hit rate
-4. **Build the orchestrator** — CSV in, logs out, no CAPTCHA yet
-5. **Test on 20 real sites** — measure actual success rate
-6. **Add 2captcha** — get API key, integrate, retest
-7. **Add proxies only if needed** — don't add complexity until you see Cloudflare blocks
+1. `pip install requests beautifulsoup4` — run filter on 20 test URLs, confirm it finds forms and correctly flags CAPTCHAs
+2. `pip install browser-use langchain-anthropic && playwright install chromium` — test one form fill manually on a known clean site
+3. Wire them together: filter → clean CSV → runner
+4. Run 20 real submissions, check logs and Anthropic cost dashboard
+5. Scale up once actual cost-per-submission is confirmed
 
 ---
 
-## What Will Still Fail (Accept This)
+## V2 (Add Only If Needed)
 
-- Sites with no contact form (email address only, or phone only)
-- Sites that require account creation before contacting
-- Sites with custom slider/puzzle CAPTCHAs (2captcha handles most but not all)
-- Sites that block submissions without a real session cookie history
-- Honeypot fields that mark submissions as spam server-side (form submits but goes to spam)
+These are NOT in V1. Add them only if real-world testing reveals they're necessary:
 
-These are not solvable without human intervention. Log them, skip them.
+| Problem Seen | Solution |
+|-------------|----------|
+| reCAPTCHA v3 silent rejections still happening | Add 2captcha (pip install 2captcha-python, ~$0.001-0.003/solve) |
+| Cloudflare blocks despite filtering | Add Smartproxy residential proxies (~$7-10/GB) |
+| Site uses AJAX form (form submits but nothing happens) | browser-use handles real browser — usually works already |
+| Want to run 5 concurrent agents | Wrap runner in asyncio.gather() with semaphore |
 
 ---
 
-## Files This Will Create
+## What Will Still Fail (Accept It)
+
+- Sites where the form is loaded by JavaScript after page load (rare but exists)
+- reCAPTCHA v3 silent rejections — submission looks successful but gets spam-scored on their end
+- Sites that check session age / cookie history before accepting submissions
+- Honeypot fields that flag the submission as spam even if you didn't fill them
+
+These are not solvable in V1. Log them, review manually if the site is important, move on.
+
+---
+
+## Files
 
 ```
 contact-outreach/
-  find_contact_url.py        # Phase 1: URL finder
-  skyvern_task.py            # Phase 2: Skyvern integration
-  captcha_solver.py          # Phase 3: 2captcha integration  
-  orchestrator.py            # Main runner (loops CSV)
-  my_list.csv                # Your input list
-  outreach_log_YYYYMMDD.txt  # Output log
+  filter.py          # Phase 1: scrape, detect blockers, output clean CSV
+  runner.py          # Phase 2: browser-use + Haiku, fill and submit
+  raw_list.csv       # Your input (website_url + email fields)
+  clean_list.csv     # Output of filter (contact_url + email fields)
+  clean_list_skipped.csv   # Filtered-out sites with reason
+  outreach_log_YYYYMMDD.txt  # Submission results
 ```

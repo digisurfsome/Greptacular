@@ -49,9 +49,13 @@ EXCLUDED_DOMAINS = {
     # National chains (not local businesses)
     "rotorooter.com", "servicemaster.com", "servpro.com", "terminix.com",
     "rentacenter.com", "lowes.com", "homedepot.com",
-    # Info / media
+    # Info / media / news
     "wikipedia.org", "wikihow.com", "bobvila.com", "thisoldhouse.com",
-    "familyhandyman.com", "angieslist.com", "consumeraffairs.com",
+    "familyhandyman.com", "consumeraffairs.com",
+    "forbes.com", "statesman.com", "nytimes.com", "usatoday.com",
+    "businessinsider.com", "cnet.com", "tomshardware.com",
+    # Job boards
+    "indeed.com", "glassdoor.com", "ziprecruiter.com", "monster.com", "careerbuilder.com",
 }
 
 
@@ -151,6 +155,10 @@ def build_from_serp(niche: str, city: str, state: str = "") -> List[Dict]:
                     "niche": niche,
                     "city": city,
                     "state": state,
+                    # Carry phone/rating from local_pack if available
+                    "phone": r.get("phone") or "",
+                    "google_rating": r.get("rating") or "",
+                    "review_count": r.get("review_count") or "",
                 })
 
     # Get top competitor stats

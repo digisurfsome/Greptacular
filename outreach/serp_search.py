@@ -35,7 +35,7 @@ def _auth_header() -> dict:
 
 
 def search_keyword(keyword: str, location_name: str = None, location_code: int = None,
-                   depth: int = 20) -> List[Dict]:
+                   depth: int = 100) -> List[Dict]:
     """
     Run a Google organic SERP search for keyword.
     Returns list of result dicts: {rank, domain, title, url, traffic_estimate}

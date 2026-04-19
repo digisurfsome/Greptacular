@@ -97,43 +97,26 @@ Stripe's Minions are built for engineers who can read CI logs. This pipeline is 
 - Rule: Every CRITICAL and HIGH must have a matching fix entry. MEDIUM/LOW may be explicitly listed as "accepted tech debt" in a `deferred.md` file with a reason per item (max 3 deferrals).
 - Output: `compliance-gate-result.md` + exit code
 
-**Script snippet:**
-```bash
-#!/usr/bin/env bash
-# .archon/scripts/compliance-gate.sh
-set -euo pipefail
-ARTIFACTS_DIR="${1:?artifacts dir required}"
+**Script:** Translated to Python per HANDOFF.md (Windows compatibility). Lives at `.archon/scripts/compliance-gate.py`. Reads `sys.argv[1]` as the artifacts dir. Logic identical to the bash pseudocode below:
 
-count_issues() {
-  local severity="$1"
-  grep -hE "^[*-] \*\*\[${severity}\]" \
-    "$ARTIFACTS_DIR"/review-*.md 2>/dev/null | wc -l
-}
-
-count_fixes() {
-  local severity="$1"
-  grep -cE "^### Fix [0-9]+:.*\[${severity}\]" \
-    "$ARTIFACTS_DIR/fix-report.md" 2>/dev/null || echo 0
-}
-
-critical_issues=$(count_issues CRITICAL)
-critical_fixes=$(count_fixes CRITICAL)
-high_issues=$(count_issues HIGH)
-high_fixes=$(count_fixes HIGH)
-
-echo "CRITICAL: $critical_issues issues, $critical_fixes fixes"
-echo "HIGH: $high_issues issues, $high_fixes fixes"
-
-if [[ $critical_fixes -lt $critical_issues ]]; then
-  echo "FAIL: $((critical_issues - critical_fixes)) CRITICAL issues unaddressed" >&2
-  exit 1
-fi
-if [[ $high_fixes -lt $high_issues ]]; then
-  echo "FAIL: $((high_issues - high_fixes)) HIGH issues unaddressed" >&2
-  exit 1
-fi
-echo "PASS: compliance gate"
 ```
+count_issues(severity) = grep -hE "^[*-] \*\*\[<severity>\]" $ARTIFACTS_DIR/review-*.md | line count
+count_fixes(severity)  = grep -cE "^### Fix [0-9]+:.*\[<severity>\]" $ARTIFACTS_DIR/fix-report.md
+
+if critical_fixes < critical_issues: FAIL "<n> CRITICAL issues unaddressed" -> exit 1
+if high_fixes     < high_issues:     FAIL "<n> HIGH issues unaddressed"     -> exit 1
+else: PASS -> exit 0
+```
+
+**YAML wiring (in prd-pipeline-c.yaml):**
+```yaml
+- id: compliance-gate
+  bash: python "$ARCHON_HOME/workspaces/digisurfsome/Greptacular/source/.archon/scripts/compliance-gate.py" "$ARTIFACTS_DIR"
+  timeout: 60000
+  depends_on: [build-fix-issues]
+```
+
+Reason: Archon script nodes cannot receive CLI args (dag-executor.ts line 1569). A bash node expands `$ARTIFACTS_DIR` (via variable substitution, line 1348) and can pass it to Python as argv[1]. `depends_on: build-fix-issues` matches the real node id in prd-pipeline-b.yaml line 184.
 
 **Success criteria:**
 - Re-running on YT Strategy Lab artifacts: exit 1 with message "34 issues unaddressed"
@@ -149,47 +132,38 @@ echo "PASS: compliance gate"
 **Deterministic:** 100%.
 
 **Contract:**
-- Input: `$PHASE_DIR/files_allowed.json`, `$PROJECT_DIR`, `$BASELINE_SHA` (git sha before phase started)
+- Input: `$ARTIFACTS_DIR` (folds in files_allowed.json path), baseline git SHA captured from an upstream bash node, project cwd (automatic in bash nodes)
 - Checks (in order, each must exit 0):
-  1. `npm run lint` (or language-appropriate)
-  2. `npm run typecheck` (or equivalent — Python: `mypy`, Rust: `cargo check`)
+  1. `npm run lint` (or language-appropriate) — invoked via `subprocess.run` in Python
+  2. `npm run typecheck` / `npx tsc --noEmit` (or equivalent — Python: `mypy`, Rust: `cargo check`)
   3. `npm test` (or equivalent)
-  4. `git diff --name-only $BASELINE_SHA` ⊆ `files_allowed` (no unauthorized files modified)
+  4. `git diff --name-only $BASELINE_SHA` ⊆ `files_allowed` (no unauthorized files modified) — computed via Python `json` + `set` difference, no `jq`/`comm`/process-substitution required
 - Output: `phase-N-checkpoint-result.md` + exit code
 
-**Script snippet:**
-```bash
-#!/usr/bin/env bash
-# .archon/scripts/full-checkpoint.sh
-set -euo pipefail
-PHASE_DIR="${1:?phase dir}"
-PROJECT_DIR="${2:?project dir}"
-BASELINE_SHA="${3:?baseline sha}"
+**Script:** Python translation per HANDOFF.md lives at `.archon/scripts/full-checkpoint.py`. It takes two args: artifacts dir and baseline SHA. Logic is the four checks above in sequence, each shelling out via `subprocess.run`.
 
-cd "$PROJECT_DIR"
+**YAML wiring (in prd-pipeline-c.yaml):**
+```yaml
+# Capture the baseline SHA before the phase runs.
+- id: phase-baseline
+  bash: git -C "$DOCS_DIR/.." rev-parse HEAD
+  depends_on: [build-codebase-intelligence]
 
-# 1. Lint
-npm run lint 2>&1 | tee "$PHASE_DIR/checkpoint-lint.log"
+# ... build-execute-phase runs here ...
 
-# 2. Typecheck
-npx tsc --noEmit 2>&1 | tee "$PHASE_DIR/checkpoint-tsc.log"
-
-# 3. Tests
-npm test -- --run 2>&1 | tee "$PHASE_DIR/checkpoint-test.log"
-
-# 4. Files allowed diff
-changed=$(git diff --name-only "$BASELINE_SHA" | sort -u)
-allowed=$(jq -r '.files_allowed[]' "$PHASE_DIR/files_allowed.json" | sort -u)
-unauthorized=$(comm -23 <(echo "$changed") <(echo "$allowed"))
-
-if [[ -n "$unauthorized" ]]; then
-  echo "FAIL: unauthorized files changed:" >&2
-  echo "$unauthorized" >&2
-  exit 1
-fi
-
-echo "PASS: phase checkpoint"
+# Checkpoint: invoke the Python translation of the full-checkpoint gate,
+# passing the captured baseline via node-output substitution.
+- id: full-checkpoint
+  bash: |
+    set -euo pipefail
+    python "$ARCHON_HOME/workspaces/digisurfsome/Greptacular/source/.archon/scripts/full-checkpoint.py" \
+      "$ARTIFACTS_DIR" \
+      "$phase-baseline.output"
+  timeout: 300000
+  depends_on: [compliance-gate]
 ```
+
+Reason: `$phase-baseline.output` is a node-output reference Archon substitutes via `substituteNodeOutputRefs` (dag-executor.ts line 195–200). `escapedForBash=true` (line 1357) single-quotes the value for safe interpolation. `$ARTIFACTS_DIR` substitutes automatically (line 1348). PROJECT_DIR is the workflow cwd (automatic in bash nodes). `npm run lint` / `npm test` / `tsc` invoke via `subprocess.run` inside the `.py` — no positional argv needed. Archon does NOT define `$BASELINE_SHA`; we capture it ourselves from an upstream `git rev-parse HEAD` bash node.
 
 **Success criteria:**
 - Phase with a broken test → exit 1
@@ -234,8 +208,8 @@ For each issue:
 Writing tests for flagged coverage gaps is part of this contract, not a separate task.
 If review-tests.md lists untested WALL steps, you write those tests before claiming done.
 
-The compliance gate script (.archon/scripts/compliance-gate.sh) runs after you finish.
-It will count issues vs fixes. If it fails, the pipeline halts.
+The compliance gate script (.archon/scripts/compliance-gate.py) runs after you finish.
+It will count issues vs fixes. If it emits FAIL, the recovery branch activates; if recovery also fails, the pipeline halts.
 ```
 
 3. **Two-strike rule scope correction:**
@@ -251,126 +225,99 @@ To: "If the same individual fix attempt fails twice: note in deferred.md, contin
 ---
 
 ### Mechanism 4 — Per-Phase YAML Loop [DOOR]
-**Purpose:** Replace the single `build-execute` node with a loop that iterates per phase. Each iteration gets a fresh agent context and runs the full build → test → review → fix → gate cycle for that phase alone.
+**Purpose:** Replace the single `build-execute` node with per-phase execution. Each phase gets a fresh agent context and runs the full build → test → review → fix → gate cycle for that phase alone.
 
-**Classification:** DOOR. Several valid ways to structure this in Archon's YAML; we pick one.
+**Classification:** DOOR. Structured via manual unroll (Archon's `loop:` node is an AI-prompt loop, not an array iterator — it does not support `for_each`/`over`/`as`/`body`).
 
-**Chosen approach:** Template-based `for_each` if Archon supports it; otherwise, unroll manually (generate phase-1, phase-2, phase-3 node groups from a phase manifest at pipeline-start time).
+**Chosen approach:** Stage 10 generates the complete `prd-pipeline-c.yaml` with N unrolled phase groups. Phase 1 of this PRD implementation assumes a fixed 3-phase unroll; dynamic N-phase generation is Phase 2 work.
 
-**YAML snippet (for_each variant):**
+**YAML snippet (unrolled — 3-phase example):**
 
 ```yaml
-# .archon/workflows/prd-pipeline-b-v2.yaml
-version: 2
-name: prd-pipeline-b-v2
-description: PRD pipeline with deterministic gates and per-phase loop
-
+# Only the per-phase section shown. Stages 0-10 unchanged.
 nodes:
-  # Stages 0-10 unchanged (omitted for brevity)
+  # ... stages 0-10 unchanged ...
 
-  # New: per-phase loop
-  - id: build-phase-loop
-    type: for_each
-    over: $stage-10.output.phases  # array from PRD maker
-    as: phase
-    depends_on: [stage-10]
-    body:
-      - id: build-execute-phase
-        command: build-execute
-        context: fresh
-        model: sonnet
-        input: "$phase"
-
-      - id: build-lint-autofix
-        type: script
-        script: .archon/scripts/lint-autofix.sh
-        args: ["$PROJECT_DIR"]
-        depends_on: [build-execute-phase]
-
-      - id: test-writer
-        command: test-writer
-        context: fresh
-        model: sonnet
-        depends_on: [build-lint-autofix]
-        input: "$phase"
-
-      - id: build-verify
-        command: build-verify
-        context: fresh
-        model: sonnet
-        depends_on: [test-writer]
-
-      - id: reviews
-        type: parallel
-        depends_on: [build-verify]
-        nodes:
-          - id: review-correctness
-            command: build-review-correctness
-            context: fresh
-            model: sonnet
-          - id: review-failures
-            command: build-review-failures
-            context: fresh
-            model: sonnet
-          - id: review-tests
-            command: build-review-tests
-            context: fresh
-            model: sonnet
-          - id: review-simplify
-            command: build-review-simplify
-            context: fresh
-            model: sonnet
-
-      - id: build-fix
-        command: build-fix
-        context: fresh
-        model: sonnet
-        depends_on: [reviews]
-
-      - id: compliance-gate
-        type: script
-        script: .archon/scripts/compliance-gate.sh
-        args: ["$ARTIFACTS_DIR"]
-        depends_on: [build-fix]
-
-      - id: full-checkpoint
-        type: script
-        script: .archon/scripts/full-checkpoint.sh
-        args: ["$PHASE_DIR", "$PROJECT_DIR", "$BASELINE_SHA"]
-        depends_on: [compliance-gate]
-
-      - id: phase-handoff
-        command: phase-handoff
-        context: fresh
-        model: haiku
-        depends_on: [full-checkpoint]
-        input: "$phase"
-
-  - id: codebase-cartographer
-    command: codebase-cartographer
+  - id: build-codebase-intelligence
+    command: build-codebase-plan
+    depends_on: [stage-10-output-generator]
     context: fresh
-    model: haiku
-    depends_on: [build-phase-loop]
+    idle_timeout: 600000
 
-  - id: final-report
-    command: build-final-report
+  # ========= PHASE 1 =========
+  - id: phase-1-baseline
+    bash: git rev-parse HEAD
+    depends_on: [build-codebase-intelligence]
+
+  - id: phase-1-execute
+    command: build-implement
+    depends_on: [phase-1-baseline]
+    model: sonnet
     context: fresh
-    model: haiku
-    depends_on: [codebase-cartographer]
+    idle_timeout: 900000
+
+  - id: phase-1-review-correctness
+    command: build-review-correctness
+    depends_on: [phase-1-execute]
+    model: sonnet
+    context: fresh
+  - id: phase-1-review-failures
+    command: build-review-failures
+    depends_on: [phase-1-execute]
+    model: sonnet
+    context: fresh
+  - id: phase-1-review-tests
+    command: build-review-tests
+    depends_on: [phase-1-execute]
+    model: sonnet
+    context: fresh
+  - id: phase-1-review-simplify
+    command: build-review-simplify
+    depends_on: [phase-1-execute]
+    model: sonnet
+    context: fresh
+
+  - id: phase-1-fix
+    command: build-fix-v2
+    depends_on: [phase-1-review-correctness, phase-1-review-failures, phase-1-review-tests, phase-1-review-simplify]
+    model: opus
+    context: fresh
+
+  - id: phase-1-compliance
+    bash: python "$ARCHON_HOME/workspaces/digisurfsome/Greptacular/source/.archon/scripts/compliance-gate.py" "$ARTIFACTS_DIR"
+    timeout: 60000
+    depends_on: [phase-1-fix]
+
+  - id: phase-1-checkpoint
+    bash: |
+      python "$ARCHON_HOME/workspaces/digisurfsome/Greptacular/source/.archon/scripts/full-checkpoint.py" "$ARTIFACTS_DIR" "$phase-1-baseline.output"
+    timeout: 300000
+    depends_on: [phase-1-compliance]
+
+  # ========= PHASE 2 (depends on phase-1-checkpoint success) =========
+  - id: phase-2-baseline
+    bash: git rev-parse HEAD
+    depends_on: [phase-1-checkpoint]
+  # ... same pattern as Phase 1, ids prefixed phase-2- ...
+
+  # ========= PHASE 3 ... =========
 
   - id: deploy-gate
-    type: script
-    script: .archon/scripts/deploy-gate.sh
-    args: ["$ARTIFACTS_DIR"]
-    depends_on: [final-report]
+    bash: python "$ARCHON_HOME/workspaces/digisurfsome/Greptacular/source/.archon/scripts/deploy-gate.py" "$ARTIFACTS_DIR"
+    timeout: 60000
+    depends_on: [phase-3-checkpoint]
 
-  - id: deploy
+  - id: build-deploy
     command: build-deploy
-    model: sonnet
     depends_on: [deploy-gate]
+    model: sonnet
 ```
 
-**If Archon doesn't support `for_each`:** unroll — Stage 10 writes out `phase-1.yaml`, `phase-2.yaml`, etc. and a wrapper YAML includes them sequentially. Slightly more files, same behavior.
+Reason: `depends_on` chains enforce sequential phase execution. The four review nodes in the same layer (all depending on `phase-N-execute`) run concurrently — Archon runs independent nodes in the same topological layer via `Promise.allSettled`. `context: fresh` per phase gives the S5 isolation requirement. Default `trigger_rule: all_success` means if any gate fails, downstream phases and deploy are skipped — the correct behavior for the PRD's intent.
+
+**How phase count is determined:** Stage 10 already produces a phases count. The unrolled YAML must be generated by Stage 10 based on that count. A fixed 3-phase unroll is acceptable for Phase 1 of this PRD; true dynamic unrolling is Phase 2 work.
+
+**Why not `for_each`:** Archon has no such construct. `schemas/loop.ts` defines `loop:` as an AI iteration with fields `prompt`, `until`, `max_iterations`, `fresh_context`, `until_bash`, `interactive`, `gate_message`. There is no `over:`, no `as:`, no `body:`, no `type: parallel`. Node types are exactly `command`, `prompt`, `bash`, `script`, `loop`, `approval`, `cancel`.
 
 **Success criteria:**
 - A 3-phase build creates 3 separate agent contexts
@@ -424,35 +371,50 @@ Use the project's existing test layout. If unsure, check `package.json` for the 
 
 **Success criteria:**
 - WALL step count (from stage_5 in context_packet.json) == test count (from test-writer-report.md)
-- All tests pass (via full-checkpoint.sh)
+- All tests pass (via full-checkpoint.py)
 
 ---
 
 ### Mechanism 6 — Scoped CLAUDE.md Auto-Attach [DOOR]
-**Purpose:** Follow Stripe's pattern — per-directory rule files auto-read by agents when they traverse that directory. Reduces global context bloat.
+**Purpose:** Follow Stripe's pattern — per-directory rule files used by agents when they work in that directory. Reduces global context bloat.
 
-**Classification:** DOOR.
+**Classification:** DOOR — **soft guidance, not a WALL.** The agent prompt is advisory; enforcement is observation-only via a post-build audit node. Archon has no native per-directory CLAUDE.md auto-attach feature (the Claude SDK's `settingSources` option loads only `project` or `user` CLAUDE.md — not per-directory sub-CLAUDEs).
 
 **Approach:**
 - During Stage 10, emit a `CLAUDE.md` for each new major directory the phase creates (e.g., `server/services/CLAUDE.md`, `ui/src/components/yt-lab/CLAUDE.md`)
 - These files state: what lives here, what conventions apply, what must not happen
-- Build agent's prompt instructs it to read the CLAUDE.md when entering a directory
+- Build agent's prompt suggests reading the CLAUDE.md when entering a directory (best-effort; agent may or may not obey)
+- A post-build audit bash node reports which new directories are missing a CLAUDE.md (soft check, DOOR not WALL)
 
 **Prompt edit to build-execute.md:**
 
 ```markdown
-## Directory Rules
+## Directory Rules (soft guidance — best-effort, not gated)
 Before writing a file at path P, check for CLAUDE.md files in these locations (in order):
-1. $(dirname P)/CLAUDE.md
-2. $(dirname $(dirname P))/CLAUDE.md
-3. Root CLAUDE.md
+1. path/to/file/dir/CLAUDE.md
+2. path/to/file/dir/../CLAUDE.md
+3. Project root CLAUDE.md
 
 Read the most-specific one that exists. Its rules apply to your work in this file.
 ```
 
+**Post-build audit node (in prd-pipeline-c.yaml):**
+```yaml
+- id: claude-md-presence-check
+  bash: |
+    set -euo pipefail
+    # Every directory that got a new file in this run should have a CLAUDE.md.
+    # Emit report; don't fail the build (soft check, DOOR not WALL).
+    python "$ARCHON_HOME/workspaces/digisurfsome/Greptacular/source/.archon/scripts/claude-md-audit.py" "$ARTIFACTS_DIR"
+  depends_on: [phase-3-checkpoint]
+```
+
+Reason: Replaces `$()` shell-substitution syntax (which is not what the agent computes — the prompt is advisory text, not executable) with straight English. The audit node converts enforcement from "trust the agent" to "observe the outcome," staying honest about the DOOR classification.
+
 **Success criteria:**
-- After a build, each domain directory has a CLAUDE.md
+- After a build, each domain directory has a CLAUDE.md (target, not gate)
 - CLAUDE.md files are scoped (under 200 lines each)
+- The audit script produces a report listing any new directories without a CLAUDE.md
 
 ---
 
@@ -483,6 +445,17 @@ Produce `CODEBASE_MAP.md` at the project root. Overwrite if it exists.
 - If you can't parse a file, skip it and note in a "Skipped" section.
 ```
 
+**YAML wiring (in prd-pipeline-c.yaml):**
+```yaml
+- id: codebase-cartographer
+  command: codebase-cartographer
+  depends_on: [phase-3-checkpoint]   # or the last phase's checkpoint
+  model: haiku
+  context: fresh
+```
+
+Reason: Uses the real Archon model alias (`haiku` — per Archon CLAUDE.md line 486), correct node type (`command:` since it's an AI agent), and a clean dep chain. The prompt file `codebase-cartographer.md` is discovered by filename via Archon's command loader.
+
 **Success criteria:**
 - File exists after build
 - Under 500 lines
@@ -497,39 +470,30 @@ Produce `CODEBASE_MAP.md` at the project root. Overwrite if it exists.
 
 **Deterministic:** 100%.
 
-**Script snippet:**
-```bash
-#!/usr/bin/env bash
-# .archon/scripts/deploy-gate.sh
-set -euo pipefail
-ARTIFACTS_DIR="${1:?artifacts dir}"
+**Script:** Python translation at `.archon/scripts/deploy-gate.py` (per HANDOFF bash→Python rule). Reads `sys.argv[1]` as artifacts dir. Logic:
 
-# Aggregate all deferred.md files
-deferred_count=0
-for f in "$ARTIFACTS_DIR"/runs/*/deferred.md; do
-  [[ -f "$f" ]] || continue
-  n=$(grep -cE "^[*-] " "$f" || echo 0)
-  deferred_count=$((deferred_count + n))
-done
-
-# Check no remaining CRITICAL/HIGH in any review that lacks a matching fix
-remaining=$(grep -hE "^[*-] \*\*\[(CRITICAL|HIGH)\]" \
-  "$ARTIFACTS_DIR"/runs/*/review-*.md 2>/dev/null | wc -l)
-fixed=$(grep -chE "^### Fix [0-9]+:" \
-  "$ARTIFACTS_DIR"/runs/*/fix-report.md 2>/dev/null || echo 0)
-
-if [[ $remaining -gt $fixed ]]; then
-  echo "FAIL: $((remaining - fixed)) CRITICAL/HIGH items not in fix-report" >&2
-  exit 1
-fi
-
-if [[ $deferred_count -gt 5 ]]; then
-  echo "FAIL: $deferred_count deferrals exceeds budget of 5" >&2
-  exit 1
-fi
-
-echo "PASS: deploy gate ($deferred_count deferrals, 0 remaining criticals)"
 ```
+# Aggregate all deferred.md files
+deferred_count = total bullet-line count across $ARTIFACTS_DIR/runs/*/deferred.md
+
+# Count remaining CRITICAL/HIGH vs fixed
+remaining = grep count of "^[*-] \*\*\[(CRITICAL|HIGH)\]" across runs/*/review-*.md
+fixed     = grep count of "^### Fix [0-9]+:"             across runs/*/fix-report.md
+
+if remaining > fixed: FAIL "<n> CRITICAL/HIGH items not in fix-report" -> exit 1
+if deferred_count > 5: FAIL "<n> deferrals exceeds budget of 5"        -> exit 1
+else: PASS "<n> deferrals, 0 remaining criticals" -> exit 0
+```
+
+**YAML wiring (in prd-pipeline-c.yaml):**
+```yaml
+- id: deploy-gate
+  bash: python "$ARCHON_HOME/workspaces/digisurfsome/Greptacular/source/.archon/scripts/deploy-gate.py" "$ARTIFACTS_DIR"
+  timeout: 60000
+  depends_on: [build-final-report]
+```
+
+Reason: Same pattern as M1/M2 — `type: script` + `args:` doesn't exist in Archon. Use a bash node that inlines the arg via `$ARTIFACTS_DIR` substitution. Corrected `final-report` → `build-final-report` (the real node id in prd-pipeline-b.yaml line 195).
 
 **Success criteria:**
 - Any build with unaddressed CRITICAL or HIGH fails deploy
@@ -538,51 +502,117 @@ echo "PASS: deploy gate ($deferred_count deferrals, 0 remaining criticals)"
 ---
 
 ### Mechanism 9 — Recovery Pipeline [WALL]
-**Purpose:** When a deterministic gate fails twice, this self-contained mini-pipeline auto-activates. Opus 4.7 on high effort: diagnoses what broke, writes a focused fix PRD, executes it, re-runs gates. Only if IT fails does the main pipeline halt for human attention — and even then, it halts with a plain-English report, not a log dump.
+**Purpose:** When a deterministic gate reports FAIL, a recovery branch auto-activates. Opus on high effort: diagnoses what broke, writes a focused fix PRD, executes it, re-runs the gate. If recovery still fails, the next phase is halted and the run ends with a plain-English report — not a log dump.
 
-**Classification:** WALL. Clear pass/fail rules.
+**Classification:** WALL. Clear pass/fail rules, implemented via conditional `when:` branches.
 
-**Model:** **Opus 4.7, high effort.** Non-negotiable. This is the critical recovery moment.
+**Model:** **`model: opus`, `effort: high`.** Non-negotiable. This is the critical recovery moment. (The PRD says "Opus 4.7" colloquially; Archon's alias is `opus` and the SDK resolves to the latest Opus release. No literal "4.7" string is valid in YAML.)
 
-**Activation rule:** Any gate returns exit 1 twice in a row. The second failure triggers this pipeline.
+**Activation rule:** Any gate emits `FAIL` on stdout. Recovery branch runs immediately — Archon cannot count "two consecutive failures" across separate runs, because it is a forward-only DAG with no failure-branch primitive. If the owner wants a two-strike rule, that logic must be implemented INSIDE the gate script (tracking state in `$ARTIFACTS_DIR/gate-attempts.json`).
 
-**Four internal steps:**
+**Architectural note (why it's wired this way):**
+- Archon has no `on_failure:` field and no error-handling DAG branch.
+- When a gate node hard-fails, default `trigger_rule: all_success` skips everything downstream, and a recovery node cannot inspect the failed node's output (condition-evaluator.ts returns empty string for outputs of failed nodes).
+- Solution: gates exit 0 and emit `PASS`/`FAIL` on stdout. Archon captures that as `$gate.output`. Downstream recovery nodes use `when:` to branch on that value. An aggregator node uses `trigger_rule: all_done` to merge the PASS and recovery-PASS paths before the next phase.
 
-**Step 9.1 — Diagnose** (Opus 4.7 high effort)
-- Reads: failing gate's stderr/output, all review-*.md files, fix-report.md, build logs, context_packet.json, relevant code files
-- Writes: `triage-report.md` — plain-English summary with:
-  - What broke (in user's language, not coder terms)
-  - Why it broke (root cause, not symptom)
-  - Confidence level in the diagnosis (HIGH / MEDIUM / LOW)
+**Five nodes per phase:**
 
-**Step 9.2 — Write Fix PRD** (Opus 4.7 high effort)
-- Reads: triage-report.md
-- Writes: `fix-prd.md` — a scoped PRD following the same Standards Layer as the main spec, but small (usually 1 mechanism, rarely 2)
-- Includes: Drift anchor, mechanisms, success criteria, test plan
+**Gate (exits 0, emits PASS/FAIL):**
+```yaml
+- id: phase-1-compliance
+  bash: |
+    set +e
+    python "$ARCHON_HOME/workspaces/digisurfsome/Greptacular/source/.archon/scripts/compliance-gate.py" "$ARTIFACTS_DIR"
+    code=$?
+    if [ $code -eq 0 ]; then echo "PASS"; else echo "FAIL"; fi
+    exit 0
+  depends_on: [phase-1-fix]
+```
 
-**Step 9.3 — Execute Fix** (Opus 4.7 high effort)
-- Reads: fix-prd.md
-- Implements: code edits, new tests, prompt tweaks — whatever the fix PRD specifies
-- Writes: `recovery-execution-report.md` — what was changed and why
+**Recovery branch (runs only when gate said FAIL):**
+```yaml
+- id: phase-1-recovery-diagnose
+  command: recovery-diagnose
+  depends_on: [phase-1-compliance]
+  when: "$phase-1-compliance.output == 'FAIL'"
+  model: opus
+  effort: high
+  context: fresh
 
-**Step 9.4 — Re-Gate** (deterministic)
-- Re-runs the gates that originally failed
-- If all pass → pipeline rejoins main flow, continues as if nothing happened
-- If any fail → ONE more pass through 9.1–9.3 allowed
-- If second pass also fails → halt with `final-failure-report.md` and notify user
+- id: phase-1-recovery-write-prd
+  command: recovery-fix-prd
+  depends_on: [phase-1-recovery-diagnose]
+  when: "$phase-1-compliance.output == 'FAIL'"
+  model: opus
+  effort: high
+  context: fresh
 
-**Output files (all at $ARTIFACTS_DIR/recovery-N/):**
-- `triage-report.md` (plain English, readable by user)
-- `fix-prd.md` (the auto-generated fix spec)
-- `recovery-execution-report.md` (what got changed)
-- `final-failure-report.md` (only if recovery also fails)
+- id: phase-1-recovery-execute
+  command: recovery-execute
+  depends_on: [phase-1-recovery-write-prd]
+  when: "$phase-1-compliance.output == 'FAIL'"
+  model: opus
+  effort: high
+  context: fresh
 
-**Token budget per activation:** 50–120K Opus tokens. Only runs on failure.
+- id: phase-1-recovery-regate
+  bash: |
+    set +e
+    python "$ARCHON_HOME/workspaces/digisurfsome/Greptacular/source/.archon/scripts/compliance-gate.py" "$ARTIFACTS_DIR"
+    code=$?
+    if [ $code -eq 0 ]; then echo "PASS"; else echo "FAIL"; fi
+    exit 0
+  depends_on: [phase-1-recovery-execute]
+  when: "$phase-1-compliance.output == 'FAIL'"
+```
+
+**Final-status aggregator (merges the two success paths — initial PASS or recovery PASS):**
+```yaml
+# Phase 2 only proceeds if either:
+#   (a) compliance gate passed first time, OR
+#   (b) recovery ran AND its regate passed.
+- id: phase-1-final-status
+  bash: |
+    set -euo pipefail
+    if [ "$phase-1-compliance.output" = "PASS" ]; then
+      echo "PASS"
+    elif [ "$phase-1-recovery-regate.output" = "PASS" ]; then
+      echo "PASS"
+    else
+      echo "FAIL" >&2
+      exit 1
+    fi
+  depends_on: [phase-1-compliance, phase-1-recovery-regate]
+  trigger_rule: all_done
+
+- id: phase-2-execute
+  command: build-implement
+  depends_on: [phase-1-final-status]   # hard fail here halts phase 2
+  model: sonnet
+  context: fresh
+```
+
+**Why this works:**
+1. Gate nodes exit 0 and emit `PASS`/`FAIL`. Archon captures that as `$gate.output`.
+2. Recovery branch uses `when:` — a supported field in Archon's condition-evaluator. Only runs on FAIL.
+3. `phase-1-final-status` aggregates. `trigger_rule: all_done` runs once all upstream nodes have settled (completed, failed, or skipped — dag-executor.ts line 652). Recovery-regate will be in `skipped` state when the initial gate passed; `all_done` still fires.
+4. Bash nodes reference `$<node>.output` — Archon substitutes via `substituteNodeOutputRefs` with `escapeForBash=true` which single-quotes the value safely.
+5. If final-status exits 1, downstream phase 2 is skipped by default `trigger_rule: all_success`. Pipeline halts at the right place.
+
+**Output files (all at `$ARTIFACTS_DIR/recovery-N/`):**
+- `triage-report.md` — plain English, readable by user (written by `recovery-diagnose`)
+- `fix-prd.md` — auto-generated fix spec (written by `recovery-fix-prd`)
+- `recovery-execution-report.md` — what got changed (written by `recovery-execute`)
+- `final-failure-report.md` — only if the regate also fails
+
+**Token budget per activation:** 50–120K Opus tokens. Only runs on gate FAIL.
 
 **Success criteria:**
 - When manually triggered on the YT Strategy Lab failure artifacts: produces a triage-report.md that correctly identifies "fix agent skipped 34 issues" as root cause
 - Writes a fix-prd.md that, if executed, would address the 34 missed issues
-- After execution, compliance-gate.sh exits 0
+- After `recovery-execute` runs, the regate emits `PASS`
+
+**Alternative (heavier, matches original intent more literally):** Build the recovery pipeline as a single separate workflow (`prd-pipeline-c-recovery.yaml`) that a human or cron-trigger launches on gate failure. Cleaner node boundaries but breaks the "unattended" claim of S9. The inline `when:`-branch pattern above is the one compatible with Archon's engine as-is.
 
 ---
 
@@ -603,28 +633,28 @@ echo "PASS: deploy gate ($deferred_count deferrals, 0 remaining criticals)"
   - `final-summary.md` (single-page human-readable overview)
 - Also: `docs/generated-prds/INDEX.md` — a living table: date | build name | status (shipped / failed / recovered) | token cost | one-line summary
 
-**Script snippet:**
-```bash
-#!/usr/bin/env bash
-# .archon/scripts/archive-prd.sh
-set -euo pipefail
-RUN_DIR="${1:?run dir required}"
-BUILD_NAME="${2:?build name required}"
-STATUS="${3:?status: shipped|failed|recovered}"
+**Script:** Python translation per HANDOFF at `.archon/scripts/archive-prd.py`. Takes three args (artifacts dir, build name, status). Logic:
 
-DATE=$(date +%Y-%m-%d)
-ARCHIVE="docs/generated-prds/${DATE}__${BUILD_NAME}"
-mkdir -p "$ARCHIVE"
-
-cp "$RUN_DIR/context_packet.json" "$ARCHIVE/" 2>/dev/null || true
-cp -r "$RUN_DIR/phases" "$ARCHIVE/" 2>/dev/null || true
-cp "$RUN_DIR"/*.md "$ARCHIVE/" 2>/dev/null || true
-
-# Append to INDEX.md
-INDEX="docs/generated-prds/INDEX.md"
-[[ -f "$INDEX" ]] || echo "# Generated PRDs Index" > "$INDEX"
-echo "- $DATE | $BUILD_NAME | $STATUS | [$ARCHIVE]($ARCHIVE/)" >> "$INDEX"
 ```
+DATE = today (YYYY-MM-DD)
+ARCHIVE = docs/generated-prds/{DATE}__{BUILD_NAME}/
+mkdir -p ARCHIVE
+copy context_packet.json, phases/, *.md from artifacts dir into ARCHIVE
+append row to docs/generated-prds/INDEX.md: "- {DATE} | {BUILD_NAME} | {STATUS} | [{ARCHIVE}]({ARCHIVE}/)"
+```
+
+**YAML wiring (in prd-pipeline-c.yaml):**
+```yaml
+- id: archive-prd
+  bash: |
+    python "$ARCHON_HOME/workspaces/digisurfsome/Greptacular/source/.archon/scripts/archive-prd.py" \
+      "$ARTIFACTS_DIR" \
+      "$BASE_BRANCH" \
+      "shipped"
+  depends_on: [build-deploy]
+```
+
+Reason: `$BASE_BRANCH` is a real Archon-provided variable (per Archon CLAUDE.md line 670). Used here as a stand-in for "build name" — the owner can swap for any other identifier that makes sense. The archive destination is `docs/generated-prds/` in the **Greptacular repo** (not in Archon's workspace); the Python script's cwd resolves relative to the Greptacular repo because the workflow runs there.
 
 **Success criteria:**
 - After any pipeline run, `docs/generated-prds/{date}__{name}/` exists
@@ -647,28 +677,43 @@ echo "- $DATE | $BUILD_NAME | $STATUS | [$ARCHIVE]($ARCHIVE/)" >> "$INDEX"
 
 **Activation:** Can be run manually (`npm run regression`) or auto-triggered on any commit that touches `.archon/`.
 
-**Script snippet:**
-```bash
-#!/usr/bin/env bash
-# .archon/scripts/regression-harness.sh
-set -euo pipefail
-FIXTURES="${1:-.archon/test-fixtures}"
+**Script:** Python at `.archon/scripts/regression-harness.py`. Reads fixtures dir and scripts dir from env vars (Archon script nodes cannot receive argv — see M1 evidence).
 
-echo "=== Test A: Unit tests on gate scripts ==="
-bash .archon/scripts/compliance-gate.sh "$FIXTURES/yt-strategy-lab-fail" \
-  && { echo "FAIL: should have exited 1"; exit 1; } || echo "PASS"
-bash .archon/scripts/compliance-gate.sh "$FIXTURES/task-manager-pass" \
-  || { echo "FAIL: should have exited 0"; exit 1; }
-echo "PASS"
+```python
+# .archon/scripts/regression-harness.py
+import os, subprocess, sys
 
-echo "=== Test B: Red-team replay ==="
-# (full implementation in §9)
+FIXTURES = os.environ.get("FIXTURES", ".archon/test-fixtures")
+SCRIPTS = os.environ.get("SCRIPTS_DIR", ".archon/scripts")
 
-echo "=== Test C: Fresh tiny build ==="
-# (full implementation in §9)
+def expect(cmd, expected_code, label):
+    result = subprocess.run(cmd, shell=False, capture_output=True, text=True)
+    if result.returncode != expected_code:
+        print(f"FAIL: {label} (expected {expected_code}, got {result.returncode})")
+        print(result.stderr)
+        sys.exit(1)
+    print(f"PASS: {label}")
 
-echo "=== ALL REGRESSION TESTS PASS ==="
+print("=== Test A: Unit tests on gate scripts ===")
+expect(["python", f"{SCRIPTS}/compliance-gate.py", f"{FIXTURES}/yt-strategy-lab-fail"], 1,
+       "compliance-gate on yt-strategy-lab should exit 1")
+expect(["python", f"{SCRIPTS}/compliance-gate.py", f"{FIXTURES}/task-manager-pass"], 0,
+       "compliance-gate on task-manager should exit 0")
+
+print("=== ALL REGRESSION TESTS PASS ===")
 ```
+
+**YAML wiring (in prd-pipeline-c.yaml — standalone, invoked manually or by a separate workflow):**
+```yaml
+- id: regression-harness
+  bash: |
+    FIXTURES=".archon/test-fixtures" \
+    SCRIPTS_DIR="$ARCHON_HOME/workspaces/digisurfsome/Greptacular/source/.archon/scripts" \
+    python "$ARCHON_HOME/workspaces/digisurfsome/Greptacular/source/.archon/scripts/regression-harness.py"
+  depends_on: []   # standalone — invoked manually or by a separate workflow
+```
+
+Reason: env vars pass in where args can't. Bash node substitutes `$ARCHON_HOME` because Archon sets it. If `$ARCHON_HOME` is unset in the environment, fall back to `$HOME/.archon/...`.
 
 **Success criteria:**
 - Running regression-harness on current .archon/ produces PASS
@@ -697,12 +742,32 @@ build_intelligence_mode: defensive  # Options: defensive (warn about known failu
                                     # "prescriptive" mode is NOT implemented by design
 ```
 
-**Each mechanism reads its flag at runtime.** If a toggle is `false`, the corresponding node becomes a no-op (or is skipped in the DAG). Toggles do not require a pipeline rebuild.
+**Each toggle is enforced by an upstream `read-flag-*` bash node** that emits `'true'` or `'false'` as its stdout. Downstream nodes use a `when:` condition against that output. Archon's `when:` only reads `$nodeId.output[.field]` — it cannot read external files directly, and there is no `enabled: false` field on nodes.
+
+**Example wiring for `recovery_pipeline: true/false`:**
+
+```yaml
+- id: read-flag-recovery
+  bash: |
+    python -c "import yaml,sys; c=yaml.safe_load(open('$ARCHON_HOME/workspaces/digisurfsome/Greptacular/source/.archon/features.yaml')); print(str(c.get('recovery_pipeline',True)).lower())"
+  depends_on: []   # or earliest possible ancestor
+
+- id: phase-1-recovery-diagnose
+  command: recovery-diagnose
+  when: "$phase-1-compliance.output == 'FAIL' && $read-flag-recovery.output == 'true'"
+  depends_on: [phase-1-compliance, read-flag-recovery]
+  model: opus
+  effort: high
+```
+
+Applying this pattern to all 6 toggled mechanisms (`recovery_pipeline`, `prd_archive`, `regression_harness`, `codebase_cartographer`, `scoped_claude_md`, `build_intelligence`) adds 6 read-flag nodes at pipeline start. `features.yaml` itself lives at `.../source/.archon/features.yaml` per HANDOFF §3.
+
+**Fallback if the read-flag pattern is too heavy for Phase 1:** Remove M12 from Phase 1 entirely and wire toggles manually by commenting out nodes in the YAML when a feature is not desired. Re-introduce the read-flag pattern in Phase 1b.
 
 **Success criteria:**
-- Setting `prd_archive: false` skips the archive step but pipeline still completes
-- Setting `recovery_pipeline: false` reverts to plain halt-on-failure (not recommended, but useful for debugging)
-- Missing file → all defaults applied, no error
+- Setting `prd_archive: false` skips the archive step (via `$read-flag-archive.output == 'true'`) but pipeline still completes
+- Setting `recovery_pipeline: false` skips the recovery branch on gate failure (reverts to plain halt-on-failure — not recommended, but useful for debugging)
+- Missing features.yaml → read-flag node's YAML `get(..., True)` default applies, no error
 
 ---
 
@@ -713,20 +778,22 @@ build_intelligence_mode: defensive  # Options: defensive (warn about known failu
 **Why first:** M1/M2/M3/M8 form the closed loop that would have caught YT Strategy Lab. M9 (Recovery Pipeline) is what makes failure non-hostile to a non-coder. M10–M12 are small infrastructure items that ride along cheaply.
 
 **Files to create:**
-- `.archon/scripts/compliance-gate.sh`
-- `.archon/scripts/full-checkpoint.sh`
-- `.archon/scripts/deploy-gate.sh`
-- `.archon/scripts/archive-prd.sh`
-- `.archon/scripts/regression-harness.sh`
+- `.archon/scripts/compliance-gate.py` (Python per HANDOFF bash→Python rule)
+- `.archon/scripts/full-checkpoint.py`
+- `.archon/scripts/deploy-gate.py`
+- `.archon/scripts/archive-prd.py`
+- `.archon/scripts/regression-harness.py`
 - `.archon/commands/recovery-diagnose.md`
-- `.archon/commands/recovery-write-prd.md`
+- `.archon/commands/recovery-fix-prd.md` (matches `command: recovery-fix-prd` in M9 wiring)
 - `.archon/commands/recovery-execute.md`
 - `.archon/features.yaml`
 
-**Files to edit:**
-- `.archon/commands/stage-10.md` (remove exemption language)
-- `.archon/commands/build-fix.md` (if separate from Stage 10; ALSO change model: sonnet → opus)
-- `.archon/workflows/prd-pipeline-b.yaml` (insert gate nodes + recovery branch + archive step)
+Per HANDOFF.md §2 Correction B — do NOT edit the originals. Create copies:
+
+**Files to CREATE (not edit):**
+- `.archon/commands/prd-stage-10-v2.md` — copy of prd-stage-10.md with exemption language removed
+- `.archon/commands/build-fix-v2.md` — copy of build-fix.md with mandatory contract block added; pipeline YAML assigns `model: opus` to this node
+- `.archon/workflows/prd-pipeline-c.yaml` — copy of prd-pipeline-b.yaml with gate/recovery/archive nodes inserted and `command:` references updated to the `-v2` variants
 
 **Token estimate:** ~65K
 
@@ -735,14 +802,24 @@ build_intelligence_mode: defensive  # Options: defensive (warn about known failu
 **Why second:** Multi-phase loop + test writer + scoped CLAUDE.md fix the hidden problems that didn't bite YT Strategy Lab (because it was one phase) but will bite the next bigger build.
 
 **Files to create:**
-- `.archon/commands/test-writer.md`
-- `.archon/commands/phase-handoff.md`
-- `.archon/workflows/prd-pipeline-b-v2.yaml` (new version, keep v1 as fallback)
-- `.archon/scripts/lint-autofix.sh`
+- `.archon/commands/test-writer.md` — the prompt file is as shown in §4 M5.
+  Node wiring in prd-pipeline-c.yaml:
 
-**Files to edit:**
-- `.archon/commands/stage-10.md` (emit per-directory CLAUDE.md files)
-- `.archon/commands/build-execute.md` (directory rules section)
+  ```yaml
+  - id: phase-N-test-writer
+    command: test-writer
+    depends_on: [phase-N-execute]
+    model: sonnet
+    context: fresh
+  ```
+- `.archon/commands/phase-handoff.md`
+- `.archon/workflows/prd-pipeline-c.yaml` already created in Phase 1 (per HANDOFF §2 Correction B); Phase 2 extends it with per-phase unrolled groups (M4), the test-writer node above, and the `claude-md-presence-check` audit node (M6).
+- `.archon/scripts/lint-autofix.py` (Python per HANDOFF bash→Python rule)
+- `.archon/scripts/claude-md-audit.py` (for M6 soft-check audit node)
+
+**Files to update (via `-v2` copies — HANDOFF §2 Correction B):**
+- The Phase 1 `prd-stage-10-v2.md` is extended in Phase 2 to also emit per-directory CLAUDE.md files
+- `.archon/commands/build-execute-v2.md` — copy of build-execute.md with the "Directory Rules (soft guidance)" section appended (M6)
 
 **Token estimate:** ~90K
 
@@ -752,7 +829,7 @@ build_intelligence_mode: defensive  # Options: defensive (warn about known failu
 
 **Files to create:**
 - `.archon/commands/codebase-cartographer.md`
-- `.archon/scripts/record-build-metrics.sh`
+- `.archon/scripts/record-build-metrics.py` (Python per HANDOFF bash→Python rule)
 - Build-intelligence infrastructure per existing handoff doc
 
 **Token estimate:** ~70K
@@ -780,19 +857,19 @@ Phase 1 mechanisms are independent and can build in parallel. Phase 2 depends on
 ## 7. Full Checkpoint Criteria (per phase of THIS build)
 
 ### Phase 1 complete when:
-- [ ] All 3 bash scripts exist at `.archon/scripts/` and are executable
-- [ ] Running `compliance-gate.sh` on YT Strategy Lab artifacts returns exit 1 with an issue count mismatch message
-- [ ] Running `full-checkpoint.sh` on a deliberately broken test directory returns exit 1
-- [ ] Running `deploy-gate.sh` on the same YT Strategy Lab run returns exit 1
-- [ ] Grep for "separate task" in `.archon/commands/` returns 0 matches
-- [ ] YAML has the 3 script nodes wired in sequence before deploy
+- [ ] All 5 Python scripts exist at `.archon/scripts/` (`compliance-gate.py`, `full-checkpoint.py`, `deploy-gate.py`, `archive-prd.py`, `regression-harness.py`)
+- [ ] Running `python .archon/scripts/compliance-gate.py <YT-lab-fixture>` returns exit 1 with an issue count mismatch message
+- [ ] Running `python .archon/scripts/full-checkpoint.py <broken-phase-fixture> <sha>` returns exit 1
+- [ ] Running `python .archon/scripts/deploy-gate.py <YT-lab-fixture>` returns exit 1
+- [ ] Grep for "separate task" in `.archon/commands/prd-stage-10-v2.md` and `build-fix-v2.md` returns 0 matches
+- [ ] `prd-pipeline-c.yaml` wires the bash nodes for gates + recovery branch + archive before deploy
 - [ ] An end-to-end dry run on a trivial spec produces build + gate PASS or gate FAIL with a real reason
 
 ### Phase 2 complete when:
-- [ ] `prd-pipeline-b-v2.yaml` runs a 2-phase test build with fresh agent contexts per phase
+- [ ] `prd-pipeline-c.yaml` runs a 2-phase unrolled test build with fresh agent contexts per phase
 - [ ] test-writer agent produces test files equal in count to WALL steps in the phase
-- [ ] Each directory created by the build has a CLAUDE.md
-- [ ] If phase 1 of a test build fails compliance-gate, phase 2 never starts
+- [ ] Each directory created by the build has a CLAUDE.md (via the `claude-md-presence-check` audit node)
+- [ ] If phase 1 of a test build fails compliance-gate (emits `FAIL`) AND recovery also fails, phase 2 never starts
 
 ### Phase 3 complete when:
 - [ ] `CODEBASE_MAP.md` exists after a build and covers every top-level module
@@ -818,7 +895,7 @@ Phase 1 mechanisms are independent and can build in parallel. Phase 2 depends on
 
 ## 9. Test Plan
 
-Three tests. All three must pass before Phase 1 is declared done. All three run automatically via M11 (`regression-harness.sh`).
+Three tests. All three must pass before Phase 1 is declared done. All three run automatically via M11 (`regression-harness.py`).
 
 ### Test A — Gate Script Unit Tests (deterministic, ~30 sec)
 **Purpose:** Confirm each gate script does exactly what it claims.
@@ -828,26 +905,30 @@ Fixtures (checked into `.archon/test-fixtures/`):
 - `task-manager-pass/` — snapshot of the clean Team Task Manager run
 - `broken-phase/` — phase dir with a deliberately failing test + unauthorized file change
 
-Assertions:
-1. `compliance-gate.sh yt-strategy-lab-fail` → exit 1, stderr contains "34 issues unaddressed"
-2. `compliance-gate.sh task-manager-pass` → exit 0
-3. `full-checkpoint.sh broken-phase` → exit 1, identifies the failing test
-4. `deploy-gate.sh yt-strategy-lab-fail` → exit 1, lists remaining CRITICAL/HIGH
-5. `deploy-gate.sh task-manager-pass` → exit 0
-6. `archive-prd.sh task-manager-pass` → creates `docs/generated-prds/{date}__test/` and appends to INDEX.md
+Assertions (scripts are Python per HANDOFF bash→Python rule; invoke via `python .archon/scripts/<name>.py <arg>`):
+1. `python .archon/scripts/compliance-gate.py .archon/test-fixtures/yt-strategy-lab-fail` → exit 1, stderr contains "34 issues unaddressed"
+2. `python .archon/scripts/compliance-gate.py .archon/test-fixtures/task-manager-pass` → exit 0
+3. `python .archon/scripts/full-checkpoint.py .archon/test-fixtures/broken-phase <sha>` → exit 1, identifies the failing test
+4. `python .archon/scripts/deploy-gate.py .archon/test-fixtures/yt-strategy-lab-fail` → exit 1, lists remaining CRITICAL/HIGH
+5. `python .archon/scripts/deploy-gate.py .archon/test-fixtures/task-manager-pass` → exit 0
+6. `python .archon/scripts/archive-prd.py .archon/test-fixtures/task-manager-pass test shipped` → creates `docs/generated-prds/{date}__test/` and appends to INDEX.md
+
+Fixtures must be real directories with pre-made `review-*.md`, `fix-report.md`, `files_allowed.json`. These fixtures do NOT exist yet — creating them is part of Phase 1.
 
 **Pass criteria:** All 6 assertions hold. Zero false positives, zero false negatives.
 
 ### Test B — Red-Team Replay on YT Strategy Lab (the key regression)
 **Purpose:** Prove the new pipeline would have caught the actual historical failure.
 
+**Availability caveat:** This test assumes a snapshot of the YT Strategy Lab v2 workspace (pre-deploy) exists as a git tag or preserved artifact bundle. If artifacts were not preserved, the test is ungated — flag to the owner and proceed with Tests A and C only.
+
 Steps:
 1. Restore the YT Strategy Lab v2 workspace to the state it was in right before deploy ran (use git tag / artifact snapshot)
-2. Run the v2 pipeline from `build-fix` onward (skip re-running reviews — use the recorded review outputs)
-3. Observe: `compliance-gate.sh` MUST exit 1. Deploy MUST not run.
-4. Observe: Recovery Pipeline (M9) activates. Triage report names root cause as "fix agent skipped 34 issues under exemption language."
-5. Observe: Recovery fix PRD is written. Execute it. Re-gate. Gate passes.
-6. Observe: Deploy now proceeds with 0 unaddressed CRITICAL/HIGH.
+2. Run the v2 pipeline (`prd-pipeline-c.yaml`) from `build-fix-v2` onward (skip re-running reviews — use the recorded review outputs)
+3. Observe: `compliance-gate.py` MUST emit `FAIL` on stdout. Deploy MUST not run.
+4. Observe: Recovery Pipeline (M9) activates via `when:` branch. Triage report names root cause as "fix agent skipped 34 issues under exemption language."
+5. Observe: Recovery fix PRD is written. `recovery-execute` runs. Regate emits `PASS`.
+6. Observe: `phase-N-final-status` aggregates to PASS; deploy now proceeds with 0 unaddressed CRITICAL/HIGH.
 
 **Pass criteria:** The historical failure is physically impossible to reproduce in v2.
 
@@ -869,16 +950,16 @@ Steps:
 **Pass criteria:** Countdown timer app builds, tests pass, deploy gate green, archive populated. Total tokens within 20% of estimate.
 
 ### Deliberate break-and-fix (bonus, not blocking)
-Break `compliance-gate.sh` (change `-lt` to `-gt`). Run regression harness. Expect Test A to fail with a specific message pointing at the wrong comparison. Revert. Re-run. Pass.
+Break `compliance-gate.py` (flip a `<` to `>` in the severity comparison). Run the regression harness. Expect Test A to fail with a specific message pointing at the wrong comparison. Revert. Re-run. Pass.
 
 ---
 
 ## 10. Rollback Plan
 
 If v2 pipeline misbehaves:
-1. Switch the Archon runner back to `prd-pipeline-b.yaml` (v1) — it still exists, unmodified
-2. The new scripts are standalone; they don't break v1
-3. The Stage 10 prompt edits are the one thing that would need reverting — keep a git tag on the pre-edit commit
+1. Switch the Archon runner back to `prd-pipeline-b.yaml` (v1) — it still exists, unmodified (per HANDOFF §2 Correction B, we created `prd-pipeline-c.yaml` alongside rather than editing v1)
+2. The new Python scripts and `-v2` command files are standalone; they don't break v1 because Archon discovers commands by filename and v1 references `build-fix`, not `build-fix-v2`
+3. No in-place edits to the original `prd-stage-10.md` or `build-fix.md` were made, so there is nothing to revert in those files
 
 ---
 
@@ -913,26 +994,28 @@ Fits in a single build if batched. Recommended split: P1 alone (so we validate g
 
 ## 13. Notes for the Builder
 
-- This is a **surgical upgrade**, not a rewrite. Every existing file should be preserved unless explicitly edited in Section 4.
-- All new scripts go in `.archon/scripts/` (new directory if needed).
-- All new prompts go in `.archon/commands/` alongside existing ones.
-- The v2 YAML is additive — v1 stays as a safety net.
-- If `for_each` is not a native Archon construct, ask before picking an alternative (unrolled phases vs. a wrapper script).
-- When in doubt, bias toward deterministic. If you find yourself writing an agent to "decide if X passed," stop and write a bash script instead.
+- This is a **surgical upgrade**, not a rewrite. No existing files are edited in place — the entire upgrade is additive via `-v2`-suffixed command copies and a new `prd-pipeline-c.yaml` (per HANDOFF §2 Correction B).
+- All new scripts go in `.archon/scripts/` (new directory if needed). All new scripts are Python (`.py`), not bash — Archon's script-node runtime map supports `.py → uv` but not `.sh`, and Windows bash compatibility requires git-bash which is not guaranteed.
+- All new prompts go in `.archon/commands/` alongside existing ones. Naming: `<name>-v2.md` when replacing an existing command; plain `<name>.md` for brand-new commands.
+- The v2 YAML is additive — v1 stays as a safety net. Archon's command loader discovers by filename, so `build-fix` and `build-fix-v2` co-exist cleanly.
+- **`for_each` does NOT exist in Archon.** Archon's `loop:` node is an AI-prompt iteration, not an array iterator. Per-phase execution is implemented via manual unroll (M4 AFTER block). No alternative is needed — this is settled.
+- **Gates exit 0, emit `PASS`/`FAIL` on stdout.** Archon has no `on_failure:` branch; recovery branching uses `when:` against `$gate.output`. See M9 for the canonical pattern.
+- **Script nodes cannot receive CLI args** (`uv run` invocation, per dag-executor.ts line 1569). All args are passed via bash-node wrappers using `$ARTIFACTS_DIR` substitution and `$<node>.output` references, or via env vars for standalone scripts.
+- When in doubt, bias toward deterministic. If you find yourself writing an agent to "decide if X passed," stop and write a Python script instead.
 
 ---
 
 ## 14. Standards Compliance Self-Check (builder must verify before done)
 
-- [ ] S1 — Every gate in this spec is a bash/python script, not an agent
-- [ ] S2 — No exemption language in any prompt this spec touches
-- [ ] S3 — `exit 1` on every failure mode; no agent-judged pass/fail
-- [ ] S4 — Retry caps are numeric and enforced in the YAML, not prompts
-- [ ] S5 — Every phase in the loop gets `context: fresh`
-- [ ] S6 — CLAUDE.md files scoped to directories, not stuffed into root
-- [ ] S7 — Lint runs as a script node during build, not only at end
+- [ ] S1 — Every gate in this spec is a Python script invoked from a bash node, not an agent
+- [ ] S2 — No exemption language in any prompt this spec touches (enforced on the `-v2` copies of `prd-stage-10` and `build-fix`)
+- [ ] S3 — Gates emit `PASS`/`FAIL` on stdout (exit 0 for the gate node itself); recovery branches off `$gate.output == 'FAIL'`
+- [ ] S4 — Retry caps are numeric and enforced in the Python scripts or YAML `retry:` config, not in prompts
+- [ ] S5 — Every phase-N node gets `context: fresh` in the unrolled YAML
+- [ ] S6 — CLAUDE.md files scoped to directories, not stuffed into root (soft check via `claude-md-presence-check` audit node)
+- [ ] S7 — Lint runs as part of `full-checkpoint.py` after each phase, not only at end
 - [ ] S8 — Each agent has one job; no agent does two things (e.g., fix + tests)
-- [ ] S9 — Every failure mode produces plain-English diagnosis + auto-recovery attempt before halting; no failure requires the user to read code
+- [ ] S9 — Every gate failure produces plain-English diagnosis (via `recovery-diagnose`) + auto-recovery attempt (via `recovery-execute`) before halting; no failure requires the user to read code
 
 ---
 
@@ -940,20 +1023,22 @@ Fits in a single build if batched. Recommended split: P1 alone (so we validate g
 
 Most of the pipeline stays Sonnet. Only the places where model choice moves the needle get upgraded. Opus is 5–6× the cost of Sonnet, so we only pay for it where judgment quality is load-bearing.
 
+All values in the "New Model" column are Archon YAML aliases. No literal "Opus 4.7" string — Archon resolves `opus` to the latest Opus release via the Claude SDK (`sonnet`, `opus`, `haiku`, `claude-*`, `inherit` are the valid aliases; see Archon CLAUDE.md line 486).
+
 | Node | Current Model | New Model | Effort | Reason |
 |---|---|---|---|---|
-| Stage 0–10 (PRD maker) | Sonnet | **Sonnet (unchanged)** | default | PRD maker already produces solid plans. Not the bottleneck. |
-| `build-execute` (per phase) | Sonnet | **Sonnet (unchanged)** | default | Code execution is well-scoped by the contract. Sonnet is enough. |
-| `test-writer` (M5) | N/A | **Sonnet** | default | Mechanical: one test per WALL step. No judgment required. |
-| `build-verify` | Sonnet | **Sonnet (unchanged)** | default | Advisory only — deterministic gates are the real check. |
-| Four reviewers | Sonnet | **Sonnet (unchanged)** | default | Parallel, bounded scope per reviewer. Sonnet handles this. |
-| **`build-fix`** | Sonnet | **Opus 4.7** | medium | **PERMANENT UPGRADE.** This is where YT Strategy Lab broke. Fix agent has to judge ambiguous review items, trace cause-and-effect, and produce clean edits across 51 issues. This is the one permanent Sonnet→Opus swap. |
-| `phase-handoff` | N/A | **Haiku** | default | Summarization. Haiku is correct. |
-| `codebase-cartographer` (M7) | N/A | **Haiku** | default | Mechanical file-tree walk. Haiku is correct. |
-| `final-report` | N/A | **Haiku** | default | Summarization. |
-| **Recovery Pipeline M9.1 Diagnose** | N/A | **Opus 4.7** | **high** | Must identify root cause from noisy evidence. Highest-stakes reasoning in the pipeline. |
-| **Recovery Pipeline M9.2 Write Fix PRD** | N/A | **Opus 4.7** | **high** | Writing a PRD that will actually work requires Opus-tier planning. |
-| **Recovery Pipeline M9.3 Execute Fix** | N/A | **Opus 4.7** | **high** | The user can't clean up after a sloppy recovery. Has to be right the first time. |
+| Stage 0–10 (PRD maker) | `sonnet` | **`sonnet` (unchanged)** | default | PRD maker already produces solid plans. Not the bottleneck. |
+| `build-execute` (per phase) | `sonnet` | **`sonnet` (unchanged)** | default | Code execution is well-scoped by the contract. Sonnet is enough. |
+| `test-writer` (M5) | N/A | **`sonnet`** | default | Mechanical: one test per WALL step. No judgment required. |
+| `build-verify` | `sonnet` | **`sonnet` (unchanged)** | default | Advisory only — deterministic gates are the real check. |
+| Four reviewers | `sonnet` | **`sonnet` (unchanged)** | default | Parallel, bounded scope per reviewer. Sonnet handles this. |
+| **`build-fix-v2`** | `sonnet` | **`model: opus`** | `medium` | **PERMANENT UPGRADE.** This is where YT Strategy Lab broke. Fix agent has to judge ambiguous review items, trace cause-and-effect, and produce clean edits across 51 issues. Wired in prd-pipeline-c.yaml as `build-fix-v2` (copy-don't-overwrite per HANDOFF §2). |
+| `phase-handoff` | N/A | **`haiku`** | default | Summarization. Haiku is correct. |
+| `codebase-cartographer` (M7) | N/A | **`haiku`** | default | Mechanical file-tree walk. Haiku is correct. |
+| `final-report` | N/A | **`haiku`** | default | Summarization. |
+| **Recovery Pipeline M9.1 Diagnose** | N/A | **`model: opus`** | **`high`** | Must identify root cause from noisy evidence. Highest-stakes reasoning in the pipeline. |
+| **Recovery Pipeline M9.2 Write Fix PRD** | N/A | **`model: opus`** | **`high`** | Writing a PRD that will actually work requires Opus-tier planning. |
+| **Recovery Pipeline M9.3 Execute Fix** | N/A | **`model: opus`** | **`high`** | The user can't clean up after a sloppy recovery. Has to be right the first time. |
 | Recovery Pipeline M9.4 Re-Gate | N/A | **N/A (bash)** | — | Deterministic. No model. |
 | Compliance gate, full checkpoint, deploy gate, archive, regression | N/A | **N/A (bash)** | — | Deterministic by design (Standard S1). |
 

@@ -356,36 +356,42 @@ Every business gets assigned one of three email tiers based on their ranking acr
 ```python
 def assign_tier(kw1_rank, kw2_rank, kw3_rank):
     ranks = [r for r in [kw1_rank, kw2_rank, kw3_rank] if r is not None]
-    
+
     if not ranks:
-        return 'C'  # Not ranked anywhere in top 20
-    
+        return 'D'  # Not in top 20 on any keyword — AI Search pivot
+
     best_rank = min(ranks)
-    
+
     if best_rank <= 3:
         return 'A'  # Already in top 3 on at least one keyword
     elif best_rank <= 10:
         return 'B'  # In top 10 on at least one keyword, not yet top 3
     else:
-        return 'C'  # In top 20 somewhere but not top 10
+        return 'C'  # In top 11-20 somewhere — ranked but buried
 ```
 
 **What each tier means strategically:**
 
-**Tier A — Already Ranking Top 3 (Hottest Lead)**
-They already believe in SEO. They're getting results. They know the value.
+**Tier A — Ranked 1-3 (Hottest Lead)**
+They already believe in SEO. Getting results. Know the value.
 Email angle: *"You're dominating [keyword1] — great. But [Competitor] owns [keyword2] and [keyword3] worth $X/mo combined. We can get you there too."*
-Expected response rate: Highest. They understand the pitch immediately.
+Expected response rate: Highest. They get it immediately.
 
-**Tier B — Ranking 4-10 (Easiest Close)**
-Close enough to smell the top. One push gets them there.
+**Tier B — Ranked 4-10 (Easiest Close)**
+Close enough to smell the top. One push.
 Email angle: *"You're at #[rank] for [keyword] — almost there. [Competitor] at #1 is pulling $X/mo. One campaign gets you there."*
-Expected response rate: High. The gap feels closeable, not overwhelming.
+Expected response rate: High. The gap feels closeable.
 
-**Tier C — Not In Top 20 (Largest Volume)**
-They don't know what they're missing. The email has to make the pain visible.
-Email angle: *"While [Business Name] is off the map for [keyword1], [keyword2], [keyword3] — [Competitor] is pulling $X/mo in free traffic across all three. That's phone calls going to them instead of you."*
-Expected response rate: Lower per email but highest volume.
+**Tier C — Ranked 11-20 (Buried In Results)**
+In the results but invisible to anyone who doesn't scroll. Most people never get past the top 3.
+Email angle: *"You're ranking #[rank] for [keyword] — that's page 2 territory. [Competitor] at #1 gets $X/mo. Nobody calls #[rank]."*
+Expected response rate: Medium. Pain is real but less urgent than D.
+
+**Tier D — Not In Top 20 On Any Keyword (AI Search Pivot)**
+Completely off the map for traditional search. Different pitch entirely.
+Email angle: *"Traditional Google Maps rankings take months to move — and you're starting from scratch. But Google AI Search, ChatGPT local results, and Ask AI Maps just launched. Almost nobody in [city] has claimed their spot yet. We can get [Business Name] there fast while everyone else is still fighting over the old results."*
+Expected response rate: Unique — you're not selling them on a long climb, you're showing them a new lane.
+This tier is also the direct pipeline into your AIO SaaS when it launches.
 
 ---
 
@@ -393,18 +399,20 @@ Expected response rate: Lower per email but highest volume.
 
 Each tier has its own spinner variant pool (generated once per niche, stored forever).
 
-**Three variant pools:**
-- `spinner_tier_a.json` — Already ranking, expand to other keywords
-- `spinner_tier_b.json` — Almost there, push to top 3
-- `spinner_tier_c.json` — Not ranked, here's what you're losing
+**Four variant pools:**
+- `spinner_tier_a.json` — Already ranking top 3, expand to other keywords
+- `spinner_tier_b.json` — Almost there (4-10), push to top 3
+- `spinner_tier_c.json` — Buried (11-20), make the gap feel real
+- `spinner_tier_d.json` — Off the map, pivot to AI Search opportunity
 
 **Subject line strategy by tier:**
 
 Tier A: *"You rank #1 for [keyword1] — [Competitor] owns [keyword2] ($X/mo)"*
 Tier B: *"[Business] is at #[rank] for [keyword] — [Competitor] at #1 gets $X/mo"*
-Tier C: *"[Comp1] $X, [Comp2] $X, [Comp3] $X — [Business] isn't ranked for any of them"*
+Tier C: *"[Comp1] $X, [Comp2] $X, [Comp3] $X — [Business] is at #[rank] on all three"*
+Tier D: *"[Comp1], [Comp2], [Comp3] own [keyword] in [city] — but AI Search is wide open"*
 
-The Tier C subject with 3 competitors and 3 dollar amounts is the most striking. If they see their own competitors listed with dollar amounts, open rate spikes.
+Tier C with dollar amounts + their buried rank is extremely strong. Tier D's AI Search angle is a pattern interrupt — nobody else is sending that email.
 
 **Assembly logic:**
 ```python

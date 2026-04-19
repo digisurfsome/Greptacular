@@ -262,3 +262,241 @@ This document is the product/business layer on top of those builds.
 - Cold email tools are getting more expensive and more restricted (Google/Yahoo 2024 sender requirements killed a lot of setups)
 - Local businesses are drowning in generic outreach — a personalized email showing them their competitors' exact traffic value is genuinely novel
 - Nobody has packaged this into a product yet. The window is open.
+
+---
+
+## Full Pipeline Wiring (SEO Niche Outreach)
+
+This section describes exactly how the data flows from user input to contact form submission — every step, every decision, every file.
+
+---
+
+### Step 1 — Keyword Discovery (Once Per Niche, City-Agnostic)
+
+**Input:** Niche name (e.g., "plumber")
+**Output:** Top 3 buyer-intent, phone-call-inducing keywords for that niche
+
+These keywords do not change by city. "Emergency plumber" works in Chicago, Dallas, and Phoenix. Run this once per niche, store the result, reuse it forever for every city campaign.
+
+**How to get them:**
+
+Option A — DataForSEO keyword data (deterministic, preferred):
+Pull top keywords for the niche by search volume × CPC. High CPC = high commercial intent = phone calls. Filter for local intent keywords (include city/location modifiers or "near me").
+
+Option B — LLM judgment (fallback if DataForSEO doesn't have it):
+Prompt: *"What are the top 3 buyer-intent keywords a local plumber would want to rank for in Google Maps that would generate emergency/high-intent phone calls? Return only the keywords, no city included."*
+Haiku handles this reliably for common local service niches.
+
+**Storage:** JSON file or database table keyed by niche name.
+```json
+{
+  "plumber": ["emergency plumber", "plumber near me", "24 hour plumber"],
+  "roofer": ["roof repair", "emergency roof repair", "roofing contractor"],
+  "hvac": ["ac repair", "emergency hvac", "furnace repair near me"]
+}
+```
+
+**Cost:** ~$0.01 LLM call or pennies of DataForSEO credit. Done once per niche ever.
+
+---
+
+### Step 2 — SERP Search (Per City, 3 Searches)
+
+**Input:** 3 keywords from Step 1 + city name
+**Output:** Top 20 rankings per keyword with traffic value estimates
+
+Run each keyword through DataForSEO (or equivalent SEO API) for that city. Each search returns:
+- Business name
+- Website URL
+- Rank position (1-20)
+- Estimated monthly traffic value (based on CPC × estimated clicks at that rank position)
+
+**Cost:** ~$0.03-0.05 per search × 3 keywords = ~$0.10-0.15 per city total.
+
+**Storage:** Intermediate CSV or in-memory dict keyed by website URL.
+```
+keyword, rank, business_name, website_url, traffic_value
+emergency plumber, 1, Joe's Plumbing, joesplumbing.com, 10400
+emergency plumber, 2, City Plumbers, cityplumbers.com, 5200
+...
+```
+
+---
+
+### Step 3 — Business List + Cross-Reference
+
+**Input:** All plumbers in that city (scraped from Google Maps or provided list) + SERP results from Step 2
+**Output:** Master CSV with every business + their rank position for each of the 3 keywords
+
+**Process:**
+1. Get full list of businesses in niche + city (Google Maps scrape, or user uploads list)
+2. For each business, look up their URL against the 3 SERP result sets
+3. Record their rank on each keyword (or "not ranked" if outside top 20)
+4. Pull the top 3 competitors from each keyword for use in email hook
+
+**Output CSV shape:**
+```
+website_url, business_name,
+kw1, kw1_rank, kw1_traffic,
+kw2, kw2_rank, kw2_traffic,
+kw3, kw3_rank, kw3_traffic,
+comp1_name, comp1_kw, comp1_rank, comp1_traffic,
+comp2_name, comp2_kw, comp2_rank, comp2_traffic,
+comp3_name, comp3_kw, comp3_rank, comp3_traffic,
+top_competitor, top_traffic,
+email_tier
+```
+
+---
+
+### Step 4 — Segmentation Logic (Assign Email Tier)
+
+Every business gets assigned one of three email tiers based on their ranking across the 3 keywords.
+
+```python
+def assign_tier(kw1_rank, kw2_rank, kw3_rank):
+    ranks = [r for r in [kw1_rank, kw2_rank, kw3_rank] if r is not None]
+    
+    if not ranks:
+        return 'C'  # Not ranked anywhere in top 20
+    
+    best_rank = min(ranks)
+    
+    if best_rank <= 3:
+        return 'A'  # Already in top 3 on at least one keyword
+    elif best_rank <= 10:
+        return 'B'  # In top 10 on at least one keyword, not yet top 3
+    else:
+        return 'C'  # In top 20 somewhere but not top 10
+```
+
+**What each tier means strategically:**
+
+**Tier A — Already Ranking Top 3 (Hottest Lead)**
+They already believe in SEO. They're getting results. They know the value.
+Email angle: *"You're dominating [keyword1] — great. But [Competitor] owns [keyword2] and [keyword3] worth $X/mo combined. We can get you there too."*
+Expected response rate: Highest. They understand the pitch immediately.
+
+**Tier B — Ranking 4-10 (Easiest Close)**
+Close enough to smell the top. One push gets them there.
+Email angle: *"You're at #[rank] for [keyword] — almost there. [Competitor] at #1 is pulling $X/mo. One campaign gets you there."*
+Expected response rate: High. The gap feels closeable, not overwhelming.
+
+**Tier C — Not In Top 20 (Largest Volume)**
+They don't know what they're missing. The email has to make the pain visible.
+Email angle: *"While [Business Name] is off the map for [keyword1], [keyword2], [keyword3] — [Competitor] is pulling $X/mo in free traffic across all three. That's phone calls going to them instead of you."*
+Expected response rate: Lower per email but highest volume.
+
+---
+
+### Step 5 — Email Assembly Per Tier
+
+Each tier has its own spinner variant pool (generated once per niche, stored forever).
+
+**Three variant pools:**
+- `spinner_tier_a.json` — Already ranking, expand to other keywords
+- `spinner_tier_b.json` — Almost there, push to top 3
+- `spinner_tier_c.json` — Not ranked, here's what you're losing
+
+**Subject line strategy by tier:**
+
+Tier A: *"You rank #1 for [keyword1] — [Competitor] owns [keyword2] ($X/mo)"*
+Tier B: *"[Business] is at #[rank] for [keyword] — [Competitor] at #1 gets $X/mo"*
+Tier C: *"[Comp1] $X, [Comp2] $X, [Comp3] $X — [Business] isn't ranked for any of them"*
+
+The Tier C subject with 3 competitors and 3 dollar amounts is the most striking. If they see their own competitors listed with dollar amounts, open rate spikes.
+
+**Assembly logic:**
+```python
+def assemble_email(row):
+    tier = row['email_tier']
+    variants = load_variants(f'spinner_tier_{tier.lower()}.json')
+    
+    # Same spinner assembly as base system
+    # Injects: business_name, kw1/kw2/kw3 rankings,
+    #          competitor names, traffic values, city
+    return build_from_variants(variants, row)
+```
+
+---
+
+### Step 6 — Contact Form Filter + Send
+
+Same as V1/V2 technical PRDs. The assembled `ready_to_send.csv` feeds directly into `filter.py` then `runner.py` or `orchestrator_v2.py`.
+
+No changes needed to the sending layer. The data enrichment above just fills more columns.
+
+---
+
+### Full Wiring Diagram
+
+```
+User Input: Niche + City
+        |
+        v
+Step 1: keyword_discovery.py
+  → Checks niche cache (JSON)
+  → If not cached: DataForSEO or LLM → get top 3 keywords → cache
+  → Output: [kw1, kw2, kw3]
+        |
+        v
+Step 2: serp_search.py
+  → DataForSEO API × 3 keywords for this city
+  → Output: serp_results.csv (top 20 per keyword + traffic values)
+        |
+        v
+Step 3: build_list.py
+  → Get all businesses in niche + city (Maps scrape or upload)
+  → Cross-reference each against serp_results.csv
+  → Assign kw1_rank, kw2_rank, kw3_rank per business
+  → assign_tier() → email_tier column
+  → Output: enriched_list.csv
+        |
+        v
+Step 4: assemble_emails.py (same script, reads tier for variant pool selection)
+  → Spinner picks tier-appropriate variants
+  → Injects all custom data
+  → Output: ready_to_send.csv
+        |
+        v
+Step 5: filter.py
+  → Finds contact URL, detects blockers
+  → Output: routed_list.csv (with blocker_type)
+        |
+        v
+Step 6: runner.py (V1) or orchestrator_v2.py (V2)
+  → Submits each form
+  → Logs results
+```
+
+---
+
+### Cost Per City Campaign (Full 3-Keyword SEO Pipeline)
+
+| Step | Cost |
+|------|------|
+| Keyword discovery (once per niche, cached) | ~$0.01 |
+| 3 SERP searches via DataForSEO | ~$0.10-0.15 |
+| Business list scrape (Google Maps) | ~$0 (if self-scraped) |
+| Email assembly (50 businesses) | $0 |
+| Contact form sends — V1 clean only (~30 of 50) | ~$0.45 |
+| Contact form sends — V2 full list (~45 of 50) | ~$1.35 |
+| **Total per city — V1** | **~$0.60** |
+| **Total per city — V2** | **~$1.50** |
+
+One city. One niche. Under $1.50. Then next city.
+
+---
+
+### What's City-Agnostic vs City-Specific
+
+| Item | Scope | Run How Often |
+|------|-------|--------------|
+| Top 3 keywords per niche | Global (same everywhere) | Once per niche, ever |
+| Spinner variant pools (per tier) | Global (same everywhere) | Once per niche, ever |
+| SERP search results | Per city | Once per city campaign |
+| Business list | Per city | Once per city campaign |
+| Email assembly | Per business | Each campaign |
+| Contact form send | Per business | Each campaign |
+
+The global assets (keywords, spinner pools) are built once. The city-level work is a few API calls and a Python script. This is why the per-city cost is under $2 even for the full V2 pipeline.

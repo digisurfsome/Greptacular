@@ -184,16 +184,25 @@ def build_from_serp(niche: str, city: str, state: str = "") -> List[Dict]:
             "top_competitor": top_comp_domain,
             "top_traffic": int(top_comp_traffic),
             "tier": tier,
+            "skip_outreach": False,
+            "skip_reason": "",
         }
         enriched.append(row)
 
-    # Sort by tier then best rank
+    # Run AI classifier to flag national chains — cached per niche
+    try:
+        from classify_businesses import classify_rows
+        enriched = classify_rows(enriched, niche)
+    except ImportError:
+        pass
+
+    # Sort: local businesses first (skip_outreach=False), then by tier + rank
     def sort_key(r):
         tier_order = {"A": 0, "B": 1, "C": 2, "D": 3}
         ranks = [r.get(f"kw{i}_rank") for i in range(1, 4)]
         ranks = [x for x in ranks if x is not None]
         best = min(ranks) if ranks else 99
-        return (tier_order.get(r["tier"], 4), best)
+        return (int(r.get("skip_outreach", False)), tier_order.get(r["tier"], 4), best)
 
     enriched.sort(key=sort_key)
     return enriched

@@ -137,12 +137,18 @@ def get_top_competitors(serp_results: Dict[str, List[Dict]], top_n: int = 3) -> 
 
     Returns list of {domain, best_rank, keyword_count, avg_traffic}
     """
+    # Import here to avoid circular dependency with build_list
+    try:
+        from build_list import is_excluded
+    except ImportError:
+        def is_excluded(d): return False
+
     domain_stats = {}
 
     for keyword, results in serp_results.items():
         for r in results[:20]:
             domain = r["domain"]
-            if not domain:
+            if not domain or is_excluded(domain.replace("www.", "").lower()):
                 continue
 
             if domain not in domain_stats:

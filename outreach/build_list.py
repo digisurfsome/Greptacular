@@ -35,6 +35,36 @@ from urllib.parse import urlparse
 from keyword_discovery import get_keywords
 from serp_search import search_all_keywords, get_top_competitors
 
+# Directories, aggregators, and national chains that are NOT outreach targets
+EXCLUDED_DOMAINS = {
+    # Directories / review sites
+    "yelp.com", "yellowpages.com", "angi.com", "angieslist.com", "thumbtack.com",
+    "homeadvisor.com", "houzz.com", "porch.com", "bark.com", "nextdoor.com",
+    "bbb.org", "manta.com", "chamberofcommerce.com", "mapquest.com",
+    "tripadvisor.com", "foursquare.com", "citysearch.com",
+    # Search / social
+    "google.com", "bing.com", "yahoo.com", "facebook.com", "instagram.com",
+    "twitter.com", "linkedin.com", "youtube.com", "reddit.com", "tiktok.com",
+    "pinterest.com",
+    # National chains (not local businesses)
+    "rotorooter.com", "servicemaster.com", "servpro.com", "terminix.com",
+    "rentacenter.com", "lowes.com", "homedepot.com",
+    # Info / media
+    "wikipedia.org", "wikihow.com", "bobvila.com", "thisoldhouse.com",
+    "familyhandyman.com", "angieslist.com", "consumeraffairs.com",
+}
+
+
+def is_excluded(domain: str) -> bool:
+    domain = domain.lower().replace("www.", "")
+    if domain in EXCLUDED_DOMAINS:
+        return True
+    # Also exclude subdomains of excluded domains
+    for excl in EXCLUDED_DOMAINS:
+        if domain.endswith("." + excl):
+            return True
+    return False
+
 
 def extract_domain(url: str) -> str:
     """Extract clean domain from URL."""
@@ -112,7 +142,7 @@ def build_from_serp(niche: str, city: str, state: str = "") -> List[Dict]:
     for kw, results in serp_results.items():
         for r in results:
             domain = r["domain"].replace("www.", "").lower()
-            if domain and domain not in seen_domains:
+            if domain and domain not in seen_domains and not is_excluded(domain):
                 seen_domains.add(domain)
                 businesses.append({
                     "business_name": r["title"] or domain,

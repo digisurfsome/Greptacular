@@ -111,7 +111,7 @@ else: PASS -> exit 0
 **YAML wiring (in prd-pipeline-c.yaml):**
 ```yaml
 - id: compliance-gate
-  bash: python .archon/scripts/compliance-gate.py "$ARTIFACTS_DIR"
+  bash: python "$ARCHON_HOME/workspaces/digisurfsome/Greptacular/source/.archon/scripts/compliance-gate.py" "$ARTIFACTS_DIR"
   timeout: 60000
   depends_on: [build-fix-issues]
 ```
@@ -146,7 +146,7 @@ Reason: Archon script nodes cannot receive CLI args (dag-executor.ts line 1569).
 ```yaml
 # Capture the baseline SHA before the phase runs.
 - id: phase-baseline
-  bash: git rev-parse HEAD
+  bash: git -C "$DOCS_DIR/.." rev-parse HEAD
   depends_on: [build-codebase-intelligence]
 
 # ... build-execute-phase runs here ...
@@ -156,7 +156,9 @@ Reason: Archon script nodes cannot receive CLI args (dag-executor.ts line 1569).
 - id: full-checkpoint
   bash: |
     set -euo pipefail
-    python .archon/scripts/full-checkpoint.py "$ARTIFACTS_DIR" $phase-baseline.output
+    python "$ARCHON_HOME/workspaces/digisurfsome/Greptacular/source/.archon/scripts/full-checkpoint.py" \
+      "$ARTIFACTS_DIR" \
+      "$phase-baseline.output"
   timeout: 300000
   depends_on: [compliance-gate]
 ```
@@ -282,13 +284,13 @@ nodes:
     context: fresh
 
   - id: phase-1-compliance
-    bash: python .archon/scripts/compliance-gate.py "$ARTIFACTS_DIR"
+    bash: python "$ARCHON_HOME/workspaces/digisurfsome/Greptacular/source/.archon/scripts/compliance-gate.py" "$ARTIFACTS_DIR"
     timeout: 60000
     depends_on: [phase-1-fix]
 
   - id: phase-1-checkpoint
     bash: |
-      python .archon/scripts/full-checkpoint.py "$ARTIFACTS_DIR" $phase-1-baseline.output
+      python "$ARCHON_HOME/workspaces/digisurfsome/Greptacular/source/.archon/scripts/full-checkpoint.py" "$ARTIFACTS_DIR" "$phase-1-baseline.output"
     timeout: 300000
     depends_on: [phase-1-compliance]
 
@@ -301,7 +303,7 @@ nodes:
   # ========= PHASE 3 ... =========
 
   - id: deploy-gate
-    bash: python .archon/scripts/deploy-gate.py "$ARTIFACTS_DIR"
+    bash: python "$ARCHON_HOME/workspaces/digisurfsome/Greptacular/source/.archon/scripts/deploy-gate.py" "$ARTIFACTS_DIR"
     timeout: 60000
     depends_on: [phase-3-checkpoint]
 
@@ -403,7 +405,7 @@ Read the most-specific one that exists. Its rules apply to your work in this fil
     set -euo pipefail
     # Every directory that got a new file in this run should have a CLAUDE.md.
     # Emit report; don't fail the build (soft check, DOOR not WALL).
-    python .archon/scripts/claude-md-audit.py "$ARTIFACTS_DIR"
+    python "$ARCHON_HOME/workspaces/digisurfsome/Greptacular/source/.archon/scripts/claude-md-audit.py" "$ARTIFACTS_DIR"
   depends_on: [phase-3-checkpoint]
 ```
 
@@ -486,7 +488,7 @@ else: PASS "<n> deferrals, 0 remaining criticals" -> exit 0
 **YAML wiring (in prd-pipeline-c.yaml):**
 ```yaml
 - id: deploy-gate
-  bash: python .archon/scripts/deploy-gate.py "$ARTIFACTS_DIR"
+  bash: python "$ARCHON_HOME/workspaces/digisurfsome/Greptacular/source/.archon/scripts/deploy-gate.py" "$ARTIFACTS_DIR"
   timeout: 60000
   depends_on: [build-final-report]
 ```
@@ -520,7 +522,7 @@ Reason: Same pattern as M1/M2 — `type: script` + `args:` doesn't exist in Arch
 - id: phase-1-compliance
   bash: |
     set +e
-    python .archon/scripts/compliance-gate.py "$ARTIFACTS_DIR"
+    python "$ARCHON_HOME/workspaces/digisurfsome/Greptacular/source/.archon/scripts/compliance-gate.py" "$ARTIFACTS_DIR"
     code=$?
     if [ $code -eq 0 ]; then echo "PASS"; else echo "FAIL"; fi
     exit 0
@@ -556,7 +558,7 @@ Reason: Same pattern as M1/M2 — `type: script` + `args:` doesn't exist in Arch
 - id: phase-1-recovery-regate
   bash: |
     set +e
-    python .archon/scripts/compliance-gate.py "$ARTIFACTS_DIR"
+    python "$ARCHON_HOME/workspaces/digisurfsome/Greptacular/source/.archon/scripts/compliance-gate.py" "$ARTIFACTS_DIR"
     code=$?
     if [ $code -eq 0 ]; then echo "PASS"; else echo "FAIL"; fi
     exit 0
@@ -572,9 +574,9 @@ Reason: Same pattern as M1/M2 — `type: script` + `args:` doesn't exist in Arch
 - id: phase-1-final-status
   bash: |
     set -euo pipefail
-    if [ $phase-1-compliance.output = PASS ]; then
+    if [ "$phase-1-compliance.output" = "PASS" ]; then
       echo "PASS"
-    elif [ $phase-1-recovery-regate.output = PASS ]; then
+    elif [ "$phase-1-recovery-regate.output" = "PASS" ]; then
       echo "PASS"
     else
       echo "FAIL" >&2
@@ -645,7 +647,7 @@ append row to docs/generated-prds/INDEX.md: "- {DATE} | {BUILD_NAME} | {STATUS} 
 ```yaml
 - id: archive-prd
   bash: |
-    python .archon/scripts/archive-prd.py \
+    python "$ARCHON_HOME/workspaces/digisurfsome/Greptacular/source/.archon/scripts/archive-prd.py" \
       "$ARTIFACTS_DIR" \
       "$BASE_BRANCH" \
       "shipped"
@@ -706,12 +708,12 @@ print("=== ALL REGRESSION TESTS PASS ===")
 - id: regression-harness
   bash: |
     FIXTURES=".archon/test-fixtures" \
-    SCRIPTS_DIR=".archon/scripts" \
-    python .archon/scripts/regression-harness.py
+    SCRIPTS_DIR="$ARCHON_HOME/workspaces/digisurfsome/Greptacular/source/.archon/scripts" \
+    python "$ARCHON_HOME/workspaces/digisurfsome/Greptacular/source/.archon/scripts/regression-harness.py"
   depends_on: []   # standalone — invoked manually or by a separate workflow
 ```
 
-Reason: env vars pass in where args can't. Paths are relative to the workflow cwd (the repo root) because Archon does not export `$ARCHON_HOME` to bash child processes — relative `.archon/scripts/...` paths resolve unconditionally.
+Reason: env vars pass in where args can't. Bash node substitutes `$ARCHON_HOME` because Archon sets it. If `$ARCHON_HOME` is unset in the environment, fall back to `$HOME/.archon/...`.
 
 **Success criteria:**
 - Running regression-harness on current .archon/ produces PASS
@@ -747,7 +749,7 @@ build_intelligence_mode: defensive  # Options: defensive (warn about known failu
 ```yaml
 - id: read-flag-recovery
   bash: |
-    python -c "import yaml; c=yaml.safe_load(open('.archon/features.yaml')); print(str(c.get('recovery_pipeline',True)).lower())"
+    python -c "import yaml,sys; c=yaml.safe_load(open('$ARCHON_HOME/workspaces/digisurfsome/Greptacular/source/.archon/features.yaml')); print(str(c.get('recovery_pipeline',True)).lower())"
   depends_on: []   # or earliest possible ancestor
 
 - id: phase-1-recovery-diagnose

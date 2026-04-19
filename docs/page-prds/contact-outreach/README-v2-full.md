@@ -470,3 +470,40 @@ contact-outreach/
   routed_list.csv        # Filter output with blocker_type column
   outreach_v2_log_YYYYMMDD.txt
 ```
+
+---
+
+## Email Writing System (Same As V1 — Shared Component)
+
+See `README.md` (V1 PRD) for the full email system spec. Everything is identical between V1 and V2.
+
+The only difference in V2: the `ready_to_send.csv` output of `assemble_emails.py` feeds into `orchestrator_v2.py` instead of `runner.py`. The email assembly pipeline is the same script.
+
+### Why V2 Is Worth It For The SEO Use Case
+
+One Ahrefs search for "plumber in [city]" gives you:
+- Top 3 competitors (same for every plumber in that city)
+- Their rankings (same for every plumber)
+- Traffic values (same for every plumber)
+
+That data goes into every email in the batch. You do the research once.
+
+- **V1:** Loses 30-50% of the plumber list to CAPTCHAs and Cloudflare
+- **V2:** Hits every plumber on the list
+
+For the SEO outreach use case specifically, V2 pays for itself. You already did the research — don't leave half the list on the table because of a CAPTCHA.
+
+### Cost Comparison For One City (50 Plumbers)
+
+| | V1 (filter out blocked) | V2 (bust through everything) |
+|--|------------------------|------------------------------|
+| Sites attempted | ~30 (60% pass filter) | 50 (all of them) |
+| CAPTCHA cost | $0 | ~$0.10 (50 × $0.002) |
+| Proxy cost | $0 | ~$0.50 (20 CF sites × $0.02) |
+| Haiku cost | ~$0.45 | ~$0.75 |
+| Emails written | $0 (spinner) | $0 (spinner) |
+| **Total** | **~$0.45** | **~$1.35** |
+| Businesses reached | ~28 | ~45 |
+| Cost per business reached | ~$0.016 | ~$0.030 |
+
+V2 costs 3x more but reaches 60% more businesses from the same research investment. For outreach that's worth it.

@@ -458,3 +458,210 @@ contact-outreach/
   clean_list_skipped.csv   # Filtered-out sites with reason
   outreach_log_YYYYMMDD.txt  # Submission results
 ```
+
+---
+
+## Email Writing System (Shared by V1 and V2)
+
+### How It Works
+
+No AI call per email. No spinning service. Cost per email: **$0 after one-time setup.**
+
+1. **One-time:** Claude generates 20-30 variant sentences for each section (~$0.10 total, run once, never again)
+2. **Per email:** Python randomly picks one variant per section, injects the SEO data from the CSV, assembles the full email in milliseconds
+3. **Result:** Every email looks completely unique. Same hook, different wording, different structure
+
+### Why This Works As An Outreach Strategy
+
+- Standard cold email: ~1% open rate
+- Custom email (no SEO data): ~4% open rate (4x)
+- This system with competitor data + traffic values in subject line: estimated 8-12%+ open rate
+- The subject line does the work: *"[Competitor] is getting $10,400/mo in free traffic — [Business] is at #14"*
+- Inside the email they see exactly who's beating them and how much it's costing them. That's the Loom video equivalent in text.
+
+### Why Contact Forms Beat Cold Email For This
+
+| | Cold Email | Contact Forms |
+|--|-----------|--------------|
+| Sending limits | 30-50/day per warmed inbox | None — you're not sending email |
+| Domain warming required | Yes — 30 days minimum | No |
+| Your IP/reputation at risk | Yes | No — their server sends the notification |
+| Multiple accounts needed | Yes, for volume | No — one reply-to email handles everything |
+| Deliverability issues | SPF/DKIM/spam filters | Not your problem — their server sends it |
+| Days to get started | 30+ days warming | Today |
+
+When you submit a contact form, their web server sends the notification to the business owner. Your email only appears as the reply-to. You are not sending anything. No warming, no limits, no reputation risk. One inbox handles all replies.
+
+---
+
+### CSV Shape (Full — SEO + Email Fields)
+
+```
+website_url, contact_url, blocker_type,
+business_name, contact_first_name, niche, keyword, city,
+their_rank,
+comp1_name, comp1_rank, comp1_traffic,
+comp2_name, comp2_rank, comp2_traffic,
+comp3_name, comp3_rank, comp3_traffic,
+top_competitor, top_rank, top_traffic,
+sender_name, sender_email,
+subject, message
+```
+
+The SEO scraper fills: `keyword` through `top_traffic` (one search per city, same data for every business in that city)
+The filter fills: `contact_url`, `blocker_type`
+The assembler fills: `subject`, `message`
+The runner reads: `contact_url`, `sender_name`, `sender_email`, `subject`, `message`
+
+---
+
+### Step 1: Generate Variant Pool (Run Once)
+
+```python
+# generate_variants.py — run once, costs ~$0.10 total
+import anthropic
+import json
+
+client = anthropic.Anthropic()
+
+SECTIONS = {
+    'greeting': 'Casual opening greeting using {first_name}. Short. Not "I hope this finds you well."',
+    'opener': 'Opening line mentioning you looked at their rankings for {keyword} in {city}. Sound human, not salesy.',
+    'competitor_intro': 'One sentence introducing the list of competitors about to be shown. No fluff.',
+    'pain_point': 'One sentence about {top_competitor} capturing leads that should go to {business_name}. Direct.',
+    'traffic_framing': 'One sentence framing ${top_traffic}/month as the value of that top ranking. Make it feel real.',
+    'offer': 'One sentence saying you help local {niche} businesses move up in that pack. End with a single question asking if they want to talk.',
+    'sign_off': 'Two-word casual sign-off. No "Best regards."',
+}
+
+variants = {}
+for section, description in SECTIONS.items():
+    response = client.messages.create(
+        model='claude-haiku-4-5-20251001',
+        max_tokens=1500,
+        messages=[{
+            'role': 'user',
+            'content': f"""Write 25 different versions of this email section.
+Description: {description}
+Keep {{variable}} placeholders exactly as shown in the description.
+Return ONLY a valid JSON array of 25 strings. Nothing else."""
+        }]
+    )
+    variants[section] = json.loads(response.content[0].text.strip())
+    print(f"Generated {section}: {len(variants[section])} variants")
+
+with open('spinner_variants.json', 'w') as f:
+    json.dump(variants, f, indent=2)
+
+print("Done. spinner_variants.json saved.")
+```
+
+---
+
+### Step 2: Assemble Emails (Run Per Batch, $0)
+
+```python
+# assemble_emails.py
+import csv
+import json
+import random
+
+with open('spinner_variants.json') as f:
+    VARIANTS = json.load(f)
+
+def pick(section, row):
+    template = random.choice(VARIANTS[section])
+    try:
+        return template.format(**row)
+    except KeyError:
+        return template
+
+def build_subject(row):
+    templates = [
+        "{comp1_name} gets ${comp1_traffic}/mo free — {business_name} is at #{their_rank}",
+        "Your competitors are getting free traffic you're not — {keyword} in {city}",
+        "${top_traffic}/mo going to {top_competitor} instead of {business_name}",
+        "{comp1_name}, {comp2_name}, {comp3_name} all rank above {business_name} for {keyword}",
+    ]
+    return random.choice(templates).format(**row)
+
+def assemble_email(row):
+    body = f"""{pick('greeting', row)}
+
+{pick('opener', row)}
+
+{pick('competitor_intro', row)}
+
+  #{row['comp1_rank']} {row['comp1_name']} — ~${row['comp1_traffic']}/mo in traffic value
+  #{row['comp2_rank']} {row['comp2_name']} — ~${row['comp2_traffic']}/mo in traffic value
+  #{row['comp3_rank']} {row['comp3_name']} — ~${row['comp3_traffic']}/mo in traffic value
+
+{row['business_name']} is currently ranking #{row['their_rank']}.
+
+{pick('pain_point', row)}
+
+{pick('traffic_framing', row)}
+
+{pick('offer', row)}
+
+{pick('sign_off', row)}
+{row['sender_name']}"""
+    return body
+
+def run_assembler(input_csv, output_csv):
+    with open(input_csv, 'r') as f:
+        rows = list(csv.DictReader(f))
+
+    for row in rows:
+        row['subject'] = build_subject(row)
+        row['message'] = assemble_email(row)
+
+    with open(output_csv, 'w', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=rows[0].keys())
+        writer.writeheader()
+        writer.writerows(rows)
+
+    print(f"Assembled {len(rows)} emails → {output_csv}")
+
+if __name__ == '__main__':
+    run_assembler('routed_list.csv', 'ready_to_send.csv')
+```
+
+---
+
+### Full Pipeline (Both V1 and V2)
+
+```
+raw_list.csv
+(website URLs + business name + niche + SEO data from one Ahrefs search)
+        |
+        v
+filter.py
+(finds contact URL, detects CAPTCHAs/Cloudflare, outputs blocker_type)
+        |
+        v
+assemble_emails.py
+(spins variants, injects SEO data, writes subject + message per row — $0)
+        |
+        v
+[V1] runner.py          — clean sites only
+[V2] orchestrator_v2.py — all sites, routes by blocker_type
+        |
+        v
+ready_to_send_log_YYYYMMDD.txt
+```
+
+### Cost Summary
+
+| Step | Cost |
+|------|------|
+| Variant pool generation (once ever) | ~$0.10 |
+| Email assembly per batch | $0 |
+| Browser-use + Haiku per submission | ~$0.01-0.03 |
+| 2captcha per CAPTCHA site (V2 only) | ~$0.002 |
+| Proxy per Cloudflare site (V2 only) | ~$0.01-0.02 |
+| **V1 total per sent email** | **~$0.01-0.03** |
+| **V2 total per sent email (blended)** | **~$0.015-0.05** |
+
+100/day V1: ~$1-3. 500/day V1: ~$5-15.
+100/day V2: ~$1.50-5. 500/day V2: ~$7.50-25.

@@ -1,0 +1,286 @@
+id: prd-hardening-loop
+name: PRD Hardening Loop (3 rounds)
+description: |
+  Runs a document through up to 3 independent validator agents, auto-applies
+  fixes between each round, stops early if any round comes back clean.
+  See archon-prd-hardening/README.md for full docs.
+
+# ═══════════════════════════════════════════════════════════════════════════
+# EDIT ME — 3 values below. Everything else is already wired up.
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Path to the document being hardened (relative to repo root)
+# Example: docs/page-prds/archon-build-upgrade/README.md
+prd_path: &prd_path PUT-YOUR-PRD-PATH-HERE.md
+
+# Path to the reference codebase the validators check technical claims against
+# Can be absolute (e.g. C:\Users\lober\archon\Archon\) or a URL or "none"
+reference_codebase_path: &ref_path PUT-REFERENCE-CODEBASE-PATH-HERE
+
+# One-paragraph description of what the document IS (gives validators context)
+document_description: &doc_desc |
+  PUT A 2-3 SENTENCE DESCRIPTION HERE.
+  Example: This is a PRD for a new search feature. Validate every API
+  claim against the codebase at the reference path above.
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Workflow DAG — do not edit below this line unless you know what you're doing
+# ═══════════════════════════════════════════════════════════════════════════
+
+nodes:
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # ROUND 1
+  # ─────────────────────────────────────────────────────────────────────────
+
+  - id: round-1-validator
+    command: prd-validator
+    model: opus
+    effort: high
+    context: fresh
+    params:
+      PRD_PATH: *prd_path
+      REFERENCE_CODEBASE_PATH: *ref_path
+      DOCUMENT_DESCRIPTION: *doc_desc
+      ROUND_NUMBER: "1"
+    timeout: 2700000   # 45 min
+
+  - id: round-1-check-clean
+    bash: |
+      report="$ARTIFACTS_DIR/VALIDATION-REPORT-round-1.md"
+      if [ ! -f "$report" ]; then
+        echo "ERROR: no report produced"
+        exit 0
+      fi
+      verdict=$(grep -m1 "^Overall verdict:" "$report" | sed 's/Overall verdict: *//' | tr -d '\r\n')
+      case "$verdict" in
+        READY) echo "CLEAN" ;;
+        "NEEDS REVISION") echo "DIRTY" ;;
+        BLOCKED) echo "BLOCKED" ;;
+        *) echo "UNPARSEABLE" ;;
+      esac
+    depends_on: [round-1-validator]
+    timeout: 10000
+
+  - id: round-1-backup
+    bash: |
+      cp "{{prd_path}}" "$(dirname '{{prd_path}}')/$(basename '{{prd_path}}' .md).backup-post-round-0.md"
+    depends_on: [round-1-check-clean]
+    when: "$round-1-check-clean.output == 'DIRTY'"
+
+  - id: round-1-fix-applier
+    command: prd-fix-applier
+    model: sonnet
+    context: fresh
+    params:
+      PRD_PATH: *prd_path
+      REPORT_PATH: "$ARTIFACTS_DIR/VALIDATION-REPORT-round-1.md"
+      BACKUP_PATH: "__set-by-round-1-backup__"
+    depends_on: [round-1-backup]
+    when: "$round-1-check-clean.output == 'DIRTY'"
+    timeout: 1200000   # 20 min
+
+  - id: round-1-commit
+    bash: |
+      git add "{{prd_path}}" "$(dirname '{{prd_path}}')"/*.backup-*.md "$ARTIFACTS_DIR/VALIDATION-REPORT-round-1.md" 2>/dev/null || true
+      git commit -m "PRD hardening round 1: apply validator fixes
+
+      Report: VALIDATION-REPORT-round-1.md
+      See that report for the fixes applied this round." || echo "nothing to commit"
+    depends_on: [round-1-fix-applier]
+    when: "$round-1-check-clean.output == 'DIRTY'"
+    timeout: 30000
+
+  - id: round-1-aggregator
+    bash: |
+      echo "$round-1-check-clean.output"
+    depends_on: [round-1-check-clean, round-1-commit]
+    trigger_rule: all_done
+    timeout: 5000
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # ROUND 2 — only runs if round 1 ended DIRTY
+  # ─────────────────────────────────────────────────────────────────────────
+
+  - id: round-2-validator
+    command: prd-validator
+    model: opus
+    effort: high
+    context: fresh
+    params:
+      PRD_PATH: *prd_path
+      REFERENCE_CODEBASE_PATH: *ref_path
+      DOCUMENT_DESCRIPTION: *doc_desc
+      ROUND_NUMBER: "2"
+    depends_on: [round-1-aggregator]
+    when: "$round-1-aggregator.output == 'DIRTY'"
+    timeout: 2700000
+
+  - id: round-2-check-clean
+    bash: |
+      report="$ARTIFACTS_DIR/VALIDATION-REPORT-round-2.md"
+      if [ ! -f "$report" ]; then echo "SKIPPED"; exit 0; fi
+      verdict=$(grep -m1 "^Overall verdict:" "$report" | sed 's/Overall verdict: *//' | tr -d '\r\n')
+      case "$verdict" in
+        READY) echo "CLEAN" ;;
+        "NEEDS REVISION") echo "DIRTY" ;;
+        BLOCKED) echo "BLOCKED" ;;
+        *) echo "UNPARSEABLE" ;;
+      esac
+    depends_on: [round-2-validator]
+    trigger_rule: all_done
+    timeout: 10000
+
+  - id: round-2-backup
+    bash: |
+      cp "{{prd_path}}" "$(dirname '{{prd_path}}')/$(basename '{{prd_path}}' .md).backup-post-round-1.md"
+    depends_on: [round-2-check-clean]
+    when: "$round-2-check-clean.output == 'DIRTY'"
+
+  - id: round-2-fix-applier
+    command: prd-fix-applier
+    model: sonnet
+    context: fresh
+    params:
+      PRD_PATH: *prd_path
+      REPORT_PATH: "$ARTIFACTS_DIR/VALIDATION-REPORT-round-2.md"
+      BACKUP_PATH: "__set-by-round-2-backup__"
+    depends_on: [round-2-backup]
+    when: "$round-2-check-clean.output == 'DIRTY'"
+    timeout: 1200000
+
+  - id: round-2-commit
+    bash: |
+      git add "{{prd_path}}" "$(dirname '{{prd_path}}')"/*.backup-*.md "$ARTIFACTS_DIR/VALIDATION-REPORT-round-2.md" 2>/dev/null || true
+      git commit -m "PRD hardening round 2: apply validator fixes
+
+      Report: VALIDATION-REPORT-round-2.md" || echo "nothing to commit"
+    depends_on: [round-2-fix-applier]
+    when: "$round-2-check-clean.output == 'DIRTY'"
+    timeout: 30000
+
+  - id: round-2-aggregator
+    bash: |
+      # Pass through round-1 result if round-2 was skipped
+      if [ "$round-1-aggregator.output" = "CLEAN" ]; then
+        echo "CLEAN"
+      else
+        echo "$round-2-check-clean.output"
+      fi
+    depends_on: [round-1-aggregator, round-2-check-clean, round-2-commit]
+    trigger_rule: all_done
+    timeout: 5000
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # ROUND 3 — only runs if round 2 ended DIRTY
+  # ─────────────────────────────────────────────────────────────────────────
+
+  - id: round-3-validator
+    command: prd-validator
+    model: opus
+    effort: high
+    context: fresh
+    params:
+      PRD_PATH: *prd_path
+      REFERENCE_CODEBASE_PATH: *ref_path
+      DOCUMENT_DESCRIPTION: *doc_desc
+      ROUND_NUMBER: "3"
+    depends_on: [round-2-aggregator]
+    when: "$round-2-aggregator.output == 'DIRTY'"
+    timeout: 2700000
+
+  - id: round-3-check-clean
+    bash: |
+      report="$ARTIFACTS_DIR/VALIDATION-REPORT-round-3.md"
+      if [ ! -f "$report" ]; then echo "SKIPPED"; exit 0; fi
+      verdict=$(grep -m1 "^Overall verdict:" "$report" | sed 's/Overall verdict: *//' | tr -d '\r\n')
+      case "$verdict" in
+        READY) echo "CLEAN" ;;
+        "NEEDS REVISION") echo "DIRTY" ;;
+        BLOCKED) echo "BLOCKED" ;;
+        *) echo "UNPARSEABLE" ;;
+      esac
+    depends_on: [round-3-validator]
+    trigger_rule: all_done
+    timeout: 10000
+
+  - id: round-3-backup
+    bash: |
+      cp "{{prd_path}}" "$(dirname '{{prd_path}}')/$(basename '{{prd_path}}' .md).backup-post-round-2.md"
+    depends_on: [round-3-check-clean]
+    when: "$round-3-check-clean.output == 'DIRTY'"
+
+  - id: round-3-fix-applier
+    command: prd-fix-applier
+    model: sonnet
+    context: fresh
+    params:
+      PRD_PATH: *prd_path
+      REPORT_PATH: "$ARTIFACTS_DIR/VALIDATION-REPORT-round-3.md"
+      BACKUP_PATH: "__set-by-round-3-backup__"
+    depends_on: [round-3-backup]
+    when: "$round-3-check-clean.output == 'DIRTY'"
+    timeout: 1200000
+
+  - id: round-3-commit
+    bash: |
+      git add "{{prd_path}}" "$(dirname '{{prd_path}}')"/*.backup-*.md "$ARTIFACTS_DIR/VALIDATION-REPORT-round-3.md" 2>/dev/null || true
+      git commit -m "PRD hardening round 3: apply validator fixes
+
+      Report: VALIDATION-REPORT-round-3.md" || echo "nothing to commit"
+    depends_on: [round-3-fix-applier]
+    when: "$round-3-check-clean.output == 'DIRTY'"
+    timeout: 30000
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # FINAL STATUS — always runs, summarizes overall result
+  # ─────────────────────────────────────────────────────────────────────────
+
+  - id: final-status
+    bash: |
+      r1="$round-1-check-clean.output"
+      r2="$round-2-check-clean.output"
+      r3="$round-3-check-clean.output"
+
+      if [ "$r1" = "CLEAN" ]; then
+        status="READY after round 1"
+      elif [ "$r2" = "CLEAN" ]; then
+        status="READY after round 2"
+      elif [ "$r3" = "CLEAN" ]; then
+        status="READY after round 3"
+      else
+        status="STILL NEEDS REVISION after 3 rounds"
+      fi
+
+      cat > "$ARTIFACTS_DIR/FINAL-STATUS.md" <<EOF
+      # PRD Hardening Result
+
+      **Document:** {{prd_path}}
+      **Status:** $status
+
+      ## Round-by-round verdicts
+      - Round 1: $r1
+      - Round 2: ${r2:-SKIPPED}
+      - Round 3: ${r3:-SKIPPED}
+
+      ## Artifacts
+      - VALIDATION-REPORT-round-1.md
+      - VALIDATION-REPORT-round-2.md (if run)
+      - VALIDATION-REPORT-round-3.md (if run)
+
+      ## Backups (next to the document)
+      - *.backup-post-round-0.md (original, if round 1 was dirty)
+      - *.backup-post-round-1.md (if round 2 was dirty)
+      - *.backup-post-round-2.md (if round 3 was dirty)
+
+      ## Recommendation
+      $(if [ "$r1" = "CLEAN" ] || [ "$r2" = "CLEAN" ] || [ "$r3" = "CLEAN" ]; then
+          echo "Document is ready to execute. Paper trail preserved in commit history."
+        else
+          echo "Three independent validators still found issues. A human should review VALIDATION-REPORT-round-3.md before proceeding. The document may have an ambiguity or design flaw the validators cannot reconcile."
+        fi)
+      EOF
+      echo "$status"
+    depends_on: [round-1-check-clean, round-2-check-clean, round-3-check-clean, round-3-commit]
+    trigger_rule: all_done
+    timeout: 10000

@@ -216,9 +216,14 @@ nodes:
   # This is the permanent fix for the YT Strategy Lab failure mode.
   # ═══════════════════════════════════════════════════════════════
 
+  - id: phase-1-lint-autofix
+    bash: python .archon/scripts/lint-autofix.py "$ARTIFACTS_DIR"
+    timeout: 120000
+    depends_on: [build-execute]
+
   - id: build-fix-issues
     command: build-fix-v2
-    depends_on: [review-correctness-logic, review-silent-failures, review-test-coverage, review-simplify-code]
+    depends_on: [review-correctness-logic, review-silent-failures, review-test-coverage, review-simplify-code, phase-1-lint-autofix]
     model: opus
     effort: medium
     context: fresh
@@ -326,9 +331,15 @@ nodes:
 
   # ========= PHASE 2 =========
 
+  - id: phase-1-handoff
+    command: phase-handoff
+    depends_on: [full-checkpoint]
+    model: haiku
+    context: fresh
+
   - id: phase-2-baseline
     bash: git rev-parse HEAD
-    depends_on: [full-checkpoint]
+    depends_on: [phase-1-handoff]
 
   - id: phase-2-execute
     command: build-execute-v2
@@ -361,9 +372,14 @@ nodes:
     model: sonnet
     context: fresh
 
+  - id: phase-2-lint-autofix
+    bash: python .archon/scripts/lint-autofix.py "$ARTIFACTS_DIR"
+    timeout: 120000
+    depends_on: [phase-2-execute]
+
   - id: phase-2-fix
     command: build-fix-v2
-    depends_on: [phase-2-review-correctness, phase-2-review-failures, phase-2-review-tests, phase-2-review-simplify]
+    depends_on: [phase-2-review-correctness, phase-2-review-failures, phase-2-review-tests, phase-2-review-simplify, phase-2-lint-autofix]
     model: opus
     effort: medium
     context: fresh
@@ -441,9 +457,15 @@ nodes:
 
   # ========= PHASE 3 =========
 
+  - id: phase-2-handoff
+    command: phase-handoff
+    depends_on: [phase-2-checkpoint]
+    model: haiku
+    context: fresh
+
   - id: phase-3-baseline
     bash: git rev-parse HEAD
-    depends_on: [phase-2-checkpoint]
+    depends_on: [phase-2-handoff]
 
   - id: phase-3-execute
     command: build-execute-v2
@@ -476,9 +498,14 @@ nodes:
     model: sonnet
     context: fresh
 
+  - id: phase-3-lint-autofix
+    bash: python .archon/scripts/lint-autofix.py "$ARTIFACTS_DIR"
+    timeout: 120000
+    depends_on: [phase-3-execute]
+
   - id: phase-3-fix
     command: build-fix-v2
-    depends_on: [phase-3-review-correctness, phase-3-review-failures, phase-3-review-tests, phase-3-review-simplify]
+    depends_on: [phase-3-review-correctness, phase-3-review-failures, phase-3-review-tests, phase-3-review-simplify, phase-3-lint-autofix]
     model: opus
     effort: medium
     context: fresh

@@ -1,0 +1,389 @@
+name: prd-pipeline-c
+description: |
+  Use when: User wants the FULL factory — PRD planning through to built, reviewed, tested code.
+  Triggers: "prd pipeline c", "full build v2", "gated build", "build with gates".
+  Does: Complete pipeline combining 11-stage PRD system with deterministic gates:
+        1. YOUR PRD stages (0-5, 7-10) with enhanced gap analysis and feasibility
+        2. COLE's Plan cookbook (codebase intelligence, code snippets, patterns to mirror)
+        3. COLE's Implement cookbook (execute with validation gates)
+        4. YOUR Verification (Wall/Door/Room compliance, Pulse/Seam/Full)
+        5. COLE's Review (4 parallel agents attacking the code)
+        6. Fix cycle — Opus on build-fix-v2 (mandatory contract, no exemption language)
+        7. Compliance Gate (M1) — counts issues vs fixes, exits FAIL if mismatch
+        8. Recovery Pipeline (M9) — Opus/high diagnoses + re-fixes + re-gates on FAIL
+        9. Full Checkpoint (M2) — lint + typecheck + tests + files_allowed diff
+       10. Deploy Gate (M8) — deferred budget cap (max 5), no remaining CRITICAL/HIGH
+       11. Report + Deploy
+       12. PRD Archive (M10) — copies artifacts to docs/generated-prds/
+  NOT for: Quick fixes, PR reviews, single-file changes.
+  Rollback: switch back to prd-pipeline-b (untouched — safe at any time).
+
+provider: claude
+model: opus
+
+nodes:
+
+  # ═══════════════════════════════════════════════════════════════
+  # FEATURE FLAG READERS (M12)
+  # Run first (no depends_on). Read .archon/features.yaml.
+  # If features.yaml is missing, defaults to true for both.
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: read-flag-recovery
+    bash: |
+      uv run --with pyyaml python -c "
+      import yaml, os
+      path = '.archon/features.yaml'
+      c = yaml.safe_load(open(path)) if os.path.exists(path) else {}
+      print(str(c.get('recovery_pipeline', True)).lower())
+      "
+    timeout: 30000
+
+  - id: read-flag-archive
+    bash: |
+      uv run --with pyyaml python -c "
+      import yaml, os
+      path = '.archon/features.yaml'
+      c = yaml.safe_load(open(path)) if os.path.exists(path) else {}
+      print(str(c.get('prd_archive', True)).lower())
+      "
+    timeout: 30000
+
+  # ═══════════════════════════════════════════════════════════════
+  # STAGE 0: TECHNICAL FOUNDATION
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: stage-00-tech-foundation
+    command: prd-stage-00
+    depends_on: [read-flag-recovery, read-flag-archive]
+
+  # ═══════════════════════════════════════════════════════════════
+  # STAGE 1: IDEA CAPTURE
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: stage-01-idea-capture
+    command: prd-stage-01
+    depends_on: [stage-00-tech-foundation]
+
+  # ═══════════════════════════════════════════════════════════════
+  # STAGE 2: GAP ANALYSIS + MARKET RESEARCH
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: stage-02-gap-analysis
+    command: prd-a-stage-02-enhanced
+    depends_on: [stage-01-idea-capture]
+
+  # ═══════════════════════════════════════════════════════════════
+  # STAGE 3: AGENT OS STRUCTURING
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: stage-03-agent-os
+    command: prd-a-stage-03-enhanced
+    depends_on: [stage-02-gap-analysis]
+    context: fresh
+
+  # ═══════════════════════════════════════════════════════════════
+  # STAGE 4: MECHANISM EXTRACTION
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: stage-04-mechanism-extraction
+    command: prd-stage-04
+    depends_on: [stage-03-agent-os]
+    context: fresh
+
+  # ═══════════════════════════════════════════════════════════════
+  # STAGE 5: WALL/DOOR/ROOM SCAFFOLDING
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: stage-05-wall-door-room
+    command: prd-stage-05
+    depends_on: [stage-04-mechanism-extraction]
+    context: fresh
+    idle_timeout: 600000
+
+  # ═══════════════════════════════════════════════════════════════
+  # STAGE 7: PHASE SEQUENCING
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: stage-07-phase-sequencing
+    command: prd-stage-07
+    depends_on: [stage-05-wall-door-room]
+    context: fresh
+
+  # ═══════════════════════════════════════════════════════════════
+  # STAGE 8: PROTOCOL INJECTION
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: stage-08-protocol-injection
+    command: prd-stage-08
+    depends_on: [stage-07-phase-sequencing]
+    context: fresh
+
+  # ═══════════════════════════════════════════════════════════════
+  # STAGE 9: VERIFICATION AGENT SETUP
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: stage-09-verification-setup
+    command: prd-stage-09
+    depends_on: [stage-08-protocol-injection]
+    context: fresh
+
+  # ═══════════════════════════════════════════════════════════════
+  # STAGE 10: OUTPUT GENERATOR (v2 — M3)
+  # Renders phase files with mandatory contract block.
+  # No exemption language. Two-strike rule is item-scoped.
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: stage-10-output-generator
+    command: prd-stage-10-v2
+    depends_on: [stage-09-verification-setup]
+    context: fresh
+    idle_timeout: 600000
+
+  # ═══════════════════════════════════════════════════════════════
+  # BUILD: CODEBASE INTELLIGENCE
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: build-codebase-intelligence
+    command: build-codebase-plan
+    depends_on: [stage-10-output-generator]
+    context: fresh
+    idle_timeout: 600000
+
+  # ═══════════════════════════════════════════════════════════════
+  # Capture baseline SHA before any code is written.
+  # Used by full-checkpoint.py to compute git diff.
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: phase-1-baseline
+    bash: git rev-parse HEAD
+    depends_on: [build-codebase-intelligence]
+
+  # ═══════════════════════════════════════════════════════════════
+  # BUILD: EXECUTE
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: build-execute
+    command: build-implement
+    depends_on: [phase-1-baseline]
+    model: sonnet
+    context: fresh
+    idle_timeout: 900000
+
+  # ═══════════════════════════════════════════════════════════════
+  # BUILD: VERIFY COMPLIANCE
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: build-verify-compliance
+    command: build-verify
+    depends_on: [build-execute]
+    model: sonnet
+    context: fresh
+
+  # ═══════════════════════════════════════════════════════════════
+  # BUILD: REVIEW — 4 parallel agents
+  # Run concurrently (all depend on build-verify-compliance only)
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: review-correctness-logic
+    command: build-review-correctness
+    depends_on: [build-verify-compliance]
+    model: sonnet
+    context: fresh
+
+  - id: review-silent-failures
+    command: build-review-failures
+    depends_on: [build-verify-compliance]
+    model: sonnet
+    context: fresh
+
+  - id: review-test-coverage
+    command: build-review-tests
+    depends_on: [build-verify-compliance]
+    model: sonnet
+    context: fresh
+
+  - id: review-simplify-code
+    command: build-review-simplify
+    depends_on: [build-verify-compliance]
+    model: sonnet
+    context: fresh
+
+  # ═══════════════════════════════════════════════════════════════
+  # BUILD: FIX — upgraded to Opus (M3 + §15)
+  # Uses build-fix-v2.md: mandatory contract, no exemption language,
+  # two-strike rule is item-scoped. Model: opus / effort: medium.
+  # This is the permanent fix for the YT Strategy Lab failure mode.
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: build-fix-issues
+    command: build-fix-v2
+    depends_on: [review-correctness-logic, review-silent-failures, review-test-coverage, review-simplify-code]
+    model: opus
+    effort: medium
+    context: fresh
+
+  # ═══════════════════════════════════════════════════════════════
+  # COMPLIANCE GATE (M1)
+  # Counts CRITICAL/HIGH issues vs fix entries. Emits PASS or FAIL
+  # on stdout and always exits 0 so recovery branch can branch on output.
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: compliance-gate
+    bash: |
+      set +e
+      python .archon/scripts/compliance-gate.py "$ARTIFACTS_DIR"
+      code=$?
+      if [ $code -eq 0 ]; then echo "PASS"; else echo "FAIL"; fi
+      exit 0
+    timeout: 60000
+    depends_on: [build-fix-issues]
+
+  # ═══════════════════════════════════════════════════════════════
+  # RECOVERY PIPELINE (M9) — 4 nodes, only run when gate said FAIL
+  # AND recovery_pipeline toggle is on.
+  # Model: opus / effort: high on all three agent nodes.
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: recovery-diagnose
+    command: recovery-diagnose
+    depends_on: [compliance-gate, read-flag-recovery]
+    when: "$compliance-gate.output == 'FAIL' && $read-flag-recovery.output == 'true'"
+    model: opus
+    effort: high
+    context: fresh
+
+  - id: recovery-fix-prd
+    command: recovery-fix-prd
+    depends_on: [recovery-diagnose]
+    when: "$compliance-gate.output == 'FAIL' && $read-flag-recovery.output == 'true'"
+    model: opus
+    effort: high
+    context: fresh
+
+  - id: recovery-execute
+    command: recovery-execute
+    depends_on: [recovery-fix-prd]
+    when: "$compliance-gate.output == 'FAIL' && $read-flag-recovery.output == 'true'"
+    model: opus
+    effort: high
+    context: fresh
+
+  # Re-run compliance gate after recovery. Same PASS/FAIL stdout pattern.
+  - id: compliance-regate
+    bash: |
+      set +e
+      python .archon/scripts/compliance-gate.py "$ARTIFACTS_DIR"
+      code=$?
+      if [ $code -eq 0 ]; then echo "PASS"; else echo "FAIL"; fi
+      exit 0
+    timeout: 60000
+    depends_on: [recovery-execute]
+    when: "$compliance-gate.output == 'FAIL' && $read-flag-recovery.output == 'true'"
+
+  # ═══════════════════════════════════════════════════════════════
+  # COMPLIANCE FINAL STATUS — aggregates initial gate + recovery gate.
+  # trigger_rule: all_done fires even when recovery nodes were skipped.
+  # Exits 1 (hard fail) if both compliance-gate AND compliance-regate
+  # said FAIL (or recovery was skipped and initial gate failed).
+  # This hard exit blocks full-checkpoint and everything downstream.
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: compliance-final-status
+    bash: |
+      set -euo pipefail
+      if [ $compliance-gate.output = PASS ]; then
+        echo "PASS"
+      elif [ $compliance-regate.output = PASS ]; then
+        echo "PASS"
+      else
+        echo "FAIL: compliance gate failed and recovery did not pass" >&2
+        exit 1
+      fi
+    depends_on: [compliance-gate, compliance-regate]
+    trigger_rule: all_done
+
+  # ═══════════════════════════════════════════════════════════════
+  # FULL CHECKPOINT (M2)
+  # Runs lint + typecheck + tests + files_allowed diff.
+  # Exits 1 directly on failure (no recovery branch — hard halt).
+  # Passes $phase-1-baseline.output (Archon substitutes to single-quoted SHA).
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: full-checkpoint
+    bash: |
+      python .archon/scripts/full-checkpoint.py "$ARTIFACTS_DIR" $phase-1-baseline.output
+    timeout: 300000
+    depends_on: [compliance-final-status]
+
+  # ═══════════════════════════════════════════════════════════════
+  # DEPLOY GATE (M8)
+  # Checks cumulative deferred budget (max 5) and no remaining CRITICAL/HIGH.
+  # Emits PASS or FAIL on stdout (always exits 0) so build-deploy can
+  # gate on $deploy-gate.output == 'PASS'.
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: deploy-gate
+    bash: |
+      set +e
+      python .archon/scripts/deploy-gate.py "$ARTIFACTS_DIR"
+      code=$?
+      if [ $code -eq 0 ]; then echo "PASS"; else echo "FAIL"; fi
+      exit 0
+    timeout: 60000
+    depends_on: [full-checkpoint]
+
+  # ═══════════════════════════════════════════════════════════════
+  # BUILD: REPORT
+  # trigger_rule: all_done — always runs regardless of gate outcomes.
+  # Gives the operator a plain-English summary of what happened.
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: build-final-report
+    command: build-report
+    depends_on: [deploy-gate]
+    model: haiku
+    context: fresh
+    trigger_rule: all_done
+
+  # ═══════════════════════════════════════════════════════════════
+  # BUILD: DEPLOY
+  # Only runs when deploy-gate emitted PASS.
+  # If deploy-gate was skipped (full-checkpoint failed), output is ''
+  # so the when: condition is false and deploy is safely blocked.
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: build-deploy
+    command: build-deploy
+    depends_on: [build-final-report]
+    when: "$deploy-gate.output == 'PASS'"
+    model: sonnet
+    context: fresh
+
+  # ═══════════════════════════════════════════════════════════════
+  # PRD ARCHIVE (M10)
+  # Copies artifacts to docs/generated-prds/{date}__{build-name}/.
+  # trigger_rule: all_done so it runs even if deploy was skipped.
+  # Only runs when prd_archive toggle is on.
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: recovery-status-summary
+    bash: |
+      set -euo pipefail
+      if ls "$ARTIFACTS_DIR"/recovery-*/ 2>/dev/null | head -1 >/dev/null 2>&1; then
+        echo "recovered"
+      else
+        echo "shipped"
+      fi
+    depends_on: [build-deploy]
+    trigger_rule: all_done
+
+  - id: archive-prd
+    bash: |
+      python .archon/scripts/archive-prd.py \
+        "$ARTIFACTS_DIR" \
+        "$BASE_BRANCH" \
+        $recovery-status-summary.output
+    timeout: 60000
+    depends_on: [recovery-status-summary]
+    when: "$read-flag-archive.output == 'true'"

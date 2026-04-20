@@ -1,0 +1,13 @@
+# Feature Toggles (M12)
+# Toggle any of these on/off. Defaults are the recommended production settings.
+# If a toggle is missing, the read-flag-* nodes default to the value shown below.
+# Restart the pipeline after changing these.
+
+recovery_pipeline: true       # M9: auto-diagnose and fix on compliance gate failure
+prd_archive: true             # M10: copy PRDs to docs/generated-prds/ after each run
+regression_harness: true      # M11: self-tests for the pipeline (run manually via archon workflow run regression-harness)
+codebase_cartographer: true   # M7: Haiku builds CODEBASE_MAP.md after build (Phase 3 — not yet wired)
+scoped_claude_md: true        # M6: per-directory CLAUDE.md auto-attach (Phase 2 — not yet wired)
+build_intelligence: false     # Phase 3: learn from prior builds — OFF until 5+ builds logged
+build_intelligence_mode: defensive  # Options: "defensive" (warn about known failures) only
+                                    # "prescriptive" mode is NOT implemented by design

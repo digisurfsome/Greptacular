@@ -49,13 +49,23 @@ nodes:
       "
     timeout: 30000
 
+  - id: read-flag-cartographer
+    bash: |
+      uv run --with pyyaml python -c "
+      import yaml, os
+      path = '.archon/features.yaml'
+      c = yaml.safe_load(open(path)) if os.path.exists(path) else {}
+      print(str(c.get('codebase_cartographer', True)).lower())
+      "
+    timeout: 30000
+
   # ═══════════════════════════════════════════════════════════════
   # STAGE 0: TECHNICAL FOUNDATION
   # ═══════════════════════════════════════════════════════════════
 
   - id: stage-00-tech-foundation
     command: prd-stage-00
-    depends_on: [read-flag-recovery, read-flag-archive]
+    depends_on: [read-flag-recovery, read-flag-archive, read-flag-cartographer]
 
   # ═══════════════════════════════════════════════════════════════
   # STAGE 1: IDEA CAPTURE
@@ -592,6 +602,19 @@ nodes:
       python .archon/scripts/claude-md-audit.py "$ARTIFACTS_DIR" $phase-1-baseline.output
     timeout: 60000
     depends_on: [phase-3-checkpoint]
+
+  # ═══════════════════════════════════════════════════════════════
+  # CODEBASE CARTOGRAPHER (M7)
+  # Haiku agent: reads the built codebase and produces CODEBASE_MAP.md.
+  # Gated by codebase_cartographer feature flag. DOOR — does not block deploy.
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: codebase-cartographer
+    command: codebase-cartographer
+    depends_on: [claude-md-presence-check, read-flag-cartographer]
+    when: "$read-flag-cartographer.output == 'true'"
+    model: haiku
+    context: fresh
 
   # ═══════════════════════════════════════════════════════════════
   # DEPLOY GATE (M8)

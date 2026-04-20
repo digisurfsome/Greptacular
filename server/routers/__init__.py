@@ -8,8 +8,8 @@ FastAPI routers for different API endpoints.
 from .actions import commits_router
 from .actions import router as actions_router
 from .agent import router as agent_router
-from .ap_code_manager import router as ap_code_manager_router
 from .agent_os import router as agent_os_router
+from .ap_code_manager import router as ap_code_manager_router
 from .approvals import router as approvals_router
 from .assistant_chat import router as assistant_chat_router
 from .captures import router as captures_router
@@ -28,6 +28,7 @@ from .features import router as features_router
 from .filesystem import router as filesystem_router
 from .github import router as github_router
 from .ingestion_sequences import router as ingestion_sequences_router
+from .market_scraper import router as market_scraper_router
 from .meta_training import router as meta_training_router
 from .notifications import router as notifications_router
 from .pipeline import router as pipeline_router
@@ -52,9 +53,7 @@ from .verifications import router as verifications_router
 from .workspace import router as workspace_router
 from .yt_batch import router as yt_batch_router
 from .yt_ingestion import router as yt_ingestion_router
-from .market_scraper import router as market_scraper_router
 from .yt_processing import router as yt_processing_router
-from .pipeline_proxy import router as pipeline_proxy_router
 
 __all__ = [
     "actions_router",
@@ -106,6 +105,5 @@ __all__ = [
     "ingestion_sequences_router",
     "market_scraper_router",
     "meta_training_router",
-    "pipeline_proxy_router",
     "ap_code_manager_router",
 ]

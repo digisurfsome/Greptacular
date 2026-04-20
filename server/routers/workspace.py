@@ -1069,7 +1069,6 @@ class WorkspaceBridgeSaveRequest(BaseModel):
 @router.post("/bridge/save")
 async def save_workspace_bridge(req: WorkspaceBridgeSaveRequest):
     """Save a bridge state for workspace session continuity."""
-    import os
     from datetime import datetime, timezone
     from pathlib import Path
 
@@ -1218,8 +1217,8 @@ async def workspace_chat_websocket(websocket: WebSocket):
         if _auto_bridge_saved:
             return
         _auto_bridge_saved = True
-        from pathlib import Path as _Path
         from datetime import datetime, timezone
+        from pathlib import Path as _Path
         handoff_dir = _Path.home() / ".autoforge" / "handoffs"
         handoff_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
@@ -1230,9 +1229,9 @@ async def workspace_chat_websocket(websocket: WebSocket):
         # Pull recent conversation messages so the next session has actual context
         if conv_id:
             try:
-                from .workspace import workspace_db  # noqa: F811
+                from .workspace import workspace_db  # noqa: F811, F401
             except ImportError:
-                workspace_db = None
+                pass
             try:
                 from ..services import workspace_database as _wdb
                 recent = _wdb.get_messages(conv_id)

@@ -16,6 +16,12 @@ Usage:
 
   # Run against first ready business in your CSV
   python outreach/test_agent.py --csv filtered_emails_enriched_seo_rankings_plumber_austin.csv
+
+  # Use local Ollama model (zero API cost — no ANTHROPIC_API_KEY needed)
+  python outreach/test_agent.py --url https://reliantplumbing.com/contact --local-model
+
+  # Use a specific Ollama model
+  python outreach/test_agent.py --url https://reliantplumbing.com/contact --local-model --ollama-model qwen2.5:7b
 """
 
 import asyncio
@@ -25,14 +31,7 @@ import sys
 import csv
 from pathlib import Path
 
-try:
-    from browser_use import Agent, Browser, BrowserConfig
-    from langchain_anthropic import ChatAnthropic
-except ImportError:
-    print("Install dependencies first:")
-    print("  pip install browser-use langchain-anthropic playwright")
-    print("  playwright install chromium")
-    sys.exit(1)
+from browser_use import Agent
 
 # Test data — safe fake info, clearly a test
 TEST_DATA = {
@@ -74,22 +73,45 @@ After filling (or attempting to fill), describe:
 """.strip()
 
 
-async def run_test(url: str, data: dict, submit: bool = False, headless: bool = False):
+def get_llm(local_model: bool = False, ollama_model: str = "qwen2.5:7b"):
+    if local_model:
+        try:
+            from langchain_ollama import ChatOllama
+            print(f"  Using local Ollama model: {ollama_model} (zero API cost)")
+            return ChatOllama(model=ollama_model)
+        except ImportError:
+            print("  langchain-ollama not installed.")
+            print("  pip install langchain-ollama")
+            print("  ollama pull qwen2.5:7b")
+            sys.exit(1)
+    else:
+        try:
+            from langchain_anthropic import ChatAnthropic
+        except ImportError:
+            print("langchain-anthropic not installed: pip install langchain-anthropic")
+            sys.exit(1)
+        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        if not api_key or api_key == "your_key_here":
+            print("ANTHROPIC_API_KEY not set.")
+            print("  set ANTHROPIC_API_KEY=sk-ant-api03-...")
+            print("  Or use --local-model for zero-cost local inference.")
+            sys.exit(1)
+        return ChatAnthropic(
+            model="claude-haiku-4-5-20251001",
+            api_key=api_key,
+        )
+
+
+async def run_test(url: str, data: dict, submit: bool = False, headless: bool = False,
+                   local_model: bool = False, ollama_model: str = "qwen2.5:7b"):
     print(f"\n{'='*60}")
     print(f"  URL: {url}")
     print(f"  Submit: {submit}")
     print(f"  Headless: {headless}")
+    print(f"  LLM: {'Ollama ' + ollama_model if local_model else 'Claude Haiku'}")
     print(f"{'='*60}\n")
 
-    llm = ChatAnthropic(
-        model="claude-haiku-4-5-20251001",
-        api_key=os.environ.get("ANTHROPIC_API_KEY"),
-    )
-
-    # Show browser window unless headless explicitly requested
-    browser = Browser(
-        config=BrowserConfig(headless=headless)
-    )
+    llm = get_llm(local_model, ollama_model)
 
     task = build_task(url, data, submit)
     print(f"TASK:\n{task}\n")
@@ -97,7 +119,7 @@ async def run_test(url: str, data: dict, submit: bool = False, headless: bool = 
     print("Agent running... watch the browser window.")
     print("="*60)
 
-    agent = Agent(task=task, llm=llm, browser=browser)
+    agent = Agent(task=task, llm=llm)
 
     try:
         result = await agent.run(max_steps=20)
@@ -109,8 +131,6 @@ async def run_test(url: str, data: dict, submit: bool = False, headless: bool = 
     except Exception as e:
         print(f"\nError: {e}")
         return None
-    finally:
-        await browser.close()
 
 
 def get_first_ready_row(csv_path: str) -> dict:
@@ -144,11 +164,19 @@ if __name__ == "__main__":
                         help="Your real reply-to email (required with --real)")
     parser.add_argument("--headless", action="store_true",
                         help="Run without visible browser window")
+    parser.add_argument("--local-model", action="store_true",
+                        help="Use local Ollama model instead of Haiku (zero API cost)")
+    parser.add_argument("--ollama-model", default="qwen2.5:7b",
+                        help="Ollama model to use with --local-model (default: qwen2.5:7b)")
     args = parser.parse_args()
 
-    if not os.environ.get("ANTHROPIC_API_KEY"):
+    if not args.local_model and not os.environ.get("ANTHROPIC_API_KEY"):
         print("Set ANTHROPIC_API_KEY first:")
-        print("  set ANTHROPIC_API_KEY=your_key_here  (Windows)")
+        print("  set ANTHROPIC_API_KEY=sk-ant-api03-...  (Windows)")
+        print("")
+        print("Or use local Ollama model (no API key needed):")
+        print("  ollama pull qwen2.5:7b")
+        print("  python outreach/test_agent.py --url <url> --local-model")
         sys.exit(1)
 
     # Get URL and data
@@ -186,4 +214,10 @@ if __name__ == "__main__":
         print("\n[SAFE MODE] Will fill form but NOT submit.")
         print("Pass --real --reply-to you@email.com to actually submit.\n")
 
-    asyncio.run(run_test(url, data, submit=submit, headless=args.headless))
+    asyncio.run(run_test(
+        url, data,
+        submit=submit,
+        headless=args.headless,
+        local_model=args.local_model,
+        ollama_model=args.ollama_model,
+    ))

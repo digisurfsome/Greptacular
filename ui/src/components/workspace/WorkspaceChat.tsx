@@ -497,7 +497,7 @@ export function WorkspaceChat({
     if (agentWaiting && agentWaitingQuestion) {
       // Parse numbered questions from the waiting text and format with answer slots
       const lines = agentWaitingQuestion.split('\n').filter(l => l.trim())
-      const numbered = lines.filter(l => /^\d+[\.\)]\s/.test(l.trim()))
+      const numbered = lines.filter(l => /^\d+[.)]\s/.test(l.trim()))
 
       if (numbered.length > 0) {
         // Format as numbered questions with "Answer:" slots

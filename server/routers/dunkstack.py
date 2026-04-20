@@ -323,7 +323,10 @@ async def write_from_human(msg: CommsMessage, project_name: Optional[str] = None
 
     # Also forward to REST-started coding sessions
     if not forwarded:
-        from ..services.dunkstack_session import get_coding_session, list_coding_sessions as _list_coding
+        from ..services.dunkstack_session import (  # noqa: I001
+            get_coding_session,
+            list_coding_sessions as _list_coding,
+        )
         for s_info in _list_coding():
             p_name = s_info.get("project_name")
             if not p_name:

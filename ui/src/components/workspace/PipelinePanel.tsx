@@ -452,6 +452,7 @@ Rules:
     setSkills((prev) => prev.map((s, i) => (i === index ? { ...s, [field]: value } : s)))
   }, [])
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleFileUpload = useCallback((_index: number, _file: File) => {
     // File reading is handled inside PipelineSkillSlot; this callback exists
     // so the parent can hook into the upload event if needed in the future.

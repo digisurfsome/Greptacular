@@ -1,0 +1,297 @@
+name: style-extractor
+description: |
+  Use when: User wants to extract a Visual Design Language / style guide from an app screenshot.
+  Triggers: "style extractor", "extract styles", "style guide from image", "clone this UI style",
+            "extract design system", "style this app"
+  Does: Takes a screenshot of any app/website, extracts the full Visual DNA — colors, typography,
+        spacing, component patterns — and outputs a ready-to-use Tailwind theme config +
+        style guide markdown file.
+  NOT for: Building code, generating PRDs, wireframe research.
+  INPUT: Provide a file path or URL to your screenshot when starting the workflow.
+         Example: "style-extractor C:\Users\lober\Desktop\screenshot.png"
+         Example: "style-extractor https://example.com/screenshot.jpg"
+
+provider: claude
+model: opus
+interactive: true
+
+nodes:
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 1: IMAGE INPUT
+  # Gets the image from the user if not provided upfront
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: request-image
+    model: sonnet
+    prompt: |
+      You are starting a Visual Design Language extraction session.
+
+      Check $ARGUMENTS for an image source:
+
+      **If $ARGUMENTS contains a file path** (e.g. C:\...\screenshot.png or /Users/.../app.png):
+        Confirm: "Got it — I'll analyze the image at: {path}. Proceeding to extraction."
+        Then output exactly: IMAGE_SOURCE: {the full path}
+
+      **If $ARGUMENTS contains a URL** (starts with http):
+        Confirm: "Got it — I'll analyze the image at: {url}. Proceeding to extraction."
+        Then output exactly: IMAGE_SOURCE: {the full url}
+
+      **If $ARGUMENTS is empty or doesn't contain an image source:**
+        Ask the user:
+
+        "To extract the Visual Design Language from your screenshot, I need the image.
+
+        Two ways to provide it:
+
+        **Option A — File path** (recommended):
+        Save your screenshot anywhere on your computer, then paste the full file path.
+        Example: `C:\Users\YourName\Desktop\app-screenshot.png`
+
+        **Option B — Image URL**:
+        If the image is hosted online, paste the full URL.
+        Example: `https://example.com/myapp-screenshot.jpg`
+
+        Paste your path or URL below:"
+
+  - id: image-gate
+    approval:
+      message: |
+        Paste your file path or image URL above, then click Continue.
+        If you already provided it when starting the workflow, just click Continue.
+      capture_response: true
+    depends_on: [request-image]
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 2: VISUAL DNA EXTRACTION
+  # Runs the full style guide analysis on the image
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: extract-style
+    model: opus
+    prompt: |
+      Determine the image source from these inputs (check in order):
+      1. $request-image.output — look for "IMAGE_SOURCE: {value}"
+      2. $image-gate.output — the user may have typed a path or URL here
+      3. $ARGUMENTS — may contain the path directly
+
+      Once you have the image source:
+      - If it's a file path: use the Read tool to read the image file
+      - If it's a URL: use the WebFetch tool to retrieve the image
+
+      ---
+
+      **Role:** You are an expert Design System Architect and Senior Frontend Engineer.
+      You specialize in Atomic Design principles and creating abstract, reusable component libraries.
+
+      **Objective:** Analyze the image provided. Ignore the specific content, text, and business
+      context. Extract the underlying Visual Design Language — the "Visual DNA".
+      Generate a generic, reusable style guide that can be applied to any type of application.
+
+      **Strict Rules:**
+      1. Do NOT mention specific text found in the image (say "Section Headers use 16px", not "The 'Revenue' title uses 16px")
+      2. Do NOT mention specific business logic (say "Primary Data Container has a shadow", not "The Sales Card has a shadow")
+      3. Generalize ALL findings into reusable tokens and component classes
+
+      ---
+
+      Produce a complete Technical Design System Report covering ALL five sections:
+
+      ## 1. Abstract Color Tokens
+
+      Extract the full palette, named by function:
+
+      | Token | Hex | Description |
+      |-------|-----|-------------|
+      | brand-light | #... | Hover/tint variant |
+      | brand-DEFAULT | #... | Main interaction color |
+      | brand-dark | #... | Active/pressed variant |
+      | surface-canvas | #... | Main app background |
+      | surface-base | #... | Cards, sidebar background |
+      | surface-muted | #... | Input fields, hover states |
+      | text-primary | #... | Headers, key values |
+      | text-secondary | #... | Body text, labels |
+      | text-tertiary | #... | Placeholders, inactive |
+      | border-subtle | #... | Line colors, dividers |
+      | status-success | #... | (if present) |
+      | status-error | #... | (if present) |
+      | status-warning | #... | (if present) |
+
+      ## 2. Global Typography System
+
+      **Font Family:** {name} — closest Google Font if custom
+
+      | Level | Size | Weight | Line Height | Usage |
+      |-------|------|--------|-------------|-------|
+      | Display/Hero | px | 700/800 | | Largest metrics, hero numbers |
+      | H1 | px | 600/700 | | Page titles |
+      | H2 | px | 600 | | Section headers |
+      | H3 | px | 500/600 | | Card titles, subsections |
+      | Body Regular | px | 400 | | Standard paragraph text |
+      | Body Bold | px | 500/600 | | Emphasized body text |
+      | Microcopy | px | 400 | | Labels, captions, small text |
+
+      ## 3. Universal Component Patterns
+
+      **Surfaces / Cards**
+      - Background: {color}
+      - Border: {1px solid color / none}
+      - Border Radius: {Xpx}
+      - Box Shadow: {CSS value / none}
+      - Padding: {Xpx}
+
+      **Primary Button**
+      - Background: {color or gradient}
+      - Text Color: {color}
+      - Border Radius: {Xpx}
+      - Padding: {Xpx Xpx}
+      - Hover: {effect}
+
+      **Secondary Button**
+      - Background: {color}
+      - Border: {style}
+      - Border Radius: {Xpx}
+      - Padding: {Xpx Xpx}
+
+      **Form Inputs**
+      - Background: {color}
+      - Border: {style / none}
+      - Border Radius: {Xpx}
+      - Placeholder Text Color: {color}
+
+      **Iconography**
+      - Style: {Line/Stroke | Solid Filled | Duotone}
+      - Stroke Width: {Xpx} (if line style)
+      - End Caps: {Rounded | Sharp}
+      - Size: {Xpx typical}
+
+      ## 4. Layout & Spacing Physics
+
+      - **Base Unit:** {4px | 8px | 10px}
+      - **Density:** {Cozy (generous whitespace) | Balanced | Compact (data-dense)}
+      - **Spacing Scale:** {list the scale: 4, 8, 12, 16, 24, 32, 48, 64...}
+      - **Radius Rule:** {e.g., "4px small elements, 8px buttons, 12px cards, 16px modals"}
+      - **Card Gap:** {Xpx}
+      - **Section Gap:** {Xpx}
+      - **Max Content Width:** {Xpx or "full bleed"}
+
+      ## 5. Tailwind CSS Theme Extension
+
+      ```javascript
+      // tailwind.config.js
+      // Generated by style-extractor workflow
+      module.exports = {
+        theme: {
+          extend: {
+            colors: {
+              brand: {
+                light: '#...',
+                DEFAULT: '#...',
+                dark: '#...',
+              },
+              surface: {
+                canvas: '#...',
+                base: '#...',
+                muted: '#...',
+              },
+              text: {
+                primary: '#...',
+                secondary: '#...',
+                tertiary: '#...',
+              },
+              border: {
+                subtle: '#...',
+              },
+              status: {
+                success: '#...',
+                error: '#...',
+                warning: '#...',
+              },
+            },
+            fontFamily: {
+              sans: ['...', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+            },
+            fontSize: {
+              'display': ['...px', { lineHeight: '...', fontWeight: '700' }],
+              'h1': ['...px', { lineHeight: '...', fontWeight: '600' }],
+              'h2': ['...px', { lineHeight: '...', fontWeight: '600' }],
+              'h3': ['...px', { lineHeight: '...', fontWeight: '500' }],
+              'body': ['...px', { lineHeight: '...' }],
+              'micro': ['...px', { lineHeight: '...' }],
+            },
+            borderRadius: {
+              'sm': '...px',
+              'card': '...px',
+              'input': '...px',
+              'btn': '...px',
+              'modal': '...px',
+            },
+            boxShadow: {
+              'card': '...',
+              'dropdown': '...',
+            },
+          }
+        }
+      }
+      ```
+    depends_on: [image-gate]
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 3: OUTPUT FILES
+  # Writes style-guide.md + tailwind.config.js to artifacts
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: write-output
+    model: sonnet
+    prompt: |
+      Take the complete style analysis from:
+      $extract-style.output
+
+      Write TWO files:
+
+      ---
+
+      **File 1:** $ARTIFACTS_DIR/style-guide.md
+
+      Write the full Technical Design System Report as clean markdown.
+      Include all 5 sections with proper formatting.
+      Add a header:
+      ```
+      # Visual Design System
+      **Extracted by style-extractor workflow**
+      **Date:** {today}
+      **Source:** {image path or url from the analysis}
+      ```
+
+      ---
+
+      **File 2:** $ARTIFACTS_DIR/tailwind.config.js
+
+      Write ONLY the tailwind.config.js code block from Section 5.
+      Make it a clean, ready-to-use file with no markdown wrapping.
+      Add a comment at the top:
+      ```javascript
+      // Visual Design System — extracted by style-extractor workflow
+      // Drop this into your project root and import in your CSS/config
+      ```
+
+      ---
+
+      After writing both files, print a summary:
+
+      ## Style Extraction Complete
+
+      **Files written:**
+      - `style-guide.md` — full design system report
+      - `tailwind.config.js` — ready to drop into your project
+
+      **Key findings:**
+      - Brand color: {primary hex}
+      - Font: {font family}
+      - Base unit: {Xpx}
+      - Density: {cozy/balanced/compact}
+      - Corner radius pattern: {summary}
+
+      **To use in a build:** Run "spec-to-build" or "PRD Pipeline B" and reference this
+      style guide in your trigger message — the builder will apply these styles.
+    depends_on: [extract-style]

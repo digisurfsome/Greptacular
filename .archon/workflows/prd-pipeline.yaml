@@ -1,0 +1,133 @@
+name: prd-pipeline
+description: |
+  Use when: User wants to create a comprehensive PRD using the 11-stage pipeline.
+  Triggers: "make a prd", "prd pipeline", "product spec", "plan an app", "create spec",
+            "build spec", "app spec", "full prd", "plan this app".
+  Does: Runs an 11-stage PRD pipeline (Stages 0-10) that transforms a raw app idea into
+        a complete, phased, agent-executable build specification with Wall/Door/Room
+        deterministic classification, verification protocols, file sandboxing, and
+        token-budgeted build phases. Outputs ready-to-build phase files.
+  NOT for: Building code, fixing bugs, code review, refactoring.
+
+provider: claude
+model: sonnet
+
+nodes:
+  # === STAGE 0-2: INTAKE (shared context, interactive) ===
+  # Sonnet handles intake — pattern matching, rule application, no creative judgment needed
+
+  - id: stage-00
+    command: prd-stage-00
+
+  - id: stage-01
+    command: prd-stage-01
+    depends_on: [stage-00]
+
+  - id: stage-02
+    command: prd-stage-02
+    depends_on: [stage-01]
+
+  # === STAGE 3-5: ANALYSIS ===
+  # Opus for Stages 3 & 4 ONLY — these make judgment calls that cascade through every
+  # stage after. Wrong drift anchor = wrong build. Wrong mechanism classification = wrong
+  # phase order. All other stages are deterministic enough for Sonnet.
+
+  - id: stage-03
+    command: prd-stage-03
+    depends_on: [stage-02]
+    context: fresh
+    model: opus
+
+  - id: stage-04
+    command: prd-stage-04
+    depends_on: [stage-03]
+    model: opus
+
+  - id: stage-05
+    command: prd-stage-05
+    depends_on: [stage-04]
+    context: fresh
+    idle_timeout: 600000
+
+  # === STAGE 7-9: BUILD PLANNING (fresh context, reads files) ===
+  # Stage 6 (layout/wireframing) skipped for now
+  # All Sonnet — dependency math, rule stamping, protocol setup are all deterministic
+
+  - id: stage-07
+    command: prd-stage-07
+    depends_on: [stage-05]
+    context: fresh
+
+  - id: stage-08
+    command: prd-stage-08
+    depends_on: [stage-07]
+    context: fresh
+
+  # === STAGE 8.5: SKELETON CODE (Sonnet, fresh context) ===
+  # Generates interface scaffolds for NEEDS_EVALUATION mechanisms only.
+  # Catches "this can't be built the way we planned" BEFORE Phase 2 tokens are spent.
+  # Output: skeleton_code.md with Python + TypeScript signatures for high-risk mechanisms.
+
+  - id: stage-08-5-skeleton-code
+    depends_on: [stage-08]
+    context: fresh
+    prompt: |
+      You are generating skeleton code scaffolds for high-risk mechanisms in the build plan.
+
+      Read $ARTIFACTS_DIR/context_packet.json.
+
+      Find all mechanisms where classification is "NEEDS_EVALUATION" in stage_4.mechanisms.
+      If none are NEEDS_EVALUATION, write "No NEEDS_EVALUATION mechanisms found." to
+      $ARTIFACTS_DIR/skeleton_code.md and exit.
+
+      For each NEEDS_EVALUATION mechanism, generate:
+        1. Python function/class signatures (server side) — names, parameters, return types,
+           one-line docstring only. No implementation bodies.
+        2. TypeScript interface/component signature (UI side) — props types and function
+           signature only. No JSX bodies.
+        3. One sentence: "Why this is high-risk and what to watch for during build"
+
+      Output format per mechanism:
+      ---
+      ## [mechanism name] (mech_XXX)
+      **Risk:** [one sentence]
+
+      **Server scaffold:**
+      ```python
+      [skeleton]
+      ```
+
+      **UI scaffold:**
+      ```typescript
+      [skeleton]
+      ```
+      ---
+
+      After all mechanisms, write one paragraph:
+      "Integration checkpoint — do any of these interfaces conflict with each other or
+      with the existing codebase patterns described in stage_0.tech_stack?"
+
+      Write full output to $ARTIFACTS_DIR/skeleton_code.md
+      Confirm: "Stage 8.5 complete. Skeleton code written to skeleton_code.md."
+
+  - id: stage-09
+    command: prd-stage-09
+    depends_on: [stage-08-5-skeleton-code]
+    context: fresh
+
+  # === STAGE 10: OUTPUT (fresh context) ===
+
+  - id: stage-10
+    command: prd-stage-10
+    depends_on: [stage-09]
+    context: fresh
+    idle_timeout: 600000
+
+  # === REPORT (haiku, cheap summary) ===
+
+  - id: report
+    command: prd-report
+    depends_on: [stage-10]
+    model: haiku
+    context: fresh
+    trigger_rule: all_done

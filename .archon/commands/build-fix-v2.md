@@ -62,8 +62,9 @@ For each issue:
 If the **same individual fix attempt** fails twice:
 - Add an entry to `$ARTIFACTS_DIR/deferred.md` for that specific item with the reason
 - Continue to the **next issue** — do NOT stop working
-- You may NOT declare entire categories exempt (e.g., "all tests", "all async issues", "architectural issues")
-- You may NOT declare a category of work "a separate task per instructions"
+- You may NOT declare entire categories exempt — every issue gets an individual attempt before deferral
+- You may NOT split work into this-phase vs. follow-up-task scopes; reviewer findings are in scope for THIS phase
+- You may NOT label work architectural or out-of-scope to skip a fix — architectural concerns still get a fix entry or a deferred.md entry with evidence
 
 ### Step 5: Add Missing Tests
 From `review-tests.md` findings, add tests for:

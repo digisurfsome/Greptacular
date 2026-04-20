@@ -1,0 +1,151 @@
+name: mobbin-wireframe
+description: |
+  Use when: User has an existing PRD or app idea and wants wireframe/UI inspiration.
+  Triggers: "mobbin wireframes", "find wireframes", "ui inspiration", "wireframe my prd",
+            "wireframe this", "find ui patterns"
+  Does: Analyzes your PRD or idea, searches Mobbin for similar apps and screen patterns,
+        presents layout options for each major page, outputs a wireframe decisions doc.
+  NOT for: Building code or generating PRDs from scratch.
+  REQUIRES: Mobbin MCP installed — run: npx -y mobbin-mcp auth && claude mcp add mobbin -- npx -y mobbin-mcp
+
+provider: claude
+model: sonnet
+interactive: true
+
+nodes:
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 1: EXTRACT — Parse the PRD/idea into searchable terms
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: extract
+    model: sonnet
+    prompt: |
+      Analyze this PRD or app description: $ARGUMENTS
+
+      Extract and output a clean structured breakdown:
+
+      ## App Summary
+      - **App type/category**: (e.g., "productivity dashboard", "social fitness tracker", "B2B SaaS tool")
+      - **Platform**: web / mobile / both
+      - **Primary user action**: the one main thing users do in this app
+
+      ## Major Pages/Screens
+      List every distinct page or screen this app needs.
+      For each: name it and describe what it does in one sentence.
+      Example: "Dashboard — shows the user's recent activity, stats, and quick actions"
+
+      ## Key User Flows
+      List the 2-3 most important journeys a user takes.
+      Example: "Onboarding: user signs up → creates first item → sees results"
+
+      Be specific. "Dashboard with activity feed and stats cards" is better than just "Dashboard".
+      Do not invent pages not mentioned — only extract what's in the input.
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 2: MOBBIN SEARCH — Find real UI patterns
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: mobbin-search
+    model: sonnet
+    prompt: |
+      You have access to Mobbin via MCP tools. Use them now to find real UI patterns.
+
+      App breakdown from analysis:
+      $extract.output
+
+      Execute the following searches in order:
+
+      1. Use mobbin_search_apps to find 3-5 apps in the same category as this app.
+         Use the app type from the analysis as your search term.
+
+      2. For each major page/screen listed in the analysis, use mobbin_search_screens
+         to find 2-3 real screen examples. Search by the page type and primary action.
+
+      3. For the primary user flow, use mobbin_search_flows to find a matching flow example.
+
+      4. For each strong result, use mobbin_get_screen_detail to retrieve the screenshot
+         so you can describe the actual layout.
+
+      Present your findings in this format:
+
+      ## Similar Apps Found
+      - **{App Name}** — {why it's relevant to this app}
+
+      ## Screen Options by Page
+
+      For each major page, show 3 options:
+
+      ### {Page Name}
+      **Option A** ({source app}): {describe the layout pattern — e.g., "full-width header, two-column grid below, floating action button bottom-right"}
+      **Option B** ({source app}): {layout description}
+      **Option C** ({source app — most common pattern}): {layout description}
+
+      Keep descriptions focused on LAYOUT STRUCTURE, not colors or visual style.
+      Mark one option per page as "most common" based on what you see in Mobbin results.
+    depends_on: [extract]
+
+  # ═══════════════════════════════════════════════════════════════
+  # GATE: User picks their layouts
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: wireframe-gate
+    approval:
+      message: |
+        Review the wireframe options above.
+        For each page, tell me which option you prefer (A/B/C) or describe what you want instead.
+        Say "use defaults" to accept the most common patterns for everything.
+        Say "done" when you've covered all pages.
+      capture_response: true
+    depends_on: [mobbin-search]
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 3: OUTPUT — Write the wireframe decisions doc
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: output
+    model: sonnet
+    prompt: |
+      Produce a wireframe decisions document from these inputs:
+
+      App analysis: $extract.output
+      Mobbin search results: $mobbin-search.output
+      User layout choices: $wireframe-gate.output
+
+      Write the file to $ARTIFACTS_DIR/wireframe-decisions.md
+
+      Use this exact structure:
+
+      # Wireframe Decisions
+      **App**: {app name or type}
+      **Platform**: {web/mobile/both}
+      **Generated**: {today's date}
+
+      ---
+
+      ## Page Layouts
+
+      For each page (use a section per page):
+
+      ### {Page Name}
+      - **Layout pattern**: {the chosen layout in plain terms}
+      - **Key elements on this page**: {what's here}
+      - **Source inspiration**: {which app this pattern came from}
+      - **Notes**: {anything specific the user requested, or "standard pattern"}
+
+      ---
+
+      ## User Flow Patterns
+      {Text diagram of the main user flows with → arrows}
+
+      ---
+
+      ## Assumptions
+      {Any pages where user said "use defaults" — note what was assumed}
+
+      ---
+
+      This document is ready to include in the build pipeline as UI context.
+
+      After writing the file, confirm the path and print a one-line summary.
+    depends_on: [wireframe-gate]

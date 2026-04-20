@@ -68,25 +68,50 @@ def main() -> None:
     results: list[str] = []
     failures: list[str] = []
 
-    # ── 1. Lint ──────────────────────────────────────────────────────────────
-    passed, msg = run_check(['npm', 'run', 'lint'], 'lint')
-    (results if passed else failures).append(msg)
+    # ── Detect project language(s) from files at cwd ─────────────────────────
+    has_node  = os.path.exists('package.json')
+    has_py    = os.path.exists('pyproject.toml') or os.path.exists('requirements.txt')
+    has_rust  = os.path.exists('Cargo.toml')
 
-    # ── 2. Typecheck ─────────────────────────────────────────────────────────
-    passed, msg = run_check(['npm', 'run', 'typecheck'], 'typecheck')
-    if not passed:
-        # Fallback: try tsc --noEmit directly
-        passed2, msg2 = run_check(['npx', 'tsc', '--noEmit'], 'typecheck (tsc)')
-        if passed2:
-            results.append(msg2)
-        else:
-            failures.append(msg2)
+    if not (has_node or has_py or has_rust):
+        results.append("SKIP: no known project manifest (package.json/pyproject.toml/Cargo.toml) — skipping lint/typecheck/test")
     else:
-        results.append(msg)
+        # ── 1. Lint ──────────────────────────────────────────────────────────
+        if has_node:
+            passed, msg = run_check(['npm', 'run', 'lint'], 'lint (npm)')
+            (results if passed else failures).append(msg)
+        if has_py:
+            passed, msg = run_check(['ruff', 'check', '.'], 'lint (ruff)')
+            (results if passed else failures).append(msg)
+        if has_rust:
+            passed, msg = run_check(['cargo', 'clippy', '--', '-D', 'warnings'], 'lint (clippy)')
+            (results if passed else failures).append(msg)
 
-    # ── 3. Tests ─────────────────────────────────────────────────────────────
-    passed, msg = run_check(['npm', 'test'], 'tests')
-    (results if passed else failures).append(msg)
+        # ── 2. Typecheck ─────────────────────────────────────────────────────
+        if has_node:
+            passed, msg = run_check(['npm', 'run', 'typecheck'], 'typecheck (npm)')
+            if not passed:
+                passed2, msg2 = run_check(['npx', 'tsc', '--noEmit'], 'typecheck (tsc)')
+                (results if passed2 else failures).append(msg2)
+            else:
+                results.append(msg)
+        if has_py:
+            passed, msg = run_check(['mypy', '.'], 'typecheck (mypy)')
+            (results if passed else failures).append(msg)
+        if has_rust:
+            passed, msg = run_check(['cargo', 'check'], 'typecheck (cargo check)')
+            (results if passed else failures).append(msg)
+
+        # ── 3. Tests ─────────────────────────────────────────────────────────
+        if has_node:
+            passed, msg = run_check(['npm', 'test'], 'tests (npm)')
+            (results if passed else failures).append(msg)
+        if has_py:
+            passed, msg = run_check(['pytest'], 'tests (pytest)')
+            (results if passed else failures).append(msg)
+        if has_rust:
+            passed, msg = run_check(['cargo', 'test'], 'tests (cargo test)')
+            (results if passed else failures).append(msg)
 
     # ── 4. files_allowed diff ────────────────────────────────────────────────
     if files_allowed is not None:

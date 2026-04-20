@@ -1,0 +1,362 @@
+name: idea-to-spec
+description: |
+  Use when: User wants to develop a raw app idea into a complete buildable spec.
+  Triggers: "idea to spec", "develop my idea", "new app idea", "plan this app",
+            "build a spec", "let's plan an app"
+  Does: Guided idea conversation → Agent OS structuring → gap analysis →
+        Agent OS refinement → Mobbin wireframe research → final buildable spec.
+        Output is app-spec.md ready to hand directly to PRD Pipeline B.
+  NOT for: Quick builds where you already have a spec, code changes, or bug fixes.
+  REQUIRES: Mobbin MCP installed — run: npx -y mobbin-mcp auth && claude mcp add mobbin -- npx -y mobbin-mcp
+
+provider: claude
+model: opus
+interactive: true
+
+nodes:
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 1: IDEA CONVERSATION
+  # Back and forth — you talk, it listens and asks focused questions
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: idea-chat
+    model: opus
+    prompt: |
+      You are a product strategist opening a new app idea session.
+      Your job is to understand what the user wants to build.
+
+      The user's initial idea: $ARGUMENTS
+
+      If the input is reasonably clear, restate it in 2-3 sentences and confirm:
+      "Here's what I'm hearing: {restatement}. Is that right?"
+
+      If the input is vague or missing, ask:
+      "What do you want to build? Give me the idea — even rough is fine."
+
+      Then present the 5 Pillars. Show all 5 at once — the user will answer in the next step:
+
+      ---
+      **To build a solid spec, I need to understand 5 things:**
+
+      1. **Problem** — What specific frustration or gap does this solve? Who feels it?
+      2. **User** — Who exactly is this for? Not "everyone" — get specific about the type of person.
+      3. **Core Loop** — What's the single main thing the user does repeatedly in this app?
+      4. **Value** — Why would someone use this instead of what already exists?
+      5. **Success** — What does "it worked" look like for the user? What changes for them?
+      ---
+
+      Keep it conversational. If the user already answered some of these in their initial idea,
+      acknowledge that and only ask about what's still missing.
+      Do not generate any spec content yet.
+
+  - id: idea-gate
+    approval:
+      message: |
+        Answer the 5 pillars above — as much or as little as you know right now.
+        Think out loud. Ramble if you need to. There are no wrong answers here.
+        When you feel like you've covered the idea, say "move on", "done", or "that's it".
+      capture_response: true
+    depends_on: [idea-chat]
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 2: AGENT OS — FIRST PASS
+  # Structures the raw idea through the Five Lenses framework
+  # Produces: drift anchor, personas, problem statement, feasibility
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: agent-os-pass1
+    model: opus
+    prompt: |
+      You are running the Agent OS framework — a structuring pass that converts
+      raw idea material into a clean, organized concept document.
+
+      CRITICAL RULE: Only use what the user said. Do NOT invent features, add assumptions,
+      or fill gaps. Organize what exists — label anything unconfirmed as ⚠️ INFERENCE.
+
+      Raw inputs:
+      - Initial idea: $ARGUMENTS
+      - User's pillar answers: $idea-gate.output
+
+      Process through all FIVE LENSES:
+
+      ---
+      **LENS 1 — What Is the Product?**
+      - Name it (use what the user called it, or derive from core concept)
+      - One-sentence description a stranger would understand
+      - 1-2 paragraph product identity: what it is, how it presents, what makes it distinctive
+
+      **LENS 2 — What Is It Solving?**
+      - User-centric pain statement
+      - "Users currently struggle with X" — specific, not vague
+      - What happens if this problem goes unsolved?
+
+      **LENS 3 — Market Feasibility**
+      - Does this market exist? Are people paying for solutions here?
+      - Name real competitors (be specific — not categories, actual products)
+      - What are the risks? (technical, market, adoption) — rate each LOW/MED/HIGH
+      - What's the real differentiator? Evidence-based, not aspirational.
+
+      **LENS 4 — Who Is It For?**
+      - Define 1-2 specific personas (give them names, roles, contexts)
+      - Their pain points and goals
+      - Who is explicitly NOT the target?
+
+      **LENS 5 — What Exists Already?**
+      - For each competitor: how does THIS product actually differ?
+      - What's the underserved gap in the current landscape?
+      ---
+
+      End with a **Drift Anchor**:
+      2-4 sentences defining exactly what this product IS.
+      This will be used throughout the entire pipeline to catch scope creep.
+
+      Mark every claim that needs validation: ⚠️ INFERENCE — needs validation
+    depends_on: [idea-gate]
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 3: GAP ANALYSIS
+  # Finds missing puzzle pieces — asks targeted questions if needed
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: gap-analysis
+    model: opus
+    prompt: |
+      You are a gap analyst. Review the structured concept and find what's missing
+      before this app can be built cleanly.
+
+      Structured concept:
+      $agent-os-pass1.output
+
+      Check every category below. Mark each as: ✅ Clear | ⚠️ Assumed | ❌ Missing
+
+      **REQUIRED — cannot auto-fill, must ask if missing:**
+      - Auth: How do users log in? (email, social, magic link, none?)
+      - Data model: What is the core data being stored? What's the main object?
+      - Core workflow: What are the exact steps of the primary user action?
+
+      **OPTIONAL — apply sensible default if missing:**
+      - Platform: web / mobile / both (default: web)
+      - Monetization: free / paid / freemium (default: free)
+      - Collaboration: solo / multi-user / teams (default: solo)
+      - Notifications: yes / no / what kind (default: none)
+      - Admin/Settings: what settings exist (default: basic profile + logout)
+      - Onboarding: guided / self-serve / none (default: self-serve)
+
+      **Score:** Calculate buildability 0-100.
+      Each REQUIRED category that's clear = +25. Each OPTIONAL clear = +~8.
+      Score below 75 OR any REQUIRED missing = ask questions.
+
+      **If questions needed:** Max 3. Make them broad — one question should cover multiple gaps.
+      Do NOT ask about UI specifics, page names, colors, or implementation choices.
+      Do NOT ask something a developer should just decide.
+
+      Output format:
+
+      ## Gap Analysis
+
+      **Buildability Score: {X}/100**
+
+      ✅ **Covered**: {list what's clear}
+      ⚠️ **Assumed defaults**: {list what was assumed and what the default is}
+      ❌ **Missing**: {list what needs input}
+
+      **Questions** (only shown if score < 75 or REQUIRED gaps exist):
+      1. {broad question covering multiple gaps}
+      2. {second question only if truly needed}
+      3. {third question only if truly needed}
+    depends_on: [agent-os-pass1]
+
+  - id: gap-gate
+    approval:
+      message: |
+        Answer the gap questions above.
+        If you're fine with the assumed defaults, say "keep defaults".
+        Say "good enough" or "move on" to proceed without answering everything.
+      capture_response: true
+    depends_on: [gap-analysis]
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 4: AGENT OS — SECOND PASS
+  # Refinement pass: incorporates gap answers, produces final concept
+  # Adds mechanism list (every user-facing action)
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: agent-os-pass2
+    model: opus
+    prompt: |
+      You are running a refinement pass of the Agent OS framework.
+
+      Take the original structured concept and incorporate all gap answers
+      to produce the FINAL complete concept document.
+
+      Inputs:
+      - Original structured concept: $agent-os-pass1.output
+      - Gap analysis: $gap-analysis.output
+      - User's gap answers: $gap-gate.output
+
+      Steps:
+      1. Merge gap answers into the appropriate lens sections
+      2. Resolve any ⚠️ INFERENCE labels that were clarified by the answers
+      3. Update the Drift Anchor if the gap answers changed anything significant
+      4. Replace all assumed defaults with confirmed values where the user answered
+
+      Then add one new section not in Pass 1:
+
+      **Mechanism Summary**
+      List every discrete user-facing feature/action in this app.
+      One mechanism = one thing a user can DO.
+      Format: "User can [verb] [object]"
+      Examples:
+        - User can create a project
+        - User can invite a team member
+        - User can export results as CSV
+        - User can set notification preferences
+
+      These mechanisms become the build checklist for the pipeline.
+
+      Output the complete, final concept document. This is the authoritative input
+      for all downstream stages.
+    depends_on: [gap-gate]
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 5: MOBBIN WIREFRAME RESEARCH
+  # Finds real UI patterns matching this app type
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: wireframe-research
+    model: sonnet
+    prompt: |
+      You have access to Mobbin via MCP tools. Use them now to find real UI patterns.
+
+      Final concept:
+      $agent-os-pass2.output
+
+      Steps:
+      1. From the concept, identify: app category, all major pages, core user flow
+      2. Use mobbin_search_apps to find 3-5 real apps in the same category
+      3. For each major page, use mobbin_search_screens to find 2-3 layout examples
+      4. Use mobbin_search_flows for the core user flow
+      5. For strong results, use mobbin_get_screen_detail to retrieve screenshots
+         so you can describe the actual layout accurately
+
+      Present findings:
+
+      ## App Category: {type}
+
+      ## Similar Apps Found
+      - **{App Name}** — {why it's relevant}
+
+      ## Screen Options by Page
+
+      For each major page, provide 3 options:
+
+      ### {Page Name}
+      **Option A** ({source app}): {layout description — be specific about structure}
+      **Option B** ({source app}): {layout description}
+      **Option C** ({source app — most common pattern}): {layout description}
+
+      Focus on LAYOUT STRUCTURE: where nav is, how content is arranged, what's above the fold.
+      Do not describe visual styles, colors, or fonts.
+      Mark one option per page as "(most common)" based on Mobbin data.
+    depends_on: [agent-os-pass2]
+
+  - id: wireframe-gate
+    approval:
+      message: |
+        Review the wireframe options above.
+        For each page, pick A, B, or C — or describe exactly what you want.
+        Say "use defaults" to accept the most common pattern for all pages.
+        Say "done" when you've covered everything.
+      capture_response: true
+    depends_on: [wireframe-research]
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 6: FINAL SPEC OUTPUT
+  # Combines everything into a single buildable spec file
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: final-spec
+    model: opus
+    prompt: |
+      Produce the final buildable spec. Combine the complete concept with wireframe decisions.
+
+      Inputs:
+      - Final concept: $agent-os-pass2.output
+      - Wireframe choices: $wireframe-gate.output
+
+      Write the file to $ARTIFACTS_DIR/app-spec.md
+
+      Use this structure:
+
+      # App Spec: {Product Name}
+      **Generated by idea-to-spec workflow**
+      **Date**: {today}
+
+      ---
+
+      ## Drift Anchor
+      {2-4 sentence canonical description of what this product IS}
+
+      ---
+
+      ## Product Identity
+      - **One-liner**: {single sentence}
+      - **Identity**: {1-2 paragraph description}
+      - **Core value proposition**: {what makes it worth building}
+
+      ---
+
+      ## Problem Statement
+      {User-centric pain. Who has it. What happens if unsolved.}
+
+      ---
+
+      ## Target Users
+      {Persona 1 — name, role, pain points, goals}
+      {Persona 2 if applicable}
+      **Not for**: {explicit exclusions}
+
+      ---
+
+      ## Mechanisms (Build Checklist)
+      {Every "User can..." from the mechanism summary}
+      Mark each as: 🔴 Core (must ship) | 🟡 Important | 🟢 Nice to have
+
+      ---
+
+      ## Page Layouts
+      {From wireframe choices — each page with its chosen layout pattern}
+
+      ---
+
+      ## Technical Assumptions
+      - Auth: {confirmed value}
+      - Data model: {core object and relationships}
+      - Platform: {web/mobile/both}
+      - Monetization: {free/paid/freemium}
+      - Collaboration: {solo/multi-user}
+      - Notifications: {yes/no/type}
+
+      ---
+
+      ## Competitive Landscape
+      {Competitors + differentiators from Agent OS}
+
+      ---
+
+      ## Risks
+      {From feasibility assessment, with severity}
+
+      ---
+
+      ## Open Questions
+      {Any ⚠️ INFERENCE items still unresolved}
+
+      ---
+
+      **Ready for PRD Pipeline B.**
+      To build: run "PRD Pipeline B" and reference this spec in your trigger message.
+
+      After writing the file, print the file path and a 3-bullet summary of what was built.
+    depends_on: [wireframe-gate]

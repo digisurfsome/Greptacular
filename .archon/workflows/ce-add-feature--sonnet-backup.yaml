@@ -1,0 +1,70 @@
+name: ce-add-feature--sonnet-backup
+description: |
+  Use when: You have an existing codebase and want to add a specific new feature to it.
+  Triggers: "add feature", "new feature", "extend my app", "build this into my codebase"
+  NOT for: New projects from scratch or general code improvement without a specific feature.
+  Mode: Sonnet-only backup — use when Opus quota is low. Interactive gates included.
+provider: claude
+interactive: false
+
+nodes:
+  - id: context-intake
+    command: ce-intake-add-feature
+    context: fresh
+
+  - id: plan
+    command: ce-plan
+    depends_on: [context-intake]
+    context: fresh
+
+  - id: plan-gate
+    depends_on: [plan]
+    loop:
+      prompt: |
+        The plan is ready. Read $ARTIFACTS_DIR/ce-plan.md and summarize it for the user.
+        When the user approves, emit <promise>APPROVED</promise>.
+        $LOOP_USER_INPUT
+      until: APPROVED
+      max_iterations: 5
+      fresh_context: true
+      interactive: true
+      gate_message: "Plan complete. Review above. Type 'approved' to start the analysis, or give feedback to refine the plan."
+
+  - id: security-review
+    command: ce-security-review
+    depends_on: [plan-gate]
+    context: fresh
+
+  - id: correctness-review
+    command: ce-correctness-review
+    depends_on: [plan-gate]
+    context: fresh
+
+  - id: performance-review
+    command: ce-performance-review
+    depends_on: [plan-gate]
+    context: fresh
+
+  - id: synthesize-review
+    command: ce-synthesize-review
+    depends_on: [security-review, correctness-review, performance-review]
+    trigger_rule: one_success
+    context: fresh
+
+  - id: report-gate
+    depends_on: [synthesize-review]
+    loop:
+      prompt: |
+        The analysis report is ready. Summarize the key findings for the user.
+        When the user approves, emit <promise>APPROVED</promise>.
+        $LOOP_USER_INPUT
+      until: APPROVED
+      max_iterations: 3
+      fresh_context: true
+      interactive: true
+      gate_message: "Analysis complete. Review the findings above. Type 'approved' to save learnings, or ask follow-up questions."
+
+  - id: compound
+    command: ce-compound
+    depends_on: [report-gate]
+    context: fresh

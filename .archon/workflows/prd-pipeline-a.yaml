@@ -1,0 +1,121 @@
+name: prd-pipeline-a
+description: |
+  Use when: User wants to create a comprehensive PRD using the enhanced 11-stage pipeline.
+  Triggers: "prd pipeline a", "make a prd", "plan an app", "create spec", "full prd".
+  Does: Your 11-stage PRD pipeline enhanced with Cole's missing pieces:
+        market research, codebase intelligence, evidence requirements, decision logging.
+        Planning only — does not build code.
+  NOT for: Building code, fixing bugs, code review.
+
+provider: claude
+model: opus
+
+nodes:
+  # ═══════════════════════════════════════════════════════════════
+  # STAGE 0: TECHNICAL FOUNDATION
+  # Locks down the tech stack before anything else
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: stage-00-tech-foundation
+    command: prd-stage-00
+
+  # ═══════════════════════════════════════════════════════════════
+  # STAGE 1: IDEA CAPTURE
+  # Preserves the raw app idea exactly as stated
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: stage-01-idea-capture
+    command: prd-stage-01
+    depends_on: [stage-00-tech-foundation]
+
+  # ═══════════════════════════════════════════════════════════════
+  # STAGE 2: GAP ANALYSIS + MARKET RESEARCH
+  # Finds missing puzzle pieces, researches the market
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: stage-02-gap-analysis
+    command: prd-a-stage-02-enhanced
+    depends_on: [stage-01-idea-capture]
+
+  # ═══════════════════════════════════════════════════════════════
+  # STAGE 3: AGENT OS STRUCTURING
+  # Five Lenses framework — drift anchor, personas, feasibility
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: stage-03-agent-os
+    command: prd-a-stage-03-enhanced
+    depends_on: [stage-02-gap-analysis]
+    context: fresh
+
+  # ═══════════════════════════════════════════════════════════════
+  # STAGE 4: MECHANISM EXTRACTION
+  # Decomposes concept into every discrete user action
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: stage-04-mechanism-extraction
+    command: prd-stage-04
+    depends_on: [stage-03-agent-os]
+    context: fresh
+
+  # ═══════════════════════════════════════════════════════════════
+  # STAGE 5: WALL/DOOR/ROOM SCAFFOLDING
+  # Classifies each mechanism — what can change vs. what is fixed
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: stage-05-wall-door-room
+    command: prd-stage-05
+    depends_on: [stage-04-mechanism-extraction]
+    context: fresh
+    idle_timeout: 600000
+
+  # ═══════════════════════════════════════════════════════════════
+  # STAGE 7: PHASE SEQUENCING
+  # Splits spec into ordered buildable phases
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: stage-07-phase-sequencing
+    command: prd-stage-07
+    depends_on: [stage-05-wall-door-room]
+    context: fresh
+
+  # ═══════════════════════════════════════════════════════════════
+  # STAGE 8: PROTOCOL INJECTION
+  # Injects verification checkpoints into each phase
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: stage-08-protocol-injection
+    command: prd-stage-08
+    depends_on: [stage-07-phase-sequencing]
+    context: fresh
+
+  # ═══════════════════════════════════════════════════════════════
+  # STAGE 9: VERIFICATION AGENT SETUP
+  # Configures the independent audit agent
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: stage-09-verification-setup
+    command: prd-stage-09
+    depends_on: [stage-08-protocol-injection]
+    context: fresh
+
+  # ═══════════════════════════════════════════════════════════════
+  # STAGE 10: OUTPUT GENERATOR
+  # Renders the final copy-paste-ready build package
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: stage-10-output-generator
+    command: prd-stage-10
+    depends_on: [stage-09-verification-setup]
+    context: fresh
+    idle_timeout: 600000
+
+  # ═══════════════════════════════════════════════════════════════
+  # REPORT
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: build-final-report
+    command: prd-report
+    depends_on: [stage-10-output-generator]
+    model: haiku
+    context: fresh
+    trigger_rule: all_done

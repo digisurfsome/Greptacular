@@ -15,6 +15,10 @@ import os
 import subprocess
 import sys
 
+# Use the same Python interpreter for all subprocesses — avoids PATH issues
+# where 'python' may not be found in Archon's bash environment.
+PYTHON = sys.executable
+
 FIXTURES    = os.environ.get('FIXTURES',    '.archon/test-fixtures')
 SCRIPTS_DIR = os.environ.get('SCRIPTS_DIR', '.archon/scripts')
 
@@ -88,7 +92,7 @@ print("=== Test A: Unit tests on gate scripts ===\n")
 
 # ── A1: compliance-gate FAIL on YT Strategy Lab fixture ──────────────────────
 expect_stderr_contains(
-    ['python', f'{SCRIPTS_DIR}/compliance-gate.py',
+    [PYTHON, f'{SCRIPTS_DIR}/compliance-gate.py',
      f'{FIXTURES}/yt-strategy-lab-fail'],
     1,
     'issues unaddressed',
@@ -97,7 +101,7 @@ expect_stderr_contains(
 
 # ── A2: compliance-gate PASS on clean fixture ─────────────────────────────────
 expect(
-    ['python', f'{SCRIPTS_DIR}/compliance-gate.py',
+    [PYTHON, f'{SCRIPTS_DIR}/compliance-gate.py',
      f'{FIXTURES}/task-manager-pass'],
     0,
     'compliance-gate: task-manager-pass → exit 0',
@@ -113,7 +117,7 @@ git_result = subprocess.run(
 if git_result.returncode == 0 and git_result.stdout.strip():
     old_sha = git_result.stdout.strip()
     expect(
-        ['python', f'{SCRIPTS_DIR}/full-checkpoint.py',
+        [PYTHON, f'{SCRIPTS_DIR}/full-checkpoint.py',
          f'{FIXTURES}/broken-phase', old_sha],
         1,
         f'full-checkpoint: broken-phase with SHA HEAD~1 → exit 1 (unauthorized files)',
@@ -123,7 +127,7 @@ else:
 
 # ── A4: deploy-gate FAIL on YT Strategy Lab fixture ──────────────────────────
 expect(
-    ['python', f'{SCRIPTS_DIR}/deploy-gate.py',
+    [PYTHON, f'{SCRIPTS_DIR}/deploy-gate.py',
      f'{FIXTURES}/yt-strategy-lab-fail'],
     1,
     'deploy-gate: yt-strategy-lab-fail → exit 1 (remaining CRITICAL/HIGH)',
@@ -131,7 +135,7 @@ expect(
 
 # ── A5: deploy-gate PASS on clean fixture ────────────────────────────────────
 expect(
-    ['python', f'{SCRIPTS_DIR}/deploy-gate.py',
+    [PYTHON, f'{SCRIPTS_DIR}/deploy-gate.py',
      f'{FIXTURES}/task-manager-pass'],
     0,
     'deploy-gate: task-manager-pass → exit 0',
@@ -143,7 +147,7 @@ test_build     = f'regression-test-{date_str}'
 expected_dir   = os.path.join('docs', 'generated-prds', f'{date_str}__{test_build}')
 
 archive_passed = expect(
-    ['python', f'{SCRIPTS_DIR}/archive-prd.py',
+    [PYTHON, f'{SCRIPTS_DIR}/archive-prd.py',
      f'{FIXTURES}/task-manager-pass', test_build, 'shipped'],
     0,
     'archive-prd: task-manager-pass → exit 0',

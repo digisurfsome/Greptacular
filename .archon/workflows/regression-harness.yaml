@@ -14,5 +14,5 @@ nodes:
     bash: |
       export FIXTURES=".archon/test-fixtures"
       export SCRIPTS_DIR=".archon/scripts"
-      python .archon/scripts/regression-harness.py
+      uv run python .archon/scripts/regression-harness.py
     timeout: 300000

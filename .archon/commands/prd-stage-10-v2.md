@@ -99,6 +99,38 @@ Create `$ARTIFACTS_DIR/README.md`:
 - Post-build checklist
 - Deploy instructions (Railway/Vercel/Render)
 
+### Step 5a: Generate Per-Directory CLAUDE.md Files (M6)
+
+For each major directory that phases will create (e.g., `server/services/`, `ui/src/components/<feature>/`,
+`server/routers/`), create a `CLAUDE.md` in that directory.
+
+Rules for each per-directory CLAUDE.md:
+- Under 80 lines
+- State: what lives here, naming conventions, what must NOT be placed here
+- Do NOT repeat the project root CLAUDE.md — only rules specific to this directory
+- No prose paragraphs — bullet lists only
+
+Template:
+
+```markdown
+# <Directory Name>
+
+## What Lives Here
+- <bullet: type of files, one line each>
+
+## Conventions
+- <naming rule>
+- <export rule>
+- <file size / responsibility rule>
+
+## Do NOT Place Here
+- <anti-pattern>
+- <anti-pattern>
+```
+
+Add the paths of all per-directory CLAUDE.md files to `deliverables.claude_md_files` in
+`context_packet.json` (stage_10 section).
+
 ### Step 5b: Generate .gitignore
 
 Create `$ARTIFACTS_DIR/.gitignore`:
@@ -128,6 +160,7 @@ Before finishing, verify:
 - Zero references to content from other phases
 - Every phase file's checkpoint section contains the mandatory contract block (Step 1 above)
 - Zero instances of exemption language ("separate task", "defer to human", "architectural, out of scope")
+- Every major directory in the build order has a per-directory CLAUDE.md (Step 5a above)
 
 ## Output
 
@@ -139,6 +172,7 @@ Write all files to `$ARTIFACTS_DIR/`:
 - `README.md`
 - `.gitignore`
 - `.env.example`
+- Per-directory `CLAUDE.md` files for each major directory in the build order (Step 5a)
 
 Also update `$ARTIFACTS_DIR/context_packet.json` — add `stage_10`:
 
@@ -150,7 +184,8 @@ Also update `$ARTIFACTS_DIR/context_packet.json` — add `stage_10`:
       "build_script": "build.sh",
       "claude_md": "CLAUDE.md",
       "build_rules": "BUILD_RULES.md",
-      "readme": "README.md"
+      "readme": "README.md",
+      "claude_md_files": ["server/services/CLAUDE.md", "..."]
     },
     "phase_count": 0,
     "total_files_in_build_orders": 0,

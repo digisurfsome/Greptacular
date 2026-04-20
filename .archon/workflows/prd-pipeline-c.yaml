@@ -304,10 +304,9 @@ nodes:
     trigger_rule: all_done
 
   # ═══════════════════════════════════════════════════════════════
-  # FULL CHECKPOINT (M2)
-  # Runs lint + typecheck + tests + files_allowed diff.
+  # FULL CHECKPOINT — PHASE 1 (M2)
+  # Runs lint + typecheck + tests + files_allowed diff for phase 1.
   # Exits 1 directly on failure (no recovery branch — hard halt).
-  # Passes $phase-1-baseline.output (Archon substitutes to single-quoted SHA).
   # ═══════════════════════════════════════════════════════════════
 
   - id: full-checkpoint
@@ -315,6 +314,257 @@ nodes:
       python .archon/scripts/full-checkpoint.py "$ARTIFACTS_DIR" $phase-1-baseline.output
     timeout: 300000
     depends_on: [compliance-final-status]
+
+  # ═══════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 2 — UNROLLED (M4)
+  # Depends on phase 1 full-checkpoint passing.
+  # Each phase group: baseline → execute → 4× review (parallel) →
+  # fix → test-writer → compliance → [recovery branch] → final-status → checkpoint
+  # ═══════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════
+
+  # ========= PHASE 2 =========
+
+  - id: phase-2-baseline
+    bash: git rev-parse HEAD
+    depends_on: [full-checkpoint]
+
+  - id: phase-2-execute
+    command: build-execute-v2
+    depends_on: [phase-2-baseline]
+    model: sonnet
+    context: fresh
+    idle_timeout: 900000
+
+  - id: phase-2-review-correctness
+    command: build-review-correctness
+    depends_on: [phase-2-execute]
+    model: sonnet
+    context: fresh
+
+  - id: phase-2-review-failures
+    command: build-review-failures
+    depends_on: [phase-2-execute]
+    model: sonnet
+    context: fresh
+
+  - id: phase-2-review-tests
+    command: build-review-tests
+    depends_on: [phase-2-execute]
+    model: sonnet
+    context: fresh
+
+  - id: phase-2-review-simplify
+    command: build-review-simplify
+    depends_on: [phase-2-execute]
+    model: sonnet
+    context: fresh
+
+  - id: phase-2-fix
+    command: build-fix-v2
+    depends_on: [phase-2-review-correctness, phase-2-review-failures, phase-2-review-tests, phase-2-review-simplify]
+    model: opus
+    effort: medium
+    context: fresh
+
+  - id: phase-2-test-writer
+    command: test-writer
+    depends_on: [phase-2-execute]
+    model: sonnet
+    context: fresh
+
+  - id: phase-2-compliance
+    bash: |
+      set +e
+      python .archon/scripts/compliance-gate.py "$ARTIFACTS_DIR"
+      code=$?
+      if [ $code -eq 0 ]; then echo "PASS"; else echo "FAIL"; fi
+      exit 0
+    timeout: 60000
+    depends_on: [phase-2-fix, phase-2-test-writer]
+
+  - id: phase-2-recovery-diagnose
+    command: recovery-diagnose
+    depends_on: [phase-2-compliance, read-flag-recovery]
+    when: "$phase-2-compliance.output == 'FAIL' && $read-flag-recovery.output == 'true'"
+    model: opus
+    effort: high
+    context: fresh
+
+  - id: phase-2-recovery-fix-prd
+    command: recovery-fix-prd
+    depends_on: [phase-2-recovery-diagnose]
+    when: "$phase-2-compliance.output == 'FAIL' && $read-flag-recovery.output == 'true'"
+    model: opus
+    effort: high
+    context: fresh
+
+  - id: phase-2-recovery-execute
+    command: recovery-execute
+    depends_on: [phase-2-recovery-fix-prd]
+    when: "$phase-2-compliance.output == 'FAIL' && $read-flag-recovery.output == 'true'"
+    model: opus
+    effort: high
+    context: fresh
+
+  - id: phase-2-recovery-regate
+    bash: |
+      set +e
+      python .archon/scripts/compliance-gate.py "$ARTIFACTS_DIR"
+      code=$?
+      if [ $code -eq 0 ]; then echo "PASS"; else echo "FAIL"; fi
+      exit 0
+    timeout: 60000
+    depends_on: [phase-2-recovery-execute]
+    when: "$phase-2-compliance.output == 'FAIL' && $read-flag-recovery.output == 'true'"
+
+  - id: phase-2-final-status
+    bash: |
+      set -euo pipefail
+      if [ $phase-2-compliance.output = PASS ]; then
+        echo "PASS"
+      elif [ $phase-2-recovery-regate.output = PASS ]; then
+        echo "PASS"
+      else
+        echo "FAIL: phase-2 compliance gate failed and recovery did not pass" >&2
+        exit 1
+      fi
+    depends_on: [phase-2-compliance, phase-2-recovery-regate]
+    trigger_rule: all_done
+
+  - id: phase-2-checkpoint
+    bash: |
+      python .archon/scripts/full-checkpoint.py "$ARTIFACTS_DIR" $phase-2-baseline.output
+    timeout: 300000
+    depends_on: [phase-2-final-status]
+
+  # ========= PHASE 3 =========
+
+  - id: phase-3-baseline
+    bash: git rev-parse HEAD
+    depends_on: [phase-2-checkpoint]
+
+  - id: phase-3-execute
+    command: build-execute-v2
+    depends_on: [phase-3-baseline]
+    model: sonnet
+    context: fresh
+    idle_timeout: 900000
+
+  - id: phase-3-review-correctness
+    command: build-review-correctness
+    depends_on: [phase-3-execute]
+    model: sonnet
+    context: fresh
+
+  - id: phase-3-review-failures
+    command: build-review-failures
+    depends_on: [phase-3-execute]
+    model: sonnet
+    context: fresh
+
+  - id: phase-3-review-tests
+    command: build-review-tests
+    depends_on: [phase-3-execute]
+    model: sonnet
+    context: fresh
+
+  - id: phase-3-review-simplify
+    command: build-review-simplify
+    depends_on: [phase-3-execute]
+    model: sonnet
+    context: fresh
+
+  - id: phase-3-fix
+    command: build-fix-v2
+    depends_on: [phase-3-review-correctness, phase-3-review-failures, phase-3-review-tests, phase-3-review-simplify]
+    model: opus
+    effort: medium
+    context: fresh
+
+  - id: phase-3-test-writer
+    command: test-writer
+    depends_on: [phase-3-execute]
+    model: sonnet
+    context: fresh
+
+  - id: phase-3-compliance
+    bash: |
+      set +e
+      python .archon/scripts/compliance-gate.py "$ARTIFACTS_DIR"
+      code=$?
+      if [ $code -eq 0 ]; then echo "PASS"; else echo "FAIL"; fi
+      exit 0
+    timeout: 60000
+    depends_on: [phase-3-fix, phase-3-test-writer]
+
+  - id: phase-3-recovery-diagnose
+    command: recovery-diagnose
+    depends_on: [phase-3-compliance, read-flag-recovery]
+    when: "$phase-3-compliance.output == 'FAIL' && $read-flag-recovery.output == 'true'"
+    model: opus
+    effort: high
+    context: fresh
+
+  - id: phase-3-recovery-fix-prd
+    command: recovery-fix-prd
+    depends_on: [phase-3-recovery-diagnose]
+    when: "$phase-3-compliance.output == 'FAIL' && $read-flag-recovery.output == 'true'"
+    model: opus
+    effort: high
+    context: fresh
+
+  - id: phase-3-recovery-execute
+    command: recovery-execute
+    depends_on: [phase-3-recovery-fix-prd]
+    when: "$phase-3-compliance.output == 'FAIL' && $read-flag-recovery.output == 'true'"
+    model: opus
+    effort: high
+    context: fresh
+
+  - id: phase-3-recovery-regate
+    bash: |
+      set +e
+      python .archon/scripts/compliance-gate.py "$ARTIFACTS_DIR"
+      code=$?
+      if [ $code -eq 0 ]; then echo "PASS"; else echo "FAIL"; fi
+      exit 0
+    timeout: 60000
+    depends_on: [phase-3-recovery-execute]
+    when: "$phase-3-compliance.output == 'FAIL' && $read-flag-recovery.output == 'true'"
+
+  - id: phase-3-final-status
+    bash: |
+      set -euo pipefail
+      if [ $phase-3-compliance.output = PASS ]; then
+        echo "PASS"
+      elif [ $phase-3-recovery-regate.output = PASS ]; then
+        echo "PASS"
+      else
+        echo "FAIL: phase-3 compliance gate failed and recovery did not pass" >&2
+        exit 1
+      fi
+    depends_on: [phase-3-compliance, phase-3-recovery-regate]
+    trigger_rule: all_done
+
+  - id: phase-3-checkpoint
+    bash: |
+      python .archon/scripts/full-checkpoint.py "$ARTIFACTS_DIR" $phase-3-baseline.output
+    timeout: 300000
+    depends_on: [phase-3-final-status]
+
+  # ═══════════════════════════════════════════════════════════════
+  # CLAUDE.md PRESENCE AUDIT (M6)
+  # Soft check: reports directories missing a CLAUDE.md.
+  # Always exits 0 — DOOR, not WALL.
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: claude-md-presence-check
+    bash: |
+      python .archon/scripts/claude-md-audit.py "$ARTIFACTS_DIR" $phase-1-baseline.output
+    timeout: 60000
+    depends_on: [phase-3-checkpoint]
 
   # ═══════════════════════════════════════════════════════════════
   # DEPLOY GATE (M8)
@@ -331,7 +581,7 @@ nodes:
       if [ $code -eq 0 ]; then echo "PASS"; else echo "FAIL"; fi
       exit 0
     timeout: 60000
-    depends_on: [full-checkpoint]
+    depends_on: [claude-md-presence-check]
 
   # ═══════════════════════════════════════════════════════════════
   # BUILD: REPORT

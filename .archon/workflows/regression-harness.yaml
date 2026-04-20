@@ -12,7 +12,7 @@ description: |
 nodes:
   - id: regression-run
     bash: |
-      FIXTURES=".archon/test-fixtures" \
-      SCRIPTS_DIR=".archon/scripts" \
+      export FIXTURES=".archon/test-fixtures"
+      export SCRIPTS_DIR=".archon/scripts"
       python .archon/scripts/regression-harness.py
     timeout: 300000

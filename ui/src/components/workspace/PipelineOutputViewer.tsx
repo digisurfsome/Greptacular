@@ -82,7 +82,7 @@ export function PipelineOutputViewer({ pipelineId, status }: PipelineOutputViewe
   useEffect(() => {
     if (status?.waiting_for_answer && status?.waiting_question) {
       const lines = status.waiting_question.split('\n').filter((l: string) => l.trim())
-      const numbered = lines.filter((l: string) => /^\d+[\.\)]\s/.test(l.trim()))
+      const numbered = lines.filter((l: string) => /^\d+[.)]\s/.test(l.trim()))
 
       if (numbered.length > 0) {
         const formatted = numbered

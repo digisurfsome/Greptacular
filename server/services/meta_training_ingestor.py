@@ -730,9 +730,9 @@ persuasion/communication advice maps to these concepts."""
 
     try:
         from registry import get_effective_sdk_env
-        env = get_effective_sdk_env(force_subscription=True)
+        get_effective_sdk_env(force_subscription=True)
     except ImportError:
-        env = {}
+        pass
 
     import anthropic
     client = anthropic.Anthropic()

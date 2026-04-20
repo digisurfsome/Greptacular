@@ -989,8 +989,6 @@ class IngestionSequenceGenerator:
         """Build a fully adapted message for a 2-meta profile combo."""
         followup = _get_adapted_followup(profile, topic)
 
-        meta_keys = list(profile.keys())
-        meta_values = list(profile.values())
         combo_id = "_".join(f"{k}_{v}" for k, v in profile.items())
 
         return SequenceNode(

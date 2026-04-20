@@ -18,9 +18,7 @@ import os
 import re
 import shutil
 import tempfile
-import time
 from pathlib import Path
-from typing import Callable, Optional
 
 from pydantic import BaseModel, Field
 
@@ -105,8 +103,6 @@ async def _call_via_sdk(
     from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 
     from registry import get_effective_sdk_env
-
-    t0 = time.time()
 
     # CRITICAL: Remove CLAUDECODE env var — it blocks nested Claude CLI sessions.
     os.environ.pop("CLAUDECODE", None)

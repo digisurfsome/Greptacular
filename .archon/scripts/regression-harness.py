@@ -15,6 +15,16 @@ import os
 import subprocess
 import sys
 
+# Force UTF-8 for stdout/stderr. Windows default is cp1252 which cannot
+# encode Unicode chars like '→' used in test labels, so the first print
+# raises UnicodeEncodeError and the harness crashes before any assertion
+# runs. reconfigure() is available on 3.7+ and is a no-op if already UTF-8.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding='utf-8', errors='replace')
+    except (AttributeError, OSError):
+        pass
+
 # Use the same Python interpreter for all subprocesses — avoids PATH issues
 # where 'python' may not be found in Archon's bash environment.
 PYTHON = sys.executable

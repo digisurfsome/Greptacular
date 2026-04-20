@@ -18,7 +18,6 @@ Key concepts:
 import asyncio
 import json
 import logging
-import os
 import threading
 import time
 import uuid
@@ -204,8 +203,6 @@ class SkillPipeline:
 
     def _build_stage_prompt(self, stage: PipelineStage) -> str:
         """Build the prompt for a given stage, incorporating previous output."""
-        total = len(self.stages)
-
         if stage.index == 0:
             return (
                 f"{stage.skill_text}\n\n"

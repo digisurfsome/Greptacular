@@ -26,13 +26,23 @@ import csv
 from pathlib import Path
 
 try:
-    from browser_use import Agent, Browser, BrowserConfig
     from langchain_anthropic import ChatAnthropic
 except ImportError:
     print("Install dependencies first:")
     print("  pip install browser-use langchain-anthropic playwright")
     print("  playwright install chromium")
     sys.exit(1)
+
+try:
+    from browser_use import Agent, Browser
+    from browser_use import BrowserProfile as BrowserConfig
+except ImportError:
+    try:
+        from browser_use import Agent, Browser, BrowserConfig
+    except ImportError:
+        from browser_use import Agent
+        Browser = None
+        BrowserConfig = None
 
 # Test data — safe fake info, clearly a test
 TEST_DATA = {
@@ -86,18 +96,19 @@ async def run_test(url: str, data: dict, submit: bool = False, headless: bool = 
         api_key=os.environ.get("ANTHROPIC_API_KEY"),
     )
 
-    # Show browser window unless headless explicitly requested
-    browser = Browser(
-        config=BrowserConfig(headless=headless)
-    )
-
     task = build_task(url, data, submit)
     print(f"TASK:\n{task}\n")
     print("="*60)
     print("Agent running... watch the browser window.")
     print("="*60)
 
-    agent = Agent(task=task, llm=llm, browser=browser)
+    # browser-use 2.x uses BrowserProfile for config
+    if Browser is not None and BrowserConfig is not None:
+        browser = Browser(config=BrowserConfig(headless=headless))
+        agent = Agent(task=task, llm=llm, browser=browser)
+    else:
+        # Minimal fallback — no custom browser config
+        agent = Agent(task=task, llm=llm)
 
     try:
         result = await agent.run(max_steps=20)
@@ -109,8 +120,6 @@ async def run_test(url: str, data: dict, submit: bool = False, headless: bool = 
     except Exception as e:
         print(f"\nError: {e}")
         return None
-    finally:
-        await browser.close()
 
 
 def get_first_ready_row(csv_path: str) -> dict:

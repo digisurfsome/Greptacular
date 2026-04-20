@@ -1,0 +1,18 @@
+name: regression-harness
+description: |
+  Self-test suite for the Archon pipeline. Runs Test A against the
+  current state of .archon/scripts/ and fails if any gate behaves wrong.
+  Invoke manually — NOT part of prd-pipeline-c (would fire on every build).
+
+  Usage: archon workflow run regression-harness
+    OR:  python .archon/scripts/regression-harness.py  (from project root)
+
+  Pass criteria: all assertions in Test A emit PASS and the harness exits 0.
+
+nodes:
+  - id: regression-run
+    bash: |
+      FIXTURES=".archon/test-fixtures" \
+      SCRIPTS_DIR=".archon/scripts" \
+      python .archon/scripts/regression-harness.py
+    timeout: 300000

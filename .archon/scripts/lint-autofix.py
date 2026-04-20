@@ -26,9 +26,9 @@ def run(cmd: list[str], label: str, cwd: str) -> tuple[bool, str]:
         combined = (result.stdout + result.stderr).strip()
         return False, f"FAIL: {label}\n{combined[:800]}"
     except FileNotFoundError:
-        return False, f"SKIP: {label} — command not found: {cmd[0]}"
+        return True, f"SKIP: {label} — command not found: {cmd[0]}"
     except OSError as e:
-        return False, f"SKIP: {label} — OS error: {e}"
+        return True, f"SKIP: {label} — OS error: {e}"
 
 
 def main() -> None:

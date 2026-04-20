@@ -1,0 +1,6 @@
+# Force LF line endings on files that Archon workflows read/execute.
+# Windows default CRLF breaks bash nodes (trailing \r causes commands to fail).
+.archon/workflows/*.yaml  text eol=lf
+.archon/scripts/*.py      text eol=lf
+.archon/scripts/*.sh      text eol=lf
+.archon/commands/*.md     text eol=lf

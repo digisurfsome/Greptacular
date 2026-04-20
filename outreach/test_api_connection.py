@@ -50,10 +50,12 @@ def check_anthropic_sdk(api_key: str):
     print("\n[3] Anthropic SDK — minimal API call")
     try:
         import anthropic
-    except ImportError:
-        print("    ✗ anthropic not installed: pip install anthropic")
+        import httpx
+    except ImportError as e:
+        print(f"    ✗ missing package: {e} — pip install anthropic httpx")
         return False
 
+    # First try: default (respects Windows system proxy settings)
     try:
         client = anthropic.Anthropic(api_key=api_key)
         msg = client.messages.create(
@@ -64,18 +66,31 @@ def check_anthropic_sdk(api_key: str):
         reply = msg.content[0].text.strip()
         print(f"    ✓ API responded: {reply!r}")
         return True
+    except (anthropic.APIConnectionError, Exception) as first_err:
+        print(f"    ~ Default client failed: {type(first_err).__name__}")
+
+    # Second try: bypass Windows proxy settings entirely
+    print("    ~ Retrying with proxy bypassed (trust_env=False)...")
+    try:
+        http_client = httpx.Client(trust_env=False)
+        client = anthropic.Anthropic(api_key=api_key, http_client=http_client)
+        msg = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=10,
+            messages=[{"role": "user", "content": "Say: OK"}],
+        )
+        reply = msg.content[0].text.strip()
+        print(f"    ✓ API responded (proxy bypassed): {reply!r}")
+        print(f"    ! FIX: Windows proxy is blocking httpx.")
+        print(f"      Run this once, then open a new CMD window:")
+        print(f"        setx NO_PROXY \"*\"")
+        return True
     except anthropic.AuthenticationError:
         print("    ✗ Authentication error — API key is invalid or expired")
         print("      → Get a fresh key at: console.anthropic.com")
         return False
-    except anthropic.APIConnectionError as e:
-        print(f"    ✗ Connection error: {e}")
-        print("      → The SDK cannot reach api.anthropic.com")
-        print("      → Try: set HTTPS_PROXY=http://your-proxy:port  (if you're behind a proxy)")
-        print("      → Or run from a VPS/cloud server where outbound HTTPS is unrestricted")
-        return False
     except Exception as e:
-        print(f"    ✗ Unexpected error: {e}")
+        print(f"    ✗ Both attempts failed: {e}")
         return False
 
 

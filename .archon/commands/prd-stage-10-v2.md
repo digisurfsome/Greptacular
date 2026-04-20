@@ -56,11 +56,9 @@ Create `$ARTIFACTS_DIR/phases/phase-N.md` for each phase. Each file has exactly 
 
 9. **Gate Condition**: "ALL FOUR STEPS MUST PASS BEFORE PROCEEDING TO NEXT PHASE"
 
-   Do NOT include:
-   - "tests are a separate task per instructions"
-   - "defer to human" applied to categories of work
-   - "architectural issues → out of scope"
-   - Any language that allows an agent to skip a WALL step without a deferred.md entry
+   Do NOT include any language that lets an agent skip a WALL step, declare tests out-of-scope,
+   defer entire categories of work, or split fixes into follow-up tasks. Every flagged issue
+   gets a fix entry OR a deferred.md entry with reason and evidence — no third option.
 
 ### Step 2: Generate build.sh
 

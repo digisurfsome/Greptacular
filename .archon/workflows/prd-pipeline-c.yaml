@@ -367,15 +367,20 @@ nodes:
   # Only runs when prd_archive toggle is on.
   # ═══════════════════════════════════════════════════════════════
 
+  # Status threading: detects recovery via triage-report.md (written by recovery-diagnose),
+  # and failure via deploy-gate output. Falls through to "shipped" only when deploy passed
+  # and no recovery ran.
   - id: recovery-status-summary
     bash: |
       set -euo pipefail
-      if ls "$ARTIFACTS_DIR"/recovery-*/ 2>/dev/null | head -1 >/dev/null 2>&1; then
+      if [ $deploy-gate.output != PASS ]; then
+        echo "failed"
+      elif [ -f "$ARTIFACTS_DIR/triage-report.md" ]; then
         echo "recovered"
       else
         echo "shipped"
       fi
-    depends_on: [build-deploy]
+    depends_on: [build-deploy, deploy-gate]
     trigger_rule: all_done
 
   - id: archive-prd

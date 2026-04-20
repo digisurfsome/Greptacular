@@ -345,7 +345,7 @@ Reason: `depends_on` chains enforce sequential phase execution. The four review 
 You write tests. That is your only job.
 
 ## Inputs
-- `$ARTIFACTS_DIR/phases/` — the generated phase spec files (one `.md` per phase). Read the one matching the phase id passed in `$ARGUMENTS` (for example `phase-1.md` when `$ARGUMENTS` is `phase-1`).
+- `$PHASE_FILE` — the phase spec including all WALL steps
 - `$ARTIFACTS_DIR/review-tests.md` — flagged coverage gaps (if already built)
 
 ## Contract
@@ -643,29 +643,16 @@ append row to docs/generated-prds/INDEX.md: "- {DATE} | {BUILD_NAME} | {STATUS} 
 
 **YAML wiring (in prd-pipeline-c.yaml):**
 ```yaml
-# Upstream aggregator that reports whether any recovery ran this build.
-# If any `$ARTIFACTS_DIR/recovery-*/` directory exists, mark the run "recovered";
-# otherwise "shipped". Gives archive-prd a real status signal instead of a hardcode.
-- id: recovery-status-summary
-  bash: |
-    set -euo pipefail
-    if ls "$ARTIFACTS_DIR"/recovery-*/ 2>/dev/null | head -1 >/dev/null; then
-      echo "recovered"
-    else
-      echo "shipped"
-    fi
-  depends_on: [build-deploy]
-
 - id: archive-prd
   bash: |
     python .archon/scripts/archive-prd.py \
       "$ARTIFACTS_DIR" \
       "$BASE_BRANCH" \
-      $recovery-status-summary.output
-  depends_on: [recovery-status-summary]
+      "shipped"
+  depends_on: [build-deploy]
 ```
 
-Reason: `$BASE_BRANCH` is a real Archon-provided variable (per Archon CLAUDE.md line 670). Used here as a stand-in for "build name" — the owner can swap for any other identifier that makes sense. The archive destination is `docs/generated-prds/` in the **Greptacular repo** (not in Archon's workspace); the Python script's cwd resolves relative to the Greptacular repo because the workflow runs there. `$recovery-status-summary.output` is left bare — Archon's `substituteNodeOutputRefs` with `escapedForBash=true` (dag-executor.ts line 1357) single-quotes the value via `shellQuote` (line 183), so argv[3] receives a properly-quoted `'shipped'` or `'recovered'` without needing outer quotes.
+Reason: `$BASE_BRANCH` is a real Archon-provided variable (per Archon CLAUDE.md line 670). Used here as a stand-in for "build name" — the owner can swap for any other identifier that makes sense. The archive destination is `docs/generated-prds/` in the **Greptacular repo** (not in Archon's workspace); the Python script's cwd resolves relative to the Greptacular repo because the workflow runs there.
 
 **Success criteria:**
 - After any pipeline run, `docs/generated-prds/{date}__{name}/` exists
@@ -714,10 +701,7 @@ expect(["python", f"{SCRIPTS}/compliance-gate.py", f"{FIXTURES}/task-manager-pas
 print("=== ALL REGRESSION TESTS PASS ===")
 ```
 
-**YAML wiring:** Do NOT add regression-harness as a node inside `prd-pipeline-c.yaml`. A `depends_on: []` node is a root node and would run on every invocation of the main pipeline, burning tokens before every real build. Instead, split it into its own workflow file.
-
-**DELETE this block from `prd-pipeline-c.yaml` (it must not appear in the main pipeline):**
-
+**YAML wiring (in prd-pipeline-c.yaml — standalone, invoked manually or by a separate workflow):**
 ```yaml
 - id: regression-harness
   bash: |
@@ -727,27 +711,7 @@ print("=== ALL REGRESSION TESTS PASS ===")
   depends_on: []   # standalone — invoked manually or by a separate workflow
 ```
 
-**CREATE a new standalone file `.archon/workflows/regression-harness.yaml` with this content:**
-
-```yaml
-name: regression-harness
-description: |
-  Self-test suite for the Archon pipeline. Runs Tests A/B/C against the
-  current state of .archon/scripts/ and fails if any gate behaves wrong.
-  Invoke manually or from CI — not part of prd-pipeline-c.
-
-nodes:
-  - id: regression-run
-    bash: |
-      FIXTURES=".archon/test-fixtures" \
-      SCRIPTS_DIR=".archon/scripts" \
-      python .archon/scripts/regression-harness.py
-    timeout: 300000
-```
-
-Invoke with `archon workflow run regression-harness`.
-
-Reason: env vars pass in where args can't. Paths are relative to the workflow cwd (the repo root) because Archon does not export `$ARCHON_HOME` to bash child processes — relative `.archon/scripts/...` paths resolve unconditionally. Workflow files are discovered independently by `workflow-discovery.ts`, so the main pipeline and the regression workflow coexist cleanly.
+Reason: env vars pass in where args can't. Paths are relative to the workflow cwd (the repo root) because Archon does not export `$ARCHON_HOME` to bash child processes — relative `.archon/scripts/...` paths resolve unconditionally.
 
 **Success criteria:**
 - Running regression-harness on current .archon/ produces PASS
@@ -783,7 +747,7 @@ build_intelligence_mode: defensive  # Options: defensive (warn about known failu
 ```yaml
 - id: read-flag-recovery
   bash: |
-    uv run --with pyyaml python -c "import yaml; c=yaml.safe_load(open('.archon/features.yaml')); print(str(c.get('recovery_pipeline',True)).lower())"
+    python -c "import yaml; c=yaml.safe_load(open('.archon/features.yaml')); print(str(c.get('recovery_pipeline',True)).lower())"
   depends_on: []   # or earliest possible ancestor
 
 - id: phase-1-recovery-diagnose
@@ -794,7 +758,7 @@ build_intelligence_mode: defensive  # Options: defensive (warn about known failu
   effort: high
 ```
 
-Applying this pattern to all 6 toggled mechanisms (`recovery_pipeline`, `prd_archive`, `regression_harness`, `codebase_cartographer`, `scoped_claude_md`, `build_intelligence`) adds 6 read-flag nodes at pipeline start. Every read-flag node MUST use the `uv run --with pyyaml python -c "..."` prefix shown above — plain `python -c "import yaml; ..."` will fail on a fresh Windows install because Archon's bash nodes invoke whatever `python` is in PATH with no automatic dependency install (dag-executor.ts line 1362), and PyYAML is not guaranteed to be present. `uv` is already required by Archon's script-node runtime, and `--with pyyaml` provisions it into an ephemeral venv. `features.yaml` itself lives at `.../source/.archon/features.yaml` per HANDOFF §3.
+Applying this pattern to all 6 toggled mechanisms (`recovery_pipeline`, `prd_archive`, `regression_harness`, `codebase_cartographer`, `scoped_claude_md`, `build_intelligence`) adds 6 read-flag nodes at pipeline start. `features.yaml` itself lives at `.../source/.archon/features.yaml` per HANDOFF §3.
 
 **Fallback if the read-flag pattern is too heavy for Phase 1:** Remove M12 from Phase 1 entirely and wire toggles manually by commenting out nodes in the YAML when a feature is not desired. Re-introduce the read-flag pattern in Phase 1b.
 
@@ -840,14 +804,12 @@ Per HANDOFF.md §2 Correction B — do NOT edit the originals. Create copies:
   Node wiring in prd-pipeline-c.yaml:
 
   ```yaml
-  - id: phase-1-test-writer
+  - id: phase-N-test-writer
     command: test-writer
-    prompt: "phase-1"
-    depends_on: [phase-1-execute]
+    depends_on: [phase-N-execute]
     model: sonnet
     context: fresh
   ```
-  (Repeat per phase, prefixing ids with `phase-N-` and passing the matching phase id via `prompt:`.)
 - `.archon/commands/phase-handoff.md`
 - `.archon/workflows/prd-pipeline-c.yaml` already created in Phase 1 (per HANDOFF §2 Correction B); Phase 2 extends it with per-phase unrolled groups (M4), the test-writer node above, and the `claude-md-presence-check` audit node (M6).
 - `.archon/scripts/lint-autofix.py` (Python per HANDOFF bash→Python rule)

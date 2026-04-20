@@ -366,3 +366,99 @@ Before Phase 3 can start, the fix agent must do the following, in severity order
 Everything else — YAML schema conformance, shell-quoting, mutual exclusivity, model/effort assignments, `context: fresh`, recovery wiring, deploy-gate chain, M10 status-summary logic, `full-checkpoint.py` language detection, `features.yaml` annotation, Stage 10 extension — is ready.
 
 **Verdict: NEEDS FIXES.** Ship-blockers are items 1 and 2. Items 3-5 can land in the same commit or be punted to a polish pass, operator's call.
+
+---
+
+## Re-Review — FAIL Fix Verification (Phase 2)
+
+**Reviewer:** Claude Opus
+**Commits checked:** 5685dfd (lint-autofix.py) + ec999ef (YAML wiring)
+
+---
+
+### C2 Fix — phase-handoff wired
+
+**Verdict: ✅ PASS CLEAN**
+
+All 7 sub-checks confirmed against `prd-pipeline-c.yaml`:
+
+| Check | Line | Result |
+|---|---|---|
+| `phase-1-handoff` exists | 334 | ✓ |
+| `command: phase-handoff` | 335 | ✓ |
+| `depends_on: [full-checkpoint]` (Phase 1 checkpoint — correct name) | 336 | ✓ |
+| `model: haiku` (lowercase, no version string) | 337 | ✓ |
+| `context: fresh` | 338 | ✓ |
+| `phase-2-handoff` exists | 460 | ✓ |
+| `command: phase-handoff` | 461 | ✓ |
+| `depends_on: [phase-2-checkpoint]` | 462 | ✓ |
+| `model: haiku` (lowercase) | 463 | ✓ |
+| `context: fresh` | 464 | ✓ |
+| `phase-2-baseline.depends_on: [phase-1-handoff]` (not full-checkpoint directly) | 342 | ✓ |
+| `phase-3-baseline.depends_on: [phase-2-handoff]` (not phase-2-checkpoint directly) | 468 | ✓ |
+| No `phase-3-handoff` node (nothing follows Phase 3 except audit) | — | ✓ |
+| Both handoff nodes use `command:` not `bash:` | 335, 461 | ✓ |
+
+Both nodes are command nodes (AI agent invocations), not bash nodes. Both carry `model: haiku` with correct lowercase alias — no version string. The chain `full-checkpoint → phase-1-handoff → phase-2-baseline` and `phase-2-checkpoint → phase-2-handoff → phase-3-baseline` is fully wired. No handoff after phase-3-checkpoint (correct — `claude-md-presence-check` follows directly at line 590).
+
+The C2 FAIL is resolved.
+
+---
+
+### C5 Fix — lint-autofix wired + bug fixed
+
+**Verdict: ✅ PASS CLEAN**
+
+**Bug fix in `lint-autofix.py` (lines 28–31):**
+
+The original bug was `FileNotFoundError` (and `OSError`) returning `(False, ...)`, which routed SKIP messages into `failures`, causing exit 1 when tools weren't installed — a false positive that would block the fix agent unnecessarily.
+
+**Before (original):**
+```python
+except FileNotFoundError:
+    return False, f"SKIP: {label} — command not found: {cmd[0]}"
+except OSError as e:
+    return False, f"SKIP: {label} — OS error: {e}"
+```
+
+**After (shipped fix, lines 28–31):**
+```python
+except FileNotFoundError:
+    return True, f"SKIP: {label} — command not found: {cmd[0]}"
+except OSError as e:
+    return True, f"SKIP: {label} — OS error: {e}"
+```
+
+Both exception handlers now return `True` → SKIP messages route to `results`, not `failures`. `sys.exit(1 if failures else 0)` at line 89 is unchanged — exits 0 when all tools are absent (clean skip), exits 1 only on actual lint/format errors. Function signature `def run(cmd, label, cwd) -> tuple[bool, str]` is unchanged. Fix is minimal and correct — no regressions introduced.
+
+**Wiring in `prd-pipeline-c.yaml`:**
+
+All three lint-autofix nodes confirmed present as bash nodes with no `model` field:
+
+| Node | Line | bash | timeout | depends_on | model |
+|---|---|---|---|---|---|
+| `phase-1-lint-autofix` | 219 | `python .archon/scripts/lint-autofix.py "$ARTIFACTS_DIR"` | 120000 | `[build-execute]` | none ✓ |
+| `phase-2-lint-autofix` | 375 | `python .archon/scripts/lint-autofix.py "$ARTIFACTS_DIR"` | 120000 | `[phase-2-execute]` | none ✓ |
+| `phase-3-lint-autofix` | 501 | `python .archon/scripts/lint-autofix.py "$ARTIFACTS_DIR"` | 120000 | `[phase-3-execute]` | none ✓ |
+
+All three fix nodes gate on their phase's lint-autofix:
+
+| Fix node | depends_on includes lint-autofix | Line |
+|---|---|---|
+| `build-fix-issues` | `phase-1-lint-autofix` ✓ | 226 |
+| `phase-2-fix` | `phase-2-lint-autofix` ✓ | 382 |
+| `phase-3-fix` | `phase-3-lint-autofix` ✓ | 508 |
+
+Shell-quoting on `"$ARTIFACTS_DIR"` is double-quoted in all three bash invocations — correct, because `$ARTIFACTS_DIR` is a real bash environment variable (not a node-output ref), and double-quoting protects against path spaces. Not a violation.
+
+The C5 FAIL is resolved.
+
+---
+
+### Overall
+
+**PASS CLEAN.**
+
+Both ship-blockers from the original Phase 2 review (C2 and C5) have been correctly resolved. The handoff nodes are wired with the right command type, model, context, and dependency chain. The lint-autofix bug is fixed with the minimal correct change (True not False on exception handlers), and all three lint-autofix invocations are wired into the pipeline with correct dependencies.
+
+No new issues introduced by either fix. Phase 2 is ready to ship.

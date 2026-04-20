@@ -5,8 +5,8 @@
 
 recovery_pipeline: true       # M9: auto-diagnose and fix on compliance gate failure
 prd_archive: true             # M10: copy PRDs to docs/generated-prds/ after each run
-# ── UNWIRED toggles (listed for future phases; changing them has no effect today) ──
 codebase_cartographer: true   # M7 (Phase 3): Haiku builds CODEBASE_MAP.md — WIRED in Phase 3
+# ── UNWIRED toggles (listed for future phases; changing them has no effect today) ──
 scoped_claude_md: true        # M6 (Phase 2): per-directory CLAUDE.md auto-attach — NOT WIRED in Phase 1
 regression_harness: true      # M11: self-tests run as separate workflow — no pipeline toggle needed
 build_intelligence: false     # Phase 3: learn from prior builds — OFF, NOT WIRED in Phase 1

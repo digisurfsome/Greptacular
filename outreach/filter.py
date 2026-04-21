@@ -60,6 +60,16 @@ CLOUDFLARE_SIGNATURES = [
     "__cf_bm",
 ]
 
+DIRECTORY_DOMAINS = {
+    "yelp.com", "yellowpages.com", "angi.com", "homeadvisor.com",
+    "thumbtack.com", "nextdoor.com", "bbb.org", "bestprosintown.com",
+    "plumbersden.com", "manta.com", "superpages.com", "hotfrog.com",
+    "foursquare.com", "trustpilot.com", "google.com", "facebook.com",
+    "linkedin.com", "instagram.com", "twitter.com", "x.com",
+    "pinterest.com", "reddit.com", "indeed.com", "glassdoor.com",
+    "ziprecruiter.com", "craigslist.org", "merchantcircle.com",
+}
+
 HONEYPOT_PATTERNS = [
     'name="url"',
     'name="website"',
@@ -133,21 +143,18 @@ def has_real_contact_form(html: str) -> bool:
         inputs = form.find_all("input")
         textareas = form.find_all("textarea")
 
-        # A real contact form has at least: name/email field + message area
+        # A real contact form has at least: name/email field + message area + 3+ fields
         has_name_or_email = any(
             inp.get("name", "").lower() in ("name", "email", "your-name", "your-email",
                                              "full_name", "fullname", "firstname",
                                              "first_name", "contact_name")
-            or inp.get("type", "").lower() in ("email", "text")
+            or inp.get("type", "").lower() == "email"  # email type only, not generic text
             for inp in inputs
         )
-        has_message = bool(textareas) or any(
-            inp.get("name", "").lower() in ("message", "comments", "comment", "msg",
-                                              "description", "details", "notes")
-            for inp in inputs
-        )
+        has_message = bool(textareas)  # require actual textarea, not input named "message"
 
-        if has_name_or_email and has_message:
+        total_fields = len(inputs) + len(textareas)
+        if has_name_or_email and has_message and total_fields >= 3:
             return True
 
     return False
@@ -207,6 +214,12 @@ def filter_row(row: dict) -> dict:
     if not website_url.startswith("http"):
         website_url = "https://" + website_url
 
+    # Skip directory/aggregator sites (have forms, but aren't target businesses)
+    domain = urlparse(website_url).netloc.lower().replace("www.", "")
+    if any(domain == d or domain.endswith("." + d) for d in DIRECTORY_DOMAINS):
+        return {**row, "contact_url": "", "has_contact_form": False,
+                "blocker_type": "directory", "filter_status": "skip_directory"}
+
     # Fetch homepage
     html, resp = fetch_page(website_url)
 
@@ -239,8 +252,8 @@ def filter_row(row: dict) -> dict:
     # Check for real contact form
     has_form = has_real_contact_form(contact_html)
 
-    if not has_form and not contact_url:
-        return {**row, "contact_url": "", "has_contact_form": False,
+    if not has_form:
+        return {**row, "contact_url": contact_url or "", "has_contact_form": False,
                 "blocker_type": captcha_type or "none", "filter_status": "skip_no_form"}
 
     if captcha_type:
@@ -287,6 +300,8 @@ def filter_batch(rows: list, include_captcha: bool = False,
             print(f"~ CAPTCHA: {blocker}")
         elif status == "skip_no_form":
             print(f"✗ no contact form")
+        elif status == "skip_directory":
+            print(f"✗ directory/aggregator site")
         else:
             print(f"? {status}")
 
@@ -315,6 +330,7 @@ def print_filter_summary(rows: list):
     print("\n--- Filter Summary ---")
     print(f"  Ready to send:    {statuses.get('ready', 0)}")
     print(f"  No contact form:  {statuses.get('skip_no_form', 0)}")
+    print(f"  Directory site:   {statuses.get('skip_directory', 0)}")
     print(f"  CAPTCHA (skip):   {statuses.get('skip_captcha', 0)}")
     print(f"  Cloudflare:       {statuses.get('skip_cloudflare', 0)}")
     print(f"  Not local:        {statuses.get('skip_not_local', 0)}")

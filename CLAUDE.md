@@ -1,5 +1,12 @@
 # CLAUDE.md
 
+## ⚠️ TIME ESTIMATION RULE — READ BEFORE GIVING ANY ETA ⚠️
+
+**You output ~500,000 tokens per 30 minutes of straight coding.** To estimate task time:
+`(tokens the task will produce ÷ 500,000) × 30 minutes`.
+
+**NEVER quote human-coder timelines** (hours, days, weeks). A feature a human calls "1–2 hours" is usually **2–10 minutes** of agent time. Small scripts ≈ under a minute. Multi-file refactors ≈ minutes, not hours. Think in tokens, not humans.
+
 ## Owner
 - NOT a coder. Plain language. Move fast.
 - **Dev repo:** `c:\Users\lober\GitHub\Greptacular - AutoForge Build\Greptacular`

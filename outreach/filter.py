@@ -84,7 +84,29 @@ CONTACT_URL_PATTERNS = [
     "/reach-us", "/reach-out", "/talk-to-us", "/connect",
     "/request-quote", "/free-quote", "/get-a-quote",
     "/free-estimate", "/get-estimate", "/request-estimate",
-    "/book", "/schedule", "/appointment",
+    # Deliberately excluded: /book /schedule /appointment
+    # Booking widgets are not contact forms. Prefer real contact pages.
+]
+
+# Embedded booking widgets — if a "form" is just one of these, it's not a contact form
+BOOKING_WIDGET_SIGNATURES = [
+    "calendly.com",
+    "acuityscheduling.com",
+    "squarespacescheduling.com",
+    "squarespace-scheduling.com",
+    "app.squarespacescheduling.com",
+    "housecallpro.com/book",
+    "book.housecallpro.com",
+    "bookingbug.com",
+    "cal.com/embed",
+    "app.simplybook.me",
+    "book.getjobber.com",
+    "servicetitan.com/book",
+    "getjobber.com/online-booking",
+    "book-online",
+    'class="booking',
+    'id="booking',
+    "appointment-widget",
 ]
 
 HEADERS = {
@@ -174,8 +196,8 @@ def find_contact_url(base_url: str, html: str) -> Optional[str]:
             if pattern in href:
                 return urljoin(base_url, a["href"])
 
-        # Match by link text
-        if any(word in text for word in ["contact", "quote", "estimate", "schedule", "book"]):
+        # Match by link text (deliberately excludes "schedule"/"book" — those are booking widgets)
+        if any(word in text for word in ["contact", "quote", "estimate"]):
             full_url = urljoin(base_url, a["href"])
             # Only follow same-domain links
             if urlparse(full_url).netloc == urlparse(base_url).netloc:
@@ -197,6 +219,70 @@ def fetch_page(url: str, timeout: int = 12) -> Tuple[Optional[str], Optional[req
             return None, None
     except Exception:
         return None, None
+
+
+# ─── Playwright fallback (renders JS-built contact forms) ────────────────────
+
+_PW = None
+_BROWSER = None
+
+def _get_browser():
+    """Lazy-init a headless Chromium. Returns None if Playwright unavailable."""
+    global _PW, _BROWSER
+    if _BROWSER is not None:
+        return _BROWSER
+    try:
+        from playwright.sync_api import sync_playwright
+        _PW = sync_playwright().start()
+        _BROWSER = _PW.chromium.launch(headless=True)
+        return _BROWSER
+    except Exception as e:
+        print(f"  [warn] Playwright unavailable ({e}) — static-only mode")
+        return None
+
+
+def close_browser():
+    """Tear down the shared Playwright browser. Call once at end of batch."""
+    global _PW, _BROWSER
+    try:
+        if _BROWSER:
+            _BROWSER.close()
+    except Exception:
+        pass
+    try:
+        if _PW:
+            _PW.stop()
+    except Exception:
+        pass
+    _BROWSER = None
+    _PW = None
+
+
+def fetch_page_js(url: str, timeout: int = 15) -> Optional[str]:
+    """Fetch URL with full JavaScript rendering. Returns rendered HTML or None."""
+    browser = _get_browser()
+    if browser is None:
+        return None
+    try:
+        ctx = browser.new_context(user_agent=HEADERS["User-Agent"])
+        page = ctx.new_page()
+        page.goto(url, timeout=timeout * 1000, wait_until="domcontentloaded")
+        # Wait briefly for JS-rendered forms to mount
+        try:
+            page.wait_for_selector("form, iframe[src]", timeout=3000)
+        except Exception:
+            pass
+        html = page.content()
+        ctx.close()
+        return html
+    except Exception:
+        return None
+
+
+def detect_booking_only(html: str) -> bool:
+    """True when the page primarily embeds a booking widget (Calendly/Acuity/etc)."""
+    lowered = html.lower()
+    return any(sig.lower() in lowered for sig in BOOKING_WIDGET_SIGNATURES)
 
 
 # ─── Main per-row filter ───────────────────────────────────────────────────────
@@ -249,12 +335,31 @@ def filter_row(row: dict) -> dict:
     # Detect CAPTCHA type
     captcha_type = detect_captcha_type(contact_html)
 
-    # Check for real contact form
+    # Check for real contact form (static HTML)
     has_form = has_real_contact_form(contact_html)
+    booking_widget = detect_booking_only(contact_html)
+
+    # Fallback: if static scan found no form and we have a contact URL,
+    # re-fetch with Playwright to catch JS-rendered forms.
+    if not has_form and contact_url:
+        js_html = fetch_page_js(contact_url)
+        if js_html:
+            contact_html = js_html
+            captcha_type = captcha_type or detect_captcha_type(js_html)
+            has_form = has_real_contact_form(js_html)
+            booking_widget = booking_widget or detect_booking_only(js_html)
+
+    # If this site only exposes a booking widget (Calendly/Acuity/etc), skip it
+    if not has_form and booking_widget:
+        return {**row, "contact_url": contact_url or "", "has_contact_form": False,
+                "blocker_type": "booking_widget", "filter_status": "skip_booking"}
 
     if not has_form:
         return {**row, "contact_url": contact_url or "", "has_contact_form": False,
                 "blocker_type": captcha_type or "none", "filter_status": "skip_no_form"}
+
+    # Has a real form — but if it's sitting next to a booking widget,
+    # prefer the real form path (continue to ready).
 
     if captcha_type:
         return {**row,
@@ -302,6 +407,8 @@ def filter_batch(rows: list, include_captcha: bool = False,
             print(f"✗ no contact form")
         elif status == "skip_directory":
             print(f"✗ directory/aggregator site")
+        elif status == "skip_booking":
+            print(f"✗ booking widget only (Calendly/Acuity/etc)")
         else:
             print(f"? {status}")
 
@@ -320,6 +427,9 @@ def filter_batch(rows: list, include_captcha: bool = False,
             "filter_status": "skip_not_local",
         })
 
+    # Tear down the shared Playwright browser, if it was started
+    close_browser()
+
     return results
 
 
@@ -330,6 +440,7 @@ def print_filter_summary(rows: list):
     print("\n--- Filter Summary ---")
     print(f"  Ready to send:    {statuses.get('ready', 0)}")
     print(f"  No contact form:  {statuses.get('skip_no_form', 0)}")
+    print(f"  Booking widget:   {statuses.get('skip_booking', 0)}")
     print(f"  Directory site:   {statuses.get('skip_directory', 0)}")
     print(f"  CAPTCHA (skip):   {statuses.get('skip_captcha', 0)}")
     print(f"  Cloudflare:       {statuses.get('skip_cloudflare', 0)}")

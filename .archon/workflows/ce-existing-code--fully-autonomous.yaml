@@ -1,0 +1,46 @@
+name: ce-existing-code--fully-autonomous
+description: |
+  Use when: You have an existing codebase you want analyzed — no specific new feature.
+  Triggers: "auto-analyze my code", "autonomous code review", "scan my codebase"
+  NOT for: New projects from scratch or adding a specific new feature.
+  Mode: Fully autonomous — scans codebase, writes analysis plan, runs reviews. No stops.
+provider: claude
+interactive: false
+
+nodes:
+  - id: context-intake
+    command: ce-intake-existing-code
+    context: fresh
+
+  - id: plan
+    command: ce-plan
+    depends_on: [context-intake]
+    context: fresh
+    model: claude-opus-4-6
+
+  - id: security-review
+    command: ce-security-review
+    depends_on: [plan]
+    context: fresh
+
+  - id: correctness-review
+    command: ce-correctness-review
+    depends_on: [plan]
+    context: fresh
+
+  - id: performance-review
+    command: ce-performance-review
+    depends_on: [plan]
+    context: fresh
+
+  - id: synthesize-review
+    command: ce-synthesize-review
+    depends_on: [security-review, correctness-review, performance-review]
+    trigger_rule: one_success
+    context: fresh
+    model: claude-opus-4-6
+
+  - id: compound
+    command: ce-compound
+    depends_on: [synthesize-review]
+    context: fresh

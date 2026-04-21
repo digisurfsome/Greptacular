@@ -1,0 +1,78 @@
+name: ce-add-feature--FULL-PIPELINE-WITH-CODING
+description: |
+  FULL PIPELINE — intake + plan + ACTUAL CODING + review + fix loop + compound.
+  Use when: You want it to add a feature to your existing code, not just analyze it.
+  Use when: You have existing code and a feature PRD and want it built automatically.
+  Mode: Interactive — shows you the plan, then codes task by task with your approval at each step.
+  NOTE: This workflow WRITES CODE to your project. Use on a branch, not live code.
+provider: claude
+interactive: false
+
+nodes:
+  - id: context-intake
+    command: ce-intake-add-feature
+    context: fresh
+
+  - id: plan
+    command: ce-plan
+    depends_on: [context-intake]
+    context: fresh
+    model: claude-opus-4-6
+
+  - id: work-loop
+    depends_on: [plan]
+    loop:
+      prompt: |
+        Read the implementation plan at $ARTIFACTS_DIR/ce-plan.md.
+        Find the next unchecked task (- [ ]).
+        Implement ONLY that task. Mark it checked when done.
+        Run available tests after each change.
+        When ALL tasks are checked off, emit <promise>ALL_TASKS_COMPLETE</promise>.
+        $LOOP_USER_INPUT
+      until: ALL_TASKS_COMPLETE
+      max_iterations: 20
+      fresh_context: true
+      interactive: true
+      gate_message: "Task complete. Review the changes above. Type 'approved' to continue to the next task, or give feedback to adjust."
+
+  - id: security-review
+    command: ce-security-review
+    depends_on: [work-loop]
+    context: fresh
+
+  - id: correctness-review
+    command: ce-correctness-review
+    depends_on: [work-loop]
+    context: fresh
+
+  - id: performance-review
+    command: ce-performance-review
+    depends_on: [work-loop]
+    context: fresh
+
+  - id: synthesize-review
+    command: ce-synthesize-review
+    depends_on: [security-review, correctness-review, performance-review]
+    trigger_rule: one_success
+    context: fresh
+    model: claude-opus-4-6
+
+  - id: fix-loop
+    depends_on: [synthesize-review]
+    loop:
+      prompt: |
+        Read review findings at $ARTIFACTS_DIR/ce-review-synthesis.md.
+        Fix the next HIGH priority finding. Mark it resolved in the synthesis doc.
+        Run tests after each fix.
+        When all HIGH findings are resolved, emit <promise>ALL_TASKS_COMPLETE</promise>.
+        $LOOP_USER_INPUT
+      until: APPROVED
+      max_iterations: 10
+      fresh_context: true
+      interactive: true
+      gate_message: "Fix applied. Review above. Type 'approved' to finalize and run the compound step, or give feedback on more fixes needed."
+
+  - id: compound
+    command: ce-compound
+    depends_on: [fix-loop]
+    context: fresh

@@ -1,0 +1,670 @@
+name: spec-to-build
+description: |
+  Use when: You have a finished app-spec.md (from idea-to-spec or idea-to-spec-lite)
+            and want to run the full build pipeline on it.
+  Triggers: "spec to build", "build from spec", "build my spec", "run the build"
+  Does: Ingests app-spec.md → Mechanism Extraction → Wall/Door/Room Scaffolding →
+        Phase Sequencing → Protocol Injection → Skeleton Code → Verification Setup →
+        Output Package → File Collision Check → Codebase Intelligence →
+        Build Phase 1 → Delta Review → Snapshot → Build Phase 2 → Delta Review →
+        Snapshot → Build Phase 3 → Delta Review → Verify → Review ×4 → Fix → Report → Deploy
+  NOT for: Creating specs (use idea-to-spec first), quick fixes, single-file changes.
+  INPUT: Path to app-spec.md — e.g. "spec-to-build /path/to/app-spec.md"
+         Or leave blank to use $ARTIFACTS_DIR/app-spec.md
+
+provider: claude
+model: sonnet
+
+nodes:
+
+  # ═══════════════════════════════════════════════════════════════
+  # BRIDGE: SPEC INGESTER
+  # Reads app-spec.md and writes context_packet.json so
+  # the downstream PRD stages have the data they expect
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: spec-ingest
+    model: sonnet
+    prompt: |
+      You are bridging an app-spec.md into the PRD pipeline's context_packet.json format.
+
+      Step 1 — Find the spec file:
+      - If $ARGUMENTS contains a file path, read that file
+      - Otherwise read $ARTIFACTS_DIR/app-spec.md
+
+      Step 2 — Read the spec file fully.
+
+      Step 3 — Map it to context_packet.json. Write to $ARTIFACTS_DIR/context_packet.json:
+
+      ```json
+      {
+        "version": 3,
+        "source": "idea-to-spec",
+        "stage_0": {
+          "profile": "no_boilerplate",
+          "tech_stack": {
+            "note": "Determined from spec Technical Assumptions section"
+          },
+          "stage_contract": "pass"
+        },
+        "stage_1": {
+          "combined_raw": "[full text of the spec file goes here]",
+          "detail_level": "detailed",
+          "format": "structured",
+          "stage_contract": "pass"
+        },
+        "stage_2": {
+          "mechanisms_identified": [
+            "[extract every 'User can...' line from the Mechanisms section]"
+          ],
+          "scope_contract": {
+            "auth": "[from Technical Assumptions: Auth]",
+            "data_model": "[from Technical Assumptions: Data model]",
+            "platform": "[from Technical Assumptions: Platform]",
+            "monetization": "[from Technical Assumptions: Monetization]",
+            "collaboration": "[from Technical Assumptions: Collaboration]",
+            "notifications": "[from Technical Assumptions: Notifications]"
+          },
+          "market_research": "[from Competitive Landscape section]",
+          "stage_contract": "pass"
+        },
+        "stage_3": {
+          "concept_and_context": {
+            "product_name": "[from App Spec title]",
+            "one_line_description": "[from Product Identity one-liner]",
+            "product_identity": "[from Product Identity section]",
+            "core_value_proposition": "[from Product Identity core value]"
+          },
+          "target_user_and_market": {
+            "personas": "[from Target Users section]",
+            "market_context": "[from Competitive Landscape section]",
+            "competitive_landscape": "[from Competitive Landscape section]"
+          },
+          "feasibility": {
+            "viability_summary": "Validated via idea-to-spec workflow",
+            "risks": "[from Risks section]",
+            "evidence_basis": "user_validated"
+          },
+          "problem_statement": "[from Problem Statement section]",
+          "drift_anchor": "[from Drift Anchor section]",
+          "decision_log": [],
+          "ambiguity_resolutions": [],
+          "stage_contract": "pass"
+        }
+      }
+      ```
+
+      Fill every field from the actual spec content. Do not leave placeholders.
+      After writing, confirm: "Spec ingested. context_packet.json written. Ready for Stage 4."
+
+  # ═══════════════════════════════════════════════════════════════
+  # STAGE 4: MECHANISM EXTRACTION
+  # Opus — classification judgment cascades through every stage after.
+  # A bad mechanism call here means wrong phase order and wrong build.
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: stage-04-mechanism-extraction
+    command: prd-stage-04
+    depends_on: [spec-ingest]
+    model: opus
+
+  # ═══════════════════════════════════════════════════════════════
+  # STAGE 5: WALL/DOOR/ROOM SCAFFOLDING
+  # Classifies each mechanism — what can change vs. what is fixed
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: stage-05-wall-door-room
+    command: prd-stage-05
+    depends_on: [stage-04-mechanism-extraction]
+    context: fresh
+    idle_timeout: 600000
+
+  # ═══════════════════════════════════════════════════════════════
+  # STAGE 7: PHASE SEQUENCING
+  # Splits spec into ordered buildable phases
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: stage-07-phase-sequencing
+    command: prd-stage-07
+    depends_on: [stage-05-wall-door-room]
+    context: fresh
+
+  # ═══════════════════════════════════════════════════════════════
+  # STAGE 8: PROTOCOL INJECTION
+  # Injects verification checkpoints into each phase
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: stage-08-protocol-injection
+    command: prd-stage-08
+    depends_on: [stage-07-phase-sequencing]
+    context: fresh
+
+  # ═══════════════════════════════════════════════════════════════
+  # STAGE 8.5: SKELETON CODE (Sonnet, fresh context)
+  # Generates interface scaffolds for NEEDS_EVALUATION mechanisms only.
+  # Catches "this can't be built the way we planned" BEFORE Phase 2 tokens are spent.
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: stage-08-5-skeleton-code
+    depends_on: [stage-08-protocol-injection]
+    context: fresh
+    prompt: |
+      You are generating skeleton code scaffolds for high-risk mechanisms in the build plan.
+
+      Read $ARTIFACTS_DIR/context_packet.json.
+
+      Find all mechanisms where classification is "NEEDS_EVALUATION" in stage_4.mechanisms.
+      If none are NEEDS_EVALUATION, write "No NEEDS_EVALUATION mechanisms found." to
+      $ARTIFACTS_DIR/skeleton_code.md and exit.
+
+      For each NEEDS_EVALUATION mechanism, generate:
+        1. Python function/class signatures (server side) — names, parameters, return types,
+           one-line docstring only. No implementation bodies.
+        2. TypeScript interface/component signature (UI side) — props types and function
+           signature only. No JSX bodies.
+        3. One sentence: "Why this is high-risk and what to watch for during build"
+
+      Output format per mechanism:
+      ---
+      ## [mechanism name] (mech_XXX)
+      **Risk:** [one sentence]
+
+      **Server scaffold:**
+      ```python
+      [skeleton]
+      ```
+
+      **UI scaffold:**
+      ```typescript
+      [skeleton]
+      ```
+      ---
+
+      After all mechanisms, write one paragraph:
+      "Integration checkpoint — do any of these interfaces conflict with each other or
+      with the existing codebase patterns described in stage_0.tech_stack?"
+
+      Write full output to $ARTIFACTS_DIR/skeleton_code.md
+      Confirm: "Stage 8.5 complete. Skeleton code written to skeleton_code.md."
+
+  # ═══════════════════════════════════════════════════════════════
+  # STAGE 9: VERIFICATION AGENT SETUP
+  # Configures the independent audit agent
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: stage-09-verification-setup
+    command: prd-stage-09
+    depends_on: [stage-08-5-skeleton-code]
+    context: fresh
+
+  # ═══════════════════════════════════════════════════════════════
+  # STAGE 10: OUTPUT GENERATOR
+  # Renders the final copy-paste-ready build package
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: stage-10-output-generator
+    command: prd-stage-10
+    depends_on: [stage-09-verification-setup]
+    context: fresh
+    idle_timeout: 600000
+
+  # ═══════════════════════════════════════════════════════════════
+  # FILE COLLISION CHECK
+  # Before building anything, check if planned filenames conflict
+  # with files that already exist in the codebase. Flags overwrites
+  # and naming conflicts so the builder doesn't silently overwrite.
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: build-file-collision-check
+    depends_on: [stage-10-output-generator]
+    context: fresh
+    model: haiku
+    prompt: |
+      You are checking for file naming conflicts before the build starts.
+
+      Step 1 — Read all phase files:
+        - $ARTIFACTS_DIR/phases/phase-1.md (or phase-1-enriched.md if it exists)
+        - $ARTIFACTS_DIR/phases/phase-2.md
+        - $ARTIFACTS_DIR/phases/phase-3.md
+
+      From each phase file, extract every filename in the "Files to Build" or
+      "Build Order" section. Collect them all into one flat list.
+
+      Step 2 — Scan the actual codebase for matching filenames.
+      Look in the repository working directory for any files with the same names.
+
+      Step 3 — Output a collision report:
+
+      FILE COLLISION REPORT
+      Planned files: [total count]
+      Collisions found: [count]
+
+      If collisions exist, list them:
+        - [filename]: EXISTS at [path] — will be OVERWRITTEN
+        - [filename]: SIMILAR file found at [path] — possible duplicate
+
+      If none: "No collisions. All planned filenames are new. Safe to build."
+
+      Write report to $ARTIFACTS_DIR/file-collision-report.md
+      Then confirm the collision count so downstream agents can see it.
+
+  # ═══════════════════════════════════════════════════════════════
+  # BUILD: CODEBASE INTELLIGENCE
+  # Enriches PRD with real implementation patterns from codebase
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: build-codebase-intelligence
+    command: build-codebase-plan
+    depends_on: [build-file-collision-check]
+    context: fresh
+    idle_timeout: 600000
+
+  # ═══════════════════════════════════════════════════════════════
+  # BUILD: PHASE 1 EXECUTE
+  # Fresh agent builds ONLY Phase 1 files. Commits on completion.
+  # Each phase gets its own fresh context window — no bleed between phases.
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: build-execute-phase-1
+    depends_on: [build-codebase-intelligence]
+    model: sonnet
+    context: fresh
+    idle_timeout: 900000
+    prompt: |
+      You are building Phase 1 of a multi-phase software project.
+
+      Read these files first (in this order):
+      1. $ARTIFACTS_DIR/phases/phase-1-enriched.md — if it exists, use this.
+         Otherwise use $ARTIFACTS_DIR/phases/phase-1.md
+      2. $ARTIFACTS_DIR/BUILD_RULES.md — every rule is a hard constraint
+      3. $ARTIFACTS_DIR/CLAUDE.md — product context, tech stack, architecture
+      4. $ARTIFACTS_DIR/context_packet.json — mechanism blueprints and Wall/Door/Room classifications
+
+      SCOPE CONSTRAINT: Build ONLY the files listed in phase-1.md's build order.
+      Do NOT touch any file listed in phase-2.md or phase-3.md.
+      If you accidentally touch an out-of-scope file, revert it immediately.
+
+      PRODUCTION DEFAULTS (do these FIRST before any phase files):
+      - Create .gitignore at project root if it doesn't exist
+      - If using Prisma: always include binaryTargets = ["native", "debian-openssl-3.0.x"]
+      - If monorepo: Express must serve the React frontend after all API routes
+      - CORS: never hardcode localhost — use process.env.CORS_ORIGIN || true
+
+      EXECUTION PROCESS (per file in the phase-1 build order):
+      1. Read the target file (if UPDATE) or parent directory (if CREATE)
+      2. Read the MIRROR reference pattern from the phase plan
+      3. Implement following Wall/Door/Room rules:
+         - WALL: Implement EXACTLY as specified. One way only. No creative deviation.
+         - DOOR: Choose within the defined constraints listed in the plan.
+         - ROOM: Use best judgment within the topic boundary.
+      4. Run PULSE check after each file:
+         - File exists at expected path ✓/✗
+         - Exports expected functions/components ✓/✗
+         - No syntax errors ✓/✗
+      5. If pulse check fails: fix immediately before moving to next file.
+      6. TWO-STRIKE RULE: If 2 fix attempts on same file both fail, STOP.
+         Document the issue. Do not continue. "The problem is the plan, not the agent."
+
+      AT MECHANISM CONNECTION POINTS: Run SEAM checks — imports resolve, interfaces match.
+
+      WHEN ALL PHASE 1 FILES ARE BUILT:
+      1. Run FULL checkpoint:
+         - Compile check (Python imports + TypeScript noEmit if applicable)
+         - Git diff: confirm only phase-1 files were touched
+         - Functional check: any endpoints or components respond
+      2. If all pass: commit with message "AutoForge: Phase 1 complete"
+      3. If any fail: fix, then commit.
+
+      REPORT when done:
+      - Files built: X/Y
+      - Pulse checks: X/Y pass
+      - Full checkpoint: PASS/FAIL
+      - Any deviations from the plan (what changed and why)
+
+  # ═══════════════════════════════════════════════════════════════
+  # BUILD: PHASE 1 DELTA REVIEW
+  # AI auditor compares what was planned vs. what was actually built.
+  # Flags missing files, failed pulse checks, and scope violations.
+  # Does NOT fix — just reports.
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: build-delta-review-phase-1
+    depends_on: [build-execute-phase-1]
+    model: sonnet
+    context: fresh
+    prompt: |
+      You are the Phase 1 completion auditor. Your job is to compare what was planned
+      against what was actually built. You do NOT fix anything — you report only.
+
+      Read:
+      1. $ARTIFACTS_DIR/phases/phase-1-enriched.md or $ARTIFACTS_DIR/phases/phase-1.md
+         — the complete spec of what was supposed to be built in Phase 1
+      2. $ARTIFACTS_DIR/implementation-report.md — if it exists, read it
+      3. Run: git diff HEAD~1 --name-only (or git show --stat HEAD) to see what
+         files were actually created or modified in the Phase 1 commit
+
+      CHECK THESE IN ORDER:
+
+      1. FILE COMPLETENESS: Every file in phase-1's build order — does it exist? ✓/✗
+      2. PULSE CHECKS: For each phase-1 file, do the pulse checks defined in the plan pass? ✓/✗
+      3. SCOPE DISCIPLINE: Are any files in the commit that are NOT in phase-1's allowed list?
+         (These are scope violations — list them if found)
+      4. SEAM INTEGRITY: Do the cross-mechanism imports listed in phase-1 resolve correctly?
+
+      Output this exact format:
+
+      ═══ PHASE 1 DELTA REPORT ═══
+      Files built: X / Y planned
+      Pulse checks: X / Y pass
+      Scope violations: none | [list filenames]
+      Seam checks: X / Y pass
+
+      Missing files: [list any not built, or "none"]
+      Failed pulse checks: [list failures, or "none"]
+      Seam failures: [list, or "none"]
+
+      VERDICT: PASS | FAIL
+
+      If FAIL: list exactly what must be fixed before Phase 2 can start.
+      If PASS: "Phase 1 complete. Safe to proceed to Phase 2."
+
+  # ═══════════════════════════════════════════════════════════════
+  # BUILD: GIT SNAPSHOT BEFORE PHASE 2
+  # Creates a clean rollback point. If Phase 2 breaks something,
+  # you can revert to this commit without losing Phase 1 work.
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: build-snapshot-before-phase-2
+    depends_on: [build-delta-review-phase-1]
+    model: haiku
+    context: fresh
+    prompt: |
+      Create a git snapshot before Phase 2 begins.
+
+      Run: git add -A && git commit -m "AutoForge: Phase 1 snapshot — rollback point before Phase 2" --allow-empty
+
+      If the commit succeeds, output: "Phase 1 snapshot committed. Safe rollback point created. Ready for Phase 2."
+      If it fails (nothing to commit), output: "No new changes to snapshot. Phase 1 commit already exists. Proceeding to Phase 2."
+
+  # ═══════════════════════════════════════════════════════════════
+  # BUILD: PHASE 2 EXECUTE
+  # Fresh agent, fresh context. Reads phase-2 spec only.
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: build-execute-phase-2
+    depends_on: [build-snapshot-before-phase-2]
+    model: sonnet
+    context: fresh
+    idle_timeout: 900000
+    prompt: |
+      You are building Phase 2 of a multi-phase software project. Phase 1 is already complete
+      and committed. Do not touch Phase 1 files.
+
+      Read these files first (in this order):
+      1. $ARTIFACTS_DIR/phases/phase-2-enriched.md — if it exists, use this.
+         Otherwise use $ARTIFACTS_DIR/phases/phase-2.md
+      2. $ARTIFACTS_DIR/BUILD_RULES.md — every rule is a hard constraint
+      3. $ARTIFACTS_DIR/CLAUDE.md — product context, tech stack, architecture
+      4. $ARTIFACTS_DIR/context_packet.json — mechanism blueprints and Wall/Door/Room classifications
+
+      SCOPE CONSTRAINT: Build ONLY the files listed in phase-2.md's build order.
+      Phase 1 files are READ-ONLY. Phase 3 files do not exist yet — do not create them.
+      If you need to import from a Phase 1 file, import it — do not rewrite it.
+
+      EXECUTION PROCESS (per file in the phase-2 build order):
+      1. Read the target file (if UPDATE) or parent directory (if CREATE)
+      2. Read the MIRROR reference pattern from the phase plan
+      3. Implement following Wall/Door/Room rules:
+         - WALL: Implement EXACTLY as specified. One way only. No creative deviation.
+         - DOOR: Choose within the defined constraints listed in the plan.
+         - ROOM: Use best judgment within the topic boundary.
+      4. Run PULSE check after each file:
+         - File exists at expected path ✓/✗
+         - Exports expected functions/components ✓/✗
+         - No syntax errors ✓/✗
+      5. If pulse check fails: fix immediately before moving to next file.
+      6. TWO-STRIKE RULE: If 2 fix attempts on same file both fail, STOP.
+         Document the issue. Do not continue.
+
+      AT MECHANISM CONNECTION POINTS: Run SEAM checks — imports resolve, interfaces match.
+
+      WHEN ALL PHASE 2 FILES ARE BUILT:
+      1. Run FULL checkpoint:
+         - Compile check (Python imports + TypeScript noEmit if applicable)
+         - Git diff: confirm only phase-2 files were touched
+         - Functional check: new endpoints or components respond
+      2. If all pass: commit with message "AutoForge: Phase 2 complete"
+      3. If any fail: fix, then commit.
+
+      REPORT when done:
+      - Files built: X/Y
+      - Pulse checks: X/Y pass
+      - Full checkpoint: PASS/FAIL
+      - Any deviations from the plan
+
+  # ═══════════════════════════════════════════════════════════════
+  # BUILD: PHASE 2 DELTA REVIEW
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: build-delta-review-phase-2
+    depends_on: [build-execute-phase-2]
+    model: sonnet
+    context: fresh
+    prompt: |
+      You are the Phase 2 completion auditor. Compare planned vs. actually built. Report only.
+
+      Read:
+      1. $ARTIFACTS_DIR/phases/phase-2-enriched.md or $ARTIFACTS_DIR/phases/phase-2.md
+      2. $ARTIFACTS_DIR/implementation-report.md — if it exists
+      3. Run: git show --stat HEAD to see what files were in the Phase 2 commit
+
+      CHECK:
+      1. FILE COMPLETENESS: Every file in phase-2's build order — exists? ✓/✗
+      2. PULSE CHECKS: Do the pulse checks defined in phase-2 pass? ✓/✗
+      3. SCOPE DISCIPLINE: Any files committed that are NOT in phase-2's allowed list? List them.
+      4. PHASE 1 INTEGRITY: Were any Phase 1 files modified? (Should be read-only.) ✓/✗
+      5. SEAM INTEGRITY: Do the cross-mechanism imports listed in phase-2 resolve?
+
+      Output:
+      ═══ PHASE 2 DELTA REPORT ═══
+      Files built: X / Y planned
+      Pulse checks: X / Y pass
+      Scope violations: none | [list]
+      Phase 1 files touched: none | [list — these are bugs]
+      Seam checks: X / Y pass
+
+      Missing files: [list, or "none"]
+      Failed pulse checks: [list, or "none"]
+      Seam failures: [list, or "none"]
+
+      VERDICT: PASS | FAIL
+
+      If FAIL: list exactly what must be fixed before Phase 3 can start.
+      If PASS: "Phase 2 complete. Safe to proceed to Phase 3."
+
+  # ═══════════════════════════════════════════════════════════════
+  # BUILD: GIT SNAPSHOT BEFORE PHASE 3
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: build-snapshot-before-phase-3
+    depends_on: [build-delta-review-phase-2]
+    model: haiku
+    context: fresh
+    prompt: |
+      Create a git snapshot before Phase 3 begins.
+
+      Run: git add -A && git commit -m "AutoForge: Phase 2 snapshot — rollback point before Phase 3" --allow-empty
+
+      If the commit succeeds, output: "Phase 2 snapshot committed. Safe rollback point created. Ready for Phase 3."
+      If it fails (nothing to commit), output: "No new changes to snapshot. Phase 2 commit already exists. Proceeding to Phase 3."
+
+  # ═══════════════════════════════════════════════════════════════
+  # BUILD: PHASE 3 EXECUTE
+  # Fresh agent, fresh context. Phase 3 depends on Phases 1 & 2.
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: build-execute-phase-3
+    depends_on: [build-snapshot-before-phase-3]
+    model: sonnet
+    context: fresh
+    idle_timeout: 900000
+    prompt: |
+      You are building Phase 3 of a multi-phase software project. Phases 1 and 2 are
+      complete and committed. Do not touch Phase 1 or Phase 2 files.
+
+      Read these files first (in this order):
+      1. $ARTIFACTS_DIR/phases/phase-3-enriched.md — if it exists, use this.
+         Otherwise use $ARTIFACTS_DIR/phases/phase-3.md
+      2. $ARTIFACTS_DIR/BUILD_RULES.md — every rule is a hard constraint
+      3. $ARTIFACTS_DIR/CLAUDE.md — product context, tech stack, architecture
+      4. $ARTIFACTS_DIR/context_packet.json — mechanism blueprints and Wall/Door/Room classifications
+      5. $ARTIFACTS_DIR/skeleton_code.md — if it exists, review high-risk mechanism scaffolds
+
+      SCOPE CONSTRAINT: Build ONLY the files listed in phase-3.md's build order.
+      Phase 1 and Phase 2 files are READ-ONLY. You may import from them, never rewrite them.
+
+      EXECUTION PROCESS (per file in the phase-3 build order):
+      1. Read the target file (if UPDATE) or parent directory (if CREATE)
+      2. Read the MIRROR reference pattern from the phase plan
+      3. Implement following Wall/Door/Room rules:
+         - WALL: Implement EXACTLY as specified. One way only. No creative deviation.
+         - DOOR: Choose within the defined constraints listed in the plan.
+         - ROOM: Use best judgment within the topic boundary.
+      4. Run PULSE check after each file:
+         - File exists at expected path ✓/✗
+         - Exports expected functions/components ✓/✗
+         - No syntax errors ✓/✗
+      5. If pulse check fails: fix immediately before moving to next file.
+      6. TWO-STRIKE RULE: If 2 fix attempts fail, STOP and document.
+
+      AT MECHANISM CONNECTION POINTS: Run SEAM checks — imports resolve, interfaces match.
+
+      WHEN ALL PHASE 3 FILES ARE BUILT:
+      1. Run FULL checkpoint:
+         - Compile check (all three phases together)
+         - Git diff: confirm only phase-3 files were touched
+         - End-to-end functional check: full feature flow works
+      2. Commit: "AutoForge: Phase 3 complete — full build done"
+
+      REPORT when done:
+      - Files built: X/Y
+      - Pulse checks: X/Y pass
+      - Full checkpoint: PASS/FAIL
+      - Any deviations from the plan
+
+  # ═══════════════════════════════════════════════════════════════
+  # BUILD: PHASE 3 DELTA REVIEW
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: build-delta-review-phase-3
+    depends_on: [build-execute-phase-3]
+    model: sonnet
+    context: fresh
+    prompt: |
+      You are the Phase 3 completion auditor. This is the final phase — full build complete.
+
+      Read:
+      1. $ARTIFACTS_DIR/phases/phase-3-enriched.md or $ARTIFACTS_DIR/phases/phase-3.md
+      2. $ARTIFACTS_DIR/implementation-report.md — if it exists
+      3. Run: git show --stat HEAD to see what files were in the Phase 3 commit
+      4. Run: git log --oneline -5 to see all three phase commits
+
+      CHECK:
+      1. FILE COMPLETENESS: Every file in phase-3's build order — exists? ✓/✗
+      2. PULSE CHECKS: Do the pulse checks defined in phase-3 pass? ✓/✗
+      3. SCOPE DISCIPLINE: Any files committed not in phase-3's allowed list?
+      4. PHASE 1 & 2 INTEGRITY: Were any prior phase files modified? (Should be read-only.)
+      5. SEAM INTEGRITY: Full cross-phase seam checks — all 3 phases integrated?
+      6. END-TO-END: Does the primary user flow work (feature input → output)?
+
+      Output:
+      ═══ PHASE 3 DELTA REPORT — FULL BUILD ═══
+      Phase 3 files built: X / Y planned
+      Pulse checks: X / Y pass
+      Scope violations: none | [list]
+      Prior phase files touched: none | [list — these are bugs]
+      Seam checks: X / Y pass
+      End-to-end flow: PASS | FAIL
+
+      TOTAL BUILD SUMMARY:
+      Phase 1: [file count] files
+      Phase 2: [file count] files
+      Phase 3: [file count] files
+      Total: [count] files across [count] mechanisms
+
+      VERDICT: PASS | FAIL
+
+      If PASS: "Full build complete. All 3 phases verified. Safe for review sweep."
+
+  # ═══════════════════════════════════════════════════════════════
+  # BUILD: VERIFY COMPLIANCE
+  # Wall/Door/Room compliance + Pulse/Seam/Full checks across all phases
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: build-verify-compliance
+    command: build-verify
+    depends_on: [build-delta-review-phase-3]
+    model: sonnet
+    context: fresh
+
+  # ═══════════════════════════════════════════════════════════════
+  # BUILD: REVIEW — 4 parallel agents attacking the code
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: review-correctness-logic
+    command: build-review-correctness
+    depends_on: [build-verify-compliance]
+    model: sonnet
+    context: fresh
+
+  - id: review-silent-failures
+    command: build-review-failures
+    depends_on: [build-verify-compliance]
+    model: sonnet
+    context: fresh
+
+  - id: review-test-coverage
+    command: build-review-tests
+    depends_on: [build-verify-compliance]
+    model: sonnet
+    context: fresh
+
+  - id: review-simplify-code
+    command: build-review-simplify
+    depends_on: [build-verify-compliance]
+    model: sonnet
+    context: fresh
+
+  # ═══════════════════════════════════════════════════════════════
+  # BUILD: FIX
+  # Synthesizes all 4 reviews and fixes issues
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: build-fix-issues
+    command: build-fix
+    depends_on: [review-correctness-logic, review-silent-failures, review-test-coverage, review-simplify-code]
+    model: sonnet
+    context: fresh
+
+  # ═══════════════════════════════════════════════════════════════
+  # BUILD: REPORT
+  # Full pipeline summary
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: build-final-report
+    command: build-report
+    depends_on: [build-fix-issues]
+    model: haiku
+    context: fresh
+    trigger_rule: all_done
+
+  # ═══════════════════════════════════════════════════════════════
+  # BUILD: DEPLOY
+  # Packages and pushes to target repository
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: build-deploy
+    command: build-deploy
+    depends_on: [build-final-report]
+    model: sonnet
+    context: fresh

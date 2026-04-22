@@ -406,6 +406,17 @@ class WorkspaceChatSession:
         # numbers instead of heuristic estimates.
         self._last_api_usage: Optional[dict] = None
 
+        # Per-AssistantMessage usage where parent_tool_use_id is None.  The
+        # Claude SDK attaches a ``usage`` dict to every AssistantMessage —
+        # main-agent messages have parent_tool_use_id == None, subagent
+        # (Task tool) messages carry a parent_tool_use_id.  Capturing the
+        # main-agent usage separately gives the header context meter the
+        # true "agent I'm talking to" token count, excluding subagents,
+        # even though ResultMessage.usage rolls them all together.
+        # Shape mirrors the usage dict: input_tokens, output_tokens,
+        # cache_creation_input_tokens, cache_read_input_tokens.
+        self._last_main_usage: Optional[dict] = None
+
         # Legacy flag (no longer used — library files are now attached per-message)
         self._library_injected: bool = False
 
@@ -2038,6 +2049,28 @@ class WorkspaceChatSession:
                 turn_text_length = 0
                 turn_tool_calls = []
 
+                # Capture per-message usage for main-agent-only context size.
+                # Main-agent messages have ``parent_tool_use_id is None``;
+                # subagent (Task tool) messages carry a parent_tool_use_id.
+                # We keep only the LAST main-agent usage in this turn — that
+                # reflects the final API call the main agent made and therefore
+                # the current size of its context window (input + cache_read
+                # + cache_create).  Subagent usage is ignored for this pill
+                # but still rolled into the ResultMessage total.
+                _parent_id = getattr(msg, "parent_tool_use_id", None)
+                _msg_usage = getattr(msg, "usage", None)
+                if _parent_id is None and isinstance(_msg_usage, dict):
+                    self._last_main_usage = {
+                        "input_tokens": _msg_usage.get("input_tokens") or 0,
+                        "output_tokens": _msg_usage.get("output_tokens") or 0,
+                        "cache_creation_input_tokens": (
+                            _msg_usage.get("cache_creation_input_tokens") or 0
+                        ),
+                        "cache_read_input_tokens": (
+                            _msg_usage.get("cache_read_input_tokens") or 0
+                        ),
+                    }
+
                 for block in msg.content:
                     block_type = type(block).__name__
 
@@ -2225,6 +2258,21 @@ class WorkspaceChatSession:
                 # context_tokens = total input context sent to the API this turn
                 # (new input + cached reads + newly cached).
                 context_tokens = (api_input or 0) + (api_cache_read or 0) + (api_cache_create or 0)
+
+                # Compute main-agent-only context size from the per-message
+                # AssistantMessage.usage captured earlier in this turn.
+                # When available, this is the REAL number to show on the
+                # header pill — it excludes subagent (Task tool) turns,
+                # which the SDK otherwise rolls into the usage dict above.
+                _m = self._last_main_usage or {}
+                _m_input = _m.get("input_tokens") if _m else None
+                _m_output = _m.get("output_tokens") if _m else None
+                _m_cache_create = _m.get("cache_creation_input_tokens") if _m else None
+                _m_cache_read = _m.get("cache_read_input_tokens") if _m else None
+                main_context_tokens = (
+                    (_m_input or 0) + (_m_cache_read or 0) + (_m_cache_create or 0)
+                ) if _m else None
+
                 self._last_api_usage = {
                     "input_tokens": api_input or 0,
                     "output_tokens": api_output or 0,
@@ -2233,6 +2281,14 @@ class WorkspaceChatSession:
                     "context_tokens": context_tokens,
                     "cost_usd": cost_usd or 0.0,
                     "num_turns": num_turns_api,
+                    # Main-agent-only (subagent Task calls excluded).  None
+                    # on turns where no main-agent AssistantMessage usage
+                    # was captured — UI falls back to ``context_tokens``.
+                    "main_input_tokens": _m_input,
+                    "main_output_tokens": _m_output,
+                    "main_cache_read_tokens": _m_cache_read,
+                    "main_cache_creation_tokens": _m_cache_create,
+                    "main_context_tokens": main_context_tokens,
                 }
 
                 logger.info(
@@ -2241,6 +2297,23 @@ class WorkspaceChatSession:
                     result_model, cost_usd or 0.0, api_input, api_output,
                     api_cache_create, api_cache_read, context_tokens, num_turns_api,
                     duration_ms, is_error,
+                )
+
+                # Pull main-agent-only numbers captured from the last
+                # AssistantMessage where parent_tool_use_id is None.  These
+                # bypass the SDK's rolled-up ResultMessage.usage and give
+                # the header context meter true "agent I'm talking to"
+                # numbers, excluding subagent (Task tool) turns.  Falls
+                # back to None when no main-agent usage was seen this
+                # stream (rare — UI then defers to api_* columns).
+                _m = self._last_main_usage or {}
+                main_input = _m.get("input_tokens") if _m else None
+                main_output = _m.get("output_tokens") if _m else None
+                main_cache_create = (
+                    _m.get("cache_creation_input_tokens") if _m else None
+                )
+                main_cache_read = (
+                    _m.get("cache_read_input_tokens") if _m else None
                 )
 
                 if conv_id is not None:
@@ -2260,10 +2333,21 @@ class WorkspaceChatSession:
                             api_duration_api_ms=duration_api_ms,
                             estimated_tokens=(api_input or 0) + (api_output or 0),
                             model=result_model or self.model,
+                            main_input_tokens=main_input,
+                            main_output_tokens=main_output,
+                            main_cache_creation_tokens=main_cache_create,
+                            main_cache_read_tokens=main_cache_read,
                         )
                         yield {"type": "token_log", "entry": entry}
                     except Exception as e:
                         logger.warning("Failed to log result_summary: %s", e)
+
+                # Reset the per-turn main-usage tracker.  The next user turn
+                # will populate it afresh from its own AssistantMessage
+                # events; leaving stale values would corrupt the context
+                # reading if a future turn somehow produced no main-agent
+                # AssistantMessage (shouldn't happen, but cheap to guard).
+                self._last_main_usage = None
 
                     # Mirror this main-agent turn into the global 5-hour
                     # token_budget.db ledger so the header budget view and
@@ -2336,20 +2420,39 @@ class WorkspaceChatSession:
 
             if self._last_api_usage:
                 api = self._last_api_usage
+                # Prefer main-agent-only context size for the headline pill
+                # when we captured it from AssistantMessage.usage.  The
+                # rolled-up ``context_tokens`` includes subagent (Task tool)
+                # input and inflates the meter on turns that spawned Tasks.
+                _main_ctx = api.get("main_context_tokens")
+                headline_tokens = _main_ctx if _main_ctx else api["context_tokens"]
                 yield {
                     "type": "token_usage",
-                    # context_tokens = actual current context window utilization
-                    # (input + cache_read + cache_creation from latest API call)
-                    "total_tokens": api["context_tokens"],
+                    # total_tokens drives the header context meter.  It is
+                    # main-agent-only when available, otherwise falls back
+                    # to the SDK's rolled-up value for older conversations.
+                    "total_tokens": headline_tokens,
                     "context_window": self.context_window,
                     "message_count": msg_count,
                     "model_id": self._resolved_model_id,
-                    # Detailed breakdown for the UI
+                    # Rolled-up API numbers (main + subagents) — preserved
+                    # for back-compat and for the Token Log side panel.
                     "api_input_tokens": api["input_tokens"],
                     "api_output_tokens": api["output_tokens"],
                     "api_cache_read_tokens": api["cache_read_tokens"],
                     "api_cache_creation_tokens": api["cache_creation_tokens"],
                     "cost_usd": api["cost_usd"],
+                    # Rolled-up context size kept alongside main for the UI
+                    # to optionally show as a secondary figure.
+                    "rolled_context_tokens": api["context_tokens"],
+                    # Main-agent-only breakdown (subagent Task calls excluded).
+                    # None on pre-fix conversations; UI should treat None as
+                    # "fall back to rolled-up numbers".
+                    "main_input_tokens": api.get("main_input_tokens"),
+                    "main_output_tokens": api.get("main_output_tokens"),
+                    "main_cache_read_tokens": api.get("main_cache_read_tokens"),
+                    "main_cache_creation_tokens": api.get("main_cache_creation_tokens"),
+                    "main_context_tokens": _main_ctx,
                 }
             else:
                 total = await asyncio.to_thread(get_conversation_token_total, self.conversation_id)

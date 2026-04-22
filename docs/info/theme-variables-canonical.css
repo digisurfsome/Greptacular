@@ -1,0 +1,515 @@
+/*  ============================================================
+ *  Theme DNA -- Canonical CSS Variable Contract
+ *  ============================================================
+ *
+ *  This file is the SINGLE SOURCE OF TRUTH for every CSS custom
+ *  property that the Theme DNA system produces and consumes.
+ *
+ *  Contract:
+ *    - Every theme source (image extractor, style renderer)
+ *      outputs ONLY these variable names.
+ *    - Every component reads ONLY these variable names.
+ *    - New variables are added HERE first, then wired into
+ *      extractors and components.
+ *
+ *  Tiers:
+ *    1. Scale vars    -- raw design tokens, never overridden
+ *       by themes (font-size-sm, space-1, radius-sm ...).
+ *    2. Semantic vars -- aliases that map scale vars to intent;
+ *       themes override THESE (--spacing-card-padding, --radius-card ...).
+ *    3. Color vars    -- set directly by each theme; there is no
+ *       underlying "scale" for colours because they are unique
+ *       to each extracted palette.
+ *
+ *  Location: docs/info/theme-variables-canonical.css
+ *  Guide:    docs/info/theme-variables-guide.md
+ *  ============================================================ */
+
+
+/* ==============================================================
+ *  :root -- default (light, neutral) values
+ * ============================================================== */
+:root {
+
+  /* ----------------------------------------------------------
+   * BRAND
+   * ---------------------------------------------------------- */
+  --color-brand:          #6366f1;   /* primary CTA color */
+  --color-brand-hover:    #4f46e5;   /* darkened ~10 % on hover */
+  --color-brand-subtle:   rgba(99, 102, 241, 0.10);  /* brand at 10 % opacity, for bg tints */
+  --color-brand-text:     #ffffff;   /* text color on top of brand bg */
+
+
+  /* ----------------------------------------------------------
+   * SURFACES
+   * ---------------------------------------------------------- */
+  --color-bg-page:        #f8fafc;   /* outermost page background */
+  --color-bg-primary:     #ffffff;   /* main content area */
+  --color-bg-secondary:   #f1f5f9;   /* alt sections, sidebars */
+  --color-bg-card:        #ffffff;   /* cards, panels */
+  --color-bg-input:       #ffffff;   /* form input backgrounds */
+  --color-bg-hover:       #f1f5f9;   /* interactive hover state bg */
+
+
+  /* ----------------------------------------------------------
+   * TEXT
+   * ---------------------------------------------------------- */
+  --color-text-primary:   #0f172a;   /* headings, key values */
+  --color-text-secondary: #475569;   /* body text, labels */
+  --color-text-muted:     #94a3b8;   /* placeholders, captions */
+  --color-text-inverse:   #ffffff;   /* text on dark / brand backgrounds */
+
+
+  /* ----------------------------------------------------------
+   * BORDERS
+   * ---------------------------------------------------------- */
+  --color-border:         #e2e8f0;   /* default dividers */
+  --color-border-strong:  #cbd5e1;   /* emphasized borders */
+  --color-border-focus:   var(--color-brand);  /* focused input ring */
+
+
+  /* ----------------------------------------------------------
+   * STATUS  (fixed across all themes)
+   * ---------------------------------------------------------- */
+  --color-success:        #10b981;
+  --color-warning:        #f59e0b;
+  --color-error:          #ef4444;
+  --color-info:           #3b82f6;
+
+
+  /* ----------------------------------------------------------
+   * TYPOGRAPHY -- Font Families
+   * ---------------------------------------------------------- */
+  --font-family:          'Inter', system-ui, -apple-system, sans-serif;  /* body font */
+  --font-family-heading:  var(--font-family);     /* display / hero font */
+  --font-family-mono:     'JetBrains Mono', ui-monospace, monospace;  /* code font */
+
+
+  /* ----------------------------------------------------------
+   * TYPOGRAPHY -- Font Sizes  (scale -- do not override)
+   * ---------------------------------------------------------- */
+  --font-size-xs:    0.75rem;   /* 12 px */
+  --font-size-sm:    0.875rem;  /* 14 px */
+  --font-size-base:  1rem;      /* 16 px */
+  --font-size-lg:    1.125rem;  /* 18 px */
+  --font-size-xl:    1.25rem;   /* 20 px */
+  --font-size-2xl:   1.5rem;    /* 24 px */
+  --font-size-3xl:   1.875rem;  /* 30 px */
+  --font-size-4xl:   2.25rem;   /* 36 px */
+  --font-size-hero:  3.5rem;    /* 56 px */
+
+
+  /* ----------------------------------------------------------
+   * TYPOGRAPHY -- Font Weights  (scale -- do not override)
+   * ---------------------------------------------------------- */
+  --font-weight-normal:    400;
+  --font-weight-medium:    500;
+  --font-weight-semibold:  600;
+  --font-weight-bold:      700;
+  --font-weight-black:     900;
+
+
+  /* ----------------------------------------------------------
+   * TYPOGRAPHY -- Line Heights  (scale -- do not override)
+   * ---------------------------------------------------------- */
+  --line-height-tight:    1.2;
+  --line-height-snug:     1.375;
+  --line-height-normal:   1.5;
+  --line-height-relaxed:  1.75;
+
+
+  /* ----------------------------------------------------------
+   * TYPOGRAPHY -- Letter Spacing  (scale -- do not override)
+   * ---------------------------------------------------------- */
+  --letter-spacing-tight:   -0.02em;
+  --letter-spacing-normal:   0em;
+  --letter-spacing-wide:     0.05em;
+  --letter-spacing-wider:    0.1em;
+
+
+  /* ----------------------------------------------------------
+   * SPACING -- Base Scale  (4 px unit -- do not override)
+   * ---------------------------------------------------------- */
+  --space-1:   4px;    /*  1 unit */
+  --space-2:   8px;    /*  2 units */
+  --space-3:   12px;   /*  3 units */
+  --space-4:   16px;   /*  4 units */
+  --space-5:   20px;   /*  5 units */
+  --space-6:   24px;   /*  6 units */
+  --space-8:   32px;   /*  8 units */
+  --space-10:  40px;   /* 10 units */
+  --space-12:  48px;   /* 12 units */
+  --space-16:  64px;   /* 16 units */
+  --space-20:  80px;   /* 20 units */
+  --space-24:  96px;   /* 24 units */
+
+
+  /* ----------------------------------------------------------
+   * SPACING -- Semantic  (themes override these)
+   * ---------------------------------------------------------- */
+  --spacing-card-padding:   var(--space-6);
+  --spacing-section-y:      var(--space-20);
+  --spacing-component-gap:  var(--space-6);
+  --spacing-input-x:        var(--space-4);
+  --spacing-input-y:        var(--space-3);
+  --spacing-btn-x:          var(--space-6);
+  --spacing-btn-y:          var(--space-3);
+
+
+  /* ----------------------------------------------------------
+   * BORDER RADIUS -- Scale  (do not override)
+   * ---------------------------------------------------------- */
+  --radius-none:  0;
+  --radius-sm:    4px;
+  --radius-base:  6px;
+  --radius-md:    8px;
+  --radius-lg:    12px;
+  --radius-xl:    16px;
+  --radius-2xl:   24px;
+  --radius-full:  9999px;
+
+
+  /* ----------------------------------------------------------
+   * BORDER RADIUS -- Semantic  (themes override these)
+   * ---------------------------------------------------------- */
+  --radius-card:   var(--radius-lg);
+  --radius-btn:    var(--radius-md);
+  --radius-input:  var(--radius-md);
+  --radius-badge:  var(--radius-full);
+  --radius-image:  var(--radius-lg);
+
+
+  /* ----------------------------------------------------------
+   * ELEVATION / SHADOWS -- Scale
+   * ---------------------------------------------------------- */
+  --shadow-none:  none;
+  --shadow-xs:    0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-sm:    0 1px 3px rgba(0, 0, 0, 0.10), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-base:  0 4px 6px rgba(0, 0, 0, 0.07), 0 2px 4px rgba(0, 0, 0, 0.06);
+  --shadow-md:    0 10px 15px rgba(0, 0, 0, 0.10), 0 4px 6px rgba(0, 0, 0, 0.05);
+  --shadow-lg:    0 20px 25px rgba(0, 0, 0, 0.10), 0 8px 10px rgba(0, 0, 0, 0.04);
+  --shadow-xl:    0 25px 50px rgba(0, 0, 0, 0.25);
+
+
+  /* ----------------------------------------------------------
+   * ELEVATION / SHADOWS -- Semantic  (themes override these)
+   * ---------------------------------------------------------- */
+  --shadow-card:        var(--shadow-sm);
+  --shadow-card-hover:  var(--shadow-md);
+  --shadow-btn:         var(--shadow-xs);
+  --shadow-btn-hover:   var(--shadow-sm);
+  --shadow-dropdown:    var(--shadow-lg);
+  --shadow-modal:       var(--shadow-xl);
+
+
+  /* ----------------------------------------------------------
+   * SPECIAL EFFECTS -- Glassmorphism
+   * ---------------------------------------------------------- */
+  --glass-blur:     12px;
+  --glass-opacity:  0.1;
+  --glass-border:   rgba(255, 255, 255, 0.15);
+  --glass-bg:       rgba(255, 255, 255, 0.08);
+
+
+  /* ----------------------------------------------------------
+   * SPECIAL EFFECTS -- Neumorphism
+   * ---------------------------------------------------------- */
+  --neumorphic-light:  rgba(255, 255, 255, 0.5);
+  --neumorphic-dark:   rgba(0, 0, 0, 0.15);
+  --neumorphic-base:   var(--color-bg-card);
+
+
+  /* ----------------------------------------------------------
+   * ANIMATION -- Durations
+   * ---------------------------------------------------------- */
+  --duration-fast:    100ms;
+  --duration-base:    200ms;
+  --duration-slow:    350ms;
+  --duration-slower:  500ms;
+
+
+  /* ----------------------------------------------------------
+   * ANIMATION -- Easing Curves
+   * ---------------------------------------------------------- */
+  --ease-default:  cubic-bezier(0.4, 0.0, 0.2, 1);
+  --ease-in:       cubic-bezier(0.4, 0.0, 1,   1);
+  --ease-out:      cubic-bezier(0.0, 0.0, 0.2, 1);
+  --ease-bounce:   cubic-bezier(0.34, 1.56, 0.64, 1);
+
+
+  /* ----------------------------------------------------------
+   * ANIMATION -- Semantic Transitions
+   * ---------------------------------------------------------- */
+  --transition-base:      all var(--duration-base) var(--ease-default);
+  --transition-colors:    color var(--duration-base) var(--ease-default),
+                          background-color var(--duration-base) var(--ease-default),
+                          border-color var(--duration-base) var(--ease-default);
+  --transition-shadow:    box-shadow var(--duration-base) var(--ease-default);
+  --transition-transform: transform var(--duration-base) var(--ease-default);
+
+
+  /* ----------------------------------------------------------
+   * LAYOUT -- Container Widths
+   * ---------------------------------------------------------- */
+  --container-sm:   640px;
+  --container-md:   768px;
+  --container-lg:   1024px;
+  --container-xl:   1280px;
+  --container-2xl:  1536px;
+
+  --navbar-height:  64px;
+  --sidebar-width:  260px;
+
+
+  /* ----------------------------------------------------------
+   * Z-INDEX
+   * ---------------------------------------------------------- */
+  --z-below:     -1;
+  --z-base:       0;
+  --z-raised:     10;
+  --z-dropdown:   100;
+  --z-sticky:     200;
+  --z-overlay:    300;
+  --z-modal:      400;
+  --z-toast:      500;
+  --z-tooltip:    600;
+}
+
+
+/* ==============================================================
+ *  THEME OVERRIDES
+ *  Each [data-theme] block overrides ONLY semantic vars and
+ *  colour vars. Scale vars (font sizes, spacing scale, radius
+ *  scale) are never touched -- that keeps the design system
+ *  coherent across every theme.
+ * ============================================================== */
+
+
+/* ----------------------------------------------------------
+ * Glassmorphism Dark
+ *
+ * Frosted-glass panels on a near-black canvas.  Relies on
+ * backdrop-filter: blur(var(--glass-blur)) applied by
+ * component classes.
+ * ---------------------------------------------------------- */
+[data-theme="glassmorphism-dark"] {
+  --color-brand:          #818cf8;
+  --color-brand-hover:    #6366f1;
+  --color-brand-subtle:   rgba(129, 140, 248, 0.12);
+  --color-brand-text:     #ffffff;
+
+  --color-bg-page:        #0a0a0f;
+  --color-bg-primary:     #111118;
+  --color-bg-secondary:   #16161f;
+  --color-bg-card:        rgba(255, 255, 255, 0.05);
+  --color-bg-input:       rgba(255, 255, 255, 0.06);
+  --color-bg-hover:       rgba(255, 255, 255, 0.08);
+
+  --color-text-primary:   #f1f5f9;
+  --color-text-secondary: #94a3b8;
+  --color-text-muted:     #64748b;
+  --color-text-inverse:   #0f172a;
+
+  --color-border:         rgba(255, 255, 255, 0.08);
+  --color-border-strong:  rgba(255, 255, 255, 0.15);
+
+  --radius-card:   var(--radius-xl);
+  --radius-btn:    var(--radius-lg);
+  --radius-input:  var(--radius-lg);
+
+  --shadow-card:        0 8px 32px rgba(0, 0, 0, 0.40);
+  --shadow-card-hover:  0 12px 40px rgba(0, 0, 0, 0.50);
+  --shadow-btn:         0 2px 8px rgba(0, 0, 0, 0.30);
+  --shadow-btn-hover:   0 4px 12px rgba(0, 0, 0, 0.40);
+  --shadow-dropdown:    0 16px 48px rgba(0, 0, 0, 0.50);
+  --shadow-modal:       0 24px 64px rgba(0, 0, 0, 0.60);
+
+  --glass-blur:     16px;
+  --glass-opacity:  0.06;
+  --glass-border:   rgba(255, 255, 255, 0.10);
+  --glass-bg:       rgba(255, 255, 255, 0.05);
+}
+
+
+/* ----------------------------------------------------------
+ * Neomorphism Light
+ *
+ * Soft, extruded shapes. Cards use inset / outset box-shadow
+ * pairs instead of borders.  Background must stay close to
+ * --color-bg-page for the illusion to work.
+ * ---------------------------------------------------------- */
+[data-theme="neomorphism-light"] {
+  --color-brand:          #6366f1;
+  --color-brand-hover:    #4f46e5;
+  --color-brand-subtle:   rgba(99, 102, 241, 0.10);
+  --color-brand-text:     #ffffff;
+
+  --color-bg-page:        #e0e5ec;
+  --color-bg-primary:     #e0e5ec;
+  --color-bg-secondary:   #e0e5ec;
+  --color-bg-card:        #e0e5ec;
+  --color-bg-input:       #e0e5ec;
+  --color-bg-hover:       #d5dae1;
+
+  --color-text-primary:   #2d3436;
+  --color-text-secondary: #636e72;
+  --color-text-muted:     #b2bec3;
+  --color-text-inverse:   #ffffff;
+
+  --color-border:         transparent;
+  --color-border-strong:  transparent;
+
+  --radius-card:   var(--radius-xl);
+  --radius-btn:    var(--radius-lg);
+  --radius-input:  var(--radius-lg);
+
+  --shadow-card:        6px 6px 12px rgba(0, 0, 0, 0.15),
+                        -6px -6px 12px rgba(255, 255, 255, 0.50);
+  --shadow-card-hover:  8px 8px 16px rgba(0, 0, 0, 0.18),
+                        -8px -8px 16px rgba(255, 255, 255, 0.55);
+  --shadow-btn:         4px 4px 8px rgba(0, 0, 0, 0.12),
+                        -4px -4px 8px rgba(255, 255, 255, 0.50);
+  --shadow-btn-hover:   2px 2px 4px rgba(0, 0, 0, 0.12),
+                        -2px -2px 4px rgba(255, 255, 255, 0.50);
+  --shadow-dropdown:    8px 8px 20px rgba(0, 0, 0, 0.15),
+                        -8px -8px 20px rgba(255, 255, 255, 0.50);
+  --shadow-modal:       12px 12px 30px rgba(0, 0, 0, 0.18),
+                        -12px -12px 30px rgba(255, 255, 255, 0.55);
+
+  --neumorphic-light:  rgba(255, 255, 255, 0.50);
+  --neumorphic-dark:   rgba(0, 0, 0, 0.15);
+  --neumorphic-base:   #e0e5ec;
+}
+
+
+/* ----------------------------------------------------------
+ * Brutalism
+ *
+ * Hard edges, heavy black borders, flat offset shadows.
+ * No border radius on interactive elements. Raw and
+ * intentionally "undesigned".
+ * ---------------------------------------------------------- */
+[data-theme="brutalism"] {
+  --color-brand:          #000000;
+  --color-brand-hover:    #333333;
+  --color-brand-subtle:   rgba(0, 0, 0, 0.06);
+  --color-brand-text:     #ffffff;
+
+  --color-bg-page:        #ffffff;
+  --color-bg-primary:     #ffffff;
+  --color-bg-secondary:   #f5f5f5;
+  --color-bg-card:        #ffffff;
+  --color-bg-input:       #ffffff;
+  --color-bg-hover:       #f0f0f0;
+
+  --color-text-primary:   #000000;
+  --color-text-secondary: #333333;
+  --color-text-muted:     #777777;
+  --color-text-inverse:   #ffffff;
+
+  --color-border:         #000000;
+  --color-border-strong:  #000000;
+
+  --radius-card:   var(--radius-none);
+  --radius-btn:    var(--radius-none);
+  --radius-input:  var(--radius-none);
+  --radius-badge:  var(--radius-none);
+  --radius-image:  var(--radius-none);
+
+  --shadow-card:        4px 4px 0 0 #000000;
+  --shadow-card-hover:  6px 6px 0 0 #000000;
+  --shadow-btn:         3px 3px 0 0 #000000;
+  --shadow-btn-hover:   1px 1px 0 0 #000000;
+  --shadow-dropdown:    4px 4px 0 0 #000000;
+  --shadow-modal:       8px 8px 0 0 #000000;
+}
+
+
+/* ----------------------------------------------------------
+ * Minimalism
+ *
+ * Maximum whitespace, near-invisible borders, zero
+ * shadows except the faintest xs. Content does the talking.
+ * ---------------------------------------------------------- */
+[data-theme="minimalism"] {
+  --color-brand:          #18181b;
+  --color-brand-hover:    #3f3f46;
+  --color-brand-subtle:   rgba(24, 24, 27, 0.05);
+  --color-brand-text:     #ffffff;
+
+  --color-bg-page:        #ffffff;
+  --color-bg-primary:     #ffffff;
+  --color-bg-secondary:   #fafafa;
+  --color-bg-card:        #ffffff;
+  --color-bg-input:       #fafafa;
+  --color-bg-hover:       #f4f4f5;
+
+  --color-text-primary:   #18181b;
+  --color-text-secondary: #52525b;
+  --color-text-muted:     #a1a1aa;
+  --color-text-inverse:   #ffffff;
+
+  --color-border:         #f4f4f5;
+  --color-border-strong:  #e4e4e7;
+
+  --radius-card:   var(--radius-base);
+  --radius-btn:    var(--radius-base);
+  --radius-input:  var(--radius-base);
+
+  --shadow-card:        var(--shadow-none);
+  --shadow-card-hover:  var(--shadow-xs);
+  --shadow-btn:         var(--shadow-none);
+  --shadow-btn-hover:   var(--shadow-none);
+  --shadow-dropdown:    var(--shadow-xs);
+  --shadow-modal:       var(--shadow-sm);
+}
+
+
+/* ----------------------------------------------------------
+ * Claymorphism
+ *
+ * Bright, saturated palette with 3D layered shadows that
+ * include a colour tint. Very large radius gives a soft,
+ * "inflated" clay feel.  No borders -- the shadow does all
+ * the definition work.
+ * ---------------------------------------------------------- */
+[data-theme="claymorphism"] {
+  --color-brand:          #8b5cf6;
+  --color-brand-hover:    #7c3aed;
+  --color-brand-subtle:   rgba(139, 92, 246, 0.14);
+  --color-brand-text:     #ffffff;
+
+  --color-bg-page:        #fef3c7;
+  --color-bg-primary:     #fef9e7;
+  --color-bg-secondary:   #fde68a;
+  --color-bg-card:        #fefce8;
+  --color-bg-input:       #fffef5;
+  --color-bg-hover:       #fef08a;
+
+  --color-text-primary:   #1c1917;
+  --color-text-secondary: #44403c;
+  --color-text-muted:     #78716c;
+  --color-text-inverse:   #ffffff;
+
+  --color-border:         transparent;
+  --color-border-strong:  transparent;
+
+  --radius-card:   var(--radius-2xl);
+  --radius-btn:    var(--radius-2xl);
+  --radius-input:  var(--radius-xl);
+  --radius-badge:  var(--radius-full);
+  --radius-image:  var(--radius-2xl);
+
+  --shadow-card:        0 6px 0 rgba(0, 0, 0, 0.08),
+                        0 12px 24px rgba(139, 92, 246, 0.12);
+  --shadow-card-hover:  0 8px 0 rgba(0, 0, 0, 0.10),
+                        0 16px 32px rgba(139, 92, 246, 0.16);
+  --shadow-btn:         0 4px 0 rgba(0, 0, 0, 0.08),
+                        0 8px 16px rgba(139, 92, 246, 0.10);
+  --shadow-btn-hover:   0 2px 0 rgba(0, 0, 0, 0.08),
+                        0 6px 12px rgba(139, 92, 246, 0.12);
+  --shadow-dropdown:    0 8px 0 rgba(0, 0, 0, 0.08),
+                        0 20px 40px rgba(139, 92, 246, 0.14);
+  --shadow-modal:       0 12px 0 rgba(0, 0, 0, 0.10),
+                        0 30px 60px rgba(139, 92, 246, 0.18);
+}

@@ -296,7 +296,10 @@ class WorkspaceTokenLog(Base):
     # Token estimates (heuristic: ~4 chars/token)
     estimated_tokens = Column(Integer, nullable=False, default=0)
 
-    # SDK-reported actual usage (only on result_summary events)
+    # SDK-reported actual usage (only on result_summary events).
+    # NOTE: these are ROLLED-UP values — the SDK sums main-agent + subagent
+    # usage into one ResultMessage.usage per user turn.  Use the main_*
+    # columns below for subagent-excluded numbers.
     api_input_tokens = Column(Integer, nullable=True)
     api_output_tokens = Column(Integer, nullable=True)
     api_cache_creation_tokens = Column(Integer, nullable=True)
@@ -305,6 +308,15 @@ class WorkspaceTokenLog(Base):
     api_num_turns = Column(Integer, nullable=True)
     api_duration_ms = Column(Integer, nullable=True)
     api_duration_api_ms = Column(Integer, nullable=True)
+
+    # Main-agent-only token counts (nullable).  Captured from per-message
+    # AssistantMessage.usage where parent_tool_use_id is None — excludes
+    # subagent (Task tool) turns.  These are the TRUE "agent I'm talking to"
+    # numbers used by the header context meter.
+    main_input_tokens = Column(Integer, nullable=True)
+    main_output_tokens = Column(Integer, nullable=True)
+    main_cache_creation_tokens = Column(Integer, nullable=True)
+    main_cache_read_tokens = Column(Integer, nullable=True)
 
     # Model used
     model = Column(String(100), nullable=True)
@@ -540,6 +552,25 @@ def get_engine() -> Engine:
                 cursor.execute(
                     "ALTER TABLE workspace_library_files ADD COLUMN folder_id INTEGER"
                 )
+
+            # Migrate workspace_token_log: add main-agent-only token columns.
+            # These hold subagent-excluded usage from per-message
+            # AssistantMessage.usage (parent_tool_use_id is None).  Nullable
+            # so pre-migration rows keep working; UI falls back to the
+            # rolled-up api_* columns when main_* is NULL.
+            cursor.execute("PRAGMA table_info(workspace_token_log)")
+            tl_cols = {row[1] for row in cursor.fetchall()}
+            if tl_cols:
+                for _col in (
+                    "main_input_tokens",
+                    "main_output_tokens",
+                    "main_cache_creation_tokens",
+                    "main_cache_read_tokens",
+                ):
+                    if _col not in tl_cols:
+                        cursor.execute(
+                            f"ALTER TABLE workspace_token_log ADD COLUMN {_col} INTEGER"
+                        )
 
             # One-time fix: early migration defaulted context_mode to '200k' but
             # the workspace actually uses '1m' by default.  All conversations
@@ -2455,6 +2486,12 @@ def add_token_log_entry(
     api_duration_ms: int | None = None,
     api_duration_api_ms: int | None = None,
     model: str | None = None,
+    # Main-agent-only usage (subagent-excluded).  Pass through from the
+    # last main-agent AssistantMessage.usage captured during the stream.
+    main_input_tokens: int | None = None,
+    main_output_tokens: int | None = None,
+    main_cache_creation_tokens: int | None = None,
+    main_cache_read_tokens: int | None = None,
 ) -> dict:
     """Add a token log entry for a conversation turn or event."""
     session = get_db_session()
@@ -2478,6 +2515,10 @@ def add_token_log_entry(
             api_num_turns=api_num_turns,
             api_duration_ms=api_duration_ms,
             api_duration_api_ms=api_duration_api_ms,
+            main_input_tokens=main_input_tokens,
+            main_output_tokens=main_output_tokens,
+            main_cache_creation_tokens=main_cache_creation_tokens,
+            main_cache_read_tokens=main_cache_read_tokens,
             model=model,
         )
         session.add(entry)
@@ -2590,6 +2631,15 @@ def get_token_log_summary(conversation_id: int) -> dict:
         latest_cache_create = 0
         latest_input = 0
         latest_output = 0
+        # Main-agent-only (subagent-excluded) context utilisation.
+        # Pulled from the most recent result_summary row that actually has
+        # main_* columns populated (i.e. was captured after the SDK patch
+        # that logs AssistantMessage.usage where parent_tool_use_id is None).
+        current_main_context_tokens = 0
+        latest_main_input = 0
+        latest_main_output = 0
+        latest_main_cache_read = 0
+        latest_main_cache_create = 0
         if summaries:
             latest = summaries[-1]
             latest_input = latest.api_input_tokens or 0
@@ -2602,6 +2652,26 @@ def get_token_log_summary(conversation_id: int) -> dict:
                 + (s.api_cache_creation_tokens or 0)
                 for s in summaries
             )
+            # Find the last summary with a main_* value actually set.
+            latest_main = next(
+                (
+                    s for s in reversed(summaries)
+                    if s.main_input_tokens is not None
+                    or s.main_cache_read_tokens is not None
+                    or s.main_cache_creation_tokens is not None
+                ),
+                None,
+            )
+            if latest_main is not None:
+                latest_main_input = latest_main.main_input_tokens or 0
+                latest_main_output = latest_main.main_output_tokens or 0
+                latest_main_cache_read = latest_main.main_cache_read_tokens or 0
+                latest_main_cache_create = latest_main.main_cache_creation_tokens or 0
+                current_main_context_tokens = (
+                    latest_main_input
+                    + latest_main_cache_read
+                    + latest_main_cache_create
+                )
 
         # Per-tool breakdown matching frontend TokenLogToolBreakdown
         tool_usage: dict[str, dict[str, int]] = {}
@@ -2665,6 +2735,14 @@ def get_token_log_summary(conversation_id: int) -> dict:
             "latest_output_tokens": latest_output,
             "latest_cache_read_tokens": latest_cache_read,
             "latest_cache_creation_tokens": latest_cache_create,
+            # Main-agent-only (subagent Task calls excluded) — this is what
+            # the header badge and context meter should prefer.  0 when the
+            # conversation predates the per-AssistantMessage capture.
+            "current_main_context_tokens": current_main_context_tokens,
+            "latest_main_input_tokens": latest_main_input,
+            "latest_main_output_tokens": latest_main_output,
+            "latest_main_cache_read_tokens": latest_main_cache_read,
+            "latest_main_cache_creation_tokens": latest_main_cache_create,
             "per_tool_breakdown": per_tool_breakdown,
             "entries": serialized_entries,
         }
@@ -2710,6 +2788,13 @@ def _token_log_to_dict(entry: WorkspaceTokenLog) -> dict:
         "api_num_turns": entry.api_num_turns,
         "api_duration_ms": entry.api_duration_ms,
         "api_duration_api_ms": entry.api_duration_api_ms,
+        # Main-agent-only usage (subagent Task turns excluded).  Nullable —
+        # will be None on older rows or when the SDK did not emit a
+        # top-level AssistantMessage.usage for this turn.
+        "main_input_tokens": entry.main_input_tokens,
+        "main_output_tokens": entry.main_output_tokens,
+        "main_cache_creation_tokens": entry.main_cache_creation_tokens,
+        "main_cache_read_tokens": entry.main_cache_read_tokens,
         "model": entry.model,
     }
 

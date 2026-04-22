@@ -794,7 +794,17 @@ export interface TokenLogSummary {
   total_cost_usd: number
   // Current context window utilization (from LATEST turn only).
   // This is the real number for the context meter — not the sum.
+  // INCLUDES subagent (Task tool) usage because the Claude SDK rolls
+  // subagent token counts into each main-agent turn's ResultMessage.usage.
   current_context_tokens?: number
+  // Main-agent-only context size (subagent Task calls excluded).
+  // Captured from per-message AssistantMessage.usage where
+  // parent_tool_use_id is None.  Prefer this for the header meter —
+  // it reflects the true "agent I'm talking to" size and is what the
+  // 50%-of-1M degradation threshold cares about.  0 on older
+  // conversations (logged before the main_* columns existed); UI falls
+  // back to current_context_tokens in that case.
+  current_main_context_tokens?: number
   // Context window size for this conversation: 200000 or 1000000 depending
   // on context_mode. Used by the header Ctx meter to render "used / max".
   context_mode?: string
@@ -803,6 +813,12 @@ export interface TokenLogSummary {
   latest_output_tokens?: number
   latest_cache_read_tokens?: number
   latest_cache_creation_tokens?: number
+  // Main-agent-only latest-turn breakdown.  Same semantics as
+  // current_main_context_tokens — excludes subagent Task turns.
+  latest_main_input_tokens?: number
+  latest_main_output_tokens?: number
+  latest_main_cache_read_tokens?: number
+  latest_main_cache_creation_tokens?: number
   per_tool_breakdown: TokenLogToolBreakdown[]
   entries: TokenLogEntry[]
 }

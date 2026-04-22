@@ -44,6 +44,17 @@ Default: subagent. Main-context exploration is the exception, not the rule.
 
 Never drop loose `.md` files in `docs/`. Create the page folder if missing.
 
+## MANDATORY: Announce Where You Put Things
+
+When you create or edit ANY file (docs, PRDs, notes, code), your user-facing response MUST include:
+- The full file path
+- The category (PRD | idea | info | code)
+- A one-line summary of what you added
+
+Example: *"Added PRD at `docs/page-prds/workspace/README.md` — spec for new chat persistence layer."*
+
+The owner is not a coder. He cannot browse the file tree looking for what you did. If you don't announce the path, you failed the task. This applies to EVERY file operation, EVERY time.
+
 ## Mandatory Reads (ONLY if task applies)
 - Task calls a Claude model or creates an SDK client → `docs/SUBSCRIPTION_AND_WEBSOCKET_GUIDE.md` + `docs/references/sdk-client-pattern.md`
 - Task touches `useWorkspaceChat.ts` or `WorkspaceChat.tsx` → don't. One WebSocket per page, hook already exists.

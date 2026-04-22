@@ -2349,28 +2349,28 @@ class WorkspaceChatSession:
                 # AssistantMessage (shouldn't happen, but cheap to guard).
                 self._last_main_usage = None
 
-                    # Mirror this main-agent turn into the global 5-hour
-                    # token_budget.db ledger so the header budget view and
-                    # Token Budget dashboard reflect workspace-chat usage,
-                    # not only CLI Scripter sessions.  Subagent (Task tool)
-                    # usage is already rolled into this result_summary by
-                    # the Claude SDK, so no separate logging is needed.
-                    try:
-                        from . import token_budget as _tb
-                        await asyncio.to_thread(
-                            _tb.log_session,
-                            session_type="workspace_chat",
-                            model=result_model or self.model or "claude",
-                            input_tokens=api_input or 0,
-                            output_tokens=api_output or 0,
-                            cache_creation_tokens=api_cache_create or 0,
-                            cache_read_tokens=api_cache_read or 0,
-                            cost_usd=cost_usd or 0.0,
-                            duration_seconds=(duration_api_ms or 0) / 1000.0,
-                            source="workspace",
-                        )
-                    except Exception as e:
-                        logger.warning("Failed to mirror turn to token_budget ledger: %s", e)
+                # Mirror this main-agent turn into the global 5-hour
+                # token_budget.db ledger so the header budget view and
+                # Token Budget dashboard reflect workspace-chat usage,
+                # not only CLI Scripter sessions.  Subagent (Task tool)
+                # usage is already rolled into this result_summary by
+                # the Claude SDK, so no separate logging is needed.
+                try:
+                    from . import token_budget as _tb
+                    await asyncio.to_thread(
+                        _tb.log_session,
+                        session_type="workspace_chat",
+                        model=result_model or self.model or "claude",
+                        input_tokens=api_input or 0,
+                        output_tokens=api_output or 0,
+                        cache_creation_tokens=api_cache_create or 0,
+                        cache_read_tokens=api_cache_read or 0,
+                        cost_usd=cost_usd or 0.0,
+                        duration_seconds=(duration_api_ms or 0) / 1000.0,
+                        source="workspace",
+                    )
+                except Exception as e:
+                    logger.warning("Failed to mirror turn to token_budget ledger: %s", e)
 
         # Clear walkie-talkie safety net unconditionally at the end of
         # the response stream.  The keyword-based clearing (checking for

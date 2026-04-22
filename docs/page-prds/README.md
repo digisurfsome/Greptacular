@@ -25,6 +25,7 @@ Organized PRD storage for each AutoForge UI page. When you want to improve a spe
 | `component-dashboard/` | ComponentDashboardPage.tsx | Component overview dashboard |
 | `prd-maker/` | (planned) | PRD Maker — 10-stage pipeline turning app rants into buildable specs |
 | `dunkstack/` | DunkStackPage.tsx | DunkStack walkie-talkie system — file-based context, agent chaining, cross-pollination. **Master PRD for Archon port:** `PRD_WALKIE_TALKIE_ARCHON.md` |
+| `astro-theme/` | (External — themedna.com) | **Astro Theme Generator / Theme DNA** — screenshot → design DNA → 10-page Elementor/Astro site. Full session notes: `docs/info/theme-dna-session-worksheet.md` |
 
 ## How to Use
 

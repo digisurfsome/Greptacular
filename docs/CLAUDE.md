@@ -25,6 +25,7 @@ Every AutoForge UI page has a PRD folder. **Before modifying any page, check its
 | `tool-runner/` | ToolRunnerPage | Tool runner PRDs |
 | `market-scraper/` | MarketScraperPage | Reddit market scraper — pain points, ad copy, research projects |
 | `component-dashboard/` | ComponentDashboardPage | Component dashboard PRDs |
+| `astro-theme/` | (External product — themedna.com) | **Astro Theme Generator / Theme DNA** — screenshot-to-theme pipeline, Elementor generator, WordPress plugin, pricing, marketing strategy. See full info doc: `docs/info/theme-dna-session-worksheet.md` |
 
 **Index:** See `docs/page-prds/README.md` for the complete folder map.
 

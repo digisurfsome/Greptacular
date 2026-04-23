@@ -17,6 +17,7 @@ nodes:
     depends_on: [context-intake]
     context: fresh
     model: claude-opus-4-6
+    idle_timeout: 600000
 
   - id: plan-gate
     depends_on: [plan]
@@ -52,6 +53,7 @@ nodes:
     trigger_rule: one_success
     context: fresh
     model: claude-opus-4-6
+    idle_timeout: 600000
 
   - id: report-gate
     depends_on: [synthesize-review]

@@ -200,24 +200,36 @@ nodes:
     depends_on: [build-verify-compliance]
     model: sonnet
     context: fresh
+    retry:
+      max_attempts: 3
+      on_error: all
 
   - id: review-silent-failures
     command: build-review-failures
     depends_on: [build-verify-compliance]
     model: sonnet
     context: fresh
+    retry:
+      max_attempts: 3
+      on_error: all
 
   - id: review-test-coverage
     command: build-review-tests
     depends_on: [build-verify-compliance]
     model: sonnet
     context: fresh
+    retry:
+      max_attempts: 3
+      on_error: all
 
   - id: review-simplify-code
     command: build-review-simplify
     depends_on: [build-verify-compliance]
     model: sonnet
     context: fresh
+    retry:
+      max_attempts: 3
+      on_error: all
 
   # ═══════════════════════════════════════════════════════════════
   # BUILD: FIX — upgraded to Opus (M3 + §15)
@@ -234,6 +246,7 @@ nodes:
   - id: build-fix-issues
     command: build-fix-v2
     depends_on: [review-correctness-logic, review-silent-failures, review-test-coverage, review-simplify-code, phase-1-lint-autofix]
+    trigger_rule: none_failed_min_one_success
     model: opus
     effort: medium
     context: fresh
@@ -363,24 +376,36 @@ nodes:
     depends_on: [phase-2-execute]
     model: sonnet
     context: fresh
+    retry:
+      max_attempts: 3
+      on_error: all
 
   - id: phase-2-review-failures
     command: build-review-failures
     depends_on: [phase-2-execute]
     model: sonnet
     context: fresh
+    retry:
+      max_attempts: 3
+      on_error: all
 
   - id: phase-2-review-tests
     command: build-review-tests
     depends_on: [phase-2-execute]
     model: sonnet
     context: fresh
+    retry:
+      max_attempts: 3
+      on_error: all
 
   - id: phase-2-review-simplify
     command: build-review-simplify
     depends_on: [phase-2-execute]
     model: sonnet
     context: fresh
+    retry:
+      max_attempts: 3
+      on_error: all
 
   - id: phase-2-lint-autofix
     bash: python .archon/scripts/lint-autofix.py "$ARTIFACTS_DIR"
@@ -390,6 +415,7 @@ nodes:
   - id: phase-2-fix
     command: build-fix-v2
     depends_on: [phase-2-review-correctness, phase-2-review-failures, phase-2-review-tests, phase-2-review-simplify, phase-2-lint-autofix]
+    trigger_rule: none_failed_min_one_success
     model: opus
     effort: medium
     context: fresh
@@ -489,24 +515,36 @@ nodes:
     depends_on: [phase-3-execute]
     model: sonnet
     context: fresh
+    retry:
+      max_attempts: 3
+      on_error: all
 
   - id: phase-3-review-failures
     command: build-review-failures
     depends_on: [phase-3-execute]
     model: sonnet
     context: fresh
+    retry:
+      max_attempts: 3
+      on_error: all
 
   - id: phase-3-review-tests
     command: build-review-tests
     depends_on: [phase-3-execute]
     model: sonnet
     context: fresh
+    retry:
+      max_attempts: 3
+      on_error: all
 
   - id: phase-3-review-simplify
     command: build-review-simplify
     depends_on: [phase-3-execute]
     model: sonnet
     context: fresh
+    retry:
+      max_attempts: 3
+      on_error: all
 
   - id: phase-3-lint-autofix
     bash: python .archon/scripts/lint-autofix.py "$ARTIFACTS_DIR"
@@ -516,6 +554,7 @@ nodes:
   - id: phase-3-fix
     command: build-fix-v2
     depends_on: [phase-3-review-correctness, phase-3-review-failures, phase-3-review-tests, phase-3-review-simplify, phase-3-lint-autofix]
+    trigger_rule: none_failed_min_one_success
     model: opus
     effort: medium
     context: fresh

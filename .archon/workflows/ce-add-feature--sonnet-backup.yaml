@@ -16,6 +16,7 @@ nodes:
     command: ce-plan
     depends_on: [context-intake]
     context: fresh
+    idle_timeout: 600000
 
   - id: plan-gate
     depends_on: [plan]
@@ -50,6 +51,7 @@ nodes:
     depends_on: [security-review, correctness-review, performance-review]
     trigger_rule: one_success
     context: fresh
+    idle_timeout: 600000
 
   - id: report-gate
     depends_on: [synthesize-review]

@@ -7,6 +7,21 @@
 
 ---
 
+## Companion Documents (read these alongside this PRD)
+
+| File | Purpose |
+|------|---------|
+| [`PRD-MAKER-V3-ROADMAP.md`](./PRD-MAKER-V3-ROADMAP.md) | **10 concrete fixes to lift PRD Maker 7.5 → 9.5/10.** I/O examples per mechanism, acceptance tests per deliverable, golden path trace (Stage 8.5), 4→2 reviewers, production red team (Stage 8.75), reproducibility seed lock, programmatic compile check, deployment target router (Stage 0.5), mechanism contract + boundary gate, cross-platform harness plan. |
+| [`BUILD-ONLY-WORKFLOW-PRD.md`](./BUILD-ONLY-WORKFLOW-PRD.md) | Spec for `prd-pipeline-BUILD.yaml` — stripped pipeline that skips Stages 0–10 and imports a pre-made PRD bundle, so re-runs don't re-generate the PRD. |
+| [`MASTER-MODULAR-ARCHITECTURE.md`](./MASTER-MODULAR-ARCHITECTURE.md) | 6 build modes (standalone-app, module, module-host, assembly, feature-add, contract-spec), universal context preamble mechanism, standardized Module Contract. |
+| [`MP3-GEN-SYSTEM-CONTEXT-PREAMBLE.md`](./MP3-GEN-SYSTEM-CONTEXT-PREAMBLE.md) | Ready-to-paste context block (persona + "this is a module" framing + DO/DO NOT scope rails) for the MP3 Generator PRD run. |
+| [`M13-EXISTING-APP-MODE.md`](./M13-EXISTING-APP-MODE.md) | Mechanism spec: how the pipeline handles adding features to an existing app vs a green-field build. |
+| [`M14-PRD-SELF-CHECK.md`](./M14-PRD-SELF-CHECK.md) | Mechanism spec: PRD self-validation stage before the build half starts. |
+| [`M15-INTAKE-CLASSIFIER.md`](./M15-INTAKE-CLASSIFIER.md) | Mechanism spec: classify incoming requests into one of the 6 build modes automatically. |
+| [`PHASE-1-REVIEW.md`](./PHASE-1-REVIEW.md) | Review notes from Phase 1 of the build-half upgrade. |
+
+---
+
 ## 0. Drift Anchor (locked — do not redefine downstream)
 
 > AutoForge's PRD maker produces solid plans. The build-half (execution pipeline) currently takes those plans and lets agents self-grade their work, with no mechanical enforcement. This spec replaces agent-based gating with deterministic bash/python gates, tightens the contract agents inherit, and adds a per-phase loop so multi-phase builds stay isolated. Goal: an unattended build pipeline where an agent cannot ship a broken build because a script refuses to let it.

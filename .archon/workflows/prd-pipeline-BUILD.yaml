@@ -1,22 +1,18 @@
-name: prd-pipeline-c
+name: prd-pipeline-BUILD
 description: |
-  Use when: User wants the FULL factory — PRD planning through to built, reviewed, tested code.
-  Triggers: "prd pipeline c", "full build v2", "gated build", "build with gates".
-  Does: Complete pipeline combining 11-stage PRD system with deterministic gates:
-        1. YOUR PRD stages (0-5, 7-10) with enhanced gap analysis and feasibility
-        2. COLE's Plan cookbook (codebase intelligence, code snippets, patterns to mirror)
-        3. COLE's Implement cookbook (execute with validation gates)
-        4. YOUR Verification (Wall/Door/Room compliance, Pulse/Seam/Full)
-        5. COLE's Review (4 parallel agents attacking the code)
-        6. Fix cycle — Opus on build-fix-v2 (mandatory contract, no exemption language)
-        7. Compliance Gate (M1) — counts issues vs fixes, exits FAIL if mismatch
-        8. Recovery Pipeline (M9) — Opus/high diagnoses + re-fixes + re-gates on FAIL
-        9. Full Checkpoint (M2) — lint + typecheck + tests + files_allowed diff
-       10. Deploy Gate (M8) — deferred budget cap (max 5), no remaining CRITICAL/HIGH
-       11. Report + Deploy
-       12. PRD Archive (M10) — copies artifacts to docs/generated-prds/
-  NOT for: Quick fixes, PR reviews, single-file changes.
-  Rollback: switch back to prd-pipeline-b (untouched — safe at any time).
+  Use when: User has a COMPLETED PRD bundle and wants to skip planning and go straight to build.
+  Triggers: "build from prd", "build only", "prd pipeline build".
+  Does: Skips stages 0-10. Takes a PRD bundle as input. Runs build phases only:
+        1. Validate PRD bundle (required files present)
+        2. Codebase intelligence (read what exists, plan patterns)
+        3. Phase 1: execute → review x4 → fix → compliance → [recovery] → checkpoint
+        4. Phase 2: same pattern (conditional on bundle phase count)
+        5. Phase 3: same pattern (conditional)
+        6. Claude.md audit, Cartographer, Deploy gate, Report, Deploy, Archive
+  Input: Set env var PRD_BUNDLE_DIR to absolute path of PRD bundle directory.
+         Bundle must contain: context_packet.json, CLAUDE.md, BUILD_RULES.md,
+         README.md, build.sh, .env.example, phases/phase-1.md (+ optional 2,3).
+  NOT for: Building without a PRD. Use prd-pipeline-c for full planning + build.
 
 provider: claude
 model: opus
@@ -25,8 +21,6 @@ nodes:
 
   # ═══════════════════════════════════════════════════════════════
   # FEATURE FLAG READERS (M12)
-  # Run first (no depends_on). Read .archon/features.yaml.
-  # If features.yaml is missing, defaults to true for both.
   # ═══════════════════════════════════════════════════════════════
 
   - id: read-flag-recovery
@@ -57,95 +51,31 @@ nodes:
     timeout: 30000
 
   # ═══════════════════════════════════════════════════════════════
-  # STAGE 0: TECHNICAL FOUNDATION
+  # INPUT VALIDATION — NEW ENTRY POINT
+  # Verifies PRD_BUNDLE_DIR is set and contains required files.
+  # Copies bundle contents into the run's artifacts directory so
+  # downstream stages can read them like a freshly-generated PRD.
   # ═══════════════════════════════════════════════════════════════
 
-  - id: stage-00-tech-foundation
-    command: prd-stage-00
+  - id: validate-and-import-bundle
+    bash: |
+      set -euo pipefail
+      # Bundle path — git-bash POSIX format. Edit to change source bundle.
+      PRD_BUNDLE_DIR="/c/Users/lober/.archon/workspaces/digisurfsome/audio-recorder-scaled/artifacts/runs/0087c45cd7da9fc15fad9193f3277946"
+      # Convert Archon's Windows-style ARTIFACTS_DIR (with backslashes) to POSIX
+      ART_DIR=$(echo "$ARTIFACTS_DIR" | sed 's|\\|/|g' | sed 's|^\([A-Za-z]\):|/\L\1|')
+      echo "Source bundle: $PRD_BUNDLE_DIR"
+      echo "Target artifacts: $ART_DIR"
+      if [ ! -d "$PRD_BUNDLE_DIR" ]; then
+        echo "FAIL: source bundle not found at $PRD_BUNDLE_DIR" >&2
+        exit 1
+      fi
+      mkdir -p "$ART_DIR"
+      cp -r "$PRD_BUNDLE_DIR"/. "$ART_DIR/"
+      phase_count=$(ls "$ART_DIR/phases"/phase-*.md 2>/dev/null | wc -l | tr -d ' ')
+      echo "PASS: imported bundle. phase_count=$phase_count"
+    timeout: 120000
     depends_on: [read-flag-recovery, read-flag-archive, read-flag-cartographer]
-
-  # ═══════════════════════════════════════════════════════════════
-  # STAGE 1: IDEA CAPTURE
-  # ═══════════════════════════════════════════════════════════════
-
-  - id: stage-01-idea-capture
-    command: prd-stage-01
-    depends_on: [stage-00-tech-foundation]
-
-  # ═══════════════════════════════════════════════════════════════
-  # STAGE 2: GAP ANALYSIS + MARKET RESEARCH
-  # ═══════════════════════════════════════════════════════════════
-
-  - id: stage-02-gap-analysis
-    command: prd-a-stage-02-enhanced
-    depends_on: [stage-01-idea-capture]
-
-  # ═══════════════════════════════════════════════════════════════
-  # STAGE 3: AGENT OS STRUCTURING
-  # ═══════════════════════════════════════════════════════════════
-
-  - id: stage-03-agent-os
-    command: prd-a-stage-03-enhanced
-    depends_on: [stage-02-gap-analysis]
-    context: fresh
-
-  # ═══════════════════════════════════════════════════════════════
-  # STAGE 4: MECHANISM EXTRACTION
-  # ═══════════════════════════════════════════════════════════════
-
-  - id: stage-04-mechanism-extraction
-    command: prd-stage-04
-    depends_on: [stage-03-agent-os]
-    context: fresh
-
-  # ═══════════════════════════════════════════════════════════════
-  # STAGE 5: WALL/DOOR/ROOM SCAFFOLDING
-  # ═══════════════════════════════════════════════════════════════
-
-  - id: stage-05-wall-door-room
-    command: prd-stage-05
-    depends_on: [stage-04-mechanism-extraction]
-    context: fresh
-    idle_timeout: 600000
-
-  # ═══════════════════════════════════════════════════════════════
-  # STAGE 7: PHASE SEQUENCING
-  # ═══════════════════════════════════════════════════════════════
-
-  - id: stage-07-phase-sequencing
-    command: prd-stage-07
-    depends_on: [stage-05-wall-door-room]
-    context: fresh
-
-  # ═══════════════════════════════════════════════════════════════
-  # STAGE 8: PROTOCOL INJECTION
-  # ═══════════════════════════════════════════════════════════════
-
-  - id: stage-08-protocol-injection
-    command: prd-stage-08
-    depends_on: [stage-07-phase-sequencing]
-    context: fresh
-
-  # ═══════════════════════════════════════════════════════════════
-  # STAGE 9: VERIFICATION AGENT SETUP
-  # ═══════════════════════════════════════════════════════════════
-
-  - id: stage-09-verification-setup
-    command: prd-stage-09
-    depends_on: [stage-08-protocol-injection]
-    context: fresh
-
-  # ═══════════════════════════════════════════════════════════════
-  # STAGE 10: OUTPUT GENERATOR (v2 — M3)
-  # Renders phase files with mandatory contract block.
-  # No exemption language. Two-strike rule is item-scoped.
-  # ═══════════════════════════════════════════════════════════════
-
-  - id: stage-10-output-generator
-    command: prd-stage-10-v2
-    depends_on: [stage-09-verification-setup]
-    context: fresh
-    idle_timeout: 600000
 
   # ═══════════════════════════════════════════════════════════════
   # BUILD: CODEBASE INTELLIGENCE
@@ -153,13 +83,12 @@ nodes:
 
   - id: build-codebase-intelligence
     command: build-codebase-plan
-    depends_on: [stage-10-output-generator]
+    depends_on: [validate-and-import-bundle]
     context: fresh
     idle_timeout: 600000
 
   # ═══════════════════════════════════════════════════════════════
   # Capture baseline SHA before any code is written.
-  # Used by full-checkpoint.py to compute git diff.
   # ═══════════════════════════════════════════════════════════════
 
   - id: phase-1-baseline
@@ -190,7 +119,6 @@ nodes:
 
   # ═══════════════════════════════════════════════════════════════
   # BUILD: REVIEW — 4 parallel agents
-  # Run concurrently (all depend on build-verify-compliance only)
   # ═══════════════════════════════════════════════════════════════
 
   - id: review-correctness-logic
@@ -230,10 +158,7 @@ nodes:
       on_error: all
 
   # ═══════════════════════════════════════════════════════════════
-  # BUILD: FIX — upgraded to Opus (M3 + §15)
-  # Uses build-fix-v2.md: mandatory contract, no exemption language,
-  # two-strike rule is item-scoped. Model: opus / effort: medium.
-  # This is the permanent fix for the YT Strategy Lab failure mode.
+  # BUILD: FIX — Opus
   # ═══════════════════════════════════════════════════════════════
 
   - id: phase-1-lint-autofix
@@ -251,8 +176,6 @@ nodes:
 
   # ═══════════════════════════════════════════════════════════════
   # COMPLIANCE GATE (M1)
-  # Counts CRITICAL/HIGH issues vs fix entries. Emits PASS or FAIL
-  # on stdout and always exits 0 so recovery branch can branch on output.
   # ═══════════════════════════════════════════════════════════════
 
   - id: compliance-gate
@@ -266,9 +189,7 @@ nodes:
     depends_on: [build-fix-issues]
 
   # ═══════════════════════════════════════════════════════════════
-  # RECOVERY PIPELINE (M9) — 4 nodes, only run when gate said FAIL
-  # AND recovery_pipeline toggle is on.
-  # Model: opus / effort: high on all three agent nodes.
+  # RECOVERY PIPELINE (M9)
   # ═══════════════════════════════════════════════════════════════
 
   - id: recovery-diagnose
@@ -295,7 +216,6 @@ nodes:
     effort: high
     context: fresh
 
-  # Re-run compliance gate after recovery. Same PASS/FAIL stdout pattern.
   - id: compliance-regate
     bash: |
       set +e
@@ -306,14 +226,6 @@ nodes:
     timeout: 60000
     depends_on: [recovery-execute]
     when: "$compliance-gate.output == 'FAIL' && $read-flag-recovery.output == 'true'"
-
-  # ═══════════════════════════════════════════════════════════════
-  # COMPLIANCE FINAL STATUS — aggregates initial gate + recovery gate.
-  # trigger_rule: all_done fires even when recovery nodes were skipped.
-  # Exits 1 (hard fail) if both compliance-gate AND compliance-regate
-  # said FAIL (or recovery was skipped and initial gate failed).
-  # This hard exit blocks full-checkpoint and everything downstream.
-  # ═══════════════════════════════════════════════════════════════
 
   - id: compliance-final-status
     bash: |
@@ -331,8 +243,6 @@ nodes:
 
   # ═══════════════════════════════════════════════════════════════
   # FULL CHECKPOINT — PHASE 1 (M2)
-  # Runs lint + typecheck + tests + files_allowed diff for phase 1.
-  # Exits 1 directly on failure (no recovery branch — hard halt).
   # ═══════════════════════════════════════════════════════════════
 
   - id: full-checkpoint
@@ -342,15 +252,8 @@ nodes:
     depends_on: [compliance-final-status]
 
   # ═══════════════════════════════════════════════════════════════
-  # ═══════════════════════════════════════════════════════════════
-  # PHASE 2 — UNROLLED (M4)
-  # Depends on phase 1 full-checkpoint passing.
-  # Each phase group: baseline → execute → 4× review (parallel) →
-  # fix → test-writer → compliance → [recovery branch] → final-status → checkpoint
-  # ═══════════════════════════════════════════════════════════════
-  # ═══════════════════════════════════════════════════════════════
-
   # ========= PHASE 2 =========
+  # ═══════════════════════════════════════════════════════════════
 
   - id: phase-1-handoff
     command: phase-handoff
@@ -632,8 +535,6 @@ nodes:
 
   # ═══════════════════════════════════════════════════════════════
   # CLAUDE.md PRESENCE AUDIT (M6)
-  # Soft check: reports directories missing a CLAUDE.md.
-  # Always exits 0 — DOOR, not WALL.
   # ═══════════════════════════════════════════════════════════════
 
   - id: claude-md-presence-check
@@ -644,8 +545,6 @@ nodes:
 
   # ═══════════════════════════════════════════════════════════════
   # CODEBASE CARTOGRAPHER (M7)
-  # Haiku agent: reads the built codebase and produces CODEBASE_MAP.md.
-  # Gated by codebase_cartographer feature flag. DOOR — does not block deploy.
   # ═══════════════════════════════════════════════════════════════
 
   - id: codebase-cartographer
@@ -657,9 +556,6 @@ nodes:
 
   # ═══════════════════════════════════════════════════════════════
   # DEPLOY GATE (M8)
-  # Checks cumulative deferred budget (max 5) and no remaining CRITICAL/HIGH.
-  # Emits PASS or FAIL on stdout (always exits 0) so build-deploy can
-  # gate on $deploy-gate.output == 'PASS'.
   # ═══════════════════════════════════════════════════════════════
 
   - id: deploy-gate
@@ -674,8 +570,6 @@ nodes:
 
   # ═══════════════════════════════════════════════════════════════
   # BUILD: REPORT
-  # trigger_rule: all_done — always runs regardless of gate outcomes.
-  # Gives the operator a plain-English summary of what happened.
   # ═══════════════════════════════════════════════════════════════
 
   - id: build-final-report
@@ -687,9 +581,6 @@ nodes:
 
   # ═══════════════════════════════════════════════════════════════
   # BUILD: DEPLOY
-  # Only runs when deploy-gate emitted PASS.
-  # If deploy-gate was skipped (full-checkpoint failed), output is ''
-  # so the when: condition is false and deploy is safely blocked.
   # ═══════════════════════════════════════════════════════════════
 
   - id: build-deploy
@@ -701,14 +592,8 @@ nodes:
 
   # ═══════════════════════════════════════════════════════════════
   # PRD ARCHIVE (M10)
-  # Copies artifacts to docs/generated-prds/{date}__{build-name}/.
-  # trigger_rule: all_done so it runs even if deploy was skipped.
-  # Only runs when prd_archive toggle is on.
   # ═══════════════════════════════════════════════════════════════
 
-  # Status threading: detects recovery via triage-report.md (written by recovery-diagnose),
-  # and failure via deploy-gate output. Falls through to "shipped" only when deploy passed
-  # and no recovery ran.
   - id: recovery-status-summary
     bash: |
       set -euo pipefail

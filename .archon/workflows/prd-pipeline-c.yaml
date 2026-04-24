@@ -31,53 +31,29 @@ nodes:
 
   - id: read-flag-recovery
     bash: |
-      python -c "
-      import os
-      path = '.archon/features.yaml'
-      val = True
-      if os.path.exists(path):
-          try:
-              import yaml
-              c = yaml.safe_load(open(path)) or {}
-              val = c.get('recovery_pipeline', True)
-          except Exception:
-              pass
-      print(str(val).lower())
-      "
+      if [ -f .archon/features.yaml ] && grep -q '^recovery_pipeline:[[:space:]]*false' .archon/features.yaml 2>/dev/null; then
+        echo false
+      else
+        echo true
+      fi
     timeout: 30000
 
   - id: read-flag-archive
     bash: |
-      python -c "
-      import os
-      path = '.archon/features.yaml'
-      val = True
-      if os.path.exists(path):
-          try:
-              import yaml
-              c = yaml.safe_load(open(path)) or {}
-              val = c.get('prd_archive', True)
-          except Exception:
-              pass
-      print(str(val).lower())
-      "
+      if [ -f .archon/features.yaml ] && grep -q '^prd_archive:[[:space:]]*false' .archon/features.yaml 2>/dev/null; then
+        echo false
+      else
+        echo true
+      fi
     timeout: 30000
 
   - id: read-flag-cartographer
     bash: |
-      python -c "
-      import os
-      path = '.archon/features.yaml'
-      val = True
-      if os.path.exists(path):
-          try:
-              import yaml
-              c = yaml.safe_load(open(path)) or {}
-              val = c.get('codebase_cartographer', True)
-          except Exception:
-              pass
-      print(str(val).lower())
-      "
+      if [ -f .archon/features.yaml ] && grep -q '^codebase_cartographer:[[:space:]]*false' .archon/features.yaml 2>/dev/null; then
+        echo false
+      else
+        echo true
+      fi
     timeout: 30000
 
   # ═══════════════════════════════════════════════════════════════

@@ -269,27 +269,20 @@ This custom contract is read by `module-host` and `module` and `assembly` runs, 
 
 ---
 
-## 6. Phased rollout plan
+## 6. Phased rollout plan (REVISED — aligned with no-bash rebuild)
 
-**Phase 1 (today) — Validate the pipeline works at all.**
-- Skip all this. Feed context-padded PRD for MP3 Generator as `standalone-app` mode.
-- See what the pipeline does. Fix obvious bugs.
+The original rollout plan assumed we were adding build modes on top of the existing bash-fragile pipeline-c. That plan is **rescinded**. The current sequence is a 4-pass plan where the modular build system is built into pipeline-d from the start.
 
-**Phase 2 (this week) — MV build mode system.**
-- Add `build_mode` flag with 2 modes: `module` and `standalone-app`.
-- Add preamble blocks to every stage.
-- Re-run MP3 Generator as `module`. Compare output to Phase 1.
-- Hand-write DB contracts (no contract-spec mode yet).
+| Pass | What it does | Handoff PRD |
+|------|--------------|-------------|
+| **Pass 0** | Audit every stage prompt in `.archon/commands/`. Strip mode assumptions. Author per-stage preamble blocks with IF branches for all 6 modes. Zero YAML changes. | `PASS-0-PREAMBLE-AUDIT-HANDOFF.md` |
+| **Pass 1** | Rebuild `prd-pipeline-c.yaml` as `prd-pipeline-d.yaml` — zero bash, single-file-with-switches. Three preflight nodes at top: `model-select` (Opus 4.6/4.7 + effort), `mode-select` (full/prd-only/build-only), `build-type-select` (6 build modes). Consumes Pass 0's mode-agnostic prompts. | `PIPELINE-REBUILD-NO-BASH-HANDOFF.md` |
+| **Pass 2** | V3 paint-by-numbers layer — 5 new nodes (deploy router, golden-path trace, red-team, compile-check per phase, boundary gate), updated stage prompts (I/O examples, verify blocks), reproducibility (run hash + seed lock). Lifts quality from 7.5/10 → 9.5/10. | `PRD-MAKER-V3-ROADMAP.md` |
+| **Pass 3** | Module contract enforcement. `module.yaml` validator. Module cert script. Only needed once multi-module apps like CallPitch are being built. | TBD |
 
-**Phase 3 (next week) — Full mode system.**
-- Add all 6 modes.
-- Add intake classifier node (M15).
-- Add contract-spec mode + assembly mode.
-- Build CallPitch end-to-end: contract-spec → host → 5 modules → assembly.
+**Adding a 7th build mode later** = one new preamble branch per stage + one line in the `build-type-select` enum. No other changes. See `ADD-NEW-BUILD-STYLE-HANDOFF.md` for the recipe.
 
-**Phase 4 (later) — PRD self-check + revision loop (M14).**
-- Layer revision preamble on top of build_mode preamble.
-- Add post-stage-10 reviewers + triage + loop cap.
+The original 4 phases of this section still describe the intended capability sequence (validate → module mode → full 6 modes → PRD self-check revision loop), but the implementation path now runs through the 4 passes above.
 
 ---
 

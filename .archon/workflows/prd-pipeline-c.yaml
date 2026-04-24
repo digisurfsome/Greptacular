@@ -31,31 +31,52 @@ nodes:
 
   - id: read-flag-recovery
     bash: |
-      uv run --with pyyaml python -c "
-      import yaml, os
+      python -c "
+      import os
       path = '.archon/features.yaml'
-      c = yaml.safe_load(open(path)) if os.path.exists(path) else {}
-      print(str(c.get('recovery_pipeline', True)).lower())
+      val = True
+      if os.path.exists(path):
+          try:
+              import yaml
+              c = yaml.safe_load(open(path)) or {}
+              val = c.get('recovery_pipeline', True)
+          except Exception:
+              pass
+      print(str(val).lower())
       "
     timeout: 30000
 
   - id: read-flag-archive
     bash: |
-      uv run --with pyyaml python -c "
-      import yaml, os
+      python -c "
+      import os
       path = '.archon/features.yaml'
-      c = yaml.safe_load(open(path)) if os.path.exists(path) else {}
-      print(str(c.get('prd_archive', True)).lower())
+      val = True
+      if os.path.exists(path):
+          try:
+              import yaml
+              c = yaml.safe_load(open(path)) or {}
+              val = c.get('prd_archive', True)
+          except Exception:
+              pass
+      print(str(val).lower())
       "
     timeout: 30000
 
   - id: read-flag-cartographer
     bash: |
-      uv run --with pyyaml python -c "
-      import yaml, os
+      python -c "
+      import os
       path = '.archon/features.yaml'
-      c = yaml.safe_load(open(path)) if os.path.exists(path) else {}
-      print(str(c.get('codebase_cartographer', True)).lower())
+      val = True
+      if os.path.exists(path):
+          try:
+              import yaml
+              c = yaml.safe_load(open(path)) or {}
+              val = c.get('codebase_cartographer', True)
+          except Exception:
+              pass
+      print(str(val).lower())
       "
     timeout: 30000
 

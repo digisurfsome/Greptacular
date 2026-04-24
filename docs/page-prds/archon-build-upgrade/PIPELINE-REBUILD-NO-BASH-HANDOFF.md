@@ -64,9 +64,146 @@ Where bash was doing logic (grep, file reads, path math, PASS/FAIL gates), the A
 Bash is allowed ONLY for operations bash is uniquely good at AND that cannot fail on Windows git-bash with an empty variable — basically nothing in the current pipeline qualifies.
 
 ### Naming
-- New file: `.archon/workflows/prd-pipeline-d.yaml`
+- New file: `.archon/workflows/prd-pipeline-d.yaml` (monolith — full PRD + Build end-to-end)
+- After monolith is green, duplicate to:
+  - `.archon/workflows/prd-pipeline-d-prd-only.yaml` (PRD half only)
+  - `.archon/workflows/prd-pipeline-d-build-only.yaml` (Build half only, imports pre-made bundle)
 - Keep `prd-pipeline-c.yaml` in place as a reference — do NOT delete it.
 - Once pipeline-d is green against `audio-recorder-scaled`, pipeline-c can be archived.
+
+---
+
+## 3.5. THREE-VARIANT ARCHITECTURE — Monolith First, Split Second
+
+The owner wants three shippable workflows:
+1. **Full** — PRD + Build (end-to-end)
+2. **PRD-only** — stages 0–10, outputs a bundle
+3. **Build-only** — takes a pre-made bundle, runs the 3 build phases
+
+**Rule: design for the split from day one. Do NOT build three separate files.**
+
+### The Seam
+
+The monolith has one boundary node named `prd-bundle-ready`. It sits between stage 10 (last PRD stage) and phase-1 (first build stage). Its job:
+- Write a manifest JSON to `$ARTIFACTS_DIR/bundle/manifest.json` listing every artifact produced by the PRD half (paths, sizes, stage IDs).
+- Emit JSON output `{ "status": "READY", "bundle_path": "<path>" }`.
+- Nothing above it touches build logic. Nothing below it touches PRD logic.
+
+### How the three variants are produced
+
+Once the monolith is green:
+- **Full** = `prd-pipeline-d.yaml` (the monolith, unchanged).
+- **PRD-only** = copy monolith → delete every node after `prd-bundle-ready`. Done.
+- **Build-only** = copy monolith → delete every node before `prd-bundle-ready`, replace `prd-bundle-ready` with `import-bundle` entry node that reads an existing bundle path from `$ARGUMENTS` into `$ARTIFACTS_DIR/bundle/` using AI tools (Read, Write), emits the same `{ status: READY, bundle_path }` JSON.
+
+### Why this over "build separate, connect later"
+
+Merging three divergent workflow files into one is harder than splitting one clean file into three. Forward direction (split) is trivial copy-delete. Backward direction (merge) means reconciling three sets of drift. Always build monolith-first when a clean seam exists.
+
+### Maintenance rule
+
+Bug fixes go into the monolith. The two variants are regenerated from the monolith. Never edit a variant directly — if you do, document the divergence in the variant's header comment so the next rebuild doesn't wipe it.
+
+---
+
+## 3.75. STEP 0 — MODEL / EFFORT OVERRIDE PREFLIGHT NODE
+
+Every variant (monolith, PRD-only, Build-only) starts with the SAME preflight node. It decides which Opus version and effort level runs for the rest of the workflow.
+
+### Supported model/effort combos (exact wording the user uses)
+
+| User name (message tag) | Archon `model:` | Archon `effort:` |
+|-------------------------|-----------------|-------------------|
+| `opus-4.6-medium` (**default**) | `claude-opus-4-6` | `medium` |
+| `opus-4.6-high` | `claude-opus-4-6` | `high` |
+| `opus-4.6-extrahigh` | `claude-opus-4-6` | `max` |
+| `opus-4.7-medium` | `claude-opus-4-7` | `medium` |
+| `opus-4.7-high` | `claude-opus-4-7` | `high` |
+| `opus-4.7-extrahigh` | `claude-opus-4-7` | `max` |
+
+`extrahigh` maps to Archon's internal `effort: max` value (confirmed in `packages/workflows/src/dag-executor.test.ts:5100`).
+
+### How the user passes the override
+
+The user includes a tag at the start of the build message. Examples:
+```
+@model opus-4.7-high Build audio-recorder-scaled
+@model opus-4.6-extrahigh Build the MP3 generator
+Build audio-recorder-scaled          ← no tag = use default (opus-4.6-medium)
+```
+
+### Preflight node spec
+
+```yaml
+- id: model-select
+  prompt: |
+    The user's build message is: $ARGUMENTS
+
+    Parse the beginning of the message for a tag of the form `@model <name>` where <name>
+    is one of: opus-4.6-medium, opus-4.6-high, opus-4.6-extrahigh,
+               opus-4.7-medium, opus-4.7-high, opus-4.7-extrahigh.
+
+    If no tag is present, use the default: opus-4.6-medium.
+
+    Map the name to Archon values using this table:
+      opus-4.6-medium    → model=claude-opus-4-6, effort=medium
+      opus-4.6-high      → model=claude-opus-4-6, effort=high
+      opus-4.6-extrahigh → model=claude-opus-4-6, effort=max
+      opus-4.7-medium    → model=claude-opus-4-7, effort=medium
+      opus-4.7-high      → model=claude-opus-4-7, effort=high
+      opus-4.7-extrahigh → model=claude-opus-4-7, effort=max
+
+    Respond with JSON ONLY. Also include a one-line human-readable announcement
+    as the `announcement` field — this is the FIRST thing the user sees on the
+    workflow status side-panel and confirms the choice.
+  model: haiku
+  output_format:
+    type: json
+    schema:
+      user_name:     { type: string }   # e.g. "opus-4.6-medium"
+      model:         { type: string }   # e.g. "claude-opus-4-6"
+      effort:        { type: string, enum: [low, medium, high, max] }
+      source:        { type: string, enum: [default, message-override] }
+      announcement:  { type: string }   # e.g. "Using opus-4.6-medium (default — no @model tag in message)"
+  allowed_tools: []
+```
+
+### How downstream Opus-assigned nodes consume the override
+
+Every node that was previously using `opus` (or implicitly opus because of workflow default) must reference the preflight output:
+
+```yaml
+- id: phase-1-build
+  command: build-phase-1
+  depends_on: [model-select, prd-bundle-ready]
+  model:  '$model-select.output.model'
+  effort: '$model-select.output.effort'
+```
+
+Nodes that must stay on cheap models (Haiku preflights, gate checks) keep their hardcoded `model: haiku` — do NOT wire them to the preflight output. The override only applies to "heavy lifting" nodes.
+
+### Status visibility — FIRST LINE IN THE SIDE PANEL
+
+The preflight node runs first. Its `announcement` field is what the Archon UI renders on the status side-panel as the first human-readable line. Because of this:
+- Non-override run shows: `Using opus-4.6-medium (default — no @model tag in message)`
+- Override run shows: `Using opus-4.7-high (override from message tag)`
+
+The user knows at a glance which brain is doing the work before any real money is spent. If the side-panel shows the wrong model, the user cancels the run immediately — no waste.
+
+### Acceptance tests
+
+The rebuild is not done until the preflight node can:
+1. Correctly default to opus-4.6-medium on a message with no tag.
+2. Correctly map `@model opus-4.7-high Build X` to model=claude-opus-4-7, effort=high.
+3. Emit a clear `announcement` string that appears FIRST in the side-panel.
+4. Survive a malformed tag (e.g., `@model opus-9.9-ludicrous`) by falling back to default AND surfacing a warning in the announcement.
+
+### Why this is worth the one extra node
+
+- Pinning to 4.6 by default makes weekly Opus limit 3-5x less likely to trip.
+- Override from message means zero YAML edits day-to-day.
+- Announcement in side-panel = instant confirmation the run is using what you expected.
+- Adding a new model later (opus-4.8, sonnet-5, etc.) = one line in the mapping table. No code changes.
 
 ---
 
@@ -104,13 +241,24 @@ This map is your contract. Save it as `docs/page-prds/archon-build-upgrade/PIPEL
 Do NOT do a big-bang rewrite. For each node:
 1. Copy the node from pipeline-c into pipeline-d.
 2. Convert per Step 3 rules.
-3. Run pipeline-d against `audio-recorder-scaled` with `--resume` support.
-4. Fix, commit, move to the next.
+3. If the node is an "Opus heavy-lifting" node (build phase, review, fix, compliance-writing), wire its `model:` and `effort:` to `$model-select.output.model` and `$model-select.output.effort` per Section 3.75.
+4. Run pipeline-d against `audio-recorder-scaled` with `--resume` support.
+5. Fix, commit, move to the next.
+
+The VERY FIRST node you write into pipeline-d is the `model-select` preflight from Section 3.75. Nothing else runs until it lands, because every downstream Opus node depends on its output.
+
+Add a `prd-bundle-ready` seam node between stage 10 and phase-1 per Section 3.5 — this is the split point for the two variants.
 
 Commit after every node with message `pipeline-d: convert <node-id> to prompt/command`.
 
-### Step 5 — Remove build-only assumptions
-The user also has `prd-pipeline-BUILD.yaml` that starts from an existing bundle. When pipeline-d is working, duplicate it into `prd-pipeline-BUILD-d.yaml` and strip stages 0–10 the same way.
+### Step 5 — Split the monolith into three variants (AFTER monolith is green)
+See Section 3.5. Duplicate pipeline-d.yaml into:
+- `prd-pipeline-d-prd-only.yaml` — delete everything after the `prd-bundle-ready` seam node.
+- `prd-pipeline-d-build-only.yaml` — delete everything before `prd-bundle-ready`; replace it with an `import-bundle` entry node that reads an existing bundle path from `$ARGUMENTS` using AI file tools (Read, Write, Glob).
+
+Both variants MUST keep the Step 0 model-select preflight node. Announcement still appears first in the side-panel.
+
+The existing `prd-pipeline-BUILD.yaml` is the old build-only workflow (the bash-fragile one). It can be deleted once `prd-pipeline-d-build-only.yaml` passes the same test against `audio-recorder-scaled`.
 
 ### Step 6 — Preserve the preamble mechanism
 `MASTER-MODULAR-ARCHITECTURE.md` defines a `build_mode` flag and a unified preamble block. The rebuild must keep this — do not flatten modular build modes into a single path.
@@ -129,10 +277,14 @@ archon workflow run prd-pipeline-d --branch feat/mp3-gen-d "Build audio-recorder
 Always `run_in_background: true`. Watch `/tasks` or TaskOutput.
 
 ### Step 8 — Success criteria
-- Pipeline-d completes all 11 PRD stages on a fresh run
-- Pipeline-d completes all 3 build phases with compliance gates producing real PASS/FAIL from AI JSON output, not bash string equality
-- Zero `bash:` nodes remain (or, if any remain, they are one-line commands that cannot fail on an empty variable)
-- Same artifacts are produced as pipeline-c — PRD bundle, phase outputs, compliance reports
+- Pipeline-d monolith completes all 11 PRD stages on a fresh run.
+- Pipeline-d monolith completes all 3 build phases with compliance gates producing real PASS/FAIL from AI JSON output, not bash string equality.
+- Zero `bash:` nodes remain (or, if any remain, they are one-line commands that cannot fail on an empty variable).
+- Same artifacts are produced as pipeline-c — PRD bundle, phase outputs, compliance reports.
+- Step 0 preflight node's `announcement` is the FIRST human-readable line visible in the Archon side-panel every run.
+- Default run (no `@model` tag) uses `opus-4.6-medium`. Override run with `@model opus-4.7-high` uses `claude-opus-4-7` with `effort: high`.
+- `prd-pipeline-d-prd-only.yaml` runs stages 0–10 only and exits cleanly at the `prd-bundle-ready` seam with a valid manifest.
+- `prd-pipeline-d-build-only.yaml` reads a bundle path from `$ARGUMENTS`, imports it, and runs all 3 build phases.
 
 ---
 
@@ -145,8 +297,9 @@ Always `run_in_background: true`. Watch `/tasks` or TaskOutput.
 - `C:\Users\lober\.archon\workspaces\digisurfsome\audio-recorder-scaled\artifacts\runs\0087c45cd7da9fc15fad9193f3277946` (test fixture)
 
 ### Rewrite (new files)
-- `.archon/workflows/prd-pipeline-d.yaml` (the rebuild)
-- `.archon/workflows/prd-pipeline-BUILD-d.yaml` (after pipeline-d works)
+- `.archon/workflows/prd-pipeline-d.yaml` (monolith — full PRD + Build)
+- `.archon/workflows/prd-pipeline-d-prd-only.yaml` (PRD half, after monolith works)
+- `.archon/workflows/prd-pipeline-d-build-only.yaml` (Build half, after monolith works)
 - `docs/page-prds/archon-build-upgrade/PIPELINE-D-NODE-MAP.md` (your working map from Step 2)
 
 ### Possibly edit

@@ -60,18 +60,19 @@ nodes:
   - id: validate-and-import-bundle
     bash: |
       set -euo pipefail
-      # Bundle path — git-bash POSIX format. Edit to change source bundle.
-      PRD_BUNDLE_DIR="/c/Users/lober/.archon/workspaces/digisurfsome/audio-recorder-scaled/artifacts/runs/0087c45cd7da9fc15fad9193f3277946"
-      # Convert Archon's Windows-style ARTIFACTS_DIR (with backslashes) to POSIX
+      # Bundle path — git-bash POSIX format. EDIT THIS LINE to change source bundle.
+      # NOTE: path inlined (no bash var) because Archon pre-substitutes $WORDS
+      # in the script before bash runs, wiping any user-defined variable.
+      # Convert Archon's Windows-style ARTIFACTS_DIR (backslashes) to POSIX.
       ART_DIR=$(echo "$ARTIFACTS_DIR" | sed 's|\\|/|g' | sed 's|^\([A-Za-z]\):|/\L\1|')
-      echo "Source bundle: $PRD_BUNDLE_DIR"
+      echo "Source bundle: /c/Users/lober/.archon/workspaces/digisurfsome/audio-recorder-scaled/artifacts/runs/0087c45cd7da9fc15fad9193f3277946"
       echo "Target artifacts: $ART_DIR"
-      if [ ! -d "$PRD_BUNDLE_DIR" ]; then
-        echo "FAIL: source bundle not found at $PRD_BUNDLE_DIR" >&2
+      if [ ! -d "/c/Users/lober/.archon/workspaces/digisurfsome/audio-recorder-scaled/artifacts/runs/0087c45cd7da9fc15fad9193f3277946" ]; then
+        echo "FAIL: source bundle not found at /c/Users/lober/.archon/workspaces/digisurfsome/audio-recorder-scaled/artifacts/runs/0087c45cd7da9fc15fad9193f3277946" >&2
         exit 1
       fi
       mkdir -p "$ART_DIR"
-      cp -r "$PRD_BUNDLE_DIR"/. "$ART_DIR/"
+      cp -r "/c/Users/lober/.archon/workspaces/digisurfsome/audio-recorder-scaled/artifacts/runs/0087c45cd7da9fc15fad9193f3277946"/. "$ART_DIR/"
       phase_count=$(ls "$ART_DIR/phases"/phase-*.md 2>/dev/null | wc -l | tr -d ' ')
       echo "PASS: imported bundle. phase_count=$phase_count"
     timeout: 120000

@@ -755,13 +755,13 @@ Build order:
 
 ---
 
-# 7. OPEN QUESTIONS
+# 7. DECISIONS LOCKED (owner answers)
 
-1. **Owner input:** do you want agent's private notebook visible in any UI, or truly hidden until asked?
-2. **Ollama dep:** willing to install Ollama for local embeddings, or prefer Haiku embeddings (costs ~$1/mo more)?
-3. **Chat boundary:** when is a chat "closed"? 24hr inactivity? User action? Fork point?
-4. **Principle conflict resolution:** if two standing orders contradict, how to resolve?
-5. **Multi-device:** does this need to sync across laptop + desktop eventually? (adds Syncthing/Dropbox pattern)
+1. **Agent private notebook UI:** visible dropdown. Default = shown. Button toggles hide.
+2. **Embeddings:** Haiku (skip Ollama install). ~$1/mo added runtime cost. Simpler ops.
+3. **Chat closed boundary:** **24hr inactivity.** No msg for 24hr → daemon runs final-summary pass + locks sidecar + status = dormant. If user returns → flips back to active, no re-summarize unless convo grows significantly.
+4. **Standing order conflict resolution:** **newest wins** — most recent extraction overrides older when same topic. Rationale: industry morphs weekly; latest = user's current stance. Caveat: if new rule lacks context, agent flags ambiguity + asks before locking.
+5. **Multi-device sync:** **NOT building for now.** Single-device (this Windows PC only). Future trigger = if mobile/other-device access added, upgrade to shared database (Supabase/Postgres) accessible from anywhere. Drop Syncthing/Dropbox from scope. Architecture note: keep data-access layer pluggable so file-backed store can swap to DB-backed later w/o rewrite.
 
 ---
 

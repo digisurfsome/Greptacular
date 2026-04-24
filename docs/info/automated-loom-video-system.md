@@ -468,19 +468,125 @@ User nailed it casually but let me spell it out:
 
 ---
 
-## 14. Next Steps
+## 14. Decisions Locked (2026-04-23)
 
-Before building, 3 user decisions:
-
-1. **Voice choice:** Edge-TTS `GuyNeural` default? Or voice clone (your voice via XTTS)?
-2. **First target:** SEO audit template for plumbers? Or different first test case?
-3. **Build priority:** slot this in BEFORE Chaos Engine commercials, AFTER, or parallel?
-
-Answer those + we move to prototype.
+1. **Voice:** Interchangeable toggle — all 3 engines selectable at render time.
+   - Edge-TTS (free, cloud, fast, high quality) = **default**
+   - Kokoro TTS (free, local, MIT, slower but zero-cost-at-scale) = toggle option
+   - XTTS voice clone (free, local, user's own voice) = toggle option, not default
+   - Config: `voice_engine: edge | kokoro | xtts` in template.yaml
+2. **First target industry:** Plumbers.
+3. **Build priority:** Loom first (user will use it quickly on outreach), Chaos Engine next.
+4. **Tool sandboxing:** Each pipeline process gets a whitelist of tools it's allowed to call. Shared tool pool, not free-roam. Pipelines declare their allowed_tools up front. (see §17)
+5. **Slot variation everywhere:** Chaos Engine's 3-slot × N-option mechanic applies to EVERY template family — commercial AND loom. Each loom template ships w/ variation libraries so output varies across sends to same industry. (see §18)
 
 ---
 
-## 15. TL;DR
+## 15. Google Business Profile — Bot Detection Strategy
+
+GBP aggressive on scraping bots. User raised valid concern. Answer:
+
+### What's risky vs what's fine
+
+| Action | Risk | Fix |
+|--------|------|-----|
+| Scraping GBP data at scale | HIGH — accounts/IPs blocked fast | Don't. Use existing scraper data. |
+| Visiting public GBP listing page 1 time | LOW | Playwright-stealth plugin |
+| Visiting 50+ GBP pages/hour from same IP | HIGH | Rate limit + residential proxy |
+| Loading customer's own website | ZERO | Nothing special needed |
+| Live Google SERP scraping | HIGH | Use pre-fetched DataForSEO data, render as overlay card |
+| Logged-in Google actions | VERY HIGH | NEVER log in |
+
+### Strategy baked into pipeline
+
+- **Playwright-stealth plugin** (free npm `playwright-stealth`) — masks `navigator.webdriver`, fixes plugins array, humanizes fingerprint
+- **Rate limit:** max 1 GBP page per 30 seconds per IP
+- **User-agent + viewport rotation** per render
+- **Human motion:** mouse moves in bezier curves, not straight lines (already in plan)
+- **Typing:** 80-250ms per character random
+- **No Google SERP scraping live** — use pre-fetched rank data from existing DataForSEO pipeline, render it as a hyperframes overlay chart **on top of** the GBP page
+- **Residential proxy optional later** (~$50-100/mo) if scaling past ~50 loom videos/day hitting Google properties
+
+### Rule
+
+Every Google-property render must go through `gbp_safe_visit()` wrapper w/ stealth + rate limit + proxy (if configured). Never raw Playwright calls against Google domains.
+
+---
+
+## 16. Tool Sandboxing Rule (Cross-Cutting)
+
+Every pipeline process (loom, commercial, memory daemon, scraper, render worker, etc) declares its **allowed_tools** in its config:
+
+```yaml
+# loom_pipeline.yaml
+pipeline: loom_video
+allowed_tools:
+  - playwright
+  - edge_tts
+  - kokoro_tts
+  - xtts
+  - hyperframes
+  - ffmpeg
+  - claude_haiku_api
+  - dataforseo_data_loader
+denied_tools:
+  - browser_use        # LLM-in-browser too expensive for this
+  - veo3               # forbidden, kills margins
+  - opus_api           # overkill for loom scripts
+```
+
+Runner refuses to call tools outside the whitelist. Prevents scope creep + accidental cost blowouts + contamination between pipelines.
+
+---
+
+## 17. Slot Variation in Loom Templates
+
+Same mechanic as Chaos Engine — one base script → N variations. Applied to loom:
+
+```yaml
+# plumber-seo-audit.template.yaml
+slots:
+  opener:                              # 10 variations
+    - "Hey [Owner], just pulled up [Business]..."
+    - "Ran a quick audit on [Business]'s online presence..."
+    - "[Business] — saw you come up for [keyword]..."
+    - ... (10 total)
+  problem_frame:                       # 15 variations per problem type
+    missing_hours:
+      - "Nobody can tell when you're open..."
+      - "Your hours are blank — customers bouncing..."
+      - ...
+    no_photos:
+      - "Zero photos — Google's penalizing you..."
+      - ...
+  solution_offer:                      # 8 variations
+    - "30 min on our side fixes this..."
+    - "Free video made by us, then $X/mo to actually do it..."
+  closer:                              # 10 variations
+    - "Reply if you want the full audit..."
+    - ...
+```
+
+Result: same template, same business, **10 × 15 × 8 × 10 = 12,000 unique script variations**. Every outreach send gets a fresh spin. Algorithm can't flag as bulk template. Recipient can't compare w/ neighbor and see they got the same thing.
+
+Same approach for Chaos Engine commercials (already specced).
+
+Every template family MUST ship with slot variation libraries. Non-negotiable.
+
+---
+
+## 18. Next Steps
+
+1. Pipeline install finishes (external drive path) → hyperframes + video-use live
+2. Install Playwright + Edge-TTS + Kokoro + XTTS to same project dir
+3. Ship SPEC-L1: Plumber SEO audit prototype (single business, hardcoded script) — proves the rig works
+4. Ship SPEC-L2: Script generator (Haiku) + slot variation library
+5. Ship SPEC-L3: Integration w/ existing scraper pipeline → end-to-end automated
+6. Outreach test: 10 videos to real plumbers → measure reply rate
+
+---
+
+## 19. TL;DR
 
 - **Feasible. 6/10 difficulty. 80% confidence.**
 - **Zero SaaS costs.** Playwright + Edge-TTS + hyperframes + ffmpeg all free.
@@ -489,5 +595,8 @@ Answer those + we move to prototype.
 - **Scales to 1000+/day on $20 VPS.**
 - **Real SaaS potential** — no competitor doing fully auto screen-record audits.
 - **Slots cleanly into existing pipeline** — shares scraper, CDN, landing pages, outreach.
+- **GBP bot detection handled** — stealth plugin + rate limit + pre-fetched data, not live scraping.
+- **Tool sandboxing** — each pipeline gets a whitelist, no free-roam.
+- **Slot variation mandatory** — every template → 1000s of unique outputs.
 
-Ready to prototype when you give green light.
+Ready to prototype on green light.

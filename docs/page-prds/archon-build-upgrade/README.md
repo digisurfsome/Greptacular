@@ -11,6 +11,7 @@
 
 | File | Purpose |
 |------|---------|
+| [`PIPELINE-REBUILD-NO-BASH-HANDOFF.md`](./PIPELINE-REBUILD-NO-BASH-HANDOFF.md) | **Full handoff PRD for a brand-new agent to rebuild `prd-pipeline-c.yaml` as `prd-pipeline-d.yaml` without bash nodes.** Catalogues every Windows/bash failure we hit, maps each to a prompt-node or command-node replacement, references the archon skill, and gives a step-by-step plan with success criteria. **Do this rebuild BEFORE applying the V3 roadmap fixes below.** |
 | [`PRD-MAKER-V3-ROADMAP.md`](./PRD-MAKER-V3-ROADMAP.md) | **10 concrete fixes to lift PRD Maker 7.5 → 9.5/10.** I/O examples per mechanism, acceptance tests per deliverable, golden path trace (Stage 8.5), 4→2 reviewers, production red team (Stage 8.75), reproducibility seed lock, programmatic compile check, deployment target router (Stage 0.5), mechanism contract + boundary gate, cross-platform harness plan. |
 | [`BUILD-ONLY-WORKFLOW-PRD.md`](./BUILD-ONLY-WORKFLOW-PRD.md) | Spec for `prd-pipeline-BUILD.yaml` — stripped pipeline that skips Stages 0–10 and imports a pre-made PRD bundle, so re-runs don't re-generate the PRD. |
 | [`MASTER-MODULAR-ARCHITECTURE.md`](./MASTER-MODULAR-ARCHITECTURE.md) | 6 build modes (standalone-app, module, module-host, assembly, feature-add, contract-spec), universal context preamble mechanism, standardized Module Contract. |

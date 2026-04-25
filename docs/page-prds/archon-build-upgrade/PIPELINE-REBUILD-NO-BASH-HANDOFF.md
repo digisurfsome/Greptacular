@@ -6,6 +6,24 @@
 
 ---
 
+## 0.5 — WORKING REPO LOCATION (read this first)
+
+**This work does NOT happen in the Greptacular / AutoForge repo.** Pipeline-d is an Archon workflow, not an AutoForge feature.
+
+**Where you work:** the same working repo Pass 0 used — a clone of `digisurfsome/archon-module-template` set up as a new GitHub repo (e.g., `digisurfsome/archon-pipeline-rebuild`). Pass 0's deliverables (`.archon/commands/stage-NN.md` files with preamble blocks for all 6 modes) MUST already exist on `main` in this repo before you start.
+
+**Where the PRDs you're reading live:** `digisurfsome/Greptacular` (read-only documentation source).
+
+**Where the live runtime install is:** `C:\Users\lober\.archon\` on the owner's machine. Do NOT modify this directly. Once pipeline-d is green and committed in the working repo, the owner syncs from the working repo to the live install.
+
+**Verification step before you start:**
+1. Confirm `.archon/commands/stage-00.md` through `stage-10.md` exist in the working repo and contain mode-agnostic core prompts plus preamble blocks with IF branches for all 6 modes (per `PASS-0-PREAMBLE-AUDIT-HANDOFF.md` §4.1).
+2. Confirm `docs/page-prds/archon-build-upgrade/PASS-0-AUDIT-REPORT.md` exists in the Greptacular repo (Pass 0's audit deliverable). If missing, Pass 0 isn't actually done — stop and escalate.
+
+All your `.archon/workflows/prd-pipeline-d.yaml` edits happen in the working repo. All commits go to that repo's `main`.
+
+---
+
 ## 0. Pass Sequence — Where This Fits
 
 | Pass | Name | What it does | Status | File |

@@ -7,6 +7,29 @@
 
 ---
 
+## 0.5 — WORKING REPO LOCATION (read this first)
+
+**This work does NOT happen in the Greptacular / AutoForge repo.** Pipeline-d is an Archon workflow, not an AutoForge feature.
+
+**Where you work:** a fresh clone of `digisurfsome/archon-module-template`, set up as a new GitHub repo (e.g., `digisurfsome/archon-pipeline-rebuild` or whatever the owner specifies). This repo carries the current Archon engine version (template was forked from main ~19 hours pre-task) and contains the `.archon/commands/` files you will audit and rewrite.
+
+**Where the PRDs you're reading live:** `digisurfsome/Greptacular` (an AutoForge repo). Read the PRDs from there, but make NO commits there.
+
+**Where the live runtime install is:** `C:\Users\lober\.archon\` on the owner's machine. Do NOT modify this directly. Once Pass 0 is green and committed in the working repo, the owner syncs from the working repo to the live install.
+
+**Setup the owner has done (or will do) before you start:**
+```
+git clone https://github.com/digisurfsome/archon-module-template.git archon-pipeline-rebuild
+cd archon-pipeline-rebuild
+git remote set-url origin https://github.com/digisurfsome/archon-pipeline-rebuild.git
+git push -u origin main
+```
+(The new repo name may differ — confirm with the owner before starting.)
+
+**Your working directory at agent start:** the local clone of the new repo. All your `.archon/commands/*.md` edits happen there. All commits go to that repo's `main`. The Greptacular repo is read-only context for you.
+
+---
+
 ## 1. Pass Sequence — Where This Fits
 
 | Pass | Name | Status |

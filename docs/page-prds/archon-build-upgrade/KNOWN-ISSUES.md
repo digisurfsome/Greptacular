@@ -39,15 +39,26 @@ The first copy works fine. Only the second+ copies break.
 
 The whole modular architecture (MASTER-MODULAR-ARCHITECTURE.md) assumes you'll spin up many small module repos from this template — 5+ for CallPitch alone. If the second template copy can't be registered, the architecture can't scale past the first module. Hard blocker for CallPitch-style multi-module builds.
 
-### Current workaround (interim)
+### Current workaround (interim — confirmed pattern)
 
-Unknown. Options to try:
+**Use `git clone` instead of "Use this template" GitHub button.** The template second-copy bug appears to trigger only when GitHub's "Use this template" feature is invoked. A plain `git clone` followed by repointing the remote to a new GitHub repo bypasses whatever Archon-side metadata is causing the rejection.
+
+```
+git clone https://github.com/digisurfsome/archon-module-template.git <new-repo-name>
+cd <new-repo-name>
+# Create empty new repo on GitHub first, then:
+git remote set-url origin https://github.com/digisurfsome/<new-repo-name>.git
+git push -u origin main
+# Then register in Archon as a normal project — no template metadata to trip on
+```
+
+This is the pattern Pass 0/1/2 work uses (see those handoffs §0.5).
+
+### Other workarounds to try if `git clone` doesn't unblock everyone
+
 1. **Rename the first project's Archon registration** to something unrelated, then register the second. If the conflict is name-collision inside Archon's DB, this might clear it.
-2. **Manually clone the template** (not via "Use this template"), push as a new repo, register in Archon as a fresh project without the template-origin metadata.
-3. **Inspect `C:\Users\lober\.archon\archon.db`** (SQLite) for template-origin fields and manually delete stale entries.
-4. **Run without the template** — hand-create the `.archon/` directory in each new repo. Loses the convenience but unblocks multi-module builds.
-
-None of these have been tested. Whichever works becomes the documented workaround until upstream fixes it.
+2. **Inspect `C:\Users\lober\.archon\archon.db`** (SQLite) for template-origin fields and manually delete stale entries.
+3. **Run without the template** — hand-create the `.archon/` directory in each new repo. Loses the convenience but unblocks multi-module builds.
 
 ### Upstream action needed
 

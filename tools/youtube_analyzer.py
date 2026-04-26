@@ -33,7 +33,7 @@ from youtube_transcript_api import YouTubeTranscriptApi
 
 API_KEY        = "AIzaSyDGab7qioHQUDYsI-DTxgE891i8-oproyk"
 CHANNEL_HANDLE = "connorcahil"
-MONTHS_BACK    = 2
+MONTHS_BACK    = 4
 OUTPUT_DIR     = Path("output")
 
 YT_API = "https://www.googleapis.com/youtube/v3"

@@ -390,3 +390,25 @@ Within a block, fixes are parallel-safe (different files / different nodes). Acr
 ---
 
 **End of unified spec.** Pass 2 = V3 Roadmap fixes 1–9 (Fix 10 satisfied) + Fix 11 (Scorecard). Execution = 4 ship-blocks. Total agent time at 500K tok / 30 min: ~3 min pure output, 8–15 min wall-clock with reads.
+
+---
+
+## Appendix A — Owner Decisions (locked)
+
+Owner reviewed the 5 open questions. Picks below are final. Executing agent: treat as spec, not options.
+
+| # | Question | Decision | Rationale |
+|---|---|---|---|
+| 1 | DAG re-entry for revision loop: (a) duplicate stage nodes gated by `revision_mode==true` vs (b) single `loop:` wrapper | **(a) duplicate nodes** | Engine has no loop primitive (Pass 1 confirmed). Option b needs feature that doesn't exist. Doubles node count for revisable stages — accept the cost. Future engine upgrade can refactor to (b). |
+| 2 | Tier 3 first-attempt: auto-rerun once vs hard-stop immediately | **Auto-once.** Hard-stop on attempt 2. | Matches M14 lean. One full cascade re-run is cheaper than burning a Sonnet build cycle on a structurally broken PRD. Two = pattern, not luck. |
+| 3 | Single-lens floor: any reviewer below threshold triggers reroll, or only aggregate? | **Two-gate.** Aggregate >= 80% AND no single lens < 65%. Either gate fails -> tier 2 reroll. | Prevents one weak lens (e.g. 50% coherence) from sneaking through on strong aggregate. Both numbers tunable later. |
+| 4 | Tier 1 fix model: Sonnet vs Opus vs Haiku | **Sonnet.** | M14 default. Haiku saves 5x but tier 1 is rare — not worth tuning. Opus overkill for typo-class fixes. |
+| 5 | `prd-revision-escalate` halt mechanism: real halt node vs prompt-only flag | **Handoff file + dispatcher gate.** Escalate node writes `prd-revision-escalated.json` to bundle dir. `prd-bundle-ready` checks for that file before emitting READY. If present -> READY = false, build path blocks. Also write owner notification to `C:\Users\lober\.autoforge\handoffs\pass-2-escalate-{timestamp}.md`. | Engine has no halt primitive. File-based gate is reliable + readable by owner. Handoff file = how owner finds out. |
+
+**All other open items in spec body that weren't on this list:** executing agent uses spec defaults.
+
+**Acceptance check for these decisions:** when executing agent ships Pass 2, verify each row above is reflected in the YAML/commands. Reviewer (Opus) should fail the run if any decision was ignored.
+
+---
+
+**End of Appendix A.**

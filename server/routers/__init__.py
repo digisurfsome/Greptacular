@@ -49,6 +49,7 @@ from .tool_analyzer import router as tool_analyzer_router
 from .tool_factory import router as tool_factory_router
 from .tool_runner import router as tool_runner_router
 from .tool_themes import router as tool_themes_router
+from .truth_builder import router as truth_builder_router
 from .verifications import router as verifications_router
 from .workspace import router as workspace_router
 from .yt_batch import router as yt_batch_router
@@ -106,4 +107,5 @@ __all__ = [
     "market_scraper_router",
     "meta_training_router",
     "ap_code_manager_router",
+    "truth_builder_router",
 ]

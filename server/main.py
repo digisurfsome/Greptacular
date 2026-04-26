@@ -86,6 +86,7 @@ from .routers import (
     tool_factory_router,
     tool_runner_router,
     tool_themes_router,
+    truth_builder_router,
     verifications_router,
     workspace_router,
     yt_batch_router,
@@ -454,6 +455,7 @@ app.include_router(ingestion_sequences_router)
 app.include_router(market_scraper_router)
 app.include_router(meta_training_router)
 app.include_router(ap_code_manager_router)
+app.include_router(truth_builder_router)
 
 
 # ============================================================================

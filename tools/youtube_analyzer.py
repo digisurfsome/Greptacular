@@ -31,11 +31,11 @@ CHANNEL_ID      = "UCdmJVDnFnbGrQXJqBDkZpag"   # Connor's channel — update if 
 MONTHS_BACK     = 4                              # how far back to fetch
 OUTPUT_DIR      = Path("output")
 
-# Minimum video duration in seconds to NOT be treated as a Short.
-# YouTube Shorts are <= 60s. We use 90s as safe buffer.
-MIN_DURATION_SECONDS = 90
+# YouTube Shorts are now up to 3 minutes (180s). Use 3.5 min as safe buffer.
+# Regular tutorial/agency videos are almost always 5+ minutes.
+MIN_DURATION_SECONDS = 210  # 3.5 minutes
 
-# Extra title keywords that signal a Short even if duration data is missing
+# Keywords in title OR description that signal a Short
 SHORT_KEYWORDS = ["#shorts", "#short", " shorts"]
 
 # Manually add important older videos that fall outside the date window.
@@ -78,10 +78,19 @@ def format_duration(seconds: int) -> str:
     return f"{m}m {s}s"
 
 
-def is_short(title: str, duration_seconds: int) -> bool:
-    """Return True if this video looks like a Short."""
+def is_short(title: str, duration_seconds: int, description: str = "") -> bool:
+    """Return True if this video looks like a Short.
+
+    Checks three signals:
+    1. Title contains a shorts keyword
+    2. Description contains a shorts keyword (many creators skip title tag)
+    3. Duration under 3.5 minutes (YouTube Shorts now allowed up to 3 min)
+    """
     title_lower = title.lower()
+    desc_lower = description.lower()
     if any(kw in title_lower for kw in SHORT_KEYWORDS):
+        return True
+    if any(kw in desc_lower for kw in SHORT_KEYWORDS):
         return True
     if duration_seconds > 0 and duration_seconds < MIN_DURATION_SECONDS:
         return True
@@ -153,12 +162,11 @@ def get_video_details(video_ids: list[str]) -> list[dict]:
             content = item["contentDetails"]
             duration_s = iso_duration_to_seconds(content.get("duration", ""))
             title = snippet.get("title", "")
+            description = snippet.get("description", "")
 
-            if is_short(title, duration_s):
+            if is_short(title, duration_s, description):
                 print(f"  [SKIP SHORT] {title} ({format_duration(duration_s)})")
                 continue
-
-            description = snippet.get("description", "")
             # Extract all URLs from description
             urls = re.findall(r"https?://\S+", description)
             # Flag tool/asset links (not GHL affiliate, not YouTube links)

@@ -287,6 +287,26 @@ def write_index(results, base_dir, months_back):
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
+def write_combined_transcripts(results, base_dir):
+    """Write every transcript into one file, oldest-first, for easy agent ingestion."""
+    lines = ["# All Transcripts — Connor Cahill", ""]
+    for r in reversed(results):  # reversed = oldest first
+        folder = base_dir / "videos" / r["folder"]
+        tf     = folder / "transcript.txt"
+        text   = tf.read_text(encoding="utf-8") if tf.exists() else "[No transcript file]"
+        lines += [
+            f"## {r['date']} — {r['title']}",
+            f"URL: {r['yt_url']}",
+            f"Duration: {r['duration']}",
+            "",
+            text,
+            "",
+            "---",
+            "",
+        ]
+    (base_dir / "all_transcripts.txt").write_text("\n".join(lines), encoding="utf-8")
+
+
 def main():
     print("=" * 60)
     print("  YouTube Channel Analyzer")
@@ -332,6 +352,9 @@ def main():
 
     print("\n→ Writing index.md...")
     write_index(results, OUTPUT_DIR, MONTHS_BACK)
+
+    print("→ Writing all_transcripts.txt...")
+    write_combined_transcripts(results, OUTPUT_DIR)
 
     tool_count = sum(1 for r in results if r["has_tools"])
     print("\n" + "=" * 60)

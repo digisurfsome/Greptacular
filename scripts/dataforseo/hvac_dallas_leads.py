@@ -487,7 +487,8 @@ def main():
 
         # Reviews
         print(f"\n[2/3] Pulling {REVIEW_DEPTH} reviews per business...")
-        results = []
+        results    = []
+        raw_dump   = []   # full text for Groq analysis
         for i, biz in enumerate(businesses, 1):
             print(f"  [{i}/{len(businesses)}] {biz['name']}")
             reviews              = pull_reviews(biz)
@@ -496,13 +497,31 @@ def main():
                   f"{unanswered} unanswered complaints")
             results.append((biz, flagged, unanswered))
 
+            # Save full review text for AI analysis
+            for rv in reviews:
+                text = rv.get("review_text") or ""
+                if text.strip():
+                    raw_dump.append({
+                        "business":     biz["name"],
+                        "stars":        (rv.get("rating") or {}).get("value", 0),
+                        "date":         rv.get("time_ago", ""),
+                        "owner_reply":  bool(rv.get("owner_answer")),
+                        "text":         text,
+                    })
+
             if i < len(businesses):
                 time.sleep(1)
 
-        # Save
+        # Save CSV
         print(f"\n[3/3] Saving to {output_file}...")
         rows = save_csv(results, output_file, label)
         print(f"  ✅ {len(rows)} businesses saved")
+
+        # Save raw review dump for Groq analysis
+        raw_file = output_file.replace(".csv", "_reviews_raw.json")
+        with open(raw_file, "w", encoding="utf-8") as f:
+            json.dump(raw_dump, f, indent=2, ensure_ascii=False)
+        print(f"  📄 {len(raw_dump)} full reviews saved → {raw_file}")
 
         # Summary
         hot = sum(1 for r in rows if r["LEAD_SCORE"] > 0)

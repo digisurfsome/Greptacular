@@ -569,3 +569,105 @@ NEPQ gates open just as fast — you're speaking in reverse polarity to a brain 
 - Per phone-tag/no-show: ~$0.20
 
 A $500/mo MRR client pays back the entire monthly stack 5× over on day one.
+
+---
+
+## Salesperson Copilot — Same Brain, Different Output Sink
+
+Use case: human (you) takes the call, the same LangGraph brain listens in real time and pushes suggested lines to a web page on a second monitor. Trains you to think in NEPQ + metaprograms while every call is fully scaffolded. Ships in ~1 day.
+
+### Architecture
+
+```
+[Your phone call (softphone/Twilio number)]
+        │ Audio splitter / SIP tap
+        ▼
+[Deepgram streaming STT, 2 channels diarized]
+        │  ~200-400ms latency
+        ▼
+[LangGraph — SAME nodes as bot architecture]
+        │  detect_MP, gate_check, phrase_inject, objection_handler
+        │  SAME Chroma library, SAME Mem0
+        ▼
+[WebSocket push → React 3-column page on your monitor]
+   ┌──────────────┬──────────────┬──────────────┐
+   │ LIVE         │ NEXT LINE    │ STATE        │
+   │ TRANSCRIPT   │ (top 1 BIG,  │ NEPQ step,   │
+   │ (you/them)   │  2 alts,     │ MP scores,   │
+   │              │  why-tag)    │ last obj.    │
+   └──────────────┴──────────────┴──────────────┘
+```
+
+### Listen to both channels
+
+- **Prospect audio** → drives gate decisions, response generation
+- **Your audio** → calibration (compare suggested line vs delivered line for drift) + off-script detection (if you go your own way, brain pivots the plan)
+- Deepgram dual-channel diarization is a config flag, no extra engineering
+
+### Latency budget (target < 1.5s end-of-prospect-sentence to on-screen)
+
+| Step | Latency |
+|---|---|
+| Deepgram endpointing | 200–400ms |
+| LangGraph routing | 50ms |
+| Sonnet 4.6 streaming first tokens | 400–800ms |
+| Chroma lookup | <50ms |
+| WebSocket push | <100ms |
+| **Total to first visible word** | **~700–1200ms** |
+
+Sonnet streams; first words appear before full suggestion. Feels instant.
+
+### Talk-speed forcing function
+
+Reading-speak clocks ~150 wpm = "slow enough for prospect reflection" pace. Screen caps your delivery speed automatically. Bonus: kills cold-call anxiety — next perfect line is always 1 second away.
+
+### When to use copilot vs bot
+
+| Mode | Use when |
+|---|---|
+| Bot solo | High volume inbound, after-hours, qualified-prospect appointment-set, demo calls |
+| Copilot (human + brain) | Training months 1–3; high-ticket prospects ($50k+ MRR potential); edge cases where bot drifts; outbound to opted-in lists where human warmth helps |
+| Bot warm-transfer to copilot | Bot qualifies, transfers to you with full context already in brain state — you take over with copilot showing where bot left off |
+
+### Cost per 30-min copilot call
+
+| Item | Cost |
+|---|---|
+| Telephony (your existing line or Twilio) | <$0.05 |
+| Deepgram STT (2 channels) | ~$0.26 |
+| Sonnet 4.6 at gates | ~$0.10 |
+| Haiku rewrites | ~$0.03 |
+| **Total** | **~$0.45** |
+
+### Build effort (token-time, not human-time)
+
+- Audio tap + Deepgram streaming: 2–3 hours
+- LangGraph copilot output node + WebSocket: 2 hours
+- React 3-column page: 2 hours
+- Wiring + testing: 2 hours
+- **~1 working day to first usable version.** Tuning during real calls.
+
+The same Chroma library, same Mem0 profiles, same NEPQ state machine, same MP detection serve both bot and copilot. Zero duplication. Build the bot, get the copilot for free.
+
+---
+
+## Billing & Money Flow — Every Line Item
+
+| Charge | Billed how | When | Pays |
+|---|---|---|---|
+| GHL $97/mo Voice AI Unlimited | Subscription, auto-charge | Monthly up front | You |
+| Telephony minutes (LC Phone) | **Prepaid wallet, drains real-time** | As consumed; calls fail at $0 | You (auto-recharge required) |
+| A2P 10DLC registration | Wallet drain | One-time + monthly campaign fee | You |
+| Phone number rental | $1.15/mo per number, wallet | Monthly | You |
+| Anthropic API (Sonnet/Haiku) | Postpaid invoice, credit card | Monthly arrears | You direct to Anthropic |
+| Deepgram STT (copilot only) | Postpaid invoice | Monthly arrears | You direct |
+| Mem0 hosted | Free tier likely sufficient; $19+/mo paid | Monthly | You |
+| Chroma self-hosted | $0 | Never | Free |
+
+**Operational rule:** Set GHL wallet auto-recharge at $20 floor / $50 top-up. Otherwise calls fail mid-day.
+
+**Free trial billing pattern:**
+- Client puts credit card on file in GHL (requires SaaS Pro $497/mo tier to rebill clients)
+- Telephony + API rebilled at cost during trial
+- OR cheaper: charge client flat $50/mo "carrier passthrough," you eat overages (<$2/day average means you almost never lose money)
+- Outbound carved out of trial entirely — premium add-on with written opt-in only

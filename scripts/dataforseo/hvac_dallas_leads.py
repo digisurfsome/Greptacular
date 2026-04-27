@@ -270,23 +270,25 @@ def pull_reviews(business):
         print(f"    ⚠️  No place_id — skipping '{name}'")
         return []
 
+    # Use keyword + location — more reliable than place_id across endpoints
     payload = [{
-        "place_id":      place_id,
+        "keyword":       name,
+        "location_name": LOCATION,
+        "language_name": "English",
         "depth":         REVIEW_DEPTH,
         "sort_by":       REVIEW_SORT,
-        "language_name": "English",
     }]
 
     try:
         post_data = api_post("/v3/business_data/google/reviews/task_post", payload)
         task_id   = post_data["tasks"][0]["id"]
+        print(f"    ⏳ Task posted (id: {task_id[:8]}...), waiting 20s before polling...")
     except Exception as e:
         print(f"    ❌  Failed to post task for '{name}': {e}")
         return []
 
-    # Wait before first poll — DataForSEO needs ~15s to register the task
-    print(f"    ⏳ Task posted, waiting 15s before polling...")
-    time.sleep(15)
+    # Wait before first poll
+    time.sleep(20)
 
     # Poll up to 120 seconds (24 attempts × 5 seconds)
     # DataForSEO status codes:

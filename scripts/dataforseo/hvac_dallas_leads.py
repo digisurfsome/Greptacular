@@ -2,15 +2,20 @@
 """
 DataForSEO — HVAC Dallas Lead Finder
 =====================================
-Lean workflow: Maps SERP → filter low-rated → pull 50 worst reviews → flag missed calls.
+Runs TWO separate keyword searches and keeps results completely separate.
 
-Cost estimate for this run:
-  1 Maps SERP call          = $0.002
-  50 reviews × 20 businesses = $0.075
-  Total                      ≈ $0.077
+Search A: "HVAC companies Dallas Texas"      → hvac_dallas_standard.csv
+Search B: "emergency HVAC Dallas Texas"      → hvac_dallas_emergency.csv
+
+Lean workflow: Maps SERP → filter low-rated → pull reviews → flag missed calls.
+
+Cost estimate for this run (20 businesses × 10 reviews × 2 searches):
+  2 Maps SERP calls          = $0.004
+  40 review pulls × 10 depth = $0.030  ($0.00075 per 10 reviews)
+  Total                      ≈ $0.034
 
 Usage:
-  Set env vars, then run:
+  Set your DataForSEO credentials as environment variables, then run:
     DATAFORSEO_LOGIN=you@email.com DATAFORSEO_PASSWORD=yourpass python hvac_dallas_leads.py
 
   Or edit the CREDENTIALS block below directly.
@@ -25,22 +30,31 @@ from datetime import datetime
 from requests.auth import HTTPBasicAuth
 
 # ── Credentials ──────────────────────────────────────────────────────────────
-# Option 1: set environment variables (recommended)
-# Option 2: paste directly here
-DATAFORSEO_LOGIN    = os.environ.get("DATAFORSEO_LOGIN", "YOUR_LOGIN_EMAIL")
+DATAFORSEO_LOGIN    = os.environ.get("DATAFORSEO_LOGIN",    "YOUR_LOGIN_EMAIL")
 DATAFORSEO_PASSWORD = os.environ.get("DATAFORSEO_PASSWORD", "YOUR_PASSWORD")
 
 BASE_URL = "https://api.dataforseo.com"
 
 # ── Search Config ─────────────────────────────────────────────────────────────
-KEYWORD         = "HVAC companies Dallas Texas"
 LOCATION        = "Dallas,Texas,United States"
-MAX_BUSINESSES  = 20        # how many leads to pull reviews for
-REVIEW_DEPTH    = 50        # reviews per business (50 = $0.00375, 20 = $0.0015)
+MAX_BUSINESSES  = 20        # how many leads to pull reviews for (per search)
+REVIEW_DEPTH    = 10        # reviews per business — 10 to test, bump to 50 for real runs
 REVIEW_SORT     = "lowest_rating"   # "lowest_rating" | "newest" | "highest_rating"
-MIN_REVIEWS     = 5         # skip businesses with fewer than this many reviews
-MAX_RATING      = 4.8       # only pull reviews for businesses at or below this rating
-OUTPUT_FILE     = "hvac_dallas_results.csv"
+MIN_REVIEWS     = 5         # skip businesses with fewer reviews than this
+
+# The two separate searches — results stay completely separate
+SEARCHES = [
+    {
+        "label":       "STANDARD",
+        "keyword":     "HVAC companies Dallas Texas",
+        "output_file": "hvac_dallas_standard.csv",
+    },
+    {
+        "label":       "EMERGENCY",
+        "keyword":     "emergency HVAC Dallas Texas",
+        "output_file": "hvac_dallas_emergency.csv",
+    },
+]
 
 # ── Missed Call Signal Keywords ───────────────────────────────────────────────
 MISSED_CALL_KEYWORDS = [
@@ -64,13 +78,16 @@ MISSED_CALL_KEYWORDS = [
     "hung up",
     "disconnect",
     "phone tag",
+    "no response",
+    "never responded",
+    "after hours",
+    "answering machine",
 ]
 
 # ── HTTP Helper ───────────────────────────────────────────────────────────────
 auth = HTTPBasicAuth(DATAFORSEO_LOGIN, DATAFORSEO_PASSWORD)
 
 def api_post(endpoint, payload):
-    """POST to DataForSEO, raise on any error."""
     resp = requests.post(f"{BASE_URL}{endpoint}", json=payload, auth=auth, timeout=60)
     resp.raise_for_status()
     data = resp.json()
@@ -79,26 +96,20 @@ def api_post(endpoint, payload):
     return data
 
 def api_get(endpoint):
-    """GET from DataForSEO."""
     resp = requests.get(f"{BASE_URL}{endpoint}", auth=auth, timeout=60)
     resp.raise_for_status()
     return resp.json()
 
 
 # ── Step 1: Maps SERP ─────────────────────────────────────────────────────────
-def discover_businesses():
+def discover_businesses(keyword):
     """
     One Maps SERP call → up to 100 businesses.
     Cost: $0.002 flat.
-    Returns list sorted worst-rated first.
+    Returns list filtered and sorted worst-rated first.
     """
-    print(f"\n{'='*60}")
-    print(f"STEP 1 — Maps SERP: '{KEYWORD}'")
-    print(f"{'='*60}")
-    print(f"Cost: $0.002")
-
     payload = [{
-        "keyword":       KEYWORD,
+        "keyword":       keyword,
         "location_name": LOCATION,
         "language_name": "English",
         "device":        "desktop",
@@ -115,15 +126,15 @@ def discover_businesses():
                 if item.get("type") == "maps_search":
                     raw_items.append(item)
 
-    print(f"Raw results from Google Maps: {len(raw_items)} businesses")
+    print(f"  Raw results from Google: {len(raw_items)} businesses")
 
     businesses = []
     for item in raw_items:
-        rating_obj  = item.get("rating") or {}
-        dist        = rating_obj.get("rating_distribution") or {}
-        total       = rating_obj.get("votes_count", 0)
-        star_value  = rating_obj.get("value", 5.0) or 5.0
-        one_star    = dist.get("1", 0)
+        rating_obj   = item.get("rating") or {}
+        dist         = rating_obj.get("rating_distribution") or {}
+        total        = rating_obj.get("votes_count", 0)
+        star_value   = rating_obj.get("value", 5.0) or 5.0
+        one_star     = dist.get("1", 0)
         one_star_pct = round((one_star / total * 100), 1) if total > 0 else 0.0
 
         businesses.append({
@@ -153,21 +164,19 @@ def discover_businesses():
         })
 
     # Filter: must have minimum reviews
-    before = len(businesses)
     businesses = [b for b in businesses if b["review_count"] >= MIN_REVIEWS]
-    print(f"After filter (>= {MIN_REVIEWS} reviews): {len(businesses)} of {before}")
 
-    # Sort: worst rated first, then highest 1-star % as tiebreaker
+    # Sort: worst rated first
     businesses.sort(key=lambda x: (x["rating"], -x["one_star_pct"]))
 
     # Cap to MAX_BUSINESSES
     selected = businesses[:MAX_BUSINESSES]
 
-    print(f"\nTop {len(selected)} leads (worst-rated first):")
+    print(f"  After filter ({MIN_REVIEWS}+ reviews): keeping top {len(selected)}")
     for i, b in enumerate(selected, 1):
         flag = "🔴" if b["rating"] <= 3.5 else "🟡" if b["rating"] <= 4.2 else "🟢"
-        print(f"  {i:2}. {flag} {b['rating']}⭐ | {b['review_count']} reviews "
-              f"| {b['one_star_pct']}% 1-star | {b['name']}")
+        print(f"    {i:2}. {flag} {b['rating']}⭐ ({b['review_count']} reviews, "
+              f"{b['one_star_pct']}% 1-star) — {b['name']}")
 
     return selected
 
@@ -175,17 +184,16 @@ def discover_businesses():
 # ── Step 2: Pull Reviews ──────────────────────────────────────────────────────
 def pull_reviews(business):
     """
-    Standard (async) reviews pull: task_post → poll task_get.
-    Cost: $0.00375 for 50 reviews.
+    Standard async reviews: task_post → poll task_get.
+    Cost: $0.00075 per 10 reviews.
     """
     name     = business["name"]
     place_id = business.get("place_id")
 
     if not place_id:
-        print(f"  ⚠️  No place_id for '{name}' — skipping")
+        print(f"    ⚠️  No place_id — skipping '{name}'")
         return []
 
-    # Post task
     payload = [{
         "place_id":      place_id,
         "depth":         REVIEW_DEPTH,
@@ -197,10 +205,10 @@ def pull_reviews(business):
         post_data = api_post("/v3/business_data/google/reviews/task_post", payload)
         task_id   = post_data["tasks"][0]["id"]
     except Exception as e:
-        print(f"  ❌  Failed to post review task for '{name}': {e}")
+        print(f"    ❌  Failed to post task for '{name}': {e}")
         return []
 
-    # Poll for results (max 90 seconds)
+    # Poll up to 90 seconds
     for attempt in range(18):
         time.sleep(5)
         result = api_get(f"/v3/business_data/google/reviews/task_get/{task_id}")
@@ -215,20 +223,18 @@ def pull_reviews(business):
             items = (tasks[0].get("result") or [{}])[0].get("items") or []
             return items
         elif status in (40602, 40200):
-            # Still queued or processing — keep waiting
-            continue
+            continue  # still processing
         else:
             msg = tasks[0].get("status_message", "unknown error")
-            print(f"  ⚠️  Review task error for '{name}': {status} — {msg}")
+            print(f"    ⚠️  Task error for '{name}': {status} — {msg}")
             return []
 
-    print(f"  ⏰  Timed out waiting for reviews for '{name}'")
+    print(f"    ⏰  Timed out for '{name}'")
     return []
 
 
 # ── Step 3: Analyze Reviews ───────────────────────────────────────────────────
 def flag_missed_calls(text):
-    """Return list of matched missed-call keywords."""
     if not text:
         return []
     lower = text.lower()
@@ -236,18 +242,13 @@ def flag_missed_calls(text):
 
 
 def analyze_reviews(reviews):
-    """
-    Returns:
-      - flagged: list of reviews with missed-call signals
-      - unanswered_complaints: count of 1-2 star reviews with no owner response
-    """
-    flagged              = []
-    unanswered_low_star  = 0
+    flagged             = []
+    unanswered_low_star = 0
 
     for r in reviews:
-        text     = r.get("review_text") or ""
-        stars    = (r.get("rating") or {}).get("value", 5)
-        signals  = flag_missed_calls(text)
+        text         = r.get("review_text") or ""
+        stars        = (r.get("rating") or {}).get("value", 5)
+        signals      = flag_missed_calls(text)
         has_response = bool(r.get("owner_answer"))
 
         if stars <= 2 and not has_response:
@@ -267,15 +268,16 @@ def analyze_reviews(reviews):
 
 
 # ── Output ────────────────────────────────────────────────────────────────────
-def save_csv(results):
-    """Write results to CSV. results = list of (business_dict, flagged, unanswered_count)."""
+def save_csv(results, output_file, label):
     rows = []
     for biz, flagged, unanswered in results:
         sample_quote   = flagged[0]["text_preview"][:300] if flagged else ""
         sample_signals = ", ".join(flagged[0]["signals"])   if flagged else ""
+        lead_score     = len(flagged) * 3 + unanswered
 
         rows.append({
-            "LEAD_SCORE":            len(flagged) * 3 + unanswered,  # simple score
+            "SEARCH_TYPE":           label,
+            "LEAD_SCORE":            lead_score,
             "name":                  biz["name"],
             "phone":                 biz["phone"],
             "website":               biz["website"],
@@ -294,93 +296,109 @@ def save_csv(results):
             "contact_url":           biz["contact_url"],
         })
 
-    # Sort by lead score (highest first)
     rows.sort(key=lambda x: -x["LEAD_SCORE"])
 
-    with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
+    with open(output_file, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=rows[0].keys())
         writer.writeheader()
         writer.writerows(rows)
 
-    print(f"\n✅ Saved to {OUTPUT_FILE}")
     return rows
 
 
-def print_summary(results):
-    """Print a clean console summary of top leads."""
-    print(f"\n{'='*60}")
-    print("TOP AI RECEPTIONIST LEADS — HVAC DALLAS")
-    print(f"{'='*60}")
-
-    sorted_results = sorted(results, key=lambda x: -(len(x[1]) * 3 + x[2]))
-
-    for biz, flagged, unanswered in sorted_results[:10]:
-        print(f"\n🎯 {biz['name']}")
-        print(f"   📞 {biz['phone']}")
-        print(f"   🌐 {biz['website']}")
-        print(f"   ⭐ {biz['rating']} | {biz['review_count']} reviews | "
-              f"{biz['one_star_pct']}% 1-star")
-        print(f"   🚨 Missed-call reviews: {len(flagged)} | "
-              f"Unanswered complaints: {unanswered}")
-        if flagged:
-            top = flagged[0]
-            print(f"   💬 \"{top['text_preview'][:160]}...\"")
-            print(f"   🔑 Keywords found: {', '.join(top['signals'])}")
-            print(f"   👤 Owner replied: {top['owner_replied']}")
+def print_summary(rows, label):
+    print(f"\n{'─'*55}")
+    print(f"  TOP LEADS — {label}")
+    print(f"{'─'*55}")
+    for r in rows[:5]:
+        flag = "🔴" if r["LEAD_SCORE"] >= 6 else "🟡" if r["LEAD_SCORE"] >= 3 else "🟢"
+        print(f"\n  {flag} [{r['LEAD_SCORE']} pts] {r['name']}")
+        print(f"     📞 {r['phone']}")
+        print(f"     ⭐ {r['rating']} | {r['review_count']} reviews | "
+              f"{r['one_star_pct']}% 1-star")
+        print(f"     🚨 Missed-call signals: {r['missed_call_reviews']} | "
+              f"Unanswered complaints: {r['unanswered_complaints']}")
+        if r["sample_complaint"]:
+            print(f"     💬 \"{r['sample_complaint'][:160]}...\"")
+        if r["matched_keywords"]:
+            print(f"     🔑 Keywords: {r['matched_keywords']}")
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 def main():
-    print(f"\nDataForSEO — HVAC Dallas Lead Finder")
+    print(f"\n{'='*60}")
+    print(f"DataForSEO — HVAC Dallas Lead Finder (DUAL SEARCH)")
     print(f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"\nConfig: {MAX_BUSINESSES} businesses | {REVIEW_DEPTH} reviews each | sort: {REVIEW_SORT}")
-    cost_reviews = MAX_BUSINESSES * (REVIEW_DEPTH / 10) * 0.00075
-    print(f"Est. cost: $0.002 (SERP) + ${cost_reviews:.4f} (reviews) = ${0.002 + cost_reviews:.4f} total")
+    print(f"{'='*60}")
+    print(f"\nSearches: {len(SEARCHES)}")
+    for s in SEARCHES:
+        print(f"  [{s['label']}] \"{s['keyword']}\" → {s['output_file']}")
 
-    # Validate credentials
+    total_biz = MAX_BUSINESSES * len(SEARCHES)
+    cost_serp    = 0.002 * len(SEARCHES)
+    cost_reviews = total_biz * (REVIEW_DEPTH / 10) * 0.00075
+    print(f"\nEst. total cost: ${cost_serp + cost_reviews:.4f}")
+    print(f"  SERP calls: {len(SEARCHES)} × $0.002 = ${cost_serp:.4f}")
+    print(f"  Reviews: {total_biz} biz × {REVIEW_DEPTH} reviews = ${cost_reviews:.4f}")
+
     if "YOUR_" in DATAFORSEO_LOGIN:
         print("\n❌ ERROR: Set your DataForSEO credentials first.")
-        print("   Option A: export DATAFORSEO_LOGIN=you@email.com")
-        print("             export DATAFORSEO_PASSWORD=yourpassword")
-        print("   Option B: edit the CREDENTIALS block at top of this file")
+        print("   export DATAFORSEO_LOGIN=you@email.com")
+        print("   export DATAFORSEO_PASSWORD=yourpassword")
         return
 
-    # Step 1: Discover
-    businesses = discover_businesses()
-    if not businesses:
-        print("No businesses found. Check credentials/API access.")
-        return
+    # Run each search independently
+    for search in SEARCHES:
+        label       = search["label"]
+        keyword     = search["keyword"]
+        output_file = search["output_file"]
 
-    # Step 2 & 3: Reviews + analysis
+        print(f"\n{'='*60}")
+        print(f"SEARCH: {label}")
+        print(f"Query:  \"{keyword}\"")
+        print(f"Output: {output_file}")
+        print(f"{'='*60}")
+
+        # Discover
+        print(f"\n[1/3] Maps SERP — $0.002")
+        businesses = discover_businesses(keyword)
+
+        if not businesses:
+            print(f"  No businesses found for '{keyword}'. Skipping.")
+            continue
+
+        # Reviews
+        print(f"\n[2/3] Pulling {REVIEW_DEPTH} reviews per business...")
+        results = []
+        for i, biz in enumerate(businesses, 1):
+            print(f"  [{i}/{len(businesses)}] {biz['name']}")
+            reviews              = pull_reviews(biz)
+            flagged, unanswered  = analyze_reviews(reviews)
+            print(f"    → {len(reviews)} reviews | {len(flagged)} signals | "
+                  f"{unanswered} unanswered complaints")
+            results.append((biz, flagged, unanswered))
+
+            if i < len(businesses):
+                time.sleep(1)
+
+        # Save
+        print(f"\n[3/3] Saving to {output_file}...")
+        rows = save_csv(results, output_file, label)
+        print(f"  ✅ {len(rows)} businesses saved")
+
+        # Summary
+        hot = sum(1 for r in rows if r["LEAD_SCORE"] > 0)
+        print(f"  🎯 {hot} of {len(rows)} businesses show missed-call signals")
+        print_summary(rows, label)
+
+    # Final totals
     print(f"\n{'='*60}")
-    print(f"STEP 2 — Pulling {REVIEW_DEPTH} reviews per business")
+    print(f"ALL DONE")
     print(f"{'='*60}")
-    print("Using STANDARD mode (async). Each business takes ~5–30 seconds.")
-
-    results = []
-    for i, biz in enumerate(businesses, 1):
-        print(f"\n[{i}/{len(businesses)}] {biz['name']} ({biz['rating']}⭐)")
-        reviews          = pull_reviews(biz)
-        flagged, unanswered = analyze_reviews(reviews)
-        print(f"  Reviews fetched: {len(reviews)} | "
-              f"Missed-call signals: {len(flagged)} | "
-              f"Unanswered 1-2★: {unanswered}")
-        results.append((biz, flagged, unanswered))
-
-        if i < len(businesses):
-            time.sleep(1)  # brief pause between businesses
-
-    # Output
-    print(f"\n{'='*60}")
-    print("STEP 3 — Saving results")
-    print(f"{'='*60}")
-    save_csv(results)
-    print_summary(results)
-
-    hot_leads = sum(1 for _, f, u in results if f or u > 0)
-    print(f"\n📊 {hot_leads} of {len(businesses)} businesses show missed-call signals.")
-    print(f"💰 Approx spend: ${0.002 + (len(businesses) * (REVIEW_DEPTH / 10) * 0.00075):.4f}")
-    print(f"\nDone. Open {OUTPUT_FILE} to see full data.")
+    for s in SEARCHES:
+        print(f"  {s['label']:12} → {s['output_file']}")
+    print(f"\n💰 Approx spend: ${cost_serp + cost_reviews:.4f}")
+    print(f"📌 Next step: open the CSV files and sort by LEAD_SCORE (highest first)")
 
 
 if __name__ == "__main__":

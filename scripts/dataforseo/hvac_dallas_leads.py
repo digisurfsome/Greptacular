@@ -288,7 +288,7 @@ def pull_reviews(business):
 
     # Use keyword + location — more reliable than place_id across endpoints
     payload = [{
-        "keyword":       name,
+        "keyword":       f"{name} Dallas Texas" if len(name) < 20 else name,
         "location_name": LOCATION,
         "language_name": "English",
         "depth":         REVIEW_DEPTH,
@@ -517,10 +517,19 @@ def main():
             for rv in reviews:
                 text = rv.get("review_text") or ""
                 if text.strip():
+                    # Convert unix timestamp to readable date if available
+                    ts = rv.get("timestamp", 0)
+                    try:
+                        from datetime import datetime as _dt
+                        date_str = _dt.utcfromtimestamp(int(ts)).strftime("%Y-%m-%d") if ts else rv.get("time_ago", "")
+                    except Exception:
+                        date_str = rv.get("time_ago", "")
+
                     raw_dump.append({
                         "business":     biz["name"],
                         "stars":        (rv.get("rating") or {}).get("value", 0),
-                        "date":         rv.get("time_ago", ""),
+                        "date":         date_str,
+                        "time_ago":     rv.get("time_ago", ""),
                         "owner_reply":  bool(rv.get("owner_answer")),
                         "text":         text,
                     })

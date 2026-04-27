@@ -191,7 +191,8 @@ def process_file(raw_json_path: str):
         all_results.append({
             "business":   biz_name,
             "stars":      review["stars"],
-            "date":       review["date"],
+            "date":       review.get("date", ""),
+            "time_ago":   review.get("time_ago", ""),
             "signal":     analysis["signal"],
             "category":   analysis["category"],
             "phrase":     analysis["phrase"],
@@ -208,7 +209,7 @@ def process_file(raw_json_path: str):
     # ── Output 1: Full results CSV ─────────────────────────────────────────────
     out_csv = str(path).replace("_reviews_raw.json", "_ai_analysis.csv")
     with open(out_csv, "w", newline="", encoding="utf-8") as f:
-        fields = ["business","stars","date","signal","category","phrase","summary","biz_size","root_cause","pitch","text"]
+        fields = ["business","stars","date","time_ago","signal","category","phrase","summary","biz_size","root_cause","pitch","text"]
         w = csv.DictWriter(f, fieldnames=fields)
         w.writeheader()
         w.writerows(all_results)

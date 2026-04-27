@@ -285,28 +285,46 @@ def pull_reviews(business):
         print(f"    ❌  Failed to post task for '{name}': {e}")
         return []
 
-    # Poll up to 90 seconds
-    for attempt in range(18):
+    # Poll up to 120 seconds (24 attempts × 5 seconds)
+    # DataForSEO status codes:
+    #   20000 = done/success
+    #   20100 = task queued (still waiting)
+    #   20010 = task in progress
+    # Anything else = real error
+    for attempt in range(24):
         time.sleep(5)
-        result = api_get(f"/v3/business_data/google/reviews/task_get/{task_id}")
-        tasks  = result.get("tasks", [])
+        try:
+            result = api_get(f"/v3/business_data/google/reviews/task_get/{task_id}")
+        except Exception as e:
+            print(f"    ⚠️  Poll error attempt {attempt+1}: {e}")
+            continue
 
+        tasks  = result.get("tasks", [])
         if not tasks:
+            print(f"    ⚠️  Empty response on attempt {attempt+1}, retrying...")
             continue
 
         status = tasks[0].get("status_code")
+        msg    = tasks[0].get("status_message", "")
 
         if status == 20000:
-            items = (tasks[0].get("result") or [{}])[0].get("items") or []
-            return items
-        elif status in (40602, 40200):
-            continue  # still processing
+            # Success — extract reviews
+            result_list = tasks[0].get("result") or []
+            if result_list:
+                items = result_list[0].get("items") or []
+                return items
+            return []
+        elif status in (20100, 20010):
+            # Still queued or in progress — keep waiting
+            print(f"    ⏳ Attempt {attempt+1}: {msg} — waiting...")
+            continue
         else:
-            msg = tasks[0].get("status_message", "unknown error")
-            print(f"    ⚠️  Task error for '{name}': {status} — {msg}")
+            # Real error
+            print(f"    ❌ Task failed for '{name}': status {status} — {msg}")
+            print(f"       Full task response: {json.dumps(tasks[0], indent=2)[:500]}")
             return []
 
-    print(f"    ⏰  Timed out for '{name}'")
+    print(f"    ⏰  Timed out after 120s for '{name}'")
     return []
 
 

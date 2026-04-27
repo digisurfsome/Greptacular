@@ -7,20 +7,57 @@
 
 ---
 
-## TL;DR — The $0.005 Full Dossier
+## ⚡ THE LEAN WORKFLOW — This Is the Play
 
-One complete business profile (discovery + deep profile + 20 reviews) costs **~$0.005**.
-- $50 credit → **~10,000 fully profiled businesses**
-- $50 credit → **2.5 million businesses** if you only run discovery (Maps SERP)
+Skip the deep profile entirely. Maps SERP + Reviews only.
+
+```
+Step 1: Maps SERP  → 100 businesses for $0.002
+Step 2: Filter     → flag businesses with low rating or high 1-star count (free, client-side)
+Step 3: Reviews    → pull 50 lowest reviews only for flagged leads = $0.00375 each
+```
+
+**Cost breakdown — lean approach:**
+
+| What | Cost |
+|------|------|
+| 1 Maps SERP search (100 businesses) | $0.002 |
+| 50 reviews per flagged lead | $0.00375 each |
+| Average (filtering ~30% of list) | **~$0.0021 per business** |
+| $50 credit → **~24,000 businesses profiled** | |
+
+**Review depth pricing (so you can choose):**
+
+| Reviews pulled | Cost |
+|---------------|------|
+| 10 | $0.00075 |
+| 20 | $0.0015 |
+| **50 (recommended)** | **$0.00375** |
+| 100 | $0.0075 |
+| 500 | $0.0375 |
+| 4,490 (full history) | $0.34 |
+
+> ⚠️ **20 is NOT the max.** Depth goes up to 4,490 reviews total.
+> For outreach you don't need more than 50. You'll see the pattern in 20–50.
+> Only pull 500+ if you want to do aggregate analysis across a whole category.
 
 ---
 
-## The 4-Step Workflow
+## TL;DR — The $0.005 Full Dossier (When You Want Everything)
+
+One complete business profile (discovery + deep profile + 50 reviews) costs **~$0.005**.
+- $50 credit → **~10,000 fully profiled businesses**
+- $50 credit → **2.5 million businesses** if you only run discovery (Maps SERP)
+- $50 credit → **~24,000 businesses** with lean workflow (Maps SERP + 50 reviews, filtered)
+
+---
+
+## The 4-Step Workflow (Full Version)
 
 ```
 Step 1: Maps SERP        → discover 100 businesses for $0.002
-Step 2: My Business Info → deep profile hot leads for $0.0015 each
-Step 3: Google Reviews   → pull 20 newest/worst reviews for $0.0015 each
+Step 2: My Business Info → deep profile hot leads for $0.0015 each (SKIP for lean)
+Step 3: Google Reviews   → pull 50 worst reviews for $0.00375 each
 Step 4: Keywords (opt.)  → show search volume for $0.075/batch
 ```
 

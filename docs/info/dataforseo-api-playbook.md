@@ -222,23 +222,99 @@ Any of these = hard evidence of missed calls → perfect AI receptionist pitch.
 
 Unlike Maps SERP (which mimics a Google search), this queries DataForSEO's own database. Power-user prospecting tool.
 
-**Cost:** ~$0.0015 per request
+**Cost:** ~$0.0015 per request — returns up to **1,000 businesses** for that fraction of a cent.
+Filters do NOT add cost. You can stack 8 filters and still pay $0.0015.
 
-### What You Can Filter On
+### Every Field You Can Filter, Sort, or Search By
 
+This is the full menu — pick whatever angle fits your campaign:
+
+#### Location (Required)
+| Parameter | What it does |
+|-----------|-------------|
+| `location_coordinate` | GPS lat/lng + radius in meters (1m to 100,000,000m) |
+| `location_name` | City/state/country name instead of GPS |
+
+#### Business Identity
+| Field | Filter operators | Example |
+|-------|-----------------|---------|
+| `title` | `=`, `like`, `regex` | `["title", "like", "%plumb%"]` |
+| `category` | `=`, `in` | `["category", "=", "hvac_contractor"]` |
+| `additional_categories` | `contains` | businesses in multiple categories |
+| `is_claimed` | `=` | `["is_claimed", "=", true]` — owner-verified only |
+| `price_level` | `=`, `in` | `inexpensive`, `moderate`, `expensive`, `very_expensive` |
+
+#### Rating & Reviews (Most Useful for Your Use Case)
+| Field | Filter operators | Example |
+|-------|-----------------|---------|
+| `rating.value` | `>`, `<`, `>=`, `<=`, `=` | `["rating.value", "<", 4.0]` |
+| `rating.votes_count` | `>`, `<`, `>=`, `<=`, `=` | `["rating.votes_count", ">", 10]` |
+
+> 🎯 **Sweet spot for AI receptionist leads:**
+> `rating.value < 4.2` + `rating.votes_count > 15` = real businesses with real problems
+
+#### Hours & Status
+| Field | Filter operators | Example |
+|-------|-----------------|---------|
+| `is_open` | `=` | `["is_open", "=", true]` — currently open |
+| `current_status` | `=` | `opened`, `closed`, `temporarily_closed`, `closed_forever` |
+
+> 🎯 `temporarily_closed` = struggling business that may have cash flow issues
+
+#### Online Presence
+| Field | Filter operators | Example |
+|-------|-----------------|---------|
+| `domain` | `=`, `like`, `regex` | filter by website domain |
+| `url` | `=`, `like` | filter by URL pattern |
+| `total_photos` | `>`, `<` | `["total_photos", "<", 5]` = not managing GMB |
+
+#### Geographic
+| Field | What it does |
+|-------|-------------|
+| `latitude` | Direct GPS filter |
+| `longitude` | Direct GPS filter |
+
+### Sortable Fields
+Any filterable field can also be used in `order_by`:
 ```
-location_coordinate: { lat: 30.26, lng: -97.74, radius: 50000 }  ← 50km radius around Austin
-categories: ["plumber"]
+order_by: ["rating.value,asc"]           ← worst rated first
+order_by: ["rating.votes_count,desc"]   ← most-reviewed first
+order_by: ["rating.value,asc", "rating.votes_count,desc"]  ← multi-sort
+```
+
+### Max 8 Filters Per Request, Combinable With AND/OR
+```python
 filters: [
-  ["rating.value", "<", 4.0],        ← only businesses with problems
-  ["rating.votes_count", ">", 10],   ← at least 10 reviews (real businesses)
-  ["is_claimed", "=", true]          ← they're active enough to claim
+    ["rating.value", "<", 4.2],           # bad rating
+    "and",
+    ["rating.votes_count", ">", 15],      # enough reviews to be real
+    "and",
+    ["is_claimed", "=", true],            # they're active online
+    "and",
+    ["current_status", "=", "opened"],    # still in business
 ]
-order_by: ["rating.value,asc"]       ← worst rated first
-limit: 1000                          ← up to 1,000 results
 ```
 
-Returns same data as My Business Info (full profile). This is batch prospecting — no keyword needed.
+### Example: Find Every Struggling HVAC Company Within 30 Miles of Dallas
+```python
+{
+    "location_coordinate": {
+        "lat": 32.7767,
+        "lng": -96.7970,
+        "radius": 48280          # 30 miles in meters
+    },
+    "categories": ["hvac_contractor"],
+    "filters": [
+        ["rating.value", "<", 4.2],
+        "and",
+        ["rating.votes_count", ">", 10]
+    ],
+    "order_by": ["rating.value,asc"],
+    "limit": 1000
+}
+```
+
+Returns same data as My Business Info (full profile) for up to 1,000 businesses. Pre-screened, no keyword needed, $0.0015 total.
 
 ---
 

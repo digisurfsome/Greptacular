@@ -4,21 +4,29 @@ DataForSEO — HVAC Dallas Lead Finder
 =====================================
 Runs TWO separate keyword searches and keeps results completely separate.
 
-Search A: "HVAC companies Dallas Texas"      → hvac_dallas_standard.csv
-Search B: "emergency HVAC Dallas Texas"      → hvac_dallas_emergency.csv
+Search A: "HVAC companies Dallas Texas"   → hvac_dallas_standard.csv
+Search B: "emergency HVAC Dallas Texas"   → hvac_dallas_emergency.csv
 
-Lean workflow: Maps SERP → filter low-rated → pull reviews → flag missed calls.
+Lean workflow: Maps SERP → pull 50 reviews on top 10 → flag missed-call language.
 
-Cost estimate for this run (20 businesses × 10 reviews × 2 searches):
-  2 Maps SERP calls          = $0.004
-  40 review pulls × 10 depth = $0.030  ($0.00075 per 10 reviews)
-  Total                      ≈ $0.034
+Cost estimate for this run (10 businesses × 50 reviews × 2 searches):
+  2 Maps SERP calls            = $0.004
+  20 businesses × 50 reviews   = $0.075  ($0.00375 per 50 reviews)
+  Total                        ≈ $0.079  (less than a dime)
 
-Usage:
-  Set your DataForSEO credentials as environment variables, then run:
-    DATAFORSEO_LOGIN=you@email.com DATAFORSEO_PASSWORD=yourpass python hvac_dallas_leads.py
+NOTE: If a business has fewer than 50 reviews, it just returns however many it has.
+      No error — you just get 30 if they only have 30.
 
-  Or edit the CREDENTIALS block below directly.
+HOW TO RUN:
+  1. Open a terminal in this folder
+  2. Install the only dependency:
+         pip install requests
+  3. Run with your DataForSEO credentials:
+         python hvac_dallas_leads.py YOUR_EMAIL YOUR_PASSWORD
+     OR set environment variables:
+         set DATAFORSEO_LOGIN=you@email.com
+         set DATAFORSEO_PASSWORD=yourpass
+         python hvac_dallas_leads.py
 """
 
 import os
@@ -30,15 +38,18 @@ from datetime import datetime
 from requests.auth import HTTPBasicAuth
 
 # ── Credentials ──────────────────────────────────────────────────────────────
-DATAFORSEO_LOGIN    = os.environ.get("DATAFORSEO_LOGIN",    "YOUR_LOGIN_EMAIL")
-DATAFORSEO_PASSWORD = os.environ.get("DATAFORSEO_PASSWORD", "YOUR_PASSWORD")
+# Pull from env vars OR pass on command line: python hvac_dallas_leads.py EMAIL PASS
+import sys
+_args = sys.argv[1:]
+DATAFORSEO_LOGIN    = _args[0] if len(_args) > 0 else os.environ.get("DATAFORSEO_LOGIN",    "YOUR_LOGIN_EMAIL")
+DATAFORSEO_PASSWORD = _args[1] if len(_args) > 1 else os.environ.get("DATAFORSEO_PASSWORD", "YOUR_PASSWORD")
 
 BASE_URL = "https://api.dataforseo.com"
 
 # ── Search Config ─────────────────────────────────────────────────────────────
 LOCATION        = "Dallas,Texas,United States"
-MAX_BUSINESSES  = 20        # how many leads to pull reviews for (per search)
-REVIEW_DEPTH    = 10        # reviews per business — 10 to test, bump to 50 for real runs
+MAX_BUSINESSES  = 10        # 10 businesses per search (2 searches = 20 total)
+REVIEW_DEPTH    = 50        # 50 reviews per business — if biz has fewer, just returns what it has
 REVIEW_SORT     = "lowest_rating"   # "lowest_rating" | "newest" | "highest_rating"
 MIN_REVIEWS     = 5         # skip businesses with fewer reviews than this
 
@@ -56,32 +67,83 @@ SEARCHES = [
     },
 ]
 
-# ── Missed Call Signal Keywords ───────────────────────────────────────────────
+# ── Missed Call / Unreachable Signal Keywords ────────────────────────────────
+# Anything suggesting: didn't answer, went to voicemail, on hold too long,
+# couldn't reach them, no callback, ignored — all signs they need an AI receptionist.
 MISSED_CALL_KEYWORDS = [
+    # Didn't pick up
     "no answer",
     "didn't answer",
     "did not answer",
+    "no one answered",
+    "nobody answered",
+    "no one picked up",
+    "nobody picked up",
+    "never picked up",
+    # Voicemail / machine
     "voicemail",
     "voice mail",
+    "answering machine",
+    "left a message",
+    "left a voicemail",
+    "left voicemail",
+    "voicemail full",
+    "mailbox full",
+    # No callback
     "never called back",
     "didn't call back",
     "did not call back",
+    "no return call",
+    "no callback",
+    "waiting for a call back",
+    "still waiting",
+    "never got a call",
+    "no one called me back",
+    # Can't reach them
     "couldn't reach",
     "could not reach",
-    "no one picked up",
-    "nobody answered",
-    "left a message",
-    "no return call",
+    "can't reach",
+    "cannot reach",
     "unreachable",
     "hard to reach",
-    "not available",
-    "hung up",
-    "disconnect",
-    "phone tag",
+    "impossible to reach",
+    "can't get ahold",
+    "can't get a hold",
+    # On hold / waiting
+    "on hold",
+    "put me on hold",
+    "hold for",
+    "waited on hold",
+    "long wait",
+    "wait time",
+    "waited forever",
+    "waited so long",
+    "hours waiting",
+    # Ignored
     "no response",
     "never responded",
+    "ignored",
+    "no reply",
+    "never replied",
+    "no communication",
+    # After hours
     "after hours",
-    "answering machine",
+    "after-hours",
+    "closed",
+    "not available",
+    "unavailable",
+    # Phone tag
+    "phone tag",
+    "keep calling",
+    "called multiple times",
+    "called several times",
+    "called again",
+    "tried calling",
+    "tried to call",
+    "hang up",
+    "hung up",
+    "disconnect",
+    "disconnected",
 ]
 
 # ── HTTP Helper ───────────────────────────────────────────────────────────────

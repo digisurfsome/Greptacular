@@ -61,6 +61,8 @@ DATAFORSEO_PASSWORD = _password or os.environ.get("DATAFORSEO_PASSWORD", "YOUR_P
 
 BASE_URL = "https://api.dataforseo.com"
 
+# ── Auth — built AFTER credentials are parsed ─────────────────────────────────
+
 # ── Search Config ─────────────────────────────────────────────────────────────
 LOCATION        = "Dallas,Texas,United States"
 MAX_BUSINESSES  = 10        # 10 businesses per search (2 searches = 20 total)
@@ -162,9 +164,8 @@ MISSED_CALL_KEYWORDS = [
 ]
 
 # ── HTTP Helper ───────────────────────────────────────────────────────────────
-auth = HTTPBasicAuth(DATAFORSEO_LOGIN, DATAFORSEO_PASSWORD)
-
 def api_post(endpoint, payload):
+    auth = HTTPBasicAuth(DATAFORSEO_LOGIN, DATAFORSEO_PASSWORD)
     resp = requests.post(f"{BASE_URL}{endpoint}", json=payload, auth=auth, timeout=60)
     resp.raise_for_status()
     data = resp.json()
@@ -173,6 +174,7 @@ def api_post(endpoint, payload):
     return data
 
 def api_get(endpoint):
+    auth = HTTPBasicAuth(DATAFORSEO_LOGIN, DATAFORSEO_PASSWORD)
     resp = requests.get(f"{BASE_URL}{endpoint}", auth=auth, timeout=60)
     resp.raise_for_status()
     return resp.json()

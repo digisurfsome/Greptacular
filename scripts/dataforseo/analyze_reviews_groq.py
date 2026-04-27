@@ -206,8 +206,8 @@ def process_file(raw_json_path: str):
             "text":       review["text"][:300],
         })
 
-        # Small sleep to stay under rate limit
-        time.sleep(0.3)
+        # Groq free tier = 30 req/min → need 2s+ between calls
+        time.sleep(2.5)
 
     # ── Output 1: Full results CSV ─────────────────────────────────────────────
     out_csv = str(path).replace("_reviews_raw.json", "_ai_analysis.csv")

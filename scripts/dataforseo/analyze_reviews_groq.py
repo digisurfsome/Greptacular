@@ -42,7 +42,7 @@ if _env_path.exists():
             os.environ.setdefault(k.strip(), v.strip())
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
-GROQ_MODEL   = "llama-3.3-70b-versatile"
+GROQ_MODEL   = "llama-3.1-8b-instant"
 GROQ_URL     = "https://api.groq.com/openai/v1/chat/completions"
 
 # ── Groq call ─────────────────────────────────────────────────────────────────
@@ -202,7 +202,7 @@ def process_file(raw_json_path: str):
     with open(lead_csv, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(["RANK","BUSINESS","AI_SIGNAL_COUNT","TOP_QUOTE","TOP_CATEGORY"])
-        for rank, biz in enumerate(scored_biznessed := scored_biznesses, 1):
+        for rank, biz in enumerate(scored_biznesses, 1):
             top = biz["signals"][0] if biz["signals"] else {}
             w.writerow([
                 rank,

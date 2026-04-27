@@ -168,7 +168,9 @@ def process_file(raw_json_path: str):
     total = len(reviews)
     for idx, review in enumerate(reviews, 1):
         biz_name = review["business"]
-        print(f"  [{idx:>3}/{total}] ★{review['stars']} | {biz_name[:40]:<40}", end=" ")
+        src   = review.get("source", "google")
+        src_icon = "🔴" if src == "google" else "🟠"
+        print(f"  [{idx:>3}/{total}] {src_icon}★{review['stars']} | {biz_name[:40]:<40}", end=" ")
 
         analysis = analyze_review(review)
 
@@ -190,6 +192,7 @@ def process_file(raw_json_path: str):
 
         all_results.append({
             "business":   biz_name,
+            "source":     review.get("source", "google"),
             "stars":      review["stars"],
             "date":       review.get("date", ""),
             "time_ago":   review.get("time_ago", ""),
@@ -209,7 +212,7 @@ def process_file(raw_json_path: str):
     # ── Output 1: Full results CSV ─────────────────────────────────────────────
     out_csv = str(path).replace("_reviews_raw.json", "_ai_analysis.csv")
     with open(out_csv, "w", newline="", encoding="utf-8") as f:
-        fields = ["business","stars","date","time_ago","signal","category","phrase","summary","biz_size","root_cause","pitch","text"]
+        fields = ["business","source","stars","date","time_ago","signal","category","phrase","summary","biz_size","root_cause","pitch","text"]
         w = csv.DictWriter(f, fieldnames=fields)
         w.writeheader()
         w.writerows(all_results)

@@ -162,6 +162,63 @@ MISSED_CALL_KEYWORDS = [
     "disconnected",
 ]
 
+# ── Reddit Search (free, no API key needed) ───────────────────────────────────
+def search_reddit(business_name: str, city: str = "Dallas", max_posts: int = 10) -> list:
+    """
+    Search Reddit for mentions of a business. Uses Reddit's public JSON API.
+    No auth required. Rate limit: ~10 req/min.
+    Returns list of dicts with keys: source, stars, date, time_ago, owner_reply, text
+    """
+    import urllib.parse
+    import urllib.request as _req
+
+    query   = f'"{business_name}" {city}'
+    url     = (
+        f"https://www.reddit.com/search.json"
+        f"?q={urllib.parse.quote(query)}"
+        f"&sort=top&limit={max_posts}&t=all&type=link"
+    )
+    headers = {"User-Agent": "LeadResearchBot/1.0 (business signal finder)"}
+
+    try:
+        request = _req.Request(url, headers=headers)
+        with _req.urlopen(request, timeout=15) as resp:
+            data    = json.loads(resp.read())
+            posts   = data.get("data", {}).get("children", [])
+    except Exception as e:
+        print(f"    ⚠️  Reddit search failed for '{business_name}': {e}")
+        return []
+
+    results = []
+    for post in posts:
+        d       = post.get("data", {})
+        title   = d.get("title", "")
+        body    = d.get("selftext", "")
+        text    = f"{title}. {body}".strip(". ") if body else title
+        if not text or len(text) < 20:
+            continue
+        # created_utc is a Unix timestamp
+        ts = d.get("created_utc", 0)
+        try:
+            from datetime import datetime as _dt
+            date_str = _dt.utcfromtimestamp(int(ts)).strftime("%Y-%m-%d") if ts else ""
+        except Exception:
+            date_str = ""
+
+        results.append({
+            "source":      "reddit",
+            "stars":       0,           # Reddit has no star rating
+            "date":        date_str,
+            "time_ago":    "",
+            "owner_reply": False,
+            "text":        text[:800],
+            "url":         f"https://reddit.com{d.get('permalink', '')}",
+            "upvotes":     d.get("score", 0),
+        })
+
+    return results
+
+
 # ── HTTP Helper ───────────────────────────────────────────────────────────────
 def api_post(endpoint, payload):
     auth = HTTPBasicAuth(DATAFORSEO_LOGIN, DATAFORSEO_PASSWORD)
@@ -513,7 +570,29 @@ def main():
                   f"{unanswered} unanswered complaints")
             results.append((biz, flagged, unanswered))
 
-            # Save full review text for AI analysis
+            # Reddit cross-reference — free, adds context and detail
+            reddit_posts = search_reddit(biz["name"])
+            if reddit_posts:
+                print(f"    🔍 Reddit: {len(reddit_posts)} posts found")
+            else:
+                print(f"    🔍 Reddit: no mentions")
+            time.sleep(0.5)   # be polite to Reddit
+
+            # Save full review text for AI analysis (Google + Reddit combined)
+            for rv in reddit_posts:
+                if rv["text"].strip():
+                    raw_dump.append({
+                        "business":    biz["name"],
+                        "source":      "reddit",
+                        "stars":       0,
+                        "date":        rv["date"],
+                        "time_ago":    "",
+                        "owner_reply": False,
+                        "text":        rv["text"],
+                        "url":         rv.get("url", ""),
+                        "upvotes":     rv.get("upvotes", 0),
+                    })
+
             for rv in reviews:
                 text = rv.get("review_text") or ""
                 if text.strip():
@@ -526,12 +605,15 @@ def main():
                         date_str = rv.get("time_ago", "")
 
                     raw_dump.append({
-                        "business":     biz["name"],
-                        "stars":        (rv.get("rating") or {}).get("value", 0),
-                        "date":         date_str,
-                        "time_ago":     rv.get("time_ago", ""),
-                        "owner_reply":  bool(rv.get("owner_answer")),
-                        "text":         text,
+                        "business":    biz["name"],
+                        "source":      "google",
+                        "stars":       (rv.get("rating") or {}).get("value", 0),
+                        "date":        date_str,
+                        "time_ago":    rv.get("time_ago", ""),
+                        "owner_reply": bool(rv.get("owner_answer")),
+                        "text":        text,
+                        "url":         "",
+                        "upvotes":     0,
                     })
 
             if i < len(businesses):

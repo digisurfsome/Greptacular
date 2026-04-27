@@ -363,3 +363,98 @@ Source: https://help.gohighlevel.com/support/solutions/articles/155000006679-voi
 - **Rebilling to clients requires the $497 SaaS Pro agency tier** — Starter and Unlimited agency plans can't markup telephony to clients.
 
 Source: https://help.gohighlevel.com/support/solutions/articles/155000005200-a2p-10dlc-messaging-fees-registration-monthly-and-carrier-costs ; https://help.gohighlevel.com/support/solutions/articles/155000001156-highlevel-pricing-guide
+
+---
+
+## Architecture Synthesis — Sales Bot That Sells Itself
+
+### The pitch loop
+Outreach (1k/day to contact forms with personalized recordings + missed-call data) → landing page → prospect calls in to hear what their bot would sound like → **the sales bot answers the call AS the demo**. By minute 5 they're sold not on the concept of an AI receptionist but on this exact one. Close: "This is what would be answering your phone tomorrow. Want to try 30 days free?"
+
+One asset, three jobs: outbound demo recording, sales pitch, eventual production receptionist.
+
+### Cost math (linear scaling confirmed)
+
+| Call type | Default GHL brain | Sonnet 4.6 via webhook |
+|---|---|---|
+| 30-min inbound | ~$0.39 | ~$1.00–$1.60 |
+| 60-min inbound | ~$0.78 | ~$1.80–$3.00 |
+| 30-min outbound | ~$5.40 | ~$6.00–$7.00 |
+| 60-min outbound | ~$10.86 | ~$12.00–$13.50 |
+
+Inbound is so cheap it's effectively free. Outbound is ~14× more.
+
+### Brain options ranked
+
+**Option 1 (cheapest, recommended to start): GHL default brain only**
+- $97 covers everything brain-side, inbound unlimited
+- No API key, no webhook, no LangGraph
+- Configure NEPQ + metaprograms in the brain-builder UI as system prompt + knowledge base
+- Limit: GHL's default model may drift on metaprogram framing in long calls
+- Ship time: days
+
+**Option 2 (best value): GHL default brain + LangGraph webhook for gates only**
+- Conversation runs on free GHL brain
+- LangGraph called via Custom Action only at gate-decision moments (5–15 calls per conversation, not 60+ turns)
+- Sonnet 4.6 API key required, but token spend stays under ~$0.30/call
+- LangGraph holds NEPQ state machine + metaprogram frame enforcement
+- Mem0 for cross-call prospect memory, Chroma for NEPQ phrase library
+- Ship time: 1–2 weeks
+
+**Option 3 (max control, max cost): Agent Studio with full BYO-LLM**
+- Sonnet 4.6 drives every turn via API key
+- ~$1–$2 per 30-min call in API tokens
+- Best framing fidelity but 3–5× more expensive than Option 2
+- Worth it only if Option 2 framing drift is a problem
+
+**Subscription pipe-in (Claude Max):** Not possible. Subscriptions are for chat.claude.ai and Claude Code only. Production voice bots require an Anthropic Console API key.
+
+### LangGraph vs GHL Workflow Builder
+
+| Need | Use |
+|---|---|
+| Macro flow (call → qualify → book → confirm) | GHL Workflow Builder |
+| In-call NEPQ state + gates | LangGraph |
+| Metaprogram frame enforcement every turn | LangGraph |
+| Post-call CRM updates, tagging, SMS follow-up | GHL Workflow Builder |
+| Cross-call prospect memory | LangGraph + Mem0 |
+
+Workflow Builder is event-based — it can't enforce turn-by-turn metaprogram framing. LangGraph can. Use both, in their respective lanes.
+
+### NEPQ vs Metaprograms — when to use which
+
+- **Metaprograms always-on:** detected from 3 listening questions in first 60 seconds, then injected into every system prompt. Bot reframes every response in their frame. This alone may close warm leads.
+- **NEPQ on-demand:** triggered only when prospect throws an objection or stalls 2× in a row. Routes into NEPQ consequence-question loop until re-engaged, then exits back to metaprogram-only mode.
+- LangGraph models this as two graphs with one conditional edge between them.
+
+### Free trial economics
+
+| Item | Who pays | Estimated 30-day cost |
+|---|---|---|
+| Your service (setup, training, management) | YOU (this is the gift) | $0 to client |
+| Inbound telephony (~50 calls/day × 3 min) | Client (rebill at cost) | ~$60 |
+| LangGraph API tokens (if Option 2/3) | Client (rebill at cost) | ~$15–$45 |
+| Outbound (carved out — premium upsell) | Client only if they opt in | $0 default |
+
+**Contract fine print template:** "Free 30-day trial covers our service fees only. Telephony minutes (~$2/day inbound) and LLM costs are billed at cost to your card on file. Outbound calling is not included; available as a separate add-on at $0.16/min with written opt-in consent required per contact."
+
+**Risk if they ghost:** under $100 worst case. Survivable. Most won't — once the bot is live and answering calls they're missing, the switching cost is huge.
+
+### Why this works (the close-rate thesis)
+
+The combination is unprecedented:
+1. Industry-specific pain data (missed-call money math, per-niche)
+2. NEPQ 8-step framework on standby for resistance
+3. Metaprogram framing on every sentence
+4. A bot that never has a bad day, knows more than any employee, and demos itself
+
+Same bot then becomes the client's receptionist — armed with the same NEPQ + metaprogram tech, closing their patients/customers at 2–3× employee rates. That IS the upsell. "Don't let your people answer the phone — they can't sell like this."
+
+### Recommended ship sequence
+
+1. **Week 1:** Build Option 1 (GHL default brain). Test on 50 prospects. Measure close rate.
+2. **Week 2:** If framing drift is an issue, add Option 2 (LangGraph webhook for metaprogram enforcement).
+3. **Week 3+:** Build the per-industry demo bots (med spa, dentist, contractor). Sales bot warm-transfers to demo bot when prospect wants to "hear it work for my business."
+4. **Month 2:** Add Mem0 for cross-call memory. Roll outbound to opted-in prospects only.
+
+Total real cost to run all of this for one sub-account: **$97/mo + ~$2/day per active client + API tokens.** A single closed deal at $500/mo MRR pays for the whole stack 5× over.

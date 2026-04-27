@@ -47,12 +47,12 @@ GROQ_URL     = "https://api.groq.com/openai/v1/chat/completions"
 
 # ── Groq call ─────────────────────────────────────────────────────────────────
 def ask_groq(prompt: str, retries: int = 3) -> str:
-    import urllib.request
+    import requests as req_lib
     headers = {
-        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Authorization": f"Bearer {GROQ_API_KEY.strip()}",
         "Content-Type":  "application/json",
     }
-    body = json.dumps({
+    body = {
         "model":       GROQ_MODEL,
         "temperature": 0,
         "max_tokens":  300,
@@ -69,22 +69,25 @@ def ask_groq(prompt: str, retries: int = 3) -> str:
             },
             {"role": "user", "content": prompt}
         ]
-    }).encode()
+    }
 
     for attempt in range(retries):
         try:
-            req = urllib.request.Request(GROQ_URL, data=body, headers=headers, method="POST")
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                data = json.loads(resp.read())
-                return data["choices"][0]["message"]["content"].strip()
-        except Exception as e:
-            if "429" in str(e) or "rate" in str(e).lower():
+            resp = req_lib.post(GROQ_URL, headers=headers, json=body, timeout=30)
+            if resp.status_code == 200:
+                return resp.json()["choices"][0]["message"]["content"].strip()
+            elif resp.status_code == 429:
                 wait = 10 * (attempt + 1)
                 print(f"    ⏳ Rate limited — waiting {wait}s...")
                 time.sleep(wait)
             else:
-                print(f"    ⚠️  Groq error attempt {attempt+1}: {e}")
+                print(f"    ⚠️  Groq {resp.status_code}: {resp.text[:200]}")
+                if attempt == 0:
+                    print(f"    🔑 Key used: {GROQ_API_KEY[:8]}...{GROQ_API_KEY[-4:]} ({len(GROQ_API_KEY)} chars)")
                 time.sleep(3)
+        except Exception as e:
+            print(f"    ⚠️  Request error attempt {attempt+1}: {e}")
+            time.sleep(3)
     return "ERROR"
 
 

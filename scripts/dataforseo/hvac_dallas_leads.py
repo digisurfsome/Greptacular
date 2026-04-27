@@ -60,7 +60,7 @@ LOCATION        = "Dallas,Texas,United States"
 MAX_BUSINESSES  = 10        # 10 businesses per search (2 searches = 20 total)
 REVIEW_DEPTH    = 50        # 50 reviews per business — if biz has fewer, just returns what it has
 REVIEW_SORT     = "lowest_rating"   # "lowest_rating" | "newest" | "highest_rating"
-MIN_REVIEWS     = 5         # skip businesses with fewer reviews than this
+MIN_REVIEWS     = 50        # skip businesses with fewer than 50 reviews (need enough to fill quota)
 
 # The two separate searches — results stay completely separate
 SEARCHES = [

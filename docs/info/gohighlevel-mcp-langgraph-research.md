@@ -458,3 +458,114 @@ Same bot then becomes the client's receptionist — armed with the same NEPQ + m
 4. **Month 2:** Add Mem0 for cross-call memory. Roll outbound to opted-in prospects only.
 
 Total real cost to run all of this for one sub-account: **$97/mo + ~$2/day per active client + API tokens.** A single closed deal at $500/mo MRR pays for the whole stack 5× over.
+
+---
+
+## Detailed Architecture — 3-Brain Stack with NEPQ + Metaprograms + Phrase Arsenal
+
+### Cost reconciliation (the two numbers explained)
+
+| Architecture | Sonnet runs | 30-min call | 60-min call |
+|---|---|---|---|
+| **A: Sonnet drives every turn** | 60–80 turns | $1.00–$1.60 | $2.00–$3.20 |
+| **B: Sonnet only at gates (recommended)** | 5–15 calls | $0.05–$0.20 | $0.10–$0.40 |
+
+The 3× variance in A is real: prospect talkativeness, tool calls, retries, prompt-cache hit rate. B is 10× cheaper because GHL's free default brain handles word-by-word delivery; Sonnet is reserved for nuanced judgment.
+
+### Model assignment per layer (Architecture B)
+
+| Layer | Model | Rationale |
+|---|---|---|
+| Speaking the words (STT/TTS loop) | GHL default brain | Free under $97. Fast. Adequate for delivering pre-shaped phrases. |
+| Metaprogram detection (one-shot at 60s) | Sonnet 4.6 | Worth the 2¢ to nail the profile. |
+| Gate decisions every ~90s | Sonnet 4.6 | Reads transcript chunk, judges advance/stay/objection. Haiku is too coarse. |
+| Single-sentence frame rewrite | Haiku 4.5 | Cheap, perfect for known-frame rephrasing. |
+| Phrase retrieval | No LLM (Chroma vector search) | Microseconds, free. |
+| Cross-call memory pull | No LLM (Mem0 lookup) | Microseconds. Sonnet only on write at call end. |
+
+**Subscription pipe-in:** Not possible. Anthropic Console API key required for any Sonnet/Haiku usage.
+
+### Static assets built once
+
+**Phrase library (Chroma):** 100s of pre-written one-liners per category × 10–20 categories (missed-call money math, after-hours pain, employee-quality contrast, lifetime-value math, free-trial close, mafia/insurance frames, mismatcher reverse phrasings). Each tagged: industry, metaprogram alignment, NEPQ step.
+
+**NEPQ state nodes (LangGraph):** 8 nodes (Connect → Situation → Problem Awareness → Solution Awareness → Consequence → Qualifying → Transition → Presentation/Close). Each node has goal, gate criteria, fallback questions, exit condition.
+
+**Metaprogram profile schema (Mem0):** toward/away (-1 to +1), internal/external, match/mismatch, convincer strategy, detection-source transcript snippet.
+
+### Per-call orchestration
+
+```
+[Call rings] → [GHL Voice AI picks up, default brain]
+       │
+       ├──> [Webhook: detect_metaprograms @ 60s]
+       │      Sonnet reads first 3 listening-Q answers
+       │      → writes profile to Mem0
+       │      → returns frame-rule addendum to GHL system prompt
+       │
+       ├──> [Webhook: gate_check every 90s]
+       │      Sonnet reads last transcript chunk
+       │      → returns: stay | advance | route_to_objection
+       │      → updates GHL system prompt with next-step instructions
+       │
+       ├──> [Webhook: phrase_inject on demand]
+       │      Chroma queried with current_step + MP_tags + industry
+       │      → top phrase passed through Haiku for frame rewrite if needed
+       │      → returned to GHL to speak
+       │
+       └──> [Loop until close]
+              │
+              ▼
+       [GHL Workflow Builder takes over]
+       CRM update, Mem0 write, appointment booking, SMS recap
+```
+
+### Mismatcher special handler
+
+If `match_vs_mismatch < -0.4` after detection, LangGraph flips a flag and routes every Chroma phrase through Haiku with this rewrite directive:
+
+> "Rewrite as inverse polarity. Instead of asserting X, frame as the negation of not-X. Instead of agreement, ask what doesn't work about their current setup. Their natural 'no' should now mean alignment."
+
+NEPQ gates open just as fast — you're speaking in reverse polarity to a brain that's wired to disagree. Their disagreement IS the agreement.
+
+### Memory layout
+
+| Where | What | Why there |
+|---|---|---|
+| In-prompt (cached) | Persona, industry pain bullets, NEPQ step instructions, MP frame rules, top 30 pre-loaded phrases, returning-prospect summary | Zero retrieval latency, $0.30/M cached |
+| Chroma | Full phrase library, NEPQ templates, industry case studies | Per-turn semantic+tag retrieval |
+| Mem0 | Per-prospect MP profile, last-call summary, objections, appointment status | Pulled at start, written at end |
+| GHL CRM (via MCP) | Contact record, recordings, outcomes, tags | Source of truth for ops |
+
+### Confidence assessment
+
+| Capability | Confidence |
+|---|---|
+| Hold MP framing 30 min | 95% |
+| Recall right phrase from library at right moment | 90% |
+| Advance NEPQ gates without sticking | 85% (after 20–50 calls of tuning) |
+| Detect MPs accurately from 3 listening Qs | 80% (mid-range scores default to neutral) |
+| Detect mismatcher fast enough to flip frame | 85% |
+| Stay on script past 45 min | 80% (mitigated by rolling summary every 10 min) |
+| Close 30-day free trial with no real resistance | 95% (math + data + frame = no logical exit) |
+| Bot signs them up directly (vs. just booking appt) | 60% in phase 1; raise to 80%+ after 100+ calls of training |
+
+### Failure modes
+
+1. Voicemail trees on outbound (inbound is fine)
+2. Multi-speaker / background noise → STT degrades → MP detection noisy
+3. Prospect goes off-script asking pricing mid-NEPQ → needs an "objection handler" node that answers and routes back
+4. Strong mismatcher + away-from + internal-reference combo → rare but unmovable; not your ICP, accept the loss
+5. Sparse phrase library (<50 per category) → bot repeats itself
+6. Vague NEPQ gate criteria → bot stalls or skips
+7. Abstract MP frame rules instead of 3–5 concrete example sentences → Sonnet drifts
+
+### Total per-call economics in Architecture B
+
+- Telephony: ~$0.40 per 30 min inbound
+- API: ~$0.10 per 30 min (Sonnet at gates + Haiku rewrites)
+- **Total: ~$0.50 per 30-min closed deal call**
+- Per appointment-set: ~$0.30
+- Per phone-tag/no-show: ~$0.20
+
+A $500/mo MRR client pays back the entire monthly stack 5× over on day one.

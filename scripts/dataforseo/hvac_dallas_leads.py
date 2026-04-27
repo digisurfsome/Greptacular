@@ -440,8 +440,23 @@ def main():
 
     if "YOUR_" in DATAFORSEO_LOGIN:
         print("\n❌ ERROR: Set your DataForSEO credentials first.")
-        print("   export DATAFORSEO_LOGIN=you@email.com")
-        print("   export DATAFORSEO_PASSWORD=yourpassword")
+        print("   python hvac_dallas_leads.py DATAFORSEO_LOGIN=you@email.com DATAFORSEO_PASSWORD=yourpass")
+        return
+
+    # Show what credentials we parsed (password masked)
+    print(f"\n🔑 Login:    {DATAFORSEO_LOGIN}")
+    print(f"🔑 Password: {'*' * len(DATAFORSEO_PASSWORD)} ({len(DATAFORSEO_PASSWORD)} chars)")
+
+    # Quick credential test before running
+    print(f"\n🧪 Testing credentials against DataForSEO...")
+    try:
+        test = api_get("/v3/appendix/user_data")
+        balance = test.get("tasks", [{}])[0].get("result", [{}])[0].get("money_balance", "unknown")
+        print(f"✅ Credentials valid! Account balance: ${balance}")
+    except Exception as e:
+        print(f"❌ Credential test FAILED: {e}")
+        print(f"   Double-check your DataForSEO login email and password.")
+        print(f"   Login used: {DATAFORSEO_LOGIN}")
         return
 
     # Run each search independently

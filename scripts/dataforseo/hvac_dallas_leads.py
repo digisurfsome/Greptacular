@@ -31,33 +31,25 @@ import os
 import json
 import csv
 import time
+import sys
 import requests
 from datetime import datetime
+from pathlib import Path
 from requests.auth import HTTPBasicAuth
 
+# ── Load .env file if present ─────────────────────────────────────────────────
+# Looks for .env in same folder as this script — credentials never hardcoded
+_env_path = Path(__file__).parent / ".env"
+if _env_path.exists():
+    for line in _env_path.read_text().splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            k, v = line.split("=", 1)
+            os.environ.setdefault(k.strip(), v.strip())
+
 # ── Credentials ──────────────────────────────────────────────────────────────
-# Pull from env vars OR pass on command line: python hvac_dallas_leads.py EMAIL PASS
-import sys
-
-# Parse args — supports both formats:
-#   python hvac_dallas_leads.py DATAFORSEO_LOGIN=you@email.com DATAFORSEO_PASSWORD=yourpass
-#   python hvac_dallas_leads.py you@email.com yourpass
-def _parse_args():
-    kv = {}
-    positional = []
-    for a in sys.argv[1:]:
-        if "=" in a:
-            k, v = a.split("=", 1)
-            kv[k.strip()] = v.strip()
-        else:
-            positional.append(a)
-    login    = kv.get("DATAFORSEO_LOGIN")    or (positional[0] if len(positional) > 0 else None)
-    password = kv.get("DATAFORSEO_PASSWORD") or (positional[1] if len(positional) > 1 else None)
-    return login, password
-
-_login, _password = _parse_args()
-DATAFORSEO_LOGIN    = _login    or os.environ.get("DATAFORSEO_LOGIN",    "dux8bevo@gmail.com")
-DATAFORSEO_PASSWORD = _password or os.environ.get("DATAFORSEO_PASSWORD", "PASTE_YOUR_PASSWORD_HERE")
+DATAFORSEO_LOGIN    = os.environ.get("DATAFORSEO_LOGIN",    "")
+DATAFORSEO_PASSWORD = os.environ.get("DATAFORSEO_PASSWORD", "")
 
 BASE_URL = "https://api.dataforseo.com"
 
@@ -447,9 +439,12 @@ def main():
     print(f"  SERP calls: {len(SEARCHES)} × $0.002 = ${cost_serp:.4f}")
     print(f"  Reviews: {total_biz} biz × {REVIEW_DEPTH} reviews = ${cost_reviews:.4f}")
 
-    if "YOUR_" in DATAFORSEO_LOGIN:
-        print("\n❌ ERROR: Set your DataForSEO credentials first.")
-        print("   python hvac_dallas_leads.py DATAFORSEO_LOGIN=you@email.com DATAFORSEO_PASSWORD=yourpass")
+    if not DATAFORSEO_LOGIN or not DATAFORSEO_PASSWORD:
+        print("\n❌ ERROR: Credentials missing.")
+        print(f"   Expected .env file at: {_env_path}")
+        print("   It should contain:")
+        print("     DATAFORSEO_LOGIN=you@email.com")
+        print("     DATAFORSEO_PASSWORD=yourpassword")
         return
 
     # Show what credentials we parsed (password masked)

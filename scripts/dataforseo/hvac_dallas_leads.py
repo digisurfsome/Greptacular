@@ -58,21 +58,28 @@ BASE_URL = "https://api.dataforseo.com"
 # ── Search Config ─────────────────────────────────────────────────────────────
 LOCATION        = "Dallas,Texas,United States"
 MAX_BUSINESSES  = 10        # 10 businesses per search (2 searches = 20 total)
-REVIEW_DEPTH    = 50        # 50 reviews per business — if biz has fewer, just returns what it has
-REVIEW_SORT     = "lowest_rating"   # "lowest_rating" | "newest" | "highest_rating"
-MIN_REVIEWS     = 50        # skip businesses with fewer than 50 reviews (need enough to fill quota)
+REVIEW_DEPTH    = 100       # 100 reviews — captures natural 2-4 star mix with newest sort
+REVIEW_SORT     = "newest"          # "lowest_rating" | "newest" | "highest_rating"
+MIN_REVIEWS     = 20        # lower threshold — want 2-4 star reviews, smaller shops qualify
+
+# Corporate/franchise blocklist — skip these, can't sell to them
+CORPORATE_BLOCKLIST = [
+    "servpro", "a#1 air", "a-1 air", "billygо", "billygo", "one hour",
+    "lee company", "ars rescue", "service experts", "lennox", "carrier",
+    "trane", "sears home", "home depot", "lowes", "angi", "homeadvisor",
+]
 
 # The two separate searches — results stay completely separate
 SEARCHES = [
     {
         "label":       "STANDARD",
         "keyword":     "HVAC companies Dallas Texas",
-        "output_file": "hvac_dallas_standard.csv",
+        "output_file": "hvac_dallas_standard_newest.csv",
     },
     {
         "label":       "EMERGENCY",
         "keyword":     "emergency HVAC Dallas Texas",
-        "output_file": "hvac_dallas_emergency.csv",
+        "output_file": "hvac_dallas_emergency_newest.csv",
     },
 ]
 
@@ -241,6 +248,15 @@ def discover_businesses(keyword):
 
     # Filter: must have minimum reviews
     businesses = [b for b in businesses if b["review_count"] >= MIN_REVIEWS]
+
+    # Filter: skip corporate/franchise chains
+    def is_corporate(name):
+        n = name.lower()
+        return any(block in n for block in CORPORATE_BLOCKLIST)
+    blocked = [b["name"] for b in businesses if is_corporate(b["name"])]
+    if blocked:
+        print(f"  Skipping corporate/franchise: {', '.join(blocked)}")
+    businesses = [b for b in businesses if not is_corporate(b["name"])]
 
     # Sort: worst rated first
     businesses.sort(key=lambda x: (x["rating"], -x["one_star_pct"]))

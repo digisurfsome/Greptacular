@@ -94,11 +94,14 @@ def ask_groq(prompt: str, retries: int = 3) -> str:
 ANALYSIS_PROMPT = """\
 Review (★{stars}): {text}
 
-Answer in this EXACT format (no other text):
+Answer in this EXACT format (no other text, no extra lines):
 SIGNAL: YES or NO
 CATEGORY: [one of: no_answer | voicemail | no_callback | on_hold | ignored | after_hours | repeat_calls | other_comm_problem | none]
 PHRASE: [copy the exact 5-15 word phrase from the review that shows the problem, or "none"]
 SUMMARY: [one sentence: what went wrong with communication, or "no communication issue"]
+BIZ_SIZE: [solo_operator | small_team | established | unknown — based on clues like "the owner", "their office", "dispatch", etc.]
+ROOT_CAUSE: [one of: owner_too_busy | no_system | bad_culture | overwhelmed | unknown]
+PITCH: [one of: ai_receptionist | callback_automation | review_management | all_three | not_applicable — which service fits this problem best]
 """
 
 
@@ -110,10 +113,13 @@ def analyze_review(review: dict) -> dict:
     raw = ask_groq(prompt)
 
     result = {
-        "signal":   False,
-        "category": "none",
-        "phrase":   "none",
-        "summary":  "no communication issue",
+        "signal":     False,
+        "category":   "none",
+        "phrase":     "none",
+        "summary":    "no communication issue",
+        "biz_size":   "unknown",
+        "root_cause": "unknown",
+        "pitch":      "not_applicable",
     }
 
     for line in raw.splitlines():
@@ -126,6 +132,12 @@ def analyze_review(review: dict) -> dict:
             result["phrase"] = line.split(":", 1)[1].strip()
         elif line.startswith("SUMMARY:"):
             result["summary"] = line.split(":", 1)[1].strip()
+        elif line.startswith("BIZ_SIZE:"):
+            result["biz_size"] = line.split(":", 1)[1].strip().lower()
+        elif line.startswith("ROOT_CAUSE:"):
+            result["root_cause"] = line.split(":", 1)[1].strip().lower()
+        elif line.startswith("PITCH:"):
+            result["pitch"] = line.split(":", 1)[1].strip().lower()
 
     return result
 
@@ -177,14 +189,17 @@ def process_file(raw_json_path: str):
             print("✅ clean")
 
         all_results.append({
-            "business":  biz_name,
-            "stars":     review["stars"],
-            "date":      review["date"],
-            "signal":    analysis["signal"],
-            "category":  analysis["category"],
-            "phrase":    analysis["phrase"],
-            "summary":   analysis["summary"],
-            "text":      review["text"][:300],
+            "business":   biz_name,
+            "stars":      review["stars"],
+            "date":       review["date"],
+            "signal":     analysis["signal"],
+            "category":   analysis["category"],
+            "phrase":     analysis["phrase"],
+            "summary":    analysis["summary"],
+            "biz_size":   analysis["biz_size"],
+            "root_cause": analysis["root_cause"],
+            "pitch":      analysis["pitch"],
+            "text":       review["text"][:300],
         })
 
         # Small sleep to stay under rate limit
@@ -193,7 +208,7 @@ def process_file(raw_json_path: str):
     # ── Output 1: Full results CSV ─────────────────────────────────────────────
     out_csv = str(path).replace("_reviews_raw.json", "_ai_analysis.csv")
     with open(out_csv, "w", newline="", encoding="utf-8") as f:
-        fields = ["business","stars","date","signal","category","phrase","summary","text"]
+        fields = ["business","stars","date","signal","category","phrase","summary","biz_size","root_cause","pitch","text"]
         w = csv.DictWriter(f, fieldnames=fields)
         w.writeheader()
         w.writerows(all_results)

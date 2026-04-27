@@ -56,8 +56,8 @@ def _parse_args():
     return login, password
 
 _login, _password = _parse_args()
-DATAFORSEO_LOGIN    = _login    or os.environ.get("DATAFORSEO_LOGIN",    "YOUR_LOGIN_EMAIL")
-DATAFORSEO_PASSWORD = _password or os.environ.get("DATAFORSEO_PASSWORD", "YOUR_PASSWORD")
+DATAFORSEO_LOGIN    = _login    or os.environ.get("DATAFORSEO_LOGIN",    "dux8bevo@gmail.com")
+DATAFORSEO_PASSWORD = _password or os.environ.get("DATAFORSEO_PASSWORD", "PASTE_YOUR_PASSWORD_HERE")
 
 BASE_URL = "https://api.dataforseo.com"
 
@@ -213,7 +213,12 @@ def discover_businesses(keyword):
         dist         = rating_obj.get("rating_distribution") or {}
         total        = rating_obj.get("votes_count", 0)
         star_value   = rating_obj.get("value", 5.0) or 5.0
-        one_star     = dist.get("1", 0)
+        # Keys may be int or string depending on API response — try both
+        one_star     = dist.get(1, 0) or dist.get("1", 0)
+        two_star     = dist.get(2, 0) or dist.get("2", 0)
+        three_star   = dist.get(3, 0) or dist.get("3", 0)
+        four_star    = dist.get(4, 0) or dist.get("4", 0)
+        five_star    = dist.get(5, 0) or dist.get("5", 0)
         one_star_pct = round((one_star / total * 100), 1) if total > 0 else 0.0
 
         businesses.append({
@@ -232,10 +237,10 @@ def discover_businesses(keyword):
             "is_claimed":     item.get("is_claimed", False),
             "one_star_count": one_star,
             "one_star_pct":   one_star_pct,
-            "two_star":       dist.get("2", 0),
-            "three_star":     dist.get("3", 0),
-            "four_star":      dist.get("4", 0),
-            "five_star":      dist.get("5", 0),
+            "two_star":       two_star,
+            "three_star":     three_star,
+            "four_star":      four_star,
+            "five_star":      five_star,
             "category":       item.get("category", ""),
             "price_level":    item.get("price_level", ""),
             "open_now":       (item.get("work_hours") or {}).get("current_status", ""),
@@ -286,6 +291,10 @@ def pull_reviews(business):
     except Exception as e:
         print(f"    ❌  Failed to post task for '{name}': {e}")
         return []
+
+    # Wait before first poll — DataForSEO needs ~15s to register the task
+    print(f"    ⏳ Task posted, waiting 15s before polling...")
+    time.sleep(15)
 
     # Poll up to 120 seconds (24 attempts × 5 seconds)
     # DataForSEO status codes:

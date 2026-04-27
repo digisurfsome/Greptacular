@@ -147,3 +147,118 @@ Use **both, for different jobs.** Mem0 is purpose-built for per-user/per-prospec
 - 2026 pricing analysis — https://netpartners.marketing/gohighlevel-ai-pricing/
 - Sympana cost breakdown — https://www.sympana.com/blog/gohighlevel-voice-ai-pricing-real-total-cost-breakdown-2026
 - AI Call Agents page — https://www.gohighlevel.com/ai-call-agents
+
+---
+
+## Pricing Deep-Dive — What Every Charge Actually Is
+
+The $97/mo "AI Employee Unlimited" tier is **not** truly unlimited voice. It's a flat-rate license for *some* AI features per sub-account, but every actual phone call still triggers metered telephony, and several AI products sit *outside* the bundle. Below is every line item, in plain language.
+
+### 1. What the $97/mo Actually Covers
+
+The $97 buys **unmetered usage** of these AI features inside one sub-account (location):
+- **Conversation AI** — text-based chatbot for SMS, web chat, FB/IG, email
+- **Voice AI — INBOUND calls only** — the AI engine that talks on calls (voice engine + STT + TTS + LLM tokens are all included)
+- **Reviews AI** — auto-replies to Google/FB reviews
+- **Content AI** — AI text/image generator inside the platform
+- **Funnel AI / Workflow AI Assistant / Ask AI** — minor helper tools
+
+What "unlimited" means: GHL eats the LLM token cost, the voice engine cost, the STT, and the TTS for *inbound* AI conversations. You don't pay per token or per AI-minute.
+
+What it does **NOT** cover (still pay-per-use even on the $97 plan):
+- **Telephony minutes** (the actual phone line carrying the call) — always metered
+- **Phone number rental** — monthly fee per number
+- **SMS/MMS** — per message
+- **Outbound Voice AI calls** — full pay-per-use (engine + LLM + telephony all metered)
+- **Agent Studio** — the new visual agent builder, billed at API token rates
+- **Web voice chat widget** — the on-website voice agent is metered, not in the bundle
+
+Sources: https://help.gohighlevel.com/support/solutions/articles/155000003906-ai-employee-overview ; https://help.gohighlevel.com/support/solutions/articles/155000006652-ai-product-pricing
+
+### 2. Telephony Minutes — The "Always Extra" Charge
+
+Telephony minutes are the **phone-carrier cost** of moving voice bits over the phone network. GHL calls this "LC Phone." It's a passthrough of Twilio's wholesale rate with a small ~10% markup baked in, then **agencies can re-bill clients on top** at any markup they choose (Agency Pro $497 plan only).
+
+**US local number rates** (per minute, billed in whole minutes — partial minutes round up):
+- **Inbound** — about **$0.0128/min** (~$0.77/hour)
+- **Outbound** — about **$0.021/min** total (~$1.26/hour)
+- **Toll-free inbound** — higher, ~$0.022/min
+- **Number rental** — $1.15/mo per local number, $2.15/mo per toll-free number
+
+Why this exists even when "voice is unlimited": the $97 only buys the *AI brain* on inbound calls. The phone line itself is a separate utility charge that goes to Twilio/carriers. AI talking to nobody costs $0; AI talking on a real phone call always has a carrier bill.
+
+Source: https://help.gohighlevel.com/support/solutions/articles/48001223556-lc-phone-pricing-billing-guide
+
+### 3. Agent Studio — Separate Product, Token-Metered
+
+Agent Studio is GHL's **newer visual builder** (drag-and-drop, n8n-style canvas) for custom AI agents. It is the *successor* branding to "AI Employee" — same idea, more flexible builder. Important: **Agent Studio is NOT included in the $97 unlimited bundle.**
+
+Pricing model:
+- **Pay per LLM token** at roughly raw API rates (OpenAI/Anthropic passthrough; GHL marks up modestly)
+- No flat fee, no per-execution fee — just tokens consumed by the model your agent calls
+- Voice agents built in Agent Studio also pay voice engine + TTS + telephony on top
+
+So if you build a custom outbound qualification agent in Agent Studio, you pay: tokens + voice engine + TTS + outbound telephony minutes. Nothing about it is covered by the $97.
+
+Sources: https://help.gohighlevel.com/support/solutions/articles/155000006652-ai-product-pricing ; https://netpartners.marketing/gohighlevel-ai-agent/
+
+### 4. Outbound AI Calls — Metered + Compliance-Gated
+
+Outbound is **fully pay-per-use** even on the $97 plan. Approximate combined rate:
+- **Voice engine:** $0.06/min
+- **TTS:** included in the engine cost in most configs
+- **LLM tokens:** ~$0.10/min average (varies by model)
+- **Telephony outbound:** ~$0.021/min
+- **Combined: roughly $0.18–$0.20 per outbound minute**
+
+**Compliance gates GHL enforces before any outbound AI call:**
+- Sub-account must explicitly enable outbound AI **and complete KYC verification**
+- The contact must have a **documented opt-in** (HighLevel form, survey, or calendar booking) — TCPA treats AI calls as robocalls requiring **prior express written consent**
+- Contact cannot be on DND or have previously opted out
+- Calls only fire **10 AM – 6 PM** in the contact's local time zone (tighter than federal 8 AM – 9 PM)
+- Throttle: max **10 calls/minute per location** (one every 6 seconds)
+- T&C scanner checks your forms have valid consent language; non-compliant assets get blocked
+
+**Cold-calling is NOT allowed.** There must be a prior relationship: form fill, inbound call/text, calendar booking, or another logged opt-in. Without it, GHL rejects the call and you'd be exposed to TCPA penalties of **$500–$1,500 per call** anyway.
+
+Sources: https://help.gohighlevel.com/support/solutions/articles/155000006679-voice-ai-outbound-calling-compliance-checks ; https://help.gohighlevel.com/support/solutions/articles/155000006598-voice-ai-outbound-calling
+
+### 5. Worked Example — 1-Hour INBOUND Call (US local number, $97 plan)
+
+| Line item | Rate | 60 min cost |
+|---|---|---|
+| Voice AI engine (voice + STT + TTS) | included in $97 | **$0.00** |
+| LLM tokens (inbound AI) | included in $97 | **$0.00** |
+| LC Phone inbound minutes | $0.0128/min | **$0.77** |
+| Number rental (amortized, ignore for one call) | $1.15/mo | — |
+| **Total for the call** | | **~$0.77** |
+
+That's the magic of the $97: a 1-hour inbound AI call costs you under a buck on top of the flat fee.
+
+### 6. Worked Example — 1-Hour OUTBOUND Call (US local number, $97 plan)
+
+| Line item | Rate | 60 min cost |
+|---|---|---|
+| Voice AI engine | $0.06/min | **$3.60** |
+| LLM tokens (avg model) | ~$0.10/min | **$6.00** |
+| LC Phone outbound minutes | $0.021/min | **$1.26** |
+| **Total for the call** | | **~$10.86** |
+
+Delta vs inbound: about **$10 more per hour-call** for the same conversation. GHL community average benchmark is **~$0.163–$0.20 per outbound AI minute all-in**, which lines up.
+
+### 7. Other Hidden Fees the Owner Should Know About
+
+- **A2P 10DLC SMS registration** (mandatory to send any SMS to US numbers):
+  - Standard Brand registration: **~$24.50 one-time** (includes $3 fast-track)
+  - Other brand types: **~$71.91 one-time**
+  - Campaign fee: **up to $11.025/mo per campaign** (charged whether approved or not)
+  - **Passthrough — no GHL markup**
+- **SMS per message:** ~$0.0079/segment outbound, ~$0.0079 inbound (US local), plus carrier fees ~$0.005/segment
+- **Email sending:** ~$0.001 per email (Mailgun passthrough)
+- **AI Employee per-location** — the $97 is **per sub-account/location**. 50 clients = 50 × $97 = $4,850/mo just for AI bundles
+- **Workflow Premium Actions** — some automation steps (AI parsing, image gen, slack notifications) cost cents per execution
+- **Voice AI add-on for sub-account** — on the Agency Starter ($97 agency plan) the AI Employee bundle is purchased *per location* in addition to the agency plan
+- **Agency plan tiers:** $97 Starter, $297 Unlimited, $497 Pro (SaaS mode + rebilling) — rebilling clients for telephony/AI requires the $497 tier
+
+Sources: https://help.gohighlevel.com/support/solutions/articles/155000005200-understanding-a2p-10dlc-messaging-fees-registration-monthly-and-carrier-costs ; https://help.gohighlevel.com/support/solutions/articles/155000001156-highlevel-pricing-guide
+

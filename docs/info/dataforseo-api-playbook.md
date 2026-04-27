@@ -440,3 +440,85 @@ Or use raw `requests` with Basic Auth — simpler for scripts.
 6. **`generate_email.py`** — Template engine using dossier data → personalized outreach
 
 Each script is modular — run steps 1–2 first, then only pay for steps 3–4 on qualified leads.
+
+---
+
+## EMAIL PITCH STRATEGY — Core Rules (from session 2026-04-27)
+
+### The #1 Rule: Don't Shame Them Into Silence
+If the email makes them feel embarrassed or exposed, they won't call us — they'll call someone else.
+We found the problem. We surfaced it. We can't let that make them too proud to respond.
+**Feel the pain, but never feel judged.**
+
+### Pitch Angle by Business Type
+
+**Solo Operator (1-man show — most common target)**
+- Detected by: low review count, owner name in reviews, "the owner came out", "the guy"
+- Root cause: not avoiding calls — physically can't answer, on a job
+- Angle: *"You're not dropping the ball on purpose — you're just buried. Here's the thing that handles it for you so you don't have to think about it."*
+- Tone: empathetic, peer-to-peer, "we got you"
+- What NOT to say: anything that implies they're running a bad business
+
+**Small Team (2–5 people, bad process)**
+- Detected by: "their office", "dispatch", "the tech vs the office"
+- Root cause: no system — whoever answers the phone is winging it
+- Angle: *"Your guys are great at the work. The front-end is where it's breaking down. One fix, and this whole problem goes away."*
+- Tone: business efficiency, ROI, not personal
+
+**Established Business with Bad Culture**
+- Detected by: high review count, pattern of owner ignoring complaints, no owner responses
+- Root cause: they know and don't care — or they're too big to notice
+- Angle: These are harder sells. Lead with revenue loss from bad reviews, not service quality.
+- May be better targets for review management pitch than AI receptionist.
+
+---
+
+### The 4 Services — When to Pitch Each
+
+| Signal | Service to Pitch | Why |
+|--------|-----------------|-----|
+| "didn't answer", "voicemail", "tried calling" | **AI Receptionist** | Literally solves the exact problem |
+| "said they'd call back", "never called back", "waiting for callback" | **Callback Automation** | Bot calls them back, takes steam out of bad reviews |
+| High 1-star %, low overall score | **Review Management / Gating** | Push down bad, pull up good — don't say "gating" in email |
+| All of the above | **Full package** | They need everything — lead with the most painful one |
+
+### What NOT to Say in Emails
+- "review gating" — just say "automated reputation system" or "review generation"
+- "we found your bad reviews" — say "we researched your business"
+- "your customers are complaining" — say "we noticed some opportunities"
+- Any specific review text that would identify a customer (legal exposure)
+
+### The Tone Formula
+```
+[Empathy for their situation]
++ [Specific data point that proves we did real research]
++ [What this is costing them in business terms]
++ [Simple solution, no effort required from them]
++ [Easy CTA — not "buy this", just "want to see how it works?"]
+```
+
+### Email Variants by Signal Count
+- **1–3 signals** → Soft touch. "We noticed something small that might be costing you customers."
+- **4–10 signals** → Direct. Lead with the data. Two specific quotes max.
+- **10+ signals (Dallas Air Duct, A#1 Air level)** → Full dossier email. Multiple quotes, timeline of complaints, strong urgency. These businesses need the pitch most AND will respond most to seeing the depth of the problem.
+
+---
+
+## DATA PIPELINE STATUS (as of 2026-04-27)
+
+Scripts built and working:
+- `scripts/dataforseo/hvac_dallas_leads.py` — Maps SERP + reviews + Reddit cross-reference → raw JSON
+- `scripts/dataforseo/analyze_reviews_groq.py` — Groq (free) analysis → biz size, root cause, pitch angle per review
+- Credentials in `.env` (gitignored)
+
+Output files per run:
+- `*_standard.csv` / `*_emergency.csv` — business list with lead scores
+- `*_reviews_raw.json` — every review + Reddit post for AI analysis
+- `*_ai_analysis.csv` — Groq-analyzed results with signal/category/phrase/biz_size/root_cause/pitch
+- `*_ai_leads.csv` — businesses ranked by AI signal count
+- `*_keyword_patterns.txt` — real phrases from real reviews for keyword list refinement
+
+Next to build:
+- Master spreadsheet merger (one row per business, all sources combined)
+- Email template generator (reads master sheet → writes personalized email by business type)
+- Multi-agent pitch review (run draft emails through Claude for tone/angle feedback)

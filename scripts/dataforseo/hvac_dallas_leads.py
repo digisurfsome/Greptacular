@@ -21,12 +21,10 @@ HOW TO RUN:
   1. Open a terminal in this folder
   2. Install the only dependency:
          pip install requests
-  3. Run with your DataForSEO credentials:
-         python hvac_dallas_leads.py YOUR_EMAIL YOUR_PASSWORD
-     OR set environment variables:
-         set DATAFORSEO_LOGIN=you@email.com
-         set DATAFORSEO_PASSWORD=yourpass
-         python hvac_dallas_leads.py
+  3. Run — pass your DataForSEO login email + password directly:
+         python hvac_dallas_leads.py DATAFORSEO_LOGIN=you@email.com DATAFORSEO_PASSWORD=yourpass
+     OR as positional args (same thing, shorter):
+         python hvac_dallas_leads.py you@email.com yourpass
 """
 
 import os
@@ -40,9 +38,26 @@ from requests.auth import HTTPBasicAuth
 # ── Credentials ──────────────────────────────────────────────────────────────
 # Pull from env vars OR pass on command line: python hvac_dallas_leads.py EMAIL PASS
 import sys
-_args = sys.argv[1:]
-DATAFORSEO_LOGIN    = _args[0] if len(_args) > 0 else os.environ.get("DATAFORSEO_LOGIN",    "YOUR_LOGIN_EMAIL")
-DATAFORSEO_PASSWORD = _args[1] if len(_args) > 1 else os.environ.get("DATAFORSEO_PASSWORD", "YOUR_PASSWORD")
+
+# Parse args — supports both formats:
+#   python hvac_dallas_leads.py DATAFORSEO_LOGIN=you@email.com DATAFORSEO_PASSWORD=yourpass
+#   python hvac_dallas_leads.py you@email.com yourpass
+def _parse_args():
+    kv = {}
+    positional = []
+    for a in sys.argv[1:]:
+        if "=" in a:
+            k, v = a.split("=", 1)
+            kv[k.strip()] = v.strip()
+        else:
+            positional.append(a)
+    login    = kv.get("DATAFORSEO_LOGIN")    or (positional[0] if len(positional) > 0 else None)
+    password = kv.get("DATAFORSEO_PASSWORD") or (positional[1] if len(positional) > 1 else None)
+    return login, password
+
+_login, _password = _parse_args()
+DATAFORSEO_LOGIN    = _login    or os.environ.get("DATAFORSEO_LOGIN",    "YOUR_LOGIN_EMAIL")
+DATAFORSEO_PASSWORD = _password or os.environ.get("DATAFORSEO_PASSWORD", "YOUR_PASSWORD")
 
 BASE_URL = "https://api.dataforseo.com"
 

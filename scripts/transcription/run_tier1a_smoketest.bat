@@ -8,8 +8,8 @@ REM Run from the repo root or this folder. Requires DEEPGRAM_API_KEY in .env
 
 setlocal
 
-set FOLDER1=E:\AutoForge\Jeremy Miner\JEREMY MAIN\05-The NEPQ Objection Obliteration Accelerator\04-Top 50 NEPQ Word-For-Word Objections
-set AUDIO_ROOT=E:\AutoForge\jeremy-audio\04-Top 50 NEPQ Word-For-Word Objections
+set FOLDER1=E:\AutoForge\Jeremy Miner\JEREMY MAIN\05-The NEPQ Objection Obliteration Accelerator\04-Top 50 NEPQ Word-For-Word Objection Handling Scripts
+set AUDIO_ROOT=E:\AutoForge\jeremy-audio\04-Top 50 NEPQ Word-For-Word Objection Handling Scripts
 set SCRIPTS=%~dp0
 
 echo.

@@ -22,7 +22,7 @@ from datetime import datetime
 OUTPUT_ROOT = Path(r"E:\AutoForge\jeremy-audio")
 MANIFEST_PATH = OUTPUT_ROOT / "_manifest.json"
 ERROR_LOG = OUTPUT_ROOT / "extract_errors.log"
-VIDEO_EXTENSIONS = {".mp4", ".mkv", ".mov", ".avi", ".webm"}
+VIDEO_EXTENSIONS = {".mp4", ".mkv", ".mov", ".avi", ".webm", ".ts"}
 
 
 def setup_logging():

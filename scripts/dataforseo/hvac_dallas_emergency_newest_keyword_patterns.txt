@@ -1,0 +1,16 @@
+DISCOVERED SIGNAL PHRASES — sorted by frequency
+Use these to update MISSED_CALL_KEYWORDS in hvac_dallas_leads.py
+============================================================
+
+  (  1x)  "Later was that night and this guy says, “I’m not trying to cheat you”"
+  (  1x)  "the receptionist was very rude"
+  (  1x)  after rescheduling an appt two times
+  (  1x)  We never got
+  (  1x)  have not seen them yet
+  (  1x)  "he no-showed"
+  (  1x)  Frank said he would call back in 15 mins and never did
+  (  1x)  they never got back with me
+  (  1x)  would improve service to keep customer updated on ETA
+  (  1x)  They said they were gonna send somebody out to fix it. They never did.
+  (  1x)  NO communication from Dun Rite as to when the repairs will happen.
+  (  1x)  I told him to put that in writing in an email which I never received.

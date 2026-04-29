@@ -270,22 +270,18 @@ async def call_api(
 
         try:
             loop = asyncio.get_event_loop()
-            prompt_bytes = full_prompt.encode("utf-8", errors="replace")
+            # Use stdin (-) to avoid Windows command-line length limit on large prompts
+            _prompt = full_prompt
             result = await loop.run_in_executor(
                 None,
                 lambda: subprocess.run(
-                    ["claude", "-p", "--output-format", "text"],
-                    input=prompt_bytes,
-                    capture_output=True, timeout=180
+                    ["claude", "-p", "-"],
+                    input=_prompt,
+                    capture_output=True, text=True,
+                    encoding="utf-8", errors="replace",
+                    timeout=180
                 )
             )
-            # Decode stdout from bytes
-            if isinstance(result.stdout, bytes):
-                result = type('R', (), {
-                    'returncode': result.returncode,
-                    'stdout': result.stdout.decode('utf-8', errors='replace'),
-                    'stderr': result.stderr.decode('utf-8', errors='replace') if result.stderr else '',
-                })()
 
             raw_text = result.stdout.strip()
 

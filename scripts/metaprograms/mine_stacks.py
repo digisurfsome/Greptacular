@@ -70,8 +70,14 @@ ERROR_LOG_FILE  = "_stack_mine_errors.log"
 MODEL           = "claude-sonnet-4-5-20250929"  # Sonnet 4.6
 CHUNK_TOKENS    = 800
 OVERLAP_TOKENS  = 100
-MAX_CONCURRENCY = 5          # subscription supports up to 5 concurrent
+MAX_CONCURRENCY = 2          # 2 concurrent — 5 caused exit 15 cascade on bulk runs
 MAX_TOKENS_OUT  = 1_024
+
+# Files to skip — already scanned, stacks documented
+SKIP_FILES = {
+    "Anthony Robbins Unlimited Power Meta Programs 1 of 2.txt",  # gold stacks already found
+    "transcript.txt",  # no speaker, always exit 15
+}
 
 # Retry on 429 rate limit
 RATE_LIMIT_DELAYS = [5, 10, 20, 40]   # seconds
@@ -377,7 +383,10 @@ async def run(folder: Path, output_path: Path, limit: int = 0) -> None:
           f"{state['call_count']} total calls | ${cost_so_far:.4f} spent so far\n")
 
     # ── Find all transcript files ──────────────────────────────────────────────
-    all_files = sorted(folder.rglob("*.txt"))
+    all_files = sorted(
+        f for f in folder.rglob("*.txt")
+        if f.name not in SKIP_FILES
+    )
     if not all_files:
         print(f"ERROR: No .txt files found in {folder}")
         sys.exit(1)

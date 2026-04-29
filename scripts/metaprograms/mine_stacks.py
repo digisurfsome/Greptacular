@@ -38,11 +38,7 @@ except ImportError:
     print("ERROR: tiktoken not installed.  Run: pip install tiktoken")
     sys.exit(1)
 
-try:
-    import anthropic
-except ImportError:
-    print("ERROR: anthropic not installed.  Run: pip install anthropic")
-    sys.exit(1)
+import subprocess
 
 
 # ── Load .env (no python-dotenv required) ────────────────────────────────────
@@ -76,7 +72,7 @@ ERROR_LOG_FILE  = "_stack_mine_errors.log"
 MODEL           = "claude-sonnet-4-5-20250929"  # Sonnet 4.6
 CHUNK_TOKENS    = 4_000
 OVERLAP_TOKENS  = 500
-MAX_CONCURRENCY = 5          # safe now — pure HTTP, no Electron overhead
+MAX_CONCURRENCY = 1          # subscription mode — one claude.exe at a time
 MAX_TOKENS_OUT  = 1_024
 
 # Retry on 429 rate limit
@@ -251,40 +247,40 @@ def calc_cost(state: dict) -> float:
 # ══════════════════════════════════════════════════════════════════════════════
 
 async def call_api(
-    client:    anthropic.AsyncAnthropic,
+    client,        # unused in subscription mode
     user_msg:  str,
     log_path:  Path,
     source_name: str,
     chunk_idx: int,
 ) -> tuple[list[dict], dict]:
     """
-    Call Claude via Anthropic API.
-    Returns (stacks, usage_dict).
-    usage_dict keys: input_tokens, output_tokens, cache_creation_input_tokens,
-                     cache_read_input_tokens
+    Call Claude via 'claude -p' subscription (no API key required).
+    Returns (stacks, usage_dict).  usage_dict is empty — no token counts in sub mode.
     """
-    system = [{
-        "type": "text",
-        "text": SYSTEM_PROMPT,
-        "cache_control": {"type": "ephemeral"},   # cache this across all calls
-    }]
+    full_prompt = f"{SYSTEM_PROMPT}\n\n{user_msg}"
 
     for attempt, delay in enumerate([0] + RATE_LIMIT_DELAYS):
         if delay:
             await asyncio.sleep(delay)
 
         try:
-            response = await client.messages.create(
-                model=MODEL,
-                max_tokens=MAX_TOKENS_OUT,
-                system=system,
-                messages=[{
-                    "role": "user",
-                    "content": user_msg,
-                }],
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                None,
+                lambda: subprocess.run(
+                    ["claude", "-p", full_prompt],
+                    capture_output=True, text=True, timeout=120
+                )
             )
 
-            raw_text = response.content[0].text if response.content else ""
+            raw_text = result.stdout.strip()
+
+            if result.returncode != 0 and not raw_text:
+                err = result.stderr[:200] if result.stderr else "no stderr"
+                log_error(log_path, source_name, chunk_idx, f"claude exit {result.returncode}: {err}")
+                if attempt < len(RATE_LIMIT_DELAYS):
+                    continue
+                return [], {}
 
             # Strip accidental markdown fences
             m = re.search(r'\{[\s\S]*\}', raw_text)
@@ -292,8 +288,7 @@ async def call_api(
                 raw_text = m.group(0)
 
             if not raw_text.strip():
-                usage = vars(response.usage) if response.usage else {}
-                return [], usage
+                return [], {}
 
             parsed = json.loads(raw_text)
             raw_stacks = parsed.get("stacks", [])
@@ -309,31 +304,16 @@ async def call_api(
                 s.setdefault("confidence", "medium")
                 stacks.append(s)
 
-            usage = {}
-            if response.usage:
-                u = response.usage
-                usage = {
-                    "input_tokens":                  getattr(u, "input_tokens", 0),
-                    "output_tokens":                 getattr(u, "output_tokens", 0),
-                    "cache_creation_input_tokens":   getattr(u, "cache_creation_input_tokens", 0),
-                    "cache_read_input_tokens":       getattr(u, "cache_read_input_tokens", 0),
-                }
+            return stacks, {}
 
-            return stacks, usage
-
-        except anthropic.RateLimitError:
+        except subprocess.TimeoutExpired:
+            log_error(log_path, source_name, chunk_idx, "TimeoutExpired after 120s")
             if attempt < len(RATE_LIMIT_DELAYS):
-                print(f"\n  Rate limited — waiting {RATE_LIMIT_DELAYS[attempt]}s…", flush=True)
                 continue
-            log_error(log_path, source_name, chunk_idx, "RateLimitError: max retries exceeded")
             return [], {}
 
         except json.JSONDecodeError as e:
             log_error(log_path, source_name, chunk_idx, f"JSON parse failed: {e} | raw: {raw_text[:200]}")
-            return [], {}
-
-        except anthropic.APIStatusError as e:
-            log_error(log_path, source_name, chunk_idx, f"APIStatusError {e.status_code}: {e.message[:200]}")
             return [], {}
 
         except Exception as e:
@@ -348,15 +328,7 @@ async def call_api(
 # ══════════════════════════════════════════════════════════════════════════════
 
 async def run(folder: Path, output_path: Path, limit: int = 0) -> None:
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        print(
-            "\nERROR: ANTHROPIC_API_KEY not set.\n"
-            "Add it to your .env file:  ANTHROPIC_API_KEY=sk-ant-...\n"
-        )
-        sys.exit(1)
-
-    client = anthropic.AsyncAnthropic(api_key=api_key)
+    client = None   # subscription mode — no API client needed
 
     out_dir = output_path.parent
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -365,8 +337,8 @@ async def run(folder: Path, output_path: Path, limit: int = 0) -> None:
 
     sep = "─" * 62
     print(f"\n{sep}")
-    print("  Metaprogram Stack Miner  (Anthropic API — prompt cached)")
-    print(f"  Model:    {MODEL}")
+    print("  Metaprogram Stack Miner  (Claude subscription — claude -p)")
+    print(f"  Model:    subscription (Sonnet)")
     print(f"  Folder:   {folder}")
     print(f"  Output:   {output_path}")
     print(f"  Progress: {progress_path}")

@@ -304,6 +304,7 @@ async def preflight_auth_check() -> None:
     try:
         proc = await asyncio.create_subprocess_exec(
             CLAUDE_CLI, "-p", "say only the word OK",
+            "--model", MODEL,
             "--output-format", "text",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -358,6 +359,7 @@ async def call_claude(
         try:
             proc = await asyncio.create_subprocess_exec(
                 CLAUDE_CLI, "-p", combined_prompt,
+                "--model", MODEL,
                 "--output-format", "text",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,

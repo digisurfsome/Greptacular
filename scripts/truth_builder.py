@@ -78,10 +78,8 @@ MODEL        = "claude-sonnet-4-5-20250929"   # Sonnet 4.6
 CALL_TIMEOUT = 300                            # 5 min — truth builder needs more headroom than mining
 RETRY_DELAYS = [5, 15, 30]                    # backoff on exit 15 / exit 3
 
-# Prompt size caps (Windows CreateProcess has ~32K char arg limit)
-# Keep combined prompt safely under 22K total chars.
-MAX_TRANSCRIPT_CHARS = 7000
-MAX_TRUTH_DOC_CHARS  = 10000
+# No prompt size caps — stdin pipe bypasses Windows 32K arg limit entirely.
+# Full transcript + full truth_doc passed on every call.
 
 CLAUDE_CLI: str = ""
 
@@ -444,28 +442,17 @@ def build_combined_prompt(
     transcript: str,
     truth_doc: str,
 ) -> str:
-    """Build combined prompt that fits within Windows CreateProcess arg limits (~22K chars).
+    """Build combined prompt — no size limits.
 
-    Windows CreateProcess has a ~32K char limit for lpCommandLine. We cap:
-    - transcript: MAX_TRANSCRIPT_CHARS chars
-    - truth_doc: MAX_TRUTH_DOC_CHARS chars
-    Everything else (system prompt + framing) is ~3K chars.
-    Total budget: ~22K chars, safely under the 32K limit.
+    Prompt is piped via stdin (not -p arg), so Windows CreateProcess
+    32K char limit does not apply. Full transcript and full truth_doc
+    are included on every call regardless of size.
     """
-    transcript_part = transcript[:MAX_TRANSCRIPT_CHARS]
-    if len(transcript) > MAX_TRANSCRIPT_CHARS:
-        transcript_part += "\n[...transcript truncated to fit context — run will still capture key info]"
-
-    truth_part = truth_doc[:MAX_TRUTH_DOC_CHARS]
-    if len(truth_doc) > MAX_TRUTH_DOC_CHARS:
-        truth_part += "\n[...truth doc truncated — use section headers above as guide]"
-
     user_message_parts = [f"VIDEO FOLDER: {folder_name}"]
     if info_text.strip():
-        info_truncated = info_text[:500]
-        user_message_parts.append(f"VIDEO INFO:\n{info_truncated}")
-    user_message_parts.append(f"CURRENT TRUTH DOCUMENT:\n{truth_part}")
-    user_message_parts.append(f"NEW TRANSCRIPT:\n{transcript_part}")
+        user_message_parts.append(f"VIDEO INFO:\n{info_text.strip()}")
+    user_message_parts.append(f"CURRENT TRUTH DOCUMENT:\n{truth_doc}")
+    user_message_parts.append(f"NEW TRANSCRIPT:\n{transcript}")
     user_message_parts.append(
         "Extract what is NEW in this transcript vs the truth document. Return JSON only."
     )
@@ -537,17 +524,21 @@ async def call_claude(combined_prompt: str, folder_name: str) -> str:
             await asyncio.sleep(delay)
 
         try:
+            # Pipe prompt via stdin — bypasses Windows 32K arg limit entirely.
+            # -p with no inline arg = print mode, reads prompt from stdin.
             proc = await asyncio.create_subprocess_exec(
-                CLAUDE_CLI, "-p", combined_prompt,
+                CLAUDE_CLI, "-p",
                 "--model", MODEL,
                 "--output-format", "text",
+                stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 env=env,
             )
             try:
                 out_b, err_b = await asyncio.wait_for(
-                    proc.communicate(), timeout=CALL_TIMEOUT
+                    proc.communicate(input=combined_prompt.encode("utf-8")),
+                    timeout=CALL_TIMEOUT
                 )
             except asyncio.TimeoutError:
                 proc.kill()
@@ -602,7 +593,7 @@ async def run(topic_name: str, limit: int, dry_run: bool) -> None:
     print(f"  Videos:  {videos_dir}")
     print(f"  Output:  {truth_doc_path}")
     print(f"  Log:     {log_path}")
-    print(f"  Caps:    transcript {MAX_TRANSCRIPT_CHARS} chars | truth_doc {MAX_TRUTH_DOC_CHARS} chars")
+    print(f"  Caps:    none — stdin pipe, full transcript + full truth_doc")
     print(f"{sep}\n")
 
     CLAUDE_CLI = resolve_claude_cli()
@@ -688,7 +679,7 @@ async def run(topic_name: str, limit: int, dry_run: bool) -> None:
             transcript=transcript,
             truth_doc=truth_doc,
         )
-        print(f"  Prompt: {len(combined_prompt):,} chars | transcript: {min(len(transcript), MAX_TRANSCRIPT_CHARS):,}/{len(transcript):,} chars", flush=True)
+        print(f"  Prompt: {len(combined_prompt):,} chars | transcript: {len(transcript):,} chars | truth_doc: {len(truth_doc):,} chars", flush=True)
 
         # Call Claude
         call_start = time.time()

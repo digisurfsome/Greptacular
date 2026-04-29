@@ -70,8 +70,8 @@ PROGRESS_FILE   = "_stack_mine_progress.json"
 ERROR_LOG_FILE  = "_stack_mine_errors.log"
 
 MODEL           = "claude-sonnet-4-5-20250929"  # Sonnet 4.6
-CHUNK_TOKENS    = 4_000
-OVERLAP_TOKENS  = 500
+CHUNK_TOKENS    = 600   # ~2500 chars — keeps total prompt under 5500 char CLI limit
+OVERLAP_TOKENS  = 100
 MAX_CONCURRENCY = 1          # subscription mode — one claude.exe at a time
 MAX_TOKENS_OUT  = 1_024
 
@@ -270,8 +270,9 @@ async def call_api(
 
         try:
             loop = asyncio.get_event_loop()
-            # Use stdin (-) to avoid Windows command-line length limit on large prompts
+            # Strip API key so claude uses subscription, not API (which may be at limit)
             _prompt = full_prompt
+            _env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
             result = await loop.run_in_executor(
                 None,
                 lambda: subprocess.run(
@@ -279,7 +280,8 @@ async def call_api(
                     input=_prompt,
                     capture_output=True, text=True,
                     encoding="utf-8", errors="replace",
-                    timeout=180
+                    timeout=120,
+                    env=_env,
                 )
             )
 

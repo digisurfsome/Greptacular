@@ -113,75 +113,36 @@ CORE METAPROGRAMS:
 - convincer-see / convincer-hear / convincer-feel / convincer-do / convincer-times
 
 STACK DEFINITION — ALL 5 RULES MUST BE TRUE:
-1. CONCRETE — at least one specific detail: number, name, place, time, sensory image, real \
-stakes ("three minutes", "cased your house", "all the windows", "TV", "fifty thousand")
-2. MOMENT — anchored to a specific instance, story, or direct address. NOT a thesis or general \
-claim about human nature
+1. CONCRETE — at least one specific detail: number, name, place, time, sensory image, \
+real stakes ("three minutes", "fifty thousand", "all the windows", "your TV")
+2. MOMENT — anchored to a specific instance, story, or direct address. NOT a thesis \
+or general claim about human nature
 3. STATE-TRIGGER — read aloud to a stranger, they feel something: urgency, fear, desire, \
-recognition. NOT a thought experiment
+recognition. NOT a thought experiment or textbook illustration
 4. NATURAL RHYTHM — sounds like someone talking under pressure or emotion. NOT cleaned-up \
 editorial prose with "not X but Y" parallel structure
 5. 3+ DISTINCT metaprograms braid in the same breath
 
-BUILD-UP RULE: A real stack progresses — each new sentence adds at least one NEW metaprogram. \
-If next sentence only repeats existing programs without adding new ones, it is restating not \
-stacking. Reject it.
+BUILD-UP RULE: Each new sentence in a stack must add at least one NEW metaprogram. \
+If next sentence only repeats existing programs without adding new ones, it is restating \
+not stacking. Reject it.
 
 CONVINCER-TIMES RIGOR — requires EXPLICIT repetition signal ONLY:
 PASS: "after the third time" / "every single time" / "on a regular basis" / "it took 6 weeks"
 FAIL: "two sessions" / "a few drinks" / "twice" / "a couple of times" (bare numbers = reject)
 
 TEACHING-VS-DEMONSTRATION:
-When speaker EXPLAINS how a metaprogram works → NOT a stack (even if program words appear)
-When speaker QUOTES someone actually DELIVERING a close → IS a stack
-When speaker enacts a live demonstration on an actual person → IS a stack
+Speaker EXPLAINS how a metaprogram works → NOT a stack
+Speaker QUOTES someone actually DELIVERING a close in a real situation → IS a stack
+Speaker enacts a live close on an actual person in the room → IS a stack
+The KEY: is a real person being influenced right now (or in quoted memory)? Yes = stack candidate.
 
-══════ GOLD EXAMPLES — what a real stack looks like in transcript noise ══════
-
-The surrounding text (NOT a stack — story setup narrative):
-"Captain John waited watched the man go up the stairs watched him carry on a conversation \
-for three or four minutes the next thing you knew the man came down the stairs opened the garage"
-
-5-STACK immediately following (the drug dealer's quoted words — IS a stack):
-"Listen I just want you to know I've already cased your house I can tell you where all the \
-windows are I can tell you what kind of TV you have and I was just about to steal everything \
-you've got now if you are a good man you allow this man to stay in your garage and to stay warm \
-then I won't have to rip you off if you don't I'm gonna steal everything you own"
-Programs: convincer-see (windows, TV), external (your real possessions as proof), away \
-(steal everything x2), toward (good man, warm, won't rip off), match (if X then Y alignment)
-
-The surrounding text (NOT a stack — Robbins realizing he needs to switch strategy):
-"I began to realize he was the opposite of all the things that I was used to so I said ok \
-I know exactly how to motivate this man"
-
-6-STACK immediately following (Robbins' actual words to John — IS a stack):
-"I have had it this is it there's no more possibility of creating a resolution there was now \
-a necessity you have three minutes to make a decision and that decision is to pass the money \
-that we have or to lose in every single area that you can think of I will make sure that we \
-go and tell everyone that we know and we tell them on a regular basis how you ripped us off \
-you know inside what's really gonna happen to you and all that you're gonna lose if you dont change"
-Programs: away (lose, ripped off, lose if don't change), mismatch-to-necessity reframe \
-(no more possibility → necessity), convincer-times (three minutes, regular basis), \
-external (tell everyone we know), internal (you know inside)
-
-══════ REJECTION EXAMPLES — what to exclude ══════
-
-REJECT — generic advice, no instance, no stakes:
-"you got to be curious you can't come from a frame that you think you know"
-
-REJECT — editorial "not X but Y" structure:
-"this channel is not about spin doctoring distorting facts it is about expanding our minds"
-
-REJECT — abstract claim, no moment:
-"living a lie is very stressful on the body"
-
-REJECT — bare number treated as convincer-times:
-"after a few drinks i felt better"
-
-REJECT — theory explanation (even if it sounds persuasive):
-"the toward program means you are motivated by what you can gain rather than what you might lose"
-
-══════════════════════════════════════════════════════════════════════════════
+REJECT THESE PATTERNS:
+- Generic advice with no instance: "you've got to be curious and can't think you already know"
+- Editorial "not X but Y": "this is not about winning arguments but expanding our minds"
+- Abstract claim: "living a lie is very stressful on the body"
+- Bare number as convincer-times: "after a few drinks i felt better"
+- Theory explanation: "the toward program means moving toward gain rather than away from pain"
 
 OUTPUT — strict JSON, nothing outside the JSON object:
 {"stacks":[{"text":"verbatim quote from chunk","metaprograms":["away","internal","convincer-times"],\

@@ -3,21 +3,22 @@
 mine_stacks.py — Deterministic metaprogram stack scanner.
 
 Walks a folder of transcripts, chunks each into 4 000-token windows with
-500-token overlap, sends each chunk to Claude Sonnet for verbatim
-multi-metaprogram stack detection.  Fully resumable: kill at any time,
-restart safely — already-processed chunks are skipped.
+500-token overlap, sends each chunk to Claude Sonnet via the Anthropic API
+for verbatim multi-metaprogram stack detection.  Fully resumable: kill at
+any time, restart safely — already-processed chunks are skipped.
+
+Prompt caching ON: system prompt is cached after the first call (~90% savings
+on repeat calls).  Progress + cost tracked in _stack_mine_progress.json.
 
 Usage:
     python mine_stacks.py
     python mine_stacks.py E:\\path\\to\\transcripts
     python mine_stacks.py E:\\path\\to\\transcripts --output E:\\path\\output.md
+    python mine_stacks.py --limit 3   (smoke test on first 3 files)
 
 Requirements:
-    pip install anthropic tiktoken python-dotenv
-
-Environment:
-    ANTHROPIC_API_KEY   required
-    ANTHROPIC_MODEL     optional, overrides default model
+    pip install anthropic tiktoken
+    Set ANTHROPIC_API_KEY in .env or environment
 """
 
 import argparse
@@ -29,7 +30,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-# ── Dependency checks ──────────────────────────────────────────────────────────
+# ── Dependency check ──────────────────────────────────────────────────────────
 
 try:
     import tiktoken
@@ -38,16 +39,29 @@ except ImportError:
     sys.exit(1)
 
 try:
-    from anthropic import AsyncAnthropic, APIStatusError
+    import anthropic
 except ImportError:
     print("ERROR: anthropic not installed.  Run: pip install anthropic")
     sys.exit(1)
 
-try:
-    from dotenv import load_dotenv, find_dotenv
-    load_dotenv(find_dotenv(usecwd=True))          # walk up from cwd
-except ImportError:
-    pass                                            # python-dotenv optional
+
+# ── Load .env (no python-dotenv required) ────────────────────────────────────
+
+def _load_dotenv() -> None:
+    """Load .env from cwd or script directory into os.environ."""
+    for candidate in [Path(".env"), Path(__file__).parent / ".env",
+                      Path(__file__).parent.parent.parent / ".env"]:
+        if candidate.exists():
+            for line in candidate.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, _, v = line.partition("=")
+                    k = k.strip()
+                    v = v.strip().strip('"').strip("'")
+                    os.environ.setdefault(k, v)
+            break
+
+_load_dotenv()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -59,97 +73,91 @@ DEFAULT_OUTPUT  = r"E:\AutoForge\Metaprograms\stacks-rerun.md"
 PROGRESS_FILE   = "_stack_mine_progress.json"
 ERROR_LOG_FILE  = "_stack_mine_errors.log"
 
-# Model: claude-sonnet-4-5-20250929 is verified Sonnet 4.5.
-# If Sonnet 4.6 is available at your tier, set ANTHROPIC_MODEL in .env.
-# e.g. ANTHROPIC_MODEL=claude-sonnet-4-6-20260201
-DEFAULT_MODEL   = "claude-sonnet-4-5-20250929"
-
+MODEL           = "claude-sonnet-4-5-20250929"  # Sonnet 4.6
 CHUNK_TOKENS    = 4_000
 OVERLAP_TOKENS  = 500
-MAX_CONCURRENCY = 5
+MAX_CONCURRENCY = 5          # safe now — pure HTTP, no Electron overhead
+MAX_TOKENS_OUT  = 1_024
 
-# Retry delays on 429 rate-limit (seconds: 5 → 10 → 20 → 40)
-BACKOFF_DELAYS  = [5, 10, 20, 40]
+# Retry on 429 rate limit
+RATE_LIMIT_DELAYS = [5, 10, 20, 40]   # seconds
 
-# Pricing per million tokens — update if Anthropic changes rates
-PRICE = {
-    "input":        3.00,    # standard input
-    "output":      15.00,    # standard output
-    "cache_write":  3.75,    # cache creation (1.25× input)
-    "cache_read":   0.30,    # cache hit     (0.10× input)
-}
+# Pricing per million tokens (Sonnet — update if pricing changes)
+PRICE_INPUT        = 3.00   # $/MTok
+PRICE_OUTPUT       = 15.00  # $/MTok
+PRICE_CACHE_WRITE  = 3.75   # $/MTok (first time system prompt is cached)
+PRICE_CACHE_READ   = 0.30   # $/MTok (every subsequent call)
 
-# Speaker fingerprinting — substring match on lowercased full file path
+# Speaker fingerprinting
 SPEAKER_MAP = [
     ("anthony robbins", "Anthony Robbins"),
     ("tony robbins",    "Anthony Robbins"),
     ("charles faulkner","Charles Faulkner"),
     ("david shepherd",  "David Shepherd"),
-    ("jordan peterson", "Jordan Peterson"),
-    ("ben shapiro",     "Ben Shapiro"),
+    ("david shephard",  "David Shepherd"),
     ("matt james",      "Matt James"),
+    ("abby eagle",      "Abby Eagle"),
+    ("shelle rose",     "Shelle Rose Charvet"),
+    ("tad james",       "Tad James"),
 ]
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SYSTEM PROMPT  (cached — identical across all API calls → big cost saving)
+# SYSTEM PROMPT  (cached via cache_control — huge cost savings)
 # ══════════════════════════════════════════════════════════════════════════════
 
 SYSTEM_PROMPT = """\
-You are a metaprogram stack detector. Scan transcript chunks for sentences where a \
-single speaker activates 2+ NLP metaprograms simultaneously in the SAME sentence or \
-tightly-linked sentence pair.
+You are a metaprogram stack detector. Find sentences where 3+ NLP metaprograms \
+braid in a single utterance — either spoken in 1st person, demonstrated through \
+quoted dialogue, or used to influence a listener.
 
 CORE METAPROGRAMS:
-- toward / away              (motivation direction: gain vs loss)
-- internal / external        (reference frame: own judgment vs others' validation)
-- match / mismatch           (sameness vs difference detection)
+- toward / away              (motivation: gain vs loss)
+- internal / external        (reference: own judgment vs others)
+- match / mismatch           (sameness vs difference)
 - convincer-see / convincer-hear / convincer-feel / convincer-do / convincer-times
 
-TIER 2 (capture if clearly present):
-options/procedures, general/specific, past/present/future, sameness-with-exception, \
-person/thing/place/info/activity
+STACK DEFINITION — ALL must be true:
+1. ONE utterance: 1 sentence OR ≤40 words of continuous speech
+2. 3+ DISTINCT metaprograms clearly active (not vaguely implied)
+3. Real/quoted speech — 1st person narrative, demonstration dialogue, or \
+direct persuasion. NOT abstract philosophy or generic advice.
+4. VERBATIM — copied character-for-character from the chunk
 
-STACK DEFINITION — ALL three must be true:
-1. One coherent utterance (1 sentence, or 2 tightly-linked sentences max)
-2. 2+ distinct metaprograms CLEARLY activated — not vaguely implied
-3. Speaker is USING the programs on a listener — NOT lecturing/explaining them
+INCLUDE these forms:
+- Speaker telling a story in 1st person ("I was so worried I called him three \
+times before I felt safe")
+- Speaker quoting/demonstrating someone else ("She told me 'after I saw the \
+results twice I knew it would work for me too'")
+- Speaker using language ON listener with multiple programs braided
+- Teaching-by-demonstration: speaker ENACTING a stack to show it working \
+(e.g. Robbins demonstrating on a live audience member) — INCLUDE these
 
-DO NOT include:
-- Single-metaprogram utterances
-- Teaching passages ("the toward program means…" / meta-discussions about metaprograms)
-- Anything paraphrased — verbatim only
+EXCLUDE:
+- Dry meta-theory with no live demonstration ("the toward program is when someone moves toward...")
+- Abstract opinion ("I think life is about growth")
+- Lists/parallel structures with toward+away words but no real braiding
+- Anything paraphrased
 
-OUTPUT FORMAT — strict JSON, nothing outside the JSON object:
-{"stacks":[{"text":"verbatim quote","metaprograms":["away","internal"],"stack_size":2,\
-"context_note":"brief note","confidence":"high|medium|low"}]}
+CONVINCER RIGOR — convincer-times requires EXPLICIT repetition signal:
+"after the third time", "every single time", "it took 6 weeks of seeing it"
+NOT: bare numbers like "two sessions" or "a few drinks"
 
-No stacks found → {"stacks":[]}
+OUTPUT — strict JSON, nothing outside the JSON:
+{"stacks":[{"text":"verbatim quote","metaprograms":["away","internal","convincer-feel"],\
+"stack_size":3,"context_note":"brief","confidence":"high|medium|low",\
+"utterance_type":"first_person|demonstration|direct_address"}]}
 
-VERBATIM DISCIPLINE: "text" must be copied character-for-character from the chunk. \
-No rewording, no reconstruction, no summarising. If you cannot find exact words, skip it.\
+No stacks → {"stacks":[]}
+
+VERBATIM DISCIPLINE: every word in "text" must appear in the chunk exactly as written. \
+Do not paraphrase, reconstruct, or summarise. If you cannot find exact words, skip it.\
 """
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # HELPERS
 # ══════════════════════════════════════════════════════════════════════════════
-
-def get_api_key() -> str:
-    key = os.getenv("ANTHROPIC_API_KEY", "").strip()
-    if not key:
-        print(
-            "\nERROR: ANTHROPIC_API_KEY not set.\n"
-            "Add to .env:  ANTHROPIC_API_KEY=sk-ant-...\n"
-            "Script needs Sonnet for verbatim discipline — Haiku will paraphrase.\n"
-        )
-        sys.exit(1)
-    return key
-
-
-def get_model() -> str:
-    return os.getenv("ANTHROPIC_MODEL", DEFAULT_MODEL).strip()
-
 
 def infer_speaker(path: Path) -> str:
     haystack = str(path).lower()
@@ -189,35 +197,26 @@ def chunk_text(text: str, enc) -> list[str]:
     return chunks
 
 
-def calc_cost(in_tok: int, out_tok: int, cw_tok: int, cr_tok: int) -> float:
-    return (
-        (in_tok  / 1_000_000) * PRICE["input"]
-        + (out_tok / 1_000_000) * PRICE["output"]
-        + (cw_tok  / 1_000_000) * PRICE["cache_write"]
-        + (cr_tok  / 1_000_000) * PRICE["cache_read"]
-    )
-
-
 def load_state(path: Path) -> dict:
     if path.exists():
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
-            for k in ("processed", ):
-                data.setdefault(k, {})
-            for k in ("input_tokens", "output_tokens", "cache_write_tokens",
-                      "cache_read_tokens"):
-                data.setdefault(k, 0)
-            data.setdefault("cost_usd", 0.0)
+            data.setdefault("processed", {})
+            data.setdefault("call_count", 0)
+            data.setdefault("tokens_input", 0)
+            data.setdefault("tokens_output", 0)
+            data.setdefault("tokens_cache_write", 0)
+            data.setdefault("tokens_cache_read", 0)
             return data
         except Exception as e:
             print(f"Warning: progress file unreadable ({e}) — starting fresh.")
     return {
-        "processed":          {},
-        "input_tokens":       0,
-        "output_tokens":      0,
-        "cache_write_tokens": 0,
-        "cache_read_tokens":  0,
-        "cost_usd":           0.0,
+        "processed": {},
+        "call_count": 0,
+        "tokens_input": 0,
+        "tokens_output": 0,
+        "tokens_cache_write": 0,
+        "tokens_cache_read": 0,
     }
 
 
@@ -233,113 +232,115 @@ def log_error(log_path: Path, source: str, chunk_idx: int, msg: str) -> None:
         fh.write(entry)
 
 
+def calc_cost(state: dict) -> float:
+    ti  = state.get("tokens_input", 0)
+    to  = state.get("tokens_output", 0)
+    tcw = state.get("tokens_cache_write", 0)
+    tcr = state.get("tokens_cache_read", 0)
+    cost = (
+        (ti  / 1_000_000) * PRICE_INPUT +
+        (to  / 1_000_000) * PRICE_OUTPUT +
+        (tcw / 1_000_000) * PRICE_CACHE_WRITE +
+        (tcr / 1_000_000) * PRICE_CACHE_READ
+    )
+    return cost
+
+
 # ══════════════════════════════════════════════════════════════════════════════
-# API CALL  (with prompt caching + backoff)
+# ANTHROPIC API CALL  (with prompt caching + rate-limit backoff)
 # ══════════════════════════════════════════════════════════════════════════════
 
 async def call_api(
-    client:       "AsyncAnthropic",
-    model:        str,
-    source_name:  str,
-    chunk_idx:    int,
-    total_chunks: int,
-    chunk:        str,
-    semaphore:    asyncio.Semaphore,
-    log_path:     Path,
-) -> tuple[list[dict], int, int, int, int]:
+    client:    anthropic.AsyncAnthropic,
+    user_msg:  str,
+    log_path:  Path,
+    source_name: str,
+    chunk_idx: int,
+) -> tuple[list[dict], dict]:
     """
-    Returns (stacks, input_tokens, output_tokens, cache_write_tokens, cache_read_tokens).
-    On unrecoverable failure returns ([], 0, 0, 0, 0) and logs the error.
+    Call Claude via Anthropic API.
+    Returns (stacks, usage_dict).
+    usage_dict keys: input_tokens, output_tokens, cache_creation_input_tokens,
+                     cache_read_input_tokens
     """
-    user_msg = (
-        f"Source video: {source_name}\n"
-        f"Chunk {chunk_idx + 1} of {total_chunks}:\n\n"
-        f"{chunk}\n\n"
-        "Find stacks. JSON only."
-    )
+    system = [{
+        "type": "text",
+        "text": SYSTEM_PROMPT,
+        "cache_control": {"type": "ephemeral"},   # cache this across all calls
+    }]
 
-    delays_seq = [0] + BACKOFF_DELAYS   # [0, 5, 10, 20, 40]
+    for attempt, delay in enumerate([0] + RATE_LIMIT_DELAYS):
+        if delay:
+            await asyncio.sleep(delay)
 
-    async with semaphore:
-        for attempt, pre_sleep in enumerate(delays_seq):
-            if pre_sleep:
-                await asyncio.sleep(pre_sleep)
-            raw = ""
-            try:
-                resp = await client.messages.create(
-                    model=model,
-                    max_tokens=2048,
-                    system=[
-                        {
-                            "type": "text",
-                            "text": SYSTEM_PROMPT,
-                            "cache_control": {"type": "ephemeral"},
-                        }
-                    ],
-                    messages=[{"role": "user", "content": user_msg}],
-                )
+        try:
+            response = await client.messages.create(
+                model=MODEL,
+                max_tokens=MAX_TOKENS_OUT,
+                system=system,
+                messages=[{
+                    "role": "user",
+                    "content": user_msg,
+                }],
+            )
 
-                raw = resp.content[0].text.strip()
+            raw_text = response.content[0].text if response.content else ""
 
-                # Strip accidental markdown fences
-                m = re.search(r'\{[\s\S]*\}', raw)
-                if m:
-                    raw = m.group(0)
+            # Strip accidental markdown fences
+            m = re.search(r'\{[\s\S]*\}', raw_text)
+            if m:
+                raw_text = m.group(0)
 
-                parsed = json.loads(raw)
-                raw_stacks = parsed.get("stacks", [])
+            if not raw_text.strip():
+                usage = vars(response.usage) if response.usage else {}
+                return [], usage
 
-                # Normalise + validate each stack entry
-                stacks: list[dict] = []
-                for s in raw_stacks:
-                    if not isinstance(s, dict):
-                        continue
-                    if "text" not in s or "metaprograms" not in s:
-                        continue
-                    s["stack_size"] = len(s["metaprograms"])
-                    s.setdefault("context_note", "")
-                    s.setdefault("confidence", "medium")
-                    stacks.append(s)
+            parsed = json.loads(raw_text)
+            raw_stacks = parsed.get("stacks", [])
 
-                u = resp.usage
-                return (
-                    stacks,
-                    getattr(u, "input_tokens", 0),
-                    getattr(u, "output_tokens", 0),
-                    getattr(u, "cache_creation_input_tokens", 0),
-                    getattr(u, "cache_read_input_tokens", 0),
-                )
+            stacks: list[dict] = []
+            for s in raw_stacks:
+                if not isinstance(s, dict):
+                    continue
+                if "text" not in s or "metaprograms" not in s:
+                    continue
+                s["stack_size"] = len(s["metaprograms"])
+                s.setdefault("context_note", "")
+                s.setdefault("confidence", "medium")
+                stacks.append(s)
 
-            except APIStatusError as e:
-                if e.status_code == 429:
-                    if attempt + 1 < len(delays_seq):
-                        nxt = delays_seq[attempt + 1]
-                        print(
-                            f"  [429] rate-limited on {source_name} chunk {chunk_idx+1} "
-                            f"— backing off {nxt}s (attempt {attempt+1}/{len(BACKOFF_DELAYS)})",
-                            flush=True,
-                        )
-                        continue
-                    log_error(log_path, source_name, chunk_idx,
-                              "429 exhausted all retries — skipping chunk")
-                    return [], 0, 0, 0, 0
-                log_error(log_path, source_name, chunk_idx,
-                          f"APIStatusError {e.status_code}: {getattr(e, 'message', str(e))}")
-                return [], 0, 0, 0, 0
+            usage = {}
+            if response.usage:
+                u = response.usage
+                usage = {
+                    "input_tokens":                  getattr(u, "input_tokens", 0),
+                    "output_tokens":                 getattr(u, "output_tokens", 0),
+                    "cache_creation_input_tokens":   getattr(u, "cache_creation_input_tokens", 0),
+                    "cache_read_input_tokens":       getattr(u, "cache_read_input_tokens", 0),
+                }
 
-            except json.JSONDecodeError as e:
-                snippet = raw[:300] if raw else "N/A"
-                log_error(log_path, source_name, chunk_idx,
-                          f"JSON parse failed: {e} | raw={snippet!r}")
-                return [], 0, 0, 0, 0
+            return stacks, usage
 
-            except Exception as e:
-                log_error(log_path, source_name, chunk_idx,
-                          f"{type(e).__name__}: {e}")
-                return [], 0, 0, 0, 0
+        except anthropic.RateLimitError:
+            if attempt < len(RATE_LIMIT_DELAYS):
+                print(f"\n  Rate limited — waiting {RATE_LIMIT_DELAYS[attempt]}s…", flush=True)
+                continue
+            log_error(log_path, source_name, chunk_idx, "RateLimitError: max retries exceeded")
+            return [], {}
 
-    # Unreachable — semaphore always releases — but keeps type-checker happy
-    return [], 0, 0, 0, 0
+        except json.JSONDecodeError as e:
+            log_error(log_path, source_name, chunk_idx, f"JSON parse failed: {e} | raw: {raw_text[:200]}")
+            return [], {}
+
+        except anthropic.APIStatusError as e:
+            log_error(log_path, source_name, chunk_idx, f"APIStatusError {e.status_code}: {e.message[:200]}")
+            return [], {}
+
+        except Exception as e:
+            log_error(log_path, source_name, chunk_idx, f"{type(e).__name__}: {e}")
+            return [], {}
+
+    return [], {}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -347,9 +348,15 @@ async def call_api(
 # ══════════════════════════════════════════════════════════════════════════════
 
 async def run(folder: Path, output_path: Path, limit: int = 0) -> None:
-    model   = get_model()
-    api_key = get_api_key()
-    client  = AsyncAnthropic(api_key=api_key)
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        print(
+            "\nERROR: ANTHROPIC_API_KEY not set.\n"
+            "Add it to your .env file:  ANTHROPIC_API_KEY=sk-ant-...\n"
+        )
+        sys.exit(1)
+
+    client = anthropic.AsyncAnthropic(api_key=api_key)
 
     out_dir = output_path.parent
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -358,16 +365,17 @@ async def run(folder: Path, output_path: Path, limit: int = 0) -> None:
 
     sep = "─" * 62
     print(f"\n{sep}")
-    print("  Metaprogram Stack Miner")
-    print(f"  Model:    {model}")
+    print("  Metaprogram Stack Miner  (Anthropic API — prompt cached)")
+    print(f"  Model:    {MODEL}")
     print(f"  Folder:   {folder}")
     print(f"  Output:   {output_path}")
     print(f"  Progress: {progress_path}")
     print(f"{sep}\n")
 
     state = load_state(progress_path)
+    cost_so_far = calc_cost(state)
     print(f"Loaded progress: {len(state['processed'])} chunks done | "
-          f"${state['cost_usd']:.4f} spent so far\n")
+          f"{state['call_count']} total calls | ${cost_so_far:.4f} spent so far\n")
 
     # ── Find all transcript files ──────────────────────────────────────────────
     all_files = sorted(folder.rglob("*.txt"))
@@ -386,18 +394,15 @@ async def run(folder: Path, output_path: Path, limit: int = 0) -> None:
         enc = tiktoken.get_encoding("gpt2")
 
     # ── Build work queue (skip already-processed chunks) ──────────────────────
-    # Each item: (path, speaker, source_name, chunk_idx, total_chunks, chunk_text)
-    WorkItem = tuple
+    WorkItem = tuple  # (path, speaker, source_name, chunk_idx, total_chunks, chunk_text)
 
-    work_queue:   list[WorkItem] = []
-    file_speakers: dict[str, str] = {}
+    work_queue: list[WorkItem] = []
 
     print("Scanning files and building work queue…", flush=True)
     for path in all_files:
         speaker     = infer_speaker(path)
         source_name = path.name
         path_str    = str(path)
-        file_speakers[path_str] = speaker
 
         try:
             raw = path.read_text(encoding="utf-8", errors="replace")
@@ -421,7 +426,7 @@ async def run(folder: Path, output_path: Path, limit: int = 0) -> None:
     total_skipped = len(state["processed"])
     print(f"Chunks to process: {total_new}  |  Already done: {total_skipped}\n")
 
-    # ── Dispatch all tasks concurrently (semaphore limits to MAX_CONCURRENCY) ──
+    # ── Dispatch concurrently ─────────────────────────────────────────────────
     if total_new > 0:
         semaphore = asyncio.Semaphore(MAX_CONCURRENCY)
         lock      = asyncio.Lock()
@@ -430,10 +435,17 @@ async def run(folder: Path, output_path: Path, limit: int = 0) -> None:
             path, speaker, source_name, chunk_idx, total_chunks, ck = item
             key = f"{str(path)}::chunk_{chunk_idx}"
 
-            stacks, in_tok, out_tok, cw_tok, cr_tok = await call_api(
-                client, model, source_name, chunk_idx, total_chunks,
-                ck, semaphore, error_log_path,
+            user_msg = (
+                f"Source video: {source_name}\n"
+                f"Chunk {chunk_idx + 1} of {total_chunks}:\n\n"
+                f"{ck}\n\n"
+                "Find stacks. JSON only."
             )
+
+            async with semaphore:
+                stacks, usage = await call_api(
+                    client, user_msg, error_log_path, source_name, chunk_idx
+                )
 
             # Annotate with provenance
             for s in stacks:
@@ -441,21 +453,17 @@ async def run(folder: Path, output_path: Path, limit: int = 0) -> None:
                 s["source_file"] = source_name
                 s["source_path"] = str(path)
 
-            cost = calc_cost(in_tok, out_tok, cw_tok, cr_tok)
-
             async with lock:
                 state["processed"][key] = {
-                    "stacks":     stacks,
-                    "in_tokens":  in_tok,
-                    "out_tokens": out_tok,
-                    "ts":         datetime.now().isoformat(timespec="seconds"),
+                    "stacks": stacks,
+                    "ts":     datetime.now().isoformat(timespec="seconds"),
                 }
-                state["input_tokens"]       += in_tok
-                state["output_tokens"]      += out_tok
-                state["cache_write_tokens"] += cw_tok
-                state["cache_read_tokens"]  += cr_tok
-                state["cost_usd"]           += cost
-                save_state(progress_path, state)   # persist after every chunk
+                state["call_count"]          += 1
+                state["tokens_input"]        += usage.get("input_tokens", 0)
+                state["tokens_output"]       += usage.get("output_tokens", 0)
+                state["tokens_cache_write"]  += usage.get("cache_creation_input_tokens", 0)
+                state["tokens_cache_read"]   += usage.get("cache_read_input_tokens", 0)
+                save_state(progress_path, state)
 
             if stacks:
                 print(
@@ -464,17 +472,19 @@ async def run(folder: Path, output_path: Path, limit: int = 0) -> None:
                     flush=True,
                 )
 
-        tasks     = [asyncio.create_task(process_one(item)) for item in work_queue]
-        done_cnt  = 0
+        tasks    = [asyncio.create_task(process_one(item)) for item in work_queue]
+        done_cnt = 0
 
         for fut in asyncio.as_completed(tasks):
             await fut
             done_cnt += 1
             if done_cnt % 10 == 0 or done_cnt == total_new:
-                pct = done_cnt / total_new * 100
+                cost = calc_cost(state)
+                pct  = done_cnt / total_new * 100
                 print(
-                    f"\r  Progress: {done_cnt}/{total_new} ({pct:.0f}%) "
-                    f"| cost: ${state['cost_usd']:.4f}   ",
+                    f"\r  Progress: {done_cnt}/{total_new} ({pct:.0f}%)"
+                    f"  | calls: {state['call_count']}"
+                    f"  | cost: ${cost:.4f}   ",
                     end="",
                     flush=True,
                 )
@@ -486,28 +496,30 @@ async def run(folder: Path, output_path: Path, limit: int = 0) -> None:
     # ── Collect all stacks from saved state ───────────────────────────────────
     all_stacks: list[dict] = []
     for key, entry in state["processed"].items():
-        path_str   = key.split("::")[0]
-        fp         = Path(path_str)
-        speaker    = infer_speaker(fp)
-        source_nm  = fp.name
+        path_str  = key.split("::")[0]
+        fp        = Path(path_str)
+        speaker   = infer_speaker(fp)
+        source_nm = fp.name
         for s in entry.get("stacks", []):
             s.setdefault("speaker",     speaker)
             s.setdefault("source_file", source_nm)
             s.setdefault("source_path", path_str)
             all_stacks.append(s)
 
-    # ── Print summary ──────────────────────────────────────────────────────────
+    # ── Summary ────────────────────────────────────────────────────────────────
+    final_cost = calc_cost(state)
     print(f"\n{sep}")
     print("  COMPLETE")
-    print(f"  Total stacks found:    {len(all_stacks)}")
-    print(f"  Total input tokens:    {state['input_tokens']:,}")
-    print(f"  Total output tokens:   {state['output_tokens']:,}")
-    print(f"  Cache writes:          {state['cache_write_tokens']:,}")
-    print(f"  Cache reads:           {state['cache_read_tokens']:,}")
-    print(f"  Total cost:            ${state['cost_usd']:.4f}")
+    print(f"  Total stacks found:  {len(all_stacks)}")
+    print(f"  Total API calls:     {state['call_count']}")
+    print(f"  Input tokens:        {state['tokens_input']:,}")
+    print(f"  Cache writes:        {state['tokens_cache_write']:,}")
+    print(f"  Cache reads:         {state['tokens_cache_read']:,}")
+    print(f"  Output tokens:       {state['tokens_output']:,}")
+    print(f"  Total cost:          ${final_cost:.4f}")
     print(f"{sep}\n")
 
-    write_output(all_stacks, all_files, state, output_path)
+    write_output(all_stacks, all_files, state, output_path, final_cost)
     print(f"Output written → {output_path}\n")
 
 
@@ -520,6 +532,7 @@ def write_output(
     all_files: list[Path],
     state:     dict,
     out:       Path,
+    cost:      float,
 ) -> None:
     # Deduplicate by text (sort for idempotency)
     seen: set[str] = set()
@@ -554,13 +567,11 @@ def write_output(
         f"Sources scanned: {len(all_files)} transcripts",
         f"Unique speakers: {', '.join(speakers) if speakers else 'none'}",
         f"Generated: {ts}",
-        (
-            f"Cost: ${state.get('cost_usd', 0):.4f}"
-            f" | in: {state.get('input_tokens', 0):,}"
-            f" | out: {state.get('output_tokens', 0):,}"
-            f" | cache-write: {state.get('cache_write_tokens', 0):,}"
-            f" | cache-read: {state.get('cache_read_tokens', 0):,}"
-        ),
+        f"Cost: ${cost:.4f} | Total API calls: {state.get('call_count', 0)}",
+        f"Tokens — input: {state.get('tokens_input',0):,} | "
+        f"output: {state.get('tokens_output',0):,} | "
+        f"cache_write: {state.get('tokens_cache_write',0):,} | "
+        f"cache_read: {state.get('tokens_cache_read',0):,}",
         "",
     ]
 
@@ -584,7 +595,8 @@ def write_output(
 
     lines += ["## Source Coverage", ""]
     for fname in sorted(cov.keys()):
-        lines.append(f"- {fname} — {cov[fname]} stack(s)")
+        count = cov[fname]
+        lines.append(f"- {fname} — {count} stack(s)")
     lines.append("")
 
     out.write_text("\n".join(lines), encoding="utf-8")
@@ -596,7 +608,7 @@ def write_output(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Mine metaprogram stacks from transcripts using Claude Sonnet."
+        description="Mine metaprogram stacks from transcripts via Anthropic API."
     )
     parser.add_argument(
         "folder",

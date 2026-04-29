@@ -38,8 +38,6 @@ except ImportError:
     print("ERROR: tiktoken not installed.  Run: pip install tiktoken")
     sys.exit(1)
 
-import subprocess
-
 
 # ── Load .env (no python-dotenv required) ────────────────────────────────────
 
@@ -70,9 +68,9 @@ PROGRESS_FILE   = "_stack_mine_progress.json"
 ERROR_LOG_FILE  = "_stack_mine_errors.log"
 
 MODEL           = "claude-sonnet-4-5-20250929"  # Sonnet 4.6
-CHUNK_TOKENS    = 600   # ~2500 chars — keeps total prompt under 5500 char CLI limit
+CHUNK_TOKENS    = 800
 OVERLAP_TOKENS  = 100
-MAX_CONCURRENCY = 1          # subscription mode — one claude.exe at a time
+MAX_CONCURRENCY = 5          # subscription supports up to 5 concurrent
 MAX_TOKENS_OUT  = 1_024
 
 # Retry on 429 rate limit
@@ -259,50 +257,72 @@ async def call_api(
     chunk_idx: int,
 ) -> tuple[list[dict], dict]:
     """
-    Call Claude via 'claude -p' subscription (no API key required).
-    Returns (stacks, usage_dict).  usage_dict is empty — no token counts in sub mode.
+    Call Claude via subscription using asyncio.create_subprocess_exec.
+    System prompt passed via --append-system-prompt (separate from user msg).
+    Pops CLAUDECODE and ANTHROPIC_API_KEY so subscription auth is used.
+    Returns (stacks, usage_dict).
     """
-    full_prompt = f"{SYSTEM_PROMPT}\n\n{user_msg}"
+    env = os.environ.copy()
+    env.pop("CLAUDECODE", None)
+    env.pop("ANTHROPIC_API_KEY", None)
 
     for attempt, delay in enumerate([0] + RATE_LIMIT_DELAYS):
         if delay:
             await asyncio.sleep(delay)
 
         try:
-            loop = asyncio.get_event_loop()
-            # Strip API key so claude uses subscription, not API (which may be at limit)
-            _prompt = full_prompt
-            _env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
-            result = await loop.run_in_executor(
-                None,
-                lambda: subprocess.run(
-                    ["claude", "-p", "-"],
-                    input=_prompt,
-                    capture_output=True, text=True,
-                    encoding="utf-8", errors="replace",
-                    timeout=120,
-                    env=_env,
-                )
+            proc = await asyncio.create_subprocess_exec(
+                "claude", "-p", user_msg,
+                "--model", "claude-sonnet-4-5",
+                "--output-format", "json",
+                "--append-system-prompt", SYSTEM_PROMPT,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=env,
             )
 
-            raw_text = result.stdout.strip()
-
-            if result.returncode != 0 and not raw_text:
-                err = result.stderr[:200] if result.stderr else "no stderr"
-                log_error(log_path, source_name, chunk_idx, f"claude exit {result.returncode}: {err}")
+            try:
+                stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                    proc.communicate(), timeout=120
+                )
+            except asyncio.TimeoutError:
+                proc.kill()
+                log_error(log_path, source_name, chunk_idx, "TimeoutExpired after 120s")
                 if attempt < len(RATE_LIMIT_DELAYS):
                     continue
                 return [], {}
 
-            # Strip accidental markdown fences
-            m = re.search(r'\{[\s\S]*\}', raw_text)
-            if m:
-                raw_text = m.group(0)
+            raw_out = stdout_bytes.decode("utf-8", errors="replace").strip()
+            raw_err = stderr_bytes.decode("utf-8", errors="replace").strip()
 
-            if not raw_text.strip():
+            if proc.returncode != 0:
+                err_msg = raw_err[:200] if raw_err else "no stderr"
+                log_error(log_path, source_name, chunk_idx,
+                          f"claude exit {proc.returncode}: {err_msg}")
+                if attempt < len(RATE_LIMIT_DELAYS):
+                    continue
                 return [], {}
 
-            parsed = json.loads(raw_text)
+            if not raw_out:
+                return [], {}
+
+            # --output-format json wraps response; assistant text is at payload["result"]
+            try:
+                payload = json.loads(raw_out)
+                assistant_text = payload.get("result", "")
+            except json.JSONDecodeError:
+                # fallback: treat raw_out as direct text
+                assistant_text = raw_out
+
+            # Strip accidental markdown fences
+            m = re.search(r'\{[\s\S]*\}', assistant_text)
+            if m:
+                assistant_text = m.group(0)
+
+            if not assistant_text.strip():
+                return [], {}
+
+            parsed = json.loads(assistant_text)
             raw_stacks = parsed.get("stacks", [])
 
             stacks: list[dict] = []
@@ -318,14 +338,9 @@ async def call_api(
 
             return stacks, {}
 
-        except subprocess.TimeoutExpired:
-            log_error(log_path, source_name, chunk_idx, "TimeoutExpired after 120s")
-            if attempt < len(RATE_LIMIT_DELAYS):
-                continue
-            return [], {}
-
         except json.JSONDecodeError as e:
-            log_error(log_path, source_name, chunk_idx, f"JSON parse failed: {e} | raw: {raw_text[:200]}")
+            log_error(log_path, source_name, chunk_idx,
+                      f"JSON parse failed: {e} | raw: {assistant_text[:200]}")
             return [], {}
 
         except Exception as e:

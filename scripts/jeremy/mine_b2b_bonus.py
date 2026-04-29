@@ -281,34 +281,47 @@ async def preflight_auth_check() -> None:
     env.pop("ANTHROPIC_API_KEY", None)
 
     print("Preflight: verifying claude subscription auth …", flush=True)
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            CLAUDE_CLI, "-p", "say only the word OK",
-            "--model", MODEL,
-            "--output-format", "text",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env=env,
-        )
-        out_b, err_b = await asyncio.wait_for(proc.communicate(), timeout=60)
-        out = out_b.decode("utf-8", errors="replace").strip()
-        err = err_b.decode("utf-8", errors="replace").strip()
+    delays = [5, 15, 30]
+    for attempt in range(4):  # 1 original + 3 retries
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                CLAUDE_CLI, "-p", "say only the word OK",
+                "--model", MODEL,
+                "--output-format", "text",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=env,
+            )
+            out_b, err_b = await asyncio.wait_for(proc.communicate(), timeout=60)
+            out = out_b.decode("utf-8", errors="replace").strip()
+            err = err_b.decode("utf-8", errors="replace").strip()
 
-        if proc.returncode != 0:
-            print(f"\nFATAL: preflight failed — exit {proc.returncode}")
-            print(f"  stderr: {err[:300] if err else '(empty)'}")
-            print(f"  stdout: {out[:300] if out else '(empty)'}")
-            print("\nFix: run `claude login` then retry.")
+            if proc.returncode == 15 and attempt < 3:
+                wait = delays[attempt]
+                print(f"  exit 15 (SIGTERM) on attempt {attempt+1} — retrying in {wait}s …", flush=True)
+                await asyncio.sleep(wait)
+                continue
+
+            if proc.returncode != 0:
+                print(f"\nFATAL: preflight failed — exit {proc.returncode}")
+                print(f"  stderr: {err[:300] if err else '(empty)'}")
+                print(f"  stdout: {out[:300] if out else '(empty)'}")
+                print("\nFix: run `claude login` then retry.")
+                sys.exit(3)
+
+            print(f"Preflight OK — claude says: {out[:60]!r}\n", flush=True)
+            return
+
+        except asyncio.TimeoutError:
+            print("FATAL: preflight timed out. Auth prompt hanging — run `claude login`.")
+            sys.exit(3)
+        except FileNotFoundError as e:
+            print(f"FATAL: cannot launch claude CLI: {e}")
             sys.exit(3)
 
-        print(f"Preflight OK — claude says: {out[:60]!r}\n", flush=True)
-
-    except asyncio.TimeoutError:
-        print("FATAL: preflight timed out. Auth prompt hanging — run `claude login`.")
-        sys.exit(3)
-    except FileNotFoundError as e:
-        print(f"FATAL: cannot launch claude CLI: {e}")
-        sys.exit(3)
+    print("FATAL: preflight failed after 4 attempts (persistent exit 15).")
+    print("Fix: run `claude login` then retry.")
+    sys.exit(3)
 
 
 # ══════════════════════════════════════════════════════════════════════════════

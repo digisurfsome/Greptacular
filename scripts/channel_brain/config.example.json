@@ -1,0 +1,19 @@
+{
+  "_comment": "Copy this to connor.json (or channel-name.json) and edit paths. Then: python truth_builder_v2.py --config connor.json",
+
+  "project_name": "connor_voice_ai",
+  "videos_dir": "C:/Users/lober/GitHub/Greptacular - AutoForge Build/Greptacular/output/videos",
+  "output_dir":  "C:/Users/lober/GitHub/Greptacular - AutoForge Build/Greptacular/output/connor_v2",
+
+  "taxonomy_mode":      "auto",
+  "taxonomy_gate":      true,
+  "taxonomy_sample_n":  10,
+
+  "cluster_mode":         "dual",
+  "embedding_model":      "all-MiniLM-L6-v2",
+  "embedding_threshold":  0.85,
+  "llm_batch_size":       30,
+
+  "extract_concurrency":  1,
+  "max_retries":          3
+}

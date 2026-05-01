@@ -215,21 +215,26 @@ async def sweep0_taxonomy(cfg: dict, dry_run: bool = False) -> dict:
 
 EXTRACT_PROMPT = """Extract every verbatim EXCHANGE PAIR from this sales/cold call transcript.
 
-An exchange pair = [prospect says something] + [salesperson responds].
+IMPORTANT: This video has been pre-selected as a REAL CALL recording (cold call, live demo, or sales call).
+Assume there ARE exchanges to extract. Look hard — a one-sided cold call still has the seller's lines,
+a demo still has prospect reactions, a coaching replay still has the exchange being analyzed.
+
+An exchange pair = [what prospect/gatekeeper says] + [what salesperson says back].
 Also capture standalone opener lines and close/advance attempts.
 
 RULES:
 1. VERBATIM ONLY. Exact words spoken. No paraphrasing. No summarizing.
-2. Capture BOTH sides: prospect_line AND salesperson_response.
-3. If prospect asks a question → that's an exchange. Extract it.
-4. If prospect objects → extract it + the response.
-5. If prospect shows interest → extract the signal + what the seller does next.
-6. Capture opener lines (first thing seller says) as type "opener-hook" with no prospect_line.
-7. Capture close attempts (asking for commitment/next step) as type "close-advance".
-8. interaction_type MUST be one of the provided slugs.
-9. outcome: "advanced" (prospect engaged positively), "deflected" (concern addressed),
-             "stalled" (no movement), "closed" (got commitment), "lost" (hung up/declined)
-10. Empty list [] if transcript has no actual call exchanges (e.g. tutorial-only video).
+2. Capture BOTH sides when present: prospect_line AND salesperson_response.
+3. If prospect asks a question → extract it + the response.
+4. If prospect objects → extract the objection + the response.
+5. If prospect shows interest/skepticism → extract the signal + what the seller does next.
+6. Opener lines (first thing seller says to get attention) → type "opener-hook", prospect_line = "".
+7. Close attempts (asking for next step / commitment) → type "close-advance".
+8. Even if the call is one-sided (voicemail, monologue pitch) → extract the seller lines as openers.
+9. interaction_type MUST be one of the provided slugs.
+10. outcome: "advanced" (prospect engaged positively), "deflected" (concern addressed),
+              "stalled" (no movement), "closed" (got commitment), "lost" (hung up/declined)
+11. Return [] ONLY if the transcript is genuinely a tutorial/lecture with zero call interaction.
 
 Return ONLY raw JSON, no markdown fences:
 {{
@@ -352,7 +357,7 @@ async def sweep1_extract(
         jsonl_path = exchanges_dir / f"{folder.name}.jsonl"
 
         if not exchanges:
-            print(f"→ 0 exchanges ({elapsed:.0f}s) [likely not a call video]")
+            print(f"→ 0 exchanges ({elapsed:.0f}s) [Claude found no exchange pairs — check transcript quality]")
             jsonl_path.write_text("", encoding="utf-8")
         else:
             lines = [json.dumps(e, ensure_ascii=False) for e in exchanges]
@@ -782,9 +787,9 @@ async def main() -> None:
             print("\n[SWEEP 0]  Interaction Taxonomy Discovery")
             taxonomy = await sweep0_taxonomy(cfg, dry_run=args.dry_run)
             types = taxonomy.get("interaction_types", [])
-            names = ", ".join(t["name"] for t in types[:5])
-            if len(types) > 5: names += f", ... (+{len(types)-5} more)"
-            print(f"  → {len(types)} types: {names}")
+            print(f"  → {len(types)} interaction types:")
+            for t in types:
+                print(f"      {t['name']}")
 
             gate_flag = output_dir / "_sweep0_gate_passed"
             if (
@@ -794,11 +799,13 @@ async def main() -> None:
             ):
                 taxonomy_path = output_dir / "taxonomy.json"
                 print()
-                print("  ┌─ TAXONOMY GATE ─────────────────────────────────────────────────┐")
-                print("  │  Review interaction_types in taxonomy.json before extraction.    │")
-                print(f"  │  File: {str(taxonomy_path)[:58].ljust(58)} │")
-                print("  │  Add/edit types if needed. Press Enter when ready.              │")
-                print("  └─────────────────────────────────────────────────────────────────┘")
+                print("  ┌─ TAXONOMY GATE ───────────────────────────────────────────────────────────┐")
+                print("  │  Sweep 0 complete. Open taxonomy.json, review the interaction types above. │")
+                print("  │  You can ADD, REMOVE, or RENAME types before extraction starts.           │")
+                print("  │  Each type becomes a section in your final exchange library.              │")
+                print(f"  │  File: {str(taxonomy_path)}  │")
+                print("  │  Press Enter when ready to begin extraction (Sweep 1).                   │")
+                print("  └───────────────────────────────────────────────────────────────────────────┘")
                 input("  > ")
                 gate_flag.write_text("passed", encoding="utf-8")
                 if taxonomy_path.exists():

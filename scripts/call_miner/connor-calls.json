@@ -12,6 +12,6 @@
   "taxonomy_sample_n":  4,
 
   "cluster_mode":        "llm",
-  "llm_batch_size":      25,
+  "llm_batch_size":      8,
   "embedding_threshold": 0.82
 }

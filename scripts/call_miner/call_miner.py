@@ -11,11 +11,12 @@ Designed specifically for training a sales bot on:
 NOT a channel playbook builder — that's truth_builder_v2.py.
 This captures the LIVE CONVERSATION DATA.
 
-4-sweep pipeline (same pattern as channel_brain):
-  Sweep 0: Interaction taxonomy discovery (auto-discovers what topics come up in calls)
-  Sweep 1: Exchange pair extraction (prospect line + salesperson response, per video)
-  Sweep 2: Cluster (same objection asked 10 ways = 1 cluster, all 10 variants kept)
-  Sweep 3: Render (per-category .md files + master exchange doc)
+5-sweep pipeline:
+  Sweep 0:   Interaction taxonomy discovery (auto-discovers what topics come up in calls)
+  Sweep 0.5: Video registry + call confidence pre-filter (LLM screens each video)
+  Sweep 1:   Exchange pair extraction (prospect line + salesperson response, per video)
+  Sweep 2:   Cluster (same objection asked 10 ways = 1 cluster, all 10 variants kept)
+  Sweep 3:   Render (per-category .md files + master exchange doc + video report)
 
 Usage:
   python call_miner.py --config scripts/call_miner/connor-calls.json
@@ -42,6 +43,7 @@ IMPORTANT: subscription auth. Run `claude login` before first use.
 
 import argparse
 import asyncio
+from datetime import datetime
 import json
 import os
 import random
@@ -231,6 +233,297 @@ async def sweep0_taxonomy(cfg: dict, dry_run: bool = False) -> dict:
 
 
 # =============================================================================
+# VIDEO REGISTRY — stable IDs for every video (V001, V002, ...)
+# =============================================================================
+
+def _get_video_title(folder: Path) -> str:
+    """Extract title from first line of info.md, or fall back to folder name."""
+    info_path = folder / "info.md"
+    if info_path.exists():
+        first_line = info_path.read_text(encoding="utf-8", errors="replace").split("\n")[0].strip()
+        # Strip leading markdown heading markers
+        first_line = re.sub(r"^#+\s*", "", first_line).strip()
+        if first_line:
+            return first_line
+    return folder.name
+
+
+def load_video_registry(output_dir: Path) -> dict:
+    """Load existing registry or return empty dict."""
+    reg_path = output_dir / "_video_registry.json"
+    if reg_path.exists():
+        return json.loads(reg_path.read_text(encoding="utf-8"))
+    return {}
+
+
+def save_video_registry(output_dir: Path, registry: dict) -> None:
+    """Write registry as JSON + human-readable markdown table."""
+    reg_json = output_dir / "_video_registry.json"
+    reg_md   = output_dir / "_video_registry.md"
+
+    reg_json.write_text(json.dumps(registry, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    # Markdown table
+    lines = [
+        "| ID   | Title (truncated 60 chars)                              | Confidence   | Exchanges |",
+        "|------|--------------------------------------------------------|--------------|-----------|",
+    ]
+    for vid, entry in sorted(registry.items(), key=lambda kv: kv[0]):
+        title = (entry.get("title") or "")[:60].ljust(56)
+        conf  = entry.get("confidence") or "pending"
+        if conf == "uncertain":
+            conf_str = "\u26a0\ufe0f uncertain"
+        else:
+            conf_str = conf
+        exch = entry.get("exchange_count", 0)
+        lines.append(f"| {vid} | {title} | {conf_str:<12} | {exch:<9} |")
+
+    reg_md.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def build_video_registry(cfg: dict) -> dict:
+    """Build or extend the video registry. New videos get new IDs; existing IDs never change."""
+    output_dir = Path(cfg["output_dir"])
+    videos_dir = Path(cfg["videos_dir"])
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    registry = load_video_registry(output_dir)
+    folders  = _get_video_folders(videos_dir, cfg.get("call_filter_keywords", []))
+
+    # Map folder names already in registry to avoid reassigning
+    known_folders = {entry["folder"] for entry in registry.values()}
+
+    # Find highest existing ID number to continue from
+    max_id = 0
+    for vid in registry:
+        try:
+            max_id = max(max_id, int(vid[1:]))
+        except (ValueError, IndexError):
+            pass
+
+    new_count = 0
+    for folder in folders:
+        if folder.name in known_folders:
+            continue
+        max_id += 1
+        vid = f"V{max_id:03d}"
+        registry[vid] = {
+            "id": vid,
+            "folder": folder.name,
+            "title": _get_video_title(folder),
+            "confidence": None,
+            "confidence_reason": None,
+            "exchange_count": 0,
+        }
+        new_count += 1
+
+    save_video_registry(output_dir, registry)
+    total = len(registry)
+    if new_count:
+        print(f"  Video registry: {total} videos ({new_count} new)")
+    else:
+        print(f"  Video registry: {total} videos (no new)")
+    return registry
+
+
+def _folder_to_video_id(registry: dict, folder_name: str) -> str | None:
+    """Look up video_id for a given folder name."""
+    for vid, entry in registry.items():
+        if entry["folder"] == folder_name:
+            return vid
+    return None
+
+
+# =============================================================================
+# SWEEP 0.5 — CALL CONFIDENCE PRE-FILTER
+# =============================================================================
+
+PREFILTER_PROMPT = """You are screening videos to decide if they contain real sales/cold call recordings.
+
+A REAL CALL VIDEO has: actual phone calls or live demos where a salesperson talks to a real prospect/customer. The transcript contains back-and-forth dialogue.
+
+NOT A CALL VIDEO: tutorials explaining how to cold call, montages, screen recordings with no real conversation, motivational content.
+
+UNCERTAIN: video might have call content mixed with tutorial content, or hard to tell from title/intro alone.
+
+Video info:
+{info}
+
+Transcript start (first 800 chars):
+{transcript_start}
+
+Return ONLY raw JSON:
+{{"confidence": "confirmed|uncertain|not_a_call", "reason": "one sentence explanation"}}"""
+
+
+async def sweep05_prefilter(cfg: dict, registry: dict, dry_run: bool = False) -> dict:
+    """Screen each video for call confidence. Resumable — skips already-checked videos."""
+    output_dir = Path(cfg["output_dir"])
+    videos_dir = Path(cfg["videos_dir"])
+
+    # Find videos that haven't been checked yet
+    unchecked = [
+        (vid, entry) for vid, entry in registry.items()
+        if entry.get("confidence") is None
+    ]
+
+    if not unchecked:
+        # Print summary from existing data
+        counts = {"confirmed": 0, "uncertain": 0, "not_a_call": 0}
+        for entry in registry.values():
+            conf = entry.get("confidence", "")
+            if conf in counts:
+                counts[conf] += 1
+        print(f"  Pre-filter: all {len(registry)} videos already screened")
+        print(f"  Results: {counts['confirmed']} confirmed | {counts['uncertain']} uncertain | {counts['not_a_call']} not_a_call")
+        return registry
+
+    print(f"  Sweep 0.5: {len(unchecked)} videos to screen ({len(registry) - len(unchecked)} already done)")
+
+    if dry_run:
+        print(f"  DRY RUN: would make {len(unchecked)} LLM calls for pre-filter")
+        return registry
+
+    await preflight()
+
+    for i, (vid, entry) in enumerate(unchecked, 1):
+        folder = videos_dir / entry["folder"]
+        if not folder.exists():
+            entry["confidence"] = "not_a_call"
+            entry["confidence_reason"] = "folder not found"
+            continue
+
+        # Read info.md (full) + first 800 chars of transcript
+        info_path = folder / "info.md"
+        info = info_path.read_text(encoding="utf-8", errors="replace") if info_path.exists() else "(no info.md)"
+
+        t_path = folder / "transcript.txt"
+        transcript_start = ""
+        if t_path.exists():
+            transcript_start = t_path.read_text(encoding="utf-8", errors="replace")[:800]
+
+        prompt = PREFILTER_PROMPT.format(info=info.strip(), transcript_start=transcript_start.strip())
+
+        print(f"  [{i}/{len(unchecked)}] {vid} {entry['folder'][:50]}", end=" ", flush=True)
+        raw = await call_claude_stdin(prompt, label=f"pf-{vid}")
+
+        if raw:
+            parsed = parse_json(raw)
+            if parsed and isinstance(parsed, dict):
+                conf = parsed.get("confidence", "uncertain")
+                # Validate confidence value
+                if conf not in ("confirmed", "uncertain", "not_a_call"):
+                    conf = "uncertain"
+                entry["confidence"] = conf
+                entry["confidence_reason"] = (parsed.get("reason") or "").strip()
+                print(f"→ {conf}")
+            else:
+                entry["confidence"] = "uncertain"
+                entry["confidence_reason"] = "LLM response could not be parsed"
+                print("→ uncertain (parse error)")
+        else:
+            entry["confidence"] = "uncertain"
+            entry["confidence_reason"] = "LLM call failed"
+            print("→ uncertain (call failed)")
+
+        # Save after each video so progress is resumable
+        save_video_registry(output_dir, registry)
+        await asyncio.sleep(1)
+
+    # Print summary
+    counts = {"confirmed": 0, "uncertain": 0, "not_a_call": 0}
+    for entry in registry.values():
+        conf = entry.get("confidence", "")
+        if conf in counts:
+            counts[conf] += 1
+
+    print(f"\n  Pre-filter results: {counts['confirmed']} confirmed | {counts['uncertain']} uncertain | {counts['not_a_call']} not_a_call")
+
+    # Warn about uncertain videos
+    uncertain = [(vid, e) for vid, e in registry.items() if e.get("confidence") == "uncertain"]
+    if uncertain:
+        print("  \u26a0\ufe0f  Uncertain videos (review before continuing):")
+        for vid, e in uncertain:
+            print(f"      {vid} - {e.get('title', e['folder'])[:60]}")
+
+    return registry
+
+
+# =============================================================================
+# VIDEO REPORT — written after Sweep 1 completes
+# =============================================================================
+
+def write_video_report(cfg: dict, registry: dict) -> None:
+    """Write _video_report.md summarizing all videos, their confidence, and exchange counts."""
+    output_dir   = Path(cfg["output_dir"])
+    report_path  = output_dir / "_video_report.md"
+    project_name = cfg.get("project_name", "Call Miner")
+    now_str      = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    # Count exchanges per video from JSONL files
+    exchanges_dir = output_dir / "exchanges"
+    video_exchange_counts: dict[str, int] = {}
+    if exchanges_dir.exists():
+        for jf in exchanges_dir.glob("*.jsonl"):
+            count = 0
+            for line in jf.read_text(encoding="utf-8", errors="replace").splitlines():
+                if line.strip():
+                    count += 1
+            video_exchange_counts[jf.stem] = count
+
+    # Update registry exchange counts
+    for vid, entry in registry.items():
+        folder_name = entry["folder"]
+        entry["exchange_count"] = video_exchange_counts.get(folder_name, 0)
+
+    # Save updated counts back to registry
+    save_video_registry(output_dir, registry)
+
+    # Build report
+    lines = [
+        f"# Video Report — {project_name}\n",
+        f"\nGenerated: {now_str}\n",
+        "",
+        "| ID   | Title                                                  | Confidence   | Exchanges | Notes     |",
+        "|------|--------------------------------------------------------|--------------|-----------|-----------|",
+    ]
+
+    total_exchanges = 0
+    zero_confirmed: list[str] = []
+
+    for vid, entry in sorted(registry.items(), key=lambda kv: kv[0]):
+        title = (entry.get("title") or entry["folder"])[:56].ljust(56)
+        conf  = entry.get("confidence") or "pending"
+        exch  = entry.get("exchange_count", 0)
+        total_exchanges += exch
+
+        # Build notes
+        notes = ""
+        if conf == "not_a_call":
+            notes = "skipped"
+        elif conf == "purged":
+            notes = "purged"
+        elif conf == "uncertain":
+            conf = "\u26a0\ufe0f uncertain"
+
+        # Track confirmed videos with 0 exchanges (worth checking)
+        if conf == "confirmed" and exch == 0 and entry["folder"] in video_exchange_counts:
+            zero_confirmed.append(vid)
+
+        lines.append(f"| {vid} | {title} | {conf:<12} | {exch:<9} | {notes:<9} |")
+
+    lines.append("")
+    lines.append(f"**Total exchanges extracted: {total_exchanges}**")
+
+    if zero_confirmed:
+        lines.append(f"**Videos with 0 exchanges (confirmed): {', '.join(zero_confirmed)}** \u2190 worth checking")
+
+    lines.append("")
+    report_path.write_text("\n".join(lines), encoding="utf-8")
+    print(f"  Video report: {report_path}")
+
+
+# =============================================================================
 # SWEEP 1 — EXCHANGE PAIR EXTRACTION
 # =============================================================================
 
@@ -276,7 +569,8 @@ CHUNK_OVERLAP  = 400    # token overlap between chunks (preserves cross-boundary
 CHUNK_CHAR_CAP = 18000  # char threshold above which we chunk (short calls run as-is)
 
 
-def _parse_exchanges(raw: str, valid_types: set, folder_name: str, source_title: str) -> list[dict]:
+def _parse_exchanges(raw: str, valid_types: set, folder_name: str, source_title: str,
+                     video_id: str | None = None) -> list[dict]:
     parsed = parse_json(raw)
     if not parsed or not isinstance(parsed, dict) or "exchanges" not in parsed:
         return []
@@ -288,7 +582,7 @@ def _parse_exchanges(raw: str, valid_types: set, folder_name: str, source_title:
         itype = ex.get("interaction_type", "misc-objection")
         if itype not in valid_types:
             itype = "misc-objection"
-        results.append({
+        entry = {
             "prospect_line":        (ex.get("prospect_line") or "").strip(),
             "salesperson_response": sp,
             "interaction_type":     itype,
@@ -296,7 +590,10 @@ def _parse_exchanges(raw: str, valid_types: set, folder_name: str, source_title:
             "context_note":         (ex.get("context_note") or "").strip(),
             "source_folder":        folder_name,
             "source_video":         source_title,
-        })
+        }
+        if video_id:
+            entry["video_id"] = video_id
+        results.append(entry)
     return results
 
 
@@ -304,6 +601,7 @@ async def extract_video_exchanges(
     folder: Path,
     interaction_type_names: list[str],
     label: str,
+    video_id: str | None = None,
 ) -> list[dict]:
     t_path = folder / "transcript.txt"
     if not t_path.exists():
@@ -328,7 +626,7 @@ async def extract_video_exchanges(
     if len(transcript) <= CHUNK_CHAR_CAP:
         prompt = header + transcript
         raw = await call_claude_stdin(prompt, label=label)
-        return _parse_exchanges(raw or "", valid_types, folder.name, source_title) if raw else []
+        return _parse_exchanges(raw or "", valid_types, folder.name, source_title, video_id) if raw else []
 
     # Long transcripts (60-min cold calls etc): chunk to avoid exit 15
     chunks = _chunk_text(transcript, max_tokens=CHUNK_TOKENS, overlap=CHUNK_OVERLAP)
@@ -343,7 +641,7 @@ async def extract_video_exchanges(
         raw = await call_claude_stdin(prompt, label=chunk_label)
         if not raw:
             continue
-        chunk_results = _parse_exchanges(raw, valid_types, folder.name, source_title)
+        chunk_results = _parse_exchanges(raw, valid_types, folder.name, source_title, video_id)
         for ex in chunk_results:
             key = (ex["prospect_line"][:80], ex["salesperson_response"][:80])
             if key not in seen_pairs:
@@ -357,6 +655,7 @@ async def extract_video_exchanges(
 async def sweep1_extract(
     cfg: dict,
     taxonomy: dict,
+    registry: dict | None = None,
     limit: int | None = None,
     dry_run: bool = False,
 ) -> int:
@@ -370,8 +669,24 @@ async def sweep1_extract(
         print("  ERROR: taxonomy has no interaction types — run Sweep 0 first")
         return 0
 
+    # Build set of not_a_call folders to skip
+    skip_folders: set[str] = set()
+    if registry:
+        for entry in registry.values():
+            if entry.get("confidence") == "not_a_call":
+                skip_folders.add(entry["folder"])
+        if skip_folders:
+            print(f"  Skipping {len(skip_folders)} not_a_call videos from pre-filter")
+
     folders = _get_video_folders(videos_dir, cfg.get("call_filter_keywords", []))
     done_names = {f.stem for f in exchanges_dir.glob("*.jsonl")}
+
+    # Write empty JSONL for skipped videos so they're marked done
+    for folder in folders:
+        if folder.name in skip_folders and folder.name not in done_names:
+            (exchanges_dir / f"{folder.name}.jsonl").write_text("", encoding="utf-8")
+            done_names.add(folder.name)
+
     todo = [f for f in folders if f.name not in done_names]
 
     print(
@@ -398,21 +713,26 @@ async def sweep1_extract(
     progress = load_progress(output_dir)
 
     for i, folder in enumerate(todo, 1):
-        print(f"  [{i}/{len(todo)}] {folder.name}", flush=True, end=" ")
+        # Look up video_id from registry
+        video_id = _folder_to_video_id(registry, folder.name) if registry else None
+        vid_tag  = f" ({video_id})" if video_id else ""
+        print(f"  [{i}/{len(todo)}] {folder.name}{vid_tag}", flush=True, end=" ")
         t0 = time.time()
 
-        exchanges = await extract_video_exchanges(folder, type_names, label=f"s1-v{i}")
+        exchanges = await extract_video_exchanges(
+            folder, type_names, label=f"s1-v{i}", video_id=video_id,
+        )
         elapsed = time.time() - t0
 
         jsonl_path = exchanges_dir / f"{folder.name}.jsonl"
 
         if not exchanges:
-            print(f"→ 0 exchanges ({elapsed:.0f}s) [Claude found no exchange pairs — check transcript quality]")
+            print(f"\u2192 0 exchanges ({elapsed:.0f}s) [Claude found no exchange pairs \u2014 check transcript quality]")
             jsonl_path.write_text("", encoding="utf-8")
         else:
             lines = [json.dumps(e, ensure_ascii=False) for e in exchanges]
             jsonl_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-            print(f"→ {len(exchanges)} exchanges ({elapsed:.0f}s)")
+            print(f"\u2192 {len(exchanges)} exchanges ({elapsed:.0f}s)")
 
         progress.setdefault("sweep1_done", []).append(folder.name)
         save_progress(output_dir, progress)
@@ -422,7 +742,7 @@ async def sweep1_extract(
         sum(1 for line in f.read_text(encoding="utf-8").splitlines() if line.strip())
         for f in exchanges_dir.glob("*.jsonl")
     )
-    print(f"  Sweep 1 done — {total} total exchanges")
+    print(f"  Sweep 1 done \u2014 {total} total exchanges")
     return total
 
 
@@ -831,15 +1151,20 @@ async def main() -> None:
 
     try:
         taxonomy: dict = {}
+        registry: dict = {}
 
         # ── Sweep 0 ────────────────────────────────────────────────────────────
         if full_run or args.sweep == 0:
             print("\n[SWEEP 0]  Interaction Taxonomy Discovery")
             taxonomy = await sweep0_taxonomy(cfg, dry_run=args.dry_run)
             types = taxonomy.get("interaction_types", [])
-            print(f"  → {len(types)} interaction types:")
+            print(f"  \u2192 {len(types)} interaction types:")
             for t in types:
                 print(f"      {t['name']}")
+
+            # Build video registry (stable IDs for all videos)
+            print("\n[SWEEP 0]  Video Registry")
+            registry = build_video_registry(cfg)
 
             gate_flag = output_dir / "_sweep0_gate_passed"
             if (
@@ -849,13 +1174,13 @@ async def main() -> None:
             ):
                 taxonomy_path = output_dir / "taxonomy.json"
                 print()
-                print("  ┌─ TAXONOMY GATE ───────────────────────────────────────────────────────────┐")
-                print("  │  Sweep 0 complete. Open taxonomy.json, review the interaction types above. │")
-                print("  │  You can ADD, REMOVE, or RENAME types before extraction starts.           │")
-                print("  │  Each type becomes a section in your final exchange library.              │")
-                print(f"  │  File: {str(taxonomy_path)}  │")
-                print("  │  Press Enter when ready to begin extraction (Sweep 1).                   │")
-                print("  └───────────────────────────────────────────────────────────────────────────┘")
+                print("  \u250c\u2500 TAXONOMY GATE \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510")
+                print("  \u2502  Sweep 0 complete. Open taxonomy.json, review the interaction types above. \u2502")
+                print("  \u2502  You can ADD, REMOVE, or RENAME types before extraction starts.           \u2502")
+                print("  \u2502  Each type becomes a section in your final exchange library.              \u2502")
+                print(f"  \u2502  File: {str(taxonomy_path)}  \u2502")
+                print("  \u2502  Press Enter when ready to begin extraction (Sweep 1).                   \u2502")
+                print("  \u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518")
                 input("  > ")
                 gate_flag.write_text("passed", encoding="utf-8")
                 if taxonomy_path.exists():
@@ -867,38 +1192,54 @@ async def main() -> None:
             else:
                 print("ERROR: taxonomy.json not found. Run --sweep 0 first.")
                 sys.exit(1)
+            # Load registry even when not running Sweep 0
+            registry = load_video_registry(output_dir)
+
+        # ── Sweep 0.5 — Call Confidence Pre-Filter ─────────────────────────────
+        if full_run or args.sweep in (0, 1):
+            # Pre-filter runs before Sweep 1 (or as part of Sweep 0 full run)
+            if registry:
+                print("\n[SWEEP 0.5]  Call Confidence Pre-Filter")
+                registry = await sweep05_prefilter(cfg, registry, dry_run=args.dry_run)
 
         # ── Sweep 1 ────────────────────────────────────────────────────────────
         if full_run or args.sweep == 1:
             print("\n[SWEEP 1]  Exchange Extraction")
-            count = await sweep1_extract(cfg, taxonomy, limit=args.limit, dry_run=args.dry_run)
+            count = await sweep1_extract(
+                cfg, taxonomy, registry=registry,
+                limit=args.limit, dry_run=args.dry_run,
+            )
             if not args.dry_run:
-                print(f"  → {count} total exchanges")
+                print(f"  \u2192 {count} total exchanges")
+                # Write video report after extraction completes
+                if registry:
+                    print("\n[REPORT]  Video Report")
+                    write_video_report(cfg, registry)
 
         # ── Sweep 2 ────────────────────────────────────────────────────────────
         if full_run or args.sweep == 2:
             print("\n[SWEEP 2]  Clustering")
             clusters = await sweep2_cluster(cfg, dry_run=args.dry_run)
             if not args.dry_run and clusters:
-                print(f"  → {clusters.get('cluster_count',0)} clusters, {clusters.get('singleton_count',0)} singletons")
+                print(f"  \u2192 {clusters.get('cluster_count',0)} clusters, {clusters.get('singleton_count',0)} singletons")
 
         # ── Sweep 3 ────────────────────────────────────────────────────────────
         if full_run or args.sweep == 3:
             print("\n[SWEEP 3]  Render")
             result = sweep3_render(cfg)
             if result:
-                print(f"  → {result.get('sections',0)} interaction-type files")
+                print(f"  \u2192 {result.get('sections',0)} interaction-type files")
 
         print()
-        print("─" * 68)
+        print("\u2500" * 68)
         if args.dry_run:
             print("  DRY RUN complete")
         else:
-            print(f"  DONE  —  output: {output_dir}")
+            print(f"  DONE  \u2014  output: {output_dir}")
             master = output_dir / "all_exchanges.md"
             if master.exists():
                 print(f"  Exchange library: {master}  ({master.stat().st_size // 1024} KB)")
-        print("─" * 68)
+        print("\u2500" * 68)
 
     finally:
         cleanup_scratch()

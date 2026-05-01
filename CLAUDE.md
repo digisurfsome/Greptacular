@@ -18,6 +18,7 @@
 - **Always merge to `main`.** User pulls from `main`.
 - **`ui/dist/` is gitignored.** `start_ui.bat` auto-rebuilds from source.
 - **Sonnet builds, Opus reviews.** Never assign Opus as per-phase Reviewer. See `docs/SONNET_OPUS_OPTIMIZATION.md`.
+- **Every command you give the owner MUST include the `cd` to the correct directory first.** Owner runs many parallel chats; no chat remembers the previous working directory. Always: `cd <repo-root>` then the command. No exceptions.
 
 ## File Maps — Use These Before Searching
 
@@ -78,6 +79,7 @@ The owner is not a coder. He cannot browse the file tree looking for what you di
 | New page checklist | `.claude/rules/new-page-standards.md` |
 | Communication / walkie-talkie / tags | `docs/references/communication.md` |
 | Token/tool control history + remaining levers | `docs/info/token-tool-control-history.md` |
+| **Claude subscription from a Python script** (no API key — boilerplate + gotchas for standalone mining/extraction scripts) | `docs/info/claude-subscription-from-python-script.md` |
 
 ## After Edits
 Commit changed files only (never `git add -A`). Clear message. Report files, hash, branch.

@@ -114,9 +114,10 @@ async def main() -> None:
             print("\n[SWEEP 0]  Taxonomy Discovery")
             taxonomy = await s0.run(cfg, dry_run=args.dry_run)
             cats = taxonomy.get("categories", [])
-            print(f"  → {len(cats)} categories:")
-            for c in cats:
-                print(f"      {c['name']}")
+            names = ", ".join(c["name"] for c in cats[:6])
+            if len(cats) > 6:
+                names += f", ... (+{len(cats) - 6} more)"
+            print(f"  → {len(cats)} categories: {names}")
 
             # Taxonomy gate: pause before Sweep 1 so user can review/edit
             gate_flag = output_dir / "_sweep0_gate_passed"
@@ -128,13 +129,12 @@ async def main() -> None:
             ):
                 taxonomy_path = output_dir / "taxonomy.json"
                 print()
-                print("  ┌─ TAXONOMY GATE ───────────────────────────────────────────────────────────┐")
-                print("  │  Sweep 0 complete. Open taxonomy.json, review the category list above.    │")
-                print("  │  You can ADD, REMOVE, or RENAME categories before extraction starts.      │")
-                print("  │  Each category becomes a section in your final truth document.            │")
-                print(f"  │  File: {str(taxonomy_path)}  │")
-                print("  │  Press Enter when ready to begin extraction (Sweep 1).                   │")
-                print("  └───────────────────────────────────────────────────────────────────────────┘")
+                print("  ┌─ TAXONOMY GATE ──────────────────────────────────────────────┐")
+                print("  │  Sweep 0 complete. Review (and optionally edit) taxonomy.json │")
+                print("  │  before Sweep 1 starts.                                       │")
+                print(f"  │  File: {str(taxonomy_path)[:56].ljust(56)} │")
+                print("  │  Press Enter when ready to begin extraction (Sweep 1).        │")
+                print("  └───────────────────────────────────────────────────────────────┘")
                 input("  > ")
                 gate_flag.write_text("passed", encoding="utf-8")
                 # Reload taxonomy in case user edited it

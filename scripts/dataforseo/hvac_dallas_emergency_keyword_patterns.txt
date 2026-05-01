@@ -1,0 +1,116 @@
+DISCOVERED SIGNAL PHRASES — sorted by frequency
+Use these to update MISSED_CALL_KEYWORDS in hvac_dallas_leads.py
+============================================================
+
+  (  1x)  They refuse to call me back & STILL haven’t called me back.
+  (  1x)  "I called multiple times to have their generated message"
+  (  1x)  "had to cancel and reschedule for 2 days later between 2-4pm"
+  (  1x)  "the technician still did not show up—even until 15 minutes before 10 AM"
+  (  1x)  they broke two scheduled appointments in the last minute
+  (  1x)  Office did not call me back all day
+  (  1x)  When I called them they said they weren’t responsible for that because it had been over a year.
+  (  1x)  they said they would not refund the deposit
+  (  1x)  "I scheduled a dryer vent cleaning and described where my dryer is located"
+  (  1x)  "they texted me that they could drop that price to $411"
+  (  1x)  "I called them at 3:45 to see when he is going to come."
+  (  1x)  I called for a month on and off and finally someone came out
+  (  1x)  "now they continue to spam me with calls and texts"
+  (  1x)  No call, no show.
+  (  1x)  cancelled my appointment three times
+  (  1x)  Never called or text to let me know they were not coming.
+  (  1x)  They never showed up.
+  (  1x)  No one has called me to try and address this.
+  (  1x)  "I had to follow up multiple times"
+  (  1x)  When I called them they said $79
+  (  1x)  "the only reason I found out the tech wasn't going to show up was because I had to call the business"
+  (  1x)  Wendy called me 2 days in a row
+  (  1x)  "quoted $99 on the phone"
+  (  1x)  When I called to inquire before scheduling, I was told 140 and maybe a bit higher.
+  (  1x)  I call, and it is explained to me that whoever took my call input the wrong phone number
+  (  1x)  The way they call you over and over and over again
+  (  1x)  They called and told me that they were too busy and too short handed
+  (  1x)  When I contacted them, they insisted it was a preexisting issue.
+  (  1x)  they wouldn't even give me a credit back because they actually never fixed it
+  (  1x)  "I asked them in text, but no response."
+  (  1x)  "They never showed up or give me a call saying they need to reschedule"
+  (  1x)  "several phone calls to the technician"
+  (  1x)  never received a follow-up
+  (  1x)  Little adequate communication
+  (  1x)  "hard to get responses to questions to our project manager"
+  (  1x)  "Later was that night and this guy says, “I’m not trying to cheat you”"
+  (  1x)  they wanted $89 to show up and another $150-$450 to do the leak check
+  (  1x)  "the receptionist was very rude"
+  (  1x)  "I did so.  By the time they got to my house, it was working again."
+  (  1x)  after rescheduling an appt two times
+  (  1x)  We never got
+  (  1x)  they never rescheduled with me to complete issue discovery
+  (  1x)  "BACK AND FORTH TO MY PARENT'S HOME ABOUT TWO DOZEN OR SO TIMES"
+  (  1x)  I was not able to talk to a manger they kept passing me around.
+  (  1x)  the Spanish guy dont help me at all
+  (  1x)  have not seen them yet
+  (  1x)  "I called, and they squeezed me in that afternoon"
+  (  1x)  They didn’t have it.
+  (  1x)  When I called this business, the service manager only wanted to discuss about the blame.
+  (  1x)  First guy sent out refused give breakdown for part/labor
+  (  1x)  "Troy, refused to write me a report"
+  (  1x)  "I am wondering it is not a rocket science and what kind of research they are doing?"
+  (  1x)  which they could not provide even after giving specific details
+  (  1x)  does not honor warranties trust me call anyone but these people
+  (  1x)  "the tech told me which one to order from Amazon"
+  (  1x)  "Very recently their customer service is not great at all"
+  (  1x)  "give me an estimate over the phone because he was an hour away"
+  (  1x)  He is the guy who I never want to meet again.
+  (  1x)  "tons of problems"
+  (  1x)  Left me high and dry.
+  (  1x)  "I was contacted saying that no technician is available"
+  (  1x)  Their lack of response, cost us money.
+  (  1x)  Find someone else.
+  (  1x)  "they never got back to us"
+  (  1x)  "multiple calls to dispatch a technician for my scheduled appointment"
+  (  1x)  "Called city of Denton and they came out for free & checked main line & said it was clear."
+  (  1x)  "they laughed ... well laugh at this review !"
+  (  1x)  the guy called me on way and asked more about quote
+  (  1x)  They don’t really care about your safety and well being and wouldn’t even call us back
+  (  1x)  "The repair process has involved multiple reschedules due to incorrect parts being ordered."
+  (  1x)  "unprofessional treatment and rudeness while attempting to resolve an issue"
+  (  1x)  Refused to give me any sort of price estimate over the phone.
+  (  1x)  after many excuses, we were persuaded to go with a Daikin
+  (  1x)  "We started calling them at 8am the day of the appointment and never got a call back."
+  (  1x)  Numerous calls to them go into a automation loop
+  (  1x)  no one ever called back
+  (  1x)  They did not call I call twice a day for a week trying to get them to come out
+  (  1x)  "Called back to have them come out, they said they would send the same tech out"
+  (  1x)  "my call has been dropped 3 times"
+  (  1x)  "I was initially impressed by their promptness in sending a technician the following day"
+  (  1x)  "the unfriendly staff kept saying “The technician is just finishing he will be"
+  (  1x)  They quoted me a compressor for 10000$
+  (  1x)  Spent some time on that !
+  (  1x)  "After the A#1 answer below I tried to call twice and they hang out the phone"
+  (  1x)  "We never asked for a weekend appointment or told anyone it was an emergency."
+  (  1x)  multiple calls and emails later
+  (  1x)  Do not call them.
+  (  1x)  At one point when we got upset
+  (  1x)  They said someone would call between 8 am and 5pm today and no one called.
+  (  1x)  They keep asking how they did, well since they haven't done anything
+  (  1x)  "was told pricing couldn’t be shared over the phone"
+  (  1x)  "he commented that it was due to being “di"
+  (  1x)  I have been waiting for a $2,000 refund for weeks now.
+  (  1x)  They insisted I pay an $89 service call fee
+  (  1x)  We have never heard back from anyone at A#1 Air.
+  (  1x)  "I called two more times only for the automated system to confirm my appointment."
+  (  1x)  "when i called them they wanted to charge a $85 service fee"
+  (  1x)  "the tech lied about coming out and what he did on a Friday"
+  (  1x)  "No one showed up."
+  (  1x)  "he no-showed"
+  (  1x)  Frank said he would call back in 15 mins and never did
+  (  1x)  No communication.
+  (  1x)  they said they would call back but never did
+  (  1x)  they never got back with me
+  (  1x)  "Called out another HVAC technician, over $1500 in damages from Jade Air."
+  (  1x)  Around 2PM  I called and was told they were still coming
+  (  1x)  couldn’t get these guys to come out. And actually show up.
+  (  1x)  They rescheduled on me 5 times, I left work early three of the times to meet them.
+  (  1x)  They never called.
+  (  1x)  Never received a call.
+  (  1x)  Awful answering service
+  (  1x)  I did have a little trouble at first with the ability of the call center they use

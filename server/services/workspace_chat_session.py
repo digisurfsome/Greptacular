@@ -2059,6 +2059,26 @@ class WorkspaceChatSession:
                 # but still rolled into the ResultMessage total.
                 _parent_id = getattr(msg, "parent_tool_use_id", None)
                 _msg_usage = getattr(msg, "usage", None)
+                # Diagnostic: this prints on every AssistantMessage so we can
+                # see WHY main-agent-only capture is or isn't firing. One line
+                # per turn — safe to leave in production for now while the
+                # header token badge is being validated.
+                try:
+                    _usage_kind = type(_msg_usage).__name__
+                    _usage_keys = (
+                        list(_msg_usage.keys())[:6]
+                        if isinstance(_msg_usage, dict)
+                        else None
+                    )
+                    logger.info(
+                        "[TOKEN-CAPTURE] parent_tool_use_id=%s usage_type=%s "
+                        "usage_keys=%s is_dict=%s will_capture=%s",
+                        _parent_id, _usage_kind, _usage_keys,
+                        isinstance(_msg_usage, dict),
+                        _parent_id is None and isinstance(_msg_usage, dict),
+                    )
+                except Exception:
+                    pass
                 if _parent_id is None and isinstance(_msg_usage, dict):
                     self._last_main_usage = {
                         "input_tokens": _msg_usage.get("input_tokens") or 0,

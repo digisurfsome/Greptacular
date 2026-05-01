@@ -1,0 +1,105 @@
+DISCOVERED SIGNAL PHRASES — sorted by frequency
+Use these to update MISSED_CALL_KEYWORDS in hvac_dallas_leads.py
+============================================================
+
+  (  1x)  "Later was that night and this guy says, “I’m not trying to cheat you”"
+  (  1x)  they wanted $89 to show up and another $150-$450 to do the leak check
+  (  1x)  "I did so.  By the time they got to my house, it was working again."
+  (  1x)  We never got
+  (  1x)  they never rescheduled with me to complete issue discovery
+  (  1x)  I was not able to talk to a manger they kept passing me around.
+  (  1x)  he just want to go home for the day
+  (  1x)  He did not bring all of the required filters, but said he would drop them off later this week.
+  (  1x)  I was told that a TXV, which I guess acts like a filter for the Freon needed replacing
+  (  1x)  didn't take couple minutes to answer problems I had
+  (  1x)  "even with their [they] took over a month"
+  (  1x)  "After about 5 calls to get them to come out"
+  (  1x)  never received a call back in an entire week
+  (  1x)  "I called to schedule Spring 2023 preventative maintenance, but they wanted to book me more than a month out"
+  (  1x)  "a technician will contact you shortly and no one contacts me"
+  (  1x)  "4 calls by me in 2 days. No call back yesterday afternoon once again."
+  (  1x)  waited for more than 5 hours for the call
+  (  1x)  After calling another company, they opened the coil and we could
+  (  1x)  they basically said they no more offer either option
+  (  1x)  "No one had contacted me at 537pm so I called the company"
+  (  1x)  "When i called them back they made it a point advise me of a trip charge"
+  (  1x)  "guaranteed to get a call back from a technician which never happened"
+  (  1x)  We called around 11 am and was told that they were sending a message to the technician to give us a call for the second time.
+  (  1x)  they pay for these fake reviews that hold absolutely no merit
+  (  1x)  I could never get a call back from them
+  (  1x)  they’ll call a tech and that they will call me back and never call back.
+  (  1x)  Never did call back.
+  (  1x)  Said someone with call me in 30 minutes.
+  (  1x)  they had no answer
+  (  1x)  She hung up the phone on me when I tried to explain
+  (  1x)  "still haven’t heard back from anyone"
+  (  1x)  The CSR promised that the Manager will call me back by end of the Monday
+  (  1x)  not a single phone call
+  (  1x)  "right away" was 10 hours ago
+  (  1x)  They install through builders but do not service their customers.
+  (  1x)  didn’t have the courtesy to call and confirm they were running late
+  (  1x)  Worst service
+  (  1x)  After calling them 4 times and they said they would have someone reach out to me.
+  (  1x)  The trust between me and the company was violated no one care.
+  (  1x)  I then received a text at 3:30pm saying the tech was on his way.
+  (  1x)  I was told someone would call me on Friday, even waited 48 hours and no one called.
+  (  1x)  I was then troubled by how their representative
+  (  1x)  "he called his supervisor for a second opinion"
+  (  1x)  "I told them yesterday evening over the phone"
+  (  1x)  no one answered my calls or texts
+  (  1x)  They no-showed again , no call , no nothing .
+  (  1x)  I have called 3 times and each time the agent says yes
+  (  1x)  "Over the phone, despite not having seen the unit, they immediately suggested"
+  (  1x)  "sell me the job over the phone without even coming to see the job"
+  (  1x)  Have called again said tomorrow between 8- 11
+  (  1x)  can not get anyone to answer calls
+  (  1x)  Calling the office i get a "we'll call you back"
+  (  1x)  Never called to acknowledge any issues with meeting the time.
+  (  1x)  "I could have done that over the phone at the office"
+  (  1x)  "multiple threatening phone calls"
+  (  1x)  He will not answer my phone calls
+  (  1x)  He replaced the battery in my water heater detector (I had to provide the batteries)
+  (  1x)  after contacting the company they said the tech would arrive later that day
+  (  1x)  They ask you to repeat all of your account information each time
+  (  1x)  "Had to call them when the supervisor didn’t show up"
+  (  1x)  "I spoke with dispatch yesterday and a rush was placed on the order"
+  (  1x)  Expecting to scam us in to unnecessar
+  (  1x)  "multiple calls"
+  (  1x)  "Multiple calls later, after multiple reschedules(!)"
+  (  1x)  "Called these guys for a gas leak repair"
+  (  1x)  "I got transferred to someone who began asking about my A/C units"
+  (  1x)  We have reached out over 100 times
+  (  1x)  said they would be right over for an emergency call and it took them 4 hours
+  (  1x)  when you want to question what they charged you
+  (  1x)  they were under warranty and didn’t contact us for over 2 business days
+  (  1x)  Laughed at me on the phone when I called for a service for the same day.
+  (  1x)  I have been sitting around since 11:30 AM, called two or three times.
+  (  1x)  "Was given a 10-2 window today.  It's 4:00 and still tech is not here."
+  (  1x)  no messag, no text and I NEVER received it
+  (  1x)  We have been leaving messages since this morning.
+  (  1x)  When I called this business, the service manager only wanted to discuss about the blame.
+  (  1x)  "Troy, refused to write me a report"
+  (  1x)  it is already 8:35 pm but i haven't received any call
+  (  1x)  which they could not provide even after giving specific details
+  (  1x)  does not honor warranties trust me call anyone but these people
+  (  1x)  "they don’t give me my money back because this company’s installer installed it"
+  (  1x)  "Very recently their customer service is not great at all"
+  (  1x)  didn't want to waist time driving an hour
+  (  1x)  Left me high and dry.
+  (  1x)  no technician is available - and I would need to be rescheduled
+  (  1x)  Their lack of response
+  (  1x)  We contacted BillyGO at 11 and tried to find out when the crew would show up
+  (  1x)  "multiple calls to dispatch a technician for my scheduled appointment"
+  (  1x)  no charge for service call
+  (  1x)  he no-showed
+  (  1x)  Frank said he would call back in 15 mins and never did
+  (  1x)  No communication.
+  (  1x)  they said they would call back but never did
+  (  1x)  they never got back with me
+  (  1x)  Around 2PM I called and was told they were still coming
+  (  1x)  couldn’t get these guys to come out. And actually show up.
+  (  1x)  They rescheduled on me 5 times
+  (  1x)  They never called.
+  (  1x)  Never received a call.
+  (  1x)  Awful answering service
+  (  1x)  the ability of the call center they use to get me through to the right people

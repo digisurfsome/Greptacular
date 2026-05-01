@@ -28,7 +28,7 @@ os.environ.pop("CLAUDECODE", None)
 
 # Sibling import: channel_brain/_claude.py
 sys.path.insert(0, str(Path(__file__).parent.parent / "channel_brain"))
-from _claude import call_claude_stdin, preflight, parse_json  # noqa: E402
+from _claude import call_claude_stdin, preflight, parse_json, preprocess_transcript  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Tiktoken for transcript chunking
@@ -71,8 +71,41 @@ CHUNK_TOKENS = 1500    # tokens per Claude call
 CHUNK_OVERLAP = 200    # token overlap between chunks
 CHUNK_CHAR_CAP = 5000  # char threshold above which we chunk
 
-EXTRACTION_PROMPT = """\
+EXTRACTION_PROMPT_LABELED = """\
 You are reading a transcript of a real sales call or cold call recording.
+Speakers are labeled: SELLER = salesperson, PROSPECT = customer/lead.
+
+Extract EVERY exchange where PROSPECT says something and SELLER responds.
+Capture VERBATIM — exact words, no paraphrasing, no summarizing.
+Include ALL exchanges — openers, objections, questions, small talk that advances the call, closes.
+Do NOT skip exchanges because they seem minor or repetitive.
+
+For each exchange, assign ONE label from this list:
+  opener, missed-call-pitch, pricing-objection, ai-skepticism, human-touch-objection,
+  competitor-mention, discovery-question, demo-request, close-attempt, misc
+
+Return ONLY raw JSON, no markdown fences:
+{
+  "exchanges": [
+    {
+      "prospect": "exact PROSPECT words verbatim",
+      "sales": "exact SELLER response verbatim",
+      "label": "one label from the list above"
+    }
+  ]
+}
+
+If this is clearly NOT a sales call (tutorial, monologue, no PROSPECT lines), return:
+{"exchanges": [], "not_a_call": true}
+
+TRANSCRIPT:
+"""
+
+EXTRACTION_PROMPT_PLAIN = """\
+You are reading a transcript of a real sales call or cold call recording.
+There are no speaker labels — infer who is the salesperson vs the prospect from context.
+The salesperson is usually asking questions, pitching, handling objections.
+The prospect is usually asking questions, expressing doubts, or responding briefly.
 
 Extract EVERY exchange where a prospect/customer says something and the salesperson responds.
 Capture VERBATIM — exact words, no paraphrasing, no summarizing.
@@ -87,8 +120,8 @@ Return ONLY raw JSON, no markdown fences:
 {
   "exchanges": [
     {
-      "prospect": "exact prospect words",
-      "sales": "exact salesperson response",
+      "prospect": "exact prospect words verbatim",
+      "sales": "exact salesperson response verbatim",
       "label": "one label from the list above"
     }
   ]
@@ -209,15 +242,27 @@ def _parse_exchanges(raw: str) -> list[dict]:
 async def extract_from_video(folder: Path, label: str) -> list[dict]:
     """Extract all exchanges from one video folder's transcript."""
     t_path = folder / "transcript.txt"
-    transcript = t_path.read_text(encoding="utf-8", errors="replace").strip()
+    raw_transcript = t_path.read_text(encoding="utf-8", errors="replace").strip()
 
-    if len(transcript) < 200:
-        print(f"  skipping — transcript too short ({len(transcript)} chars)")
+    if len(raw_transcript) < 200:
+        print(f"  skipping — transcript too short ({len(raw_transcript)} chars)")
         return []
+
+    # Detect speaker format, extract call window, normalize labels
+    transcript, fmt = preprocess_transcript(raw_transcript)
+    prompt_template = EXTRACTION_PROMPT_PLAIN if fmt == "plain" else EXTRACTION_PROMPT_LABELED
+
+    if fmt != "plain":
+        # Show how much narration we stripped
+        stripped = len(raw_transcript) - len(transcript)
+        if stripped > 200:
+            print(f"[{fmt}, stripped {stripped:,} chars narration] ", end="", flush=True)
+        else:
+            print(f"[{fmt}] ", end="", flush=True)
 
     # Short transcripts: single call
     if len(transcript) <= CHUNK_CHAR_CAP:
-        prompt = EXTRACTION_PROMPT + transcript
+        prompt = prompt_template + transcript
         raw = await call_claude_stdin(prompt, label=label)
         if not raw:
             raise RuntimeError("Claude returned empty response")
@@ -233,7 +278,7 @@ async def extract_from_video(folder: Path, label: str) -> list[dict]:
 
     for ci, chunk in enumerate(chunks):
         chunk_label = f"{label}-c{ci + 1}"
-        prompt = EXTRACTION_PROMPT + chunk
+        prompt = prompt_template + chunk
         raw = await call_claude_stdin(prompt, label=chunk_label)
         if not raw:
             print(f"  chunk {ci + 1}/{len(chunks)} returned nothing", flush=True)

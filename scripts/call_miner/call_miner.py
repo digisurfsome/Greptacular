@@ -83,6 +83,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "channel_brain"))
 from _claude import (
     preflight, call_claude_stdin, parse_json,
     load_config, load_progress, save_progress, cleanup_scratch,
+    preprocess_transcript,
 )
 
 # Optional embeddings
@@ -606,9 +607,22 @@ async def extract_video_exchanges(
     t_path = folder / "transcript.txt"
     if not t_path.exists():
         return []
-    transcript = t_path.read_text(encoding="utf-8", errors="replace").strip()
-    if len(transcript) < 200:
+    raw_transcript = t_path.read_text(encoding="utf-8", errors="replace").strip()
+    if len(raw_transcript) < 200:
         return []
+
+    # Detect speaker format, strip narration, normalize to SELLER:/PROSPECT: labels
+    transcript, fmt = preprocess_transcript(raw_transcript)
+    stripped = len(raw_transcript) - len(transcript)
+    if fmt != "plain" and stripped > 200:
+        print(f"[{fmt}, -{stripped:,}c narration] ", end="", flush=True)
+    elif fmt != "plain":
+        print(f"[{fmt}] ", end="", flush=True)
+
+    # Extend prompt with speaker context when labels are present
+    speaker_note = ""
+    if fmt != "plain":
+        speaker_note = "\nSPEAKER LABELS: SELLER = salesperson, PROSPECT = customer/lead.\n"
 
     info_path = folder / "info.md"
     info = info_path.read_text(encoding="utf-8", errors="replace")[:300] if info_path.exists() else ""
@@ -617,6 +631,7 @@ async def extract_video_exchanges(
     types_str    = "\n".join(f"  - {t}" for t in interaction_type_names)
     header       = (
         EXTRACT_PROMPT
+        + speaker_note
         + f"\n\nINTERACTION TYPE SLUGS (use exact):\n{types_str}"
         + f"\n\n--- VIDEO INFO ---\n{info.strip()}"
         + "\n\n--- TRANSCRIPT SEGMENT ---\n"

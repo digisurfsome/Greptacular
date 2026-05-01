@@ -52,6 +52,27 @@ import time
 from collections import defaultdict
 from pathlib import Path
 
+# Tiktoken for transcript chunking (avoids exit 15 on long call transcripts)
+try:
+    import tiktoken
+    _ENC = tiktoken.get_encoding("cl100k_base")
+    def _token_count(s: str) -> int: return len(_ENC.encode(s))
+    def _chunk_text(text: str, max_tokens: int = 4000, overlap: int = 400) -> list[str]:
+        tokens = _ENC.encode(text)
+        chunks, i = [], 0
+        while i < len(tokens):
+            chunk_tokens = tokens[i:i + max_tokens]
+            chunks.append(_ENC.decode(chunk_tokens))
+            i += max_tokens - overlap
+        return chunks
+    TIKTOKEN_AVAILABLE = True
+except ImportError:
+    TIKTOKEN_AVAILABLE = False
+    def _chunk_text(text: str, max_tokens: int = 4000, overlap: int = 400) -> list[str]:
+        # Char-based fallback (~4 chars per token)
+        size, step = max_tokens * 4, (max_tokens - overlap) * 4
+        return [text[i:i + size] for i in range(0, len(text), step)] or [text]
+
 # Pop at import — prevents CLAUDECODE=1 poisoning nested claude processes
 os.environ.pop("CLAUDECODE", None)
 
@@ -250,6 +271,35 @@ Return ONLY raw JSON, no markdown fences:
 }}"""
 
 
+CHUNK_TOKENS   = 4000   # tokens per Claude call (safe for subscription auth)
+CHUNK_OVERLAP  = 400    # token overlap between chunks (preserves cross-boundary exchanges)
+CHUNK_CHAR_CAP = 18000  # char threshold above which we chunk (short calls run as-is)
+
+
+def _parse_exchanges(raw: str, valid_types: set, folder_name: str, source_title: str) -> list[dict]:
+    parsed = parse_json(raw)
+    if not parsed or not isinstance(parsed, dict) or "exchanges" not in parsed:
+        return []
+    results = []
+    for ex in parsed["exchanges"]:
+        sp = (ex.get("salesperson_response") or "").strip()
+        if not sp:
+            continue
+        itype = ex.get("interaction_type", "misc-objection")
+        if itype not in valid_types:
+            itype = "misc-objection"
+        results.append({
+            "prospect_line":        (ex.get("prospect_line") or "").strip(),
+            "salesperson_response": sp,
+            "interaction_type":     itype,
+            "outcome":              ex.get("outcome", "stalled"),
+            "context_note":         (ex.get("context_note") or "").strip(),
+            "source_folder":        folder_name,
+            "source_video":         source_title,
+        })
+    return results
+
+
 async def extract_video_exchanges(
     folder: Path,
     interaction_type_names: list[str],
@@ -265,43 +315,43 @@ async def extract_video_exchanges(
     info_path = folder / "info.md"
     info = info_path.read_text(encoding="utf-8", errors="replace")[:300] if info_path.exists() else ""
     source_title = info.split("\n")[0].strip() if info else folder.name
-
-    types_str = "\n".join(f"  - {t}" for t in interaction_type_names)
-
-    prompt = (
+    valid_types  = set(interaction_type_names)
+    types_str    = "\n".join(f"  - {t}" for t in interaction_type_names)
+    header       = (
         EXTRACT_PROMPT
         + f"\n\nINTERACTION TYPE SLUGS (use exact):\n{types_str}"
         + f"\n\n--- VIDEO INFO ---\n{info.strip()}"
-        + f"\n\n--- TRANSCRIPT ---\n{transcript}"
+        + "\n\n--- TRANSCRIPT SEGMENT ---\n"
     )
 
-    raw = await call_claude_stdin(prompt, label=label)
-    if not raw:
-        return []
+    # Short transcripts: single call (fast, no chunking overhead)
+    if len(transcript) <= CHUNK_CHAR_CAP:
+        prompt = header + transcript
+        raw = await call_claude_stdin(prompt, label=label)
+        return _parse_exchanges(raw or "", valid_types, folder.name, source_title) if raw else []
 
-    parsed = parse_json(raw)
-    if not parsed or not isinstance(parsed, dict) or "exchanges" not in parsed:
-        return []
+    # Long transcripts (60-min cold calls etc): chunk to avoid exit 15
+    chunks = _chunk_text(transcript, max_tokens=CHUNK_TOKENS, overlap=CHUNK_OVERLAP)
+    print(f"(chunking {len(transcript):,} chars → {len(chunks)} segments)", end=" ", flush=True)
 
-    valid_types = set(interaction_type_names)
-    results = []
-    for ex in parsed["exchanges"]:
-        sp = (ex.get("salesperson_response") or "").strip()
-        if not sp:
+    all_results: list[dict] = []
+    seen_pairs: set[tuple] = set()  # dedup exact duplicates across chunk boundaries
+
+    for ci, chunk in enumerate(chunks):
+        chunk_label = f"{label}-c{ci+1}"
+        prompt = header + chunk
+        raw = await call_claude_stdin(prompt, label=chunk_label)
+        if not raw:
             continue
-        itype = ex.get("interaction_type", "misc-objection")
-        if itype not in valid_types:
-            itype = "misc-objection"
-        results.append({
-            "prospect_line":        (ex.get("prospect_line") or "").strip(),
-            "salesperson_response": sp,
-            "interaction_type":     itype,
-            "outcome":              ex.get("outcome", "stalled"),
-            "context_note":         (ex.get("context_note") or "").strip(),
-            "source_folder":        folder.name,
-            "source_video":         source_title,
-        })
-    return results
+        chunk_results = _parse_exchanges(raw, valid_types, folder.name, source_title)
+        for ex in chunk_results:
+            key = (ex["prospect_line"][:80], ex["salesperson_response"][:80])
+            if key not in seen_pairs:
+                seen_pairs.add(key)
+                all_results.append(ex)
+        await asyncio.sleep(1)  # brief pause between chunks
+
+    return all_results
 
 
 async def sweep1_extract(

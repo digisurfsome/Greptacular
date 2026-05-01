@@ -37,8 +37,9 @@ DG_PARAMS = {
     "smart_format": "true",
     "punctuate":    "true",
     "utterances":   "true",
+    "diarize":      "true",   # Speaker 0: / Speaker 1: labels in output
 }
-COST_PER_SECOND = 0.0043 / 60   # $0.0043/min → $/sec
+COST_PER_SECOND = 0.0047 / 60   # $0.0047/min (nova-3 $0.0043 + diarize $0.0004)
 MAX_WORKERS     = 5
 BACKOFF_DELAYS  = [5, 10, 20, 40, 80]   # seconds between retries
 
@@ -186,7 +187,19 @@ def transcribe_file(mp3_path: Path, api_key: str) -> dict:
             resp.raise_for_status()
             data = resp.json()
 
-            transcript = data["results"]["channels"][0]["alternatives"][0]["transcript"]
+            # Build speaker-labeled transcript from utterances (diarization)
+            utterances = data["results"].get("utterances", [])
+            if utterances:
+                lines = []
+                for u in utterances:
+                    spk = u.get("speaker", 0)
+                    txt = u.get("transcript", "").strip()
+                    if txt:
+                        lines.append(f"Speaker {spk}: {txt}")
+                transcript = "\n".join(lines)
+            else:
+                # Fallback: flat transcript (diarization had no data)
+                transcript = data["results"]["channels"][0]["alternatives"][0]["transcript"]
             duration_sec = parse_duration(data)
             cost = duration_sec * COST_PER_SECOND
 

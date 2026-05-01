@@ -679,7 +679,13 @@ async def sweep1_extract(
             print(f"  Skipping {len(skip_folders)} not_a_call videos from pre-filter")
 
     folders = _get_video_folders(videos_dir, cfg.get("call_filter_keywords", []))
-    done_names = {f.stem for f in exchanges_dir.glob("*.jsonl")}
+
+    # "Done" = has exchanges (non-empty) OR intentionally skipped as not_a_call.
+    # Empty files from failed/0-exchange confirmed videos are NOT done — retry them.
+    done_names: set[str] = set()
+    for f in exchanges_dir.glob("*.jsonl"):
+        if f.stat().st_size > 0 or f.stem in skip_folders:
+            done_names.add(f.stem)
 
     # Write empty JSONL for skipped videos so they're marked done
     for folder in folders:

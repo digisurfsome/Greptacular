@@ -155,7 +155,7 @@ async def sweep0_taxonomy(cfg: dict, dry_run: bool = False) -> dict:
     output_dir    = Path(cfg["output_dir"])
     videos_dir    = Path(cfg["videos_dir"])
     taxonomy_path = output_dir / "taxonomy.json"
-    sample_n      = int(cfg.get("taxonomy_sample_n", 8))
+    sample_n      = int(cfg.get("taxonomy_sample_n", 4))
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -179,7 +179,7 @@ async def sweep0_taxonomy(cfg: dict, dry_run: bool = False) -> dict:
     samples = []
     for folder in sampled:
         t = (folder / "transcript.txt").read_text(encoding="utf-8", errors="replace")
-        samples.append(f"=== {folder.name} ===\n{t[:5000].strip()}")
+        samples.append(f"=== {folder.name} ===\n{t[:2000].strip()}")
 
     print(f"  Sampled {len(samples)} call transcripts for taxonomy analysis", flush=True)
 
@@ -564,9 +564,9 @@ Return ONLY raw JSON, no markdown fences:
 }}"""
 
 
-CHUNK_TOKENS   = 4000   # tokens per Claude call (safe for subscription auth)
-CHUNK_OVERLAP  = 400    # token overlap between chunks (preserves cross-boundary exchanges)
-CHUNK_CHAR_CAP = 18000  # char threshold above which we chunk (short calls run as-is)
+CHUNK_TOKENS   = 1500   # tokens per Claude call (safe for subscription auth — header ~700 + 1500 = ~2200 total)
+CHUNK_OVERLAP  = 200    # token overlap between chunks (preserves cross-boundary exchanges)
+CHUNK_CHAR_CAP = 5000   # char threshold above which we chunk (short calls run as-is)
 
 
 def _parse_exchanges(raw: str, valid_types: set, folder_name: str, source_title: str,

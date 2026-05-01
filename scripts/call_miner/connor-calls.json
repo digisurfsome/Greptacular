@@ -9,7 +9,7 @@
   "call_filter_keywords": ["cold-call", "cold-calling", "live", "call-", "-call", "sales-call", "demo", "calling"],
 
   "taxonomy_gate":      true,
-  "taxonomy_sample_n":  8,
+  "taxonomy_sample_n":  4,
 
   "cluster_mode":        "llm",
   "llm_batch_size":      25,

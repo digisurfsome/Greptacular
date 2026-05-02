@@ -78,8 +78,11 @@ MODEL        = "claude-sonnet-4-5-20250929"   # Sonnet 4.6
 CALL_TIMEOUT = 300                            # 5 min — truth builder needs more headroom than mining
 RETRY_DELAYS = [5, 15, 30]                    # backoff on exit 15 / exit 3
 
-# No prompt size caps — stdin pipe bypasses Windows 32K arg limit entirely.
-# Full transcript + full truth_doc passed on every call.
+# Subscription auth layer limit: ~35K chars total prompt.
+# When combined prompt (truth_doc + transcript + overhead) exceeds this,
+# transcript is automatically chunked so each call stays under the limit.
+MAX_PROMPT_CHARS   = 32_000   # safe ceiling for subscription auth layer
+PROMPT_OVERHEAD    = 2_500    # system prompt + labels + JSON instructions
 
 CLAUDE_CLI: str = ""
 
@@ -435,6 +438,24 @@ def parse_response(raw: str) -> dict:
     return {"has_new_info": False, "updates": {}, "video_summary": "Parse error — skipped"}
 
 
+def chunk_transcript(transcript: str, chunk_size: int, overlap: int = 200) -> list[str]:
+    """Split transcript into overlapping chunks of at most chunk_size chars."""
+    if len(transcript) <= chunk_size:
+        return [transcript]
+    chunks = []
+    start = 0
+    while start < len(transcript):
+        end = start + chunk_size
+        if end < len(transcript):
+            # Break at last newline before end to avoid mid-sentence splits
+            boundary = transcript.rfind("\n", start, end)
+            if boundary > start:
+                end = boundary
+        chunks.append(transcript[start:end])
+        start = end - overlap
+    return chunks
+
+
 def build_combined_prompt(
     system_prompt: str,
     folder_name: str,
@@ -684,49 +705,89 @@ async def run(topic_name: str, limit: int, dry_run: bool) -> None:
             except Exception:
                 pass
 
-        # Build combined prompt (capped to fit Windows arg limits)
-        combined_prompt = build_combined_prompt(
-            system_prompt=system_prompt,
-            folder_name=folder_name,
-            info_text=info_text,
-            transcript=transcript,
-            truth_doc=truth_doc,
-        )
-        print(f"  Prompt: {len(combined_prompt):,} chars | transcript: {len(transcript):,} chars | truth_doc: {len(truth_doc):,} chars", flush=True)
+        # Calculate available chars for transcript this call
+        # MAX_PROMPT_CHARS = ceiling for subscription auth layer
+        # Available = ceiling - truth_doc - overhead - info_text
+        available = MAX_PROMPT_CHARS - len(truth_doc) - PROMPT_OVERHEAD - min(len(info_text), 1000)
+        available = max(available, 3000)  # floor: always allow at least 3K chars
 
-        # Call Claude
-        call_start = time.time()
-        raw_response = await call_claude(combined_prompt, folder_name)
-        elapsed = time.time() - call_start
+        # Chunk transcript if it won't fit in one call
+        chunks = chunk_transcript(transcript, chunk_size=available)
+        n_chunks = len(chunks)
+        if n_chunks > 1:
+            print(f"  Chunking: {len(transcript):,} chars → {n_chunks} segments (available/chunk: {available:,})", flush=True)
+        else:
+            est_total = len(truth_doc) + len(transcript) + PROMPT_OVERHEAD
+            print(f"  Prompt: ~{est_total:,} chars | transcript: {len(transcript):,} chars | truth_doc: {len(truth_doc):,} chars", flush=True)
 
-        if not raw_response:
-            print(f"  ⚠  Empty response after {elapsed:.1f}s — skipping (not marked done, will retry on re-run)")
-            append_log(log_path, f"ERROR: {folder_name} | empty response after {elapsed:.1f}s")
+        video_has_new = False
+        video_summary = ""
+        video_failed_chunks = 0
+
+        for chunk_idx, t_chunk in enumerate(chunks, 1):
+            chunk_label = f"{folder_name} [{chunk_idx}/{n_chunks}]" if n_chunks > 1 else folder_name
+
+            # Rebuild combined prompt with current truth_doc (grows across chunks)
+            combined_prompt = build_combined_prompt(
+                system_prompt=system_prompt,
+                folder_name=chunk_label,
+                info_text=info_text if chunk_idx == 1 else "",
+                transcript=t_chunk,
+                truth_doc=truth_doc,
+            )
+
+            call_start = time.time()
+            raw_response = await call_claude(combined_prompt, chunk_label)
+            elapsed = time.time() - call_start
+
+            if not raw_response:
+                print(f"  ⚠  Chunk {chunk_idx}/{n_chunks} empty after {elapsed:.1f}s — skipping chunk", flush=True)
+                video_failed_chunks += 1
+                await asyncio.sleep(3)
+                continue
+
+            result = parse_response(raw_response)
+            has_new = result.get("has_new_info", False)
+            summary = result.get("video_summary", "")
+            updates = result.get("updates", {})
+
+            if has_new and updates:
+                truth_doc = merge_updates(truth_doc, updates, sections)
+                save_truth_doc(truth_doc_path, truth_doc)
+                if section_slugs:
+                    try:
+                        write_per_section_files(truth_doc, output_dir, sections, section_slugs)
+                    except Exception as e:
+                        print(f"  ⚠  Per-section file split failed: {e}", flush=True)
+                n_updated = sum(1 for v in updates.values() if v and str(v).strip().lower() not in ("null", "none", ""))
+                print(f"  ✓ chunk {chunk_idx}/{n_chunks} — {n_updated} section(s) updated | {summary}", flush=True)
+                video_has_new = True
+                if not video_summary:
+                    video_summary = summary
+            else:
+                print(f"  ✓ chunk {chunk_idx}/{n_chunks} — no new info | {summary}", flush=True)
+                if not video_summary:
+                    video_summary = summary
+
+            # Recalculate available for next chunk (truth_doc may have grown)
+            if chunk_idx < n_chunks:
+                available = max(MAX_PROMPT_CHARS - len(truth_doc) - PROMPT_OVERHEAD, 3000)
+
+            await asyncio.sleep(1)
+
+        # Mark video done only if ALL chunks succeeded (or at least 1 succeeded)
+        if video_failed_chunks == n_chunks:
+            print(f"  ⚠  All {n_chunks} chunks failed — skipping (will retry on re-run)", flush=True)
+            append_log(log_path, f"ERROR: {folder_name} | all {n_chunks} chunks failed")
             await asyncio.sleep(3)
             continue
 
-        print(f"  Response: {len(raw_response):,} chars in {elapsed:.1f}s", flush=True)
-
-        # Parse
-        result = parse_response(raw_response)
-        has_new = result.get("has_new_info", False)
-        summary = result.get("video_summary", "")
-        updates = result.get("updates", {})
-
-        if has_new and updates:
-            truth_doc = merge_updates(truth_doc, updates, sections)
-            save_truth_doc(truth_doc_path, truth_doc)
-            if section_slugs:
-                try:
-                    write_per_section_files(truth_doc, output_dir, sections, section_slugs)
-                except Exception as e:
-                    print(f"  ⚠  Per-section file split failed: {e}", flush=True)
-            n_updated = sum(1 for v in updates.values() if v and str(v).strip().lower() not in ("null", "none", ""))
-            print(f"  ✓ NEW INFO — {n_updated} section(s) updated | {summary}", flush=True)
-            append_log(log_path, f"DONE: {folder_name} | NEW INFO | {summary}")
+        if video_has_new:
+            print(f"  → Video done: NEW INFO added", flush=True)
+            append_log(log_path, f"DONE: {folder_name} | NEW INFO | {video_summary}")
         else:
-            print(f"  ✓ No new info | {summary}", flush=True)
-            append_log(log_path, f"DONE: {folder_name} | no new info | {summary}")
+            print(f"  → Video done: no new info", flush=True)
+            append_log(log_path, f"DONE: {folder_name} | no new info | {video_summary}")
 
         # Brief pause between videos to avoid rate limiting
         await asyncio.sleep(2)

@@ -81,8 +81,9 @@ RETRY_DELAYS = [5, 15, 30]                    # backoff on exit 15 / exit 3
 # Subscription auth layer limit: ~35K chars total prompt.
 # When combined prompt (truth_doc + transcript + overhead) exceeds this,
 # transcript is automatically chunked so each call stays under the limit.
-MAX_PROMPT_CHARS   = 32_000   # safe ceiling for subscription auth layer
+MAX_PROMPT_CHARS   = 60_000   # subscription auth layer tolerates ~60K on most calls
 PROMPT_OVERHEAD    = 2_500    # system prompt + labels + JSON instructions
+TRANSCRIPT_CAP     = 8_000    # hard cap per chunk regardless of available space
 
 CLAUDE_CLI: str = ""
 
@@ -709,7 +710,7 @@ async def run(topic_name: str, limit: int, dry_run: bool) -> None:
         # MAX_PROMPT_CHARS = ceiling for subscription auth layer
         # Available = ceiling - truth_doc - overhead - info_text
         available = MAX_PROMPT_CHARS - len(truth_doc) - PROMPT_OVERHEAD - min(len(info_text), 1000)
-        available = max(available, 3000)  # floor: always allow at least 3K chars
+        available = max(min(available, TRANSCRIPT_CAP), 3000)  # cap at 8K, floor at 3K
 
         # Chunk transcript if it won't fit in one call
         chunks = chunk_transcript(transcript, chunk_size=available)
@@ -771,7 +772,7 @@ async def run(topic_name: str, limit: int, dry_run: bool) -> None:
 
             # Recalculate available for next chunk (truth_doc may have grown)
             if chunk_idx < n_chunks:
-                available = max(MAX_PROMPT_CHARS - len(truth_doc) - PROMPT_OVERHEAD, 3000)
+                available = max(min(MAX_PROMPT_CHARS - len(truth_doc) - PROMPT_OVERHEAD, TRANSCRIPT_CAP), 3000)
 
             await asyncio.sleep(1)
 

@@ -1,0 +1,19 @@
+{
+  "_note": "LSA Mastery — YouTube playlist (Local Services Ads, voice-bot/chat-bot speed-to-lead).",
+
+  "project_name": "lsa_mastery",
+  "videos_dir": "C:/Users/lober/GitHub/Greptacular - AutoForge Build/Greptacular/output/lsa_videos",
+  "output_dir":  "C:/Users/lober/GitHub/Greptacular - AutoForge Build/Greptacular/output/lsa_v2",
+
+  "taxonomy_mode":      "auto",
+  "taxonomy_gate":      true,
+  "taxonomy_sample_n":  10,
+
+  "cluster_mode":         "dual",
+  "embedding_model":      "all-MiniLM-L6-v2",
+  "embedding_threshold":  0.85,
+  "llm_batch_size":       30,
+
+  "extract_concurrency":  1,
+  "max_retries":          3
+}

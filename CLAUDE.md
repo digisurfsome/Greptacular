@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+## ⚠️ TRUTH FIRST — See `docs/info/truth-first.md` before stating ANY fact, date, stat, or claim ⚠️
+
 ## ⚠️ TIME ESTIMATION RULE — READ BEFORE GIVING ANY ETA ⚠️
 
 **You output ~500,000 tokens per 30 minutes of straight coding.** To estimate task time:
@@ -13,6 +15,10 @@
 - **Live install:** `C:\Users\lober\Greptacular` (port 8888)
 - Commit directly to `main`. No branches.
 - AutoForge = autonomous coding agent system (React UI + Claude Agent SDK).
+
+## ⚠️ FILE PATHS — ALWAYS FULL ABSOLUTE PATH ⚠️
+
+**NEVER give a relative path (e.g. `docs/foo/bar.md`). ALWAYS give the full path starting with the drive letter (e.g. `C:\...` or `E:\...`).** The owner pastes paths directly into Windows Explorer. Relative paths are useless. Drive letters may be C: or E:. When in doubt, include both locations.
 
 ## Critical Rules
 - **Always merge to `main`.** User pulls from `main`.
@@ -80,6 +86,7 @@ The owner is not a coder. He cannot browse the file tree looking for what you di
 | Communication / walkie-talkie / tags | `docs/references/communication.md` |
 | Token/tool control history + remaining levers | `docs/info/token-tool-control-history.md` |
 | **Claude subscription from a Python script** (no API key — boilerplate + gotchas for standalone mining/extraction scripts) | `docs/info/claude-subscription-from-python-script.md` |
+| **Truth builder — standalone vs server** (when to use which, parallelism limits, restart trade-offs) | `docs/info/truth-builder-approaches.md` |
 
 ## After Edits
 Commit changed files only (never `git add -A`). Clear message. Report files, hash, branch.

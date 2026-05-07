@@ -2,8 +2,8 @@
   "_note": "LSA Mastery — YouTube playlist (Local Services Ads, voice-bot/chat-bot speed-to-lead).",
 
   "project_name": "lsa_mastery",
-  "videos_dir": "C:/Users/lober/GitHub/Greptacular - AutoForge Build/Greptacular/output/lsa_videos",
-  "output_dir":  "C:/Users/lober/GitHub/Greptacular - AutoForge Build/Greptacular/output/lsa_v2",
+  "videos_dir": "E:/AutoForge/lsa_videos",
+  "output_dir":  "E:/AutoForge/lsa_v2",
 
   "taxonomy_mode":      "auto",
   "taxonomy_gate":      true,

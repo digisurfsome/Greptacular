@@ -16,6 +16,59 @@ The output is **verbatim dialogue pairs**: what the prospect said, what the sell
 
 ---
 
+## Transcription Workflow — ALWAYS DO IT IN THIS ORDER
+
+> **Read this before transcribing ANY new video corpus.** Skipping this wastes money and time.
+
+**Default order: YouTube auto-captions FIRST. Deepgram only as fallback.**
+
+Most videos on YouTube already have free auto-generated captions. Pulling them is **instant + $0**. Deepgram costs ~$0.02/min and takes ~1 min per video. For a 30-video corpus that's $5+ and 30 min wasted if you skip the YT-first step.
+
+### Step 1 — Download to your videos folder
+```
+yt-dlp -x --audio-format mp3 --audio-quality 0 --restrict-filenames --write-info-json \
+  -o "E:/AutoForge/<corpus_name>/%(upload_date)s_%(title).80s/transcript.%(ext)s" \
+  "<playlist_or_channel_url>"
+```
+- Use **E: drive**, not C: (C: fills up fast — caused full-corpus download failure on Connor)
+- `--write-info-json` is mandatory — gives `id`, `title`, `description` for the next steps
+- Filename `transcript.%(ext)s` so the audio file becomes `transcript.mp3` and YT/Deepgram both write `transcript.txt` next to it
+
+### Step 2 — Pull free YouTube captions (FIRST)
+```
+python scripts/transcription/youtube_transcript_batch.py "E:/AutoForge/<corpus_name>"
+```
+- Walks every subfolder, reads `transcript.info.json`, calls `youtube-transcript-api`
+- Writes `transcript.txt` for every video that has YT auto-cc
+- Logs the ones that fail to `_deepgram_fallback.txt` (live streams w/ no captions, age-gated, etc.)
+- Cost: $0. Time: ~1 sec per video.
+- Resumable: re-running skips folders that already have `transcript.txt`.
+
+### Step 3 — Deepgram fallback (only on failures)
+```
+python scripts/transcription/transcribe_deepgram.py "E:/AutoForge/<corpus_name>"
+```
+- Walks the same folder. Skips any folder that already has `transcript.txt`.
+- Only the videos that failed Step 2 actually get billed.
+- Diarization is on (`Speaker 0:` / `Speaker 1:` labels) for new transcripts.
+
+### Step 4 — Build info.md (for sweep0 taxonomy)
+```
+python -c "import json,glob,os; [open(os.path.join(os.path.dirname(p),'info.md'),'w',encoding='utf-8').write('# '+json.load(open(p,encoding='utf-8')).get('title','')+'\n\n'+(json.load(open(p,encoding='utf-8')).get('description','') or '')) for p in glob.glob('E:/AutoForge/<corpus_name>/*/transcript.info.json')]"
+```
+Generates `info.md` (title + description) in each folder so `sweep0_taxonomy.py` can read titles for taxonomy discovery.
+
+### Anti-patterns — Do NOT do these
+- **Do NOT run Deepgram first.** It will transcribe every video for money even when YouTube has the caption for free.
+- **Do NOT download to C: drive.** It fills up. Always E:.
+- **Do NOT skip `--write-info-json`.** You'll lose video IDs and titles.
+- **Do NOT use a different transcript filename.** Truth_builder + call_miner both look for `transcript.txt` literally.
+
+### .env requirements
+- `DEEPGRAM_API_KEY=...` must exist at the dev repo root `.env` (NOT just the workspace `.env` — `.env` is gitignored, doesn't sync). If transcribe_deepgram says "DEEPGRAM_API_KEY not found", copy `.env` from workspace to dev repo.
+
+---
+
 ## Human Summary — Plain Language
 
 ### What we built
@@ -167,7 +220,7 @@ Sweep 2  → Clustering: batch 8 exchanges at a time, LLM groups by interaction 
 Sweep 3  → Render: per-type MD files + all_exchanges.md + _call-index.md
 ```
 
-### Speaker detection logic (`_claude.py`)
+### Speaker detection logic (_claude.py)
 ```python
 def detect_speaker_format(text):
     # Returns: "deepgram" | "youtube" | "unknown"
@@ -204,7 +257,7 @@ def normalize_speakers(text, fmt):
 ```python
 env = os.environ.copy()
 env.pop("ANTHROPIC_API_KEY", None)
-env.pop("CLAUDE_CODE", None) 
+env.pop("CLAUDE_CODE", None)
 proc = await asyncio.create_subprocess_exec(
     CLAUDE_CLI, "-p", "--model", MODEL, "--output-format", "text",
     stdin=asyncio.subprocess.PIPE,

@@ -58,10 +58,14 @@ interface ModelPreset {
 const CLAUDE_MODEL_PRESETS: ModelPreset[] = [
   { model: 'opus', context: '200k', label: 'Opus 4.6 · 200K' },
   { model: 'claude-opus-4-7', context: '200k', label: 'Opus 4.7 · 200K' },
+  { model: 'claude-opus-4-8', context: '200k', label: 'Opus 4.8 · 200K' },
+  { model: 'claude-fable-5', context: '200k', label: 'Fable 5 · 200K' },
   { model: 'sonnet', context: '200k', label: 'Sonnet 4.6 · 200K' },
   { model: 'haiku', context: '200k', label: 'Haiku · 200K' },
   { model: 'opus', context: '1m', label: 'Opus 4.6 · 1M' },
   { model: 'claude-opus-4-7', context: '1m', label: 'Opus 4.7 · 1M' },
+  { model: 'claude-opus-4-8', context: '1m', label: 'Opus 4.8 · 1M' },
+  { model: 'claude-fable-5', context: '1m', label: 'Fable 5 · 1M' },
   { model: 'sonnet', context: '1m', label: 'Sonnet 4.6 · 1M' },
 ]
 
@@ -677,13 +681,15 @@ export function WorkspaceSidebar({
             const selectedPreset = newChatModelPresets[modelPresetIndex]
             const isOpus46 = selectedPreset?.model === 'opus'
             const isOpus47 = selectedPreset?.model === 'claude-opus-4-7'
+            const isOpus48 = selectedPreset?.model === 'claude-opus-4-8'
+            const isFable = selectedPreset?.model === 'claude-fable-5'
             const isSonnet = selectedPreset?.model === 'sonnet'
             const is1M = selectedPreset?.context === '1m'
-            const effortEnabled = is1M && (isOpus46 || isOpus47 || isSonnet)
-            // Per Anthropic docs: xhigh is Opus 4.7 only. max works on 4.6, 4.7, and Sonnet 4.6.
+            const effortEnabled = is1M && (isOpus46 || isOpus47 || isOpus48 || isFable || isSonnet)
+            // Per Anthropic docs: xhigh needs Opus 4.7+, Opus 4.8, or Fable 5. max works on 4.6+, Fable, and Sonnet 4.6.
             const isEffortAvailable = (key: EffortLevel): boolean => {
               if (!effortEnabled) return false
-              if (key === 'xhigh') return isOpus47
+              if (key === 'xhigh') return isOpus47 || isOpus48 || isFable
               return true
             }
             return (
@@ -705,7 +711,7 @@ export function WorkspaceSidebar({
                             ? 'bg-fuchsia-600 text-white shadow-inner'
                             : 'bg-orange-500 text-white shadow-inner'
                     const unavailableTitle = !available && effortEnabled && preset.key === 'xhigh'
-                      ? 'Extra High is Opus 4.7 only'
+                      ? 'Extra High needs Opus 4.7, Opus 4.8, or Fable 5'
                       : preset.useCases
                     return (
                       <button

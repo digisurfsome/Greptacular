@@ -4,7 +4,7 @@ All pipeline files live in this folder (`scripts/preview_machine/`), plus an
 `assets/` folder for images.
 
 ## Files
-- `biz_pull.py`    — finds businesses (DataForSEO)  **(not in repo yet — keep your local copy here)**
+- `biz_pull.py`    — finds businesses (DataForSEO)
 - `gsa_filter.py`  — splits the scrape into GSA-deliverable vs blocked sites
 - `site_age.py`    — scores their old websites + pulls logo
 - `copywriter.py`  — writes copy JSONs via your Claude SUBSCRIPTION (no API key)
@@ -46,6 +46,12 @@ python sitegen.py site_audit.csv --offline
 python copywriter.py site_audit.csv --outdir copy
 #   -> copy/<slug>.json per business. If you hit a rate limit, just re-run
 #      later — finished businesses are skipped automatically.
+#   AUTOPILOT options:
+#     --auto-retry 60   on rate limit, wait 60 min and retry the same batch
+#     --per-hour 28     drip-feed: cap at 28 businesses/hour (leave headroom)
+#     python copywriter.py --calibrate --target-pct 70
+#                       after a limit hits, computes your safe --per-hour number
+#   biz_pull.py is now in this folder too (added with this update).
 
 # 7. edit sitegen.py CONFIG: set NICHE, BASE_URL (your cloudflare project name),
 #    CAL_LINK (GHL calendar), CHAT_SNIPPET (GHL chat <script>), MAX_SITES=25 to test

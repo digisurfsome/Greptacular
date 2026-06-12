@@ -18,7 +18,19 @@ Usage (from repo root):
     cd <repo-root>
     python scripts/preview_machine/copywriter.py site_audit.csv --outdir copy
     python scripts/preview_machine/copywriter.py site_audit.csv --model haiku
+    python scripts/preview_machine/copywriter.py site_audit.csv --per-hour 40
+        # drip-feed: pace generation to ~40 businesses/hour so you keep
+        # subscription headroom to work in parallel (0 = full speed)
+    python scripts/preview_machine/copywriter.py site_audit.csv --auto-retry 60
+        # on rate limit / SDK failure: wait 60 min and retry the same batch
+        # instead of stopping (omit = current behavior: mark failed and move on)
+    python scripts/preview_machine/copywriter.py --calibrate --target-pct 70
+        # read <outdir>/runlog.jsonl, compute businesses/hour and when the
+        # limit was hit, and suggest the --per-hour number for your target %
     python scripts/preview_machine/copywriter.py --selftest
+
+Every run appends timestamped events (run_start, batch_done, rate_limited,
+run_done...) to <outdir>/runlog.jsonl — that's the data --calibrate uses.
 
 SDK pattern source: server/services/yt_processor.py::_call_via_sdk (the
 3-bug-fixed reference — acceptEdits mode, settings file, rate_limit_event
@@ -113,6 +125,88 @@ LIABILITY RULES — absolute, no exceptions:
 - "checks" must be free of unverifiable claims. Good: "Locally owned", "Free quotes", "Fast response", "Satisfaction focused". NEVER "Licensed & insured".
 - Mention the city naturally. Confident, premium, plain-spoken.
 - No exclamation marks anywhere. No "look no further" cliches."""
+
+
+# ---------------------------------------------------------------------------
+# Run log — timestamped events in <outdir>/runlog.jsonl. This is the data the
+# --calibrate command (and the AutoForge UI) uses to figure out businesses/hour
+# and when the subscription limit was hit.
+# ---------------------------------------------------------------------------
+def utcnow() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def log_event(outdir: Path, event: str, **fields) -> None:
+    rec = {"ts": utcnow(), "event": event, **fields}
+    with (outdir / "runlog.jsonl").open("a", encoding="utf-8") as f:
+        f.write(json.dumps(rec) + "\n")
+
+
+RATE_LIMIT_HINTS = ("rate limit", "rate_limit", "429", "overloaded", "usage limit",
+                    "exceeded", "quota", "too many requests")
+
+
+def looks_rate_limited(err: str) -> bool:
+    low = err.lower()
+    return any(h in low for h in RATE_LIMIT_HINTS)
+
+
+def parse_ts(ts: str) -> float:
+    import calendar
+    return calendar.timegm(time.strptime(ts, "%Y-%m-%dT%H:%M:%SZ"))
+
+
+def calibrate(outdir: Path, target_pct: int) -> int:
+    """Read runlog.jsonl and do the math: capacity/hour, time-to-limit, and the
+    suggested --per-hour number for the target percentage."""
+    path = outdir / "runlog.jsonl"
+    if not path.exists():
+        print(f"No run log at {path.resolve()} yet — do a generation run first.")
+        return 1
+    events = [json.loads(ln) for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
+
+    total_written = sum(e.get("written", 0) for e in events if e["event"] == "batch_done")
+    gen_secs = sum(e.get("secs", 0) for e in events if e["event"] == "batch_done")
+    limits = [e for e in events if e["event"] == "rate_limited"]
+    starts = [e for e in events if e["event"] == "run_start"]
+
+    print("=== Copywriter calibration ===")
+    print(f"Run log: {path.resolve()}")
+    print(f"Total businesses written (all runs): {total_written}")
+    if not total_written or not gen_secs:
+        print("Not enough data yet — run a batch or two first.")
+        return 1
+
+    capacity_per_hour = total_written / (gen_secs / 3600)
+    print(f"Pure generation speed: {capacity_per_hour:.0f} businesses/hour "
+          f"({gen_secs / max(total_written, 1):.0f}s each, waits excluded)")
+
+    if limits and starts:
+        # window: last run_start before the first rate_limited -> that limit
+        first_limit = parse_ts(limits[0]["ts"])
+        run_start = max((parse_ts(s["ts"]) for s in starts
+                         if parse_ts(s["ts"]) <= first_limit), default=None)
+        if run_start:
+            window_h = (first_limit - run_start) / 3600
+            done_before = sum(e.get("written", 0) for e in events
+                              if e["event"] == "batch_done"
+                              and parse_ts(e["ts"]) <= first_limit)
+            print(f"Limit hit: {limits[0]['ts']} — {window_h:.2f}h after run start, "
+                  f"{done_before} businesses in.")
+            if window_h > 0 and done_before:
+                burn_rate = done_before / window_h
+                suggested = int(burn_rate * target_pct / 100)
+                print(f"Burn rate to the limit: {burn_rate:.0f} businesses/hour at full speed.")
+                print(f"\n>>> Suggested --per-hour for {target_pct}% usage: {suggested}")
+                print(f">>> Run: python copywriter.py site_audit.csv --per-hour {suggested} --auto-retry 60")
+                return 0
+    else:
+        print("No rate limit recorded yet — you haven't hit the ceiling, so the")
+        print(f"max safe number is unknown. At {target_pct}% of pure speed that would be "
+              f"--per-hour {int(capacity_per_hour * target_pct / 100)}, but the real "
+              "subscription ceiling is usually lower. Run at full speed until a limit "
+              "hits, then calibrate again for the real number.")
+    return 0
 
 
 # ---------------------------------------------------------------------------
@@ -302,18 +396,39 @@ async def run(args: argparse.Namespace) -> int:
     model = MODELS[args.model]
     scratch = tempfile.mkdtemp(prefix="preview_copywriter_")
     written = failed = 0
+    log_event(outdir, "run_start", csv=str(csv_path), model=model,
+              per_hour=args.per_hour, auto_retry=args.auto_retry,
+              batch_size=args.batch_size, pending=len(pending))
 
     for i in range(0, len(pending), args.batch_size):
         batch = pending[i : i + args.batch_size]
+        batch_no = i // args.batch_size + 1
         names = ", ".join(b["business"] for b in batch[:3])
-        print(f"\nBatch {i // args.batch_size + 1}: {len(batch)} businesses ({names}...) via {model}")
+        print(f"\nBatch {batch_no}: {len(batch)} businesses ({names}...) via {model}")
+        log_event(outdir, "batch_start", batch=batch_no, size=len(batch))
         t0 = time.time()
-        try:
-            raw = await call_claude_subscription(SYSTEM_PROMPT, build_batch_message(batch), model, scratch)
-            payload = extract_json(raw)
-        except Exception as exc:
-            print(f"  BATCH FAILED ({exc}) — rows stay pending, re-run to resume.")
-            failed += len(batch)
+        payload = None
+        while payload is None:
+            try:
+                raw = await call_claude_subscription(SYSTEM_PROMPT, build_batch_message(batch), model, scratch)
+                payload = extract_json(raw)
+            except Exception as exc:
+                err = str(exc)
+                rate_limited = looks_rate_limited(err)
+                log_event(outdir, "rate_limited" if rate_limited else "batch_failed",
+                          batch=batch_no, error=err[:300])
+                if args.auto_retry:
+                    # ride out the limit window: wait and retry the SAME batch
+                    print(f"  {'RATE LIMIT' if rate_limited else 'FAILURE'} ({err[:120]})")
+                    print(f"  auto-retry ON — waiting {args.auto_retry} min, then retrying batch {batch_no}...")
+                    log_event(outdir, "retry_wait", batch=batch_no, minutes=args.auto_retry)
+                    await asyncio.sleep(args.auto_retry * 60)
+                    t0 = time.time()
+                    continue
+                print(f"  BATCH FAILED ({err[:200]}) — rows stay pending, re-run to resume.")
+                failed += len(batch)
+                break
+        if payload is None:
             continue
 
         for row in batch:
@@ -333,8 +448,24 @@ async def run(args: argparse.Namespace) -> int:
             )
             written += 1
         manifest_path.write_text(json.dumps(manifest, indent=1), encoding="utf-8")
-        print(f"  batch done in {time.time() - t0:.0f}s — {written} written, {failed} failed so far")
+        batch_secs = time.time() - t0
+        batch_written = sum(1 for row in batch if (outdir / f"{slugify(row['business'])}.json").exists())
+        log_event(outdir, "batch_done", batch=batch_no, written=batch_written,
+                  secs=round(batch_secs, 1))
+        print(f"  batch done in {batch_secs:.0f}s — {written} written, {failed} failed so far")
 
+        # drip-feed throttle: pace to ~per-hour businesses/hour so Tim keeps
+        # subscription headroom for his own work
+        if args.per_hour and i + args.batch_size < len(pending):
+            target_secs = len(batch) * 3600 / args.per_hour
+            wait = target_secs - batch_secs
+            if wait > 0:
+                nxt = time.strftime("%H:%M:%S", time.localtime(time.time() + wait))
+                print(f"  throttle {args.per_hour}/hr — next batch at {nxt} ({wait:.0f}s wait)")
+                log_event(outdir, "throttle_wait", secs=round(wait))
+                await asyncio.sleep(wait)
+
+    log_event(outdir, "run_done", written=written, failed=failed)
     print(f"\nDONE: {written} copy JSONs written to {outdir.resolve()}, {failed} pending retry.")
     print(f"Next: python sitegen.py {csv_path} --copydir {outdir}")
     return 0 if failed == 0 else 1
@@ -382,6 +513,25 @@ def selftest() -> int:
     check("batch msg includes slug", "slug: big-tex-wash" in msg)
     check("batch msg omits empty facts", "rating:" not in msg.split("no-facts-co")[1].split("\n")[0])
 
+    check("rate-limit detector hits", looks_rate_limited("Error 429: usage limit reached"))
+    check("rate-limit detector ignores other errors", not looks_rate_limited("connection reset by peer"))
+
+    # calibrate math on a synthetic runlog: 20 written in 0.5h before the limit
+    with tempfile.TemporaryDirectory() as td:
+        tdp = Path(td)
+        t_base = "2026-06-12T10:%02d:00Z"
+        rows = [
+            {"ts": t_base % 0, "event": "run_start", "pending": 40},
+            {"ts": t_base % 5, "event": "batch_done", "batch": 1, "written": 10, "secs": 300},
+            {"ts": t_base % 25, "event": "batch_done", "batch": 2, "written": 10, "secs": 300},
+            {"ts": t_base % 30, "event": "rate_limited", "batch": 3, "error": "429"},
+        ]
+        (tdp / "runlog.jsonl").write_text("\n".join(json.dumps(r) for r in rows))
+        rc = calibrate(tdp, 70)
+        # burn rate = 20 businesses / 0.5h = 40/hr -> 70% = 28
+        check("calibrate runs on synthetic log", rc == 0)
+        check("parse_ts roundtrip", parse_ts("2026-06-12T10:30:00Z") - parse_ts("2026-06-12T10:00:00Z") == 1800)
+
     print("SELFTEST", "PASSED" if ok else "FAILED")
     return 0 if ok else 1
 
@@ -395,11 +545,24 @@ def main() -> int:
     p.add_argument("--verdicts", default=",".join(DEFAULT_VERDICTS),
                    help='comma-separated verdict filter, or "all" (default: "STRONG TARGET,WORTH A LOOK")')
     p.add_argument("--limit", type=int, default=0, help="cap rows processed this run (0 = no cap)")
+    p.add_argument("--per-hour", type=int, default=0,
+                   help="drip-feed: max businesses per hour (0 = full speed). "
+                        "Use --calibrate to find your number.")
+    p.add_argument("--auto-retry", type=int, default=0, metavar="MINUTES",
+                   help="on rate limit/failure wait this many minutes and retry the "
+                        "same batch (0 = off: mark failed and continue, re-run manually)")
+    p.add_argument("--calibrate", action="store_true",
+                   help="no generation — read <outdir>/runlog.jsonl, report "
+                        "businesses/hour + when the limit hit, suggest --per-hour")
+    p.add_argument("--target-pct", type=int, default=70,
+                   help="calibration target: %% of capacity to use (default 70)")
     p.add_argument("--selftest", action="store_true")
     args = p.parse_args()
 
     if args.selftest:
         return selftest()
+    if args.calibrate:
+        return calibrate(Path(args.outdir), args.target_pct)
     return asyncio.run(run(args))
 
 

@@ -13,7 +13,7 @@ Everything lives in `scripts/preview_machine/`. Run order doc: `README_RUN_ORDER
 | `gsa_filter.py`, `site_age.py`, `sitegen.py`, `template.html` | `scripts/preview_machine/` | **In repo. All selftests pass.** |
 | Copywriter (subscription-billed copy JSONs) | `scripts/preview_machine/copywriter.py` | **Built. Selftest passes.** |
 | sitegen `--copydir` mode | Applied to `scripts/preview_machine/sitegen.py` | **Done — functional test green** (cached copy used, fallback works, no unfilled tokens, phone unwrap intact) |
-| `biz_pull.py` | **Still only on Tim's machine** | Not uploaded yet — drop it into `scripts/preview_machine/` |
+| `biz_pull.py` | `scripts/preview_machine/` | **In repo. Selftest passes.** |
 | `assets/` images (ba1.jpg, ba2.jpg, hero.jpg) | **Tim's machine** | Images can't transfer through chat — copy the files into `scripts/preview_machine/assets/` |
 | Pitch column, multi-template, multi-niche | Roadmap (HANDOFF.md §6) | Not built — by design |
 
@@ -50,6 +50,19 @@ python scripts/preview_machine/copywriter.py site_audit.csv --outdir copy
   HANDOFF.md §5.)
 - Writes `copy/manifest.json` (business name → slug) for slug-mismatch detection.
 - `--selftest` is fully offline.
+
+### Rate-limit autopilot (new)
+
+- `--auto-retry 60` — when a rate limit (or any SDK failure) hits, wait 60 minutes and
+  retry the **same batch** instead of stopping. Omit the flag = old behavior (toggle off).
+- `--per-hour N` — drip-feed: pace generation to N businesses/hour so ~30% of the
+  subscription window stays free for Tim to work. 0 = full speed.
+- Every run appends timestamped events to `copy/runlog.jsonl` (run start, each batch
+  start/done with seconds, rate-limit hits, waits) — the raw data for doing the math.
+- `--calibrate --target-pct 70` — push-button math: reads the runlog, reports pure
+  speed (businesses/hour), when the limit hit and how long after start, burn rate,
+  and prints the suggested `--per-hour` number. It only runs when invoked — never
+  automatic. If no limit has been recorded yet it says so honestly instead of guessing.
 
 ### ⚠️ Honest caveat for Tim (do not bury)
 

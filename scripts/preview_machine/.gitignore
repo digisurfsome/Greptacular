@@ -1,0 +1,8 @@
+# run artifacts — never commit scrape data or generated sites
+previews/
+copy/
+*.csv
+urls.txt
+# real before/after images stay local (drop them in assets/)
+assets/*.jpg
+assets/*.png

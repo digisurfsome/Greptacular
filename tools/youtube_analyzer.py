@@ -16,12 +16,11 @@ RUN:
   python tools/youtube_analyzer.py
 """
 
-import os
-import json
 import re
-import requests
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+import requests
 
 # ─────────────────────────────────────────
 #  CONFIG — edit these
@@ -326,7 +325,7 @@ def main():
         "\n".join(transcripts_combined), encoding="utf-8"
     )
     print(f"\nAll transcripts combined → {combined_path}")
-    print(f"Run truth_builder.py next to build the truth document.")
+    print("Run truth_builder.py next to build the truth document.")
 
 
 if __name__ == "__main__":

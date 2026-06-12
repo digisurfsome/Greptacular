@@ -58,6 +58,8 @@ Each router handles one feature area. Find the right router = find the right end
 | `swarm.py` | `/api/swarm` | Swarm orchestration |
 | `verifications.py` | `/api/verifications` | Build verification |
 | `ap_code_manager.py` | `/api/ap-code` | Activepieces Code step source code read/write via Docker psql |
+| `market_scraper.py` | `/api/market-scraper` | Reddit market scraper — scrapes, projects, angles |
+| `preview_machine.py` | `/api/preview-machine` | Preview Machine pipeline — run/stop a stage, status, files, calibration |
 
 ---
 
@@ -100,6 +102,7 @@ Each service contains the core logic for a feature. Routers call services, not t
 | `tool_usage.py` | Tool Runner | Tool usage tracking |
 | `batch_tool_generator.py` | Tool Factory | Batch tool generation |
 | `token_budget.py` | Token Budget | Token budget calculations |
+| `preview_machine_service.py` | Preview Machine | Runs pipeline stages as subprocesses (argv-only, whitelisted args); ring-buffer logs; runlog calibration |
 | `ci_monitor.py` | Monitor | CI pipeline monitoring |
 
 ### Agent OS Services

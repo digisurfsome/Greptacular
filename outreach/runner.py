@@ -17,16 +17,15 @@ Usage:
   python runner.py --input filtered_emails.csv --limit 10  # first 10 only
 """
 
+import argparse
 import asyncio
 import csv
-import sys
-import time
-import argparse
 import os
 import random
+import sys
+from datetime import datetime
 from pathlib import Path
 from typing import List
-from datetime import datetime
 
 try:
     from browser_use import Agent
@@ -159,13 +158,13 @@ async def run_batch(rows: List[dict], reply_to: str, dry_run: bool = False,
 
         status = result.get("submit_status", "?")
         if status == "submitted":
-            print(f"  ✓ Submitted")
+            print("  ✓ Submitted")
         elif status == "dry_run":
-            print(f"  ~ Dry run")
+            print("  ~ Dry run")
         elif status == "captcha_blocked":
-            print(f"  ✗ CAPTCHA blocked at submit time")
+            print("  ✗ CAPTCHA blocked at submit time")
         elif status == "no_form":
-            print(f"  ✗ No form found")
+            print("  ✗ No form found")
         elif status == "error":
             print(f"  ✗ Error: {result.get('submit_note', '')[:80]}")
         else:

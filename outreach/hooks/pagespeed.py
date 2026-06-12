@@ -6,6 +6,7 @@ API: Google PageSpeed Insights (free, no key needed for basic use)
 """
 
 import requests
+
 from hooks.base import HookModule
 
 

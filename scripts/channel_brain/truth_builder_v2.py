@@ -47,13 +47,11 @@ from pathlib import Path
 # Add directory to path for sibling imports
 sys.path.insert(0, str(Path(__file__).parent))
 
-from _claude import load_config, cleanup_scratch
-
 import sweep0_taxonomy as s0
-import sweep1_extract  as s1
-import sweep2_cluster  as s2
-import sweep3_render   as s3
-
+import sweep1_extract as s1
+import sweep2_cluster as s2
+import sweep3_render as s3
+from _claude import cleanup_scratch, load_config
 
 # =============================================================================
 # BANNER

@@ -21,7 +21,6 @@ import re
 import shutil
 import sys
 
-
 # Files to copy from artifacts_dir root into the archive folder
 COPY_FILES = [
     'context_packet.json',

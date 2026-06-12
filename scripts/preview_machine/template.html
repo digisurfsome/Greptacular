@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{BUSINESS_NAME}} — {{TAGLINE_SHORT}}</title>
+<meta name="description" content="{{HERO_SUB}}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#0A1626; --ink-2:#0D1E33; --paper:#F6F8F9; --white:#FFFFFF;
+  --text:#1B2733; --muted:#5B6B7A; --line:rgba(14,24,34,.08);
+  --radius:14px; --max:1180px;
+}
+/* theme presets — sitegen swaps the class on <body> */
+.theme-hydro{ --accent:#3FB9F6; --accent-deep:#0C2742; --accent-soft:#E3F4FC; --accent-glow:rgba(63,185,246,.5); }
+.theme-emerald{ --accent:#2FB270; --accent-deep:#11301F; --accent-soft:#E4F6EC; --accent-glow:rgba(47,178,112,.4); }
+.theme-gold{ --accent:#E0A81C; --accent-deep:#241B07; --accent-soft:#FBF2DA; --accent-glow:rgba(224,168,28,.4); }
+
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{font-family:'Manrope',system-ui,sans-serif;color:var(--text);background:var(--white);line-height:1.6;-webkit-font-smoothing:antialiased}
+h1,h2,h3{font-family:'Sora',sans-serif;line-height:1.12;color:var(--ink)}
+img{max-width:100%;display:block}
+a{text-decoration:none;color:inherit}
+.wrap{max-width:var(--max);margin:0 auto;padding:0 24px}
+.eyebrow{font-size:12.5px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--accent)}
+.btn{display:inline-flex;align-items:center;gap:9px;font-weight:700;font-size:15.5px;padding:15px 28px;border-radius:999px;transition:transform .18s ease, box-shadow .18s ease;cursor:pointer;border:0}
+.btn:hover{transform:translateY(-2px)}
+.btn-accent{background:var(--accent);color:#fff;box-shadow:0 10px 28px -10px var(--accent-glow)}
+.btn-ghost{background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.35);backdrop-filter:blur(6px)}
+.btn-dark{background:var(--ink);color:#fff}
+
+/* ---------------- nav ---------------- */
+.nav{position:sticky;top:0;z-index:50;background:rgba(255,255,255,.92);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.nav-in{display:flex;align-items:center;justify-content:space-between;height:68px}
+.logo{display:flex;align-items:center;gap:10px;font-family:'Sora';font-weight:800;font-size:17px;color:var(--ink);letter-spacing:-.01em}
+.logo-img{height:34px;width:auto;max-width:160px;object-fit:contain;border-radius:6px}
+.logo-mark{width:34px;height:34px;border-radius:10px;background:var(--accent);display:grid;place-items:center;color:#fff;font-size:16px;font-weight:800}
+.nav-links{display:flex;gap:28px;font-weight:600;font-size:14.5px;color:var(--muted)}
+.nav-links a:hover{color:var(--ink)}
+.nav-cta{display:flex;align-items:center;gap:16px}
+.nav-phone{font-weight:700;font-size:14.5px;color:var(--ink);display:flex;align-items:center;gap:7px}
+.nav .btn{padding:11px 20px;font-size:14px}
+
+/* ---------------- hero ---------------- */
+.hero{position:relative;min-height:86vh;display:flex;align-items:center;background:
+  linear-gradient(112deg, rgba(7,13,19,.92) 0%, rgba(7,13,19,.72) 46%, rgba(7,13,19,.38) 100%),
+  url("../assets/hero.jpg"), radial-gradient(1200px 700px at 78% 30%, var(--accent-deep) 0%, var(--ink) 62%);
+  background-size:cover;background-position:center;overflow:hidden}
+.hero::after{ /* signature: the wet-sheen sweep */
+  content:"";position:absolute;top:-20%;left:-30%;width:38%;height:140%;
+  background:linear-gradient(78deg, transparent 0%, rgba(255,255,255,.07) 45%, rgba(255,255,255,.13) 50%, rgba(255,255,255,.07) 55%, transparent 100%);
+  transform:skewX(-12deg);animation:sheen 7s ease-in-out infinite}
+@keyframes sheen{0%,100%{left:-40%}50%{left:115%}}
+@media (prefers-reduced-motion: reduce){.hero::after{animation:none}}
+.hero-grid{position:relative;z-index:2;display:grid;grid-template-columns:1.05fr .95fr;gap:56px;align-items:center;padding:96px 0 110px}
+.hero-in{max-width:640px}
+.badge{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#fff;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.22);padding:8px 16px;border-radius:999px;backdrop-filter:blur(6px)}
+.badge::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--accent)}
+.hero h1{color:#fff;font-size:clamp(38px,4.6vw,58px);font-weight:800;letter-spacing:-.022em;margin:26px 0 22px}
+.hero h1 .acc{color:var(--accent);position:relative;white-space:nowrap}
+.hero h1 .acc::after{content:"";position:absolute;left:0;bottom:6px;width:100%;height:10px;background:var(--accent);opacity:.18;border-radius:4px}
+.hero p{color:rgba(255,255,255,.82);font-size:18px;max-width:540px;margin-bottom:36px}
+.hero-ctas{display:flex;gap:14px;flex-wrap:wrap}
+
+/* ---------------- instant quote calculator (hero overlay) ---------------- */
+.calc{background:linear-gradient(165deg,#0E2138 0%,#0A1626 100%);border:1px solid rgba(63,185,246,.22);backdrop-filter:blur(14px);border-radius:18px;padding:26px 26px 22px;color:#fff;box-shadow:0 40px 80px -32px rgba(0,0,0,.55)}
+.calc h3{color:#fff;font-size:18px;letter-spacing:-.01em;display:flex;align-items:center;gap:9px;margin-bottom:4px}
+.calc h3::before{content:"⚡";font-size:16px}
+.calc .calc-sub{font-size:13px;color:rgba(255,255,255,.62);margin-bottom:18px}
+.calc-row{padding:13px 0;border-top:1px solid rgba(255,255,255,.1)}
+.calc-row label{display:flex;justify-content:space-between;font-size:13.5px;font-weight:700;margin-bottom:9px}
+.calc-row label output{color:var(--accent);font-weight:800}
+.calc input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer}
+.calc-total{display:flex;justify-content:space-between;align-items:baseline;border-top:1px solid rgba(255,255,255,.18);margin-top:6px;padding-top:16px}
+.calc-total span{font-size:12.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.62)}
+.calc-total b{font-family:'Sora';font-size:34px;font-weight:800;color:var(--accent);letter-spacing:-.02em}
+.calc-note{font-size:11.5px;color:rgba(255,255,255,.45);margin:8px 0 14px}
+.calc .btn{width:100%;justify-content:center}
+
+/* ---------------- before / after proof band ---------------- */
+.proof{background:var(--paper);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.proof-in{padding:64px 0}
+.ba-grid{display:grid;grid-template-columns:1fr 1fr;gap:26px;margin-top:40px}
+.ba{position:relative;border-radius:var(--radius);overflow:hidden;aspect-ratio:5/4;background:var(--ink);box-shadow:0 18px 40px -22px rgba(10,17,24,.4)}
+.ba img{width:100%;height:100%;object-fit:cover;display:block}
+
+/* ---------------- stat strip ---------------- */
+.stats{background:var(--white);border-bottom:1px solid var(--line)}
+.stats-in{display:grid;grid-template-columns:repeat(4,1fr);gap:24px;padding:34px 0}
+.stat{text-align:center}
+.stat b{font-family:'Sora';font-size:26px;font-weight:800;color:var(--ink);display:block;letter-spacing:-.02em}
+.stat span{font-size:12.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+
+/* ---------------- services ---------------- */
+.section{padding:96px 0}
+.sec-head{text-align:center;max-width:640px;margin:0 auto 56px}
+.sec-head h2{font-size:clamp(30px,3.6vw,42px);font-weight:800;letter-spacing:-.02em;margin:14px 0 14px}
+.sec-head p{color:var(--muted);font-size:17px}
+.svc-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:26px}
+.svc{background:var(--white);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;transition:transform .2s ease, box-shadow .2s ease}
+.svc:hover{transform:translateY(-5px);box-shadow:0 24px 48px -24px rgba(10,17,24,.25)}
+.svc-img{height:170px;background:
+  linear-gradient(160deg, var(--accent-deep), var(--ink) 90%);position:relative;overflow:hidden}
+.svc-img::after{content:"";position:absolute;inset:0;background:
+  radial-gradient(420px 200px at 70% 0%, var(--accent-glow), transparent 70%)}
+.svc-img.has-photo{background-size:cover;background-position:center}
+.svc-img.has-photo::after{background:linear-gradient(180deg, transparent 50%, rgba(7,13,19,.35))}
+.svc-body{padding:26px}
+.svc-ic{width:42px;height:42px;border-radius:11px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;font-size:18px;margin:-47px 0 16px;position:relative;border:3px solid #fff}
+.svc h3{font-size:19px;font-weight:700;margin-bottom:9px;letter-spacing:-.01em}
+.svc p{font-size:15px;color:var(--muted)}
+
+/* ---------------- process ---------------- */
+.process{background:var(--paper)}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:26px}
+.step{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:32px 28px}
+.step b{font-family:'Sora';font-size:13px;font-weight:800;letter-spacing:.16em;color:var(--accent);text-transform:uppercase}
+.step h3{font-size:20px;margin:12px 0 10px}
+.step p{font-size:15px;color:var(--muted)}
+
+/* ---------------- about band ---------------- */
+.about{background:var(--accent-deep);color:#fff;position:relative;overflow:hidden}
+.about-in{display:grid;grid-template-columns:1.1fr .9fr;gap:64px;align-items:center;padding:96px 0}
+.about h2{color:#fff;font-size:clamp(28px,3.4vw,40px);font-weight:800;letter-spacing:-.02em;margin:14px 0 20px}
+.about p{color:rgba(255,255,255,.78);font-size:16.5px;margin-bottom:16px}
+.about-checks{display:grid;grid-template-columns:1fr 1fr;gap:13px;margin-top:26px}
+.chk{display:flex;gap:10px;align-items:center;font-weight:600;font-size:15px;color:#fff}
+.chk::before{content:"✓";flex:0 0 auto;width:22px;height:22px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;font-size:12px;font-weight:800}
+.about-panel{position:relative;border-radius:20px;background:var(--accent);min-height:380px;display:flex;align-items:flex-end;padding:30px;overflow:hidden}
+.about-panel .big{position:absolute;top:-12px;left:-8px;right:-40px;font-family:'Sora';font-weight:800;font-size:120px;line-height:.95;color:rgba(255,255,255,.16);letter-spacing:-.04em;word-break:break-word}
+.about-card{position:relative;background:rgba(10,17,24,.55);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.18);border-radius:14px;padding:20px 22px;color:#fff}
+.about-card b{font-family:'Sora';font-size:17px;display:block;margin-bottom:4px}
+.about-card span{font-size:13.5px;color:rgba(255,255,255,.8)}
+
+/* ---------------- reviews ---------------- */
+.reviews{text-align:center}
+.stars{font-size:30px;letter-spacing:6px;color:#F5B301;margin-bottom:14px}
+.reviews h2{font-size:clamp(28px,3.2vw,38px);letter-spacing:-.02em;margin-bottom:10px}
+.reviews p{color:var(--muted);font-size:17px;max-width:520px;margin:0 auto 28px}
+
+/* ---------------- CTA band ---------------- */
+.cta{background:var(--ink);color:#fff;text-align:center;position:relative;overflow:hidden}
+.cta::before{content:"";position:absolute;inset:0;background:radial-gradient(700px 320px at 50% 120%, var(--accent-glow), transparent 70%)}
+.cta-in{position:relative;padding:92px 0}
+.cta h2{color:#fff;font-size:clamp(30px,3.8vw,44px);font-weight:800;letter-spacing:-.022em;margin-bottom:14px}
+.cta p{color:rgba(255,255,255,.75);font-size:17px;max-width:560px;margin:0 auto 34px}
+
+/* ---------------- footer ---------------- */
+footer{background:#070D13;color:rgba(255,255,255,.65);font-size:14.5px}
+.foot-in{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:48px;padding:64px 0 48px}
+.foot-in h4{color:#fff;font-family:'Sora';font-size:15px;margin-bottom:16px}
+.foot-in a{display:block;margin-bottom:10px}
+.foot-in a:hover{color:#fff}
+.foot-logo{display:flex;align-items:center;gap:10px;font-family:'Sora';font-weight:800;font-size:17px;color:#fff;margin-bottom:14px}
+.foot-bottom{border-top:1px solid rgba(255,255,255,.08);padding:22px 0;display:flex;justify-content:space-between;font-size:13px}
+
+/* ---------------- mobile sticky call ---------------- */
+.callbar{display:none;position:fixed;bottom:0;left:0;right:0;z-index:60;background:var(--accent);color:#fff;text-align:center;padding:15px;font-weight:800;font-size:16px;box-shadow:0 -8px 24px rgba(0,0,0,.18)}
+
+/* ---------------- floating book button ---------------- */
+.float-book{position:fixed;right:22px;bottom:22px;z-index:70;display:flex;flex-direction:column;align-items:flex-end;gap:7px}
+.float-book .price-pill{background:#fff;color:var(--ink);font-weight:800;font-size:12px;padding:7px 14px;border-radius:999px;max-width:230px;text-align:right;line-height:1.35;box-shadow:0 8px 22px -8px rgba(10,17,24,.4);border:1px solid var(--line)}
+.float-book .price-pill b{color:var(--accent)}
+.float-book .price-pill s{color:var(--muted);text-decoration-thickness:2px}
+.float-book a.fbtn{display:inline-flex;align-items:center;gap:9px;background:var(--accent);color:#fff;font-weight:800;font-size:15.5px;padding:15px 24px;border-radius:999px;box-shadow:0 14px 34px -10px var(--accent-glow);animation:bob 2.4s ease-in-out infinite}
+.float-book a.fbtn:hover{transform:translateY(-2px)}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+@media (prefers-reduced-motion: reduce){.float-book a.fbtn{animation:none}}
+@media (max-width:920px){.float-book{right:14px;bottom:64px}.float-book a.fbtn{font-size:14px;padding:13px 20px}}
+
+@media (max-width:920px){
+  .nav-links{display:none}
+  .stats-in{grid-template-columns:repeat(2,1fr)}
+  .svc-grid,.steps{grid-template-columns:1fr}
+  .about-in{grid-template-columns:1fr;padding:72px 0}
+  .foot-in{grid-template-columns:1fr}
+  .section{padding:72px 0}
+  .hero-grid{grid-template-columns:1fr;gap:40px;padding:80px 0 90px}
+  .ba-grid{grid-template-columns:1fr}
+  .callbar{display:block}
+  body{padding-bottom:54px}
+}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+</style>
+</head>
+<body class="{{THEME_CLASS}}">
+
+<nav class="nav">
+  <div class="wrap nav-in">
+    <a class="logo" href="#">{{LOGO_HTML}}{{BUSINESS_NAME}}</a>
+    <div class="nav-links">
+      <a href="#services">Services</a><a href="#process">How it works</a><a href="#about">About</a><a href="#contact">Contact</a>
+    </div>
+    <div class="nav-cta">
+      <a class="nav-phone" href="tel:{{PHONE_DIGITS}}">📞 {{PHONE}}</a>
+      <a class="btn btn-accent" href="{{CAL_LINK}}">Get a free quote</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap hero-grid">
+    <div class="hero-in">
+      <span class="badge">{{BADGE_TEXT}}</span>
+      <h1>{{HERO_HEADLINE_PRE}} <span class="acc">{{HERO_ACCENT}}</span></h1>
+      <p>{{HERO_SUB}}</p>
+      <div class="hero-ctas">
+        <a class="btn btn-accent" href="{{CAL_LINK}}">Get a free quote →</a>
+        <a class="btn btn-ghost" href="tel:{{PHONE_DIGITS}}">📞 {{PHONE}}</a>
+      </div>
+    </div>
+    <div class="calc" id="calc">
+      <h3>Instant Power Washing Quote</h3>
+      <div class="calc-sub">Slide to estimate your service in seconds.</div>
+      <div class="calc-row">
+        <label>Driveway cleaning <output id="o1">2 cars</output></label>
+        <input type="range" id="r1" min="0" max="6" step="1" value="2">
+      </div>
+      <div class="calc-row">
+        <label>House washing <output id="o2">2,000 sq ft</output></label>
+        <input type="range" id="r2" min="0" max="5000" step="250" value="2000">
+      </div>
+      <div class="calc-row">
+        <label>Patio / deck <output id="o3">None</output></label>
+        <input type="range" id="r3" min="0" max="1500" step="125" value="0">
+      </div>
+      <div class="calc-total"><span>Estimated total</span><b id="total">$0</b></div>
+      <div class="calc-note">Rough estimate based on average market rates — final price confirmed with your free quote.</div>
+      <a class="btn btn-accent" href="{{CAL_LINK}}">Book this service</a>
+    </div>
+  </div>
+</header>
+<script>
+(function(){
+  var RATES={perCar:45, houseSqft:0.15, patioSqft:0.25};   // tune per niche
+  var r1=document.getElementById('r1'),r2=document.getElementById('r2'),
+      r3=document.getElementById('r3'),o1=document.getElementById('o1'),
+      o2=document.getElementById('o2'),o3=document.getElementById('o3'),
+      t=document.getElementById('total');
+  function fmt(n){return n.toLocaleString('en-US')}
+  function upd(){
+    var c=+r1.value,h=+r2.value,p=+r3.value;
+    o1.textContent=c? c+(c>1?' cars':' car'):'None';
+    o2.textContent=h? fmt(h)+' sq ft':'None';
+    o3.textContent=p? fmt(p)+' sq ft':'None';
+    t.textContent='$'+fmt(Math.round(c*RATES.perCar+h*RATES.houseSqft+p*RATES.patioSqft));
+  }
+  [r1,r2,r3].forEach(function(r){r.addEventListener('input',upd)});
+  upd();
+})();
+</script>
+
+<div class="stats"><div class="wrap stats-in">
+  <div class="stat"><b>{{STAT_1_BIG}}</b><span>{{STAT_1_LABEL}}</span></div>
+  <div class="stat"><b>{{STAT_2_BIG}}</b><span>{{STAT_2_LABEL}}</span></div>
+  <div class="stat"><b>{{STAT_3_BIG}}</b><span>{{STAT_3_LABEL}}</span></div>
+  <div class="stat"><b>{{STAT_4_BIG}}</b><span>{{STAT_4_LABEL}}</span></div>
+</div></div>
+
+<section class="proof">
+  <div class="wrap proof-in">
+    <div class="sec-head" style="margin-bottom:0">
+      <span class="eyebrow">The difference</span>
+      <h2>See the transformation</h2>
+      <p>Real results on real {{NICHE_LOWER}} jobs — the kind your property deserves.</p>
+    </div>
+    <div class="ba-grid">
+      <div class="ba"><img src="../assets/ba1.jpg" alt="Before and after results"></div>
+      <div class="ba"><img src="../assets/ba2.jpg" alt="Before and after results"></div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="services">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">What we do</span>
+      <h2>{{SERVICES_HEADLINE}}</h2>
+      <p>{{SERVICES_SUB}}</p>
+    </div>
+    <div class="svc-grid">
+      <div class="svc"><div class="svc-img {{IMG_CLASS}}" style="{{SVC_IMG_1}}"></div><div class="svc-body"><div class="svc-ic">◆</div><h3>{{SERVICE_1_NAME}}</h3><p>{{SERVICE_1_DESC}}</p></div></div>
+      <div class="svc"><div class="svc-img {{IMG_CLASS}}" style="{{SVC_IMG_2}}"></div><div class="svc-body"><div class="svc-ic">◆</div><h3>{{SERVICE_2_NAME}}</h3><p>{{SERVICE_2_DESC}}</p></div></div>
+      <div class="svc"><div class="svc-img {{IMG_CLASS}}" style="{{SVC_IMG_3}}"></div><div class="svc-body"><div class="svc-ic">◆</div><h3>{{SERVICE_3_NAME}}</h3><p>{{SERVICE_3_DESC}}</p></div></div>
+      <div class="svc"><div class="svc-img {{IMG_CLASS}}" style="{{SVC_IMG_4}}"></div><div class="svc-body"><div class="svc-ic">◆</div><h3>{{SERVICE_4_NAME}}</h3><p>{{SERVICE_4_DESC}}</p></div></div>
+      <div class="svc"><div class="svc-img {{IMG_CLASS}}" style="{{SVC_IMG_5}}"></div><div class="svc-body"><div class="svc-ic">◆</div><h3>{{SERVICE_5_NAME}}</h3><p>{{SERVICE_5_DESC}}</p></div></div>
+      <div class="svc"><div class="svc-img {{IMG_CLASS}}" style="{{SVC_IMG_6}}"></div><div class="svc-body"><div class="svc-ic">◆</div><h3>{{SERVICE_6_NAME}}</h3><p>{{SERVICE_6_DESC}}</p></div></div>
+    </div>
+  </div>
+</section>
+
+<section class="section process" id="process">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">How it works</span>
+      <h2>Three steps to a like-new property</h2>
+    </div>
+    <div class="steps">
+      <div class="step"><b>Step 1</b><h3>{{STEP_1_NAME}}</h3><p>{{STEP_1_DESC}}</p></div>
+      <div class="step"><b>Step 2</b><h3>{{STEP_2_NAME}}</h3><p>{{STEP_2_DESC}}</p></div>
+      <div class="step"><b>Step 3</b><h3>{{STEP_3_NAME}}</h3><p>{{STEP_3_DESC}}</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="about" id="about">
+  <div class="wrap about-in">
+    <div>
+      <span class="eyebrow">About us</span>
+      <h2>{{ABOUT_HEADLINE}}</h2>
+      <p>{{ABOUT_TEXT_1}}</p>
+      <p>{{ABOUT_TEXT_2}}</p>
+      <div class="about-checks">
+        <div class="chk">{{CHECK_1}}</div>
+        <div class="chk">{{CHECK_2}}</div>
+        <div class="chk">{{CHECK_3}}</div>
+        <div class="chk">{{CHECK_4}}</div>
+      </div>
+    </div>
+    <div class="about-panel">
+      <div class="big">{{BUSINESS_NAME}}</div>
+      <div class="about-card"><b>{{PANEL_CARD_TITLE}}</b><span>{{PANEL_CARD_SUB}}</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="section reviews">
+  <div class="wrap">
+    <div class="stars">{{STARS}}</div>
+    <h2>{{REVIEWS_HEADLINE}}</h2>
+    <p>{{REVIEWS_SUB}}</p>
+    <a class="btn btn-dark" href="tel:{{PHONE_DIGITS}}">📞 Call {{PHONE}}</a>
+  </div>
+</section>
+
+<section class="cta" id="contact">
+  <div class="wrap cta-in">
+    <h2>{{CTA_HEADLINE}}</h2>
+    <p>{{CTA_SUB}}</p>
+    <a class="btn btn-accent" href="{{CAL_LINK}}">Get my free quote →</a>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot-in">
+    <div>
+      <div class="foot-logo">{{LOGO_HTML}}{{BUSINESS_NAME}}</div>
+      <p>{{FOOTER_BLURB}}</p>
+    </div>
+    <div>
+      <h4>Contact</h4>
+      <a href="tel:{{PHONE_DIGITS}}">{{PHONE}}</a>
+      <a href="#">{{ADDRESS_LINE}}</a>
+      <a href="#">{{CITY}}, {{STATE}}</a>
+    </div>
+    <div>
+      <h4>Quick links</h4>
+      <a href="#services">Services</a>
+      <a href="#process">How it works</a>
+      <a href="#about">About</a>
+      <a href="{{CAL_LINK}}">Get a quote</a>
+    </div>
+  </div>
+  <div class="wrap foot-bottom">
+    <span>© {{YEAR}} {{BUSINESS_NAME}}. All rights reserved.</span>
+    <span>{{CITY}}, {{STATE}}</span>
+  </div>
+</footer>
+
+<a class="callbar" href="tel:{{PHONE_DIGITS}}">📞 Call {{PHONE}} — free quote</a>
+
+<div class="float-book">
+  <span class="price-pill">Sites from <b>$197</b> · <s>$497</s> setup waived — first 5</span>
+  <a class="fbtn" href="{{CAL_LINK}}">📅 Book a 15-min call</a>
+</div>
+
+{{CHAT_SNIPPET}}
+</body>
+</html>

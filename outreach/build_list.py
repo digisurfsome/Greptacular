@@ -25,15 +25,14 @@ Usage:
   python build_list.py --niche plumber --city Austin --state Texas --output enriched.csv
 """
 
-import csv
-import json
 import argparse
+import csv
 import sys
-from typing import List, Dict, Optional
+from typing import Dict, List, Optional
 from urllib.parse import urlparse
 
 from keyword_discovery import get_keywords
-from serp_search import search_all_keywords, get_top_competitors
+from serp_search import get_top_competitors, search_all_keywords
 
 # Directories, aggregators, and national chains that are NOT outreach targets
 EXCLUDED_DOMAINS = {

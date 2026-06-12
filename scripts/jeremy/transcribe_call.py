@@ -29,8 +29,8 @@ import shutil
 import sys
 import tempfile
 import time
-import urllib.request
 import urllib.error
+import urllib.request
 from pathlib import Path
 
 
@@ -252,7 +252,7 @@ def transcribe_with_deepgram(audio_path: str) -> dict:
                 print("FATAL: Deepgram 401 Unauthorized — check your DEEPGRAM_API_KEY.")
                 sys.exit(2)
             if e.code == 429 and attempt < len(RETRY_DELAYS):
-                print(f"  Deepgram 429 rate limit — will retry ...", flush=True)
+                print("  Deepgram 429 rate limit — will retry ...", flush=True)
                 continue
             error_body = e.read().decode("utf-8", errors="replace")[:300] if e.fp else ""
             print(f"FATAL: Deepgram HTTP {e.code}: {error_body}")

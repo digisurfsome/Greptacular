@@ -58,12 +58,22 @@ interface ModelPreset {
 const CLAUDE_MODEL_PRESETS: ModelPreset[] = [
   { model: 'opus', context: '200k', label: 'Opus 4.6 · 200K' },
   { model: 'claude-opus-4-7', context: '200k', label: 'Opus 4.7 · 200K' },
+  { model: 'claude-opus-4-8', context: '200k', label: 'Opus 4.8 · 200K' },
+  { model: 'claude-fable-5', context: '200k', label: 'Fable 5 · 200K' },
   { model: 'sonnet', context: '200k', label: 'Sonnet 4.6 · 200K' },
   { model: 'haiku', context: '200k', label: 'Haiku · 200K' },
   { model: 'opus', context: '1m', label: 'Opus 4.6 · 1M' },
   { model: 'claude-opus-4-7', context: '1m', label: 'Opus 4.7 · 1M' },
+  { model: 'claude-opus-4-8', context: '1m', label: 'Opus 4.8 · 1M' },
+  { model: 'claude-fable-5', context: '1m', label: 'Fable 5 · 1M' },
   { model: 'sonnet', context: '1m', label: 'Sonnet 4.6 · 1M' },
 ]
+
+/** Claude models that support the xhigh effort level (Opus 4.7+, Fable 5). */
+const XHIGH_MODELS = new Set(['claude-opus-4-7', 'claude-opus-4-8', 'claude-fable-5'])
+
+/** Claude models that accept an effort level at 1M context. */
+const CLAUDE_EFFORT_MODELS = new Set(['opus', 'claude-opus-4-7', 'claude-opus-4-8', 'claude-fable-5', 'sonnet'])
 
 /** Build model presets from a provider definition. Claude gets context modes; others use supports_1m. */
 function buildPresetsForProvider(providerId: string, providerDef: WorkspaceProviderDef): ModelPreset[] {
@@ -234,7 +244,7 @@ export function WorkspaceSidebar({
     const preset = (providers && providers[newChatProvider])
       ? buildPresetsForProvider(newChatProvider, providers[newChatProvider])[modelPresetIndex]
       : CLAUDE_MODEL_PRESETS[modelPresetIndex]
-    if (effortLevel === 'xhigh' && preset?.model !== 'claude-opus-4-7') {
+    if (effortLevel === 'xhigh' && !XHIGH_MODELS.has(preset?.model ?? '')) {
       onEffortChange?.('high')
     }
   }, [modelPresetIndex, newChatProvider, providers, effortLevel, onEffortChange])
@@ -299,12 +309,11 @@ export function WorkspaceSidebar({
     const safeIdx = Math.min(modelPresetIndex, newChatModelPresets.length - 1)
     const preset = newChatModelPresets[safeIdx]
     if (!preset) return
-    // Only pass effort for Claude 1M context models (Opus 4.6/4.7, Sonnet 4.6); others default
-    const claudeEffortModels = new Set(['opus', 'claude-opus-4-7', 'sonnet'])
-    const supportsEffort = isNewChatClaude && preset.context === '1m' && claudeEffortModels.has(preset.model)
-    // Sonnet doesn't support xhigh — downgrade to high if user had it selected
+    // Only pass effort for Claude 1M context models (Opus 4.6/4.7/4.8, Fable 5, Sonnet 4.6); others default
+    const supportsEffort = isNewChatClaude && preset.context === '1m' && CLAUDE_EFFORT_MODELS.has(preset.model)
+    // Models without xhigh support — downgrade to high if user had it selected
     const effortForCreate: EffortLevel = supportsEffort
-      ? (effortLevel === 'xhigh' && preset.model !== 'claude-opus-4-7' ? 'high' : effortLevel)
+      ? (effortLevel === 'xhigh' && !XHIGH_MODELS.has(preset.model) ? 'high' : effortLevel)
       : 'high'
     const effort = effortForCreate
     createConversationMut.mutate({
@@ -677,13 +686,15 @@ export function WorkspaceSidebar({
             const selectedPreset = newChatModelPresets[modelPresetIndex]
             const isOpus46 = selectedPreset?.model === 'opus'
             const isOpus47 = selectedPreset?.model === 'claude-opus-4-7'
+            const isOpus48 = selectedPreset?.model === 'claude-opus-4-8'
+            const isFable = selectedPreset?.model === 'claude-fable-5'
             const isSonnet = selectedPreset?.model === 'sonnet'
             const is1M = selectedPreset?.context === '1m'
-            const effortEnabled = is1M && (isOpus46 || isOpus47 || isSonnet)
-            // Per Anthropic docs: xhigh is Opus 4.7 only. max works on 4.6, 4.7, and Sonnet 4.6.
+            const effortEnabled = is1M && (isOpus46 || isOpus47 || isOpus48 || isFable || isSonnet)
+            // Per Anthropic docs: xhigh needs Opus 4.7+, Opus 4.8, or Fable 5. max works on 4.6+, Fable, and Sonnet 4.6.
             const isEffortAvailable = (key: EffortLevel): boolean => {
               if (!effortEnabled) return false
-              if (key === 'xhigh') return isOpus47
+              if (key === 'xhigh') return isOpus47 || isOpus48 || isFable
               return true
             }
             return (
@@ -705,7 +716,7 @@ export function WorkspaceSidebar({
                             ? 'bg-fuchsia-600 text-white shadow-inner'
                             : 'bg-orange-500 text-white shadow-inner'
                     const unavailableTitle = !available && effortEnabled && preset.key === 'xhigh'
-                      ? 'Extra High is Opus 4.7 only'
+                      ? 'Extra High needs Opus 4.7, Opus 4.8, or Fable 5'
                       : preset.useCases
                     return (
                       <button

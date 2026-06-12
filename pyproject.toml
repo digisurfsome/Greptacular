@@ -10,6 +10,15 @@ ignore = [
     "E712",  # SQLAlchemy requires == True/False syntax
 ]
 
+[tool.ruff.lint.per-file-ignores]
+# Standalone scripts/tools (vendored style: compact statements, scratch vars).
+# Server/app code stays fully linted.
+"scripts/*" = ["E401", "E701", "E702", "I001", "F841"]
+"tools/*" = ["E701", "E702", "F841"]
+"outreach/*" = ["F841"]
+"metascraper/*" = ["F841"]
+"deploy_agent.py" = ["F841"]
+
 [tool.mypy]
 python_version = "3.11"
 ignore_missing_imports = true

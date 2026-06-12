@@ -345,7 +345,7 @@ async def preflight_auth_check() -> None:
 
         except asyncio.TimeoutError:
             if attempt < max_attempts - 1:
-                print(f"  Preflight timed out — retrying ...", flush=True)
+                print("  Preflight timed out — retrying ...", flush=True)
                 continue
             print("FATAL: preflight timed out. Auth prompt hanging — run `claude login`.")
             sys.exit(3)
@@ -752,7 +752,7 @@ async def run(
 
     # Summary
     print(f"\n{sep}")
-    print(f"  HARVEST COMPLETE")
+    print("  HARVEST COMPLETE")
     print(f"  Processed: {success}  |  Failed: {failed}")
     print(f"  Total calls in library: {state['call_count']}")
     print(f"  Index: {INDEX_FILE}")

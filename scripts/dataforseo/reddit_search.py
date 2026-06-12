@@ -17,15 +17,14 @@ Output:
     *_reddit_summary.txt  — readable summary per business
 """
 
-import os
-import sys
-import json
 import csv
+import json
+import sys
 import time
 import urllib.parse
 import urllib.request
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
 HEADERS    = {"User-Agent": "LeadResearchBot/1.0"}
 MAX_POSTS  = 15     # per business search
@@ -127,7 +126,7 @@ def run(csv_path: str):
                 if p["body"]:
                     print(f"      → {p['body'][:120].strip()}")
         else:
-            print(f"  ❌ No Reddit mentions found")
+            print("  ❌ No Reddit mentions found")
 
         biz_summary = {
             "name":       name,

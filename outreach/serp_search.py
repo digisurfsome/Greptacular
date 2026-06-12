@@ -11,13 +11,12 @@ Outputs a list of dicts ready for build_list.py to cross-reference.
 DataForSEO pricing: ~$0.0015 per SERP request (3 keywords = ~$0.005/city)
 """
 
-import os
-import json
-import time
 import base64
-import requests
-from typing import List, Dict, Optional
+import os
+import time
+from typing import Dict, List
 
+import requests
 
 DATAFORSEO_LOGIN = os.getenv("DATAFORSEO_LOGIN")
 DATAFORSEO_PASSWORD = os.getenv("DATAFORSEO_PASSWORD")

@@ -11,9 +11,10 @@ import sys
 # Allow running from parent dir
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from hooks.base import HookModule
 from keyword_discovery import get_keywords
-from serp_search import search_all_keywords, get_top_competitors
+from serp_search import get_top_competitors, search_all_keywords
+
+from hooks.base import HookModule
 
 
 class SEORankingsHook(HookModule):

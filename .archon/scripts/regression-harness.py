@@ -130,7 +130,7 @@ if git_result.returncode == 0 and git_result.stdout.strip():
         [PYTHON, f'{SCRIPTS_DIR}/full-checkpoint.py',
          f'{FIXTURES}/broken-phase', old_sha],
         1,
-        f'full-checkpoint: broken-phase with SHA HEAD~1 → exit 1 (unauthorized files)',
+        'full-checkpoint: broken-phase with SHA HEAD~1 → exit 1 (unauthorized files)',
     )
 else:
     print('  SKIP: full-checkpoint test — git history unavailable')

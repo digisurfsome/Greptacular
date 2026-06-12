@@ -13,11 +13,12 @@ Cost: ~$0.001 per niche (tiny Haiku call, cached forever after).
 Domains NOT in the classifier result are assumed to be local businesses.
 """
 
-import os
 import json
-import anthropic
+import os
 from pathlib import Path
-from typing import Set, List
+from typing import List, Set
+
+import anthropic
 
 CACHE_DIR = Path(__file__).parent / ".classifier_cache"
 CACHE_DIR.mkdir(exist_ok=True)
@@ -101,7 +102,7 @@ def classify_rows(rows: List[dict], niche: str) -> List[dict]:
     Local businesses pass through with skip_outreach=False.
     """
     # Base exclusions always applied (directories, socials, etc.)
-    from build_list import EXCLUDED_DOMAINS, is_excluded
+    from build_list import is_excluded
 
     # Niche-specific nationals from Haiku (cached)
     if os.environ.get("ANTHROPIC_API_KEY"):

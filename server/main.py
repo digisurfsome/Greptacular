@@ -27,12 +27,14 @@ load_dotenv()
 # WebSocket traffic. This fixes the "stuck messages" bug where
 # Nagle's algorithm holds small WebSocket frames in the TCP buffer.
 from .ws_flush import _apply_uvicorn_tcp_nodelay_patch  # noqa: E402, F401
+
 _apply_uvicorn_tcp_nodelay_patch()
 
 # Apply caveman-mode patch globally BEFORE any service imports
 # ClaudeAgentOptions — this makes every SDK client (main + sub-agents)
 # inherit terse-output rules via prompt-cached system prompt.
 from .caveman_patch import apply_caveman_patch  # noqa: E402
+
 apply_caveman_patch()
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket
@@ -72,6 +74,7 @@ from .routers import (
     pipeline_proxy_router,
     pipeline_router,
     prd_shredder_router,
+    preview_machine_router,
     projects_router,
     role_library_router,
     schedules_router,
@@ -114,6 +117,8 @@ from .services.swarm_orchestrator import cleanup_all_swarms
 from .services.terminal_manager import cleanup_all_terminals
 from .services.workspace_chat_session import (
     cleanup_all_workspace_sessions,
+)
+from .services.workspace_chat_session import (
     get_all_sessions as get_all_workspace_sessions,
 )
 from .websocket import project_websocket
@@ -453,6 +458,7 @@ app.include_router(tool_themes_router)
 app.include_router(prd_shredder_router)
 app.include_router(ingestion_sequences_router)
 app.include_router(market_scraper_router)
+app.include_router(preview_machine_router)
 app.include_router(meta_training_router)
 app.include_router(ap_code_manager_router)
 app.include_router(truth_builder_router)

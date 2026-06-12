@@ -20,8 +20,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _claude import preflight, call_claude_stdin, parse_json, load_config
-
+from _claude import call_claude_stdin, load_config, parse_json, preflight
 
 # =============================================================================
 # GENERIC SEED CATEGORIES (fallback / merge)
@@ -126,7 +125,7 @@ async def run(cfg: dict, dry_run: bool = False) -> dict:
     print(f"  Sampled {len(transcript_samples)} transcripts for analysis", flush=True)
 
     if dry_run:
-        print(f"  DRY RUN: would make 1 LLM call for taxonomy discovery")
+        print("  DRY RUN: would make 1 LLM call for taxonomy discovery")
         result = {
             "categories": SEED_CATEGORIES,
             "dry_run": True,

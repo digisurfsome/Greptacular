@@ -131,14 +131,14 @@ def search_and_scrape(query: str, client: httpx.Client) -> dict | None:
         return resp.json()
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 429:
-            print(f"    Rate limited. Waiting 60s...")
+            print("    Rate limited. Waiting 60s...")
             time.sleep(60)
             return search_and_scrape(query, client)  # Retry once
         print(f"    HTTP error {e.response.status_code}: {e.response.text[:200]}")
         return None
     except httpx.ConnectError:
         print(f"    ERROR: Can't connect to AutoForge at {AUTOFORGE_URL}")
-        print(f"    Make sure AutoForge is running (start_ui.bat)")
+        print("    Make sure AutoForge is running (start_ui.bat)")
         return None
     except Exception as e:
         print(f"    Error: {e}")
@@ -241,7 +241,7 @@ def run_idea(idea: dict, client: httpx.Client) -> dict:
             print(f"    Found {count} phrases")
             all_scrapes.append(result)
         else:
-            print(f"    No results")
+            print("    No results")
 
         # Rate limit pause (skip after last query)
         if i < len(queries):
@@ -285,28 +285,28 @@ def generate_report(results: list[dict]) -> str:
 
     # Detailed sections per idea
     for i, r in enumerate(ranked, 1):
-        lines.append(f"---")
+        lines.append("---")
         lines.append(f"## #{i}: {r['idea_name']} — {r['demand_score']}/100")
-        lines.append(f"")
+        lines.append("")
         lines.append(f"**{r['recommendation']}**")
-        lines.append(f"")
+        lines.append("")
         lines.append(f"_{r['description']}_")
-        lines.append(f"")
+        lines.append("")
         lines.append(f"- Threads found: {r['threads_found']}")
         lines.append(f"- Total phrases: {r['total_phrases']}")
         lines.append(f"- Queries run: {r['queries_run']}")
-        lines.append(f"")
+        lines.append("")
 
         if r["top_phrases"]:
-            lines.append(f"### Top Signals")
-            lines.append(f"")
+            lines.append("### Top Signals")
+            lines.append("")
             for p in r["top_phrases"][:10]:
                 emoji = {"pain_point": "🔴", "desire": "🟡", "validation": "🟢",
                          "feature_request": "🔵", "social_proof": "🟣"}.get(p["category"], "⚪")
                 lines.append(f"- {emoji} **[{p['category']}]** r/{p['subreddit']}: \"{p['text'][:150]}\"")
                 if p.get("ad_hook"):
                     lines.append(f"  - Ad hook: _{p['ad_hook']}_")
-            lines.append(f"")
+            lines.append("")
 
     return "\n".join(lines)
 
@@ -315,7 +315,7 @@ def load_ideas(file_path: Path) -> list[dict]:
     """Load ideas from JSON file."""
     if not file_path.exists():
         print(f"ERROR: Ideas file not found: {file_path}")
-        print(f"Create it with this format:")
+        print("Create it with this format:")
         print(json.dumps({"ideas": [
             {
                 "name": "Sugar Scanner",

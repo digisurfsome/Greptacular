@@ -15,14 +15,14 @@ Features:
 - On 401: stop immediately
 """
 
+import json
 import os
 import sys
-import json
-import time
 import threading
-from pathlib import Path
-from datetime import datetime
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
+from pathlib import Path
 
 try:
     import requests
@@ -310,7 +310,7 @@ def transcribe_folder(audio_folder_str: str):
     total_dur     = sum(v.get("duration_sec", 0) for v in entries)
 
     print(f"\n{'='*60}")
-    print(f"Transcription complete:")
+    print("Transcription complete:")
     print(f"  Success:  {success_count}")
     print(f"  Skipped:  {skip_count}")
     print(f"  Errors:   {error_count}")

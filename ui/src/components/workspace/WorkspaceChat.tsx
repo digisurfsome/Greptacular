@@ -547,11 +547,13 @@ export function WorkspaceChat({
     ?? '200k'
 
   // Which effort levels apply to the current turn's model (send-bar pill).
-  // Per Anthropic docs: Opus 4.7 supports all 5; Opus 4.6 and Sonnet 4.6 support 4 (no xhigh); others none.
+  // Per Anthropic docs: Opus 4.7/4.8 and Fable 5 support all 5; Opus 4.6 and Sonnet 4.6 support 4 (no xhigh); others none.
   const availableTurnEfforts = useMemo<EffortLevel[]>(() => {
     if (effectiveProvider !== 'claude') return []
     if (conversationContextMode !== '1m') return []
-    if (conversationModel === 'claude-opus-4-7') return ['low', 'medium', 'high', 'xhigh', 'max']
+    if (conversationModel === 'claude-opus-4-7' || conversationModel === 'claude-opus-4-8' || conversationModel === 'claude-fable-5') {
+      return ['low', 'medium', 'high', 'xhigh', 'max']
+    }
     if (conversationModel === 'opus' || conversationModel === 'sonnet') return ['low', 'medium', 'high', 'max']
     return []
   }, [effectiveProvider, conversationContextMode, conversationModel])
@@ -1494,16 +1496,16 @@ export function WorkspaceChat({
 
       {/* Compact control bar: Effort pill + thin context budget bar + message count */}
       {(() => {
-        // Effort levels work on Opus 4.6, Opus 4.7, and Sonnet 4.6 at 1M. Haiku/others ignore them.
+        // Effort levels work on Opus 4.6/4.7/4.8, Fable 5, and Sonnet 4.6 at 1M. Haiku/others ignore them.
         const isOpus46 = conversationModel === 'opus'
-        const isOpus47 = conversationModel === 'claude-opus-4-7'
+        const isXhighModel = conversationModel === 'claude-opus-4-7' || conversationModel === 'claude-opus-4-8' || conversationModel === 'claude-fable-5'
         const isSonnet = conversationModel === 'sonnet'
-        const effortEnabled = conversationContextMode === '1m' && (isOpus46 || isOpus47 || isSonnet)
+        const effortEnabled = conversationContextMode === '1m' && (isOpus46 || isXhighModel || isSonnet)
         const isOpus1M = effortEnabled  // kept as alias for downstream refs
-        // Per Anthropic docs: xhigh is Opus 4.7 only. max works on 4.6, 4.7, and Sonnet 4.6.
+        // Per Anthropic docs: xhigh needs Opus 4.7+, Opus 4.8, or Fable 5. max works on 4.6+, Fable, and Sonnet 4.6.
         const isEffortAvailable = (key: EffortLevel): boolean => {
           if (!effortEnabled) return false
-          if (key === 'xhigh') return isOpus47
+          if (key === 'xhigh') return isXhighModel
           return true
         }
         const effortLabels: Record<EffortLevel, string> = { low: 'Low', medium: 'Med', high: 'High', xhigh: 'XHi', max: 'Max' }
@@ -1558,7 +1560,12 @@ export function WorkspaceChat({
               {isOpus1M && (
                 <DropdownMenuContent align="start" className="w-64">
                   <DropdownMenuLabel className="text-xs">
-                    Anthropic Use Cases {isOpus47 ? '(Opus 4.7)' : isSonnet ? '(Sonnet 4.6)' : '(Opus 4.6)'}
+                    Anthropic Use Cases {
+                      conversationModel === 'claude-fable-5' ? '(Fable 5)'
+                        : conversationModel === 'claude-opus-4-8' ? '(Opus 4.8)'
+                          : conversationModel === 'claude-opus-4-7' ? '(Opus 4.7)'
+                            : isSonnet ? '(Sonnet 4.6)' : '(Opus 4.6)'
+                    }
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   {(['low', 'medium', 'high', 'xhigh', 'max'] as const).map((level) => {

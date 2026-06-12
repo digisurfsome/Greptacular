@@ -438,7 +438,7 @@ async def run(limit: int = 0, dry_run: bool = False) -> None:
     print(f"\n{sep}")
     print("  Jeremy Miner B2B + Bonus Content Miner")
     print(f"  Model:   {MODEL}  (Sonnet — verbatim required)")
-    print(f"  Auth:    subscription (claude -p)")
+    print("  Auth:    subscription (claude -p)")
     print(f"  B2B out: {B2B_DIR}")
     print(f"  Del out: {DELIVERY_DIR}")
     print(f"  Concurrency: {MAX_CONCURRENCY}  |  Chunk: {CHUNK_TOKENS}tok  |  Overlap: {OVERLAP_TOKENS}tok")
@@ -604,7 +604,7 @@ async def run(limit: int = 0, dry_run: bool = False) -> None:
             all_extractions.append(ex)
 
     print(f"\n{sep}")
-    print(f"  COMPLETE")
+    print("  COMPLETE")
     print(f"  Total extractions:  {len(all_extractions)}")
     print(f"  Total API calls:    {state['call_count']}")
     print(f"{sep}\n")

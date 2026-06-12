@@ -24,8 +24,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _claude import call_claude_stdin, parse_json, load_config, load_progress, save_progress
-
+from _claude import call_claude_stdin, load_config, load_progress, parse_json, save_progress
 
 # =============================================================================
 # EXTRACTION PROMPT

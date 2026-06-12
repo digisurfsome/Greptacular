@@ -18,15 +18,15 @@ Usage:
 Cost: $0. Speed: ~1 sec per video.
 """
 
-import sys
 import json
+import sys
 from pathlib import Path
 
 try:
     from youtube_transcript_api import YouTubeTranscriptApi
     from youtube_transcript_api._errors import (
-        TranscriptsDisabled,
         NoTranscriptFound,
+        TranscriptsDisabled,
         VideoUnavailable,
     )
 except ImportError:

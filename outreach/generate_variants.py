@@ -13,12 +13,13 @@ Usage:
 Output: spinner_variants/{hook}_tier_a.json (and b, c, d)
 """
 
+import argparse
+import json
 import os
 import sys
-import json
-import argparse
-import anthropic
 from pathlib import Path
+
+import anthropic
 
 VARIANTS_DIR = Path(__file__).parent / "spinner_variants"
 VARIANTS_DIR.mkdir(exist_ok=True)

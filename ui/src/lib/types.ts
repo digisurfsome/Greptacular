@@ -2250,3 +2250,61 @@ export interface AngleTypeInfo {
   label: string
   description: string
 }
+
+// ============================================================================
+// Preview Machine — pipeline runner driving scripts/preview_machine/
+// ============================================================================
+
+/** One of the five pipeline stages, in run order. */
+export type PreviewMachineStage =
+  | 'biz_pull'
+  | 'gsa_filter'
+  | 'site_age'
+  | 'copywriter'
+  | 'sitegen'
+
+/** Live state of the (single) running pipeline stage. */
+export interface PreviewMachineStatus {
+  running: boolean
+  stage: PreviewMachineStage | null
+  started_at: number | null
+  finished_at: number | null
+  exit_code: number | null
+  /** Combined stdout/stderr tail (last ~500 lines). */
+  log: string[]
+}
+
+/** A CSV file available as a stage input. */
+export interface PreviewMachineFile {
+  name: string
+  size: number
+  mtime: number
+}
+
+/** Calibration summary computed from copywriter's runlog.jsonl. */
+export interface PreviewMachineCalibration {
+  has_data: boolean
+  target_pct?: number
+  total_written?: number
+  capacity_per_hour?: number | null
+  limit_hit?: boolean
+  limit_ts?: string | null
+  window_hours?: number | null
+  done_before_limit?: number | null
+  burn_rate_per_hour?: number | null
+  suggested_per_hour?: number | null
+  message?: string | null
+}
+
+/** A single timestamped runlog event (run_start, batch_done, rate_limited, ...). */
+export interface PreviewMachineRunlogEvent {
+  ts?: string
+  event?: string
+  [key: string]: unknown
+}
+
+/** Response from GET /api/preview-machine/calibration. */
+export interface PreviewMachineCalibrationResponse {
+  events: PreviewMachineRunlogEvent[]
+  calibration: PreviewMachineCalibration
+}

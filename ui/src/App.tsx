@@ -448,7 +448,7 @@ function App() {
                 size="sm"
                 className="gap-1.5"
                 onClick={() => { window.location.hash = '#/market-scraper' }}
-                title="Market Scraper — Reddit pain points → ad copy"
+                title="Scraper — Preview Machine pipeline + Market Scraper (Reddit)"
               >
                 <TrendingUp size={16} />
                 <span className="hidden sm:inline text-xs">Scraper</span>

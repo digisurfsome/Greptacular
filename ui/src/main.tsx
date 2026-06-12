@@ -20,7 +20,7 @@ import { ArenaPage } from './pages/ArenaPage'
 import { ArenaChatPage } from './pages/ArenaChatPage'
 import { ComponentDashboardPage } from './pages/ComponentDashboardPage'
 import { ToolRunnerPage } from './pages/ToolRunnerPage'
-import { MarketScraperPage } from './pages/MarketScraperPage'
+import { PreviewMachinePage } from './pages/PreviewMachinePage'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import './styles/globals.css'
 
@@ -96,7 +96,9 @@ function Root() {
     return <MetaEnginePage />
   }
   if (hash === '#/market-scraper' || hash.startsWith('#/market-scraper/')) {
-    return <MarketScraperPage />
+    // The Scraper tab opens the hub (Preview Machine by default; Market Scraper
+    // is available via the in-page toggle). Route path kept so nav is unchanged.
+    return <PreviewMachinePage />
   }
   if (hash === '#/components' || hash.startsWith('#/components/')) {
     return <ComponentDashboardPage />

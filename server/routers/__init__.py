@@ -35,6 +35,7 @@ from .pipeline import router as pipeline_router
 from .pipeline_chat import router as pipeline_chat_router
 from .pipeline_proxy import router as pipeline_proxy_router
 from .prd_shredder import router as prd_shredder_router
+from .preview_machine import router as preview_machine_router
 from .projects import boilerplate_router, styles_router
 from .projects import router as projects_router
 from .role_library import router as role_library_router
@@ -105,6 +106,7 @@ __all__ = [
     "tool_themes_router",
     "ingestion_sequences_router",
     "market_scraper_router",
+    "preview_machine_router",
     "meta_training_router",
     "ap_code_manager_router",
     "truth_builder_router",

@@ -34,6 +34,8 @@ Each page is a single `.tsx` file. Some have page-specific markdown docs alongsi
 | `TokenBudgetPage.tsx` | `/token-budget` | Token usage tracking and budget management |
 | `ToolRunnerPage.tsx` | `/tool-runner` | Execute and manage extracted tools |
 | `ComponentDashboardPage.tsx` | `/components` | UI component inventory and preview |
+| `MarketScraperPage.tsx` | (in Scraper hub) | Reddit market scraper — rendered inside the Scraper hub toggle |
+| `PreviewMachinePage.tsx` | `/market-scraper` | Scraper hub — toggle between Preview Machine (default) and Market Scraper |
 
 ---
 
@@ -54,6 +56,7 @@ Each folder contains components used ONLY by that page. If your task is about a 
 | `factory/` | (Factory features) | FactoryPanel, FactorySettings, PhasePRDManager |
 | `appbuilder/` | (App builder features) | AgentOSChat, ExpandPanel, GapAnalysisPanel, IntakeDock, ProductPanel, SpecCards, StandardsPanel |
 | `tool-factory/` | ToolRunnerPage | ToolCard, ToolDetailView, ToolManagerPage, ChainVisualizer, ThemePicker, PRDUploadModal, AnalyticsDashboard |
+| `preview-machine/` | PreviewMachinePage | PipelinePanel, CopywriterControls, CalibrationCard |
 | `ui/` | ALL pages | Shared primitives: alert, badge, button, card, checkbox, dialog, dropdown-menu, input, label, separator, switch, textarea |
 
 ### Shared Components (src/components/ root level)
@@ -97,6 +100,7 @@ These are used across multiple pages. Modify with care.
 | `usePRDShredder.ts` | PRDShredderPage | PRD shredder operations |
 | `useRoleLibrary.ts` | RoleLibraryPage | Role blueprint CRUD |
 | `useTokenBudget.ts` | TokenBudgetPage | Token budget tracking |
+| `usePreviewMachine.ts` | PreviewMachinePage | Preview Machine pipeline status (2s poll), files, run/stop, calibration |
 | `useSchedules.ts` | DashboardPage | Schedule management |
 | `useConversations.ts` | Workspace | Conversation state |
 | `useBackgroundSessions.ts` | Workspace | Background agent sessions |

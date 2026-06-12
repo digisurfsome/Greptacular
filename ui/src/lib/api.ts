@@ -3499,3 +3499,50 @@ export async function runAllProjectAngles(projectId: number, data?: {
     body: JSON.stringify(data ?? {}),
   })
 }
+
+// ============================================================================
+// Preview Machine API — drive scripts/preview_machine/ pipeline stages
+// ============================================================================
+
+import type {
+  PreviewMachineStage,
+  PreviewMachineStatus,
+  PreviewMachineFile,
+  PreviewMachineCalibrationResponse,
+} from './types'
+
+/** Current pipeline state + live log tail. */
+export async function getPreviewMachineStatus(): Promise<PreviewMachineStatus> {
+  return fetchJSON<PreviewMachineStatus>('/preview-machine/status')
+}
+
+/** Start a single pipeline stage. Throws (409 → Error) if a stage is running. */
+export async function runPreviewMachineStage(
+  stage: PreviewMachineStage,
+  args: string[],
+): Promise<PreviewMachineStatus> {
+  return fetchJSON<PreviewMachineStatus>('/preview-machine/run', {
+    method: 'POST',
+    body: JSON.stringify({ stage, args }),
+  })
+}
+
+/** Terminate the running stage. */
+export async function stopPreviewMachine(): Promise<PreviewMachineStatus> {
+  return fetchJSON<PreviewMachineStatus>('/preview-machine/stop', { method: 'POST' })
+}
+
+/** CSV files available as stage inputs (newest first). */
+export async function listPreviewMachineFiles(): Promise<PreviewMachineFile[]> {
+  const res = await fetchJSON<{ files: PreviewMachineFile[] }>('/preview-machine/files')
+  return res.files
+}
+
+/** Runlog tail + calibration summary for the given target percentage. */
+export async function getPreviewMachineCalibration(
+  targetPct: number,
+): Promise<PreviewMachineCalibrationResponse> {
+  return fetchJSON<PreviewMachineCalibrationResponse>(
+    `/preview-machine/calibration?target_pct=${targetPct}`,
+  )
+}

@@ -74,6 +74,7 @@ from .routers import (
     pipeline_proxy_router,
     pipeline_router,
     prd_shredder_router,
+    preview_machine_router,
     projects_router,
     role_library_router,
     schedules_router,
@@ -457,6 +458,7 @@ app.include_router(tool_themes_router)
 app.include_router(prd_shredder_router)
 app.include_router(ingestion_sequences_router)
 app.include_router(market_scraper_router)
+app.include_router(preview_machine_router)
 app.include_router(meta_training_router)
 app.include_router(ap_code_manager_router)
 app.include_router(truth_builder_router)

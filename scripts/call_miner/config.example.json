@@ -1,0 +1,17 @@
+{
+  "_comment": "Copy to your-channel-calls.json and edit. Run: python scripts/call_miner/call_miner.py --config scripts/call_miner/your-channel-calls.json",
+
+  "project_name": "my_channel_calls",
+  "videos_dir":   "C:/path/to/videos",
+  "output_dir":   "C:/path/to/output/my-channel-calls",
+
+  "_comment_filter": "Optional: only process videos whose folder name contains one of these strings. Remove or set [] to process ALL videos.",
+  "call_filter_keywords": ["cold-call", "live", "demo", "call"],
+
+  "taxonomy_gate":      true,
+  "taxonomy_sample_n":  8,
+
+  "cluster_mode":        "llm",
+  "llm_batch_size":      25,
+  "embedding_threshold": 0.82
+}

@@ -1,0 +1,17 @@
+{
+  "_note": "Connor Cahil — mine ONLY call/demo/live videos from his channel. Filters by keyword.",
+
+  "project_name": "connor_live_calls",
+  "videos_dir":   "C:/Users/lober/GitHub/Greptacular - AutoForge Build/Greptacular/output/videos",
+  "output_dir":   "C:/Users/lober/GitHub/Greptacular - AutoForge Build/Greptacular/output/connor_calls",
+
+  "_comment_filter": "Only process videos whose folder name matches these keywords. Check output/videos folder names to tune this.",
+  "call_filter_keywords": ["cold-call", "cold-calling", "live", "call-", "-call", "sales-call", "demo", "calling"],
+
+  "taxonomy_gate":      true,
+  "taxonomy_sample_n":  4,
+
+  "cluster_mode":        "llm",
+  "llm_batch_size":      8,
+  "embedding_threshold": 0.82
+}

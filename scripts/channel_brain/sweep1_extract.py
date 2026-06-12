@@ -95,6 +95,33 @@ def count_jsonl_lines(path: Path) -> int:
 # SINGLE VIDEO EXTRACTION
 # =============================================================================
 
+# Chunking — per playbook, 1,500 tokens ≈ 6,000 chars w/ 800 char overlap.
+# Single-prompt per video = 100% exit-15 on long transcripts (documented in
+# docs/info/live-call-extraction-playbook.md).
+CHUNK_CHARS = 6000
+CHUNK_OVERLAP = 800
+
+
+def _chunk_transcript(text: str) -> list[str]:
+    if len(text) <= CHUNK_CHARS:
+        return [text]
+    chunks = []
+    i = 0
+    n = len(text)
+    while i < n:
+        end = min(i + CHUNK_CHARS, n)
+        # Try to break at a sentence/space boundary near the end
+        if end < n:
+            cut = text.rfind(" ", i + CHUNK_CHARS - 400, end)
+            if cut > i:
+                end = cut
+        chunks.append(text[i:end])
+        if end >= n:
+            break
+        i = max(end - CHUNK_OVERLAP, i + 1)
+    return chunks
+
+
 async def extract_video(folder: Path, bucket_names: list[str], label: str) -> list[dict]:
     transcript = read_transcript(folder)
     if not transcript:
@@ -104,39 +131,50 @@ async def extract_video(folder: Path, bucket_names: list[str], label: str) -> li
     source_title = info.split("\n")[0].strip() if info else folder.name
 
     buckets_str = "\n".join(f"  - {b}" for b in bucket_names)
+    info_block = info[:400].strip()
 
-    prompt = (
-        EXTRACT_SYSTEM
-        + f"\n\nAVAILABLE BUCKETS (use exact slug):\n{buckets_str}"
-        + f"\n\n--- VIDEO INFO ---\n{info[:400].strip()}"
-        + f"\n\n--- TRANSCRIPT ---\n{transcript}"
-    )
-
-    raw = await call_claude_stdin(prompt, label=label)
-    if raw is None:
-        return []
-
-    parsed = parse_json(raw)
-    if not parsed or not isinstance(parsed, dict) or "extractions" not in parsed:
-        return []
-
+    chunks = _chunk_transcript(transcript)
     valid_buckets = set(bucket_names)
-    results = []
-    for item in parsed["extractions"]:
-        verbatim = (item.get("verbatim") or "").strip()
-        if not verbatim:
+    results: list[dict] = []
+    seen_verbatim: set[str] = set()  # cross-chunk dedup (overlap region)
+
+    for ci, chunk in enumerate(chunks, 1):
+        chunk_label = f"{label}-c{ci}/{len(chunks)}" if len(chunks) > 1 else label
+        prompt = (
+            EXTRACT_SYSTEM
+            + f"\n\nAVAILABLE BUCKETS (use exact slug):\n{buckets_str}"
+            + f"\n\n--- VIDEO INFO ---\n{info_block}"
+            + (f"\n\n--- TRANSCRIPT (chunk {ci}/{len(chunks)}) ---\n" if len(chunks) > 1
+               else "\n\n--- TRANSCRIPT ---\n")
+            + chunk
+        )
+
+        raw = await call_claude_stdin(prompt, label=chunk_label)
+        if raw is None:
             continue
-        bucket = item.get("bucket", "misc")
-        # Snap to closest valid bucket or fallback to misc
-        if bucket not in valid_buckets:
-            bucket = "misc"
-        results.append({
-            "verbatim":     verbatim,
-            "bucket":       bucket,
-            "context_note": (item.get("context_note") or "").strip(),
-            "source_folder": folder.name,
-            "source_video":  source_title,
-        })
+
+        parsed = parse_json(raw)
+        if not parsed or not isinstance(parsed, dict) or "extractions" not in parsed:
+            continue
+
+        for item in parsed["extractions"]:
+            verbatim = (item.get("verbatim") or "").strip()
+            if not verbatim:
+                continue
+            key = verbatim.lower()
+            if key in seen_verbatim:
+                continue
+            seen_verbatim.add(key)
+            bucket = item.get("bucket", "misc")
+            if bucket not in valid_buckets:
+                bucket = "misc"
+            results.append({
+                "verbatim":     verbatim,
+                "bucket":       bucket,
+                "context_note": (item.get("context_note") or "").strip(),
+                "source_folder": folder.name,
+                "source_video":  source_title,
+            })
 
     return results
 

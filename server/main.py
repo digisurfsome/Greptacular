@@ -27,12 +27,14 @@ load_dotenv()
 # WebSocket traffic. This fixes the "stuck messages" bug where
 # Nagle's algorithm holds small WebSocket frames in the TCP buffer.
 from .ws_flush import _apply_uvicorn_tcp_nodelay_patch  # noqa: E402, F401
+
 _apply_uvicorn_tcp_nodelay_patch()
 
 # Apply caveman-mode patch globally BEFORE any service imports
 # ClaudeAgentOptions — this makes every SDK client (main + sub-agents)
 # inherit terse-output rules via prompt-cached system prompt.
 from .caveman_patch import apply_caveman_patch  # noqa: E402
+
 apply_caveman_patch()
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket
@@ -114,6 +116,8 @@ from .services.swarm_orchestrator import cleanup_all_swarms
 from .services.terminal_manager import cleanup_all_terminals
 from .services.workspace_chat_session import (
     cleanup_all_workspace_sessions,
+)
+from .services.workspace_chat_session import (
     get_all_sessions as get_all_workspace_sessions,
 )
 from .websocket import project_websocket

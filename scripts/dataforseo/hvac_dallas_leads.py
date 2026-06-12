@@ -27,14 +27,14 @@ HOW TO RUN:
          python hvac_dallas_leads.py you@email.com yourpass
 """
 
-import os
-import json
 import csv
+import json
+import os
 import time
-import sys
-import requests
 from datetime import datetime
 from pathlib import Path
+
+import requests
 from requests.auth import HTTPBasicAuth
 
 # ── Load .env file if present ─────────────────────────────────────────────────
@@ -500,7 +500,7 @@ def print_summary(rows, label):
 # ── Main ──────────────────────────────────────────────────────────────────────
 def main():
     print(f"\n{'='*60}")
-    print(f"DataForSEO — HVAC Dallas Lead Finder (DUAL SEARCH)")
+    print("DataForSEO — HVAC Dallas Lead Finder (DUAL SEARCH)")
     print(f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"{'='*60}")
     print(f"\nSearches: {len(SEARCHES)}")
@@ -527,14 +527,14 @@ def main():
     print(f"🔑 Password: {'*' * len(DATAFORSEO_PASSWORD)} ({len(DATAFORSEO_PASSWORD)} chars)")
 
     # Quick credential test before running
-    print(f"\n🧪 Testing credentials against DataForSEO...")
+    print("\n🧪 Testing credentials against DataForSEO...")
     try:
         test = api_get("/v3/appendix/user_data")
         balance = test.get("tasks", [{}])[0].get("result", [{}])[0].get("money_balance", "unknown")
         print(f"✅ Credentials valid! Account balance: ${balance}")
     except Exception as e:
         print(f"❌ Credential test FAILED: {e}")
-        print(f"   Double-check your DataForSEO login email and password.")
+        print("   Double-check your DataForSEO login email and password.")
         print(f"   Login used: {DATAFORSEO_LOGIN}")
         return
 
@@ -551,7 +551,7 @@ def main():
         print(f"{'='*60}")
 
         # Discover
-        print(f"\n[1/3] Maps SERP — $0.002")
+        print("\n[1/3] Maps SERP — $0.002")
         businesses = discover_businesses(keyword)
 
         if not businesses:
@@ -575,7 +575,7 @@ def main():
             if reddit_posts:
                 print(f"    🔍 Reddit: {len(reddit_posts)} posts found")
             else:
-                print(f"    🔍 Reddit: no mentions")
+                print("    🔍 Reddit: no mentions")
             time.sleep(0.5)   # be polite to Reddit
 
             # Save full review text for AI analysis (Google + Reddit combined)
@@ -637,12 +637,12 @@ def main():
 
     # Final totals
     print(f"\n{'='*60}")
-    print(f"ALL DONE")
+    print("ALL DONE")
     print(f"{'='*60}")
     for s in SEARCHES:
         print(f"  {s['label']:12} → {s['output_file']}")
     print(f"\n💰 Approx spend: ${cost_serp + cost_reviews:.4f}")
-    print(f"📌 Next step: open the CSV files and sort by LEAD_SCORE (highest first)")
+    print("📌 Next step: open the CSV files and sort by LEAD_SCORE (highest first)")
 
 
 if __name__ == "__main__":

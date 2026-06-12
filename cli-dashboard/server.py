@@ -15,20 +15,17 @@ import asyncio
 import json
 import os
 import signal
-import sqlite3
 import subprocess
 import sys
-import time
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
+import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-import uvicorn
 
 app = FastAPI(title="CLI Dashboard")
 

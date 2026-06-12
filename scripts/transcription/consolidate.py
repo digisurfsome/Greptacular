@@ -14,8 +14,8 @@ Per-video format in concatenated MD:
 """
 
 import json
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
 AUDIO_ROOT  = Path(r"E:\AutoForge\jeremy-audio")
 # Resolve docs output relative to this script: scripts/transcription/ → repo root

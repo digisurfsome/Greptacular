@@ -24,13 +24,13 @@ COST: $0.00 — Groq free tier
 MODEL: llama-3.3-70b-versatile (Groq hosted, extremely fast)
 """
 
+import csv
+import json
 import os
 import sys
-import json
 import time
-import csv
-from pathlib import Path
 from collections import defaultdict
+from pathlib import Path
 
 # ── Load .env ─────────────────────────────────────────────────────────────────
 _env_path = Path(__file__).parent / ".env"
@@ -249,17 +249,17 @@ def process_file(raw_json_path: str):
     # Print summary
     flagged_count = sum(1 for r in all_results if r["signal"])
     print(f"\n{'─'*55}")
-    print(f"  SUMMARY")
+    print("  SUMMARY")
     print(f"{'─'*55}")
     print(f"  Total reviews analyzed:  {total}")
     print(f"  Communication problems:  {flagged_count} ({flagged_count/total*100:.0f}%)")
     print(f"  Businesses with signals: {len(biz_scores)}")
-    print(f"\n  TOP LEADS:")
+    print("\n  TOP LEADS:")
     for biz in scored_biznesses[:5]:
         print(f"    🔴 [{biz['score']} signals] {biz['name']}")
         if biz["signals"]:
             print(f"       \"{biz['signals'][0]['text'][:120]}...\"")
-    print(f"\n  TOP SIGNAL PHRASES (real language from real reviews):")
+    print("\n  TOP SIGNAL PHRASES (real language from real reviews):")
     for phrase, count in sorted(keyword_freq.items(), key=lambda x: -x[1])[:15]:
         if phrase and phrase.lower() != "none":
             print(f"    ({count}x) \"{phrase}\"")

@@ -16,10 +16,10 @@ Output columns added:
   email_subject, email_body, reply_to, hook_used, tier
 """
 
+import argparse
 import csv
 import json
 import random
-import argparse
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -89,7 +89,7 @@ def assemble_email(row: dict, hook_name: str, reply_to: str = "") -> Dict[str, s
     def safe_format(template: str) -> str:
         try:
             return template.format(**safe_row)
-        except KeyError as e:
+        except KeyError:
             # Missing variable in row — leave placeholder visible so it's obvious
             return template  # Return unformatted so missing vars are visible
 
@@ -106,7 +106,7 @@ def assemble_email(row: dict, hook_name: str, reply_to: str = "") -> Dict[str, s
 
     # Add reply-to line if provided
     if reply_to:
-        body += f"\n\n— Reply directly to this email"
+        body += "\n\n— Reply directly to this email"
 
     return {
         "email_subject": subject,

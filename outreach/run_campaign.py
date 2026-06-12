@@ -31,14 +31,13 @@ Cost breakdown (local model mode):
   Total:           ~$0.01/city
 """
 
+import argparse
 import asyncio
 import csv
 import os
 import sys
-import argparse
-import subprocess
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
 # Make sure we can import from outreach/ regardless of where script is run
 OUTREACH_DIR = Path(__file__).parent
@@ -104,7 +103,7 @@ async def main():
     step(f"STEP 1/4 — Discover {args.niche}s in {args.city} {args.state}")
     print(f"  Hook: {args.hook} | Cost: ~$0.01 (DataForSEO, 3 keywords)")
 
-    from build_list import build_from_serp, write_csv, print_summary, OUTPUT_COLUMNS
+    from build_list import build_from_serp, print_summary, write_csv
     rows = build_from_serp(args.niche, args.city, args.state)
     write_csv(rows, str(enriched_path))
     print_summary(rows)
@@ -121,7 +120,7 @@ async def main():
         sys.exit(0)
 
     # ── Step 2: Generate email variants (once per hook, cached) ───────────────
-    step(f"STEP 2/4 — Email variant pool (one-time, cached)")
+    step("STEP 2/4 — Email variant pool (one-time, cached)")
 
     from generate_variants import HOOK_SPECS, VARIANTS_DIR
     if args.hook not in HOOK_SPECS:
@@ -138,13 +137,14 @@ async def main():
             from generate_variants import generate_hook_variants
             generate_hook_variants(args.hook)
         else:
-            print(f"  Variants already cached for all tiers — skipping (~$0.00)")
+            print("  Variants already cached for all tiers — skipping (~$0.00)")
 
     # ── Step 3: Assemble emails ───────────────────────────────────────────────
-    step(f"STEP 3/4 — Assemble personalized emails")
-    print(f"  Cost: $0 (pure Python random assembly)")
+    step("STEP 3/4 — Assemble personalized emails")
+    print("  Cost: $0 (pure Python random assembly)")
 
-    from assemble_emails import assemble_batch, write_output, print_summary as email_summary
+    from assemble_emails import assemble_batch, write_output
+    from assemble_emails import print_summary as email_summary
 
     with open(str(enriched_path), newline="", encoding="utf-8") as f:
         enriched_rows = list(csv.DictReader(f))
@@ -159,8 +159,8 @@ async def main():
     email_summary(email_rows)
 
     # ── Step 4: Filter contact forms ──────────────────────────────────────────
-    step(f"STEP 4/4 — Pre-screen contact forms")
-    print(f"  Cost: $0 (no AI, pure HTTP + BeautifulSoup)")
+    step("STEP 4/4 — Pre-screen contact forms")
+    print("  Cost: $0 (no AI, pure HTTP + BeautifulSoup)")
 
     from filter import filter_batch, print_filter_summary
 
@@ -187,7 +187,7 @@ async def main():
         sys.exit(0)
 
     if args.dry_run:
-        print(f"\n  --dry-run: stopping before submission.")
+        print("\n  --dry-run: stopping before submission.")
         print(f"  To submit: python outreach/runner.py --input {filtered_path} --reply-to {args.reply_to}")
         sys.exit(0)
 
@@ -201,7 +201,7 @@ async def main():
         cost_est = len(ready) * 0.02
         print(f"  Using Claude Haiku API | Est. cost: ~${cost_est:.2f}")
 
-    from runner import run_batch, write_results, print_run_summary
+    from runner import print_run_summary, run_batch, write_results
 
     send_rows = filtered_rows
     if args.limit > 0:
@@ -224,8 +224,8 @@ async def main():
 def _patch_local_model():
     """Swap Haiku for local Ollama model in runner.py context."""
     try:
-        from langchain_ollama import ChatOllama
         import runner
+        from langchain_ollama import ChatOllama
         runner._LOCAL_LLM = ChatOllama(model=os.environ.get("OLLAMA_MODEL", "qwen2.5:7b"))
         print(f"  Ollama model: {os.environ.get('OLLAMA_MODEL', 'qwen2.5:7b')}")
     except ImportError:

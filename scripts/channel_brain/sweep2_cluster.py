@@ -31,16 +31,16 @@ import asyncio
 import json
 import sys
 import time
-from pathlib import Path
 from collections import defaultdict
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _claude import call_claude_stdin, parse_json, load_config, load_progress, save_progress
+from _claude import call_claude_stdin, load_config, parse_json
 
 # Optional: sentence-transformers for embedding pass
 try:
-    from sentence_transformers import SentenceTransformer
     import numpy as np
+    from sentence_transformers import SentenceTransformer
     EMBEDDINGS_AVAILABLE = True
 except ImportError:
     EMBEDDINGS_AVAILABLE = False

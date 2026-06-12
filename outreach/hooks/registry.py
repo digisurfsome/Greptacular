@@ -9,8 +9,8 @@ To add a hook:
 Everything else is automatic.
 """
 
-from hooks.seo_rankings import SEORankingsHook
 from hooks.pagespeed import PageSpeedHook
+from hooks.seo_rankings import SEORankingsHook
 
 # Remaining hooks: stubs until implemented
 # from hooks.reviews import ReviewsHook

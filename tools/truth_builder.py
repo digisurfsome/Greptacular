@@ -22,7 +22,6 @@ Output:
 
 import asyncio
 import json
-import logging
 import os
 import re
 import shutil
@@ -116,6 +115,7 @@ async def call_via_sdk(system_prompt: str, user_message: str) -> str:
 
     try:
         from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
+
         from registry import get_effective_sdk_env
     except ImportError as e:
         raise RuntimeError(
@@ -144,7 +144,7 @@ async def call_via_sdk(system_prompt: str, user_message: str) -> str:
     if api_key_val and api_key_val not in ("", "(NOT SET)"):
         print(f"  ⚠️  WARNING: API key still present — {api_key_val[:10]}...")
     else:
-        print(f"  ✅ Subscription mode confirmed (no API key)")
+        print("  ✅ Subscription mode confirmed (no API key)")
 
     scratch = tempfile.mkdtemp(prefix="truth_builder_")
     settings_file = Path(scratch) / ".claude-settings.json"
@@ -218,7 +218,7 @@ async def call_via_sdk(system_prompt: str, user_message: str) -> str:
         except Exception as exc:
             err_str = str(exc).lower()
             if full_text.strip() and "unknown message type" in err_str:
-                print(f"  [SDK] Caught rate_limit_event exception — using collected text")
+                print("  [SDK] Caught rate_limit_event exception — using collected text")
             elif full_text.strip():
                 print(f"  [SDK] Non-fatal exception, using collected text: {exc}")
             else:

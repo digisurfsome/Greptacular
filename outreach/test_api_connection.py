@@ -8,12 +8,11 @@ Usage:
   python outreach/test_api_connection.py --key sk-ant-api03-your-key-here
 """
 
-import os
-import sys
 import argparse
+import os
 import socket
 import ssl
-import urllib.request
+import sys
 
 
 def check_dns():
@@ -81,9 +80,9 @@ def check_anthropic_sdk(api_key: str):
         )
         reply = msg.content[0].text.strip()
         print(f"    ✓ API responded (proxy bypassed): {reply!r}")
-        print(f"    ! FIX: Windows proxy is blocking httpx.")
-        print(f"      Run this once, then open a new CMD window:")
-        print(f"        setx NO_PROXY \"*\"")
+        print("    ! FIX: Windows proxy is blocking httpx.")
+        print("      Run this once, then open a new CMD window:")
+        print("        setx NO_PROXY \"*\"")
         return True
     except anthropic.AuthenticationError:
         print("    ✗ Authentication error — API key is invalid or expired")

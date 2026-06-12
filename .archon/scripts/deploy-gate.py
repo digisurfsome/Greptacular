@@ -14,10 +14,10 @@ In prd-pipeline-c.yaml this script is wrapped in a bash node:
     if [ $code -eq 0 ]; then echo "PASS"; else echo "FAIL"; fi
     exit 0
 """
-import re
-import sys
 import glob
 import os
+import re
+import sys
 
 DEFERRED_CAP = 5
 

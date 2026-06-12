@@ -11,12 +11,13 @@ Output:
 Reads DEEPGRAM_API_KEY from env or nearest .env file.
 """
 
-import os
-import sys
 import json
+import os
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
+
 
 # ── locate .env ──────────────────────────────────────────────────────────────
 def load_api_key():

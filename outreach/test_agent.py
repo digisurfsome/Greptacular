@@ -24,12 +24,11 @@ Usage:
   python outreach/test_agent.py --url https://reliantplumbing.com/contact --local-model --ollama-model qwen2.5:7b
 """
 
-import asyncio
 import argparse
+import asyncio
+import csv
 import os
 import sys
-import csv
-from pathlib import Path
 
 from browser_use import Agent
 
@@ -140,11 +139,11 @@ def get_first_ready_row(csv_path: str) -> dict:
     ready = [r for r in rows if r.get("filter_status") == "ready"]
     if not ready:
         print(f"No rows with filter_status='ready' in {csv_path}")
-        print(f"Run filter.py first: python outreach/filter.py --input <emails_csv>")
+        print("Run filter.py first: python outreach/filter.py --input <emails_csv>")
         sys.exit(1)
 
     row = ready[0]
-    print(f"\nUsing first ready business:")
+    print("\nUsing first ready business:")
     print(f"  Business: {row.get('business_name', row.get('domain', '?'))}")
     print(f"  Tier: {row.get('tier', '?')}")
     print(f"  Contact URL: {row.get('contact_url', '')}")

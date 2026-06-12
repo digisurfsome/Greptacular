@@ -48,7 +48,7 @@ def is_short(info_text: str, duration_s: int) -> bool:
 
 def main():
     if not OUTPUT_DIR.exists():
-        print(f"No output/videos/ folder found. Run youtube_analyzer.py first.")
+        print("No output/videos/ folder found. Run youtube_analyzer.py first.")
         return
 
     folders = sorted(OUTPUT_DIR.iterdir())

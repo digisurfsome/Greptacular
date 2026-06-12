@@ -17,15 +17,14 @@ Usage:
 Output: enriched_{hook}_{niche}_{city}.csv  (or --output to override)
 """
 
+import argparse
 import csv
-import os
 import sys
 import time
-import argparse
-from typing import List, Dict
+from typing import Dict, List
 
+from build_list import build_from_csv, build_from_serp, print_summary
 from hooks.registry import get_hook, list_hooks
-from build_list import build_from_serp, build_from_csv, write_csv, print_summary, OUTPUT_COLUMNS
 
 
 def enrich_with_hook(hook_name: str, rows: List[Dict], delay: float = 0.5) -> List[Dict]:
@@ -66,7 +65,7 @@ def enrich_with_hook(hook_name: str, rows: List[Dict], delay: float = 0.5) -> Li
             print(f"    Tier {tier} — {_tier_summary(hook_name, row)}")
         else:
             row["tier"] = "SKIP"
-            print(f"    No data returned — skipped")
+            print("    No data returned — skipped")
 
         enriched.append(row)
 

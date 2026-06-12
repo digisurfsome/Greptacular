@@ -469,7 +469,7 @@ async def run(folder: Path, output_path: Path, limit: int = 0) -> None:
     sep = "─" * 62
     print(f"\n{sep}")
     print("  Metaprogram Stack Miner  (Claude subscription — claude -p)")
-    print(f"  Model:    subscription (Sonnet)")
+    print("  Model:    subscription (Sonnet)")
     print(f"  CLI:      {CLAUDE_CLI}")
     print(f"  Scratch:  {SCRATCH_DIR}")
     print(f"  Folder:   {folder}")

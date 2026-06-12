@@ -446,7 +446,7 @@ async def run(limit: int = 0, dry_run: bool = False) -> None:
     sep = "─" * 66
     print(f"\n{sep}")
     print("  Jeremy Miner NEPQ Teaching Content Miner")
-    print(f"  Auth:    subscription (claude -p)")
+    print("  Auth:    subscription (claude -p)")
     print(f"  Output:  {OUTPUT_DIR}")
     print(f"  Progress:{PROGRESS_FILE}")
     print(f"  Concurrency: {MAX_CONCURRENCY}  |  Chunk: {CHUNK_TOKENS}tok  |  Overlap: {OVERLAP_TOKENS}tok")
@@ -608,7 +608,7 @@ async def run(limit: int = 0, dry_run: bool = False) -> None:
             all_extractions.append(ex)
 
     print(f"\n{sep}")
-    print(f"  COMPLETE")
+    print("  COMPLETE")
     print(f"  Total extractions:   {len(all_extractions)}")
     print(f"  Total API calls:     {state['call_count']}")
     print(f"{sep}\n")

@@ -18,14 +18,15 @@ Usage:
   python filter.py --input emails_enriched.csv --include-captcha   # V2 mode, keep all
 """
 
+import argparse
 import csv
 import sys
 import time
-import argparse
-import requests
 from pathlib import Path
 from typing import Optional, Tuple
 from urllib.parse import urljoin, urlparse
+
+import requests
 
 try:
     from bs4 import BeautifulSoup
@@ -401,17 +402,17 @@ def filter_batch(rows: list, include_captcha: bool = False,
         blocker = filtered.get("blocker_type", "?")
 
         if status == "ready":
-            print(f"✓ contact form found")
+            print("✓ contact form found")
         elif blocker == "cloudflare":
-            print(f"✗ Cloudflare blocked")
+            print("✗ Cloudflare blocked")
         elif status == "skip_captcha":
             print(f"~ CAPTCHA: {blocker}")
         elif status == "skip_no_form":
-            print(f"✗ no contact form")
+            print("✗ no contact form")
         elif status == "skip_directory":
-            print(f"✗ directory/aggregator site")
+            print("✗ directory/aggregator site")
         elif status == "skip_booking":
-            print(f"✗ booking widget only (Calendly/Acuity/etc)")
+            print("✗ booking widget only (Calendly/Acuity/etc)")
         else:
             print(f"? {status}")
 

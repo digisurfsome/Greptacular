@@ -1,4 +1,4 @@
-"""
+r"""
 AutoForge Deploy Agent — runs in background, watches for new commits on main,
 auto-pulls and restarts the server. Zero interaction needed.
 
@@ -10,13 +10,11 @@ Usage:
 Logs to: C:\Users\lober\Greptacular\deploy_agent.log
 """
 
-import subprocess
-import time
-import os
-import sys
 import logging
-from pathlib import Path
-from datetime import datetime
+import os
+import subprocess
+import sys
+import time
 
 # === CONFIG ===
 LIVE_DIR = r"C:\Users\lober\Greptacular"

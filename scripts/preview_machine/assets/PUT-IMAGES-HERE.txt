@@ -1,0 +1,7 @@
+Put your before/after images here:
+  ba1.jpg  - before/after tile 1 (e.g. the roof shot)
+  ba2.jpg  - before/after tile 2 (e.g. the sidewalk shot)
+  hero.jpg - optional hero background (e.g. the clean house exterior)
+
+template.html references these at ../assets/ and sitegen.py copies this
+folder into previews/assets/ at build time.

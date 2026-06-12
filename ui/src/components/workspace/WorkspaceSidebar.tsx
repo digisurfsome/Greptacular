@@ -69,6 +69,12 @@ const CLAUDE_MODEL_PRESETS: ModelPreset[] = [
   { model: 'sonnet', context: '1m', label: 'Sonnet 4.6 · 1M' },
 ]
 
+/** Claude models that support the xhigh effort level (Opus 4.7+, Fable 5). */
+const XHIGH_MODELS = new Set(['claude-opus-4-7', 'claude-opus-4-8', 'claude-fable-5'])
+
+/** Claude models that accept an effort level at 1M context. */
+const CLAUDE_EFFORT_MODELS = new Set(['opus', 'claude-opus-4-7', 'claude-opus-4-8', 'claude-fable-5', 'sonnet'])
+
 /** Build model presets from a provider definition. Claude gets context modes; others use supports_1m. */
 function buildPresetsForProvider(providerId: string, providerDef: WorkspaceProviderDef): ModelPreset[] {
   if (providerId === 'claude') {
@@ -238,7 +244,7 @@ export function WorkspaceSidebar({
     const preset = (providers && providers[newChatProvider])
       ? buildPresetsForProvider(newChatProvider, providers[newChatProvider])[modelPresetIndex]
       : CLAUDE_MODEL_PRESETS[modelPresetIndex]
-    if (effortLevel === 'xhigh' && preset?.model !== 'claude-opus-4-7') {
+    if (effortLevel === 'xhigh' && !XHIGH_MODELS.has(preset?.model ?? '')) {
       onEffortChange?.('high')
     }
   }, [modelPresetIndex, newChatProvider, providers, effortLevel, onEffortChange])
@@ -303,12 +309,11 @@ export function WorkspaceSidebar({
     const safeIdx = Math.min(modelPresetIndex, newChatModelPresets.length - 1)
     const preset = newChatModelPresets[safeIdx]
     if (!preset) return
-    // Only pass effort for Claude 1M context models (Opus 4.6/4.7, Sonnet 4.6); others default
-    const claudeEffortModels = new Set(['opus', 'claude-opus-4-7', 'sonnet'])
-    const supportsEffort = isNewChatClaude && preset.context === '1m' && claudeEffortModels.has(preset.model)
-    // Sonnet doesn't support xhigh — downgrade to high if user had it selected
+    // Only pass effort for Claude 1M context models (Opus 4.6/4.7/4.8, Fable 5, Sonnet 4.6); others default
+    const supportsEffort = isNewChatClaude && preset.context === '1m' && CLAUDE_EFFORT_MODELS.has(preset.model)
+    // Models without xhigh support — downgrade to high if user had it selected
     const effortForCreate: EffortLevel = supportsEffort
-      ? (effortLevel === 'xhigh' && preset.model !== 'claude-opus-4-7' ? 'high' : effortLevel)
+      ? (effortLevel === 'xhigh' && !XHIGH_MODELS.has(preset.model) ? 'high' : effortLevel)
       : 'high'
     const effort = effortForCreate
     createConversationMut.mutate({

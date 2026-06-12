@@ -235,15 +235,18 @@ def run(path):
     out_cols = fieldnames + [c for c in extra if c not in fieldnames]
     ready, blocked = [], []
 
-    for i, row in enumerate(rows, 1):
+    todo = []
+    for row in rows:
         site = (row.get(wcol) or "").strip()
-        if not site or site.lower() in ("none", "n/a"):
-            continue
+        if site and site.lower() not in ("none", "n/a"):
+            todo.append((row, site))
+
+    for i, (row, site) in enumerate(todo, 1):
         res = classify(site)
         row.update(res)
         (ready if res["gsa_status"].startswith("READY") else blocked).append(row)
         label = row.get("business") or site
-        print(f"[{i}/{len(rows)}] {res['gsa_status']:<16} {label}")
+        print(f"[{i}/{len(todo)}] {res['gsa_status']:<16} {label}")
         time.sleep(0.5)   # polite; keeps WAFs calmer
 
     stamp = time.strftime("%m%d-%H%M%S")

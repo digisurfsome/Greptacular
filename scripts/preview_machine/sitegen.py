@@ -20,7 +20,7 @@ Then deploy the previews/ folder to Cloudflare Pages (one command):
   npx wrangler pages deploy previews --project-name=previews
 """
 
-import csv, json, os, re, sys, time
+import csv, html as html_escape_mod, json, os, re, sys, time
 import requests
 
 # ============================================================ CONFIG
@@ -35,6 +35,11 @@ TEMPLATE = "template.html"
 OUTDIR   = "previews"
 THEMES   = ["theme-hydro", "theme-emerald", "theme-gold"]   # rotates per site
 MAX_SITES = 0                      # 0 = all rows; set 25 for a test batch
+# Only build sites for these site_audit verdicts. Rows whose verdict is
+# anything else (SKIP, BLOCKED, UNREACHABLE, PARKED/EMPTY...) are dropped.
+# CSVs without a verdict column (raw biz_pull output) are untouched.
+# Override with:  python sitegen.py file.csv --all
+KEEP_VERDICTS = {"STRONG TARGET", "WORTH A LOOK"}
 # Optional: per-service photo URLs (e.g. Pexels). Leave empty for the built-in
 # gradient look. If filled, images download once into previews/assets/.
 SERVICE_PHOTOS = []
@@ -159,9 +164,10 @@ def render(tpl, biz, copy, theme):
     city, state = biz.get("city") or "your area", biz.get("state") or "TX"
     logo_url = (biz.get("logo") or "").strip() if USE_LOGOS else ""
     letter = (name[:1] or "•").upper()
-    logo_html = (f'<img class="logo-img" src="{logo_url}" alt="{name} logo">'
+    esc = lambda s: html_escape_mod.escape(str(s), quote=True)
+    logo_html = (f'<img class="logo-img" src="{esc(logo_url)}" alt="{esc(name)} logo">'
                  if logo_url.startswith("http")
-                 else f'<span class="logo-mark">{letter}</span>')
+                 else f'<span class="logo-mark">{esc(letter)}</span>')
     rep = {
         "BUSINESS_NAME": name, "LOGO_LETTER": letter, "LOGO_HTML": logo_html,
         "CITY": city, "STATE": state,
@@ -202,14 +208,20 @@ def render(tpl, biz, copy, theme):
     for i, (big, label) in enumerate(stat_strip(biz.get("rating"),
                                                 biz.get("reviews"), city), 1):
         rep[f"STAT_{i}_BIG"], rep[f"STAT_{i}_LABEL"] = big, label
+    # Escape everything except tokens that are intentionally raw HTML/CSS
+    raw_keys = {"LOGO_HTML", "CHAT_SNIPPET", "THEME_CLASS", "CAL_LINK",
+                "STARS", "IMG_CLASS"}
     out = tpl
     for k, v in rep.items():
-        out = out.replace("{{" + k + "}}", str(v))
+        s = str(v)
+        if k not in raw_keys and not k.startswith("SVC_IMG_"):
+            s = html_escape_mod.escape(s, quote=True)
+        out = out.replace("{{" + k + "}}", s)
     return out
 
 
 # ------------------------------------------------ CSV handling
-def read_rows(path):
+def read_rows(path, keep_all=False):
     with open(path, newline="", encoding="utf-8", errors="ignore") as f:
         rdr = csv.DictReader(f)
         cols = {c.lower(): c for c in (rdr.fieldnames or [])}
@@ -222,11 +234,18 @@ def read_rows(path):
         c_state, c_rate = col("state", "region"), col("rating", "rate")
         c_rev, c_addr = col("reviews", "review_count"), col("address")
         c_logo = col("logo")
+        c_verdict = col("verdict")
+        skipped = 0
         rows = []
         for r in rdr:
             name = (r.get(c_name) or "").strip()
             if not name:
                 continue
+            if c_verdict and not keep_all:
+                v = (r.get(c_verdict) or "").strip().upper()
+                if v and v not in KEEP_VERDICTS:
+                    skipped += 1
+                    continue
             phone = (r.get(c_phone) or "").strip() if c_phone else ""
             phone = phone.replace('="', "").replace('"', "")   # undo Excel-safe wrap
             rows.append({"business": name, "phone": phone,
@@ -237,6 +256,10 @@ def read_rows(path):
                          "address": (r.get(c_addr) or "").strip() if c_addr else "",
                          "logo": (r.get(c_logo) or "").strip() if c_logo else "",
                          "_raw": r})
+        if skipped:
+            print(f"Filtered out {skipped} row(s) with verdict outside "
+                  f"{sorted(KEEP_VERDICTS)} -- no money or sites wasted on SKIPs. "
+                  f"(Use --all to build everything.)")
         return rows, rdr.fieldnames
 
 
@@ -277,7 +300,7 @@ def load_manifest(copydir):
 
 
 # ------------------------------------------------ main
-def main(csv_path, offline=False, copydir=None):
+def main(csv_path, offline=False, copydir=None, keep_all=False):
     if copydir and not os.path.isdir(copydir):
         print(f"--copydir {copydir} is not a directory. Run copywriter.py first.")
         sys.exit(1)
@@ -288,7 +311,7 @@ def main(csv_path, offline=False, copydir=None):
     tpl = open(TEMPLATE, encoding="utf-8").read()
     tpl = tpl.replace("Instant Power Washing Quote",
                       f"Instant {NICHE.title()} Quote")
-    rows, fieldnames = read_rows(csv_path)
+    rows, fieldnames = read_rows(csv_path, keep_all=keep_all)
     if MAX_SITES:
         rows = rows[:MAX_SITES]
     os.makedirs(OUTDIR, exist_ok=True)
@@ -349,10 +372,13 @@ def selftest():
     html = render(tpl, biz, offline_copy(biz["business"], biz["city"],
                                          biz["state"]), "theme-hydro")
     left = re.findall(r"\{\{[A-Z0-9_]+\}\}", html)
-    os.makedirs(OUTDIR, exist_ok=True)
-    with open(os.path.join(OUTDIR, "sample.html"), "w", encoding="utf-8") as f:
+    # write into a subfolder so the ../assets/ image paths resolve the same
+    # way they do for real preview sites (previews/<slug>/index.html)
+    os.makedirs(os.path.join(OUTDIR, "sample"), exist_ok=True)
+    with open(os.path.join(OUTDIR, "sample", "index.html"), "w",
+              encoding="utf-8") as f:
         f.write(html)
-    print(f"Rendered {OUTDIR}/sample.html | unfilled tokens: {left or 'none'}")
+    print(f"Rendered {OUTDIR}/sample/index.html | unfilled tokens: {left or 'none'}")
     print("RESULT:", "PASS" if not left else "FAIL")
 
 
@@ -371,4 +397,5 @@ if __name__ == "__main__":
         files = [a for a in args if not a.startswith("--")]
         if not files:
             print(__doc__); sys.exit(1)
-        main(files[0], offline="--offline" in args, copydir=copydir)
+        main(files[0], offline="--offline" in args, copydir=copydir,
+             keep_all="--all" in args)

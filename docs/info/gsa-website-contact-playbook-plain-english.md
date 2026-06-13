@@ -6,6 +6,17 @@
 
 ---
 
+## 🏆 WE TESTED IT FOR REAL — IT WORKS (2026-06-13)
+
+This isn't theory anymore. We ran the whole thing through the actual GSA software:
+built a spreadsheet of 3 businesses, imported it, wrote one message with blanks,
+and hit send. GSA filled in Joe's Plumbing's real name, what they were missing,
+their review count, and their custom link — then **actually submitted it to a live
+form**, which received it word-for-word. GSA even says it in its own screen:
+*"You can also use any headers from CSV files that you import."* **Done. Confirmed. Working.**
+
+---
+
 ## The Bottom Line (read this first)
 
 **Your plan works. The agent who told you "you can only use one placeholder" was wrong.**

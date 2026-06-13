@@ -1,6 +1,22 @@
 # GSA Website Contact — Technical Reference (All-In-One)
 
-> **Status: AUTHORITATIVE. Verified against official GSA documentation, June 2026.**
+> ## 🏆 PROVEN LIVE — 2026-06-13, GSA Website Contact v6.25
+> The full flow was executed end-to-end and **succeeded**:
+> - Built a quoted CSV (`Website,business_name,missing_citation,review_count,preview_url`),
+>   imported it into GSA, set the message body with `%column%` macros.
+> - GSA's **Message Preview** rendered every macro from the CSV row
+>   (`%business_name%`→Joe's Plumbing, `%missing_citation%`→Yelp + BBB,
+>   `%review_count%`→12, `%preview_url%`→the custom link).
+> - GSA **actually submitted** the form; status: *"Ready message successfully sent"*;
+>   the receiving endpoint (webhook.site) captured the POST with the fully
+>   personalized message in the form's `message` field.
+> - **GSA's own UI confirms it** (Submission Content tab, verbatim):
+>   *"You can also use any headers from CSV files that you import (put %'s around it like %cell%)."*
+>
+> **The "only one placeholder" claim is permanently dead. Custom per-URL
+> personalization is real, documented, AND demonstrated in the live product.**
+>
+> > **Status: AUTHORITATIVE. Verified against official GSA documentation, June 2026.**
 > This file supersedes any earlier "Bible" or agent notes that claimed custom
 > per-URL personalization is impossible. **It is possible. It is the documented,
 > intended feature.** If another doc contradicts this one, this one wins until
@@ -264,3 +280,16 @@ doc's changelog if anything differed from the above.
 - 2026-06-13 — Created. Resolved the "one placeholder vs custom columns" dispute:
   custom CSV columns → `%ColumnName%` macros are **confirmed**. Original
   personalization plan is valid.
+- 2026-06-13 — **PROVEN LIVE in GSA Website Contact v6.25.** End-to-end test passed:
+  CSV import → `%column%` macros rendered per-row in GSA's Message Preview →
+  form submitted successfully → personalized message captured at the receiving
+  endpoint. GSA's Submission Content tab states outright that imported CSV headers
+  are usable as `%macros%`. Dispute closed for good. Notes from the run:
+  - The **message body field** is the row named `message` (Type=TextArea) in the
+    **Submission Content** tab → select it → **Edit** to open the text editor.
+  - **Import path:** Scraping tab → **"Add your own URLs"** → import file (CSV).
+    Uncheck the keyword under "Keywords to find Targets" so GSA doesn't also scrape.
+  - **Run path:** Start ▶ → **"Send Message (+Check)"** (not the Scrape options).
+  - **Domain dedupe confirmed:** 3 CSV rows on the same domain collapsed to 1 site.
+    Real campaigns use distinct domains per business, so all rows send. For multi-row
+    *testing* on one host, use separate domains or disable duplicate-domain skipping.

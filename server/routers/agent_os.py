@@ -833,6 +833,26 @@ async def agent_os_websocket(websocket: WebSocket, project_name: str):
                         "total": len(session.STAGES),
                     })
 
+                elif msg_type == "fast_track":
+                    # Skip all remaining stages to handoff — user has a complete spec
+                    while session.current_stage_index < len(session.STAGES) - 1:
+                        # Run each stage with __approve__ to trigger any auto-generation
+                        try:
+                            async for event in session.process_message("__approve__"):
+                                await websocket.send_json(event)
+                        except Exception:
+                            session.advance_stage()
+                            await websocket.send_json({
+                                "type": "stage_change",
+                                "stage": session.get_stage(),
+                                "index": session.current_stage_index,
+                                "total": len(session.STAGES),
+                            })
+                    await websocket.send_json({
+                        "type": "message",
+                        "content": "Fast tracked through all stages. Ready for handoff.",
+                    })
+
                 else:
                     await websocket.send_json({
                         "type": "error",

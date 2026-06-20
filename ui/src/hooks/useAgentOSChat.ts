@@ -85,6 +85,7 @@ export interface UseAgentOSChatReturn {
   sendAnswer: (questionId: string, answer: string) => void
   sendApprove: (target: string) => void
   skipStage: () => void
+  fastTrack: () => void
   connect: () => void
   disconnect: () => void
 }
@@ -356,6 +357,16 @@ export function useAgentOSChat({
     wsRef.current.send(JSON.stringify({ type: 'skip_stage' }))
   }, [])
 
+  const fastTrack = useCallback(() => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return
+    setMessages(prev => [
+      ...prev,
+      { id: generateId(), role: 'user', content: 'Fast Track — skipping to build', timestamp: new Date() },
+    ])
+    setIsThinking(true)
+    wsRef.current.send(JSON.stringify({ type: 'fast_track' }))
+  }, [])
+
   return {
     messages,
     currentStage,
@@ -373,6 +384,7 @@ export function useAgentOSChat({
     sendAnswer,
     sendApprove,
     skipStage,
+    fastTrack,
     connect,
     disconnect,
   }

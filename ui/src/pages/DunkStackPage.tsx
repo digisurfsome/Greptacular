@@ -246,7 +246,6 @@ export function DunkStackPage(): React.JSX.Element {
     document.body.style.cursor = 'col-resize'
     document.body.style.userSelect = 'none'
   }, [])
-
   // Agent OS data hooks (only active when a project is selected and in agent-os view)
   const isAgentOSView = centerView === 'agent-os-intake' || centerView === 'agent-os-workflow'
   const { data: featuresData } = useFeatures(isAgentOSView && selectedProject ? selectedProject : '')

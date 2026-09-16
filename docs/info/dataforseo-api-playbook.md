@@ -1,524 +1,446 @@
 # DataForSEO API Playbook
-## Complete Menu for Local Business Outreach + AI Receptionist Sales
 
-> Last updated: 2026-04-27
-> Credit on account: $50
-> Primary use case: Identify local businesses with unanswered calls / reputation problems → sell AI receptionist
+Your permanent reference for every DataForSEO endpoint, what it returns, and what it costs. Built specifically around the AI-receptionist angle: find local businesses, pull reviews, find "no one answered" complaints, send authority-loaded custom outreach.
+
+**Pricing model:** Pay-as-you-go. $50 minimum deposit (which you already have). No monthly fee. Charged per request; some endpoints also charge per row/review returned.
+
+**Auth:** HTTP Basic Auth. Base URL: `https://api.dataforseo.com/v3/`. That's it — just `login` + `password` from your dashboard.
 
 ---
 
-## ⚡ THE LEAN WORKFLOW — This Is the Play
+## Table of Contents
 
-Skip the deep profile entirely. Maps SERP + Reviews only.
+1. [The 30-Second Pricing Cheat Sheet](#pricing-cheat-sheet)
+2. [The 8 API Categories — Full Menu](#the-8-api-categories)
+3. [SERP API — full breakdown](#serp-api)
+4. [Business Data API — the goldmine for your use case](#business-data-api)
+5. [DataForSEO Labs API](#dataforseo-labs-api)
+6. [Keywords Data API](#keywords-data-api)
+7. [Backlinks, On-Page, Domain Analytics, Merchant, App Data](#the-rest)
+8. [Reviews Deep Dive — the AI receptionist angle](#reviews-deep-dive)
+9. [Recommended Pipeline for AI Receptionist Prospecting](#recommended-pipeline)
+10. [Cost Math — Real Scenarios](#cost-math)
+11. [Python Code — Bare Minimum to Get Going](#python-examples)
+12. [Anti-Recommendations — Skip These For Your Use Case](#anti-recommendations)
+
+---
+
+## Pricing Cheat Sheet
+
+Every DataForSEO endpoint has up to 3 tiers. Cheaper = slower.
+
+| Tier | Speed | Multiplier | When to use |
+|------|-------|-----------|-------------|
+| Standard (queue) | up to 5 min | 1x (baseline) | Bulk overnight scraping. Cheapest. |
+| Standard Priority | up to 1 min | 2x | Same as Standard but faster queue |
+| Live | up to 6 sec | ~3x | Real-time, one-off lookups |
+| Live Advanced | 6 sec | ~5x | Real-time + extra parsed fields |
+
+**Base prices (per single request):**
+
+| API | Standard | Live | Live Advanced |
+|-----|----------|------|---------------|
+| Google Organic SERP | $0.0006 | $0.0018 | $0.002 |
+| Google Maps SERP (local pack, 100 businesses) | $0.002 | $0.005 | $0.006 |
+| Google Local Finder SERP | $0.002 | $0.005 | $0.006 |
+| Google My Business Info | $0.001 | $0.005 | — |
+| Google Reviews (per 10 reviews) | $0.00075 | $0.002 | — |
+| Google Extended Reviews (per 20 reviews) | $0.00075 base + params | $0.002 base + params | — |
+| Trustpilot Reviews | $0.0002 per request + $0.0001 per review | Live varies | — |
+| Tripadvisor Reviews | $0.0002 per request + $0.0001 per review | Live varies | — |
+| Yelp Reviews | Standard queue | Live varies | — |
+| Keywords Data (Google Ads search vol) | $0.05 per 1000 kw | $0.075 | — |
+| DataForSEO Labs (any endpoint) | Live only, ~$0.01 per 1000 rows | — | — |
+| Backlinks | $0.02 per request + $0.00003 per row | — | — |
+
+*Verify at dataforseo.com/pricing-list before running big jobs — DataForSEO adjusts prices.*
+
+**Rate limit:** 2000 API calls per minute across ALL endpoints. You will never hit this.
+
+---
+
+## The 8 API Categories
+
+The whole DataForSEO surface. Use this to orient yourself:
+
+| # | Category | What it's for | Relevant to you? |
+|---|----------|---------------|------------------|
+| 1 | **SERP API** | Scrape Google/Bing/Yahoo/YouTube search results, Maps, Local Pack, Google Reviews SERP feature | **YES — heavily** |
+| 2 | **Business Data API** | Google My Business, Google Reviews, Trustpilot, Tripadvisor, Yelp, Social Media | **YES — this is the goldmine** |
+| 3 | **Keywords Data API** | Google Ads search volume, CPC, competition, keyword suggestions, Bing/YouTube keyword data | Medium — for finding search terms per city |
+| 4 | **DataForSEO Labs API** | In-house SEO database — keyword ideas, ranked keywords, competitor domains, SERP competitors, historical data | Low unless you sell SEO too |
+| 5 | **Backlinks API** | Backlink profile of any domain — anchors, referring domains, history | Low for AI receptionist |
+| 6 | **On-Page API** | Crawl a specific website — technical SEO audit, content, resources | Situational — use to audit prospect's site in outreach |
+| 7 | **Domain Analytics** | WHOIS, technologies used on a site, subdomains | Situational |
+| 8 | **Merchant API** | Amazon/Google Shopping product data | No |
+| 9 | **App Data API** | Google Play, Apple App Store listings & reviews | No |
+| 10 | **Content Analysis API** | Search brand mentions across the web | Maybe for reputation research |
+| 11 | **Content Generation API** | AI text generation | No — you have Claude |
+
+Categories 1 and 2 are 95% of what you need.
+
+---
+
+## SERP API
+
+Scrapes actual search engine results pages. Every SERP endpoint has 3 modes: `task_post` + `task_get` (Standard queue), `live/regular`, `live/advanced`.
+
+### Google Endpoints (the useful ones)
+
+| Endpoint | What it returns | Base cost |
+|----------|-----------------|-----------|
+| `serp/google/organic/live/advanced` | Full parsed organic SERP for a keyword — 10 results per page, with featured snippets, people-also-ask, related searches, knowledge graph, images, videos | $0.002 |
+| `serp/google/maps/live/advanced` | **The one you're using.** Up to 100 businesses for a keyword + city — each with name, address, phone, website, rating, review count, category, hours, place_id, CID, lat/lng | $0.006 (approx — you said you're seeing ~$0.003, that's the Standard tier) |
+| `serp/google/local_finder/live/advanced` | The "See all results" local pack expansion — 20 local businesses w/ same fields as Maps | $0.006 |
+| `serp/google/reviews/live/advanced` | **THE ONE YOU HEARD ABOUT.** Google Reviews SERP feature — returns the last N reviews shown on Google's reviews panel with full text, rating, date, reviewer name, reviewer avatar, owner response. Default depth 10, max ~4490. | ~$0.002 per 10 reviews |
+| `serp/google/events/live/advanced` | Local events | Situational |
+| `serp/google/jobs/live/advanced` | Google Jobs results | No |
+| `serp/google/images/live/advanced` | Google Images | No |
+| `serp/google/news/live/advanced` | Google News | Maybe for reputation checks |
+| `serp/google/ads_advertisers/live/advanced` | Who's running Google Ads for a keyword | Maybe — shows which competitors are paying for ads (they might have budget for AI receptionist) |
+
+### Google Maps SERP — field-by-field
+
+For each of the ~100 businesses returned, you get:
+- `title` — business name
+- `place_id` — Google's unique ID (use this to chain into review endpoints)
+- `cid` — customer ID (alternative identifier)
+- `phone` — direct phone number
+- `url` — website URL
+- `main_image`
+- `rating.value` + `rating.votes_count` — star rating + review count
+- `snippet` — Google's blurb
+- `address` + `address_info.borough`, `city`, `zip`, `region`, `country_code`
+- `latitude`, `longitude`
+- `is_claimed` — did the owner claim their GMB? (unclaimed = worse target)
+- `hotel_rating`, `price_level`
+- `categories` array
+- `hours` object with open/close per day + special hours
+- `attributes` — accessibility, amenities, etc.
+- `rank_group`, `rank_absolute` — where it ranked for the keyword
+
+**This is why you like it — one $0.006 call and you have a whole prospect list with phone, website, rating, review count.**
+
+### Google Reviews SERP endpoint — the "last 20 reviews" one
+
+`serp/google/reviews/task_post` → task_get, or `serp/google/reviews/live/advanced`
+
+Fields returned per review:
+- `review_text` — **the full text — this is what you filter for "no one answered"**
+- `rating.value` — 1–5 stars
+- `timestamp` — when review was posted
+- `time_ago` — human readable ("3 weeks ago")
+- `profile_name` — reviewer name
+- `profile_image_url`
+- `profile_url` — link to reviewer's Google profile
+- `owner_answer` — if the business owner replied
+- `owner_time_ago` — when owner replied (if ever)
+- `images` array — any photos in the review
+- Total review count for the business
+- Overall rating
+
+Costs: default depth 10 → billed as 10 reviews. Set `depth=20` → billed as 20. `depth=100` → billed as 100. Every increment of 10 = one billing unit.
+
+**Sort options:** `newest`, `highest_rating`, `lowest_rating`, `most_relevant`. For "find missed call complaints" use `newest` or `lowest_rating`.
+
+### Other SERP engines available
+
+Bing, Yahoo, YouTube, Baidu, Naver, Seznam. Skip for your use case.
+
+---
+
+## Business Data API
+
+**This is the goldmine.** Separate from SERP because it returns structured business data, not search results.
+
+### Google endpoints
+
+| Endpoint | What | Cost |
+|----------|------|------|
+| `business_data/google/my_business_info` | Full GMB profile for one business — name, categories, phone, website, hours, busy hours, service attributes, description, address, rating, review count, place_id, CID | $0.001 (queue) / $0.005 (live) |
+| `business_data/google/my_business_updates` | Google Posts / updates the business publishes | Cheap |
+| `business_data/google/hotel_info` | Hotel-specific data | N/A |
+| `business_data/google/hotel_searches` | Hotel prices | N/A |
+| `business_data/google/reviews` | **The primary review scraper.** Up to 4490 reviews per business. Full text, rating, timestamp, reviewer, owner response, images. | $0.00075 per 10 reviews (Standard) / $0.002 per 10 reviews (Live) |
+| `business_data/google/extended_reviews` | Reviews from OTHER platforms (Yelp, Tripadvisor, etc.) that Google indexes and shows on a business's Google page | $0.00075 base + $0.00075 per 20 reviews (cid/place_id) or $0.0015 per 20 (keyword) |
+| `business_data/google/questions_and_answers` | The Q&A section on Google Maps listings | Cheap |
+
+**Google Reviews vs Google Extended Reviews:**
+- Google Reviews = reviews left ON Google
+- Google Extended Reviews = reviews from third-party sites that Google surfaces on the business page (Facebook, Yelp, Tripadvisor, industry sites). Gives you cross-platform coverage in one call.
+
+### Trustpilot endpoints
+
+| Endpoint | What | Cost |
+|----------|------|------|
+| `business_data/trustpilot/search` | Search Trustpilot for businesses by keyword | Cheap |
+| `business_data/trustpilot/reviews` | All reviews for a Trustpilot-listed business — full text, rating, date, reviewer, images, owner reply | ~$0.0002/request + $0.0001/review |
+
+### Tripadvisor endpoints
+
+| Endpoint | What | Cost |
+|----------|------|------|
+| `business_data/tripadvisor/search` | Search Tripadvisor businesses by keyword | Cheap |
+| `business_data/tripadvisor/reviews` | Full review text, rating, date, reviewer, images | ~$0.0002/request + $0.0001/review |
+
+### Yelp endpoints
+
+| Endpoint | What | Cost |
+|----------|------|------|
+| `business_data/yelp/search` | Find Yelp businesses by keyword + location | Cheap |
+| `business_data/yelp/reviews` | Yelp review data with full text | ~$0.0002/request + $0.0001/review |
+
+### Social Media endpoints
+
+Facebook, Pinterest, Reddit follower/engagement counts — cheap but low signal for your use case.
+
+---
+
+## DataForSEO Labs API
+
+DataForSEO's in-house database (not live scraped). Fast + cheap for keyword research.
+
+| Endpoint | Use |
+|----------|-----|
+| `keywords_for_site` | Feed a domain, get every keyword it ranks for + search vol / CPC / competition |
+| `related_keywords` | Google's "searches related to" element |
+| `keyword_suggestions` | Long-tail variants |
+| `keyword_ideas` | Semantically related keywords |
+| `ranked_keywords` | All keywords a URL currently ranks for |
+| `competitors_domain` | Who competes with a domain in Google |
+| `serp_competitors` | Which sites hold the most rankings for keywords you specify |
+| `keyword_overview` | Search vol + CPC + trends for one keyword |
+| `historical_search_volume` | Search volume over time |
+| `bulk_traffic_estimation` | Estimate traffic for a list of domains |
+
+Pricing: Live only, cents per 1000 rows returned. Very cheap.
+
+**For your use case:** occasionally useful to figure out which keywords to feed Google Maps SERP for a given city (e.g. "plumber austin", "hvac austin", "law firm austin"). Otherwise mostly SEO-agency work.
+
+---
+
+## Keywords Data API
+
+Live Google Ads / Bing / YouTube keyword metrics. Different from Labs — sources data from Google Ads directly.
+
+| Endpoint | What |
+|----------|------|
+| `keywords_data/google_ads/search_volume` | Search vol + CPC + competition — up to 1000 kw per request |
+| `keywords_data/google_ads/keywords_for_site` | Keywords a URL is relevant to |
+| `keywords_data/google_ads/keywords_for_keywords` | Related keyword ideas |
+| `keywords_data/google_trends/explore` | Google Trends data |
+| `keywords_data/bing/search_volume` | Bing version |
+| `keywords_data/dataforseo_trends/explore` | DFS in-house trends |
+
+Cost: $0.05 per 1000 keywords (Standard). Batch heavily.
+
+---
+
+## The Rest
+
+Quick coverage — skip these for AI receptionist prospecting unless you branch into selling SEO too.
+
+- **Backlinks API:** $0.02/request + $0.00003/row. `backlinks`, `history`, `anchors`, `summary`, `referring_domains`, `domain_pages`, `referring_networks`. $100 monthly minimum commitment (usable across all APIs, but locks you in).
+- **On-Page API:** Crawl a target site. Get title tags, meta, resources, broken links, page speed. Useful to add "your site is missing X, Y, Z" as authority signals in cold outreach. Cost: cents per crawled page.
+- **Domain Analytics API:** WHOIS + tech stack detection. Confirms domain age, hosting provider, CMS, analytics installed. Useful signal: no analytics = unsophisticated = AI receptionist prospect.
+- **Merchant API:** Amazon/Google Shopping. Skip.
+- **App Data API:** App Store / Play Store. Skip.
+- **Content Analysis API:** Brand mention monitoring across the web. Useful for reputation angle.
+- **Content Generation API:** Skip, you have Claude.
+
+---
+
+## Reviews Deep Dive
+
+This is the section you actually care about. Everything below is for finding "no one answered / couldn't reach / voicemail / never returned my call" complaints in reviews.
+
+### Which endpoint to use for review text
+
+| Source | Endpoint | Cost per 20 reviews | Includes full text? |
+|--------|----------|---------------------|---------------------|
+| Google (last N reviews) | `business_data/google/reviews` | ~$0.0015 (Std) | YES |
+| Google (last ~20 shown on SERP) | `serp/google/reviews/live/advanced` | ~$0.004 | YES |
+| Google + cross-platform (Yelp, TripAdvisor, etc. via Google) | `business_data/google/extended_reviews` | ~$0.0015 + params | YES |
+| Trustpilot | `business_data/trustpilot/reviews` | ~$0.002 | YES |
+| Tripadvisor | `business_data/tripadvisor/reviews` | ~$0.002 | YES |
+| Yelp | `business_data/yelp/reviews` | ~$0.002 | YES |
+
+**Winner for AI receptionist prospecting: `business_data/google/reviews` (Standard mode).** Most local SMBs live on Google Reviews. Cheapest per review. Set `sort_by=newest` + `depth=20` → billed as 20 reviews, ~$0.0015. For 1000 businesses = $1.50.
+
+### Keyword filters to run against review text (client-side, not API)
+
+The API returns raw text. You grep it yourself. Focused phrase list for missed-call / AI-receptionist signals:
 
 ```
-Step 1: Maps SERP  → 100 businesses for $0.002
-Step 2: Filter     → flag businesses with low rating or high 1-star count (free, client-side)
-Step 3: Reviews    → pull 50 lowest reviews only for flagged leads = $0.00375 each
+Called ~ / phoned ~ / tried to call
+No one answered / nobody answered / never answered
+Straight to voicemail / went to voicemail / voicemail
+No answer / didn't answer / doesn't answer
+Never called back / no callback / never got a call back
+Rang and rang / kept ringing
+Left a message / left multiple messages
+Impossible to reach / couldn't reach / hard to get ahold of
+Line was busy
+After hours / closed early / hours online are wrong
+Rude on the phone / hung up on me
+Waited on hold / on hold for
+No response to my inquiry
+Contact form went nowhere / never heard back
 ```
 
-**Cost breakdown — lean approach:**
+Any review with a 1-2 star rating AND one of these phrases = ideal AI receptionist prospect.
 
-| What | Cost |
-|------|------|
-| 1 Maps SERP search (100 businesses) | $0.002 |
-| 50 reviews per flagged lead | $0.00375 each |
-| Average (filtering ~30% of list) | **~$0.0021 per business** |
-| $50 credit → **~24,000 businesses profiled** | |
+### Rating count as a leading indicator
 
-**Review depth pricing (so you can choose):**
+- **< 20 reviews total** — probably not sophisticated, may not have thought about after-hours calls. Warm lead.
+- **20–100 reviews with 4.0–4.4 rating** — the sweet spot. Enough reviews to find negative signal, low enough rating that they know they have a problem.
+- **4.7+ rating** — probably doesn't want to buy anything to improve.
+- **< 3.5 rating** — desperate, might convert fast but might not have budget.
 
-| Reviews pulled | Cost |
-|---------------|------|
-| 10 | $0.00075 |
-| 20 | $0.0015 |
-| **50 (recommended)** | **$0.00375** |
-| 100 | $0.0075 |
-| 500 | $0.0375 |
-| 4,490 (full history) | $0.34 |
+### Owner response signal
 
-> ⚠️ **20 is NOT the max.** Depth goes up to 4,490 reviews total.
-> For outreach you don't need more than 50. You'll see the pattern in 20–50.
-> Only pull 500+ if you want to do aggregate analysis across a whole category.
+If `owner_answer` is populated on <20% of negative reviews → owner is not actively managing reviews → likely also not managing phones well → good AI receptionist prospect.
+
+If owner responds to EVERY review → already sophisticated → harder sell.
 
 ---
 
-## TL;DR — The $0.005 Full Dossier (When You Want Everything)
+## Recommended Pipeline
 
-One complete business profile (discovery + deep profile + 50 reviews) costs **~$0.005**.
-- $50 credit → **~10,000 fully profiled businesses**
-- $50 credit → **2.5 million businesses** if you only run discovery (Maps SERP)
-- $50 credit → **~24,000 businesses** with lean workflow (Maps SERP + 50 reviews, filtered)
+Concrete step-by-step for the AI receptionist prospecting workflow:
 
----
+### Step 1 — Bulk-find local businesses per city + niche
+Endpoint: `serp/google/maps/task_post` (Standard queue) or `serp/google/maps/live/advanced` (real-time)
+Input: `keyword=plumber`, `location_name=Austin,Texas,United States`, `language_code=en`, `depth=100`
+Output: ~100 businesses w/ place_id, phone, website, rating, review count
+Cost: ~$0.002–$0.006 per keyword × city
 
-## The 4-Step Workflow (Full Version)
+### Step 2 — Filter locally (no API cost)
+Keep only businesses with:
+- 10 ≤ review_count ≤ 200 (enough signal, not a giant)
+- 3.0 ≤ rating ≤ 4.5 (has problems, not hopeless)
+- website is populated (need a contact form for outreach)
 
-```
-Step 1: Maps SERP        → discover 100 businesses for $0.002
-Step 2: My Business Info → deep profile hot leads for $0.0015 each (SKIP for lean)
-Step 3: Google Reviews   → pull 50 worst reviews for $0.00375 each
-Step 4: Keywords (opt.)  → show search volume for $0.075/batch
-```
+### Step 3 — Pull recent reviews per surviving business
+Endpoint: `business_data/google/reviews/task_post` (Standard)
+Input: `place_id=<from step 1>`, `sort_by=newest`, `depth=20`
+Output: last 20 review texts with rating + date + owner response
+Cost: ~$0.0015 per business
 
----
+### Step 4 — Filter reviews client-side for missed-call signals
+Grep against the phrase list above. Score each business: number of matched phrases in last 20 reviews.
 
-## API Quick Reference Table
+### Step 5 (optional) — Enrich with site audit
+Endpoint: `on_page/instant_pages` on their website
+Output: page title, meta, tech stack, page speed
+Use in email: "I noticed your site is on WordPress with no analytics — plus your last 3 negative reviews all mention nobody answering the phone..."
 
-| Purpose | Endpoint | Cost | Use |
-|---------|----------|------|-----|
-| Discover 100 local businesses | `/v3/serp/google/maps/live/advanced/` | **$0.002/search** | PRIMARY |
-| Full business profile | `/v3/business_data/google/my_business_info/live/` | **$0.0015/biz** | PRIMARY |
-| Pull 20 newest/worst reviews | `/v3/business_data/google/reviews/task_post/` | **$0.0015/20 reviews** | PRIMARY |
-| Filter database by rating/category | `/v3/business_data/business_listings/search/live/` | ~$0.0015/req | PRIMARY |
-| Keyword search volume | `/v3/keywords_data/google_ads/search_volume/live/` | $0.075/task (1K kws) | SECONDARY |
-| On-page SEO audit | `/v3/on_page/task_post/` | $0.000125/page | SECONDARY |
-| Trustpilot reviews | `/v3/business_data/trustpilot/reviews/task_post/` | $0.00075/20 | OPTIONAL |
-| Tripadvisor reviews | `/v3/business_data/tripadvisor/reviews/task_post/` | $0.00075/30 | OPTIONAL |
-| Google Q&A | `/v3/business_data/google/questions_and_answers/live/` | ~$0.0015 | OPTIONAL |
-| Backlinks | `/v3/backlinks/` | $0.02+/request | SKIP (requires $100/mo min) |
+### Step 6 — Custom email/contact form message per lead
+Feed Claude the JSON of {business_name, category, city, rating, recent_negative_reviews, missed_call_phrases_found}. Claude drafts a personalized email that quotes the actual reviews.
 
 ---
 
-## Standard vs. Live Mode
+## Cost Math
 
-| Mode | Cost | Speed | Use When |
-|------|------|-------|----------|
-| Standard (task_post + task_get) | **3x cheaper** | 5–45 min delay | Batch prospecting |
-| Live | 3x more expensive | ~6 seconds | Real-time demos/dashboards |
+Realistic scenario: prospect 1000 local businesses in one city for AI receptionist.
 
-**Rule:** Use standard for all batch scripts. Use live only if you need instant results.
+| Step | API call | Volume | Cost |
+|------|----------|--------|------|
+| 1. Bulk find | Google Maps SERP (Standard) | 10 keywords × 1 city × 100 results = 10 calls | 10 × $0.002 = **$0.02** |
+| 2. Filter locally | none | 1000 → ~400 survivors | $0 |
+| 3. Pull reviews | Google Reviews (Standard, depth=20) | 400 calls | 400 × $0.0015 = **$0.60** |
+| 4. Filter locally | none | 400 → ~80 hot leads | $0 |
+| 5. Enrich | On-Page instant_pages | 80 calls | 80 × ~$0.003 = **$0.24** |
+| **Total** | | | **~$0.86 for 1000 businesses → 80 hot leads** |
 
----
+Your $50 credit = ~58,000 businesses scanned this way. Or ~4,600 hot leads.
 
-## API #1 — Google Maps SERP (Your Bread and Butter)
-
-**Endpoint:** `/v3/serp/google/maps/live/advanced/`
-
-**Query format:** keyword like `"plumbers Austin"` + `location_name: "Austin,Texas,United States"`
-
-**Cost:** $0.002 per search → 100 businesses → **$0.00002 per business**
-
-### Fields You Get Per Business
-
-| Field | What It Tells You |
-|-------|------------------|
-| `title` | Business name |
-| `phone` | Phone number |
-| `address` | Street address |
-| `address_info` | Structured: city, zip, region, country |
-| `domain` | Website domain |
-| `url` | Website URL |
-| `contact_url` | Their contact page |
-| `book_online_url` | Booking/ordering page |
-| `place_id` | Google Place ID → use to fetch reviews |
-| `cid` | Google client ID → alternative key |
-| `rating.value` | Star rating (e.g., 4.7) |
-| `rating.votes_count` | Total review count |
-| `rating_distribution` | **How many 1-star, 2-star, 3-star, 4-star, 5-star** |
-| `category` | Primary category (e.g., "Plumber") |
-| `additional_categories` | All secondary categories |
-| `price_level` | Inexpensive / moderate / expensive |
-| `work_hours` | Full weekly schedule |
-| `work_hours.current_status` | Open or closed RIGHT NOW |
-| `main_image` | Profile photo URL |
-| `total_photos` | Photo count |
-| `is_claimed` | Has owner verified the listing? |
-| `latitude` / `longitude` | GPS coordinates |
-
-**AI Receptionist signals from this call:**
-- `rating_distribution` with high 1-star count → communication problems
-- `is_claimed: false` → not managing online presence at all
-- Low `total_photos` → minimal GMB management
+Live mode multiplies costs ~3–5x. Use Standard queue overnight, Live only for one-off spot checks.
 
 ---
 
-## API #2 — Google My Business Info (Deep Profile)
+## Python Examples
 
-**Endpoint:** `/v3/business_data/google/my_business_info/live/`
+Bare minimum working code for the two endpoints you'll use most. Uses `requests`. Replace `LOGIN` and `PASSWORD` with your dashboard credentials.
 
-**Input:** `place_id` or `cid` from Maps SERP (or business name as keyword)
+### Local Pack (100 businesses per keyword+city)
 
-**Cost:** $0.0015 per business
-
-### Extra Fields Beyond Maps SERP
-
-| Field | What It Tells You |
-|-------|------------------|
-| `description` | Business overview text |
-| `logo` | Logo image URL |
-| `place_topics` | **Keywords from reviews with mention frequency** |
-| `popular_times` | Hourly foot traffic index by day (0–100) |
-| `attributes` | Services: wheelchair accessible, delivery, etc. |
-| `current_status` | opened / closed / **temporarily_closed** / **closed_forever** |
-| `local_business_links` | Reservation, ordering, menu URLs |
-| `people_also_search` | Competing businesses with ratings |
-| `snippet` | Additional business text |
-
-### The `place_topics` Gold Mine
-
-This field surfaces the most-mentioned keywords across ALL of a business's reviews. Examples:
-- `"response time: 47 mentions"` → customers care about speed
-- `"phone: 23 mentions"` → customers are calling frequently
-- `"voicemail: 12 mentions"` → **calls going unanswered** ← your lead signal
-- `"no answer: 8 mentions"` → **direct missed call evidence** ← your lead signal
-
-### The `popular_times` Opportunity
-
-Shows when a business is busiest by hour. If they're slammed 10am–2pm but only have 1 employee answering phones, that's your pitch: "You're losing calls during your peak hours."
-
----
-
-## API #3 — Google Reviews (The "Last 20 Reviews" One You Heard About)
-
-**Endpoint:** `/v3/business_data/google/reviews/task_post/` + `/v3/business_data/google/reviews/task_get/`
-
-Or use extended reviews: `/v3/business_data/google/extended_reviews/task_post/`
-
-**Cost:** $0.00075 per 10 reviews → **$0.0015 for 20 reviews**
-
-**Key parameters:**
-- `depth: 20` → pull 20 reviews (max 4,490)
-- `sort_by: "newest"` → most recent first
-- `sort_by: "lowest_rating"` → worst reviews first
-- `sort_by: "highest_rating"` → best reviews first
-- `sort_by: "relevant"` → Google's default sort
-
-### Fields Per Review
-
-| Field | What It Tells You |
-|-------|------------------|
-| `review_text` | Full review text |
-| `original_review_text` | Original language (if translated) |
-| `rating.value` | Star rating (1–5) |
-| `time_ago` | "2 weeks ago", "a month ago" |
-| `timestamp` | Exact date |
-| `profile_name` | Reviewer name |
-| `reviews_count` | How many reviews this person has written |
-| `local_guide` | Is this a trusted Google Local Guide? |
-| `owner_answer` | **Business owner's response text** |
-| `owner_timestamp` | When owner responded |
-| `images` | Photos attached to review |
-| `review_highlights` | Structured ratings (e.g., "Service: 2/5") |
-
-### AI Receptionist Lead Signals
-
-**The formula:** 1-star review + `owner_answer: null` = business is not managing reputation.
-
-Search review text for:
-- "no answer" / "didn't answer"
-- "went to voicemail" / "voicemail full"
-- "never called back" / "couldn't reach"
-- "no one picked up"
-- "left a message, no return call"
-
-Any of these = hard evidence of missed calls → perfect AI receptionist pitch.
-
----
-
-## API #4 — Business Listings Search (Prospecting Database)
-
-**Endpoint:** `/v3/business_data/business_listings/search/live/`
-
-Unlike Maps SERP (which mimics a Google search), this queries DataForSEO's own database. Power-user prospecting tool.
-
-**Cost:** ~$0.0015 per request — returns up to **1,000 businesses** for that fraction of a cent.
-Filters do NOT add cost. You can stack 8 filters and still pay $0.0015.
-
-### Every Field You Can Filter, Sort, or Search By
-
-This is the full menu — pick whatever angle fits your campaign:
-
-#### Location (Required)
-| Parameter | What it does |
-|-----------|-------------|
-| `location_coordinate` | GPS lat/lng + radius in meters (1m to 100,000,000m) |
-| `location_name` | City/state/country name instead of GPS |
-
-#### Business Identity
-| Field | Filter operators | Example |
-|-------|-----------------|---------|
-| `title` | `=`, `like`, `regex` | `["title", "like", "%plumb%"]` |
-| `category` | `=`, `in` | `["category", "=", "hvac_contractor"]` |
-| `additional_categories` | `contains` | businesses in multiple categories |
-| `is_claimed` | `=` | `["is_claimed", "=", true]` — owner-verified only |
-| `price_level` | `=`, `in` | `inexpensive`, `moderate`, `expensive`, `very_expensive` |
-
-#### Rating & Reviews (Most Useful for Your Use Case)
-| Field | Filter operators | Example |
-|-------|-----------------|---------|
-| `rating.value` | `>`, `<`, `>=`, `<=`, `=` | `["rating.value", "<", 4.0]` |
-| `rating.votes_count` | `>`, `<`, `>=`, `<=`, `=` | `["rating.votes_count", ">", 10]` |
-
-> 🎯 **Sweet spot for AI receptionist leads:**
-> `rating.value < 4.2` + `rating.votes_count > 15` = real businesses with real problems
-
-#### Hours & Status
-| Field | Filter operators | Example |
-|-------|-----------------|---------|
-| `is_open` | `=` | `["is_open", "=", true]` — currently open |
-| `current_status` | `=` | `opened`, `closed`, `temporarily_closed`, `closed_forever` |
-
-> 🎯 `temporarily_closed` = struggling business that may have cash flow issues
-
-#### Online Presence
-| Field | Filter operators | Example |
-|-------|-----------------|---------|
-| `domain` | `=`, `like`, `regex` | filter by website domain |
-| `url` | `=`, `like` | filter by URL pattern |
-| `total_photos` | `>`, `<` | `["total_photos", "<", 5]` = not managing GMB |
-
-#### Geographic
-| Field | What it does |
-|-------|-------------|
-| `latitude` | Direct GPS filter |
-| `longitude` | Direct GPS filter |
-
-### Sortable Fields
-Any filterable field can also be used in `order_by`:
-```
-order_by: ["rating.value,asc"]           ← worst rated first
-order_by: ["rating.votes_count,desc"]   ← most-reviewed first
-order_by: ["rating.value,asc", "rating.votes_count,desc"]  ← multi-sort
-```
-
-### Max 8 Filters Per Request, Combinable With AND/OR
 ```python
-filters: [
-    ["rating.value", "<", 4.2],           # bad rating
-    "and",
-    ["rating.votes_count", ">", 15],      # enough reviews to be real
-    "and",
-    ["is_claimed", "=", true],            # they're active online
-    "and",
-    ["current_status", "=", "opened"],    # still in business
-]
+import requests
+from requests.auth import HTTPBasicAuth
+
+LOGIN = "your-login"
+PASSWORD = "your-password"
+
+payload = [{
+    "keyword": "plumber",
+    "location_name": "Austin,Texas,United States",
+    "language_code": "en",
+    "depth": 100,
+}]
+
+r = requests.post(
+    "https://api.dataforseo.com/v3/serp/google/maps/live/advanced",
+    auth=HTTPBasicAuth(LOGIN, PASSWORD),
+    json=payload,
+)
+data = r.json()
+for item in data["tasks"][0]["result"][0]["items"]:
+    print(item["title"], item.get("phone"), item.get("rating", {}).get("value"),
+          item.get("rating", {}).get("votes_count"), item.get("place_id"))
 ```
 
-### Example: Find Every Struggling HVAC Company Within 30 Miles of Dallas
+### Last 20 Google Reviews for a business
+
 ```python
-{
-    "location_coordinate": {
-        "lat": 32.7767,
-        "lng": -96.7970,
-        "radius": 48280          # 30 miles in meters
-    },
-    "categories": ["hvac_contractor"],
-    "filters": [
-        ["rating.value", "<", 4.2],
-        "and",
-        ["rating.votes_count", ">", 10]
-    ],
-    "order_by": ["rating.value,asc"],
-    "limit": 1000
-}
+payload = [{
+    "place_id": "ChIJ....(from step above)",
+    "sort_by": "newest",
+    "depth": 20,
+    "language_code": "en",
+}]
+
+r = requests.post(
+    "https://api.dataforseo.com/v3/business_data/google/reviews/task_post",
+    auth=HTTPBasicAuth(LOGIN, PASSWORD),
+    json=payload,
+)
+task_id = r.json()["tasks"][0]["id"]
+
+# Poll (wait ~30s to 5min for Standard queue), then:
+r = requests.get(
+    f"https://api.dataforseo.com/v3/business_data/google/reviews/task_get/{task_id}",
+    auth=HTTPBasicAuth(LOGIN, PASSWORD),
+)
+for review in r.json()["tasks"][0]["result"][0]["items"]:
+    print(review["rating"]["value"], review["timestamp"],
+          review["profile_name"], review["review_text"])
 ```
 
-Returns same data as My Business Info (full profile) for up to 1,000 businesses. Pre-screened, no keyword needed, $0.0015 total.
+For real-time (skip the polling): use `business_data/google/reviews/live` — costs ~3x more.
 
 ---
 
-## API #5 — Keywords Data (Optional, for Pitch Enhancement)
+## Anti-Recommendations
 
-**Endpoint:** `/v3/keywords_data/google_ads/search_volume/live/`
+Endpoints that look relevant but AREN'T worth it for your specific AI-receptionist use case:
 
-**Cost:** $0.075 per task (up to 1,000 keywords)
-
-**Returns:** Monthly search volume, CPC, competition level, 12-month trend data
-
-**Pitch use:** "There are 2,400 people searching 'plumbers Austin' every month. Your competitors are bidding $47/click for those customers. How many of those calls are you missing?"
-
----
-
-## API #6 — On-Page SEO Audit (Optional)
-
-**Endpoint:** `/v3/on_page/task_post/`
-
-**Cost:** $0.000125 per crawled page (cheap)
-
-**Returns:** Meta tags, H1/H2s, page speed, broken links, duplicate content, HTTP status codes, readability.
-
-**Pitch use:** "Your website has 14 broken links, no meta descriptions, and loads in 6.2 seconds. Google wants under 2.5."
+- **DataForSEO Labs `ranked_keywords`** — SEO agency tool, not a prospecting tool. Skip.
+- **Backlinks API** — $100 monthly commitment. Only worth it if you also sell SEO services.
+- **Domain Analytics WHOIS** — you already have place_id + website. WHOIS adds noise not signal.
+- **App Data API** — you're not selling to app makers.
+- **Merchant API** — you're not selling to Amazon sellers.
+- **Content Generation API** — you have Claude.
+- **Google Extended Reviews** — sounds cool but 90% of the time overlaps with plain Google Reviews. Use plain Google Reviews first; only add Extended if you need cross-platform coverage.
+- **`serp/google/reviews`** vs **`business_data/google/reviews`** — they overlap. The `business_data` version is cheaper and cleaner. Only use the SERP one if you need to see reviews exactly as they appear on the SERP feature (rare).
 
 ---
 
-## What $50 Buys You
+## One-line rules to remember
 
-| Scenario | Volume |
-|----------|--------|
-| Maps SERP discovery only | 25,000 searches × 100 businesses = **2.5M businesses** |
-| Full dossier (profile + 20 reviews) | **~10,000 businesses** |
-| Full dossier + keyword data | **~8,000 businesses** |
-| Just the 20-review pull only | **~33,000 businesses** |
-
----
-
-## Cost Per Email Campaign
-
-To build a campaign targeting 500 qualified businesses:
-
-| Step | Cost |
-|------|------|
-| Discovery (5 Maps SERP searches × $0.002) | $0.01 |
-| Deep profile on 500 hot leads × $0.0015 | $0.75 |
-| 20 reviews on 500 businesses × $0.0015 | $0.75 |
-| Keyword data (1 batch) | $0.075 |
-| **Total for 500 custom dossiers** | **~$1.59** |
-
-That's about **$0.003 per personalized email** with full SEO + review + profile data.
-
----
-
-## The AI Receptionist Email Formula
-
-With this data you can auto-generate emails that say things like:
-
-> "Hey [Business Name], I noticed you have 3 reviews from this month mentioning calls going to voicemail — one from [reviewer] who said '[exact quote]'. Based on your Google data, you're busiest on Thursdays between 10am–1pm. That's likely when those calls are coming in. Our AI receptionist answers every call, books appointments, and texts the customer back — all for less than $2/day. Want to see what that would have meant for those 3 missed leads?"
-
-That level of specificity converts. Nobody has seen an email like that.
-
----
-
-## Technical Notes
-
-### Standard Pricing Tiers
-- **Standard:** Task runs in background, poll for results. 3x cheaper.
-- **Priority:** Faster queue, still async. 1.5x standard price.
-- **Live:** Synchronous, instant. 3x standard price.
-
-### Authentication
-All requests use HTTP Basic Auth with your DataForSEO login/password.
-
-### Rate Limits
-- Standard: No hard limit, parallel task posting encouraged
-- Live: Throttled, use concurrent connections carefully
-
-### Python SDK
-```python
-pip install dataforseo-client
-```
-Or use raw `requests` with Basic Auth — simpler for scripts.
-
----
-
-## Platforms DataForSEO Covers (Reviews)
-
-| Platform | Supported | Notes |
-|----------|-----------|-------|
-| Google | ✅ Full | Primary. 4,490 reviews max per pull |
-| Trustpilot | ✅ Full | B2C services |
-| Tripadvisor | ✅ Full | Hospitality/restaurants |
-| Google Play | ✅ | Apps only |
-| App Store | ✅ | Apps only |
-| Amazon | ✅ | Products only |
-| Yelp | ❌ | Not available |
-| Facebook | ❌ | Not available |
-
----
-
-## Skip These (Not Worth It for Your Use Case)
-
-| API | Why Skip |
-|-----|----------|
-| Backlinks | $100/month minimum |
-| Domain Analytics | Overlap with On-Page |
-| Content Analysis | Not relevant |
-| AI Optimization (LLM Mentions) | Not relevant |
-| App Data | Not relevant |
-| Merchant (Amazon/Shopping) | Not relevant |
-| Social Media (Pinterest/Reddit) | Not relevant |
-
----
-
-## Next Steps — Python Scripts to Build
-
-1. **`discover_businesses.py`** — Maps SERP for niche + city → CSV of 100 businesses
-2. **`score_leads.py`** — Filter by rating_distribution, flag low-rating + unclaimed
-3. **`profile_hot_leads.py`** — My Business Info for flagged businesses → extract place_topics
-4. **`pull_reviews.py`** — Google Reviews (20 newest + 20 lowest) → extract missed call keywords
-5. **`build_dossier.py`** — Combine all data into per-business JSON
-6. **`generate_email.py`** — Template engine using dossier data → personalized outreach
-
-Each script is modular — run steps 1–2 first, then only pay for steps 3–4 on qualified leads.
-
----
-
-## EMAIL PITCH STRATEGY — Core Rules (from session 2026-04-27)
-
-### The #1 Rule: Don't Shame Them Into Silence
-If the email makes them feel embarrassed or exposed, they won't call us — they'll call someone else.
-We found the problem. We surfaced it. We can't let that make them too proud to respond.
-**Feel the pain, but never feel judged.**
-
-### Pitch Angle by Business Type
-
-**Solo Operator (1-man show — most common target)**
-- Detected by: low review count, owner name in reviews, "the owner came out", "the guy"
-- Root cause: not avoiding calls — physically can't answer, on a job
-- Angle: *"You're not dropping the ball on purpose — you're just buried. Here's the thing that handles it for you so you don't have to think about it."*
-- Tone: empathetic, peer-to-peer, "we got you"
-- What NOT to say: anything that implies they're running a bad business
-
-**Small Team (2–5 people, bad process)**
-- Detected by: "their office", "dispatch", "the tech vs the office"
-- Root cause: no system — whoever answers the phone is winging it
-- Angle: *"Your guys are great at the work. The front-end is where it's breaking down. One fix, and this whole problem goes away."*
-- Tone: business efficiency, ROI, not personal
-
-**Established Business with Bad Culture**
-- Detected by: high review count, pattern of owner ignoring complaints, no owner responses
-- Root cause: they know and don't care — or they're too big to notice
-- Angle: These are harder sells. Lead with revenue loss from bad reviews, not service quality.
-- May be better targets for review management pitch than AI receptionist.
-
----
-
-### The 4 Services — When to Pitch Each
-
-| Signal | Service to Pitch | Why |
-|--------|-----------------|-----|
-| "didn't answer", "voicemail", "tried calling" | **AI Receptionist** | Literally solves the exact problem |
-| "said they'd call back", "never called back", "waiting for callback" | **Callback Automation** | Bot calls them back, takes steam out of bad reviews |
-| High 1-star %, low overall score | **Review Management / Gating** | Push down bad, pull up good — don't say "gating" in email |
-| All of the above | **Full package** | They need everything — lead with the most painful one |
-
-### What NOT to Say in Emails
-- "review gating" — just say "automated reputation system" or "review generation"
-- "we found your bad reviews" — say "we researched your business"
-- "your customers are complaining" — say "we noticed some opportunities"
-- Any specific review text that would identify a customer (legal exposure)
-
-### The Tone Formula
-```
-[Empathy for their situation]
-+ [Specific data point that proves we did real research]
-+ [What this is costing them in business terms]
-+ [Simple solution, no effort required from them]
-+ [Easy CTA — not "buy this", just "want to see how it works?"]
-```
-
-### Email Variants by Signal Count
-- **1–3 signals** → Soft touch. "We noticed something small that might be costing you customers."
-- **4–10 signals** → Direct. Lead with the data. Two specific quotes max.
-- **10+ signals (Dallas Air Duct, A#1 Air level)** → Full dossier email. Multiple quotes, timeline of complaints, strong urgency. These businesses need the pitch most AND will respond most to seeing the depth of the problem.
-
----
-
-## DATA PIPELINE STATUS (as of 2026-04-27)
-
-Scripts built and working:
-- `scripts/dataforseo/hvac_dallas_leads.py` — Maps SERP + reviews + Reddit cross-reference → raw JSON
-- `scripts/dataforseo/analyze_reviews_groq.py` — Groq (free) analysis → biz size, root cause, pitch angle per review
-- Credentials in `.env` (gitignored)
-
-Output files per run:
-- `*_standard.csv` / `*_emergency.csv` — business list with lead scores
-- `*_reviews_raw.json` — every review + Reddit post for AI analysis
-- `*_ai_analysis.csv` — Groq-analyzed results with signal/category/phrase/biz_size/root_cause/pitch
-- `*_ai_leads.csv` — businesses ranked by AI signal count
-- `*_keyword_patterns.txt` — real phrases from real reviews for keyword list refinement
-
-Next to build:
-- Master spreadsheet merger (one row per business, all sources combined)
-- Email template generator (reads master sheet → writes personalized email by business type)
-- Multi-agent pitch review (run draft emails through Claude for tone/angle feedback)
+- Standard queue for bulk overnight. Live only for one-offs.
+- Always sort reviews `newest` when prospecting for missed calls.
+- Filter locally, not with API params — API params cost extra.
+- One Google Maps SERP call = 100 businesses = $0.002 = insanely cheap.
+- One Google Reviews call = 20 reviews = $0.0015 = insanely cheap.
+- Your $50 covers ~4600 hot leads with the pipeline above.

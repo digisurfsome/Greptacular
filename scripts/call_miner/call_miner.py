@@ -1007,7 +1007,7 @@ def sweep3_render(cfg: dict) -> dict:
     index_path     = output_dir / "_call-index.md"
 
     if not clusters_path.exists():
-        print(f"  ERROR: clusters.json not found. Run Sweep 2 first.")
+        print("  ERROR: clusters.json not found. Run Sweep 2 first.")
         return {}
 
     clusters_data = json.loads(clusters_path.read_text(encoding="utf-8"))
@@ -1094,7 +1094,7 @@ def sweep3_render(cfg: dict) -> dict:
 
     idx_lines = [
         f"# {project_name} — Call Index\n\n",
-        f"| Stat | Value |\n|------|-------|\n",
+        "| Stat | Value |\n|------|-------|\n",
         f"| Total exchanges | {total_items} |\n",
         f"| Cluster groups  | {cluster_count} |\n",
         f"| Singletons      | {singleton_count} |\n",
@@ -1103,7 +1103,7 @@ def sweep3_render(cfg: dict) -> dict:
     ]
     for itype, label, slug, count in written:
         idx_lines.append(f"- [{label}](interaction-types/{slug}.md) — {count} groups\n")
-    idx_lines.append(f"\n[Full exchange library](all_exchanges.md)\n")
+    idx_lines.append("\n[Full exchange library](all_exchanges.md)\n")
     index_path.write_text("".join(idx_lines), encoding="utf-8")
 
     print(f"  Sweep 3 done: {len(written)} interaction-type files")

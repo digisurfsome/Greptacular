@@ -164,7 +164,8 @@ def render(tpl, biz, copy, theme):
     city, state = biz.get("city") or "your area", biz.get("state") or "TX"
     logo_url = (biz.get("logo") or "").strip() if USE_LOGOS else ""
     letter = (name[:1] or "•").upper()
-    esc = lambda s: html_escape_mod.escape(str(s), quote=True)
+    def esc(s):
+        return html_escape_mod.escape(str(s), quote=True)
     logo_html = (f'<img class="logo-img" src="{esc(logo_url)}" alt="{esc(name)} logo">'
                  if logo_url.startswith("http")
                  else f'<span class="logo-mark">{esc(letter)}</span>')

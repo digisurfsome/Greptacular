@@ -622,13 +622,13 @@ async def run(topic_name: str, limit: int, dry_run: bool) -> None:
 
     sep = "─" * 66
     print(f"\n{sep}")
-    print(f"  Truth Builder — Standalone (claude -p, no server needed)")
+    print("  Truth Builder — Standalone (claude -p, no server needed)")
     print(f"  Topic:   {topic_name}")
     print(f"  Model:   {MODEL}  (Sonnet 4.6)")
     print(f"  Videos:  {videos_dir}")
     print(f"  Output:  {truth_doc_path}")
     print(f"  Log:     {log_path}")
-    print(f"  Caps:    none — stdin pipe, full transcript + full truth_doc")
+    print("  Caps:    none — stdin pipe, full transcript + full truth_doc")
     print(f"{sep}\n")
 
     CLAUDE_CLI = resolve_claude_cli()
@@ -661,7 +661,7 @@ async def run(topic_name: str, limit: int, dry_run: bool) -> None:
             print(f"  {f.name}")
         if len(pending) > 10:
             print(f"  ... and {len(pending) - 10} more")
-        print(f"\nDry run done. No API calls made.")
+        print("\nDry run done. No API calls made.")
         return
 
     if to_process == 0:
@@ -693,7 +693,7 @@ async def run(topic_name: str, limit: int, dry_run: bool) -> None:
         stripped = transcript.strip()
         bad_markers = ("[Transcript unavailable", "[Transcript", "Could not retrieve")
         if len(stripped) < 200 or any(stripped.startswith(m) for m in bad_markers):
-            print(f"  ⚠  Transcript missing or blocked — skipping")
+            print("  ⚠  Transcript missing or blocked — skipping")
             append_log(log_path, f"SKIPPED: {folder_name} | transcript missing/blocked")
             continue
 
@@ -784,10 +784,10 @@ async def run(topic_name: str, limit: int, dry_run: bool) -> None:
             continue
 
         if video_has_new:
-            print(f"  → Video done: NEW INFO added", flush=True)
+            print("  → Video done: NEW INFO added", flush=True)
             append_log(log_path, f"DONE: {folder_name} | NEW INFO | {video_summary}")
         else:
-            print(f"  → Video done: no new info", flush=True)
+            print("  → Video done: no new info", flush=True)
             append_log(log_path, f"DONE: {folder_name} | no new info | {video_summary}")
 
         # Brief pause between videos to avoid rate limiting
